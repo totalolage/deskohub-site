@@ -14,10 +14,12 @@ export function Hero() {
       />
       <div className="relative z-10 flex items-center justify-center h-full text-center text-white px-6">
         <div className="max-w-4xl">
-          <h1 className="text-6xl md:text-8xl font-bold mb-8 leading-tight">
-            <span className="text-green-500">{m["hero.title"]()}</span>
+          <h1 className="font-bold mb-8 leading-[6.4em]">
+            <span className="text-6xl md:text-8xl text-green-500">
+              {m["hero.title"]()}
+            </span>
             <br />
-            {m["hero.subtitle"]()}
+            <span className="text-4xl md:text-6xl">{m["hero.subtitle"]()}</span>
           </h1>
           <div className="flex flex-col md:flex-row items-center justify-center space-y-4 md:space-y-0 md:space-x-8 mt-12">
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
