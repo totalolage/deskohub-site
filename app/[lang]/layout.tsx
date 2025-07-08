@@ -1,8 +1,7 @@
-import { LanguageHtmlUpdater } from "@/components/language-html-updater";
 import { locales, setLocale } from "@/src/paraglide/runtime";
-import { PropsWithChildren } from "react";
 import { PropsWithParams } from "./route";
 import { m } from "@/i18n";
+import { PropsWithChildren } from "react";
 
 export async function generateStaticParams() {
   return locales.map((lang) => ({ lang }));
@@ -19,13 +18,6 @@ export async function generateMetadata({ params }: Readonly<PropsWithParams>) {
   };
 }
 
-export default async function LangLayout({
-  children,
-}: Readonly<PropsWithChildren>) {
-  return (
-    <>
-      <LanguageHtmlUpdater />
-      {children}
-    </>
-  );
+export default function LangLayout({ children }: Readonly<PropsWithChildren>) {
+  return { children };
 }
