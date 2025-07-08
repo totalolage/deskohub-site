@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { baseLocale, Locale, locales } from "./i18n";
+import { baseLocale, type Locale, locales } from "./i18n";
 
 // Get the preferred locale from Accept-Language header or other sources
 function getLocale(request: NextRequest): string {
@@ -36,7 +36,7 @@ export function middleware(request: NextRequest) {
 
   // Check if pathname already has a locale
   const pathnameHasLocale = locales.some(
-    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`,
+    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
   );
   if (pathnameHasLocale) return NextResponse.next();
 

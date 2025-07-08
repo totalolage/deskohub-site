@@ -1,6 +1,6 @@
 # Task ID: 6
 # Title: Implement URL-based Language Switching with Next.js App Router
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: medium
 # Description: Implement proper URL-based language routing for the Deskohub website using Next.js App Router middleware, enabling language switching between Czech (/) and English (/en/) URLs with correct content translation.

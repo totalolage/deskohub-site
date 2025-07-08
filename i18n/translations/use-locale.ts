@@ -1,6 +1,6 @@
-import { RouteParams } from "@/app/[lang]/route";
 import { useParams } from "next/navigation";
-import { baseLocale, Locale } from "@/i18n";
+import type { RouteParams } from "@/app/[lang]/route";
+import { baseLocale, type Locale } from "@/i18n";
 
 export function useLocale(): Locale {
   const { lang } = useParams<Partial<RouteParams>>();

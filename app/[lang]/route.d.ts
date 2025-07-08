@@ -1,4 +1,4 @@
-import { Locale } from "@/src/paraglide/runtime";
+import { Locale } from "@/i18n";
 
 export type RouteParams = {
   lang: Locale;

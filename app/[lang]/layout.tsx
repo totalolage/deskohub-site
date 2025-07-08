@@ -1,7 +1,6 @@
-import { locales, setLocale } from "@/src/paraglide/runtime";
-import { PropsWithParams } from "./route";
-import { m } from "@/i18n";
-import { PropsWithChildren } from "react";
+import type { PropsWithChildren } from "react";
+import { locales, m, setLocale } from "@/i18n";
+import type { PropsWithParams } from "./route";
 
 export async function generateStaticParams() {
   return locales.map((lang) => ({ lang }));
