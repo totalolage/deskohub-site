@@ -81,7 +81,7 @@ export default async function Component({ params }: PropsWithParams) {
                 </div>
               </div>
             </div>
-            <p className="mt-8 text-lg max-w-2xl mx-auto text-gray-200">
+            <p className="mt-8 text-md max-w-3xl mx-auto text-gray-200">
               {m["hero.description"]()}
             </p>
           </div>
@@ -113,7 +113,7 @@ export default async function Component({ params }: PropsWithParams) {
             <div className="rounded-full overflow-hidden aspect-square">
               <Image
                 src={placeholderImage}
-                alt="Café atmosphere"
+                alt="Bar atmosphere"
                 width={300}
                 height={300}
                 className="w-full h-full object-cover"
@@ -261,7 +261,7 @@ export default async function Component({ params }: PropsWithParams) {
             <div className="rounded-lg overflow-hidden">
               <Image
                 src={placeholderImage}
-                alt="Café location"
+                alt="Bar location"
                 width={600}
                 height={400}
                 className="w-full h-full object-cover"
