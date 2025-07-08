@@ -23,16 +23,16 @@ export function Footer() {
             </div>
           </div>
           <div className="flex space-x-6 text-sm text-gray-600">
-            <a href="#" className="hover:text-green-500">
+            <a href="https://instagram.com" className="hover:text-green-500">
               {m["footer.socialLinks.instagram"]()}
             </a>
-            <a href="#" className="hover:text-green-500">
+            <a href="https://facebook.com" className="hover:text-green-500">
               {m["footer.socialLinks.facebook"]()}
             </a>
-            <a href="#" className="hover:text-green-500">
+            <a href="https://tiktok.com" className="hover:text-green-500">
               {m["footer.socialLinks.tiktok"]()}
             </a>
-            <a href="#" className="hover:text-green-500">
+            <a href="https://linkedin.com" className="hover:text-green-500">
               {m["footer.socialLinks.linkedin"]()}
             </a>
           </div>

@@ -13,19 +13,25 @@ export function Header() {
           <a href="#home" className="hover:text-green-400 transition-colors">
             {m["nav.home"]()}
           </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
+          <a
+            href="/board-games"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.boardGames"]()}
           </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
+          <a href="/gallery" className="hover:text-green-400 transition-colors">
             {m["nav.gallery"]()}
           </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
+          <a href="/menu" className="hover:text-green-400 transition-colors">
             {m["nav.menu"]()}
           </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
+          <a
+            href="/training-room"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.trainingRoom"]()}
           </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
+          <a href="/contact" className="hover:text-green-400 transition-colors">
             {m["nav.contact"]()}
           </a>
         </nav>
