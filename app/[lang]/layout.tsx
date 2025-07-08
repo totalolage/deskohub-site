@@ -18,5 +18,5 @@ export async function generateMetadata({ params }: Readonly<PropsWithParams>) {
 }
 
 export default function LangLayout({ children }: Readonly<PropsWithChildren>) {
-  return { children };
+  return children;
 }
