@@ -1,0 +1,73 @@
+{
+  "language": "Česky",
+  "nav": {
+    "home": "DOMŮ",
+    "boardGames": "DESKOVÉ HRY",
+    "gallery": "GALERIE",
+    "menu": "MENU",
+    "trainingRoom": "ŠKOLÍCÍ MÍSTNOST",
+    "contact": "KONTAKT"
+  },
+  "buttons": {
+    "reservation": "Rezervace",
+    "showMore": "ZOBRAZIT VÍCE",
+    "ourLocation": "NAŠE LOKACE",
+    "contact": "KONTAKT"
+  },
+  "hero": {
+    "title": "Hrejte, pijte, jezte",
+    "subtitle": "vše na jednom stole",
+    "description": "Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratu."
+  },
+  "hours": {
+    "weekdays": "PO - PÁ",
+    "weekdaysTime": "17:00-23:00",
+    "weekends": "SO - NE",
+    "weekendsTime": "15:00-24:00"
+  },
+  "about": {
+    "description": "Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratu. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO."
+  },
+  "stats": {
+    "boardGames": "Deskových Her",
+    "happyPlayers": "Spokojených Hráčů",
+    "yearsExperience": "Let Zkušeností",
+    "gameNights": "Herních Večerů"
+  },
+  "gamesSection": {
+    "title": "OBJEVTE NAŠE",
+    "subtitle": "ÚŽASNÉ DESKOVÉ HRY"
+  },
+  "gameCategories": {
+    "strategic": "STRATEGICKÉ",
+    "party": "PÁRTY HRY",
+    "cooperative": "KOOPERATIVNÍ",
+    "family": "RODINNÉ",
+    "logic": "LOGICKÉ",
+    "card": "KARETNÍ",
+    "economic": "EKONOMICKÉ",
+    "adventure": "DOBRODRUŽNÉ",
+    "abstract": "ABSTRAKTNÍ"
+  },
+  "locationSection": {
+    "title": "V OKOLÍ?",
+    "subtitle": "NAJDĚTE NÁS"
+  },
+  "contactSection": {
+    "title": "MÁTE OTÁZKY NEBO POTŘEBUJETE",
+    "subtitle": "INFORMACE?"
+  },
+  "footer": {
+    "tagline": "Café • Deskové hry • Komunita",
+    "socialLinks": {
+      "instagram": "Instagram",
+      "facebook": "Facebook",
+      "tiktok": "TikTok",
+      "linkedin": "LinkedIn"
+    }
+  },
+  "metadata": {
+    "title": "Deskohub - Café s deskovými hrami",
+    "description": "Hrejte, pijte, jezte - vše na jednom stole. Navštivte nejlepší board game café pro všechny milovníky deskových her."
+  }
+}

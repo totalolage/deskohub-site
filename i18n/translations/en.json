@@ -1,0 +1,73 @@
+{
+  "language": "English",
+  "nav": {
+    "home": "HOME",
+    "boardGames": "BOARD GAMES",
+    "gallery": "GALLERY",
+    "menu": "MENU",
+    "trainingRoom": "TRAINING ROOM",
+    "contact": "CONTACT"
+  },
+  "buttons": {
+    "reservation": "Reservation",
+    "showMore": "SHOW MORE",
+    "ourLocation": "OUR LOCATION",
+    "contact": "CONTACT"
+  },
+  "hero": {
+    "title": "Play, drink, eat",
+    "subtitle": "everything at one table",
+    "description": "Entry fee for board game players. Price is 50 CZK for board game players who order something from us and 100 CZK for customers with zero spending."
+  },
+  "hours": {
+    "weekdays": "MON - FRI",
+    "weekdaysTime": "17:00-23:00",
+    "weekends": "SAT - SUN",
+    "weekendsTime": "15:00-24:00"
+  },
+  "about": {
+    "description": "Entry fee for board game players. Price is 50 CZK for board game players who order something from us and 100 CZK for customers with zero spending. Entry fee is valid for 1 day without time limit. For children under 15 years old, entry is free. MONDAY WITHOUT ENTRY FEE."
+  },
+  "stats": {
+    "boardGames": "Board Games",
+    "happyPlayers": "Happy Players",
+    "yearsExperience": "Years of Experience",
+    "gameNights": "Game Nights"
+  },
+  "gamesSection": {
+    "title": "DISCOVER OUR",
+    "subtitle": "AMAZING BOARD GAMES"
+  },
+  "gameCategories": {
+    "strategic": "STRATEGIC",
+    "party": "PARTY GAMES",
+    "cooperative": "COOPERATIVE",
+    "family": "FAMILY",
+    "logic": "LOGIC",
+    "card": "CARD",
+    "economic": "ECONOMIC",
+    "adventure": "ADVENTURE",
+    "abstract": "ABSTRACT"
+  },
+  "locationSection": {
+    "title": "IN THE AREA?",
+    "subtitle": "FIND US"
+  },
+  "contactSection": {
+    "title": "HAVE QUESTIONS OR NEED",
+    "subtitle": "INFORMATION?"
+  },
+  "footer": {
+    "tagline": "Café • Board games • Community",
+    "socialLinks": {
+      "instagram": "Instagram",
+      "facebook": "Facebook",
+      "tiktok": "TikTok",
+      "linkedin": "LinkedIn"
+    }
+  },
+  "metadata": {
+    "title": "Deskohub - Board Game Café",
+    "description": "Play, drink, eat - everything at one table. Visit the best board game café for all board game enthusiasts."
+  }
+}
