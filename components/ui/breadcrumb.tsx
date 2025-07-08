@@ -4,47 +4,57 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-const Breadcrumb = React.forwardRef<
-  HTMLElement,
-  React.ComponentPropsWithoutRef<"nav"> & {
-    separator?: React.ReactNode;
-  }
->(({ ...props }, ref) => <nav ref={ref} aria-label="breadcrumb" {...props} />);
+export interface BreadcrumbProps
+  extends React.ComponentPropsWithoutRef<"nav"> {
+  separator?: React.ReactNode;
+  ref?: React.Ref<HTMLElement>;
+}
+
+function Breadcrumb({ ref, ...props }: BreadcrumbProps) {
+  return <nav ref={ref} aria-label="breadcrumb" {...props} />;
+}
 Breadcrumb.displayName = "Breadcrumb";
 
-const BreadcrumbList = React.forwardRef<
-  HTMLOListElement,
-  React.ComponentPropsWithoutRef<"ol">
->(({ className, ...props }, ref) => (
-  <ol
-    ref={ref}
-    className={cn(
-      "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5",
-      className
-    )}
-    {...props}
-  />
-));
+export interface BreadcrumbListProps extends React.ComponentPropsWithoutRef<"ol"> {
+  ref?: React.Ref<HTMLOListElement>;
+}
+
+function BreadcrumbList({ className, ref, ...props }: BreadcrumbListProps) {
+  return (
+    <ol
+      ref={ref}
+      className={cn(
+        "flex flex-wrap items-center gap-1.5 break-words text-sm text-muted-foreground sm:gap-2.5",
+        className
+      )}
+      {...props}
+    />
+  );
+}
 BreadcrumbList.displayName = "BreadcrumbList";
 
-const BreadcrumbItem = React.forwardRef<
-  HTMLLIElement,
-  React.ComponentPropsWithoutRef<"li">
->(({ className, ...props }, ref) => (
-  <li
-    ref={ref}
-    className={cn("inline-flex items-center gap-1.5", className)}
-    {...props}
-  />
-));
+export interface BreadcrumbItemProps extends React.ComponentPropsWithoutRef<"li"> {
+  ref?: React.Ref<HTMLLIElement>;
+}
+
+function BreadcrumbItem({ className, ref, ...props }: BreadcrumbItemProps) {
+  return (
+    <li
+      ref={ref}
+      className={cn("inline-flex items-center gap-1.5", className)}
+      {...props}
+    />
+  );
+}
 BreadcrumbItem.displayName = "BreadcrumbItem";
 
-const BreadcrumbLink = React.forwardRef<
-  HTMLAnchorElement,
-  React.ComponentPropsWithoutRef<"a"> & {
-    asChild?: boolean;
-  }
->(({ asChild, className, ...props }, ref) => {
+export interface BreadcrumbLinkProps
+  extends React.ComponentPropsWithoutRef<"a"> {
+  asChild?: boolean;
+  ref?: React.Ref<HTMLAnchorElement>;
+}
+
+function BreadcrumbLink({ asChild, className, ref, ...props }: BreadcrumbLinkProps) {
   const Comp = asChild ? Slot : "a";
 
   return (
@@ -54,23 +64,26 @@ const BreadcrumbLink = React.forwardRef<
       {...props}
     />
   );
-});
+}
 BreadcrumbLink.displayName = "BreadcrumbLink";
 
-const BreadcrumbPage = React.forwardRef<
-  HTMLSpanElement,
-  React.ComponentPropsWithoutRef<"span">
->(({ className, ...props }, ref) => (
-  <span
-    ref={ref}
-    role="link"
-    aria-disabled="true"
-    aria-current="page"
-    tabIndex={-1}
-    className={cn("font-normal text-foreground", className)}
-    {...props}
-  />
-));
+export interface BreadcrumbPageProps extends React.ComponentPropsWithoutRef<"span"> {
+  ref?: React.Ref<HTMLSpanElement>;
+}
+
+function BreadcrumbPage({ className, ref, ...props }: BreadcrumbPageProps) {
+  return (
+    <span
+      ref={ref}
+      role="link"
+      aria-disabled="true"
+      aria-current="page"
+      tabIndex={-1}
+      className={cn("font-normal text-foreground", className)}
+      {...props}
+    />
+  );
+}
 BreadcrumbPage.displayName = "BreadcrumbPage";
 
 const BreadcrumbSeparator = ({
