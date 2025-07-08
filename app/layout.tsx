@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { getLocale } from "@/src/paraglide/runtime";
+import { PropsWithChildren } from "react";
 
 export const metadata: Metadata = {
-  title: "v0 App",
-  description: "Created with v0",
+  title: "Deskohub - Board Game Café",
+  description: "Play, drink, eat - everything at one table",
   generator: "v0.dev",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<PropsWithChildren>) {
   return (
-    <html lang="en">
+    <html lang={getLocale()}>
       <body>{children}</body>
     </html>
   );
