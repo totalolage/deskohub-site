@@ -5,35 +5,37 @@ export default function Component() {
   return (
     <div className="min-h-screen bg-white [--header-height:80px]">
       {/* Header */}
-      <header className="bg-black text-white px-6 sticky top-0 z-20 h-[var(--header-height)] flex  justify-between max-w-7xl items-center">
-        <Image src="/images/logo.png" alt="Deskohub" width={100} height={80} />
-        <nav className="hidden md:flex space-x-8">
-          <a href="#" className="hover:text-green-400 transition-colors">
-            DOMŮ
-          </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
-            DESKOVÉ HRY
-          </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
-            GALERIE
-          </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
-            MENU
-          </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
-            ŠKOLÍCÍ MÍSTNOST
-          </a>
-          <a href="#" className="hover:text-green-400 transition-colors">
-            KONTAKT
-          </a>
-        </nav>
-        <Button className="bg-green-500 hover:bg-green-600 text-white">Rezervace</Button>
+      <header className="bg-black text-white px-6 sticky top-0 z-20 h-[var(--header-height)] flex   items-center justify-center">
+        <div className="flex items-center justify-between max-w-7xl w-full">
+          <Image src="/images/logo.png" alt="Deskohub" width={100} height={80} />
+          <nav className="hidden md:flex space-x-8">
+            <a href="#" className="hover:text-green-400 transition-colors">
+              DOMŮ
+            </a>
+            <a href="#" className="hover:text-green-400 transition-colors">
+              DESKOVÉ HRY
+            </a>
+            <a href="#" className="hover:text-green-400 transition-colors">
+              GALERIE
+            </a>
+            <a href="#" className="hover:text-green-400 transition-colors">
+              MENU
+            </a>
+            <a href="#" className="hover:text-green-400 transition-colors">
+              ŠKOLÍCÍ MÍSTNOST
+            </a>
+            <a href="#" className="hover:text-green-400 transition-colors">
+              KONTAKT
+            </a>
+          </nav>
+          <Button className="bg-green-500 hover:bg-green-600 text-white">Rezervace</Button>
+        </div>
       </header>
 
       {/* Hero Section */}
       <section className="relative h-[calc(100dvh_-_var(--header-height))] bg-gradient-to-r from-black/70 to-black/50 z-1">
         <Image
-          className="mix-blend-overlay brightness-50"
+          className="mix-blend-overlay brightness-[0.7]"
           src="images/hero.jpg"
           fill
           objectFit="cover"
