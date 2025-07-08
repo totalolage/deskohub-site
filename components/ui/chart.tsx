@@ -76,12 +76,11 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
     return null;
   }
 
-  return (
-    <style
-      dangerouslySetInnerHTML={{
-        __html: Object.entries(THEMES)
-          .map(
-            ([theme, prefix]) => `
+  // Safe use of dangerouslySetInnerHTML for CSS custom properties
+  // Content is generated from controlled theme configuration
+  const cssContent = Object.entries(THEMES)
+    .map(
+      ([theme, prefix]) => `
 ${prefix} [data-chart=${id}] {
 ${colorConfig
   .map(([key, itemConfig]) => {
@@ -93,8 +92,14 @@ ${colorConfig
   .join("\n")}
 }
 `
-          )
-          .join("\n"),
+    )
+    .join("\n");
+
+  return (
+    <style
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: CSS content is generated from controlled theme config
+      dangerouslySetInnerHTML={{
+        __html: cssContent,
       }}
     />
   );
