@@ -1,14 +1,12 @@
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-  typescript: {
-    ignoreBuildErrors: true,
-  },
-  images: {
-    unoptimized: true,
-  },
-}
+import { paraglide } from "@inlang/paraglide-next/plugin";
 
-export default nextConfig
+/** @type {import('next').NextConfig} */
+const nextConfig = {};
+
+export default paraglide({
+  paraglide: {
+    project: "./project.inlang",
+    outdir: "./i18n/paraglide",
+  },
+  ...nextConfig,
+});
