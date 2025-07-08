@@ -1,5 +1,5 @@
-import Image from "next/image"
-import { Button } from "@/components/ui/button"
+import Image from "next/image";
+import { Button } from "@/components/ui/button";
 
 export default function Component() {
   return (
@@ -7,7 +7,12 @@ export default function Component() {
       {/* Header */}
       <header className="bg-black text-white px-6 sticky top-0 z-20 h-[var(--header-height)] flex   items-center justify-center">
         <div className="flex items-center justify-between max-w-7xl w-full">
-          <Image src="/images/logo.png" alt="Deskohub" width={100} height={80} />
+          <Image
+            src="/images/logo.png"
+            alt="Deskohub"
+            width={100}
+            height={80}
+          />
           <nav className="hidden md:flex space-x-8">
             <a href="#" className="hover:text-green-400 transition-colors">
               DOMŮ
@@ -28,7 +33,9 @@ export default function Component() {
               KONTAKT
             </a>
           </nav>
-          <Button className="bg-green-500 hover:bg-green-600 text-white">Rezervace</Button>
+          <Button className="bg-green-500 hover:bg-green-600 text-white">
+            Rezervace
+          </Button>
         </div>
       </header>
 
@@ -58,8 +65,9 @@ export default function Component() {
               </div>
             </div>
             <p className="mt-8 text-lg max-w-2xl mx-auto text-gray-200">
-              Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro
-              zákazníky s nulovou útratu.
+              Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče,
+              kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou
+              útratu.
             </p>
           </div>
         </div>
@@ -100,9 +108,10 @@ export default function Component() {
 
           <div className="text-center max-w-4xl mx-auto">
             <p className="text-lg text-gray-700 leading-relaxed">
-              Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro
-              zákazníky s nulovou útratu. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma.
-              PONDĚLÍ BEZ VSTUPNÉHO.
+              Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče,
+              kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou
+              útratu. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup
+              do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO.
             </p>
           </div>
         </div>
@@ -113,19 +122,27 @@ export default function Component() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             <div>
-              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">500+</div>
+              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">
+                500+
+              </div>
               <div className="text-gray-600 font-medium">Deskových Her</div>
             </div>
             <div>
-              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">200+</div>
+              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">
+                200+
+              </div>
               <div className="text-gray-600 font-medium">Spokojených Hráčů</div>
             </div>
             <div>
-              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">5+</div>
+              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">
+                5+
+              </div>
               <div className="text-gray-600 font-medium">Let Zkušeností</div>
             </div>
             <div>
-              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">100+</div>
+              <div className="text-4xl md:text-6xl font-bold text-gray-900 mb-2">
+                100+
+              </div>
               <div className="text-gray-600 font-medium">Herních Večerů</div>
             </div>
           </div>
@@ -135,20 +152,51 @@ export default function Component() {
       {/* Games Gallery */}
       <section className="py-16 bg-amber-50">
         <div className="max-w-7xl mx-auto px-6 text-center">
-          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">OBJEVTE NAŠE</h2>
-          <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-16">ÚŽASNÉ DESKOVÉ HRY</h3>
+          <h2 className="text-4xl md:text-5xl font-bold text-gray-900 mb-4">
+            OBJEVTE NAŠE
+          </h2>
+          <h3 className="text-4xl md:text-5xl font-bold text-gray-900 mb-16">
+            ÚŽASNÉ DESKOVÉ HRY
+          </h3>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
             {[
-              { name: "STRATEGICKÉ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "PÁRTY HRY", image: "/placeholder.svg?height=200&width=200" },
-              { name: "KOOPERATIVNÍ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "RODINNÉ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "LOGICKÉ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "KARETNÍ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "EKONOMICKÉ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "DOBRODRUŽNÉ", image: "/placeholder.svg?height=200&width=200" },
-              { name: "ABSTRAKTNÍ", image: "/placeholder.svg?height=200&width=200" },
+              {
+                name: "STRATEGICKÉ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "PÁRTY HRY",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "KOOPERATIVNÍ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "RODINNÉ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "LOGICKÉ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "KARETNÍ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "EKONOMICKÉ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "DOBRODRUŽNÉ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
+              {
+                name: "ABSTRAKTNÍ",
+                image: "/placeholder.svg?height=200&width=200",
+              },
             ].map((game, index) => (
               <div key={index} className="text-center">
                 <div className="rounded-full overflow-hidden aspect-square mb-4 mx-auto w-48 h-48">
@@ -165,7 +213,9 @@ export default function Component() {
             ))}
           </div>
 
-          <Button className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-full">ZOBRAZIT VÍCE</Button>
+          <Button className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-full">
+            ZOBRAZIT VÍCE
+          </Button>
         </div>
       </section>
 
@@ -204,7 +254,9 @@ export default function Component() {
             <br />
             INFORMACE?
           </h2>
-          <Button className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-full">KONTAKT</Button>
+          <Button className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 rounded-full">
+            KONTAKT
+          </Button>
         </div>
       </section>
 
@@ -213,10 +265,18 @@ export default function Component() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex flex-col md:flex-row items-center justify-between">
             <div className="flex items-center space-x-2 mb-4 md:mb-0">
-              <Image src="/images/logo.png" alt="Deskohub" width={24} height={24} className="w-6 h-6" />
+              <Image
+                src="/images/logo.png"
+                alt="Deskohub"
+                width={24}
+                height={24}
+                className="w-6 h-6"
+              />
               <div>
                 <div className="font-bold">Deskohub</div>
-                <div className="text-sm text-gray-600">Café • Deskové hry • Komunita</div>
+                <div className="text-sm text-gray-600">
+                  Café • Deskové hry • Komunita
+                </div>
               </div>
             </div>
             <div className="flex space-x-6 text-sm text-gray-600">
@@ -237,5 +297,5 @@ export default function Component() {
         </div>
       </footer>
     </div>
-  )
+  );
 }
