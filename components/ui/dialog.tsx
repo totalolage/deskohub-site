@@ -2,7 +2,7 @@
 
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,7 @@ const DialogClose = DialogPrimitive.Close;
 
 export interface DialogOverlayProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Overlay> {
-  ref?: React.Ref<React.ElementRef<typeof DialogPrimitive.Overlay>>;
+  ref?: React.Ref<React.ComponentRef<typeof DialogPrimitive.Overlay>>;
 }
 
 function DialogOverlay({ className, ref, ...props }: DialogOverlayProps) {
@@ -35,10 +35,15 @@ DialogOverlay.displayName = DialogPrimitive.Overlay.displayName;
 
 export interface DialogContentProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Content> {
-  ref?: React.Ref<React.ElementRef<typeof DialogPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof DialogPrimitive.Content>>;
 }
 
-function DialogContent({ className, children, ref, ...props }: DialogContentProps) {
+function DialogContent({
+  className,
+  children,
+  ref,
+  ...props
+}: DialogContentProps) {
   return (
     <DialogPortal>
       <DialogOverlay />
@@ -91,7 +96,7 @@ DialogFooter.displayName = "DialogFooter";
 
 export interface DialogTitleProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Title> {
-  ref?: React.Ref<React.ElementRef<typeof DialogPrimitive.Title>>;
+  ref?: React.Ref<React.ComponentRef<typeof DialogPrimitive.Title>>;
 }
 
 function DialogTitle({ className, ref, ...props }: DialogTitleProps) {
@@ -110,10 +115,14 @@ DialogTitle.displayName = DialogPrimitive.Title.displayName;
 
 export interface DialogDescriptionProps
   extends React.ComponentPropsWithoutRef<typeof DialogPrimitive.Description> {
-  ref?: React.Ref<React.ElementRef<typeof DialogPrimitive.Description>>;
+  ref?: React.Ref<React.ComponentRef<typeof DialogPrimitive.Description>>;
 }
 
-function DialogDescription({ className, ref, ...props }: DialogDescriptionProps) {
+function DialogDescription({
+  className,
+  ref,
+  ...props
+}: DialogDescriptionProps) {
   return (
     <DialogPrimitive.Description
       ref={ref}

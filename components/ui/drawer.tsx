@@ -1,6 +1,6 @@
 "use client";
 
-import * as React from "react";
+import type * as React from "react";
 import { Drawer as DrawerPrimitive } from "vaul";
 
 import { cn } from "@/lib/utils";
@@ -24,7 +24,7 @@ const DrawerClose = DrawerPrimitive.Close;
 
 export interface DrawerOverlayProps
   extends React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Overlay> {
-  ref?: React.Ref<React.ElementRef<typeof DrawerPrimitive.Overlay>>;
+  ref?: React.Ref<React.ComponentRef<typeof DrawerPrimitive.Overlay>>;
 }
 
 function DrawerOverlay({ className, ref, ...props }: DrawerOverlayProps) {
@@ -40,10 +40,15 @@ DrawerOverlay.displayName = DrawerPrimitive.Overlay.displayName;
 
 export interface DrawerContentProps
   extends React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Content> {
-  ref?: React.Ref<React.ElementRef<typeof DrawerPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof DrawerPrimitive.Content>>;
 }
 
-function DrawerContent({ className, children, ref, ...props }: DrawerContentProps) {
+function DrawerContent({
+  className,
+  children,
+  ref,
+  ...props
+}: DrawerContentProps) {
   return (
     <DrawerPortal>
       <DrawerOverlay />
@@ -87,7 +92,7 @@ DrawerFooter.displayName = "DrawerFooter";
 
 export interface DrawerTitleProps
   extends React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Title> {
-  ref?: React.Ref<React.ElementRef<typeof DrawerPrimitive.Title>>;
+  ref?: React.Ref<React.ComponentRef<typeof DrawerPrimitive.Title>>;
 }
 
 function DrawerTitle({ className, ref, ...props }: DrawerTitleProps) {
@@ -106,10 +111,14 @@ DrawerTitle.displayName = DrawerPrimitive.Title.displayName;
 
 export interface DrawerDescriptionProps
   extends React.ComponentPropsWithoutRef<typeof DrawerPrimitive.Description> {
-  ref?: React.Ref<React.ElementRef<typeof DrawerPrimitive.Description>>;
+  ref?: React.Ref<React.ComponentRef<typeof DrawerPrimitive.Description>>;
 }
 
-function DrawerDescription({ className, ref, ...props }: DrawerDescriptionProps) {
+function DrawerDescription({
+  className,
+  ref,
+  ...props
+}: DrawerDescriptionProps) {
   return (
     <DrawerPrimitive.Description
       ref={ref}

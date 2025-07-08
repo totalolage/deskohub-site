@@ -147,7 +147,8 @@ function Carousel({
 }
 Carousel.displayName = "Carousel";
 
-export interface CarouselContentProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CarouselContentProps
+  extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;
 }
 
@@ -170,7 +171,8 @@ function CarouselContent({ className, ref, ...props }: CarouselContentProps) {
 }
 CarouselContent.displayName = "CarouselContent";
 
-export interface CarouselItemProps extends React.HTMLAttributes<HTMLDivElement> {
+export interface CarouselItemProps
+  extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;
 }
 
@@ -193,11 +195,18 @@ function CarouselItem({ className, ref, ...props }: CarouselItemProps) {
 }
 CarouselItem.displayName = "CarouselItem";
 
-export interface CarouselPreviousProps extends React.ComponentProps<typeof Button> {
+export interface CarouselPreviousProps
+  extends React.ComponentProps<typeof Button> {
   ref?: React.Ref<HTMLButtonElement>;
 }
 
-function CarouselPrevious({ className, variant = "outline", size = "icon", ref, ...props }: CarouselPreviousProps) {
+function CarouselPrevious({
+  className,
+  variant = "outline",
+  size = "icon",
+  ref,
+  ...props
+}: CarouselPreviousProps) {
   const { orientation, scrollPrev, canScrollPrev } = useCarousel();
 
   return (
@@ -227,7 +236,13 @@ export interface CarouselNextProps extends React.ComponentProps<typeof Button> {
   ref?: React.Ref<HTMLButtonElement>;
 }
 
-function CarouselNext({ className, variant = "outline", size = "icon", ref, ...props }: CarouselNextProps) {
+function CarouselNext({
+  className,
+  variant = "outline",
+  size = "icon",
+  ref,
+  ...props
+}: CarouselNextProps) {
   const { orientation, scrollNext, canScrollNext } = useCarousel();
 
   return (

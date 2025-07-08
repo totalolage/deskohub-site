@@ -2,13 +2,13 @@
 
 import * as RadioGroupPrimitive from "@radix-ui/react-radio-group";
 import { Circle } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 export interface RadioGroupProps
   extends React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof RadioGroupPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof RadioGroupPrimitive.Root>>;
 }
 
 function RadioGroup({ className, ref, ...props }: RadioGroupProps) {
@@ -24,7 +24,7 @@ RadioGroup.displayName = RadioGroupPrimitive.Root.displayName;
 
 export interface RadioGroupItemProps
   extends React.ComponentPropsWithoutRef<typeof RadioGroupPrimitive.Item> {
-  ref?: React.Ref<React.ElementRef<typeof RadioGroupPrimitive.Item>>;
+  ref?: React.Ref<React.ComponentRef<typeof RadioGroupPrimitive.Item>>;
 }
 
 function RadioGroupItem({ className, ref, ...props }: RadioGroupItemProps) {

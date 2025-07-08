@@ -1,13 +1,13 @@
 "use client";
 
 import * as AvatarPrimitive from "@radix-ui/react-avatar";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 export interface AvatarProps
   extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof AvatarPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof AvatarPrimitive.Root>>;
 }
 
 function Avatar({ className, ref, ...props }: AvatarProps) {
@@ -26,7 +26,7 @@ Avatar.displayName = AvatarPrimitive.Root.displayName;
 
 export interface AvatarImageProps
   extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Image> {
-  ref?: React.Ref<React.ElementRef<typeof AvatarPrimitive.Image>>;
+  ref?: React.Ref<React.ComponentRef<typeof AvatarPrimitive.Image>>;
 }
 
 function AvatarImage({ className, ref, ...props }: AvatarImageProps) {
@@ -42,7 +42,7 @@ AvatarImage.displayName = AvatarPrimitive.Image.displayName;
 
 export interface AvatarFallbackProps
   extends React.ComponentPropsWithoutRef<typeof AvatarPrimitive.Fallback> {
-  ref?: React.Ref<React.ElementRef<typeof AvatarPrimitive.Fallback>>;
+  ref?: React.Ref<React.ComponentRef<typeof AvatarPrimitive.Fallback>>;
 }
 
 function AvatarFallback({ className, ref, ...props }: AvatarFallbackProps) {

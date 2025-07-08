@@ -3,7 +3,7 @@
 import * as SheetPrimitive from "@radix-ui/react-dialog";
 import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,7 @@ const SheetPortal = SheetPrimitive.Portal;
 
 export interface SheetOverlayProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Overlay> {
-  ref?: React.Ref<React.ElementRef<typeof SheetPrimitive.Overlay>>;
+  ref?: React.Ref<React.ComponentRef<typeof SheetPrimitive.Overlay>>;
 }
 
 function SheetOverlay({ className, ref, ...props }: SheetOverlayProps) {
@@ -56,10 +56,16 @@ const sheetVariants = cva(
 export interface SheetContentProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Content>,
     VariantProps<typeof sheetVariants> {
-  ref?: React.Ref<React.ElementRef<typeof SheetPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof SheetPrimitive.Content>>;
 }
 
-function SheetContent({ side = "right", className, children, ref, ...props }: SheetContentProps) {
+function SheetContent({
+  side = "right",
+  className,
+  children,
+  ref,
+  ...props
+}: SheetContentProps) {
   return (
     <SheetPortal>
       <SheetOverlay />
@@ -109,7 +115,7 @@ SheetFooter.displayName = "SheetFooter";
 
 export interface SheetTitleProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Title> {
-  ref?: React.Ref<React.ElementRef<typeof SheetPrimitive.Title>>;
+  ref?: React.Ref<React.ComponentRef<typeof SheetPrimitive.Title>>;
 }
 
 function SheetTitle({ className, ref, ...props }: SheetTitleProps) {
@@ -125,7 +131,7 @@ SheetTitle.displayName = SheetPrimitive.Title.displayName;
 
 export interface SheetDescriptionProps
   extends React.ComponentPropsWithoutRef<typeof SheetPrimitive.Description> {
-  ref?: React.Ref<React.ElementRef<typeof SheetPrimitive.Description>>;
+  ref?: React.Ref<React.ComponentRef<typeof SheetPrimitive.Description>>;
 }
 
 function SheetDescription({ className, ref, ...props }: SheetDescriptionProps) {

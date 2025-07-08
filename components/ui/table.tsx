@@ -1,4 +1,4 @@
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,7 +19,8 @@ function Table({ className, ref, ...props }: TableProps) {
 }
 Table.displayName = "Table";
 
-export interface TableHeaderProps extends React.HTMLAttributes<HTMLTableSectionElement> {
+export interface TableHeaderProps
+  extends React.HTMLAttributes<HTMLTableSectionElement> {
   ref?: React.Ref<HTMLTableSectionElement>;
 }
 
@@ -30,7 +31,8 @@ function TableHeader({ className, ref, ...props }: TableHeaderProps) {
 }
 TableHeader.displayName = "TableHeader";
 
-export interface TableBodyProps extends React.HTMLAttributes<HTMLTableSectionElement> {
+export interface TableBodyProps
+  extends React.HTMLAttributes<HTMLTableSectionElement> {
   ref?: React.Ref<HTMLTableSectionElement>;
 }
 
@@ -45,7 +47,8 @@ function TableBody({ className, ref, ...props }: TableBodyProps) {
 }
 TableBody.displayName = "TableBody";
 
-export interface TableFooterProps extends React.HTMLAttributes<HTMLTableSectionElement> {
+export interface TableFooterProps
+  extends React.HTMLAttributes<HTMLTableSectionElement> {
   ref?: React.Ref<HTMLTableSectionElement>;
 }
 
@@ -63,7 +66,8 @@ function TableFooter({ className, ref, ...props }: TableFooterProps) {
 }
 TableFooter.displayName = "TableFooter";
 
-export interface TableRowProps extends React.HTMLAttributes<HTMLTableRowElement> {
+export interface TableRowProps
+  extends React.HTMLAttributes<HTMLTableRowElement> {
   ref?: React.Ref<HTMLTableRowElement>;
 }
 
@@ -81,7 +85,8 @@ function TableRow({ className, ref, ...props }: TableRowProps) {
 }
 TableRow.displayName = "TableRow";
 
-export interface TableHeadProps extends React.ThHTMLAttributes<HTMLTableCellElement> {
+export interface TableHeadProps
+  extends React.ThHTMLAttributes<HTMLTableCellElement> {
   ref?: React.Ref<HTMLTableCellElement>;
 }
 
@@ -99,7 +104,8 @@ function TableHead({ className, ref, ...props }: TableHeadProps) {
 }
 TableHead.displayName = "TableHead";
 
-export interface TableCellProps extends React.TdHTMLAttributes<HTMLTableCellElement> {
+export interface TableCellProps
+  extends React.TdHTMLAttributes<HTMLTableCellElement> {
   ref?: React.Ref<HTMLTableCellElement>;
 }
 
@@ -107,14 +113,18 @@ function TableCell({ className, ref, ...props }: TableCellProps) {
   return (
     <td
       ref={ref}
-      className={cn("p-4 align-middle [&:has([role=checkbox])]:pr-0", className)}
+      className={cn(
+        "p-4 align-middle [&:has([role=checkbox])]:pr-0",
+        className
+      )}
       {...props}
     />
   );
 }
 TableCell.displayName = "TableCell";
 
-export interface TableCaptionProps extends React.HTMLAttributes<HTMLTableCaptionElement> {
+export interface TableCaptionProps
+  extends React.HTMLAttributes<HTMLTableCaptionElement> {
   ref?: React.Ref<HTMLTableCaptionElement>;
 }
 

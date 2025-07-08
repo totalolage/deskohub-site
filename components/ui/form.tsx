@@ -88,7 +88,7 @@ FormItem.displayName = "FormItem";
 
 export interface FormLabelProps
   extends React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof LabelPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof LabelPrimitive.Root>>;
 }
 
 function FormLabel({ className, ref, ...props }: FormLabelProps) {
@@ -107,7 +107,7 @@ FormLabel.displayName = "FormLabel";
 
 export interface FormControlProps
   extends React.ComponentPropsWithoutRef<typeof Slot> {
-  ref?: React.Ref<React.ElementRef<typeof Slot>>;
+  ref?: React.Ref<React.ComponentRef<typeof Slot>>;
 }
 
 function FormControl({ ref, ...props }: FormControlProps) {
@@ -130,7 +130,8 @@ function FormControl({ ref, ...props }: FormControlProps) {
 }
 FormControl.displayName = "FormControl";
 
-export interface FormDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
+export interface FormDescriptionProps
+  extends React.HTMLAttributes<HTMLParagraphElement> {
   ref?: React.Ref<HTMLParagraphElement>;
 }
 
@@ -148,7 +149,8 @@ function FormDescription({ className, ref, ...props }: FormDescriptionProps) {
 }
 FormDescription.displayName = "FormDescription";
 
-export interface FormMessageProps extends React.HTMLAttributes<HTMLParagraphElement> {
+export interface FormMessageProps
+  extends React.HTMLAttributes<HTMLParagraphElement> {
   ref?: React.Ref<HTMLParagraphElement>;
 }
 

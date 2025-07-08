@@ -1,13 +1,13 @@
 "use client";
 
 import * as ProgressPrimitive from "@radix-ui/react-progress";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 export interface ProgressProps
   extends React.ComponentPropsWithoutRef<typeof ProgressPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof ProgressPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof ProgressPrimitive.Root>>;
 }
 
 function Progress({ className, value, ref, ...props }: ProgressProps) {

@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 export interface InputOTPProps {
   className?: string;
   containerClassName?: string;
-  ref?: React.Ref<React.ElementRef<typeof OTPInput>>;
+  ref?: React.Ref<React.ComponentRef<typeof OTPInput>>;
   maxLength: number;
   children: React.ReactNode;
   value?: string;
@@ -23,7 +23,12 @@ export interface InputOTPProps {
   noScriptCSSFallback?: string;
 }
 
-function InputOTP({ className, containerClassName, ref, ...props }: InputOTPProps) {
+function InputOTP({
+  className,
+  containerClassName,
+  ref,
+  ...props
+}: InputOTPProps) {
   return (
     <OTPInput
       ref={ref}
@@ -38,8 +43,9 @@ function InputOTP({ className, containerClassName, ref, ...props }: InputOTPProp
 }
 InputOTP.displayName = "InputOTP";
 
-export interface InputOTPGroupProps extends React.ComponentPropsWithoutRef<"div"> {
-  ref?: React.Ref<React.ElementRef<"div">>;
+export interface InputOTPGroupProps
+  extends React.ComponentPropsWithoutRef<"div"> {
+  ref?: React.Ref<React.ComponentRef<"div">>;
 }
 
 function InputOTPGroup({ className, ref, ...props }: InputOTPGroupProps) {
@@ -52,7 +58,7 @@ InputOTPGroup.displayName = "InputOTPGroup";
 export interface InputOTPSlotProps
   extends React.ComponentPropsWithoutRef<"div"> {
   index: number;
-  ref?: React.Ref<React.ElementRef<"div">>;
+  ref?: React.Ref<React.ComponentRef<"div">>;
 }
 
 function InputOTPSlot({ index, className, ref, ...props }: InputOTPSlotProps) {
@@ -80,8 +86,9 @@ function InputOTPSlot({ index, className, ref, ...props }: InputOTPSlotProps) {
 }
 InputOTPSlot.displayName = "InputOTPSlot";
 
-export interface InputOTPSeparatorProps extends React.ComponentPropsWithoutRef<"div"> {
-  ref?: React.Ref<React.ElementRef<"div">>;
+export interface InputOTPSeparatorProps
+  extends React.ComponentPropsWithoutRef<"div"> {
+  ref?: React.Ref<React.ComponentRef<"div">>;
 }
 
 function InputOTPSeparator({ ref, ...props }: InputOTPSeparatorProps) {

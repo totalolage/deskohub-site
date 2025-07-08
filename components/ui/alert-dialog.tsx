@@ -1,7 +1,7 @@
 "use client";
 
 import * as AlertDialogPrimitive from "@radix-ui/react-alert-dialog";
-import * as React from "react";
+import type * as React from "react";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -13,10 +13,14 @@ const AlertDialogPortal = AlertDialogPrimitive.Portal;
 
 export interface AlertDialogOverlayProps
   extends React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Overlay> {
-  ref?: React.Ref<React.ElementRef<typeof AlertDialogPrimitive.Overlay>>;
+  ref?: React.Ref<React.ComponentRef<typeof AlertDialogPrimitive.Overlay>>;
 }
 
-function AlertDialogOverlay({ className, ref, ...props }: AlertDialogOverlayProps) {
+function AlertDialogOverlay({
+  className,
+  ref,
+  ...props
+}: AlertDialogOverlayProps) {
   return (
     <AlertDialogPrimitive.Overlay
       className={cn(
@@ -32,10 +36,14 @@ AlertDialogOverlay.displayName = AlertDialogPrimitive.Overlay.displayName;
 
 export interface AlertDialogContentProps
   extends React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Content> {
-  ref?: React.Ref<React.ElementRef<typeof AlertDialogPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof AlertDialogPrimitive.Content>>;
 }
 
-function AlertDialogContent({ className, ref, ...props }: AlertDialogContentProps) {
+function AlertDialogContent({
+  className,
+  ref,
+  ...props
+}: AlertDialogContentProps) {
   return (
     <AlertDialogPortal>
       <AlertDialogOverlay />
@@ -82,7 +90,7 @@ AlertDialogFooter.displayName = "AlertDialogFooter";
 
 export interface AlertDialogTitleProps
   extends React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Title> {
-  ref?: React.Ref<React.ElementRef<typeof AlertDialogPrimitive.Title>>;
+  ref?: React.Ref<React.ComponentRef<typeof AlertDialogPrimitive.Title>>;
 }
 
 function AlertDialogTitle({ className, ref, ...props }: AlertDialogTitleProps) {
@@ -97,11 +105,17 @@ function AlertDialogTitle({ className, ref, ...props }: AlertDialogTitleProps) {
 AlertDialogTitle.displayName = AlertDialogPrimitive.Title.displayName;
 
 export interface AlertDialogDescriptionProps
-  extends React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Description> {
-  ref?: React.Ref<React.ElementRef<typeof AlertDialogPrimitive.Description>>;
+  extends React.ComponentPropsWithoutRef<
+    typeof AlertDialogPrimitive.Description
+  > {
+  ref?: React.Ref<React.ComponentRef<typeof AlertDialogPrimitive.Description>>;
 }
 
-function AlertDialogDescription({ className, ref, ...props }: AlertDialogDescriptionProps) {
+function AlertDialogDescription({
+  className,
+  ref,
+  ...props
+}: AlertDialogDescriptionProps) {
   return (
     <AlertDialogPrimitive.Description
       ref={ref}
@@ -110,14 +124,19 @@ function AlertDialogDescription({ className, ref, ...props }: AlertDialogDescrip
     />
   );
 }
-AlertDialogDescription.displayName = AlertDialogPrimitive.Description.displayName;
+AlertDialogDescription.displayName =
+  AlertDialogPrimitive.Description.displayName;
 
 export interface AlertDialogActionProps
   extends React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Action> {
-  ref?: React.Ref<React.ElementRef<typeof AlertDialogPrimitive.Action>>;
+  ref?: React.Ref<React.ComponentRef<typeof AlertDialogPrimitive.Action>>;
 }
 
-function AlertDialogAction({ className, ref, ...props }: AlertDialogActionProps) {
+function AlertDialogAction({
+  className,
+  ref,
+  ...props
+}: AlertDialogActionProps) {
   return (
     <AlertDialogPrimitive.Action
       ref={ref}
@@ -130,10 +149,14 @@ AlertDialogAction.displayName = AlertDialogPrimitive.Action.displayName;
 
 export interface AlertDialogCancelProps
   extends React.ComponentPropsWithoutRef<typeof AlertDialogPrimitive.Cancel> {
-  ref?: React.Ref<React.ElementRef<typeof AlertDialogPrimitive.Cancel>>;
+  ref?: React.Ref<React.ComponentRef<typeof AlertDialogPrimitive.Cancel>>;
 }
 
-function AlertDialogCancel({ className, ref, ...props }: AlertDialogCancelProps) {
+function AlertDialogCancel({
+  className,
+  ref,
+  ...props
+}: AlertDialogCancelProps) {
   return (
     <AlertDialogPrimitive.Cancel
       ref={ref}

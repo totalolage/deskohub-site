@@ -1,13 +1,13 @@
 "use client";
 
 import * as ScrollAreaPrimitive from "@radix-ui/react-scroll-area";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 export interface ScrollAreaProps
   extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof ScrollAreaPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof ScrollAreaPrimitive.Root>>;
 }
 
 function ScrollArea({ className, children, ref, ...props }: ScrollAreaProps) {
@@ -28,11 +28,20 @@ function ScrollArea({ className, children, ref, ...props }: ScrollAreaProps) {
 ScrollArea.displayName = ScrollAreaPrimitive.Root.displayName;
 
 export interface ScrollBarProps
-  extends React.ComponentPropsWithoutRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar> {
-  ref?: React.Ref<React.ElementRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>>;
+  extends React.ComponentPropsWithoutRef<
+    typeof ScrollAreaPrimitive.ScrollAreaScrollbar
+  > {
+  ref?: React.Ref<
+    React.ComponentRef<typeof ScrollAreaPrimitive.ScrollAreaScrollbar>
+  >;
 }
 
-function ScrollBar({ className, orientation = "vertical", ref, ...props }: ScrollBarProps) {
+function ScrollBar({
+  className,
+  orientation = "vertical",
+  ref,
+  ...props
+}: ScrollBarProps) {
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
       ref={ref}

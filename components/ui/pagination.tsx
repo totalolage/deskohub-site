@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 import { type ButtonProps, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
@@ -16,7 +16,11 @@ export interface PaginationContentProps extends React.ComponentProps<"ul"> {
   ref?: React.Ref<HTMLUListElement>;
 }
 
-function PaginationContent({ className, ref, ...props }: PaginationContentProps) {
+function PaginationContent({
+  className,
+  ref,
+  ...props
+}: PaginationContentProps) {
   return (
     <ul
       ref={ref}

@@ -2,7 +2,7 @@
 
 import * as DropdownMenuPrimitive from "@radix-ui/react-dropdown-menu";
 import { Check, ChevronRight, Circle } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -19,12 +19,20 @@ const DropdownMenuSub = DropdownMenuPrimitive.Sub;
 const DropdownMenuRadioGroup = DropdownMenuPrimitive.RadioGroup;
 
 export interface DropdownMenuSubTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubTrigger> {
+  extends React.ComponentPropsWithoutRef<
+    typeof DropdownMenuPrimitive.SubTrigger
+  > {
   inset?: boolean;
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.SubTrigger>>;
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.SubTrigger>>;
 }
 
-function DropdownMenuSubTrigger({ className, inset, children, ref, ...props }: DropdownMenuSubTriggerProps) {
+function DropdownMenuSubTrigger({
+  className,
+  inset,
+  children,
+  ref,
+  ...props
+}: DropdownMenuSubTriggerProps) {
   return (
     <DropdownMenuPrimitive.SubTrigger
       ref={ref}
@@ -40,14 +48,21 @@ function DropdownMenuSubTrigger({ className, inset, children, ref, ...props }: D
     </DropdownMenuPrimitive.SubTrigger>
   );
 }
-DropdownMenuSubTrigger.displayName = DropdownMenuPrimitive.SubTrigger.displayName;
+DropdownMenuSubTrigger.displayName =
+  DropdownMenuPrimitive.SubTrigger.displayName;
 
 export interface DropdownMenuSubContentProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.SubContent> {
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.SubContent>>;
+  extends React.ComponentPropsWithoutRef<
+    typeof DropdownMenuPrimitive.SubContent
+  > {
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.SubContent>>;
 }
 
-function DropdownMenuSubContent({ className, ref, ...props }: DropdownMenuSubContentProps) {
+function DropdownMenuSubContent({
+  className,
+  ref,
+  ...props
+}: DropdownMenuSubContentProps) {
   return (
     <DropdownMenuPrimitive.SubContent
       ref={ref}
@@ -59,14 +74,20 @@ function DropdownMenuSubContent({ className, ref, ...props }: DropdownMenuSubCon
     />
   );
 }
-DropdownMenuSubContent.displayName = DropdownMenuPrimitive.SubContent.displayName;
+DropdownMenuSubContent.displayName =
+  DropdownMenuPrimitive.SubContent.displayName;
 
 export interface DropdownMenuContentProps
   extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Content> {
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.Content>>;
 }
 
-function DropdownMenuContent({ className, sideOffset = 4, ref, ...props }: DropdownMenuContentProps) {
+function DropdownMenuContent({
+  className,
+  sideOffset = 4,
+  ref,
+  ...props
+}: DropdownMenuContentProps) {
   return (
     <DropdownMenuPrimitive.Portal>
       <DropdownMenuPrimitive.Content
@@ -86,10 +107,15 @@ DropdownMenuContent.displayName = DropdownMenuPrimitive.Content.displayName;
 export interface DropdownMenuItemProps
   extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Item> {
   inset?: boolean;
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.Item>>;
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.Item>>;
 }
 
-function DropdownMenuItem({ className, inset, ref, ...props }: DropdownMenuItemProps) {
+function DropdownMenuItem({
+  className,
+  inset,
+  ref,
+  ...props
+}: DropdownMenuItemProps) {
   return (
     <DropdownMenuPrimitive.Item
       ref={ref}
@@ -105,11 +131,21 @@ function DropdownMenuItem({ className, inset, ref, ...props }: DropdownMenuItemP
 DropdownMenuItem.displayName = DropdownMenuPrimitive.Item.displayName;
 
 export interface DropdownMenuCheckboxItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.CheckboxItem> {
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.CheckboxItem>>;
+  extends React.ComponentPropsWithoutRef<
+    typeof DropdownMenuPrimitive.CheckboxItem
+  > {
+  ref?: React.Ref<
+    React.ComponentRef<typeof DropdownMenuPrimitive.CheckboxItem>
+  >;
 }
 
-function DropdownMenuCheckboxItem({ className, children, checked, ref, ...props }: DropdownMenuCheckboxItemProps) {
+function DropdownMenuCheckboxItem({
+  className,
+  children,
+  checked,
+  ref,
+  ...props
+}: DropdownMenuCheckboxItemProps) {
   return (
     <DropdownMenuPrimitive.CheckboxItem
       ref={ref}
@@ -129,14 +165,22 @@ function DropdownMenuCheckboxItem({ className, children, checked, ref, ...props 
     </DropdownMenuPrimitive.CheckboxItem>
   );
 }
-DropdownMenuCheckboxItem.displayName = DropdownMenuPrimitive.CheckboxItem.displayName;
+DropdownMenuCheckboxItem.displayName =
+  DropdownMenuPrimitive.CheckboxItem.displayName;
 
 export interface DropdownMenuRadioItemProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.RadioItem> {
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.RadioItem>>;
+  extends React.ComponentPropsWithoutRef<
+    typeof DropdownMenuPrimitive.RadioItem
+  > {
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.RadioItem>>;
 }
 
-function DropdownMenuRadioItem({ className, children, ref, ...props }: DropdownMenuRadioItemProps) {
+function DropdownMenuRadioItem({
+  className,
+  children,
+  ref,
+  ...props
+}: DropdownMenuRadioItemProps) {
   return (
     <DropdownMenuPrimitive.RadioItem
       ref={ref}
@@ -160,10 +204,15 @@ DropdownMenuRadioItem.displayName = DropdownMenuPrimitive.RadioItem.displayName;
 export interface DropdownMenuLabelProps
   extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Label> {
   inset?: boolean;
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.Label>>;
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.Label>>;
 }
 
-function DropdownMenuLabel({ className, inset, ref, ...props }: DropdownMenuLabelProps) {
+function DropdownMenuLabel({
+  className,
+  inset,
+  ref,
+  ...props
+}: DropdownMenuLabelProps) {
   return (
     <DropdownMenuPrimitive.Label
       ref={ref}
@@ -179,11 +228,17 @@ function DropdownMenuLabel({ className, inset, ref, ...props }: DropdownMenuLabe
 DropdownMenuLabel.displayName = DropdownMenuPrimitive.Label.displayName;
 
 export interface DropdownMenuSeparatorProps
-  extends React.ComponentPropsWithoutRef<typeof DropdownMenuPrimitive.Separator> {
-  ref?: React.Ref<React.ElementRef<typeof DropdownMenuPrimitive.Separator>>;
+  extends React.ComponentPropsWithoutRef<
+    typeof DropdownMenuPrimitive.Separator
+  > {
+  ref?: React.Ref<React.ComponentRef<typeof DropdownMenuPrimitive.Separator>>;
 }
 
-function DropdownMenuSeparator({ className, ref, ...props }: DropdownMenuSeparatorProps) {
+function DropdownMenuSeparator({
+  className,
+  ref,
+  ...props
+}: DropdownMenuSeparatorProps) {
   return (
     <DropdownMenuPrimitive.Separator
       ref={ref}

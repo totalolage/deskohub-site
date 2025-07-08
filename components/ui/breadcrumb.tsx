@@ -1,11 +1,10 @@
 import { Slot } from "@radix-ui/react-slot";
 import { ChevronRight, MoreHorizontal } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
-export interface BreadcrumbProps
-  extends React.ComponentPropsWithoutRef<"nav"> {
+export interface BreadcrumbProps extends React.ComponentPropsWithoutRef<"nav"> {
   separator?: React.ReactNode;
   ref?: React.Ref<HTMLElement>;
 }
@@ -15,7 +14,8 @@ function Breadcrumb({ ref, ...props }: BreadcrumbProps) {
 }
 Breadcrumb.displayName = "Breadcrumb";
 
-export interface BreadcrumbListProps extends React.ComponentPropsWithoutRef<"ol"> {
+export interface BreadcrumbListProps
+  extends React.ComponentPropsWithoutRef<"ol"> {
   ref?: React.Ref<HTMLOListElement>;
 }
 
@@ -33,7 +33,8 @@ function BreadcrumbList({ className, ref, ...props }: BreadcrumbListProps) {
 }
 BreadcrumbList.displayName = "BreadcrumbList";
 
-export interface BreadcrumbItemProps extends React.ComponentPropsWithoutRef<"li"> {
+export interface BreadcrumbItemProps
+  extends React.ComponentPropsWithoutRef<"li"> {
   ref?: React.Ref<HTMLLIElement>;
 }
 
@@ -54,7 +55,12 @@ export interface BreadcrumbLinkProps
   ref?: React.Ref<HTMLAnchorElement>;
 }
 
-function BreadcrumbLink({ asChild, className, ref, ...props }: BreadcrumbLinkProps) {
+function BreadcrumbLink({
+  asChild,
+  className,
+  ref,
+  ...props
+}: BreadcrumbLinkProps) {
   const Comp = asChild ? Slot : "a";
 
   return (
@@ -67,7 +73,8 @@ function BreadcrumbLink({ asChild, className, ref, ...props }: BreadcrumbLinkPro
 }
 BreadcrumbLink.displayName = "BreadcrumbLink";
 
-export interface BreadcrumbPageProps extends React.ComponentPropsWithoutRef<"span"> {
+export interface BreadcrumbPageProps
+  extends React.ComponentPropsWithoutRef<"span"> {
   ref?: React.Ref<HTMLSpanElement>;
 }
 

@@ -3,13 +3,13 @@
 import type { DialogProps } from "@radix-ui/react-dialog";
 import { Command as CommandPrimitive } from "cmdk";
 import { Search } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 
 export interface CommandProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive>>;
 }
 
 function Command({ className, ref, ...props }: CommandProps) {
@@ -40,7 +40,7 @@ const CommandDialog = ({ children, ...props }: DialogProps) => {
 
 export interface CommandInputProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive.Input>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive.Input>>;
 }
 
 function CommandInput({ className, ref, ...props }: CommandInputProps) {
@@ -62,14 +62,17 @@ CommandInput.displayName = CommandPrimitive.Input.displayName;
 
 export interface CommandListProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.List> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive.List>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive.List>>;
 }
 
 function CommandList({ className, ref, ...props }: CommandListProps) {
   return (
     <CommandPrimitive.List
       ref={ref}
-      className={cn("max-h-[300px] overflow-y-auto overflow-x-hidden", className)}
+      className={cn(
+        "max-h-[300px] overflow-y-auto overflow-x-hidden",
+        className
+      )}
       {...props}
     />
   );
@@ -78,7 +81,7 @@ CommandList.displayName = CommandPrimitive.List.displayName;
 
 export interface CommandEmptyProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.Empty> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive.Empty>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive.Empty>>;
 }
 
 function CommandEmpty({ ref, ...props }: CommandEmptyProps) {
@@ -94,7 +97,7 @@ CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
 
 export interface CommandGroupProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.Group> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive.Group>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive.Group>>;
 }
 
 function CommandGroup({ className, ref, ...props }: CommandGroupProps) {
@@ -113,7 +116,7 @@ CommandGroup.displayName = CommandPrimitive.Group.displayName;
 
 export interface CommandSeparatorProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.Separator> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive.Separator>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive.Separator>>;
 }
 
 function CommandSeparator({ className, ref, ...props }: CommandSeparatorProps) {
@@ -129,7 +132,7 @@ CommandSeparator.displayName = CommandPrimitive.Separator.displayName;
 
 export interface CommandItemProps
   extends React.ComponentPropsWithoutRef<typeof CommandPrimitive.Item> {
-  ref?: React.Ref<React.ElementRef<typeof CommandPrimitive.Item>>;
+  ref?: React.Ref<React.ComponentRef<typeof CommandPrimitive.Item>>;
 }
 
 function CommandItem({ className, ref, ...props }: CommandItemProps) {

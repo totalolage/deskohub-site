@@ -1,13 +1,13 @@
 "use client";
 
 import * as SliderPrimitive from "@radix-ui/react-slider";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
 export interface SliderProps
   extends React.ComponentPropsWithoutRef<typeof SliderPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof SliderPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof SliderPrimitive.Root>>;
 }
 
 function Slider({ className, ref, ...props }: SliderProps) {

@@ -2,7 +2,7 @@
 
 import * as MenubarPrimitive from "@radix-ui/react-menubar";
 import { Check, ChevronRight, Circle } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -18,7 +18,7 @@ const MenubarRadioGroup = MenubarPrimitive.RadioGroup;
 
 export interface MenubarProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Root> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.Root>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.Root>>;
 }
 
 function Menubar({ className, ref, ...props }: MenubarProps) {
@@ -37,7 +37,7 @@ Menubar.displayName = MenubarPrimitive.Root.displayName;
 
 export interface MenubarTriggerProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Trigger> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.Trigger>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.Trigger>>;
 }
 
 function MenubarTrigger({ className, ref, ...props }: MenubarTriggerProps) {
@@ -57,10 +57,16 @@ MenubarTrigger.displayName = MenubarPrimitive.Trigger.displayName;
 export interface MenubarSubTriggerProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubTrigger> {
   inset?: boolean;
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.SubTrigger>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.SubTrigger>>;
 }
 
-function MenubarSubTrigger({ className, inset, children, ref, ...props }: MenubarSubTriggerProps) {
+function MenubarSubTrigger({
+  className,
+  inset,
+  children,
+  ref,
+  ...props
+}: MenubarSubTriggerProps) {
   return (
     <MenubarPrimitive.SubTrigger
       ref={ref}
@@ -80,10 +86,14 @@ MenubarSubTrigger.displayName = MenubarPrimitive.SubTrigger.displayName;
 
 export interface MenubarSubContentProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.SubContent> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.SubContent>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.SubContent>>;
 }
 
-function MenubarSubContent({ className, ref, ...props }: MenubarSubContentProps) {
+function MenubarSubContent({
+  className,
+  ref,
+  ...props
+}: MenubarSubContentProps) {
   return (
     <MenubarPrimitive.SubContent
       ref={ref}
@@ -99,7 +109,7 @@ MenubarSubContent.displayName = MenubarPrimitive.SubContent.displayName;
 
 export interface MenubarContentProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Content> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.Content>>;
 }
 
 function MenubarContent({
@@ -131,7 +141,7 @@ MenubarContent.displayName = MenubarPrimitive.Content.displayName;
 export interface MenubarItemProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Item> {
   inset?: boolean;
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.Item>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.Item>>;
 }
 
 function MenubarItem({ className, inset, ref, ...props }: MenubarItemProps) {
@@ -151,10 +161,16 @@ MenubarItem.displayName = MenubarPrimitive.Item.displayName;
 
 export interface MenubarCheckboxItemProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.CheckboxItem> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.CheckboxItem>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.CheckboxItem>>;
 }
 
-function MenubarCheckboxItem({ className, children, checked, ref, ...props }: MenubarCheckboxItemProps) {
+function MenubarCheckboxItem({
+  className,
+  children,
+  checked,
+  ref,
+  ...props
+}: MenubarCheckboxItemProps) {
   return (
     <MenubarPrimitive.CheckboxItem
       ref={ref}
@@ -178,10 +194,15 @@ MenubarCheckboxItem.displayName = MenubarPrimitive.CheckboxItem.displayName;
 
 export interface MenubarRadioItemProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.RadioItem> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.RadioItem>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.RadioItem>>;
 }
 
-function MenubarRadioItem({ className, children, ref, ...props }: MenubarRadioItemProps) {
+function MenubarRadioItem({
+  className,
+  children,
+  ref,
+  ...props
+}: MenubarRadioItemProps) {
   return (
     <MenubarPrimitive.RadioItem
       ref={ref}
@@ -205,7 +226,7 @@ MenubarRadioItem.displayName = MenubarPrimitive.RadioItem.displayName;
 export interface MenubarLabelProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Label> {
   inset?: boolean;
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.Label>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.Label>>;
 }
 
 function MenubarLabel({ className, inset, ref, ...props }: MenubarLabelProps) {
@@ -225,7 +246,7 @@ MenubarLabel.displayName = MenubarPrimitive.Label.displayName;
 
 export interface MenubarSeparatorProps
   extends React.ComponentPropsWithoutRef<typeof MenubarPrimitive.Separator> {
-  ref?: React.Ref<React.ElementRef<typeof MenubarPrimitive.Separator>>;
+  ref?: React.Ref<React.ComponentRef<typeof MenubarPrimitive.Separator>>;
 }
 
 function MenubarSeparator({ className, ref, ...props }: MenubarSeparatorProps) {

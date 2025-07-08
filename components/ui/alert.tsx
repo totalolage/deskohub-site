@@ -1,5 +1,5 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -37,7 +37,8 @@ function Alert({ className, variant, ref, ...props }: AlertProps) {
 }
 Alert.displayName = "Alert";
 
-export interface AlertTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {
+export interface AlertTitleProps
+  extends React.HTMLAttributes<HTMLHeadingElement> {
   ref?: React.Ref<HTMLParagraphElement>;
 }
 
@@ -52,7 +53,8 @@ function AlertTitle({ className, ref, ...props }: AlertTitleProps) {
 }
 AlertTitle.displayName = "AlertTitle";
 
-export interface AlertDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement> {
+export interface AlertDescriptionProps
+  extends React.HTMLAttributes<HTMLParagraphElement> {
   ref?: React.Ref<HTMLParagraphElement>;
 }
 

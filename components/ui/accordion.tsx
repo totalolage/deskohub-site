@@ -2,7 +2,7 @@
 
 import * as AccordionPrimitive from "@radix-ui/react-accordion";
 import { ChevronDown } from "lucide-react";
-import * as React from "react";
+import type * as React from "react";
 
 import { cn } from "@/lib/utils";
 
@@ -10,7 +10,7 @@ const Accordion = AccordionPrimitive.Root;
 
 export interface AccordionItemProps
   extends React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Item> {
-  ref?: React.Ref<React.ElementRef<typeof AccordionPrimitive.Item>>;
+  ref?: React.Ref<React.ComponentRef<typeof AccordionPrimitive.Item>>;
 }
 
 function AccordionItem({ className, ref, ...props }: AccordionItemProps) {
@@ -26,10 +26,15 @@ AccordionItem.displayName = "AccordionItem";
 
 export interface AccordionTriggerProps
   extends React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Trigger> {
-  ref?: React.Ref<React.ElementRef<typeof AccordionPrimitive.Trigger>>;
+  ref?: React.Ref<React.ComponentRef<typeof AccordionPrimitive.Trigger>>;
 }
 
-function AccordionTrigger({ className, children, ref, ...props }: AccordionTriggerProps) {
+function AccordionTrigger({
+  className,
+  children,
+  ref,
+  ...props
+}: AccordionTriggerProps) {
   return (
     <AccordionPrimitive.Header className="flex">
       <AccordionPrimitive.Trigger
@@ -50,10 +55,15 @@ AccordionTrigger.displayName = AccordionPrimitive.Trigger.displayName;
 
 export interface AccordionContentProps
   extends React.ComponentPropsWithoutRef<typeof AccordionPrimitive.Content> {
-  ref?: React.Ref<React.ElementRef<typeof AccordionPrimitive.Content>>;
+  ref?: React.Ref<React.ComponentRef<typeof AccordionPrimitive.Content>>;
 }
 
-function AccordionContent({ className, children, ref, ...props }: AccordionContentProps) {
+function AccordionContent({
+  className,
+  children,
+  ref,
+  ...props
+}: AccordionContentProps) {
   return (
     <AccordionPrimitive.Content
       ref={ref}
