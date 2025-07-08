@@ -3,6 +3,7 @@ import "./globals.css";
 import type { PropsWithChildren } from "react";
 import { Footer } from "@/components/sections/footer";
 import { Header } from "@/components/sections/header";
+import { Toaster } from "@/components/ui/toaster";
 import { getLocale } from "@/i18n";
 
 export const metadata: Metadata = {
@@ -21,6 +22,7 @@ export default async function RootLayout({
           <Header />
           <main>{children}</main>
           <Footer />
+          <Toaster />
         </div>
       </body>
     </html>

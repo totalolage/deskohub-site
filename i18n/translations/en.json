@@ -79,6 +79,8 @@
     "nameLabel": "Full Name",
     "emailLabel": "Email Address",
     "phoneLabel": "Phone Number",
+    "contactTitle": "Contact Information",
+    "contactDescription": "Your contact details for booking confirmation",
     "tablePreferenceLabel": "Table Preference",
     "tablePreferences": {
       "standard": "Standard Table",
@@ -102,6 +104,42 @@
     "errorMessage": "There was an error processing your booking. Please try again or contact us directly.",
     "required": "This field is required",
     "invalidEmail": "Please enter a valid email address",
-    "invalidPhone": "Please enter a valid phone number"
+    "invalidPhone": "Please enter a valid phone number",
+    "validation": {
+      "datetime": {
+        "required": "Date and time are required",
+        "mustBeFuture": "Date and time must be in the future"
+      },
+      "guestCount": {
+        "required": "Number of guests is required",
+        "minimum": "Number of guests is required",
+        "maximum": "Maximum 10 guests allowed",
+        "integer": "Number of guests must be a whole number"
+      },
+      "name": {
+        "required": "Full name is required",
+        "minimum": "Name must be at least {min} characters",
+        "maximum": "Name must be less than {max} characters",
+        "invalid": "Name can only contain letters, spaces, hyphens, and apostrophes"
+      },
+      "email": {
+        "required": "Email address is required",
+        "invalid": "Please enter a valid email address",
+        "maximum": "Email must be less than {max} characters"
+      },
+      "phone": {
+        "required": "Phone number is required",
+        "minimum": "Please enter a valid phone number",
+        "maximum": "Phone number is too long",
+        "invalid": "Please enter a valid phone number"
+      },
+      "specialRequests": {
+        "maximum": "Special requests must be less than {max} characters"
+      },
+      "preOrders": {
+        "maximum": "Pre-orders must be less than {max} characters"
+      },
+      "general": "Please fix the validation errors"
+    }
   }
 }

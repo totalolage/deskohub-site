@@ -79,6 +79,8 @@
     "nameLabel": "Jméno a příjmení",
     "emailLabel": "E-mailová adresa",
     "phoneLabel": "Telefonní číslo",
+    "contactTitle": "Kontaktní údaje",
+    "contactDescription": "Vaše kontaktní informace pro potvrzení rezervace",
     "tablePreferenceLabel": "Preference stolu",
     "tablePreferences": {
       "standard": "Standardní stůl",
@@ -102,6 +104,42 @@
     "errorMessage": "Při zpracování vaší rezervace došlo k chybě. Prosím zkuste to znovu nebo nás kontaktujte přímo.",
     "required": "Toto pole je povinné",
     "invalidEmail": "Prosím zadejte platnou e-mailovou adresu",
-    "invalidPhone": "Prosím zadejte platné telefonní číslo"
+    "invalidPhone": "Prosím zadejte platné telefonní číslo",
+    "validation": {
+      "datetime": {
+        "required": "Datum a čas jsou povinné",
+        "mustBeFuture": "Datum a čas musí být v budoucnu"
+      },
+      "guestCount": {
+        "required": "Počet hostů je povinný",
+        "minimum": "Počet hostů je povinný",
+        "maximum": "Maximálně 10 hostů povoleno",
+        "integer": "Počet hostů musí být celé číslo"
+      },
+      "name": {
+        "required": "Jméno a příjmení je povinné",
+        "minimum": "Jméno musí mít alespoň {min} znaků",
+        "maximum": "Jméno musí mít méně než {max} znaků",
+        "invalid": "Jméno může obsahovat pouze písmena, mezery, pomlčky a apostrofy"
+      },
+      "email": {
+        "required": "E-mailová adresa je povinná",
+        "invalid": "Prosím zadejte platnou e-mailovou adresu",
+        "maximum": "E-mail musí mít méně než {max} znaků"
+      },
+      "phone": {
+        "required": "Telefonní číslo je povinné",
+        "minimum": "Prosím zadejte platné telefonní číslo",
+        "maximum": "Telefonní číslo je příliš dlouhé",
+        "invalid": "Prosím zadejte platné telefonní číslo"
+      },
+      "specialRequests": {
+        "maximum": "Speciální požadavky musí mít méně než {max} znaků"
+      },
+      "preOrders": {
+        "maximum": "Předobjednávky musí mít méně než {max} znaků"
+      },
+      "general": "Prosím opravte chyby validace"
+    }
   }
 }

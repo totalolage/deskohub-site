@@ -1,15 +1,12 @@
-"use client";
-
-import type React from "react";
-import { useFormStatus } from "react-dom";
 import {
   Calendar,
   Clock,
-  Phone,
-  MessageSquare,
-  Utensils,
   Gamepad2,
+  MessageSquare,
+  Phone,
 } from "lucide-react";
+import { useFormStatus } from "react-dom";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,6 +17,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -28,19 +26,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Badge } from "@/components/ui/badge";
 import { m } from "@/i18n";
 
 interface BookingFormProps {
   formAction: (formData: FormData) => void;
-  isPending: boolean;
-  errors: Record<string, string>;
+  errors: Record<string, string[]>;
+  formData?: Record<string, string>;
 }
 
 function SubmitButton() {
   const { pending } = useFormStatus();
-  
+
   return (
     <Button
       type="submit"
@@ -53,21 +49,18 @@ function SubmitButton() {
   );
 }
 
-export function BookingForm({ formAction, isPending, errors }: BookingFormProps) {
-  const timeSlots = {
-    weekday: [
-      "17:00", "17:30", "18:00", "18:30", "19:00", "19:30", 
-      "20:00", "20:30", "21:00", "21:30", "22:00",
-    ],
-    weekend: [
-      "15:00", "15:30", "16:00", "16:30", "17:00", "17:30",
-      "18:00", "18:30", "19:00", "19:30", "20:00", "20:30",
-      "21:00", "21:30", "22:00", "22:30", "23:00",
-    ],
+export function BookingForm({ formAction, errors, formData }: BookingFormProps) {
+  const getFieldError = (fieldName: string) => {
+    const fieldErrors = errors[fieldName];
+    return fieldErrors ? fieldErrors[0] : undefined;
   };
 
-  const getFieldError = (fieldName: string) => {
-    return errors[fieldName];
+  const getFieldValue = (fieldName: string, fallback: string = ""): string => {
+    const value = formData?.[fieldName];
+    if (typeof value === "string") {
+      return value;
+    }
+    return fallback;
   };
 
   return (
@@ -99,40 +92,26 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
-                <Label htmlFor="date">{m["booking.dateLabel"]()}</Label>
+                <Label htmlFor="datetime">Datum a čas rezervace</Label>
                 <Input
-                  id="date"
-                  name="date"
-                  type="date"
-                  min={new Date().toISOString().split("T")[0]}
+                  id="datetime"
+                  name="datetime"
+                  type="datetime-local"
+                  min={new Date().toISOString().slice(0, 16)}
+                  defaultValue={getFieldValue("datetime")}
                   required
                 />
-                {getFieldError("date") && (
-                  <p className="text-sm text-red-600 mt-1">{getFieldError("date")}</p>
+                {getFieldError("datetime") && (
+                  <p className="text-sm text-red-600 mt-1">
+                    {getFieldError("datetime")}
+                  </p>
                 )}
               </div>
 
               <div>
-                <Label htmlFor="time">{m["booking.timeLabel"]()}</Label>
-                <Select name="time" required>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select time" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {timeSlots.weekend.map((time) => (
-                      <SelectItem key={time} value={time}>
-                        {time}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {getFieldError("time") && (
-                  <p className="text-sm text-red-600 mt-1">{getFieldError("time")}</p>
-                )}
-              </div>
-
-              <div>
-                <Label htmlFor="guestCount">{m["booking.guestCountLabel"]()}</Label>
+                <Label htmlFor="guestCount">
+                  {m["booking.guestCountLabel"]()}
+                </Label>
                 <Select name="guestCount" required>
                   <SelectTrigger>
                     <SelectValue placeholder="Number of guests" />
@@ -146,7 +125,9 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
                   </SelectContent>
                 </Select>
                 {getFieldError("guestCount") && (
-                  <p className="text-sm text-red-600 mt-1">{getFieldError("guestCount")}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {getFieldError("guestCount")}
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -157,23 +138,20 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Phone className="w-5 h-5 text-green-500" />
-                Contact Information
+                {m["booking.contactTitle"]()}
               </CardTitle>
               <CardDescription>
-                Your contact details for booking confirmation
+{m["booking.contactDescription"]()}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <div>
                 <Label htmlFor="name">{m["booking.nameLabel"]()}</Label>
-                <Input 
-                  id="name"
-                  name="name"
-                  placeholder="John Doe"
-                  required
-                />
+                <Input id="name" name="name" placeholder="John Doe" required />
                 {getFieldError("name") && (
-                  <p className="text-sm text-red-600 mt-1">{getFieldError("name")}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {getFieldError("name")}
+                  </p>
                 )}
               </div>
 
@@ -187,7 +165,9 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
                   required
                 />
                 {getFieldError("email") && (
-                  <p className="text-sm text-red-600 mt-1">{getFieldError("email")}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {getFieldError("email")}
+                  </p>
                 )}
               </div>
 
@@ -201,7 +181,9 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
                   required
                 />
                 {getFieldError("phone") && (
-                  <p className="text-sm text-red-600 mt-1">{getFieldError("phone")}</p>
+                  <p className="text-sm text-red-600 mt-1">
+                    {getFieldError("phone")}
+                  </p>
                 )}
               </div>
             </CardContent>
@@ -223,45 +205,29 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
             <RadioGroup name="tablePreference">
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="standard" id="standard" />
-                <Label htmlFor="standard">{m["booking.tablePreferences.standard"]()}</Label>
+                <Label htmlFor="standard">
+                  {m["booking.tablePreferences.standard"]()}
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="large" id="large" />
-                <Label htmlFor="large">{m["booking.tablePreferences.large"]()}</Label>
+                <Label htmlFor="large">
+                  {m["booking.tablePreferences.large"]()}
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="private" id="private" />
-                <Label htmlFor="private">{m["booking.tablePreferences.private"]()}</Label>
+                <Label htmlFor="private">
+                  {m["booking.tablePreferences.private"]()}
+                </Label>
               </div>
               <div className="flex items-center space-x-2">
                 <RadioGroupItem value="any" id="any" />
-                <Label htmlFor="any">{m["booking.tablePreferences.any"]()}</Label>
+                <Label htmlFor="any">
+                  {m["booking.tablePreferences.any"]()}
+                </Label>
               </div>
             </RadioGroup>
-          </CardContent>
-        </Card>
-
-        {/* Pre-orders */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Utensils className="w-5 h-5 text-green-500" />
-              {m["booking.preOrdersLabel"]()}
-            </CardTitle>
-            <CardDescription>
-              Would you like to pre-order food or drinks?
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <Label htmlFor="preOrders">{m["booking.preOrderDetailsPlaceholder"]()}</Label>
-              <Textarea
-                id="preOrders"
-                name="preOrders"
-                placeholder={m["booking.preOrderDetailsPlaceholder"]()}
-                rows={3}
-              />
-            </div>
           </CardContent>
         </Card>
 
@@ -272,9 +238,7 @@ export function BookingForm({ formAction, isPending, errors }: BookingFormProps)
               <MessageSquare className="w-5 h-5 text-green-500" />
               {m["booking.specialRequestsLabel"]()}
             </CardTitle>
-            <CardDescription>
-              Any special requests or notes?
-            </CardDescription>
+            <CardDescription>Any special requests or notes?</CardDescription>
           </CardHeader>
           <CardContent>
             <Textarea
