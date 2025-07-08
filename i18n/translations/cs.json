@@ -69,5 +69,39 @@
   "metadata": {
     "title": "Deskohub - Bar s deskovými hrami",
     "description": "Hrejte, pijte, jezte - vše na jednom stole. Navštivte nejlepší board game bar pro všechny milovníky deskových her."
+  },
+  "booking": {
+    "pageTitle": "Rezervace stolu",
+    "pageDescription": "Rezervujte si své ideální místo v Deskohub. Vyberte si datum, čas a preference pro nezapomenutelný zážitek s deskovými hrami.",
+    "dateLabel": "Datum",
+    "timeLabel": "Čas",
+    "guestCountLabel": "Počet hostů",
+    "nameLabel": "Jméno a příjmení",
+    "emailLabel": "E-mailová adresa",
+    "phoneLabel": "Telefonní číslo",
+    "tablePreferenceLabel": "Preference stolu",
+    "tablePreferences": {
+      "standard": "Standardní stůl",
+      "large": "Velký stůl",
+      "private": "Soukromá oblast",
+      "any": "Jakýkoli dostupný"
+    },
+    "specialRequestsLabel": "Speciální požadavky",
+    "specialRequestsPlaceholder": "Jakékoli speciální požadavky nebo přání...",
+    "preOrdersLabel": "Předobjednávky",
+    "preOrderFood": "Jídlo",
+    "preOrderDrinks": "Nápoje",
+    "preOrderDetails": "Detaily předobjednávky",
+    "preOrderDetailsPlaceholder": "Prosím uveďte své preference pro jídlo a nápoje...",
+    "pricingInfo": "Vstupné: 50 Kč s objednávkou, 100 Kč bez objednávky",
+    "submit": "Rezervovat stůl",
+    "submitting": "Odesílání...",
+    "successTitle": "Rezervace úspěšná!",
+    "successMessage": "Vaše rezervace stolu byla úspěšně odeslána. Brzy vás budeme kontaktovat pro potvrzení rezervace.",
+    "errorTitle": "Chyba při rezervaci",
+    "errorMessage": "Při zpracování vaší rezervace došlo k chybě. Prosím zkuste to znovu nebo nás kontaktujte přímo.",
+    "required": "Toto pole je povinné",
+    "invalidEmail": "Prosím zadejte platnou e-mailovou adresu",
+    "invalidPhone": "Prosím zadejte platné telefonní číslo"
   }
 }

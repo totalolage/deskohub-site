@@ -1,0 +1,253 @@
+# Task ID: 10
+# Title: Migrate Booking Form Validation from Arktype to Zod
+# Status: pending
+# Dependencies: 1, 6, 8
+# Priority: medium
+# Description: Replace the current Arktype validation in the booking server action with Zod schema validation to enable better internationalization support for error messages and improve integration with the Paraglide i18n system.
+# Details:
+1. Install Zod and related dependencies:
+```bash
+npm install zod @paraglide/zod
+```
+
+2. Research Zod's internationalization capabilities:
+   - Review Zod's error customization API
+   - Explore the @paraglide/zod integration package
+   - Document best practices for localized validation messages
+
+3. Replace Arktype schema with Zod schema in booking.ts:
+```typescript
+// app/actions/booking.ts
+import { createSafeActionClient } from 'next-safe-action';
+import { z } from 'zod';
+import { i } from '@/paraglide/messages';
+import { getCurrentLocale } from '@/paraglide/runtime';
+
+// Create safe action client
+const actionClient = createSafeActionClient();
+
+// Define validation schema with Zod
+const bookingSchema = z.object({
+  date: z.string().min(1, { message: i('validation.date.required') }),
+  time: z.string().min(1, { message: i('validation.time.required') }),
+  guestCount: z.number().min(1, { message: i('validation.guests.minimum') }).max(10, { message: i('validation.guests.maximum') }),
+  name: z.string().min(2, { message: i('validation.name.minimum') }),
+  email: z.string().email({ message: i('validation.email.invalid') }),
+  phone: z.string().min(9, { message: i('validation.phone.invalid') }),
+  specialRequests: z.string().optional(),
+});
+
+// Type inference from Zod schema
+type BookingFormData = z.infer<typeof bookingSchema>;
+
+// Create server action with Zod validation
+export const submitBooking = actionClient.create(
+  bookingSchema,
+  async (data: BookingFormData) => {
+    try {
+      // Existing booking logic remains the same
+      // ...
+      
+      return {
+        success: true,
+        message: i('booking.success')
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: i('booking.error.generic')
+      };
+    }
+  }
+);
+```
+
+4. Update error handling to work with Zod's validation result structure:
+```typescript
+// In the client component
+'use client';
+import { useAction } from 'next-safe-action/hooks';
+import { submitBooking } from '@/app/actions/booking';
+import { useActionState } from 'react';
+
+export function BookingForm() {
+  const { execute, result, status } = useAction(submitBooking);
+  
+  // Handle form submission
+  const handleSubmit = (formData: FormData) => {
+    // Transform form data to match schema
+    execute({
+      date: formData.get('date') as string,
+      time: formData.get('time') as string,
+      // ...other fields
+    });
+  };
+  
+  // Extract validation errors from Zod result
+  const validationErrors = result?.validationErrors;
+  
+  return (
+    <form onSubmit={handleSubmit}>
+      {/* Form fields */}
+      {validationErrors?.date && (
+        <p className="error">{validationErrors.date}</p>
+      )}
+      {/* Other form fields and error handling */}
+    </form>
+  );
+}
+```
+
+5. Create message definitions for validation errors in Paraglide:
+```typescript
+// messages/en.ts
+export default {
+  // Existing messages...
+  
+  // Validation messages
+  'validation.date.required': 'Please select a date',
+  'validation.time.required': 'Please select a time',
+  'validation.guests.minimum': 'At least 1 guest is required',
+  'validation.guests.maximum': 'Maximum 10 guests allowed',
+  'validation.name.minimum': 'Name must be at least 2 characters',
+  'validation.email.invalid': 'Please enter a valid email address',
+  'validation.phone.invalid': 'Please enter a valid phone number',
+  
+  // ...other messages
+};
+
+// messages/cs.ts
+export default {
+  // Existing messages...
+  
+  // Validation messages in Czech
+  'validation.date.required': 'Vyberte prosím datum',
+  'validation.time.required': 'Vyberte prosím čas',
+  'validation.guests.minimum': 'Je vyžadován alespoň 1 host',
+  'validation.guests.maximum': 'Maximálně 10 hostů povoleno',
+  'validation.name.minimum': 'Jméno musí mít alespoň 2 znaky',
+  'validation.email.invalid': 'Zadejte platnou e-mailovou adresu',
+  'validation.phone.invalid': 'Zadejte platné telefonní číslo',
+  
+  // ...other messages
+};
+```
+
+6. Ensure compatibility with React 19's useActionState hook:
+   - Review React 19 documentation for useActionState
+   - Update component implementation to use the latest React patterns
+   - Test with React 19 beta if available
+
+7. Document the migration process and new validation approach for the team
+
+# Test Strategy:
+1. Unit testing for Zod schema validation:
+   - Create test cases for each field validation rule
+   - Test with valid inputs to ensure they pass validation
+   - Test with invalid inputs to verify proper error messages are returned
+   - Verify that localized error messages are correctly generated
+
+```typescript
+// __tests__/actions/booking.test.ts
+import { submitBooking } from '@/app/actions/booking';
+import { setLanguageTag } from '@/paraglide/runtime';
+
+describe('Booking validation with Zod', () => {
+  test('Valid booking data passes validation', async () => {
+    const validData = {
+      date: '2023-12-25',
+      time: '18:00',
+      guestCount: 4,
+      name: 'John Doe',
+      email: 'john@example.com',
+      phone: '123456789',
+      specialRequests: 'Window seat please'
+    };
+    
+    const result = await submitBooking(validData);
+    expect(result.success).toBe(true);
+  });
+  
+  test('Invalid email returns localized error message in English', async () => {
+    setLanguageTag('en');
+    
+    const invalidData = {
+      // ...other valid fields
+      email: 'invalid-email'
+    };
+    
+    const result = await submitBooking(invalidData);
+    expect(result.validationErrors?.email).toBe('Please enter a valid email address');
+  });
+  
+  test('Invalid email returns localized error message in Czech', async () => {
+    setLanguageTag('cs');
+    
+    const invalidData = {
+      // ...other valid fields
+      email: 'invalid-email'
+    };
+    
+    const result = await submitBooking(invalidData);
+    expect(result.validationErrors?.email).toBe('Zadejte platnou e-mailovou adresu');
+  });
+});
+```
+
+2. Integration testing with the Paraglide i18n system:
+   - Test that validation errors are correctly translated based on the current locale
+   - Verify that switching languages updates validation error messages
+   - Test the integration between Zod and Paraglide message system
+
+3. Component testing with React Testing Library:
+   - Test form submission with invalid data
+   - Verify error messages are displayed correctly in the UI
+   - Test form submission with valid data
+
+```typescript
+// __tests__/components/BookingForm.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { BookingForm } from '@/components/BookingForm';
+import { setLanguageTag } from '@/paraglide/runtime';
+
+describe('BookingForm component', () => {
+  beforeEach(() => {
+    // Mock server action
+    jest.mock('@/app/actions/booking', () => ({
+      submitBooking: jest.fn()
+    }));
+  });
+  
+  test('Displays validation errors in English', async () => {
+    setLanguageTag('en');
+    render(<BookingForm />);
+    
+    // Submit form with empty fields
+    fireEvent.click(screen.getByRole('button', { name: /submit/i }));
+    
+    // Check for validation error messages
+    expect(await screen.findByText('Please select a date')).toBeInTheDocument();
+    expect(await screen.findByText('Please enter a valid email address')).toBeInTheDocument();
+  });
+  
+  test('Displays validation errors in Czech', async () => {
+    setLanguageTag('cs');
+    render(<BookingForm />);
+    
+    // Submit form with empty fields
+    fireEvent.click(screen.getByRole('button', { name: /odeslat/i }));
+    
+    // Check for validation error messages in Czech
+    expect(await screen.findByText('Vyberte prosím datum')).toBeInTheDocument();
+    expect(await screen.findByText('Zadejte platnou e-mailovou adresu')).toBeInTheDocument();
+  });
+});
+```
+
+4. Performance testing:
+   - Compare validation performance between Arktype and Zod
+   - Ensure validation doesn't introduce significant performance regressions
+
+5. Browser compatibility testing:
+   - Test in all supported browsers to ensure consistent behavior
+   - Verify that validation works correctly across different devices and screen sizes

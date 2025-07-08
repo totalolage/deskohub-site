@@ -69,5 +69,39 @@
   "metadata": {
     "title": "Deskohub - Board Game Bar",
     "description": "Play, drink, eat - everything at one table. Visit the best board game bar for all board game enthusiasts."
+  },
+  "booking": {
+    "pageTitle": "Book a Table",
+    "pageDescription": "Reserve your perfect spot at Deskohub. Choose your date, time, and preferences for an unforgettable board game experience.",
+    "dateLabel": "Date",
+    "timeLabel": "Time",
+    "guestCountLabel": "Number of Guests",
+    "nameLabel": "Full Name",
+    "emailLabel": "Email Address",
+    "phoneLabel": "Phone Number",
+    "tablePreferenceLabel": "Table Preference",
+    "tablePreferences": {
+      "standard": "Standard Table",
+      "large": "Large Table",
+      "private": "Private Area",
+      "any": "Any Available"
+    },
+    "specialRequestsLabel": "Special Requests",
+    "specialRequestsPlaceholder": "Any special requirements or requests...",
+    "preOrdersLabel": "Pre-orders",
+    "preOrderFood": "Food",
+    "preOrderDrinks": "Drinks",
+    "preOrderDetails": "Pre-order Details",
+    "preOrderDetailsPlaceholder": "Please specify your food and drink preferences...",
+    "pricingInfo": "Entry fee: 50 CZK with order, 100 CZK without order",
+    "submit": "Book Table",
+    "submitting": "Submitting...",
+    "successTitle": "Booking Successful!",
+    "successMessage": "Your table reservation has been submitted successfully. We will contact you shortly to confirm your booking.",
+    "errorTitle": "Booking Error",
+    "errorMessage": "There was an error processing your booking. Please try again or contact us directly.",
+    "required": "This field is required",
+    "invalidEmail": "Please enter a valid email address",
+    "invalidPhone": "Please enter a valid phone number"
   }
 }
