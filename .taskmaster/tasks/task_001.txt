@@ -1,0 +1,125 @@
+# Task ID: 1
+# Title: Implement Internationalization (i18n) with Paraglide-js
+# Status: pending
+# Dependencies: None
+# Priority: medium
+# Description: Set up paraglide-js to enable multilingual support for the Deskohub website, allowing content to be displayed in both Czech and English with a foundation for adding more languages in the future.
+# Details:
+1. Install paraglide-js and its dependencies:
+```bash
+npm install @inlang/paraglide-js
+```
+
+2. Create a configuration file (e.g., `paraglide.config.js`) with the following settings:
+```javascript
+export default {
+  project: {
+    sourceLanguage: "cs", // Czech as source language
+    supportedLanguages: ["cs", "en"], // Czech and English support
+    translations: "./src/i18n/translations", // Directory for translation files
+  },
+  plugins: [
+    // Add necessary plugins for your project
+  ]
+}
+```
+
+3. Create translation files structure:
+   - Create directory: `src/i18n/translations`
+   - Add Czech messages file (e.g., `cs.json`) with all text content
+   - Add English messages file (e.g., `en.json`) with translated content
+
+4. Generate the paraglide runtime:
+```bash
+npx paraglide-js generate
+```
+
+5. Create a language switcher component:
+```jsx
+import { setLanguage, getLanguage } from '@inlang/paraglide-js';
+
+function LanguageSwitcher() {
+  const currentLanguage = getLanguage();
+  
+  return (
+    <div className="language-switcher">
+      <button 
+        onClick={() => setLanguage('cs')} 
+        className={currentLanguage === 'cs' ? 'active' : ''}
+      >
+        Česky
+      </button>
+      <button 
+        onClick={() => setLanguage('en')} 
+        className={currentLanguage === 'en' ? 'active' : ''}
+      >
+        English
+      </button>
+    </div>
+  );
+}
+```
+
+6. Update components to use translations:
+   - Import messages from paraglide-js
+   - Replace hardcoded text with message references
+   - Example:
+   ```jsx
+   import { m } from '@inlang/paraglide-js';
+   
+   function Header() {
+     return (
+       <header>
+         <h1>{m.welcome()}</h1>
+         <p>{m.headerTagline()}</p>
+       </header>
+     );
+   }
+   ```
+
+7. Set up language detection:
+   - Implement browser language detection
+   - Add URL path-based language selection (e.g., `/en/about`, `/cs/about`)
+   - Store language preference in localStorage
+
+8. Update routing to handle language prefixes in URLs if using path-based language selection
+
+9. Add language metadata to HTML document:
+   - Update `<html lang="...">` attribute dynamically
+   - Add appropriate meta tags for SEO
+
+# Test Strategy:
+1. Verify installation and configuration:
+   - Confirm paraglide-js packages are correctly installed
+   - Validate the configuration file has proper settings
+   - Check that translation files are in the correct format and location
+
+2. Test language switching functionality:
+   - Manually switch between Czech and English using the language switcher
+   - Verify that the UI updates correctly when language is changed
+   - Confirm that language preference is persisted between page reloads
+
+3. Validate translations:
+   - Create a checklist of all UI elements that should be translated
+   - Systematically check each page in both languages to ensure all text is properly translated
+   - Verify that no hardcoded text remains in the components
+
+4. Test language detection:
+   - Test with different browser language settings to verify automatic language detection
+   - If using path-based routing, verify that URLs with language prefixes load the correct language
+
+5. Responsive testing:
+   - Ensure language switcher works correctly on mobile devices
+   - Verify that translated text displays properly across different screen sizes
+
+6. Performance testing:
+   - Measure initial load time with and without internationalization
+   - Verify that language switching is performant and doesn't cause noticeable delays
+
+7. Accessibility testing:
+   - Ensure language attributes are correctly set for screen readers
+   - Verify that language switcher is keyboard accessible
+
+8. Create automated tests:
+   - Write unit tests for language switching functionality
+   - Create integration tests that verify key components display correct text in each language

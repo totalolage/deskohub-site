@@ -1,0 +1,254 @@
+# Task ID: 3
+# Title: Implement Light/Dark Mode Functionality
+# Status: pending
+# Dependencies: 2
+# Priority: medium
+# Description: Develop and integrate a complete light/dark mode theming system for the Deskohub website, including theme context, toggle component, CSS variables, persistence, and system preference detection.
+# Details:
+1. Set up theme context and provider:
+```jsx
+// src/context/ThemeContext.jsx
+import { createContext, useContext, useEffect, useState } from 'react';
+
+const ThemeContext = createContext(undefined);
+
+export function ThemeProvider({ children }) {
+  const [theme, setTheme] = useState('light');
+  
+  useEffect(() => {
+    // Check localStorage first
+    const savedTheme = localStorage.getItem('deskohub-theme');
+    
+    // If no saved preference, check system preference
+    if (!savedTheme) {
+      const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      setTheme(systemPrefersDark ? 'dark' : 'light');
+    } else {
+      setTheme(savedTheme);
+    }
+  }, []);
+  
+  useEffect(() => {
+    // Apply theme to document element
+    const root = window.document.documentElement;
+    root.classList.remove('light', 'dark');
+    root.classList.add(theme);
+    
+    // Save preference to localStorage
+    localStorage.setItem('deskohub-theme', theme);
+  }, [theme]);
+  
+  const toggleTheme = () => {
+    setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
+  };
+  
+  return (
+    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+      {children}
+    </ThemeContext.Provider>
+  );
+}
+
+export const useTheme = () => {
+  const context = useContext(ThemeContext);
+  if (context === undefined) {
+    throw new Error('useTheme must be used within a ThemeProvider');
+  }
+  return context;
+};
+```
+
+2. Create theme toggle component using shadcn/ui:
+```jsx
+// src/components/ThemeToggle.jsx
+import { Moon, Sun } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { useTheme } from "@/context/ThemeContext";
+
+export function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+
+  return (
+    <Button variant="ghost" size="icon" onClick={toggleTheme}>
+      {theme === "light" ? (
+        <Moon className="h-[1.2rem] w-[1.2rem]" />
+      ) : (
+        <Sun className="h-[1.2rem] w-[1.2rem]" />
+      )}
+      <span className="sr-only">Toggle theme</span>
+    </Button>
+  );
+}
+```
+
+3. Configure CSS variables for both themes in the global CSS file:
+```css
+/* src/styles/globals.css */
+:root {
+  /* Light theme variables */
+  --background: 0 0% 100%;
+  --foreground: 222.2 84% 4.9%;
+  --card: 0 0% 100%;
+  --card-foreground: 222.2 84% 4.9%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222.2 84% 4.9%;
+  --primary: 221.2 83.2% 53.3%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 210 40% 96.1%;
+  --secondary-foreground: 222.2 47.4% 11.2%;
+  --muted: 210 40% 96.1%;
+  --muted-foreground: 215.4 16.3% 46.9%;
+  --accent: 210 40% 96.1%;
+  --accent-foreground: 222.2 47.4% 11.2%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --ring: 221.2 83.2% 53.3%;
+  --radius: 0.5rem;
+}
+
+.dark {
+  /* Dark theme variables */
+  --background: 222.2 84% 4.9%;
+  --foreground: 210 40% 98%;
+  --card: 222.2 84% 4.9%;
+  --card-foreground: 210 40% 98%;
+  --popover: 222.2 84% 4.9%;
+  --popover-foreground: 210 40% 98%;
+  --primary: 217.2 91.2% 59.8%;
+  --primary-foreground: 222.2 47.4% 11.2%;
+  --secondary: 217.2 32.6% 17.5%;
+  --secondary-foreground: 210 40% 98%;
+  --muted: 217.2 32.6% 17.5%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --accent: 217.2 32.6% 17.5%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 0 62.8% 30.6%;
+  --destructive-foreground: 210 40% 98%;
+  --border: 217.2 32.6% 17.5%;
+  --input: 217.2 32.6% 17.5%;
+  --ring: 224.3 76.3% 48%;
+}
+```
+
+4. Update the application root to include the ThemeProvider:
+```jsx
+// src/app/layout.jsx or equivalent
+import { ThemeProvider } from "@/context/ThemeContext";
+
+export default function RootLayout({ children }) {
+  return (
+    <html lang="en" suppressHydrationWarning>
+      <head />
+      <body>
+        <ThemeProvider>
+          {children}
+        </ThemeProvider>
+      </body>
+    </html>
+  );
+}
+```
+
+5. Add the ThemeToggle component to the navigation or header:
+```jsx
+// src/components/Header.jsx or equivalent
+import { ThemeToggle } from "@/components/ThemeToggle";
+
+export function Header() {
+  return (
+    <header className="border-b">
+      <div className="container flex h-16 items-center justify-between">
+        <div className="logo">Deskohub</div>
+        <nav>
+          {/* Navigation items */}
+        </nav>
+        <div className="flex items-center gap-4">
+          <ThemeToggle />
+          {/* Other header actions */}
+        </div>
+      </div>
+    </header>
+  );
+}
+```
+
+6. Prevent Flash of Unstyled Content (FOUC) by adding a script to the HTML head:
+```jsx
+// src/app/layout.jsx
+<head>
+  <script dangerouslySetInnerHTML={{
+    __html: `
+      (function() {
+        const savedTheme = localStorage.getItem('deskohub-theme');
+        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        
+        document.documentElement.classList.add(
+          savedTheme || (systemPrefersDark ? 'dark' : 'light')
+        );
+      })();
+    `
+  }} />
+</head>
+```
+
+7. Test all existing UI components in both themes and make adjustments as needed to ensure proper appearance in both modes.
+
+8. Add system preference change detection:
+```jsx
+// Add to ThemeProvider
+useEffect(() => {
+  const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  
+  const handleChange = (e) => {
+    // Only change theme if user hasn't manually set a preference
+    if (!localStorage.getItem('deskohub-theme')) {
+      setTheme(e.matches ? 'dark' : 'light');
+    }
+  };
+  
+  mediaQuery.addEventListener('change', handleChange);
+  return () => mediaQuery.removeEventListener('change', handleChange);
+}, []);
+
+# Test Strategy:
+1. Unit testing:
+   - Test ThemeContext and ThemeProvider functionality:
+     - Verify initial theme is correctly set from localStorage
+     - Verify initial theme falls back to system preference when localStorage is empty
+     - Confirm toggleTheme function correctly switches between themes
+     - Ensure theme changes are properly saved to localStorage
+
+2. Integration testing:
+   - Verify ThemeProvider correctly applies theme classes to the document root
+   - Test ThemeToggle component renders the correct icon based on current theme
+   - Confirm clicking the toggle switches the theme
+   - Verify system preference detection works as expected
+
+3. Visual testing:
+   - Create a comprehensive test page with all UI components
+   - Manually toggle between light and dark modes to verify all components render correctly
+   - Check for any contrast issues or styling inconsistencies
+   - Verify text remains readable in both themes
+   - Test all interactive elements (buttons, inputs, dropdowns) in both themes
+
+4. Cross-browser testing:
+   - Test in Chrome, Firefox, Safari, and Edge
+   - Verify localStorage persistence works across browsers
+   - Check system preference detection in all supported browsers
+
+5. Accessibility testing:
+   - Verify color contrast meets WCAG AA standards in both themes
+   - Test with screen readers to ensure theme toggle is properly labeled
+   - Verify keyboard navigation works correctly in both themes
+
+6. Performance testing:
+   - Check for any Flash of Unstyled Content (FOUC) when loading the page
+   - Measure any performance impact from theme switching
+   - Verify smooth transitions between themes
+
+7. User acceptance testing:
+   - Have team members use both themes and provide feedback
+   - Check for any missed components or styling issues
+   - Verify the theme toggle is intuitive and easy to find
