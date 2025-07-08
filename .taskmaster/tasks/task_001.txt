@@ -1,6 +1,6 @@
 # Task ID: 1
 # Title: Implement Internationalization (i18n) with Paraglide-js
-# Status: pending
+# Status: done
 # Dependencies: None
 # Priority: medium
 # Description: Set up paraglide-js to enable multilingual support for the Deskohub website, allowing content to be displayed in both Czech and English with a foundation for adding more languages in the future.

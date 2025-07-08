@@ -84,7 +84,7 @@ Task Master provides an MCP server that Claude Code can connect to. Configure in
 {
   "mcpServers": {
     "task-master-ai": {
-      "command": "npx",
+      "command": "bunx",
       "args": ["-y", "--package=task-master-ai", "task-master-ai"],
       "env": {
         "ANTHROPIC_API_KEY": "your_key_here",

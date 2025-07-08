@@ -1,0 +1,196 @@
+# Task ID: 6
+# Title: Implement URL-based Language Switching with Next.js App Router
+# Status: pending
+# Dependencies: 1
+# Priority: medium
+# Description: Implement proper URL-based language routing for the Deskohub website using Next.js App Router middleware, enabling language switching between Czech (/) and English (/en/) URLs with correct content translation.
+# Details:
+1. Create a Next.js middleware for language routing:
+```javascript
+// middleware.js
+import { NextResponse } from 'next/server';
+import { availableLanguageTags } from '@/paraglide/runtime';
+
+// Define the default language (Czech)
+const defaultLanguage = 'cs';
+
+// Function to get language from pathname
+function getLanguageFromPathname(pathname) {
+  // Check if the first segment matches a supported language
+  const firstSegment = pathname.split('/')[1];
+  return availableLanguageTags.includes(firstSegment) ? firstSegment : defaultLanguage;
+}
+
+export function middleware(request) {
+  const { pathname } = request.nextUrl;
+  
+  // Skip for assets, api routes, etc.
+  if (
+    pathname.startsWith('/_next') ||
+    pathname.startsWith('/api') ||
+    pathname.includes('.') // files like favicon.ico
+  ) {
+    return NextResponse.next();
+  }
+  
+  // Get language from URL
+  const language = getLanguageFromPathname(pathname);
+  
+  // Set language in request headers for server components
+  const requestHeaders = new Headers(request.headers);
+  requestHeaders.set('x-language', language);
+  
+  return NextResponse.next({
+    request: {
+      headers: requestHeaders,
+    },
+  });
+}
+
+export const config = {
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico).*)'],
+};
+```
+
+2. Update the language switcher component to use proper Next.js navigation:
+```jsx
+// src/components/LanguageSwitcher.jsx
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { useLanguage, availableLanguageTags } from '@/paraglide/runtime';
+
+export function LanguageSwitcher() {
+  const currentLanguage = useLanguage();
+  const pathname = usePathname();
+  
+  // Function to get the equivalent path in another language
+  function getLanguagePath(targetLanguage) {
+    // Remove the language prefix from current path if it exists
+    let pathWithoutLanguage = pathname;
+    
+    // Check if current path starts with a language tag
+    for (const lang of availableLanguageTags) {
+      if (pathname.startsWith(`/${lang}/`)) {
+        pathWithoutLanguage = pathname.substring(lang.length + 1);
+        break;
+      }
+    }
+    
+    // For default language (Czech), use root path
+    if (targetLanguage === 'cs') {
+      return pathWithoutLanguage || '/';
+    }
+    
+    // For other languages, prefix with language code
+    return `/${targetLanguage}${pathWithoutLanguage}`;
+  }
+  
+  return (
+    <div className="language-switcher">
+      {availableLanguageTags.map((lang) => (
+        <Link 
+          key={lang}
+          href={getLanguagePath(lang)}
+          className={currentLanguage === lang ? 'active' : ''}
+        >
+          {lang.toUpperCase()}
+        </Link>
+      ))}
+    </div>
+  );
+}
+```
+
+3. Update the root layout to detect and set the language based on URL:
+```jsx
+// app/layout.jsx
+import { headers } from 'next/headers';
+import { LanguageProvider } from '@/paraglide/runtime';
+
+export default function RootLayout({ children }) {
+  // Get language from request headers (set by middleware)
+  const headersList = headers();
+  const language = headersList.get('x-language') || 'cs';
+  
+  return (
+    <html lang={language}>
+      <LanguageProvider language={language}>
+        <body>
+          {/* Your app content */}
+          {children}
+        </body>
+      </LanguageProvider>
+    </html>
+  );
+}
+```
+
+4. Create a language-specific route structure:
+   - For the default language (Czech), use the app/ directory directly
+   - For English, create an app/en/ directory with parallel routes
+
+5. Update the Paraglide configuration to work with the URL-based language switching:
+```javascript
+// paraglide.config.js
+export default {
+  project: {
+    sourceLanguage: "cs",
+    supportedLanguages: ["cs", "en"],
+    translations: "./src/i18n/translations",
+  },
+  runtime: {
+    language: {
+      // Use URL-based language detection
+      detect: () => {
+        // This will be handled by the middleware and layout
+        return undefined;
+      }
+    }
+  },
+  plugins: [
+    // Existing plugins...
+  ]
+}
+```
+
+6. Test the integration between Paraglide and Next.js App Router to ensure content is properly translated when the URL changes.
+
+7. Implement SEO considerations:
+   - Add proper hreflang tags in the document head
+   - Ensure canonical URLs are correctly set for each language version
+
+# Test Strategy:
+1. Test middleware functionality:
+   - Verify the middleware correctly identifies language from URL paths
+   - Confirm middleware properly sets language headers for server components
+   - Test that middleware ignores asset and API routes
+
+2. Test language switcher component:
+   - Verify clicking between language options correctly updates the URL
+   - Test that the active language is properly highlighted
+   - Confirm the language switcher preserves the current page path when switching languages
+   - Test edge cases like switching from a page that exists in one language but not another
+
+3. Test URL-based language routing:
+   - Verify direct navigation to /en/ routes loads the English version
+   - Confirm direct navigation to / routes loads the Czech version
+   - Test that deep links (e.g., /en/about) correctly load with the proper language
+
+4. Test content translation:
+   - Verify that when switching languages, the actual content on the page changes to the selected language
+   - Confirm that all translatable elements are properly updated when the language changes
+   - Test dynamic content areas to ensure they respond to language changes
+
+5. Test SEO implementation:
+   - Verify hreflang tags are correctly implemented in the HTML head
+   - Confirm canonical URLs are properly set for each language version
+   - Test that search engine crawlers can properly identify language versions
+
+6. Browser testing:
+   - Test language switching across different browsers (Chrome, Firefox, Safari, Edge)
+   - Verify proper functionality on mobile devices
+   - Test with browser language preferences set to different languages
+
+7. Integration testing:
+   - Verify that the language switcher works correctly with the theme switcher
+   - Test that form components display validation messages in the correct language
