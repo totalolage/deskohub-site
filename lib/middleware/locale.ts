@@ -1,6 +1,6 @@
 import { createMiddleware } from "next-safe-action";
 import { baseLocale, setLocale } from "@/i18n";
-import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
+import { getLocaleFromServer } from "@/i18n/utils/get-locale.server";
 
 /**
  * Middleware to automatically set the locale for all server actions
@@ -8,7 +8,7 @@ import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
  */
 export const localeMiddleware = createMiddleware().define(async ({ next }) => {
   // Get the locale from the request (headers, cookies, etc.)
-  const locale = (await getLocaleFromAction()) ?? baseLocale;
+  const locale = (await getLocaleFromServer()) ?? baseLocale;
 
   // Set the locale for Paraglide
   setLocale(locale);

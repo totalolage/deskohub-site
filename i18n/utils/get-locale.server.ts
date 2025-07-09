@@ -3,7 +3,7 @@ import { getLocaleFromAcceptLanguage } from "./get-locale-from-accept-language";
 import { getLocaleFromCookie } from "./get-locale-from-cookie";
 import { getLocaleFromReferer } from "./get-locale-from-referer";
 
-export async function getLocaleFromAction() {
+export async function getLocaleFromServer() {
   const h = await headers();
   const c = await cookies();
   return (

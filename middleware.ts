@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getLocaleFromRequest } from "./i18n/utils/get-locale.request";
 import { getLocaleFromPathname } from "./i18n/utils/get-locale-from-pathname";
+import { getLocaleFromEdge } from "./i18n/utils/get-locale.edge";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -11,7 +11,7 @@ export function middleware(request: NextRequest) {
   if (pathnameHasLocale) return NextResponse.next();
 
   // Redirect if there is no locale in the pathname
-  const locale = getLocaleFromRequest(request);
+  const locale = getLocaleFromEdge(request);
 
   // For any path without locale, redirect to the user's preferred language
   const redirectUrl = new URL(`/${locale}${pathname}`, request.url);
