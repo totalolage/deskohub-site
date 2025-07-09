@@ -14,7 +14,9 @@ export default async function RootLayout({
       <body>
         <div className="min-h-screen bg-white [--header-height:80px]">
           <Header />
-          <main>{children}</main>
+          <main className="min-h-[calc(100dvh-var(--header-height))] ">
+            {children}
+          </main>
           <Footer />
           <Toaster />
         </div>
