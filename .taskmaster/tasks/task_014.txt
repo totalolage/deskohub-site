@@ -1,6 +1,6 @@
 # Task ID: 14
 # Title: Migrate Booking Form to React Hook Form with Shadcn/UI Components
-# Status: pending
+# Status: done
 # Dependencies: 8, 10, 11
 # Priority: medium
 # Description: Replace the current useActionState implementation in the booking form with react-hook-form and shadcn/ui form components, integrated with next-safe-action for improved form validation UX, type safety, and better user experience.

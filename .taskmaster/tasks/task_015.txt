@@ -1,0 +1,279 @@
+# Task ID: 15
+# Title: Implement Booking Form Redirect and Thank You Page
+# Status: pending
+# Dependencies: 1, 6, 8
+# Priority: medium
+# Description: Create a redirect mechanism for the booking form to a dynamic thank you page that displays reservation details, with proper i18n support and styling consistent with the design system.
+# Details:
+1. Modify the booking form server action to generate and return a UUID:
+```typescript
+// app/actions/booking.ts
+import { v4 as uuidv4 } from 'uuid';
+
+// Update the submitBooking action to return a UUID
+export const submitBooking = actionClient.create(
+  bookingSchema,
+  async ({ date, time, guestCount, name, email, phone, tablePreference, specialRequests }) => {
+    try {
+      // Existing validation logic
+      
+      // Generate a unique booking ID (UUID)
+      const bookingId = uuidv4();
+      
+      // Store form data (will be replaced with Airtable integration later)
+      // For now, could use server-side state or temporary storage
+      
+      // Return success with the booking ID
+      return {
+        success: true,
+        bookingId,
+        message: 'Booking submitted successfully'
+      };
+    } catch (error) {
+      // Error handling
+      return {
+        success: false,
+        message: error.message || 'An error occurred during booking'
+      };
+    }
+  }
+);
+```
+
+2. Update the BookingForm component to handle the redirect:
+```typescript
+// components/BookingForm.tsx
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { useTranslations } from '@/paraglide/runtime';
+
+// Inside the form submission handler
+const handleSubmit = async (data) => {
+  const result = await submitBooking(data);
+  
+  if (result.success && result.bookingId) {
+    // Redirect to the thank you page
+    router.push(`/reservation/${result.bookingId}`);
+  } else {
+    // Handle errors
+    setError(result.message);
+  }
+};
+```
+
+3. Create the dynamic thank you page route:
+```typescript
+// app/[lang]/reservation/[id]/page.tsx
+import { Metadata } from 'next';
+import { notFound } from 'next/navigation';
+import { useTranslations } from '@/paraglide/runtime';
+
+// Define metadata
+export const metadata: Metadata = {
+  title: 'Reservation Confirmation | Deskohub',
+  description: 'Thank you for your reservation at Deskohub',
+};
+
+// Mock data function (to be replaced with Airtable integration)
+const getMockBookingData = (id: string) => {
+  // Return mock data for now
+  return {
+    id,
+    date: '2023-12-15',
+    time: '19:00',
+    guestCount: 4,
+    name: 'John Doe',
+    email: 'john@example.com',
+    phone: '+420 123 456 789',
+    tablePreference: 'Window seat',
+    specialRequests: 'Birthday celebration',
+    status: 'confirmed'
+  };
+};
+
+export default function ReservationConfirmationPage({ params }: { params: { id: string, lang: string } }) {
+  const t = useTranslations();
+  
+  // Get booking data (mock for now)
+  const booking = getMockBookingData(params.id);
+  
+  // If no booking found, return 404
+  if (!booking) {
+    notFound();
+  }
+  
+  return (
+    <div className="container max-w-3xl mx-auto py-12 px-4">
+      <div className="bg-card rounded-lg shadow-lg p-8 border border-border">
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-primary mb-2">{t('thankYou.title')}</h1>
+          <p className="text-muted-foreground">{t('thankYou.confirmation')}</p>
+        </div>
+        
+        <div className="space-y-6">
+          <h2 className="text-xl font-semibold border-b pb-2">{t('thankYou.bookingDetails')}</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <p><span className="font-medium">{t('form.date')}:</span> {booking.date}</p>
+              <p><span className="font-medium">{t('form.time')}:</span> {booking.time}</p>
+              <p><span className="font-medium">{t('form.guests')}:</span> {booking.guestCount}</p>
+            </div>
+            
+            <div className="space-y-2">
+              <p><span className="font-medium">{t('form.name')}:</span> {booking.name}</p>
+              <p><span className="font-medium">{t('form.email')}:</span> {booking.email}</p>
+              <p><span className="font-medium">{t('form.phone')}:</span> {booking.phone}</p>
+            </div>
+          </div>
+          
+          {booking.tablePreference && (
+            <div>
+              <p><span className="font-medium">{t('form.tablePreference')}:</span> {booking.tablePreference}</p>
+            </div>
+          )}
+          
+          {booking.specialRequests && (
+            <div>
+              <p><span className="font-medium">{t('form.specialRequests')}:</span> {booking.specialRequests}</p>
+            </div>
+          )}
+        </div>
+        
+        <div className="mt-8 p-4 bg-muted rounded-md">
+          <h3 className="font-semibold mb-2">{t('thankYou.nextSteps')}</h3>
+          <p className="text-sm">{t('thankYou.nextStepsDescription')}</p>
+        </div>
+        
+        <div className="mt-8 text-center">
+          <h3 className="font-semibold mb-2">{t('thankYou.questions')}</h3>
+          <p className="text-sm">{t('thankYou.contactInfo')}</p>
+          <p className="text-primary font-medium mt-1">contact@deskohub.com | +420 123 456 789</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+4. Add TypeScript types for the booking data:
+```typescript
+// types/booking.ts
+export interface BookingData {
+  id: string;
+  date: string;
+  time: string;
+  guestCount: number;
+  name: string;
+  email: string;
+  phone: string;
+  tablePreference?: string;
+  specialRequests?: string;
+  status: 'pending' | 'confirmed' | 'cancelled';
+}
+
+export interface BookingResponse {
+  success: boolean;
+  bookingId?: string;
+  message: string;
+}
+```
+
+5. Add translations for the thank you page:
+```typescript
+// i18n/translations/en.ts
+export default {
+  // Existing translations...
+  
+  thankYou: {
+    title: 'Thank You for Your Reservation!',
+    confirmation: 'Your booking has been received and is being processed.',
+    bookingDetails: 'Booking Details',
+    nextSteps: 'What's Next?',
+    nextStepsDescription: 'You will receive a confirmation email shortly. Please check your inbox and spam folder.',
+    questions: 'Have Questions?',
+    contactInfo: 'Feel free to contact us if you need to make any changes or have questions about your reservation.'
+  }
+};
+
+// i18n/translations/cs.ts
+export default {
+  // Existing translations...
+  
+  thankYou: {
+    title: 'Děkujeme za Vaši rezervaci!',
+    confirmation: 'Vaše rezervace byla přijata a zpracovává se.',
+    bookingDetails: 'Detaily rezervace',
+    nextSteps: 'Co dále?',
+    nextStepsDescription: 'Brzy obdržíte potvrzovací e-mail. Zkontrolujte prosím svou e-mailovou schránku včetně složky spam.',
+    questions: 'Máte dotazy?',
+    contactInfo: 'Neváhejte nás kontaktovat, pokud potřebujete provést jakékoli změny nebo máte dotazy k vaší rezervaci.'
+  }
+};
+```
+
+6. Install the UUID package for generating unique IDs:
+```bash
+npm install uuid
+npm install --save-dev @types/uuid
+```
+
+7. Add error handling for invalid booking IDs:
+```typescript
+// app/[lang]/reservation/[id]/not-found.tsx
+import Link from 'next/link';
+import { useTranslations } from '@/paraglide/runtime';
+
+export default function BookingNotFound() {
+  const t = useTranslations();
+  
+  return (
+    <div className="container max-w-3xl mx-auto py-12 px-4 text-center">
+      <h1 className="text-3xl font-bold mb-4">{t('errors.bookingNotFound')}</h1>
+      <p className="mb-8">{t('errors.bookingNotFoundDescription')}</p>
+      <Link 
+        href="/reservation" 
+        className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
+      >
+        {t('common.backToReservation')}
+      </Link>
+    </div>
+  );
+}
+```
+
+# Test Strategy:
+1. Test the booking form redirect functionality:
+   - Submit a valid booking form and verify it redirects to `/reservation/{uuid}`
+   - Check that the UUID is properly generated and included in the URL
+   - Verify that the redirect happens only after successful form submission
+   - Test error handling by submitting invalid data and confirming no redirect occurs
+
+2. Test the thank you page rendering:
+   - Verify the page loads correctly with a valid booking ID
+   - Check that all mock booking details are displayed correctly
+   - Test the page with various mock data scenarios (different guest counts, with/without special requests)
+   - Verify the 404 page is shown for invalid booking IDs
+
+3. Test internationalization:
+   - Switch between Czech and English languages and verify all text on the thank you page is properly translated
+   - Check that date and time formats are appropriate for each locale
+   - Verify that all form field labels and section headings are correctly translated
+   - Test with special characters in mock data to ensure proper rendering
+
+4. Test responsive design:
+   - Check the thank you page layout on mobile, tablet, and desktop viewports
+   - Verify that the booking details section properly adjusts from two columns to one column on smaller screens
+   - Test that all elements remain readable and properly spaced across different screen sizes
+
+5. Test accessibility:
+   - Verify proper heading hierarchy (h1, h2, h3) is maintained
+   - Check that all text has sufficient color contrast
+   - Ensure the page is navigable using keyboard only
+   - Test with screen readers to verify all content is properly announced
+
+6. Test TypeScript implementation:
+   - Verify all types are properly defined and used
+   - Check for any TypeScript errors or warnings in the implementation
+   - Test edge cases with optional fields (tablePreference, specialRequests) being undefined
