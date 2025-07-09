@@ -4,12 +4,49 @@ import { baseLocale, m, setLocale } from "@/i18n";
 import { extractFormData } from "@/lib/form-utils";
 import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
 import { getBookingSchema, type BookingFormData } from "@/lib/schemas/booking";
+import { createSafeActionClient } from "next-safe-action";
 
 // Server-side booking schema with localized messages
 const getServerBookingSchema = async () => {
   setLocale((await getLocaleFromAction()) ?? baseLocale);
   return getBookingSchema();
 };
+
+// Create the safe action client
+const actionClient = createSafeActionClient();
+
+// Next-safe-action implementation
+export const submitBookingSafeAction = actionClient
+  .inputSchema(async () => {
+    // Set locale for server-side schema generation
+    setLocale((await getLocaleFromAction()) ?? baseLocale);
+    return getBookingSchema();
+  })
+  .action(async ({ parsedInput: validatedInput }) => {
+    // Set locale for server-side translations
+    setLocale((await getLocaleFromAction()) ?? baseLocale);
+
+    try {
+      // TODO: Implement actual booking logic (connect to AirTable in future)
+      console.log("Booking submitted successfully:", {
+        id: `booking-${Date.now()}`, // Temporary ID
+        ...validatedInput,
+        submittedAt: new Date().toISOString(),
+      });
+
+      // Simulate processing time
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+
+      return {
+        success: true,
+        message: m["booking.successMessage"](),
+        data: validatedInput,
+      };
+    } catch (error) {
+      console.error("Booking submission error:", error);
+      throw new Error(m["booking.errorMessage"]());
+    }
+  });
 
 type ActionState = {
   success: boolean;
