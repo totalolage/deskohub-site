@@ -8,8 +8,7 @@ import { setLocale } from "@/i18n";
 import type { PropsWithLocale } from "./route";
 
 export default async function Component({ params }: PropsWithLocale) {
-  const { lang } = await params;
-  setLocale(lang, { reload: false });
+  setLocale((await params).lang);
 
   return (
     <>

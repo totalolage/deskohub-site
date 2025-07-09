@@ -3,16 +3,14 @@ import { m, setLocale } from "@/i18n";
 import type { PropsWithLocale } from "../route";
 
 export async function generateMetadata({ params }: Readonly<PropsWithLocale>) {
-  const { lang } = await params;
-  setLocale(lang, { reload: false });
-
+  setLocale((await params).lang);
   return {
     title: m["booking.pageTitle"](),
     description: m["booking.pageDescription"](),
   };
 }
 
-export default async function ReservationPage({ params }: PropsWithLocale) {
+export default async function ReservationPage() {
   return (
     <main className="container mx-auto py-8 px-4">
       <div className="max-w-2xl mx-auto">

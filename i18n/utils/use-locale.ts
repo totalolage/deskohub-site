@@ -11,7 +11,7 @@ export function useLocale(): Locale {
   const langFromPathname = getLocaleFromPathname(usePathname());
   if (isLocale(langFromPathname)) return langFromPathname;
 
-  const langFromCookie = Cookies.get("NEXT_LOCALE");
+  const langFromCookie = Cookies.get("PARAGLIDE_LOCALE");
   if (isLocale(langFromCookie)) return langFromCookie;
 
   return getLocale();

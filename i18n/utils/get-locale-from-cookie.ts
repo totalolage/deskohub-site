@@ -3,6 +3,6 @@ import { isLocale } from "../paraglide/runtime";
 import { RequestCookies } from "next/dist/compiled/@edge-runtime/cookies";
 
 export function getLocaleFromCookie(cookies: ReadonlyRequestCookies | RequestCookies) {
-  const localeCookie = cookies.get("NEXT_LOCALE")?.value;
+  const localeCookie = cookies.get("PARAGLIDE_LOCALE")?.value;
   if (isLocale(localeCookie)) return localeCookie;
 }
