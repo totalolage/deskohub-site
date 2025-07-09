@@ -1,131 +1,112 @@
 "use server";
 
-import { type } from 'arktype';
+import { z } from "zod";
+import { baseLocale, m, setLocale } from "@/i18n";
+import { extractFormData } from "@/lib/form-utils";
+import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
 
-// Define validation schema with arktype
-const bookingSchema = type({
-  date: 'string>=1', // Non-empty string
-  time: 'string>=1', // Non-empty string
-  guestCount: 'number>0', // Positive number
-  name: 'string>=1', // Non-empty string
-  email: 'string>=1', // Non-empty string (basic validation)
-  phone: 'string>=1', // Non-empty string
-  tablePreference: 'string?',
-  specialRequests: 'string?',
-  preOrders: 'string?'
-});
+// Define comprehensive validation schema with regular zod
+const getBookingSchema = async () => {
+  setLocale((await getLocaleFromAction()) ?? baseLocale);
 
-// Type definitions for better type safety
-type BookingFormData = {
-  date: string;
-  time: string;
-  guestCount: number;
-  name: string;
-  email: string;
-  phone: string;
-  tablePreference: string;
-  specialRequests: string;
-  preOrders: string;
+  return z.object({
+    datetime: z.coerce
+      .date()
+      .min(new Date(), m["booking.validation.datetime.mustBeFuture"]()),
+    guestCount: z
+      .string()
+      .transform((val) => parseInt(val, 10))
+      .pipe(
+        z
+          .number()
+          .min(1, m["booking.validation.guestCount.required"]())
+          .max(10, m["booking.validation.guestCount.maximum"]())
+          .int(m["booking.validation.guestCount.integer"]()),
+      ),
+    name: z
+      .string()
+      .min(2, m["booking.validation.name.minimum"]({ min: 2 }))
+      .max(50, m["booking.validation.name.maximum"]({ max: 50 })),
+    email: z
+      .string()
+      .email(m["booking.validation.email.invalid"]())
+      .max(100, m["booking.validation.email.maximum"]({ max: 100 })),
+    phone: z
+      .string()
+      .min(9, m["booking.validation.phone.minimum"]())
+      .max(20, m["booking.validation.phone.maximum"]())
+      .regex(/^[+]?[0-9\s\-()]+$/, m["booking.validation.phone.invalid"]()),
+    tablePreference: z.string().optional(),
+    specialRequests: z
+      .string()
+      .max(500, m["booking.validation.specialRequests.maximum"]({ max: 500 }))
+      .optional(),
+  });
 };
+// Type inference from Zod schema
+type BookingFormData = z.infer<Awaited<ReturnType<typeof getBookingSchema>>>;
 
 type ActionState = {
   success: boolean;
   message: string;
-  errors: Record<string, string>;
+  errors: Record<string, string[]>;
   data?: BookingFormData;
+  formData?: Record<string, string>;
 };
 
-// More reliable form data extraction
-function extractFormData(formData: FormData): BookingFormData {
-  const getValue = (key: string): string => {
-    const value = formData.get(key);
-    return value === null ? '' : String(value);
-  };
-
-  const getNumberValue = (key: string): number => {
-    const value = formData.get(key);
-    const num = value === null ? 0 : Number(value);
-    return isNaN(num) ? 0 : num;
-  };
-
-  return {
-    date: getValue('date'),
-    time: getValue('time'),
-    guestCount: getNumberValue('guestCount'),
-    name: getValue('name'),
-    email: getValue('email'),
-    phone: getValue('phone'),
-    tablePreference: getValue('tablePreference'),
-    specialRequests: getValue('specialRequests'),
-    preOrders: getValue('preOrders'),
-  };
-}
-
 // Server action with useActionState-compatible signature
-export async function submitBooking(prevState: ActionState, formData: FormData): Promise<ActionState> {
+export async function submitBooking(
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   try {
-    // Extract form data using reliable method
-    const rawFormData = extractFormData(formData);
-    
-    // Debug: Log the extracted data
-    console.log('Raw form data:', rawFormData);
+    const bookingSchema = await getBookingSchema();
 
-    // Validate with arktype
-    const validatedData = bookingSchema(rawFormData);
-    
-    // Debug: Log validation result
-    console.log('Validation result:', validatedData);
-    console.log('Has problems:', !!validatedData.problems);
-    
-    if (validatedData.problems) {
-      console.log('Validation problems:', validatedData.problems);
-      const errors = validatedData.problems.reduce((acc: Record<string, string>, problem) => {
-        const field = problem.path?.[0] || 'general';
-        // Convert arktype error messages to user-friendly messages
-        let userMessage = problem.message;
-        if (problem.message.includes('must be more than 0')) {
-          switch (field) {
-            case 'date': userMessage = 'Date is required'; break;
-            case 'time': userMessage = 'Time is required'; break;
-            case 'guestCount': userMessage = 'Number of guests is required'; break;
-            case 'name': userMessage = 'Name is required'; break;
-            case 'email': userMessage = 'Email is required'; break;
-            case 'phone': userMessage = 'Phone number is required'; break;
-            default: userMessage = 'This field is required';
-          }
-        }
-        acc[field] = userMessage;
-        return acc;
-      }, {});
-      
-      console.log('Processed errors:', errors);
-      
+    // Extract FormData and validate with zod
+    const formDataObject = extractFormData(formData);
+    const validationResult = bookingSchema.safeParse(formDataObject);
+
+    // Handle validation errors
+    if (!validationResult.success) {
+      const errors = validationResult.error.flatten().fieldErrors;
+
       return {
         success: false,
         errors,
-        message: 'Please fix the validation errors',
+        message: m["booking.validation.general"](),
+        formData: formDataObject, // Return form data to preserve field values
       };
     }
 
+    // At this point, data is validated and type-safe
+    const validatedData = validationResult.data;
+
     // TODO: Implement actual booking logic (connect to AirTable in future)
-    console.log('Booking submitted:', validatedData.data);
-    
+    console.log("Booking submitted successfully:", {
+      id: `booking-${Date.now()}`, // Temporary ID
+      ...validatedData,
+      submittedAt: new Date().toISOString(),
+    });
+
     // Simulate processing time
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+
     return {
       success: true,
-      message: 'Booking submitted successfully',
+      message: "Booking submitted successfully",
       errors: {},
-      data: validatedData.data,
+      data: validatedData,
+      formData: {}, // Clear form data on success
     };
-    
   } catch (error) {
-    console.error('Booking submission error:', error);
+    console.error("Booking submission error:", error);
+
+    // Return a generic error message to avoid exposing internal details
     return {
       success: false,
-      message: 'Failed to process booking request',
+      message: "An unexpected error occurred. Please try again.",
       errors: {},
+      formData: {}, // Clear form data on error
     };
   }
 }
