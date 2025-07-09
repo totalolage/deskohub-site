@@ -1,20 +1,20 @@
 import Cookies from "js-cookie";
 import { useParams, usePathname } from "next/navigation";
-import type { RouteParams_lang } from "@/app/[lang]/route";
+import type { RouteParams_locale } from "@/app/[locale]/route";
 import { getLocale, isLocale, type Locale } from "../paraglide/runtime";
 import { getLocaleFromPathname } from "./get-locale-from-pathname";
 
 export function useLocale(): Locale {
-  const params = useParams<Partial<RouteParams_lang>>();
+  const params = useParams<Partial<RouteParams_locale>>();
   const pathname = usePathname();
 
-  if (isLocale(params.lang)) return params.lang;
+  if (isLocale(params.locale)) return params.locale;
 
-  const langFromPathname = getLocaleFromPathname(pathname);
-  if (isLocale(langFromPathname)) return langFromPathname;
+  const localeFromPathname = getLocaleFromPathname(pathname);
+  if (isLocale(localeFromPathname)) return localeFromPathname;
 
-  const langFromCookie = Cookies.get("PARAGLIDE_LOCALE");
-  if (isLocale(langFromCookie)) return langFromCookie;
+  const localeFromCookie = Cookies.get("PARAGLIDE_LOCALE");
+  if (isLocale(localeFromCookie)) return localeFromCookie;
 
   return getLocale();
 }

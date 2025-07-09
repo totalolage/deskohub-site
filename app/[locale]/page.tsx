@@ -5,10 +5,10 @@ import { Hero } from "@/components/sections/hero";
 import { Location } from "@/components/sections/location";
 import { Stats } from "@/components/sections/stats";
 import { setLocale } from "@/i18n";
-import type { RouteProps_lang } from "./route";
+import type { RouteProps_locale } from "./route";
 
-export default async function LandingPage({ params }: RouteProps_lang) {
-  setLocale((await params).lang);
+export default async function LandingPage({ params }: RouteProps_locale) {
+  setLocale((await params).locale);
 
   return (
     <>

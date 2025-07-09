@@ -1,17 +1,19 @@
 import { BookingForm } from "@/features/booking/components/booking-form";
 import { m, setLocale } from "@/i18n";
-import type { RouteProps_lang } from "../route";
+import type { RouteProps_locale } from "../route";
 
-export async function generateMetadata({ params }: Readonly<RouteProps_lang>) {
-  setLocale((await params).lang);
+export async function generateMetadata({
+  params,
+}: Readonly<RouteProps_locale>) {
+  setLocale((await params).locale);
   return {
     title: m["booking.pageTitle"](),
     description: m["booking.pageDescription"](),
   };
 }
 
-export default async function ReservationPage({ params }: RouteProps_lang) {
-  setLocale((await params).lang);
+export default async function ReservationPage({ params }: RouteProps_locale) {
+  setLocale((await params).locale);
   return (
     <main className="container mx-auto py-8 px-4">
       <div className="max-w-2xl mx-auto">

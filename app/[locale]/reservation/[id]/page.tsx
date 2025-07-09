@@ -14,7 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { getBooking } from "@/features/booking/lib/booking-storage";
 import { m } from "@/i18n";
-import type { RouteProps_lang_id } from "./route";
+import type { RouteProps_locale_id } from "./route";
 
 export const metadata: Metadata = {
   title: "Reservation Confirmation | Deskohub",
@@ -23,9 +23,9 @@ export const metadata: Metadata = {
 
 export default async function ReservationConfirmationPage({
   params,
-}: Readonly<RouteProps_lang_id>) {
+}: Readonly<RouteProps_locale_id>) {
   // Await params as required by Next.js 15
-  const { id, lang } = await params;
+  const { id, locale } = await params;
 
   // Get booking data from storage
   const booking = await getBooking(id);
@@ -34,7 +34,7 @@ export default async function ReservationConfirmationPage({
 
   // Format date and time for display
   const formattedDate = new Date(booking.datetime).toLocaleDateString(
-    lang === "cs" ? "cs-CZ" : "en-US",
+    locale === "cs-CZ" ? "cs-CZ" : "en-US",
     {
       weekday: "long",
       year: "numeric",
@@ -44,7 +44,7 @@ export default async function ReservationConfirmationPage({
   );
 
   const formattedTime = new Date(booking.datetime).toLocaleTimeString(
-    lang === "cs" ? "cs-CZ" : "en-US",
+    locale === "cs-CZ" ? "cs-CZ" : "en-US",
     {
       hour: "2-digit",
       minute: "2-digit",
@@ -228,12 +228,7 @@ export default async function ReservationConfirmationPage({
       {/* Action Buttons */}
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
         <Button asChild className="bg-green-600 hover:bg-green-700">
-          <Link href={`/${lang}`}>{m["thankYou.backToHome"]()}</Link>
-        </Button>
-        <Button variant="outline" asChild>
-          <Link href={`/${lang}/reservation`}>
-            {m["thankYou.makeAnother"]()}
-          </Link>
+          <Link href="/">{m["thankYou.backToHome"]()}</Link>
         </Button>
       </div>
     </div>

@@ -8,15 +8,17 @@ import {
   setLocale,
 } from "@/i18n";
 import RootLayout from "../rootLayout";
-import type { RouteProps_lang } from "./route";
+import type { RouteProps_locale } from "./route";
 
 export async function generateStaticParams() {
-  return locales.map((lang) => ({ lang }));
+  return locales.map((locale) => ({ locale }));
 }
 
-export async function generateMetadata({ params }: Readonly<RouteProps_lang>) {
-  const { lang } = await params;
-  setLocale(lang, { reload: false });
+export async function generateMetadata({
+  params,
+}: Readonly<RouteProps_locale>) {
+  const { locale } = await params;
+  setLocale(locale, { reload: false });
 
   return {
     title: m["metadata.title"](),
@@ -33,11 +35,11 @@ const ssrLocale = cache(() => ({
 // overwrite the getLocale function to use the locale from the request
 overwriteGetLocale(() => assertIsLocale(ssrLocale().locale));
 
-export default async function LangLayout({
+export default async function LocaleLayout({
   children,
   params,
-}: Readonly<PropsWithChildren<RouteProps_lang>>) {
-  ssrLocale().locale = (await params).lang;
+}: Readonly<PropsWithChildren<RouteProps_locale>>) {
+  ssrLocale().locale = (await params).locale;
 
   return <RootLayout>{children}</RootLayout>;
 }
