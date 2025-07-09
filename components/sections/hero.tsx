@@ -14,7 +14,7 @@ export function Hero() {
       />
       <div className="relative z-10 flex items-center justify-center h-full text-center text-white px-6">
         <div className="max-w-4xl">
-          <h1 className="font-bold mb-8 leading-[6.4em]">
+          <h1 className="font-bold mb-8 leading-tight flex flex-col gap-y-2">
             <span className="text-6xl md:text-8xl text-green-500">
               {m["hero.title"]()}
             </span>

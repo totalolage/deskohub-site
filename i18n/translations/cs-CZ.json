@@ -16,7 +16,7 @@
   },
   "hero": {
     "title": "Hrejte, pijte, jezte",
-    "subtitle": "vše na jednom stole",
+    "subtitle": "vše u jednoho stolu",
     "description": "Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratu."
   },
   "hours": {
@@ -112,7 +112,7 @@
   },
   "metadata": {
     "title": "Deskohub - Bar s deskovými hrami",
-    "description": "Hrejte, pijte, jezte - vše na jednom stole. Navštivte nejlepší board game bar pro všechny milovníky deskových her."
+    "description": "Hrejte, pijte, jezte - vše u jednoho stolu. Navštivte nejlepší board game bar pro všechny milovníky deskových her."
   },
   "booking": {
     "pageTitle": "Rezervace stolu",
