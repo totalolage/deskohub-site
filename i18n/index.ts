@@ -1,11 +1,11 @@
 export { m } from "./paraglide/messages";
 export {
-  locales,
-  isLocale,
-  baseLocale,
-  setLocale,
-  type Locale,
-  overwriteGetLocale,
   assertIsLocale,
+  baseLocale,
   getLocale,
+  isLocale,
+  type Locale,
+  locales,
+  overwriteGetLocale,
+  setLocale,
 } from "./paraglide/runtime";

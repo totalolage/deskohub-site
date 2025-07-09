@@ -16,7 +16,7 @@ const Form = FormProvider;
 
 const FormFieldContext = React.createContext<{
   name: string;
-}>({} as any);
+}>({ name: "" });
 
 const FormField = <
   TFieldValues extends FieldValues = FieldValues,

@@ -1,10 +1,10 @@
 import "./globals.css";
 
+import type { PropsWithChildren } from "react";
 import { Footer } from "@/components/sections/footer";
 import { Header } from "@/components/sections/header";
 import { Toaster } from "@/components/ui/sonner";
 import { getLocale } from "@/i18n";
-import { PropsWithChildren } from "react";
 
 export default async function RootLayout({
   children,

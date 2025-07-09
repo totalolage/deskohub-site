@@ -1,28 +1,14 @@
 {
   "$schema": "https://inlang.com/schema/project-settings",
   "baseLocale": "cs",
-  "locales": [
-    "cs",
-    "en"
-  ],
-  "strategy": [
-    "url",
-    "cookie",
-    "preferredLanguage",
-    "baseLocale"
-  ],
+  "locales": ["cs", "en"],
+  "strategy": ["url", "cookie", "preferredLanguage", "baseLocale"],
   "urlPatterns": [
     {
       "pattern": "https://:domain(.*)/:path*",
       "localized": [
-        [
-          "cs",
-          "https://:domain(.*)/cs/:path*"
-        ],
-        [
-          "en",
-          "https://:domain(.*)/:path*"
-        ]
+        ["cs", "https://:domain(.*)/cs/:path*"],
+        ["en", "https://:domain(.*)/:path*"]
       ]
     }
   ],

@@ -1,10 +1,10 @@
-import { locales } from "../paraglide/runtime";
 import { tryOrElse } from "@/lib/utils";
+import { locales } from "../paraglide/runtime";
 
 export function getLocaleFromPathname(url: string) {
   const pathname = tryOrElse(
     () => new URL(url).pathname,
-    () => url,
+    () => url
   );
   return locales.find((locale) => pathname.startsWith(`/${locale}`));
 }

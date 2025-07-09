@@ -1,10 +1,10 @@
 "use server";
 
-import { baseLocale, m, setLocale } from "@/i18n";
-import { extractFormData } from "@/lib/form-utils";
-import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
-import { getBookingSchema, type BookingFormData } from "@/lib/schemas/booking";
 import { createSafeActionClient } from "next-safe-action";
+import { baseLocale, m, setLocale } from "@/i18n";
+import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
+import { extractFormData } from "@/lib/form-utils";
+import { type BookingFormData, getBookingSchema } from "@/lib/schemas/booking";
 
 // Server-side booking schema with localized messages
 const getServerBookingSchema = async () => {
@@ -59,7 +59,7 @@ type ActionState = {
 // Server action with useActionState-compatible signature
 export async function submitBooking(
   _prevState: ActionState,
-  formData: FormData,
+  formData: FormData
 ): Promise<ActionState> {
   try {
     const bookingSchema = await getServerBookingSchema();

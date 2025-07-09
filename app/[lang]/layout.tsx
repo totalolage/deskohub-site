@@ -7,8 +7,8 @@ import {
   overwriteGetLocale,
   setLocale,
 } from "@/i18n";
-import type { PropsWithLocale } from "./route";
 import RootLayout from "../rootLayout";
+import type { PropsWithLocale } from "./route";
 
 export async function generateStaticParams() {
   return locales.map((lang) => ({ lang }));
@@ -26,7 +26,7 @@ export async function generateMetadata({ params }: Readonly<PropsWithLocale>) {
 }
 
 // scopes the locale per request
-let ssrLocale = cache(() => ({
+const ssrLocale = cache(() => ({
   locale: baseLocale,
 }));
 

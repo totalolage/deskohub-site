@@ -1,8 +1,8 @@
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
+import { getLocaleFromAcceptLanguage } from "./get-locale-from-accept-language";
+import { getLocaleFromCookie } from "./get-locale-from-cookie";
 import { getLocaleFromPathname } from "./get-locale-from-pathname";
 import { getLocaleFromReferer } from "./get-locale-from-referer";
-import { getLocaleFromCookie } from "./get-locale-from-cookie";
-import { getLocaleFromAcceptLanguage } from "./get-locale-from-accept-language";
 
 export function getLocaleFromRequest(request: NextRequest) {
   return (
