@@ -6,10 +6,9 @@ export function Hero() {
   return (
     <section className="relative h-[calc(100dvh_-_var(--header-height))] bg-gradient-to-r from-black/70 to-black/50 z-1">
       <Image
-        className="mix-blend-overlay brightness-[0.7]"
+        className="mix-blend-overlay brightness-[0.7] object-cover"
         src={heroImage}
         fill
-        objectFit="cover"
         alt={m["altText.heroImage"]()}
       />
       <div className="relative z-10 flex items-center justify-center h-full text-center text-white px-6">
