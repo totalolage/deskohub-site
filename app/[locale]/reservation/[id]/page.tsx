@@ -117,10 +117,7 @@ export default async function ReservationConfirmationPage({
                     {m["booking.guestCountLabel"]()}
                   </p>
                   <p className="text-gray-600">
-                    {booking.guestCount}{" "}
-                    {booking.guestCount === 1
-                      ? m["plurals.person"]()
-                      : m["plurals.people"]()}
+                    {m.guestCountPlural({ count: booking.guestCount })}
                   </p>
                 </div>
               </div>

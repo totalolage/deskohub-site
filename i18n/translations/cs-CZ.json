@@ -34,6 +34,50 @@
     "yearsExperience": "Let Zkušeností",
     "gameNights": "Herních Večerů"
   },
+  "boardGamesCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} desková hra",
+        "countPlural=few": "{count} deskové hry",
+        "countPlural=other": "{count} deskových her"
+      }
+    }
+  ],
+  "happyPlayersCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} spokojený hráč",
+        "countPlural=few": "{count} spokojení hráči",
+        "countPlural=other": "{count} spokojených hráčů"
+      }
+    }
+  ],
+  "yearsExperienceCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} rok zkušeností",
+        "countPlural=few": "{count} roky zkušeností",
+        "countPlural=other": "{count} let zkušeností"
+      }
+    }
+  ],
+  "gameNightsCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} herní večer",
+        "countPlural=few": "{count} herní večery",
+        "countPlural=other": "{count} herních večerů"
+      }
+    }
+  ],
   "gamesSection": {
     "title": "OBJEVTE NAŠE",
     "subtitle": "ÚŽASNÉ DESKOVÉ HRY"
@@ -181,6 +225,17 @@
     "phone": "+420 123 456 789",
     "guestCount": "Počet hostů"
   },
+  "guestCountPlural": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} osoba",
+        "countPlural=few": "{count} osoby",
+        "countPlural=other": "{count} osob"
+      }
+    }
+  ],
   "descriptions": {
     "dateTime": "Vyberte si preferované datum a čas",
     "tableType": "Vyberte typ stolu, který vám vyhovuje",

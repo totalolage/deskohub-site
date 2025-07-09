@@ -181,10 +181,7 @@ export function BookingForm() {
                             i + constants.booking.validation.guestCount.min
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
-                            {num}{" "}
-                            {num === 1
-                              ? m["plurals.person"]()
-                              : m["plurals.people"]()}
+                            {m.guestCountPlural({ count: num })}
                           </SelectItem>
                         ))}
                       </SelectContent>

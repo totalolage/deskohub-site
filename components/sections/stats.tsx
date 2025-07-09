@@ -10,7 +10,7 @@ export function Stats() {
               500+
             </div>
             <div className="text-gray-600 font-medium">
-              {m["stats.boardGames"]()}
+              {m.boardGamesCount({ count: 500 })}
             </div>
           </div>
           <div>
@@ -18,7 +18,7 @@ export function Stats() {
               200+
             </div>
             <div className="text-gray-600 font-medium">
-              {m["stats.happyPlayers"]()}
+              {m.happyPlayersCount({ count: 200 })}
             </div>
           </div>
           <div>
@@ -26,7 +26,7 @@ export function Stats() {
               5+
             </div>
             <div className="text-gray-600 font-medium">
-              {m["stats.yearsExperience"]()}
+              {m.yearsExperienceCount({ count: 5 })}
             </div>
           </div>
           <div>
@@ -34,7 +34,7 @@ export function Stats() {
               100+
             </div>
             <div className="text-gray-600 font-medium">
-              {m["stats.gameNights"]()}
+              {m.gameNightsCount({ count: 100 })}
             </div>
           </div>
         </div>

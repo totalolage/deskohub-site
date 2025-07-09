@@ -34,6 +34,46 @@
     "yearsExperience": "Years of Experience",
     "gameNights": "Game Nights"
   },
+  "boardGamesCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} board game",
+        "countPlural=other": "{count} board games"
+      }
+    }
+  ],
+  "happyPlayersCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} happy player",
+        "countPlural=other": "{count} happy players"
+      }
+    }
+  ],
+  "yearsExperienceCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} year of experience",
+        "countPlural=other": "{count} years of experience"
+      }
+    }
+  ],
+  "gameNightsCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} game night",
+        "countPlural=other": "{count} game nights"
+      }
+    }
+  ],
   "gamesSection": {
     "title": "DISCOVER OUR",
     "subtitle": "AMAZING BOARD GAMES"
@@ -181,6 +221,16 @@
     "phone": "+420 123 456 789",
     "guestCount": "Number of guests"
   },
+  "guestCountPlural": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} person",
+        "countPlural=other": "{count} people"
+      }
+    }
+  ],
   "descriptions": {
     "dateTime": "Choose your preferred date and time",
     "tableType": "Choose the type of table that suits your needs",

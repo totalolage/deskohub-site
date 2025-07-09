@@ -13,11 +13,11 @@
     }
   ],
   "modules": [
-    "https://cdn.jsdelivr.net/npm/@inlang/plugin-json@4/dist/index.js",
+    "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@latest/dist/index.js",
     "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-empty-pattern@1/dist/index.js",
     "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-missing-translation@1/dist/index.js"
   ],
-  "plugin.inlang.json": {
+  "plugin.inlang.messageFormat": {
     "pathPattern": "./i18n/translations/{languageTag}.json"
   }
 }

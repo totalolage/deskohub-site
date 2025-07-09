@@ -1,6 +1,6 @@
 # Task ID: 15
 # Title: Implement Booking Form Redirect and Thank You Page
-# Status: pending
+# Status: done
 # Dependencies: 1, 6, 8
 # Priority: medium
 # Description: Create a redirect mechanism for the booking form to a dynamic thank you page that displays reservation details, with proper i18n support and styling consistent with the design system.
@@ -277,3 +277,67 @@ export default function BookingNotFound() {
    - Verify all types are properly defined and used
    - Check for any TypeScript errors or warnings in the implementation
    - Test edge cases with optional fields (tablePreference, specialRequests) being undefined
+
+# Subtasks:
+## 1. Implement UUID generation in booking form server action [done]
+### Dependencies: None
+### Description: Modify the booking form server action to generate and return a UUID for each successful booking submission.
+### Details:
+Update the submitBooking action in app/actions/booking.ts to generate a unique UUID for each booking. Install the uuid package and its TypeScript types. Ensure the function returns the UUID in the success response object.
+
+## 2. Update BookingForm component with redirect logic [done]
+### Dependencies: 15.1
+### Description: Enhance the BookingForm component to handle the redirect to the thank you page after successful form submission.
+### Details:
+Modify the form submission handler in components/BookingForm.tsx to use Next.js router for redirecting to the dynamic thank you page route using the booking ID returned from the server action. Implement proper error handling for failed submissions.
+<info added on 2025-07-09T14:01:20.819Z>
+Successfully implemented redirect logic in BookingFormSafeAction component:
+
+1. Added Next.js useRouter import and hook
+2. Modified useEffect to handle successful form submission by redirecting to /reservation/{bookingId}
+3. Added dependency on router in useEffect
+4. Maintained existing error handling and form validation
+5. Fixed biome linting issues with import order
+
+The component now properly redirects users to the thank you page after successful booking form submission, using the UUID returned from the server action.
+</info added on 2025-07-09T14:01:20.819Z>
+
+## 3. Create TypeScript types for booking data [done]
+### Dependencies: None
+### Description: Define TypeScript interfaces for booking data and response objects to ensure type safety throughout the application.
+### Details:
+Create types/booking.ts file with interfaces for BookingData and BookingResponse. Include all necessary fields such as id, date, time, guest information, and booking status. Ensure these types are imported and used in relevant components.
+<info added on 2025-07-09T14:04:10.177Z>
+Created app/[lang]/reservation/[id]/page.tsx dynamic route to display booking details. The page retrieves booking data from storage and presents it with formatted date/time based on locale, guest information, table preferences, special requests, and booking ID in a responsive grid layout. Implemented error handling with notFound() for invalid booking IDs and created a user-friendly not-found.tsx page. Added navigation buttons for home and new reservations, proper accessibility attributes, and consistent styling with Card components. All TypeScript and linting errors have been resolved, resulting in a professional, user-friendly booking confirmation page.
+</info added on 2025-07-09T14:04:10.177Z>
+
+## 4. Implement dynamic thank you page with booking details [done]
+### Dependencies: 15.1, 15.3
+### Description: Create a dynamic route for the thank you page that displays reservation details based on the booking ID.
+### Details:
+Develop app/[lang]/reservation/[id]/page.tsx to fetch and display booking details. Implement the getMockBookingData function (to be replaced with actual data fetching later). Create a responsive layout with proper styling consistent with the design system. Add a not-found.tsx file for handling invalid booking IDs.
+
+## 5. Add i18n support for thank you page [done]
+### Dependencies: 15.4
+### Description: Create and implement translations for all text content on the thank you page in both English and Czech.
+### Details:
+Update i18n translation files (en.ts and cs.ts) with all necessary strings for the thank you page, including title, confirmation message, booking details labels, and contact information. Ensure all text in the thank you page component uses the translation functions.
+<info added on 2025-07-09T14:07:24.429Z>
+Successfully implemented i18n support for the thank you page:
+
+1. Added comprehensive translations to both English and Czech JSON files:
+   - thankYou section with title, confirmation, booking details, next steps, questions, and button labels
+   - errors section for booking not found scenarios
+   
+2. Updated the thank you page (app/[lang]/reservation/[id]/page.tsx) to use translation functions:
+   - Replaced all hardcoded strings with m[] function calls
+   - Used existing booking field labels for consistency
+   - Maintained proper formatting and accessibility
+
+3. Updated the not-found page to use translations for error messages and button labels
+
+4. Fixed all TypeScript and linting issues with proper formatting
+
+The thank you page now fully supports both English and Czech languages with proper localization for all user-facing text, providing a consistent multilingual experience.
+</info added on 2025-07-09T14:07:24.429Z>
+
