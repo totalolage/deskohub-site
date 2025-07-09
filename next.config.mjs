@@ -7,6 +7,7 @@ export default paraglide({
   paraglide: {
     project: "./project.inlang",
     outdir: "./i18n/paraglide",
+    watch: false,
   },
   ...nextConfig,
 });
