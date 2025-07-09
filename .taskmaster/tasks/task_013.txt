@@ -1,0 +1,138 @@
+# Task ID: 13
+# Title: Migrate Next.js Image Components to Modern Next.js 13+ Format
+# Status: pending
+# Dependencies: 1
+# Priority: medium
+# Description: Update all Next.js Image components across the project from legacy format to the modern Next.js 13+ style following the official migration guide to improve performance and accessibility.
+# Details:
+1. Review the official migration guide at https://nextjs.org/docs/messages/next-image-upgrade-to-13 to understand the required changes:
+   - Study the differences between legacy and modern Image component APIs
+   - Note the removal of layout, objectFit, and objectPosition props
+   - Understand the new required width and height props
+   - Review new styling approaches with CSS
+
+2. Create an inventory of all Image component usages across the project:
+```bash
+# Find all files using the Image component
+grep -r "import Image from 'next/image'" --include="*.tsx" --include="*.jsx" .
+grep -r "<Image" --include="*.tsx" --include="*.jsx" .
+```
+
+3. Update the Image component imports if necessary:
+```typescript
+// Legacy import (may already be correct)
+import Image from 'next/image'
+
+// Ensure all imports use this format, not any older variations
+```
+
+4. Migrate each Image component instance following these patterns:
+
+   a. For fixed-size images:
+   ```typescript
+   // Legacy format
+   <Image
+     src="/profile.png"
+     layout="fixed"
+     width={500}
+     height={300}
+     alt="Profile"
+   />
+
+   // Modern format
+   <Image
+     src="/profile.png"
+     width={500}
+     height={300}
+     alt="Profile"
+   />
+   ```
+
+   b. For responsive images with layout="responsive":
+   ```typescript
+   // Legacy format
+   <Image
+     src="/hero.png"
+     layout="responsive"
+     width={1200}
+     height={600}
+     alt="Hero"
+   />
+
+   // Modern format
+   <Image
+     src="/hero.png"
+     width={1200}
+     height={600}
+     style={{ width: '100%', height: 'auto' }}
+     alt="Hero"
+   />
+   ```
+
+   c. For images with layout="fill":
+   ```typescript
+   // Legacy format
+   <div style={{ position: 'relative', width: '100%', height: '500px' }}>
+     <Image
+       src="/background.png"
+       layout="fill"
+       objectFit="cover"
+       alt="Background"
+     />
+   </div>
+
+   // Modern format
+   <div style={{ position: 'relative', width: '100%', height: '500px' }}>
+     <Image
+       src="/background.png"
+       fill
+       style={{ objectFit: 'cover' }}
+       alt="Background"
+     />
+   </div>
+   ```
+
+5. Update any custom styling:
+   - Move objectFit and objectPosition to style prop
+   - Use CSS classes or inline styles for responsive behavior
+   - Ensure parent containers have position: relative for fill mode
+
+6. Check and update any dynamic Image components:
+   - Ensure dynamic width/height calculations are properly handled
+   - Verify that conditional rendering patterns are updated
+
+7. Test all migrated components in different viewport sizes to ensure proper responsiveness
+
+8. Update any component tests that might be affected by the Image component changes
+
+# Test Strategy:
+1. Visual regression testing:
+   - Take screenshots of pages with Image components before migration
+   - Compare with screenshots after migration to ensure visual parity
+   - Test on multiple screen sizes (mobile, tablet, desktop)
+
+2. Accessibility testing:
+   - Verify all images have proper alt text
+   - Check that images load correctly with screen readers
+   - Test keyboard navigation around image elements
+
+3. Performance testing:
+   - Use Lighthouse or PageSpeed Insights to measure performance before and after
+   - Compare Core Web Vitals metrics, especially LCP (Largest Contentful Paint)
+   - Verify image loading behavior with network throttling
+
+4. Browser compatibility testing:
+   - Test in Chrome, Firefox, Safari, and Edge
+   - Verify proper rendering on iOS and Android devices
+
+5. Automated tests:
+   - Update any component tests that reference Image components
+   - Create snapshot tests for key components using Image
+   - Verify that all tests pass after migration
+
+6. Manual testing checklist:
+   - Verify images load correctly on all pages
+   - Check image behavior during page resize
+   - Test image loading with slow network connections
+   - Verify proper image aspect ratios are maintained
+   - Check that placeholder/blur-up behavior works as expected

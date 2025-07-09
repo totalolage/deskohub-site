@@ -37,6 +37,13 @@ task-master generate                                         # Update task markd
 
 ## Key Files & Project Structure
 
+### Project Configuration
+- **This is a BUN project** - Use `bun` instead of `npm` for all commands
+- Build tool: `bun`
+- Package manager: `bun`
+- Type checking: `bun run check` (uses biome)
+- Dev server: `bun run dev` (runs on port 3000)
+
 ### Core Files
 
 - `.taskmaster/tasks/tasks.json` - Main task data file (auto-managed)

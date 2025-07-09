@@ -1,0 +1,297 @@
+# Task ID: 12
+# Title: Fix Header Navigation Component for Dynamic Locale Changes
+# Status: done
+# Dependencies: 6, 10
+# Priority: medium
+# Description: Update the header/navigation component to properly reflect the current language when the user switches between Czech and English locales, ensuring UI elements update dynamically without requiring a page refresh.
+# Details:
+1. Identify the current implementation issue:
+   - Analyze why the header component doesn't update when locale changes
+   - Check if the component is properly subscribed to locale state changes
+   - Verify if the component is using static or dynamic translation references
+
+2. Modify the header component to respond to locale changes:
+```typescript
+// components/Header.tsx
+import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { i } from '@/paraglide/messages';
+import { sourceLanguageTag, runtimeLanguageTag } from '@/paraglide/runtime';
+import Link from 'next/link';
+
+export function Header() {
+  // Track the current language to force re-renders when it changes
+  const [currentLang, setCurrentLang] = useState(runtimeLanguageTag());
+  
+  // Subscribe to language changes
+  useEffect(() => {
+    // Create a function to update state when language changes
+    const handleLanguageChange = () => {
+      setCurrentLang(runtimeLanguageTag());
+    };
+    
+    // Set up event listener for language changes
+    window.addEventListener('languagechange', handleLanguageChange);
+    
+    // Clean up event listener
+    return () => {
+      window.removeEventListener('languagechange', handleLanguageChange);
+    };
+  }, []);
+  
+  // Rest of the header component implementation
+  // ...
+}
+```
+
+3. Implement a language switcher component that triggers proper re-renders:
+```typescript
+// components/LanguageSwitcher.tsx
+import { useRouter } from 'next/navigation';
+import { sourceLanguageTag, runtimeLanguageTag } from '@/paraglide/runtime';
+import { setLanguageTag } from '@/paraglide/runtime';
+
+export function LanguageSwitcher() {
+  const router = useRouter();
+  const currentLang = runtimeLanguageTag();
+  
+  const toggleLanguage = () => {
+    // Switch between Czech and English
+    const newLang = currentLang === 'cs' ? 'en' : 'cs';
+    
+    // Update the language in Paraglide runtime
+    setLanguageTag(newLang);
+    
+    // Update the cookie for server-side rendering
+    document.cookie = `NEXT_LOCALE=${newLang};path=/;max-age=31536000`;
+    
+    // Optionally refresh the current route to ensure all components update
+    // This might be needed if some components don't respond to runtime changes
+    router.refresh();
+    
+    // Dispatch a custom event that the header can listen for
+    window.dispatchEvent(new CustomEvent('languagechange'));
+  };
+  
+  return (
+    <button onClick={toggleLanguage}>
+      {currentLang === 'cs' ? 'Switch to English' : 'Přepnout do češtiny'}
+    </button>
+  );
+}
+```
+
+4. Update the header component to use the new language switcher:
+```typescript
+// components/Header.tsx
+import { LanguageSwitcher } from './LanguageSwitcher';
+
+export function Header() {
+  // Previous implementation...
+  
+  return (
+    <header>
+      <nav>
+        {/* Navigation links using translated content */}
+        <Link href="/">{i('nav.home')}</Link>
+        <Link href="/about">{i('nav.about')}</Link>
+        <Link href="/reservation">{i('nav.booking')}</Link>
+        {/* Add other navigation items */}
+      </nav>
+      
+      {/* Add the language switcher */}
+      <LanguageSwitcher />
+    </header>
+  );
+}
+```
+
+5. Ensure all text in the header uses Paraglide's translation function:
+   - Replace any hardcoded text with translation keys
+   - Verify that all UI elements have proper translations in both languages
+   - Check for any static text that might have been missed
+
+6. Update the layout component to properly handle language changes:
+```typescript
+// app/layout.tsx
+import { Header } from '@/components/Header';
+import { getLanguageFromRequest } from '@/lib/locale-utils';
+
+export default function RootLayout({ 
+  children,
+  params
+}: {
+  children: React.ReactNode,
+  params: any
+}) {
+  // Get the language from the request
+  const lang = getLanguageFromRequest();
+  
+  return (
+    <html lang={lang}>
+      <body>
+        <Header />
+        <main>{children}</main>
+      </body>
+    </html>
+  );
+}
+```
+
+# Test Strategy:
+1. Manual testing:
+   - Test switching between Czech and English using the language switcher
+   - Verify that all header navigation items update immediately to the new language
+   - Check that the language switcher button text itself updates correctly
+   - Test on different browsers to ensure consistent behavior
+   - Verify that the header updates without requiring a full page refresh
+
+2. Component testing with React Testing Library:
+```typescript
+// __tests__/components/Header.test.tsx
+import { render, screen, fireEvent } from '@testing-library/react';
+import { Header } from '@/components/Header';
+import { setLanguageTag, runtimeLanguageTag } from '@/paraglide/runtime';
+import { vi } from 'vitest';
+
+// Mock the next/navigation
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    refresh: vi.fn(),
+    push: vi.fn()
+  })
+}));
+
+// Mock paraglide runtime
+vi.mock('@/paraglide/runtime', () => ({
+  sourceLanguageTag: vi.fn(() => 'en'),
+  runtimeLanguageTag: vi.fn(() => 'en'),
+  setLanguageTag: vi.fn()
+}));
+
+// Mock paraglide messages
+vi.mock('@/paraglide/messages', () => ({
+  i: (key: string) => {
+    const translations: Record<string, Record<string, string>> = {
+      en: {
+        'nav.home': 'Home',
+        'nav.about': 'About',
+        'nav.booking': 'Book a Table'
+      },
+      cs: {
+        'nav.home': 'Domů',
+        'nav.about': 'O nás',
+        'nav.booking': 'Rezervovat stůl'
+      }
+    };
+    
+    const lang = runtimeLanguageTag();
+    return translations[lang][key] || key;
+  }
+}));
+
+describe('Header Component', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+  
+  test('displays navigation in English by default', () => {
+    render(<Header />);
+    
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    expect(screen.getByText('About')).toBeInTheDocument();
+    expect(screen.getByText('Book a Table')).toBeInTheDocument();
+  });
+  
+  test('updates navigation text when language changes', () => {
+    render(<Header />);
+    
+    // Initial state - English
+    expect(screen.getByText('Home')).toBeInTheDocument();
+    
+    // Mock language change to Czech
+    (runtimeLanguageTag as any).mockReturnValue('cs');
+    
+    // Trigger language change event
+    window.dispatchEvent(new CustomEvent('languagechange'));
+    
+    // Should now show Czech text
+    expect(screen.getByText('Domů')).toBeInTheDocument();
+    expect(screen.getByText('O nás')).toBeInTheDocument();
+    expect(screen.getByText('Rezervovat stůl')).toBeInTheDocument();
+  });
+  
+  test('language switcher toggles between languages', () => {
+    render(<Header />);
+    
+    // Find language switcher button
+    const switcherButton = screen.getByText('Switch to Czech');
+    
+    // Click to switch to Czech
+    fireEvent.click(switcherButton);
+    
+    // Verify setLanguageTag was called with 'cs'
+    expect(setLanguageTag).toHaveBeenCalledWith('cs');
+    
+    // Mock the language has changed
+    (runtimeLanguageTag as any).mockReturnValue('cs');
+    
+    // Trigger language change event
+    window.dispatchEvent(new CustomEvent('languagechange'));
+    
+    // Button text should now be in Czech
+    expect(screen.getByText('Přepnout do angličtiny')).toBeInTheDocument();
+  });
+});
+```
+
+3. End-to-end testing with Playwright:
+```typescript
+// e2e/locale-switching.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('header updates when switching languages', async ({ page }) => {
+  // Go to the homepage
+  await page.goto('/');
+  
+  // Verify initial English navigation
+  await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'About' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Book a Table' })).toBeVisible();
+  
+  // Find and click the language switcher
+  await page.getByRole('button', { name: 'Switch to Czech' }).click();
+  
+  // Verify navigation is now in Czech
+  await expect(page.getByRole('link', { name: 'Domů' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'O nás' })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Rezervovat stůl' })).toBeVisible();
+  
+  // Switch back to English
+  await page.getByRole('button', { name: 'Přepnout do angličtiny' }).click();
+  
+  // Verify navigation is back in English
+  await expect(page.getByRole('link', { name: 'Home' })).toBeVisible();
+});
+```
+
+4. Verify correct cookie handling:
+```typescript
+// e2e/locale-cookie.spec.ts
+import { test, expect } from '@playwright/test';
+
+test('locale cookie is set correctly when switching languages', async ({ page }) => {
+  // Go to the homepage
+  await page.goto('/');
+  
+  // Switch to Czech
+  await page.getByRole('button', { name: 'Switch to Czech' }).click();
+  
+  // Check that the cookie was set correctly
+  const cookies = await page.context().cookies();
+  const localeCookie = cookies.find(c => c.name === 'NEXT_LOCALE');
+  
+  expect(localeCookie).toBeDefined();
+  expect(localeCookie?.value).toBe('cs');
+});
+```
