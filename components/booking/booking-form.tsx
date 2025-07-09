@@ -1,10 +1,4 @@
-import {
-  Calendar,
-  Clock,
-  Gamepad2,
-  MessageSquare,
-  Phone,
-} from "lucide-react";
+import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
 import { useFormStatus } from "react-dom";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,7 +43,11 @@ function SubmitButton() {
   );
 }
 
-export function BookingForm({ formAction, errors, formData }: BookingFormProps) {
+export function BookingForm({
+  formAction,
+  errors,
+  formData,
+}: BookingFormProps) {
   const getFieldError = (fieldName: string) => {
     const fieldErrors = errors[fieldName];
     return fieldErrors ? fieldErrors[0] : undefined;
@@ -141,7 +139,7 @@ export function BookingForm({ formAction, errors, formData }: BookingFormProps) 
                 {m["booking.contactTitle"]()}
               </CardTitle>
               <CardDescription>
-{m["booking.contactDescription"]()}
+                {m["booking.contactDescription"]()}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
