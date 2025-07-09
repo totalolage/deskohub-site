@@ -141,5 +141,20 @@
       },
       "general": "Prosím opravte chyby validace"
     }
+  },
+  "thankYou": {
+    "title": "Děkujeme za Vaši rezervaci!",
+    "confirmation": "Vaše rezervace byla přijata a zpracovává se.",
+    "bookingDetails": "Detaily rezervace",
+    "nextSteps": "Co dále?",
+    "nextStepsDescription": "Obdržíte potvrzovací e-mail do 24 hodin. Prosím zkontrolujte svou e-mailovou schránku včetně složky spam. Pokud potřebujete provést změny, kontaktujte nás okamžitě.",
+    "questions": "Potřebujete provést změny?",
+    "contactInfo": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci",
+    "backToHome": "Zpět domů",
+    "makeAnother": "Vytvořit další rezervaci"
+  },
+  "errors": {
+    "bookingNotFound": "Rezervace nenalezena",
+    "bookingNotFoundDescription": "Nemohli jsme najít rezervaci s tímto ID. Rezervace možná vypršela nebo odkaz je nesprávný."
   }
 }

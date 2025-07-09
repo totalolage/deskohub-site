@@ -141,5 +141,20 @@
       },
       "general": "Please fix the validation errors"
     }
+  },
+  "thankYou": {
+    "title": "Thank You for Your Reservation!",
+    "confirmation": "Your booking has been received and is being processed.",
+    "bookingDetails": "Reservation Details",
+    "nextSteps": "What's Next?",
+    "nextStepsDescription": "You will receive a confirmation email within 24 hours. Please check your inbox and spam folder. If you need to make changes, please contact us immediately.",
+    "questions": "Need to Make Changes?",
+    "contactInfo": "Feel free to contact us if you need to modify your reservation",
+    "backToHome": "Back to Home",
+    "makeAnother": "Make Another Reservation"
+  },
+  "errors": {
+    "bookingNotFound": "Booking Not Found",
+    "bookingNotFoundDescription": "We couldn't find a reservation with this ID. The booking may have expired or the link may be incorrect."
   }
 }
