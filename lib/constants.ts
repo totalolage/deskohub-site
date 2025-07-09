@@ -24,6 +24,9 @@ export const constants = {
       guestCount: 2,
       tablePreference: "any" as const,
       specialRequests: "",
+      name: "",
+      email: "",
+      phone: "",
     },
   },
 };
