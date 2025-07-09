@@ -10,7 +10,8 @@ export async function generateMetadata({ params }: Readonly<PropsWithLocale>) {
   };
 }
 
-export default async function ReservationPage() {
+export default async function ReservationPage({ params }: PropsWithLocale) {
+  setLocale((await params).lang);
   return (
     <main className="container mx-auto py-8 px-4">
       <div className="max-w-2xl mx-auto">
