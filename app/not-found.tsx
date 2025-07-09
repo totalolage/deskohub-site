@@ -1,11 +1,14 @@
 import Link from "next/link";
-import { m } from "@/i18n";
+import { baseLocale, m, setLocale } from "@/i18n";
 import RootLayout from "./rootLayout";
+import { getLocaleFromServer } from "@/i18n/utils/get-locale.server";
 
-export default function NotFound() {
+export default async function NotFoundPage() {
+  setLocale((await getLocaleFromServer()) ?? baseLocale);
+
   return (
     <RootLayout>
-      <div className="flex items-center justify-center bg-white">
+      <div className="flex items-center justify-center bg-white h-full">
         <div className="text-center">
           <h1 className="text-6xl font-bold text-gray-900 mb-4">404</h1>
           <h2 className="text-2xl font-semibold text-gray-700 mb-4">
