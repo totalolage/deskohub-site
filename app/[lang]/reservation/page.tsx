@@ -1,4 +1,4 @@
-import { BookingPageContent } from "@/components/booking/booking-page-content";
+import { BookingPageContentSafeAction } from "@/components/booking/booking-page-content-safe-action";
 import { m, setLocale } from "@/i18n";
 import type { PropsWithLocale } from "../route";
 
@@ -17,7 +17,7 @@ export default async function ReservationPage({ params }: PropsWithLocale) {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">{m["booking.pageTitle"]()}</h1>
         <p className="text-gray-600 mb-8">{m["booking.pageDescription"]()}</p>
-        <BookingPageContent />
+        <BookingPageContentSafeAction />
       </div>
     </main>
   );
