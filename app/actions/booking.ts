@@ -1,50 +1,15 @@
 "use server";
 
-import { z } from "zod";
 import { baseLocale, m, setLocale } from "@/i18n";
 import { extractFormData } from "@/lib/form-utils";
 import { getLocaleFromAction } from "@/i18n/utils/get-locale.action";
+import { getBookingSchema, type BookingFormData } from "@/lib/schemas/booking";
 
-// Define comprehensive validation schema with regular zod
-const getBookingSchema = async () => {
+// Server-side booking schema with localized messages
+const getServerBookingSchema = async () => {
   setLocale((await getLocaleFromAction()) ?? baseLocale);
-
-  return z.object({
-    datetime: z.coerce
-      .date()
-      .min(new Date(), m["booking.validation.datetime.mustBeFuture"]()),
-    guestCount: z
-      .string()
-      .transform((val) => parseInt(val, 10))
-      .pipe(
-        z
-          .number()
-          .min(1, m["booking.validation.guestCount.required"]())
-          .max(10, m["booking.validation.guestCount.maximum"]())
-          .int(m["booking.validation.guestCount.integer"]()),
-      ),
-    name: z
-      .string()
-      .min(2, m["booking.validation.name.minimum"]({ min: 2 }))
-      .max(50, m["booking.validation.name.maximum"]({ max: 50 })),
-    email: z
-      .string()
-      .email(m["booking.validation.email.invalid"]())
-      .max(100, m["booking.validation.email.maximum"]({ max: 100 })),
-    phone: z
-      .string()
-      .min(9, m["booking.validation.phone.minimum"]())
-      .max(20, m["booking.validation.phone.maximum"]())
-      .regex(/^[+]?[0-9\s\-()]+$/, m["booking.validation.phone.invalid"]()),
-    tablePreference: z.string().optional(),
-    specialRequests: z
-      .string()
-      .max(500, m["booking.validation.specialRequests.maximum"]({ max: 500 }))
-      .optional(),
-  });
+  return getBookingSchema();
 };
-// Type inference from Zod schema
-type BookingFormData = z.infer<Awaited<ReturnType<typeof getBookingSchema>>>;
 
 type ActionState = {
   success: boolean;
@@ -60,7 +25,7 @@ export async function submitBooking(
   formData: FormData,
 ): Promise<ActionState> {
   try {
-    const bookingSchema = await getBookingSchema();
+    const bookingSchema = await getServerBookingSchema();
 
     // Extract FormData and validate with zod
     const formDataObject = extractFormData(formData);

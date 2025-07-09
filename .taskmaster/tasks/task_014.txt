@@ -1,0 +1,231 @@
+# Task ID: 14
+# Title: Migrate Booking Form to React Hook Form with Shadcn/UI Components
+# Status: pending
+# Dependencies: 8, 10, 11
+# Priority: medium
+# Description: Replace the current useActionState implementation in the booking form with react-hook-form and shadcn/ui form components, integrated with next-safe-action for improved form validation UX, type safety, and better user experience.
+# Details:
+1. Install required dependencies:
+```bash
+npm install react-hook-form @hookform/resolvers zod @shadcn/ui
+```
+
+2. Create reusable form components using shadcn/ui:
+```typescript
+// components/ui/form.tsx
+import * as React from "react"
+import { Slot } from "@radix-ui/react-slot"
+import { Controller, FormProvider, useFormContext } from "react-hook-form"
+import { cn } from "@/lib/utils"
+import { Label } from "@/components/ui/label"
+
+// Form component implementation with shadcn/ui styling
+// Include FormField, FormItem, FormLabel, FormControl, FormDescription, FormMessage components
+```
+
+3. Update the booking form component to use react-hook-form:
+```typescript
+// components/BookingForm.tsx
+import { useForm } from "react-hook-form"
+import { zodResolver } from "@hookform/resolvers/zod"
+import { z } from "zod"
+import { submitBooking } from "@/app/actions/booking"
+import { useAction } from "next-safe-action/hooks"
+import { Button } from "@/components/ui/button"
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/components/ui/form"
+import { Input } from "@/components/ui/input"
+import { i } from "@/paraglide/messages"
+
+// Define form schema using Zod (reuse existing schema from booking.ts)
+const formSchema = z.object({
+  date: z.string().min(1, { message: i("validation.required") }),
+  time: z.string().min(1, { message: i("validation.required") }),
+  guestCount: z.number().min(1).max(20),
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  specialRequests: z.string().optional(),
+})
+
+export function BookingForm() {
+  // Initialize react-hook-form with Zod resolver
+  const form = useForm<z.infer<typeof formSchema>>({
+    resolver: zodResolver(formSchema),
+    defaultValues: {
+      date: "",
+      time: "",
+      guestCount: 2,
+      name: "",
+      email: "",
+      phone: "",
+      specialRequests: "",
+    },
+  })
+
+  // Use next-safe-action hook
+  const { execute, result, status } = useAction(submitBooking)
+
+  // Handle form submission
+  function onSubmit(values: z.infer<typeof formSchema>) {
+    execute(values)
+  }
+
+  return (
+    <Form {...form}>
+      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        {/* Date field */}
+        <FormField
+          control={form.control}
+          name="date"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>{i("booking.date")}</FormLabel>
+              <FormControl>
+                <Input type="date" {...field} />
+              </FormControl>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        {/* Implement remaining form fields with shadcn/ui components */}
+        
+        {/* Display server-side errors if any */}
+        {result.serverError && (
+          <div className="text-red-500">{result.serverError}</div>
+        )}
+        
+        {/* Submit button with loading state */}
+        <Button type="submit" disabled={status === "executing"}>
+          {status === "executing" ? i("booking.submitting") : i("booking.submit")}
+        </Button>
+      </form>
+    </Form>
+  )
+}
+```
+
+4. Update the server action to work with react-hook-form:
+```typescript
+// app/actions/booking.ts
+import { createSafeActionClient } from 'next-safe-action';
+import { z } from 'zod';
+import { i } from '@/paraglide/messages';
+import { getCurrentLocale } from '@/lib/locale-utils';
+
+// Create safe action client
+const actionClient = createSafeActionClient();
+
+// Define booking schema (reuse from the form)
+const bookingSchema = z.object({
+  date: z.string().min(1, { message: i("validation.required") }),
+  time: z.string().min(1, { message: i("validation.required") }),
+  guestCount: z.number().min(1).max(20),
+  name: z.string().min(2),
+  email: z.string().email(),
+  phone: z.string().optional(),
+  specialRequests: z.string().optional(),
+});
+
+// Create the server action
+export const submitBooking = actionClient.create(
+  bookingSchema,
+  async (data) => {
+    const locale = getCurrentLocale();
+    
+    try {
+      // Process booking logic
+      // ...
+      
+      return {
+        success: true,
+        message: i("booking.successMessage"),
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: i("booking.errorMessage"),
+      };
+    }
+  }
+);
+```
+
+5. Update the booking page to use the new form component:
+```typescript
+// app/[locale]/reservation/page.tsx
+import { BookingForm } from '@/components/BookingForm';
+import { i } from '@/paraglide/messages';
+
+export default function BookingPage() {
+  return (
+    <div className="container mx-auto py-12">
+      <h1 className="text-3xl font-bold mb-6">{i("booking.title")}</h1>
+      <BookingForm />
+    </div>
+  );
+}
+```
+
+6. Add appropriate styling for form components:
+```css
+/* Ensure proper styling for form components */
+/* This may be in your global CSS or component-specific styles */
+.form-error-message {
+  color: var(--color-error);
+  font-size: 0.875rem;
+  margin-top: 0.25rem;
+}
+
+/* Add responsive styling for form layout */
+@media (min-width: 768px) {
+  .form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
+  }
+}
+```
+
+# Test Strategy:
+1. Unit testing for form validation:
+   - Create test cases for each form field validation rule
+   - Test with valid inputs to ensure they pass validation
+   - Test with invalid inputs to verify proper error messages are displayed
+   - Verify that localized error messages are correctly generated
+
+2. Integration testing for form submission:
+   - Test the form submission process end-to-end
+   - Verify that the form data is correctly passed to the server action
+   - Test error handling for server-side validation failures
+   - Verify success and error states are properly displayed to the user
+
+3. Component testing:
+   - Test the BookingForm component with React Testing Library
+   - Verify form field rendering and interaction
+   - Test form reset functionality
+   - Verify form accessibility (labels, ARIA attributes, keyboard navigation)
+
+4. User experience testing:
+   - Verify that validation errors appear inline next to the relevant fields
+   - Test that validation happens in real-time as users type (not just on submit)
+   - Verify that the form maintains state between validation errors
+   - Test the loading state during form submission
+
+5. Accessibility testing:
+   - Verify that all form elements have proper labels and ARIA attributes
+   - Test keyboard navigation through the form
+   - Verify that error messages are properly associated with form fields
+   - Test with screen readers to ensure the form is accessible
+
+6. Cross-browser testing:
+   - Test the form in multiple browsers (Chrome, Firefox, Safari, Edge)
+   - Verify responsive behavior on different screen sizes
+   - Test on mobile devices to ensure touch-friendly interaction
