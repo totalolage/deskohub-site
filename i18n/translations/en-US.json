@@ -139,7 +139,11 @@
       "preOrders": {
         "maximum": "Pre-orders must be less than {max} characters"
       },
-      "general": "Please fix the validation errors"
+      "general": "Please fix the validation errors",
+      "personCount": {
+        "singular": "person",
+        "plural": "people"
+      }
     }
   },
   "thankYou": {
@@ -151,10 +155,54 @@
     "questions": "Need to Make Changes?",
     "contactInfo": "Feel free to contact us if you need to modify your reservation",
     "backToHome": "Back to Home",
-    "makeAnother": "Make Another Reservation"
+    "makeAnother": "Make Another Reservation",
+    "bookingId": "Booking ID: {id}"
   },
   "errors": {
     "bookingNotFound": "Booking Not Found",
-    "bookingNotFoundDescription": "We couldn't find a reservation with this ID. The booking may have expired or the link may be incorrect."
+    "bookingNotFoundDescription": "We couldn't find a reservation with this ID. The booking may have expired or the link may be incorrect.",
+    "pageNotFound": "Page Not Found",
+    "pageNotFoundDescription": "The page you are looking for doesn't exist.",
+    "goHome": "Go Home",
+    "submissionError": "An error occurred while submitting your booking",
+    "contactError": "If you believe this is an error, please contact us with your booking details."
+  },
+  "altText": {
+    "boardGames": "Board games",
+    "gamingArea": "Gaming area",
+    "barAtmosphere": "Bar atmosphere",
+    "barLocation": "Bar location",
+    "heroImage": "Hero image",
+    "deskohub": "Deskohub"
+  },
+  "placeholders": {
+    "fullName": "John Doe",
+    "email": "john@example.com",
+    "phone": "+420 123 456 789",
+    "guestCount": "Number of guests"
+  },
+  "descriptions": {
+    "dateTime": "Choose your preferred date and time",
+    "tableType": "Choose the type of table that suits your needs",
+    "specialRequests": "Any special requests or notes?",
+    "confirmationTime": "We'll confirm your booking within 24 hours",
+    "keepInfo": "Please keep this information for your records"
+  },
+  "plurals": {
+    "person": "person",
+    "people": "people"
+  },
+  "accessibility": {
+    "errorCross": "Error cross",
+    "successCheckmark": "Success checkmark"
+  },
+  "labels": {
+    "email": "Email",
+    "phone": "Phone",
+    "bookingId": "Booking ID"
+  },
+  "reservationMetadata": {
+    "title": "Reservation Confirmation | Deskohub",
+    "description": "Thank you for your reservation at Deskohub"
   }
 }

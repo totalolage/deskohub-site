@@ -21,7 +21,7 @@ export function Location() {
           <div className="rounded-lg overflow-hidden">
             <Image
               src={placeholderImage}
-              alt="Bar location"
+              alt={m["altText.barLocation"]()}
               width={600}
               height={400}
               className="w-full h-full object-cover"

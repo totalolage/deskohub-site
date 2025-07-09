@@ -21,7 +21,7 @@ export default function BookingNotFound() {
               stroke="currentColor"
               viewBox="0 0 24 24"
               role="img"
-              aria-label="Error cross"
+              aria-label={m["accessibility.errorCross"]()}
             >
               <path
                 strokeLinecap="round"
@@ -40,10 +40,7 @@ export default function BookingNotFound() {
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <p className="text-gray-600">
-              If you believe this is an error, please contact us with your
-              booking details.
-            </p>
+            <p className="text-gray-600">{m["errors.contactError"]()}</p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Button asChild>
                 <Link href="/reservation">{m["thankYou.makeAnother"]()}</Link>

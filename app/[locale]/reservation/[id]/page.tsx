@@ -17,8 +17,8 @@ import { m } from "@/i18n";
 import type { RouteProps_locale_id } from "./route";
 
 export const metadata: Metadata = {
-  title: "Reservation Confirmation | Deskohub",
-  description: "Thank you for your reservation at Deskohub",
+  title: m["reservationMetadata.title"](),
+  description: m["reservationMetadata.description"](),
 };
 
 export default async function ReservationConfirmationPage({
@@ -62,7 +62,7 @@ export default async function ReservationConfirmationPage({
             stroke="currentColor"
             viewBox="0 0 24 24"
             role="img"
-            aria-label="Success checkmark"
+            aria-label={m["accessibility.successCheckmark"]()}
           >
             <path
               strokeLinecap="round"
@@ -77,7 +77,7 @@ export default async function ReservationConfirmationPage({
         </h1>
         <p className="text-gray-600 text-lg">{m["thankYou.confirmation"]()}</p>
         <Badge variant="outline" className="mt-4 px-4 py-2">
-          Booking ID: {id}
+          {m["thankYou.bookingId"]({ id })}
         </Badge>
       </div>
 
@@ -88,9 +88,7 @@ export default async function ReservationConfirmationPage({
             <Calendar className="w-5 h-5 text-green-600" />
             {m["thankYou.bookingDetails"]()}
           </CardTitle>
-          <CardDescription>
-            Please keep this information for your records
-          </CardDescription>
+          <CardDescription>{m["descriptions.keepInfo"]()}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -120,7 +118,9 @@ export default async function ReservationConfirmationPage({
                   </p>
                   <p className="text-gray-600">
                     {booking.guestCount}{" "}
-                    {booking.guestCount === 1 ? "person" : "people"}
+                    {booking.guestCount === 1
+                      ? m["plurals.person"]()
+                      : m["plurals.people"]()}
                   </p>
                 </div>
               </div>
@@ -210,14 +210,14 @@ export default async function ReservationConfirmationPage({
             <div className="flex items-center gap-3">
               <Mail className="w-5 h-5 text-green-600" />
               <div>
-                <p className="font-medium">Email</p>
+                <p className="font-medium">{m["labels.email"]()}</p>
                 <p className="text-green-600">contact@deskohub.com</p>
               </div>
             </div>
             <div className="flex items-center gap-3">
               <Phone className="w-5 h-5 text-green-600" />
               <div>
-                <p className="font-medium">Phone</p>
+                <p className="font-medium">{m["labels.phone"]()}</p>
                 <p className="text-green-600">+420 123 456 789</p>
               </div>
             </div>

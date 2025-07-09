@@ -15,7 +15,12 @@ export function Header() {
     <header className="bg-black text-white px-6 sticky top-0 z-20 h-[var(--header-height)] flex items-center justify-center">
       <div className="flex items-center justify-between max-w-7xl w-full gap-x-8">
         <Link href="/">
-          <Image src={logoImage} alt="Deskohub" width={100} height={80} />
+          <Image
+            src={logoImage}
+            alt={m["altText.deskohub"]()}
+            width={100}
+            height={80}
+          />
         </Link>
         <nav className="hidden md:flex space-x-8">
           <Link href="/" className="hover:text-green-400 transition-colors">

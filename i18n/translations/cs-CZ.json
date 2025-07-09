@@ -139,7 +139,11 @@
       "preOrders": {
         "maximum": "Předobjednávky musí mít méně než {max} znaků"
       },
-      "general": "Prosím opravte chyby validace"
+      "general": "Prosím opravte chyby validace",
+      "personCount": {
+        "singular": "osoba",
+        "plural": "lidé"
+      }
     }
   },
   "thankYou": {
@@ -151,10 +155,54 @@
     "questions": "Potřebujete provést změny?",
     "contactInfo": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci",
     "backToHome": "Zpět domů",
-    "makeAnother": "Vytvořit další rezervaci"
+    "makeAnother": "Vytvořit další rezervaci",
+    "bookingId": "ID rezervace: {id}"
   },
   "errors": {
     "bookingNotFound": "Rezervace nenalezena",
-    "bookingNotFoundDescription": "Nemohli jsme najít rezervaci s tímto ID. Rezervace možná vypršela nebo odkaz je nesprávný."
+    "bookingNotFoundDescription": "Nemohli jsme najít rezervaci s tímto ID. Rezervace možná vypršela nebo odkaz je nesprávný.",
+    "pageNotFound": "Stránka nenalezena",
+    "pageNotFoundDescription": "Stránka, kterou hledáte, neexistuje.",
+    "goHome": "Zpět domů",
+    "submissionError": "Při odesílání vaší rezervace došlo k chybě",
+    "contactError": "Pokud si myslíte, že se jedná o chybu, kontaktujte nás prosím s údaji o vaší rezervaci."
+  },
+  "altText": {
+    "boardGames": "Deskové hry",
+    "gamingArea": "Herní oblast",
+    "barAtmosphere": "Atmosféra baru",
+    "barLocation": "Umístění baru",
+    "heroImage": "Hlavní obrázek",
+    "deskohub": "Deskohub"
+  },
+  "placeholders": {
+    "fullName": "Jan Novák",
+    "email": "jan@example.com",
+    "phone": "+420 123 456 789",
+    "guestCount": "Počet hostů"
+  },
+  "descriptions": {
+    "dateTime": "Vyberte si preferované datum a čas",
+    "tableType": "Vyberte typ stolu, který vám vyhovuje",
+    "specialRequests": "Máte nějaké speciální požadavky nebo poznámky?",
+    "confirmationTime": "Vaši rezervaci potvrdíme do 24 hodin",
+    "keepInfo": "Prosím uchováte si tyto informace pro vaše záznamy"
+  },
+  "plurals": {
+    "person": "osoba",
+    "people": "lidé"
+  },
+  "accessibility": {
+    "errorCross": "Chybový křížek",
+    "successCheckmark": "Potvrzovací značka"
+  },
+  "labels": {
+    "email": "E-mail",
+    "phone": "Telefon",
+    "bookingId": "ID rezervace"
+  },
+  "reservationMetadata": {
+    "title": "Potvrzení rezervace | Deskohub",
+    "description": "Děkujeme za vaši rezervaci v Deskohub"
   }
 }

@@ -5,7 +5,6 @@ import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import styles from "./booking-form.module.css";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -39,6 +38,7 @@ import type { BookingFormData } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { constants } from "@/lib/constants";
+import styles from "./booking-form.module.css";
 
 export function BookingForm() {
   const locale = useLocale();
@@ -53,9 +53,7 @@ export function BookingForm() {
   const { execute, isExecuting } = useAction(submitBooking, {
     onError: ({ error }) => {
       // Show server error as toast
-      toast.error(
-        error.serverError || "An error occurred while submitting your booking"
-      );
+      toast.error(error.serverError || m["errors.submissionError"]());
     },
     onSettled: ({ result }) => {
       // Handle validation errors by setting them on the form
@@ -104,9 +102,7 @@ export function BookingForm() {
                 <Calendar className="w-5 h-5 text-green-500" />
                 {m["booking.dateLabel"]()} & {m["booking.timeLabel"]()}
               </CardTitle>
-              <CardDescription>
-                Choose your preferred date and time
-              </CardDescription>
+              <CardDescription>{m["descriptions.dateTime"]()}</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {/* Date and Time */}
@@ -171,7 +167,9 @@ export function BookingForm() {
                     >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Number of guests" />
+                          <SelectValue
+                            placeholder={m["placeholders.guestCount"]()}
+                          />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -183,7 +181,10 @@ export function BookingForm() {
                             i + constants.booking.validation.guestCount.min
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
-                            {num} {num === 1 ? "person" : "people"}
+                            {num}{" "}
+                            {num === 1
+                              ? m["plurals.person"]()
+                              : m["plurals.people"]()}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -216,7 +217,7 @@ export function BookingForm() {
                     <FormLabel>{m["booking.nameLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="John Doe"
+                        placeholder={m["placeholders.fullName"]()}
                         variant={fieldState.error ? "error" : "default"}
                         {...field}
                       />
@@ -236,7 +237,7 @@ export function BookingForm() {
                     <FormControl>
                       <Input
                         type="email"
-                        placeholder="john@example.com"
+                        placeholder={m["placeholders.email"]()}
                         variant={fieldState.error ? "error" : "default"}
                         {...field}
                       />
@@ -256,7 +257,7 @@ export function BookingForm() {
                     <FormControl>
                       <Input
                         type="tel"
-                        placeholder="+420 123 456 789"
+                        placeholder={m["placeholders.phone"]()}
                         variant={fieldState.error ? "error" : "default"}
                         {...field}
                       />
@@ -275,9 +276,7 @@ export function BookingForm() {
                 <Gamepad2 className="w-5 h-5 text-green-500" />
                 {m["booking.tablePreferenceLabel"]()}
               </CardTitle>
-              <CardDescription>
-                Choose the type of table that suits your needs
-              </CardDescription>
+              <CardDescription>{m["descriptions.tableType"]()}</CardDescription>
             </CardHeader>
             <CardContent>
               <FormField
@@ -326,7 +325,9 @@ export function BookingForm() {
                 <MessageSquare className="w-5 h-5 text-green-500" />
                 {m["booking.specialRequestsLabel"]()}
               </CardTitle>
-              <CardDescription>Any special requests or notes?</CardDescription>
+              <CardDescription>
+                {m["descriptions.specialRequests"]()}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <FormField
@@ -375,7 +376,7 @@ export function BookingForm() {
               {isExecuting ? m["booking.submitting"]() : m["booking.submit"]()}
             </Button>
             <p className="text-sm text-gray-500 mt-2">
-              We'll confirm your booking within 24 hours
+              {m["descriptions.confirmationTime"]()}
             </p>
           </div>
         </form>

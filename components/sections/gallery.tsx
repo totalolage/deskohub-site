@@ -10,7 +10,7 @@ export function Gallery() {
           <div className="rounded-full overflow-hidden aspect-square">
             <Image
               src={placeholderImage}
-              alt="Board games"
+              alt={m["altText.boardGames"]()}
               width={300}
               height={300}
               className="w-full h-full object-cover"
@@ -19,7 +19,7 @@ export function Gallery() {
           <div className="rounded-full overflow-hidden aspect-square">
             <Image
               src={placeholderImage}
-              alt="Gaming area"
+              alt={m["altText.gamingArea"]()}
               width={300}
               height={300}
               className="w-full h-full object-cover"
@@ -28,7 +28,7 @@ export function Gallery() {
           <div className="rounded-full overflow-hidden aspect-square">
             <Image
               src={placeholderImage}
-              alt="Bar atmosphere"
+              alt={m["altText.barAtmosphere"]()}
               width={300}
               height={300}
               className="w-full h-full object-cover"

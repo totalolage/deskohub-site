@@ -10,7 +10,7 @@ export function Hero() {
         src={heroImage}
         fill
         objectFit="cover"
-        alt="Hero image"
+        alt={m["altText.heroImage"]()}
       />
       <div className="relative z-10 flex items-center justify-center h-full text-center text-white px-6">
         <div className="max-w-4xl">
