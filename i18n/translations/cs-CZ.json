@@ -259,5 +259,14 @@
   "reservationMetadata": {
     "title": "Potvrzení rezervace | Deskohub",
     "description": "Děkujeme za vaši rezervaci v Deskohub"
+  },
+  "notFound": {
+    "title": "Stránka nenalezena",
+    "subtitle": "Vypadá to, že jste hodili nesprávnou kombinací!",
+    "description": "Zkuste to znovu nebo se vraťte na hlavní stránku pro další hru.",
+    "homeButton": "Domů",
+    "rollAgainButton": "Hodit znovu",
+    "rollingText": "Házím...",
+    "footerMessage": "Připojte se k nám na další hru v Deskohub!"
   }
 }

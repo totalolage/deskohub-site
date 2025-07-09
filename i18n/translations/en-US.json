@@ -254,5 +254,14 @@
   "reservationMetadata": {
     "title": "Reservation Confirmation | Deskohub",
     "description": "Thank you for your reservation at Deskohub"
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "subtitle": "Oops! You rolled the wrong combination!",
+    "description": "It looks like you rolled the wrong combination! Try again or return to the home page for another game.",
+    "homeButton": "Home",
+    "rollAgainButton": "Roll Again",
+    "rollingText": "Rolling...",
+    "footerMessage": "Join us for another game at Deskohub!"
   }
 }

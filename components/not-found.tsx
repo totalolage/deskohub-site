@@ -16,8 +16,12 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import logoImage from "@/assets/images/logo.png";
+import { m, setLocale } from "@/i18n";
+import { useLocale } from "@/i18n/utils/use-locale";
 
 export default function NotFoundPage() {
+  setLocale(useLocale(), { reload: false });
+
   const [diceRoll, setDiceRoll] = useState(4);
   const [isRolling, setIsRolling] = useState(false);
 
@@ -52,7 +56,7 @@ export default function NotFoundPage() {
           <div className="flex justify-center">
             <Image
               src={logoImage}
-              alt="Deskohub Logo"
+              alt={m["altText.deskohub"]()}
               width={200}
               height={80}
               className="object-contain"
@@ -75,21 +79,17 @@ export default function NotFoundPage() {
               4<span className="text-red-500">0</span>4
             </h1>
             <h2 className="text-2xl font-semibold text-gray-700">
-              Ups! Stránka nenalezena
+              {m["notFound.title"]()}
             </h2>
-            <p className="text-lg text-gray-600">Oops! Page not found</p>
           </div>
 
           {/* Fun Message */}
           <div className="bg-gradient-to-r from-red-100 to-green-100 rounded-lg p-6 space-y-3">
             <p className="text-gray-700 font-medium">
-              🎲 Vypadá to, že jste hodili nesprávnou kombinací!
+              🎲 {m["notFound.subtitle"]()}
             </p>
             <p className="text-gray-600 text-sm">
-              It looks like you rolled the wrong combination!
-            </p>
-            <p className="text-gray-600 text-sm">
-              Zkuste to znovu nebo se vraťte na hlavní stránku pro další hru.
+              {m["notFound.description"]()}
             </p>
           </div>
 
@@ -102,7 +102,7 @@ export default function NotFoundPage() {
             >
               <Link href="/">
                 <Home className="w-5 h-5 mr-2" />
-                Domů / Home
+                {m["notFound.homeButton"]()}
               </Link>
             </Button>
 
@@ -116,17 +116,14 @@ export default function NotFoundPage() {
               <RotateCcw
                 className={`w-5 h-5 mr-2 ${isRolling ? "animate-spin" : ""}`}
               />
-              {isRolling ? "Házím..." : "Hodit znovu / Roll Again"}
+              {isRolling ? m["notFound.rollingText"]() : m["notFound.rollAgainButton"]()}
             </Button>
           </div>
 
           {/* Footer Message */}
           <div className="pt-6 border-t border-gray-200">
             <p className="text-sm text-gray-500">
-              🎯 Připojte se k nám na další hru v Deskohub!
-            </p>
-            <p className="text-xs text-gray-400 mt-1">
-              Join us for another game at Deskohub!
+              🎯 {m["notFound.footerMessage"]()}
             </p>
           </div>
         </CardContent>
