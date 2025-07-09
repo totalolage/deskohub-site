@@ -1,8 +1,32 @@
 {
   "$schema": "https://inlang.com/schema/project-settings",
-  "sourceLanguageTag": "cs",
-  "languageTags": ["cs", "en"],
-  "strategy": ["url", "baseLocale"],
+  "baseLocale": "cs",
+  "locales": [
+    "cs",
+    "en"
+  ],
+  "strategy": [
+    "url",
+    "cookie",
+    "preferredLanguage",
+    "baseLocale"
+  ],
+  "cookieName": "NEXT_LOCALE",
+  "urlPatterns": [
+    {
+      "pattern": "https://:domain(.*)/:path*",
+      "localized": [
+        [
+          "cs",
+          "https://:domain(.*)/cs/:path*"
+        ],
+        [
+          "en",
+          "https://:domain(.*)/:path*"
+        ]
+      ]
+    }
+  ],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-json@4/dist/index.js",
     "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-empty-pattern@1/dist/index.js",

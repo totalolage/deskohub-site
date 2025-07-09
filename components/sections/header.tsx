@@ -1,20 +1,22 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import logoImage from "@/assets/images/logo.png";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
-import { m } from "@/i18n";
-import Link from "next/link";
-import { useLocale } from "@/i18n/translations/use-locale";
+import { m, setLocale } from "@/i18n";
+import { useLocale } from "@/i18n/utils/use-locale";
 
 export function Header() {
-  // Force re-render when locale changes
-  const currentLocale = useLocale();
+  setLocale(useLocale(), { reload: false });
+
   return (
     <header className="bg-black text-white px-6 sticky top-0 z-20 h-[var(--header-height)] flex items-center justify-center">
-      <div className="flex items-center justify-between max-w-7xl w-full">
-        <Image src={logoImage} alt="Deskohub" width={100} height={80} />
+      <div className="flex items-center justify-between max-w-7xl w-full gap-x-8">
+        <Link href="/">
+          <Image src={logoImage} alt="Deskohub" width={100} height={80} />
+        </Link>
         <nav className="hidden md:flex space-x-8">
           <Link href="/" className="hover:text-green-400 transition-colors">
             {m["nav.home"]()}
@@ -25,7 +27,10 @@ export function Header() {
           >
             {m["nav.boardGames"]()}
           </Link>
-          <Link href="/gallery" className="hover:text-green-400 transition-colors">
+          <Link
+            href="/gallery"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.gallery"]()}
           </Link>
           <Link href="/menu" className="hover:text-green-400 transition-colors">
@@ -37,15 +42,20 @@ export function Header() {
           >
             {m["nav.trainingRoom"]()}
           </Link>
-          <Link href="/contact" className="hover:text-green-400 transition-colors">
+          <Link
+            href="/contact"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.contact"]()}
           </Link>
         </nav>
         <div className="flex items-center space-x-4">
           <LanguageSwitcher />
-          <Button className="bg-green-500 hover:bg-green-600 text-white">
-            {m["buttons.reservation"]()}
-          </Button>
+          <Link href="/reservation">
+            <Button className="bg-green-500 hover:bg-green-600 text-white">
+              {m["buttons.reservation"]()}
+            </Button>
+          </Link>
         </div>
       </div>
     </header>

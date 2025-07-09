@@ -10,7 +10,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { type Locale, locales, m, setLocale } from "@/i18n";
-import { useLocale } from "@/i18n/translations/use-locale";
+import { useLocale } from "@/i18n/utils/use-locale";
 
 export function LanguageSwitcher() {
   const router = useRouter();
@@ -47,7 +47,7 @@ export function LanguageSwitcher() {
           className="text-white hover:text-green-400 hover:bg-white/10"
         >
           <Languages className="h-4 w-4 mr-2" />
-          {m.language({}, { locale: currentLocale })}
+          {m.language({})}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">

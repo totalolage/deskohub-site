@@ -1,8 +1,8 @@
-import { m, setLocale } from "@/i18n";
 import { BookingPageContent } from "@/components/booking/booking-page-content";
-import type { PropsWithParams } from "../route";
+import { m, setLocale } from "@/i18n";
+import type { PropsWithLocale } from "../route";
 
-export async function generateMetadata({ params }: Readonly<PropsWithParams>) {
+export async function generateMetadata({ params }: Readonly<PropsWithLocale>) {
   const { lang } = await params;
   setLocale(lang, { reload: false });
 
@@ -12,10 +12,7 @@ export async function generateMetadata({ params }: Readonly<PropsWithParams>) {
   };
 }
 
-export default async function ReservationPage({ params }: PropsWithParams) {
-  const { lang } = await params;
-  setLocale(lang, { reload: false });
-
+export default async function ReservationPage({ params }: PropsWithLocale) {
   return (
     <main className="container mx-auto py-8 px-4">
       <div className="max-w-2xl mx-auto">

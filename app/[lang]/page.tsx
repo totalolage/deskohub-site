@@ -5,9 +5,9 @@ import { Hero } from "@/components/sections/hero";
 import { Location } from "@/components/sections/location";
 import { Stats } from "@/components/sections/stats";
 import { setLocale } from "@/i18n";
-import type { PropsWithParams } from "./route";
+import type { PropsWithLocale } from "./route";
 
-export default async function Component({ params }: PropsWithParams) {
+export default async function Component({ params }: PropsWithLocale) {
   const { lang } = await params;
   setLocale(lang, { reload: false });
 

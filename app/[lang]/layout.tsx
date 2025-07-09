@@ -1,12 +1,20 @@
-import type { PropsWithChildren } from "react";
-import { locales, m, setLocale } from "@/i18n";
-import type { PropsWithParams } from "./route";
+import { cache, type PropsWithChildren } from "react";
+import {
+  assertIsLocale,
+  baseLocale,
+  locales,
+  m,
+  overwriteGetLocale,
+  setLocale,
+} from "@/i18n";
+import type { PropsWithLocale } from "./route";
+import RootLayout from "../rootLayout";
 
 export async function generateStaticParams() {
   return locales.map((lang) => ({ lang }));
 }
 
-export async function generateMetadata({ params }: Readonly<PropsWithParams>) {
+export async function generateMetadata({ params }: Readonly<PropsWithLocale>) {
   const { lang } = await params;
   setLocale(lang, { reload: false });
 
@@ -17,6 +25,19 @@ export async function generateMetadata({ params }: Readonly<PropsWithParams>) {
   };
 }
 
-export default function LangLayout({ children }: Readonly<PropsWithChildren>) {
-  return children;
+// scopes the locale per request
+let ssrLocale = cache(() => ({
+  locale: baseLocale,
+}));
+
+// overwrite the getLocale function to use the locale from the request
+overwriteGetLocale(() => assertIsLocale(ssrLocale().locale));
+
+export default async function LangLayout({
+  children,
+  params,
+}: Readonly<PropsWithChildren<PropsWithLocale>>) {
+  ssrLocale().locale = (await params).lang;
+
+  return <RootLayout>{children}</RootLayout>;
 }

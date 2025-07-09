@@ -1,47 +1,17 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { baseLocale, type Locale, locales } from "./i18n";
-
-// Get the preferred locale from Accept-Language header or other sources
-function getLocale(request: NextRequest): string {
-  // Check Accept-Language header
-  const acceptLanguage = request.headers.get("accept-language");
-  if (acceptLanguage) {
-    const languages = acceptLanguage
-      .split(",")
-      .map((lang) => lang.split(";")[0].trim().split("-")[0]);
-
-    for (const lang of languages) {
-      if (locales.includes(lang as Locale)) {
-        return lang;
-      }
-    }
-  }
-
-  return baseLocale;
-}
+import { getLocaleFromPathname } from "./i18n/utils/get-locale-from-pathname";
+import { getLocaleFromRequest } from "./i18n/utils/get-locale.request";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Handle root path by redirecting to user's preferred language
-  if (pathname === "/") {
-    const locale = getLocale(request);
-
-    // If user prefers Czech (default), redirect to /cs for consistency
-    // If user prefers another language, redirect to that language path
-    const redirectUrl = new URL(`/${locale}`, request.url);
-    return NextResponse.redirect(redirectUrl);
-  }
-
   // Check if pathname already has a locale
-  const pathnameHasLocale = locales.some(
-    (locale) => pathname.startsWith(`/${locale}/`) || pathname === `/${locale}`
-  );
+  const pathnameHasLocale = !!getLocaleFromPathname(pathname);
   if (pathnameHasLocale) return NextResponse.next();
 
   // Redirect if there is no locale in the pathname
-  const locale = getLocale(request);
+  const locale = getLocaleFromRequest(request);
 
   // For any path without locale, redirect to the user's preferred language
   const redirectUrl = new URL(`/${locale}${pathname}`, request.url);
