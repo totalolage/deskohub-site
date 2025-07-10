@@ -13,6 +13,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { cn } from "@/lib/utils/cn";
 import logoImage from "@/assets/images/logo.png";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,12 +66,17 @@ export default function NotFoundPage() {
 
           {/* Animated Dice */}
           <div className="flex justify-center">
-            <div
-              className={`transition-transform duration-200 ${isRolling ? "animate-spin" : "hover:scale-110"} cursor-pointer`}
+            <button
+              type="button"
+              className={cn(
+                "transition-transform duration-200 cursor-pointer bg-transparent border-none p-0",
+                isRolling ? "animate-spin" : "hover:scale-110"
+              )}
               onClick={rollDice}
+              aria-label="Roll dice for a random suggestion"
             >
               <DiceIcon size={80} className="text-red-500 drop-shadow-lg" />
-            </div>
+            </button>
           </div>
 
           {/* 404 Message */}
