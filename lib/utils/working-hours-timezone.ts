@@ -55,14 +55,14 @@ export function getLocalTimeInRestaurantTimezone(date: Date): {
  */
 export function isReservationWithinWorkingHours(
   datetime: Date,
-  durationHours: number,
+  durationHours: number
 ): boolean {
   // Get the start time in restaurant timezone
   const startTime = getLocalTimeInRestaurantTimezone(datetime);
 
   // Calculate end time
   const endDateTime = new Date(
-    datetime.getTime() + durationHours * 60 * 60 * 1000,
+    datetime.getTime() + durationHours * 60 * 60 * 1000
   );
   const endTime = getLocalTimeInRestaurantTimezone(endDateTime);
 

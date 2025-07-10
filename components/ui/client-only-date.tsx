@@ -53,7 +53,9 @@ export function ClientOnlyDate({
 
   return (
     <span className={className} suppressHydrationWarning>
-      {formattedDate}{separator}{formattedTime}
+      {formattedDate}
+      {separator}
+      {formattedTime}
     </span>
   );
 }

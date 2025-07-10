@@ -17,13 +17,13 @@ export function formatDate(
   options: Intl.DateTimeFormatOptions = {}
 ): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
-  
+
   // Always use explicit timezone to ensure consistency
   const formatter = new Intl.DateTimeFormat(locale, {
     timeZone: constants.workingHours.timezone,
     ...options,
   });
-  
+
   return formatter.format(dateObj);
 }
 
@@ -61,7 +61,7 @@ export function formatBookingDate(date: Date | string, locale: string): string {
  */
 export function formatDateTimeForInput(date: Date | string): string {
   const dateObj = typeof date === "string" ? new Date(date) : date;
-  
+
   // Format in the restaurant's timezone
   const formatter = new Intl.DateTimeFormat("en-US", {
     timeZone: constants.workingHours.timezone,
@@ -72,16 +72,17 @@ export function formatDateTimeForInput(date: Date | string): string {
     minute: "2-digit",
     hour12: false,
   });
-  
+
   const parts = formatter.formatToParts(dateObj);
-  const getPart = (type: string) => parts.find(p => p.type === type)?.value || "";
-  
+  const getPart = (type: string) =>
+    parts.find((p) => p.type === type)?.value || "";
+
   const year = getPart("year");
   const month = getPart("month");
   const day = getPart("day");
   const hour = getPart("hour");
   const minute = getPart("minute");
-  
+
   return `${year}-${month}-${day}T${hour}:${minute}`;
 }
 
