@@ -13,12 +13,12 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { cn } from "@/lib/utils/cn";
 import logoImage from "@/assets/images/logo.png";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
+import { cn } from "@/lib/utils";
 
 export default function NotFoundPage() {
   setLocale(useLocale(), { reload: false });

@@ -1,0 +1,127 @@
+# Task ID: 25
+# Title: Fix Pluralization Issues in i18n Translation Files
+# Status: pending
+# Dependencies: 17, 10
+# Priority: medium
+# Description: Correct pluralization handling in validation messages for Czech and English languages, ensuring proper grammatical forms for numeric values like "1 znak" vs. "2 znaky" in Czech and "1 character" vs. "2 characters" in English.
+# Details:
+## Implementation Steps
+
+1. **Analyze Current Translation Files**:
+   - Review all validation messages in `project.inlang/messages` that contain numeric placeholders
+   - Identify messages using `{min}`, `{max}`, or other numeric values
+   - Document all instances requiring pluralization fixes
+
+2. **Update MessageFormat Syntax**:
+   ```typescript
+   // Example of current problematic message in en.json
+   "validation.minLength": "Must be at least {min} characters"
+   
+   // Updated with proper pluralization using MessageFormat 2.0
+   "validation.minLength": "Must be at least {min} {min, plural, one {character} other {characters}}"
+   ```
+
+3. **Implement Czech Pluralization Rules**:
+   - Czech has more complex pluralization with three forms:
+     - one (1)
+     - few (2-4)
+     - many (5+)
+   
+   ```typescript
+   // Example for Czech (cs.json)
+   "validation.minLength": "Musí mít alespoň {min} {min, plural, one {znak} few {znaky} other {znaků}}"
+   ```
+
+4. **Update All Affected Messages**:
+   - Common validation messages to fix:
+     - `validation.minLength`
+     - `validation.maxLength`
+     - `validation.exactLength`
+     - `validation.minItems`
+     - `validation.maxItems`
+     - Any custom messages with numeric placeholders
+
+5. **Create Helper Functions** (if needed):
+   ```typescript
+   // lib/i18n/pluralization.ts
+   export function getCharacterPlural(count: number, locale: string): string {
+     if (locale === 'cs') {
+       return count === 1 ? 'znak' : (count >= 2 && count <= 4) ? 'znaky' : 'znaků';
+     } else {
+       // English
+       return count === 1 ? 'character' : 'characters';
+     }
+   }
+   ```
+
+6. **Update Zod Validation Schemas**:
+   - Ensure all validation error messages use the updated pluralization syntax
+   - Example:
+   ```typescript
+   // app/actions/booking.ts
+   const bookingSchema = z.object({
+     name: z.string().min(2, {
+       message: i('validation.minLength', { min: 2 })
+     }),
+     // Other fields...
+   });
+   ```
+
+7. **Test All Affected Messages**:
+   - Create a test page or component that displays validation errors with different numeric values
+   - Verify correct pluralization for all numeric ranges in both languages
+
+# Test Strategy:
+## Test Strategy
+
+1. **Create Comprehensive Test Cases**:
+   - Develop test cases for each affected validation message
+   - Test with different numeric values (0, 1, 2, 3, 4, 5, 11, 21) to verify correct pluralization forms
+   - Test in both Czech and English locales
+
+2. **Unit Testing**:
+   ```typescript
+   // tests/i18n/pluralization.test.ts
+   import { describe, it, expect } from 'vitest';
+   import { i } from '@/paraglide/messages';
+   
+   describe('Pluralization in validation messages', () => {
+     it('correctly pluralizes minLength message in English', () => {
+       // Set locale to English
+       // This will depend on how your test environment handles locale switching
+       
+       expect(i('validation.minLength', { min: 1 })).toContain('1 character');
+       expect(i('validation.minLength', { min: 2 })).toContain('2 characters');
+     });
+     
+     it('correctly pluralizes minLength message in Czech', () => {
+       // Set locale to Czech
+       
+       expect(i('validation.minLength', { min: 1 })).toContain('1 znak');
+       expect(i('validation.minLength', { min: 2 })).toContain('2 znaky');
+       expect(i('validation.minLength', { min: 5 })).toContain('5 znaků');
+     });
+     
+     // Additional tests for other validation messages
+   });
+   ```
+
+3. **Manual Testing**:
+   - Create a test form with validation rules that trigger different numeric messages
+   - Test submission with invalid values to verify correct error messages
+   - Test in both Czech and English locales
+   - Verify proper pluralization for all numeric ranges
+
+4. **Visual Regression Testing**:
+   - Take screenshots of validation error messages in both languages
+   - Compare with expected results to ensure correct formatting
+
+5. **Edge Case Testing**:
+   - Test with zero values (if applicable)
+   - Test with large numbers
+   - Test with decimal numbers (if applicable)
+   - Test with negative numbers (if applicable)
+
+6. **Integration Testing**:
+   - Verify that the pluralization works correctly when integrated with the Zod validation system
+   - Test real form submissions in the application to ensure proper error message display

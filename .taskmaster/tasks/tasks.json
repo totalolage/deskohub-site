@@ -592,6 +592,63 @@
         "dependencies": [11],
         "priority": "medium",
         "subtasks": []
+      },
+      {
+        "id": 25,
+        "title": "Fix Pluralization Issues in i18n Translation Files",
+        "description": "Correct pluralization handling in validation messages for Czech and English languages, ensuring proper grammatical forms for numeric values like \"1 znak\" vs. \"2 znaky\" in Czech and \"1 character\" vs. \"2 characters\" in English.",
+        "details": "## Implementation Steps\n\n1. **Analyze Current Translation Files**:\n   - Review all validation messages in `project.inlang/messages` that contain numeric placeholders\n   - Identify messages using `{min}`, `{max}`, or other numeric values\n   - Document all instances requiring pluralization fixes\n\n2. **Update MessageFormat Syntax**:\n   ```typescript\n   // Example of current problematic message in en.json\n   \"validation.minLength\": \"Must be at least {min} characters\"\n   \n   // Updated with proper pluralization using MessageFormat 2.0\n   \"validation.minLength\": \"Must be at least {min} {min, plural, one {character} other {characters}}\"\n   ```\n\n3. **Implement Czech Pluralization Rules**:\n   - Czech has more complex pluralization with three forms:\n     - one (1)\n     - few (2-4)\n     - many (5+)\n   \n   ```typescript\n   // Example for Czech (cs.json)\n   \"validation.minLength\": \"Musí mít alespoň {min} {min, plural, one {znak} few {znaky} other {znaků}}\"\n   ```\n\n4. **Update All Affected Messages**:\n   - Common validation messages to fix:\n     - `validation.minLength`\n     - `validation.maxLength`\n     - `validation.exactLength`\n     - `validation.minItems`\n     - `validation.maxItems`\n     - Any custom messages with numeric placeholders\n\n5. **Create Helper Functions** (if needed):\n   ```typescript\n   // lib/i18n/pluralization.ts\n   export function getCharacterPlural(count: number, locale: string): string {\n     if (locale === 'cs') {\n       return count === 1 ? 'znak' : (count >= 2 && count <= 4) ? 'znaky' : 'znaků';\n     } else {\n       // English\n       return count === 1 ? 'character' : 'characters';\n     }\n   }\n   ```\n\n6. **Update Zod Validation Schemas**:\n   - Ensure all validation error messages use the updated pluralization syntax\n   - Example:\n   ```typescript\n   // app/actions/booking.ts\n   const bookingSchema = z.object({\n     name: z.string().min(2, {\n       message: i('validation.minLength', { min: 2 })\n     }),\n     // Other fields...\n   });\n   ```\n\n7. **Test All Affected Messages**:\n   - Create a test page or component that displays validation errors with different numeric values\n   - Verify correct pluralization for all numeric ranges in both languages",
+        "testStrategy": "## Test Strategy\n\n1. **Create Comprehensive Test Cases**:\n   - Develop test cases for each affected validation message\n   - Test with different numeric values (0, 1, 2, 3, 4, 5, 11, 21) to verify correct pluralization forms\n   - Test in both Czech and English locales\n\n2. **Unit Testing**:\n   ```typescript\n   // tests/i18n/pluralization.test.ts\n   import { describe, it, expect } from 'vitest';\n   import { i } from '@/paraglide/messages';\n   \n   describe('Pluralization in validation messages', () => {\n     it('correctly pluralizes minLength message in English', () => {\n       // Set locale to English\n       // This will depend on how your test environment handles locale switching\n       \n       expect(i('validation.minLength', { min: 1 })).toContain('1 character');\n       expect(i('validation.minLength', { min: 2 })).toContain('2 characters');\n     });\n     \n     it('correctly pluralizes minLength message in Czech', () => {\n       // Set locale to Czech\n       \n       expect(i('validation.minLength', { min: 1 })).toContain('1 znak');\n       expect(i('validation.minLength', { min: 2 })).toContain('2 znaky');\n       expect(i('validation.minLength', { min: 5 })).toContain('5 znaků');\n     });\n     \n     // Additional tests for other validation messages\n   });\n   ```\n\n3. **Manual Testing**:\n   - Create a test form with validation rules that trigger different numeric messages\n   - Test submission with invalid values to verify correct error messages\n   - Test in both Czech and English locales\n   - Verify proper pluralization for all numeric ranges\n\n4. **Visual Regression Testing**:\n   - Take screenshots of validation error messages in both languages\n   - Compare with expected results to ensure correct formatting\n\n5. **Edge Case Testing**:\n   - Test with zero values (if applicable)\n   - Test with large numbers\n   - Test with decimal numbers (if applicable)\n   - Test with negative numbers (if applicable)\n\n6. **Integration Testing**:\n   - Verify that the pluralization works correctly when integrated with the Zod validation system\n   - Test real form submissions in the application to ensure proper error message display",
+        "status": "pending",
+        "dependencies": [17, 10],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Analyze and Document Pluralization Requirements",
+            "description": "Review all translation files to identify messages requiring pluralization fixes and document the specific pluralization rules for Czech and English languages.",
+            "dependencies": [],
+            "details": "1. Scan all files in `project.inlang/messages` directory\n2. Identify all validation messages containing numeric placeholders (`{min}`, `{max}`, etc.)\n3. Create a comprehensive list of messages requiring pluralization fixes\n4. Document Czech pluralization rules (one, few, many) and English rules (one, other)\n5. Prepare a reference table showing examples of correct pluralization for both languages",
+            "status": "pending",
+            "testStrategy": "Create a spreadsheet documenting all identified messages with their current format and required pluralization patterns for verification."
+          },
+          {
+            "id": 2,
+            "title": "Implement English Pluralization in Translation Files",
+            "description": "Update all English translation files with proper MessageFormat 2.0 syntax for pluralization handling.",
+            "dependencies": [1],
+            "details": "1. Modify all identified English messages to use proper MessageFormat 2.0 syntax\n2. Focus on the simpler English pluralization rules (one, other)\n3. Example transformation: `\"validation.minLength\": \"Must be at least {min} characters\"` → `\"validation.minLength\": \"Must be at least {min} {min, plural, one {character} other {characters}}\"`\n4. Update all affected validation messages including minLength, maxLength, exactLength, minItems, maxItems\n5. Ensure consistent formatting across all pluralized messages",
+            "status": "pending",
+            "testStrategy": "Test each updated message with values 1 and 2 to verify correct pluralization forms are displayed."
+          },
+          {
+            "id": 3,
+            "title": "Implement Czech Pluralization in Translation Files",
+            "description": "Update all Czech translation files with proper MessageFormat 2.0 syntax accounting for the three pluralization forms in Czech.",
+            "dependencies": [1],
+            "details": "1. Modify all identified Czech messages to use proper MessageFormat 2.0 syntax\n2. Implement the three Czech pluralization forms: one (1), few (2-4), and many (5+)\n3. Example transformation: `\"validation.minLength\": \"Musí mít alespoň {min} znaků\"` → `\"validation.minLength\": \"Musí mít alespoň {min} {min, plural, one {znak} few {znaky} other {znaků}}\"`\n4. Update all affected validation messages with the same pattern\n5. Ensure grammatical correctness for all pluralization forms",
+            "status": "pending",
+            "testStrategy": "Test each updated message with values 1, 3, and 5 to verify all three pluralization forms display correctly."
+          },
+          {
+            "id": 4,
+            "title": "Create Helper Functions for Complex Pluralization Cases",
+            "description": "Develop utility functions to handle complex pluralization scenarios that may not be easily expressed with MessageFormat syntax alone.",
+            "dependencies": [2, 3],
+            "details": "1. Create a new file `lib/i18n/pluralization.ts` for helper functions\n2. Implement `getCharacterPlural(count: number, locale: string)` function to return appropriate word forms\n3. Add similar helper functions for other common nouns requiring pluralization\n4. Ensure functions handle all edge cases for both languages\n5. Document usage examples for the development team",
+            "status": "pending",
+            "testStrategy": "Write unit tests covering all pluralization functions with various numeric inputs across both language locales."
+          },
+          {
+            "id": 5,
+            "title": "Test and Verify Pluralization Implementation",
+            "description": "Create a comprehensive testing strategy to verify correct pluralization across the application for both languages.",
+            "dependencies": [2, 3, 4],
+            "details": "1. Create a test page that displays validation errors with different numeric values\n2. Implement form fields that trigger each type of validation message\n3. Test with numeric values 1, 2, 3, 4, 5, and 10 to cover all pluralization forms\n4. Verify correct pluralization in both Czech and English languages\n5. Document any edge cases or issues discovered during testing",
+            "status": "pending",
+            "testStrategy": "Create a validation test harness that allows toggling between languages and testing different numeric inputs for each validation message type."
+          }
+        ]
       }
     ],
     "metadata": {
@@ -600,7 +657,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-07-10T09:46:50.680Z"
+      "updated": "2025-07-10T12:42:14.250Z"
     }
   }
 }

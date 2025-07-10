@@ -6,17 +6,17 @@
   "scripts": {
     "build": "run-s i18n:compile next:build",
     "next:build": "bunx next build",
-    "dev": "run-p dev:*",
+    "dev": "run-p dev:next dev:i18n",
     "dev:next": "bunx next dev",
     "dev:i18n": "chokidar \"i18n/translations/*.json\" -c \"bun i18n:compile\"",
     "predev:i18n": "bun i18n:compile",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./i18n/paraglide",
-    "lint": "bunx biome lint .",
-    "lint:fix": "bunx biome lint --write .",
-    "format": "bunx biome format .",
-    "format:fix": "bunx biome format --write .",
     "check": "bunx biome check .",
     "check:fix": "bunx biome check --write .",
+    "typecheck": "bunx tsc --noEmit",
+    "typecheck:fix": "bunx tsc --noEmit --fix",
+    "validate": "run-p check typecheck",
+    "validate:fix": "run-p check:fix typecheck:fix",
     "start": "bunx next start"
   },
   "dependencies": {

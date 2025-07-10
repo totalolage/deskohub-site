@@ -34,6 +34,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { submitBooking } from "@/features/booking/actions/booking";
 import { useBookingSchema } from "@/features/booking/hooks/use-booking-schema";
+import { useFormErrorScroll } from "@/features/booking/hooks/use-form-error-scroll";
 import type { BookingFormData } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
@@ -53,7 +54,19 @@ export function BookingForm() {
     resolver: zodResolver(bookingSchema),
     defaultValues: constants.booking.defaultValues,
     mode: "onTouched",
+    shouldFocusError: false, // We handle focus in our custom error scroll hook
   });
+
+  // Use the custom error scroll hook
+  const { register: registerErrorRef } = useFormErrorScroll(
+    form.formState.errors,
+    {
+      offset: 100, // Adjust based on your sticky header height
+      focusOnError: true,
+      behavior: "smooth",
+      block: "center",
+    }
+  );
 
   const { execute, isExecuting } = useAction(submitBooking, {
     onError: ({ error }) => {
@@ -63,6 +76,8 @@ export function BookingForm() {
     onSettled: ({ result }) => {
       // Handle validation errors by setting them on the form
       if (result?.validationErrors) {
+        let firstErrorField: keyof BookingFormData | null = null;
+
         Object.entries(result.validationErrors).forEach(([field, errors]) => {
           // Type-safe field parsing - check if field is a valid form field
           const validFields: (keyof BookingFormData)[] = [
@@ -77,6 +92,9 @@ export function BookingForm() {
           ];
           if (validFields.includes(field as keyof BookingFormData)) {
             if (errors && Array.isArray(errors)) {
+              if (!firstErrorField) {
+                firstErrorField = field as keyof BookingFormData;
+              }
               form.setError(field as keyof BookingFormData, {
                 type: "server",
                 message: errors[0],
@@ -84,13 +102,20 @@ export function BookingForm() {
             }
           }
         });
+
+        // The useFormErrorScroll hook will automatically handle scrolling to the first error
       }
     },
   });
 
-  const handleSubmit = form.handleSubmit(async (data) => {
-    execute(data);
-  });
+  const handleSubmit = form.handleSubmit(
+    async (data) => {
+      execute(data);
+    },
+    () => {
+      // Errors are handled by useFormErrorScroll hook automatically
+    }
+  );
 
   // Watch datetime field to update available durations
   const selectedDatetime = form.watch("datetime");
@@ -133,7 +158,10 @@ export function BookingForm() {
                 control={form.control}
                 name="datetime"
                 render={({ field, fieldState }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("datetime")}
+                    className="scroll-mt-24"
+                  >
                     <FormLabel>
                       {new Intl.ListFormat(locale, {
                         style: "long",
@@ -175,7 +203,10 @@ export function BookingForm() {
                 control={form.control}
                 name="guestCount"
                 render={({ field, fieldState }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("guestCount")}
+                    className="scroll-mt-24"
+                  >
                     <FormLabel>{m["booking.guestCountLabel"]()}</FormLabel>
                     <Select
                       onValueChange={field.onChange}
@@ -221,7 +252,10 @@ export function BookingForm() {
                 control={form.control}
                 name="duration"
                 render={({ field, fieldState }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("duration")}
+                    className="scroll-mt-24"
+                  >
                     <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
                     <Select
                       onValueChange={(value) =>
@@ -281,7 +315,10 @@ export function BookingForm() {
                 control={form.control}
                 name="name"
                 render={({ field, fieldState }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("name")}
+                    className="scroll-mt-24"
+                  >
                     <FormLabel>{m["booking.nameLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
@@ -300,7 +337,10 @@ export function BookingForm() {
                 control={form.control}
                 name="email"
                 render={({ field, fieldState }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("email")}
+                    className="scroll-mt-24"
+                  >
                     <FormLabel>{m["booking.emailLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
@@ -320,7 +360,10 @@ export function BookingForm() {
                 control={form.control}
                 name="phone"
                 render={({ field, fieldState }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("phone")}
+                    className="scroll-mt-24"
+                  >
                     <FormLabel>{m["booking.phoneLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
@@ -351,7 +394,10 @@ export function BookingForm() {
                 control={form.control}
                 name="tablePreference"
                 render={({ field }) => (
-                  <FormItem className="space-y-3">
+                  <FormItem
+                    ref={registerErrorRef("tablePreference")}
+                    className="space-y-3 scroll-mt-24"
+                  >
                     <FormControl>
                       <RadioGroup
                         onValueChange={field.onChange}
@@ -402,7 +448,10 @@ export function BookingForm() {
                 control={form.control}
                 name="specialRequests"
                 render={({ field }) => (
-                  <FormItem>
+                  <FormItem
+                    ref={registerErrorRef("specialRequests")}
+                    className="scroll-mt-24"
+                  >
                     <FormControl>
                       <Textarea
                         placeholder={m["booking.specialRequestsPlaceholder"]()}

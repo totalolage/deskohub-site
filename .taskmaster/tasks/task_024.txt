@@ -1,6 +1,6 @@
 # Task ID: 24
 # Title: Add Working Hours Validation to Reservation Form
-# Status: pending
+# Status: done
 # Dependencies: 11
 # Priority: medium
 # Description: Implement validation logic to ensure reservations can only be made during Deskohub's operating hours, with clear error messages for invalid times and handling for holidays and special closures.

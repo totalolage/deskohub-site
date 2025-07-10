@@ -25,15 +25,11 @@ export const metadata: Metadata = {
 export default async function ReservationConfirmationPage({
   params,
 }: Readonly<RouteProps_locale_id>) {
-  // Await params as required by Next.js 15
   const { id, locale } = await params;
 
-  // Get booking data from storage
   const booking = await getBooking(id);
-
   if (!booking) notFound();
 
-  // Format date and time for display using consistent formatting
   const formattedDate = formatDate(booking.datetime, locale, {
     weekday: "long",
     year: "numeric",
@@ -97,18 +93,18 @@ export default async function ReservationConfirmationPage({
               <div className="flex items-center gap-3">
                 <Clock className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="font-medium">{m["booking.timeLabel"]()}</p>
-                  <p className="text-gray-600">{formattedTime}</p>
+                  <p className="font-medium">{m["booking.durationLabel"]()}</p>
+                  <p className="text-gray-600">
+                    {m.durationFormat({ hours: booking.duration })}
+                  </p>
                 </div>
               </div>
 
               <div className="flex items-center gap-3">
                 <Clock className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="font-medium">{m["booking.durationLabel"]()}</p>
-                  <p className="text-gray-600">
-                    {m.durationFormat({ hours: booking.duration })}
-                  </p>
+                  <p className="font-medium">{m["booking.timeLabel"]()}</p>
+                  <p className="text-gray-600">{formattedTime}</p>
                 </div>
               </div>
 
