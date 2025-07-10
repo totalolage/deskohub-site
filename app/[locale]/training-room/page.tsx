@@ -21,11 +21,11 @@ export default async function TrainingRoomPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
 
   return (
-    <main>
+    <>
       <TrainingHero />
       <TrainingFeatures />
       <TrainingPackages />
       <TrainingCTA />
-    </main>
+    </>
   );
 }

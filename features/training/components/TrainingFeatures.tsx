@@ -43,7 +43,7 @@ export const TrainingFeatures = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+        <div className="grid [grid-template-columns:repeat(auto-fill,250px)] gap-8 justify-center">
           {features.map((feature, index) => (
             <Card
               key={index}
