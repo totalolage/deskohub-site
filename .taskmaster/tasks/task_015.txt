@@ -312,7 +312,7 @@ Created app/[lang]/reservation/[id]/page.tsx dynamic route to display booking de
 </info added on 2025-07-09T14:04:10.177Z>
 
 ## 4. Implement dynamic thank you page with booking details [done]
-### Dependencies: 15.1, 15.3
+### Dependencies: 15.1
 ### Description: Create a dynamic route for the thank you page that displays reservation details based on the booking ID.
 ### Details:
 Develop app/[lang]/reservation/[id]/page.tsx to fetch and display booking details. Implement the getMockBookingData function (to be replaced with actual data fetching later). Create a responsive layout with proper styling consistent with the design system. Add a not-found.tsx file for handling invalid booking IDs.

@@ -21,9 +21,7 @@
   },
   "hours": {
     "weekdays": "PO - PÁ",
-    "weekdaysTime": "17:00-23:00",
-    "weekends": "SO - NE",
-    "weekendsTime": "15:00-24:00"
+    "weekends": "SO - NE"
   },
   "about": {
     "description": "Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratu. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO."
@@ -120,6 +118,8 @@
     "dateLabel": "Datum",
     "timeLabel": "Čas",
     "guestCountLabel": "Počet hostů",
+    "durationLabel": "Jak dlouho se zdržíte?",
+    "noDurationAvailable": "Prosím vyberte dřívější čas",
     "nameLabel": "Jméno a příjmení",
     "emailLabel": "E-mailová adresa",
     "phoneLabel": "Telefonní číslo",
@@ -152,7 +152,9 @@
     "validation": {
       "datetime": {
         "required": "Datum a čas jsou povinné",
-        "mustBeFuture": "Datum a čas musí být v budoucnu"
+        "mustBeFuture": "Datum a čas musí být v budoucnu",
+        "outsideWorkingHours": "Prosím vyberte čas během naší otevírací doby",
+        "durationExceedsWorkingHours": "Vaše rezervace přesahuje naši zavírací dobu. Prosím vyberte kratší dobu trvání nebo dřívější čas."
       },
       "guestCount": {
         "required": "Počet hostů je povinný",
@@ -176,6 +178,11 @@
         "minimum": "Prosím zadejte platné telefonní číslo",
         "maximum": "Telefonní číslo je příliš dlouhé",
         "invalid": "Prosím zadejte platné telefonní číslo"
+      },
+      "duration": {
+        "minimum": "Minimální doba trvání je 30 minut",
+        "maximum": "Maximální doba trvání je {max} hodin",
+        "increment": "Doba trvání musí být v 30minutových intervalech"
       },
       "specialRequests": {
         "maximum": "Speciální požadavky musí mít méně než {max} znaků"
@@ -223,7 +230,8 @@
     "fullName": "Jan Novák",
     "email": "jan@example.com",
     "phone": "+420 123 456 789",
-    "guestCount": "Počet hostů"
+    "guestCount": "Počet hostů",
+    "duration": "Vyberte dobu trvání"
   },
   "guestCountPlural": [
     {
@@ -233,6 +241,32 @@
         "countPlural=one": "{count} osoba",
         "countPlural=few": "{count} osoby",
         "countPlural=other": "{count} osob"
+      }
+    }
+  ],
+  "durationFormat": [
+    {
+      "declarations": ["input hours"],
+      "selectors": [],
+      "match": {
+        "hours=0.5": "30 minut",
+        "hours=1": "1 hodina",
+        "hours=1.5": "1,5 hodiny",
+        "hours=2": "2 hodiny",
+        "hours=2.5": "2,5 hodiny",
+        "hours=3": "3 hodiny",
+        "hours=3.5": "3,5 hodiny",
+        "hours=4": "4 hodiny",
+        "hours=4.5": "4,5 hodiny",
+        "hours=5": "5 hodin",
+        "hours=5.5": "5,5 hodiny",
+        "hours=6": "6 hodin",
+        "hours=6.5": "6,5 hodiny",
+        "hours=7": "7 hodin",
+        "hours=7.5": "7,5 hodiny",
+        "hours=8": "8 hodin",
+        "hours=8.5": "8,5 hodiny",
+        "hours=9": "9 hodin"
       }
     }
   ],

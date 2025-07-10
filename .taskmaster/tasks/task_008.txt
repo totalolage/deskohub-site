@@ -345,7 +345,7 @@ However, there is an issue with the i18n implementation. While the nested JSON s
 </info added on 2025-07-08T21:42:56.481Z>
 
 ## 4. Update the BookingForm component for next-safe-action integration [done]
-### Dependencies: 8.3
+### Dependencies: None
 ### Description: Modify the existing BookingForm component to work with the new state management and validation approach
 ### Details:
 Refactor the BookingForm component to use react-hook-form with the form state passed from the parent component. Update all form fields to use i18n labels and validation messages. Ensure the form handles submission states correctly (loading, success, error).
@@ -370,7 +370,7 @@ This needs to be fixed by updating the BookingForm component to use the correct 
 </info added on 2025-07-08T21:45:15.727Z>
 
 ## 5. Add navigation and i18n translations for booking functionality [done]
-### Dependencies: 8.2, 8.4
+### Dependencies: 8.4
 ### Description: Update navigation components and add required translations for the booking feature
 ### Details:
 Add a booking page link to the Header component's navigation links. Create comprehensive i18n translations for all booking-related text in both English and Czech language files, including form labels, success/error messages, and navigation items.

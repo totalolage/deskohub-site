@@ -15,6 +15,7 @@ export const submitBooking = actionClient
     await storeBooking({
       id: bookingId,
       datetime: parsedInput.datetime,
+      duration: parsedInput.duration,
       guestCount: parsedInput.guestCount,
       name: parsedInput.name,
       email: parsedInput.email,

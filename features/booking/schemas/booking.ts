@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { m } from "@/i18n";
 import { constants } from "@/lib/constants";
+import { isReservationWithinWorkingHours, getAvailableDurations } from "@/lib/utils/working-hours-timezone";
 
 // Single unified booking schema function that handles localization internally
 export const getBookingSchema = () => {
@@ -21,6 +22,16 @@ export const getBookingSchema = () => {
         })
       )
       .int(m["booking.validation.guestCount.integer"]()),
+    duration: z.coerce
+      .number()
+      .min(
+        constants.booking.validation.duration.min,
+        m["booking.validation.duration.minimum"]()
+      )
+      .multipleOf(
+        constants.booking.validation.duration.increment,
+        m["booking.validation.duration.increment"]()
+      ),
     name: z
       .string()
       .min(
@@ -60,7 +71,31 @@ export const getBookingSchema = () => {
         })
       )
       .optional(),
-  });
+  })
+    .superRefine((data, ctx) => {
+      // Validate that the entire reservation (start time + duration) is within working hours
+      if (data.datetime && data.duration) {
+        // Check if duration is available for the selected time
+        const availableDurations = getAvailableDurations(data.datetime);
+        if (!availableDurations.includes(data.duration)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: m["booking.validation.datetime.durationExceedsWorkingHours"](),
+            path: ["duration"],
+          });
+          return;
+        }
+
+        // Double-check with the full validation
+        if (!isReservationWithinWorkingHours(data.datetime, data.duration)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: m["booking.validation.datetime.durationExceedsWorkingHours"](),
+            path: ["duration"],
+          });
+        }
+      }
+    });
 };
 
 type BookingFormSchema = ReturnType<typeof getBookingSchema>;

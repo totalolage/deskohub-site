@@ -38,6 +38,8 @@ import type { BookingFormData } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { constants } from "@/lib/constants";
+import { formatDateTimeForInput, getMinBookingDateTime } from "@/lib/utils/date-formatting";
+import { getAvailableDurations } from "@/lib/utils/working-hours-timezone";
 import styles from "./booking-form.module.css";
 
 export function BookingForm() {
@@ -77,17 +79,25 @@ export function BookingForm() {
     execute(data);
   });
 
+  // Watch datetime field to update available durations
+  const selectedDatetime = form.watch("datetime");
+  const availableDurations = getAvailableDurations(selectedDatetime);
+
   return (
     <div className="space-y-6">
       {/* Operating Hours */}
       <div className="flex justify-center gap-4 mb-6">
         <Badge variant="outline" className="px-4 py-2">
           <Clock className="w-4 h-4 mr-2" />
-          {m["hours.weekdays"]()} {m["hours.weekdaysTime"]()}
+          {m["hours.weekdays"]()} {constants.workingHours.weekdays.open}-
+          {constants.workingHours.weekdays.close}
         </Badge>
         <Badge variant="outline" className="px-4 py-2">
           <Clock className="w-4 h-4 mr-2" />
-          {m["hours.weekends"]()} {m["hours.weekendsTime"]()}
+          {m["hours.weekends"]()} {constants.workingHours.weekends.open}-
+          {constants.workingHours.weekends.close === "24:00"
+            ? "00:00"
+            : constants.workingHours.weekends.close}
         </Badge>
       </div>
 
@@ -123,13 +133,13 @@ export function BookingForm() {
                     <FormControl>
                       <Input
                         type="datetime-local"
-                        min={new Date().toISOString().slice(0, 16)}
+                        min={getMinBookingDateTime()}
                         variant={fieldState.error ? "error" : "default"}
                         {...field}
                         value={
                           field.value &&
                           !Number.isNaN(new Date(field.value).getTime())
-                            ? new Date(field.value).toISOString().slice(0, 16)
+                            ? formatDateTimeForInput(field.value)
                             : ""
                         }
                         onChange={(e) => {
@@ -187,6 +197,48 @@ export function BookingForm() {
                       </SelectContent>
                     </Select>
                     <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              {/* Duration */}
+              <FormField
+                control={form.control}
+                name="duration"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
+                    <Select
+                      onValueChange={(value) => field.onChange(parseFloat(value))}
+                      defaultValue={String(
+                        field.value || constants.booking.defaultValues.duration
+                      )}
+                      value={String(
+                        field.value || constants.booking.defaultValues.duration
+                      )}
+                      disabled={availableDurations.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue
+                            placeholder={m["placeholders.duration"]()}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableDurations.map((hours) => (
+                          <SelectItem key={hours} value={hours.toString()}>
+                            {m.durationFormat({ hours })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                    {availableDurations.length === 0 && selectedDatetime && (
+                      <p className="text-sm text-red-500 mt-1">
+                        {m["booking.noDurationAvailable"]()}
+                      </p>
+                    )}
                   </FormItem>
                 )}
               />

@@ -152,13 +152,13 @@ Evaluate the three proposed options (cookies, headers, URL parameters) and imple
 Identify all possible validation error messages in the booking form. Create appropriate message keys in the Paraglide message files for each error type (e.g., 'booking.required', 'booking.invalidEmail', 'booking.genericError'). Ensure messages are added for all supported languages. Include placeholders for dynamic content if needed.
 
 ## 3. Update Server Action to Use Localized Error Messages [pending]
-### Dependencies: 9.1, 9.2
+### Dependencies: 9.1
 ### Description: Modify the submitBooking server action to use the Paraglide i18n system for all error messages.
 ### Details:
 Integrate the getCurrentLocale() function into the server action. Use loadMessages() to get the appropriate translations based on the detected locale. Replace all hardcoded English error messages with calls to the Paraglide message functions. Ensure proper error handling for all validation cases. Structure the returned error objects consistently for client-side consumption.
 
 ## 4. Update Client-Side Form to Display Localized Errors [pending]
-### Dependencies: 9.3
+### Dependencies: None
 ### Description: Modify the BookingForm component to properly display the localized error messages returned from the server action.
 ### Details:
 Update the form component to correctly extract and display the localized error messages returned by the server action. Ensure error messages are displayed in the appropriate form fields. Handle both field-specific errors and generic form errors. Maintain accessibility by properly associating error messages with form controls.

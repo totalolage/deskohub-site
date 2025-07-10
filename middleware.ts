@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { getLocaleFromPathname } from "./i18n/utils/get-locale-from-pathname";
 import { getLocaleFromEdge } from "./i18n/utils/get-locale.edge";
+import { getLocaleFromPathname } from "./i18n/utils/get-locale-from-pathname";
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;

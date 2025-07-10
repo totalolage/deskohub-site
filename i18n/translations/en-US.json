@@ -21,9 +21,7 @@
   },
   "hours": {
     "weekdays": "MON - FRI",
-    "weekdaysTime": "17:00-23:00",
-    "weekends": "SAT - SUN",
-    "weekendsTime": "15:00-24:00"
+    "weekends": "SAT - SUN"
   },
   "about": {
     "description": "Entry fee for board game players. Price is 50 CZK for board game players who order something from us and 100 CZK for customers with zero spending. Entry fee is valid for 1 day without time limit. For children under 15 years old, entry is free. MONDAY WITHOUT ENTRY FEE."
@@ -116,6 +114,8 @@
     "dateLabel": "Date",
     "timeLabel": "Time",
     "guestCountLabel": "Number of Guests",
+    "durationLabel": "How long will you be staying?",
+    "noDurationAvailable": "Please select an earlier time",
     "nameLabel": "Full Name",
     "emailLabel": "Email Address",
     "phoneLabel": "Phone Number",
@@ -148,7 +148,9 @@
     "validation": {
       "datetime": {
         "required": "Date and time are required",
-        "mustBeFuture": "Date and time must be in the future"
+        "mustBeFuture": "Date and time must be in the future",
+        "outsideWorkingHours": "Please select a time during our working hours",
+        "durationExceedsWorkingHours": "Your reservation extends beyond our closing time. Please select a shorter duration or an earlier time."
       },
       "guestCount": {
         "required": "Number of guests is required",
@@ -172,6 +174,11 @@
         "minimum": "Please enter a valid phone number",
         "maximum": "Phone number is too long",
         "invalid": "Please enter a valid phone number"
+      },
+      "duration": {
+        "minimum": "Minimum duration is 30 minutes",
+        "maximum": "Maximum duration is {max} hours",
+        "increment": "Duration must be in 30-minute increments"
       },
       "specialRequests": {
         "maximum": "Special requests must be less than {max} characters"
@@ -219,7 +226,8 @@
     "fullName": "John Doe",
     "email": "john@example.com",
     "phone": "+420 123 456 789",
-    "guestCount": "Number of guests"
+    "guestCount": "Number of guests",
+    "duration": "Select duration"
   },
   "guestCountPlural": [
     {
@@ -228,6 +236,32 @@
       "match": {
         "countPlural=one": "{count} person",
         "countPlural=other": "{count} people"
+      }
+    }
+  ],
+  "durationFormat": [
+    {
+      "declarations": ["input hours"],
+      "selectors": [],
+      "match": {
+        "hours=0.5": "30 minutes",
+        "hours=1": "1 hour",
+        "hours=1.5": "1.5 hours",
+        "hours=2": "2 hours",
+        "hours=2.5": "2.5 hours",
+        "hours=3": "3 hours",
+        "hours=3.5": "3.5 hours",
+        "hours=4": "4 hours",
+        "hours=4.5": "4.5 hours",
+        "hours=5": "5 hours",
+        "hours=5.5": "5.5 hours",
+        "hours=6": "6 hours",
+        "hours=6.5": "6.5 hours",
+        "hours=7": "7 hours",
+        "hours=7.5": "7.5 hours",
+        "hours=8": "8 hours",
+        "hours=8.5": "8.5 hours",
+        "hours=9": "9 hours"
       }
     }
   ],

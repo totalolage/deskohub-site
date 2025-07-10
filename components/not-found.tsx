@@ -1,21 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
 import {
-  Home,
   Dice1,
   Dice2,
   Dice3,
   Dice4,
   Dice5,
   Dice6,
+  Home,
   RotateCcw,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import logoImage from "@/assets/images/logo.png";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 
@@ -116,7 +116,9 @@ export default function NotFoundPage() {
               <RotateCcw
                 className={`w-5 h-5 mr-2 ${isRolling ? "animate-spin" : ""}`}
               />
-              {isRolling ? m["notFound.rollingText"]() : m["notFound.rollAgainButton"]()}
+              {isRolling
+                ? m["notFound.rollingText"]()
+                : m["notFound.rollAgainButton"]()}
             </Button>
           </div>
 

@@ -266,7 +266,7 @@ Run npm install zod @paraglide/zod to add the required packages. Create a basic 
 Create a new bookingSchema using Zod in the booking.ts file. Define validation rules for all form fields (date, time, guestCount, name, email, phone, specialRequests). Use Paraglide's i18n functions to provide localized error messages for each validation rule. Ensure type inference is properly set up with z.infer<typeof bookingSchema>.
 
 ## 3. Update server action to use Zod validation [done]
-### Dependencies: 10.2
+### Dependencies: None
 ### Description: Modify the submitBooking server action to use the new Zod schema for validation instead of Arktype.
 ### Details:
 Update the createSafeActionClient implementation to work with Zod. Replace the Arktype validation in the submitBooking function with the new Zod schema. Ensure the server action correctly processes the validation results and returns appropriate success/error responses. Maintain the existing business logic for processing valid bookings.
@@ -320,7 +320,7 @@ The booking form is now ready for production use with proper validation and type
 </info added on 2025-07-08T22:35:42.583Z>
 
 ## 4. Add localized validation messages to Paraglide [done]
-### Dependencies: 10.2
+### Dependencies: None
 ### Description: Create and organize all validation-related message definitions in Paraglide for multiple languages.
 ### Details:
 Add validation message keys and translations to the Paraglide message files (messages/en.ts, messages/cs.ts, etc.). Create message entries for all validation scenarios: required fields, minimum/maximum values, format validations, etc. Ensure consistent naming conventions for validation message keys. Test that messages are correctly loaded and displayed in different languages.
@@ -338,7 +338,7 @@ The validation messages now dynamically display the correct character limits and
 </info added on 2025-07-08T22:42:00.516Z>
 
 ## 5. Update client components to handle Zod validation errors [done]
-### Dependencies: 10.3, 10.4
+### Dependencies: 10.4
 ### Description: Modify the BookingForm component to properly extract and display validation errors from the Zod validation results.
 ### Details:
 Update the client-side form component to work with Zod's validation error format. Modify the error handling logic to extract and display field-specific validation errors. Ensure compatibility with React's useAction and useActionState hooks. Test the form with various validation scenarios to verify that errors are correctly displayed in the UI with the appropriate localized messages.

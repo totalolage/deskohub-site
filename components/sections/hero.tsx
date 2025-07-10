@@ -1,6 +1,7 @@
 import Image from "next/image";
 import heroImage from "@/assets/images/hero.jpg";
 import { m } from "@/i18n";
+import { constants } from "@/lib/constants";
 
 export function Hero() {
   return (
@@ -26,7 +27,8 @@ export function Hero() {
                 {m["hours.weekdays"]()}
               </div>
               <div className="text-lg font-semibold">
-                {m["hours.weekdaysTime"]()}
+                {constants.workingHours.weekdays.open}-
+                {constants.workingHours.weekdays.close}
               </div>
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
@@ -34,7 +36,10 @@ export function Hero() {
                 {m["hours.weekends"]()}
               </div>
               <div className="text-lg font-semibold">
-                {m["hours.weekendsTime"]()}
+                {constants.workingHours.weekends.open}-
+                {constants.workingHours.weekends.close === "24:00"
+                  ? "00:00"
+                  : constants.workingHours.weekends.close}
               </div>
             </div>
           </div>

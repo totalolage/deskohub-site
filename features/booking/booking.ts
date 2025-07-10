@@ -1,6 +1,7 @@
 export interface BookingData {
   id: string;
   datetime: Date;
+  duration: number; // Duration in hours
   guestCount: number;
   name: string;
   email: string;

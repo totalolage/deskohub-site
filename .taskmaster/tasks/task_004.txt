@@ -1,7 +1,7 @@
 # Task ID: 4
 # Title: Create Reservation Form Component with Form Validation
 # Status: pending
-# Dependencies: 1, 3
+# Dependencies: 1
 # Priority: medium
 # Description: Develop a comprehensive reservation form component for the Deskohub website that captures user information, reservation details, and special requirements with proper validation using shadcn/ui and React Hook Form.
 # Details:

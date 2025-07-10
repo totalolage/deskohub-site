@@ -1,0 +1,727 @@
+# Task ID: 22
+# Title: Implement Contact Page with Form and Business Information
+# Status: pending
+# Dependencies: 1, 6, 17
+# Priority: medium
+# Description: Create a comprehensive Contact page at the /contact route with detailed contact information, interactive form, business hours, location map, social media links, and team information, supporting both Czech and English languages.
+# Details:
+## Implementation Steps
+
+1. **Create the Contact Page Structure**:
+   ```typescript
+   // app/[locale]/contact/page.tsx
+   import { createTranslator } from '@/paraglide/runtime';
+   import { PageHeader } from '@/components/ui/page-header';
+   import { ContactForm } from '@/components/contact/contact-form';
+   import { ContactInfo } from '@/components/contact/contact-info';
+   import { LocationMap } from '@/components/contact/location-map';
+   import { TeamSection } from '@/components/contact/team-section';
+   import { Metadata } from 'next';
+   
+   // SEO metadata generation
+   export async function generateMetadata({ params }): Promise<Metadata> {
+     const { locale } = params;
+     const t = createTranslator(locale);
+     
+     return {
+       title: t('contact.meta.title'),
+       description: t('contact.meta.description'),
+       openGraph: {
+         title: t('contact.meta.ogTitle'),
+         description: t('contact.meta.ogDescription'),
+         images: ['/images/contact-og-image.jpg'],
+       },
+     };
+   }
+   
+   export default function ContactPage({ params }) {
+     const { locale } = params;
+     const t = createTranslator(locale);
+     
+     return (
+       <main className="container mx-auto px-4 py-8">
+         <PageHeader 
+           title={t('contact.title')} 
+           description={t('contact.description')} 
+         />
+         
+         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-12">
+           <div>
+             <ContactForm locale={locale} />
+           </div>
+           <div>
+             <ContactInfo />
+             <LocationMap />
+           </div>
+         </div>
+         
+         <TeamSection />
+       </main>
+     );
+   }
+   ```
+
+2. **Create Contact Form Component**:
+   ```typescript
+   // components/contact/contact-form.tsx
+   'use client';
+   
+   import { useState } from 'react';
+   import { createTranslator } from '@/paraglide/runtime';
+   import { Button } from '@/components/ui/button';
+   import { Input } from '@/components/ui/input';
+   import { Textarea } from '@/components/ui/textarea';
+   import { sendContactMessage } from '@/app/actions';
+   
+   export function ContactForm({ locale }) {
+     const t = createTranslator(locale);
+     const [formState, setFormState] = useState({
+       name: '',
+       email: '',
+       phone: '',
+       subject: '',
+       message: '',
+     });
+     const [errors, setErrors] = useState({});
+     const [isSubmitting, setIsSubmitting] = useState(false);
+     const [submitStatus, setSubmitStatus] = useState(null);
+     
+     const handleChange = (e) => {
+       const { name, value } = e.target;
+       setFormState(prev => ({ ...prev, [name]: value }));
+     };
+     
+     const validateForm = () => {
+       const newErrors = {};
+       if (!formState.name) newErrors.name = t('contact.form.errors.nameRequired');
+       if (!formState.email) newErrors.email = t('contact.form.errors.emailRequired');
+       else if (!/\S+@\S+\.\S+/.test(formState.email)) newErrors.email = t('contact.form.errors.emailInvalid');
+       if (!formState.message) newErrors.message = t('contact.form.errors.messageRequired');
+       
+       setErrors(newErrors);
+       return Object.keys(newErrors).length === 0;
+     };
+     
+     const handleSubmit = async (e) => {
+       e.preventDefault();
+       if (!validateForm()) return;
+       
+       setIsSubmitting(true);
+       try {
+         const result = await sendContactMessage(formState);
+         if (result.success) {
+           setSubmitStatus('success');
+           setFormState({
+             name: '',
+             email: '',
+             phone: '',
+             subject: '',
+             message: '',
+           });
+         } else {
+           setSubmitStatus('error');
+         }
+       } catch (error) {
+         setSubmitStatus('error');
+       } finally {
+         setIsSubmitting(false);
+       }
+     };
+     
+     return (
+       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+         <h2 className="text-2xl font-bold mb-6">{t('contact.form.title')}</h2>
+         
+         {submitStatus === 'success' && (
+           <div className="bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-100 p-4 mb-6 rounded">
+             {t('contact.form.successMessage')}
+           </div>
+         )}
+         
+         {submitStatus === 'error' && (
+           <div className="bg-red-100 dark:bg-red-900 text-red-800 dark:text-red-100 p-4 mb-6 rounded">
+             {t('contact.form.errorMessage')}
+           </div>
+         )}
+         
+         <form onSubmit={handleSubmit}>
+           <div className="mb-4">
+             <label htmlFor="name" className="block mb-2">{t('contact.form.nameLabel')}</label>
+             <Input
+               id="name"
+               name="name"
+               value={formState.name}
+               onChange={handleChange}
+               error={errors.name}
+             />
+             {errors.name && <p className="text-red-500 mt-1 text-sm">{errors.name}</p>}
+           </div>
+           
+           <div className="mb-4">
+             <label htmlFor="email" className="block mb-2">{t('contact.form.emailLabel')}</label>
+             <Input
+               id="email"
+               name="email"
+               type="email"
+               value={formState.email}
+               onChange={handleChange}
+               error={errors.email}
+             />
+             {errors.email && <p className="text-red-500 mt-1 text-sm">{errors.email}</p>}
+           </div>
+           
+           <div className="mb-4">
+             <label htmlFor="phone" className="block mb-2">{t('contact.form.phoneLabel')}</label>
+             <Input
+               id="phone"
+               name="phone"
+               type="tel"
+               value={formState.phone}
+               onChange={handleChange}
+             />
+           </div>
+           
+           <div className="mb-4">
+             <label htmlFor="subject" className="block mb-2">{t('contact.form.subjectLabel')}</label>
+             <Input
+               id="subject"
+               name="subject"
+               value={formState.subject}
+               onChange={handleChange}
+             />
+           </div>
+           
+           <div className="mb-6">
+             <label htmlFor="message" className="block mb-2">{t('contact.form.messageLabel')}</label>
+             <Textarea
+               id="message"
+               name="message"
+               rows={5}
+               value={formState.message}
+               onChange={handleChange}
+               error={errors.message}
+             />
+             {errors.message && <p className="text-red-500 mt-1 text-sm">{errors.message}</p>}
+           </div>
+           
+           <Button 
+             type="submit" 
+             disabled={isSubmitting}
+             className="w-full"
+           >
+             {isSubmitting ? t('contact.form.submitting') : t('contact.form.submit')}
+           </Button>
+         </form>
+       </div>
+     );
+   }
+   ```
+
+3. **Create Contact Information Component**:
+   ```typescript
+   // components/contact/contact-info.tsx
+   import { createTranslator } from '@/paraglide/runtime';
+   import { useParams } from 'next/navigation';
+   import { 
+     PhoneIcon, 
+     EnvelopeIcon, 
+     ClockIcon, 
+     MapPinIcon 
+   } from '@heroicons/react/24/outline';
+   import { SocialLinks } from '@/components/social-links';
+   
+   export function ContactInfo() {
+     const { locale } = useParams();
+     const t = createTranslator(locale);
+     
+     const businessHours = [
+       { day: t('contact.businessHours.monday'), hours: '8:00 - 20:00' },
+       { day: t('contact.businessHours.tuesday'), hours: '8:00 - 20:00' },
+       { day: t('contact.businessHours.wednesday'), hours: '8:00 - 20:00' },
+       { day: t('contact.businessHours.thursday'), hours: '8:00 - 20:00' },
+       { day: t('contact.businessHours.friday'), hours: '8:00 - 20:00' },
+       { day: t('contact.businessHours.saturday'), hours: '9:00 - 18:00' },
+       { day: t('contact.businessHours.sunday'), hours: '9:00 - 18:00' },
+     ];
+     
+     return (
+       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md mb-8">
+         <h2 className="text-2xl font-bold mb-6">{t('contact.info.title')}</h2>
+         
+         <div className="space-y-4">
+           <div className="flex items-start">
+             <PhoneIcon className="h-6 w-6 mr-3 text-primary" />
+             <div>
+               <h3 className="font-medium">{t('contact.info.phoneTitle')}</h3>
+               <p>+420 123 456 789</p>
+             </div>
+           </div>
+           
+           <div className="flex items-start">
+             <EnvelopeIcon className="h-6 w-6 mr-3 text-primary" />
+             <div>
+               <h3 className="font-medium">{t('contact.info.emailTitle')}</h3>
+               <p>info@deskohub.cz</p>
+             </div>
+           </div>
+           
+           <div className="flex items-start">
+             <MapPinIcon className="h-6 w-6 mr-3 text-primary" />
+             <div>
+               <h3 className="font-medium">{t('contact.info.addressTitle')}</h3>
+               <p>Deskohub<br />Nádražní 123<br />150 00 Praha 5<br />Czech Republic</p>
+             </div>
+           </div>
+           
+           <div className="flex items-start">
+             <ClockIcon className="h-6 w-6 mr-3 text-primary" />
+             <div>
+               <h3 className="font-medium">{t('contact.info.hoursTitle')}</h3>
+               <div className="grid grid-cols-2 gap-x-4 gap-y-1 mt-2">
+                 {businessHours.map((item, index) => (
+                   <React.Fragment key={index}>
+                     <div className="font-medium">{item.day}</div>
+                     <div>{item.hours}</div>
+                   </React.Fragment>
+                 ))}
+               </div>
+             </div>
+           </div>
+         </div>
+         
+         <div className="mt-6">
+           <h3 className="font-medium mb-3">{t('contact.info.socialTitle')}</h3>
+           <SocialLinks />
+         </div>
+       </div>
+     );
+   }
+   ```
+
+4. **Create Location Map Component**:
+   ```typescript
+   // components/contact/location-map.tsx
+   'use client';
+   
+   import { useParams } from 'next/navigation';
+   import { createTranslator } from '@/paraglide/runtime';
+   import { useState, useEffect } from 'react';
+   
+   export function LocationMap() {
+     const { locale } = useParams();
+     const t = createTranslator(locale);
+     const [mapLoaded, setMapLoaded] = useState(false);
+     
+     useEffect(() => {
+       // Load map only on client side
+       setMapLoaded(true);
+     }, []);
+     
+     if (!mapLoaded) {
+       return (
+         <div className="bg-gray-100 dark:bg-gray-700 rounded-lg h-[300px] flex items-center justify-center">
+           <p>{t('contact.map.loading')}</p>
+         </div>
+       );
+     }
+     
+     return (
+       <div className="bg-white dark:bg-gray-800 p-6 rounded-lg shadow-md">
+         <h2 className="text-2xl font-bold mb-4">{t('contact.map.title')}</h2>
+         <div className="aspect-video rounded-lg overflow-hidden">
+           <iframe
+             src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d2560.9769127795793!2d14.40344!3d50.0723!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x0%3A0x0!2zNTDCsDA0JzIwLjMiTiAxNMKwMjQnMTIuNCJF!5e0!3m2!1sen!2scz!4v1620000000000!5m2!1sen!2scz"
+             width="100%"
+             height="300"
+             style={{ border: 0 }}
+             allowFullScreen=""
+             loading="lazy"
+             referrerPolicy="no-referrer-when-downgrade"
+             title={t('contact.map.title')}
+           ></iframe>
+         </div>
+         <div className="mt-4">
+           <a 
+             href="https://maps.google.com/?q=Deskohub,Nádražní+123,Praha" 
+             target="_blank" 
+             rel="noopener noreferrer"
+             className="text-primary hover:underline"
+           >
+             {t('contact.map.viewLarger')}
+           </a>
+         </div>
+       </div>
+     );
+   }
+   ```
+
+5. **Create Team Section Component**:
+   ```typescript
+   // components/contact/team-section.tsx
+   import { useParams } from 'next/navigation';
+   import { createTranslator } from '@/paraglide/runtime';
+   import Image from 'next/image';
+   
+   export function TeamSection() {
+     const { locale } = useParams();
+     const t = createTranslator(locale);
+     
+     const teamMembers = [
+       {
+         name: 'Jana Nováková',
+         position: t('contact.team.positions.manager'),
+         email: 'jana@deskohub.cz',
+         phone: '+420 123 456 789',
+         image: '/images/team/jana.jpg',
+       },
+       {
+         name: 'Petr Svoboda',
+         position: t('contact.team.positions.operations'),
+         email: 'petr@deskohub.cz',
+         phone: '+420 123 456 790',
+         image: '/images/team/petr.jpg',
+       },
+       {
+         name: 'Martina Dvořáková',
+         position: t('contact.team.positions.events'),
+         email: 'martina@deskohub.cz',
+         phone: '+420 123 456 791',
+         image: '/images/team/martina.jpg',
+       },
+       {
+         name: 'Tomáš Černý',
+         position: t('contact.team.positions.support'),
+         email: 'tomas@deskohub.cz',
+         phone: '+420 123 456 792',
+         image: '/images/team/tomas.jpg',
+       },
+     ];
+     
+     return (
+       <section className="mt-16">
+         <h2 className="text-3xl font-bold mb-8 text-center">{t('contact.team.title')}</h2>
+         <p className="text-center max-w-3xl mx-auto mb-12">{t('contact.team.description')}</p>
+         
+         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8">
+           {teamMembers.map((member, index) => (
+             <div key={index} className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+               <div className="aspect-square relative">
+                 <Image
+                   src={member.image}
+                   alt={member.name}
+                   fill
+                   className="object-cover"
+                 />
+               </div>
+               <div className="p-4">
+                 <h3 className="font-bold text-xl">{member.name}</h3>
+                 <p className="text-gray-600 dark:text-gray-300 mb-3">{member.position}</p>
+                 <p className="text-sm">{member.email}</p>
+                 <p className="text-sm">{member.phone}</p>
+               </div>
+             </div>
+           ))}
+         </div>
+       </section>
+     );
+   }
+   ```
+
+6. **Create Server Action for Contact Form**:
+   ```typescript
+   // app/actions.js
+   'use server';
+   
+   import { createTranslator } from '@/paraglide/runtime';
+   import { cookies } from 'next/headers';
+   
+   export async function sendContactMessage(formData) {
+     // Get the current locale from cookies
+     const cookieStore = cookies();
+     const locale = cookieStore.get('NEXT_LOCALE')?.value || 'cs';
+     const t = createTranslator(locale);
+     
+     try {
+       // Validate the form data
+       if (!formData.name || !formData.email || !formData.message) {
+         return {
+           success: false,
+           message: t('contact.form.errors.invalidData'),
+         };
+       }
+       
+       // Here you would typically send the message to your backend
+       // For example, using an API endpoint or email service
+       
+       // For now, we'll simulate a successful submission
+       console.log('Contact form submission:', formData);
+       
+       // Add a slight delay to simulate network request
+       await new Promise(resolve => setTimeout(resolve, 1000));
+       
+       return {
+         success: true,
+         message: t('contact.form.successMessage'),
+       };
+     } catch (error) {
+       console.error('Error submitting contact form:', error);
+       return {
+         success: false,
+         message: t('contact.form.errorMessage'),
+       };
+     }
+   }
+   ```
+
+7. **Add Translation Messages**:
+   ```json
+   // messages/cs.json (add these entries)
+   {
+     "contact": {
+       "meta": {
+         "title": "Kontakt | Deskohub",
+         "description": "Kontaktujte nás pro více informací o našich službách, rezervacích nebo jakýchkoli dotazech. Jsme tu pro vás.",
+         "ogTitle": "Kontaktujte Deskohub - Jsme tu pro vás",
+         "ogDescription": "Máte dotaz nebo chcete rezervaci? Kontaktujte nás a my vám rádi pomůžeme."
+       },
+       "title": "Kontaktujte nás",
+       "description": "Máte dotaz nebo potřebujete pomoc? Neváhejte nás kontaktovat. Náš tým je připraven vám pomoci.",
+       "form": {
+         "title": "Napište nám",
+         "nameLabel": "Jméno",
+         "emailLabel": "E-mail",
+         "phoneLabel": "Telefon (volitelné)",
+         "subjectLabel": "Předmět (volitelné)",
+         "messageLabel": "Zpráva",
+         "submit": "Odeslat zprávu",
+         "submitting": "Odesílání...",
+         "successMessage": "Děkujeme za vaši zprávu. Ozveme se vám co nejdříve.",
+         "errorMessage": "Při odesílání zprávy došlo k chybě. Zkuste to prosím znovu.",
+         "errors": {
+           "nameRequired": "Jméno je povinné",
+           "emailRequired": "E-mail je povinný",
+           "emailInvalid": "Zadejte platný e-mail",
+           "messageRequired": "Zpráva je povinná",
+           "invalidData": "Zkontrolujte prosím zadané údaje"
+         }
+       },
+       "info": {
+         "title": "Kontaktní informace",
+         "phoneTitle": "Telefon",
+         "emailTitle": "E-mail",
+         "addressTitle": "Adresa",
+         "hoursTitle": "Otevírací doba",
+         "socialTitle": "Sociální sítě"
+       },
+       "businessHours": {
+         "monday": "Pondělí",
+         "tuesday": "Úterý",
+         "wednesday": "Středa",
+         "thursday": "Čtvrtek",
+         "friday": "Pátek",
+         "saturday": "Sobota",
+         "sunday": "Neděle"
+       },
+       "map": {
+         "title": "Kde nás najdete",
+         "loading": "Načítání mapy...",
+         "viewLarger": "Zobrazit větší mapu"
+       },
+       "team": {
+         "title": "Náš tým",
+         "description": "Seznamte se s lidmi, kteří stojí za Deskohubem a jsou připraveni vám pomoci s jakýmkoli dotazem.",
+         "positions": {
+           "manager": "Manažerka",
+           "operations": "Provozní manažer",
+           "events": "Koordinátorka událostí",
+           "support": "Zákaznická podpora"
+         }
+       }
+     }
+   }
+   
+   // messages/en.json (add these entries)
+   {
+     "contact": {
+       "meta": {
+         "title": "Contact | Deskohub",
+         "description": "Contact us for more information about our services, bookings, or any inquiries. We're here to help.",
+         "ogTitle": "Contact Deskohub - We're Here to Help",
+         "ogDescription": "Have a question or want to make a booking? Contact us and we'll be happy to assist you."
+       },
+       "title": "Contact Us",
+       "description": "Have a question or need assistance? Don't hesitate to reach out. Our team is ready to help you.",
+       "form": {
+         "title": "Send Us a Message",
+         "nameLabel": "Name",
+         "emailLabel": "Email",
+         "phoneLabel": "Phone (optional)",
+         "subjectLabel": "Subject (optional)",
+         "messageLabel": "Message",
+         "submit": "Send Message",
+         "submitting": "Sending...",
+         "successMessage": "Thank you for your message. We'll get back to you as soon as possible.",
+         "errorMessage": "There was an error sending your message. Please try again.",
+         "errors": {
+           "nameRequired": "Name is required",
+           "emailRequired": "Email is required",
+           "emailInvalid": "Please enter a valid email",
+           "messageRequired": "Message is required",
+           "invalidData": "Please check your input data"
+         }
+       },
+       "info": {
+         "title": "Contact Information",
+         "phoneTitle": "Phone",
+         "emailTitle": "Email",
+         "addressTitle": "Address",
+         "hoursTitle": "Business Hours",
+         "socialTitle": "Social Media"
+       },
+       "businessHours": {
+         "monday": "Monday",
+         "tuesday": "Tuesday",
+         "wednesday": "Wednesday",
+         "thursday": "Thursday",
+         "friday": "Friday",
+         "saturday": "Saturday",
+         "sunday": "Sunday"
+       },
+       "map": {
+         "title": "Find Us",
+         "loading": "Loading map...",
+         "viewLarger": "View larger map"
+       },
+       "team": {
+         "title": "Our Team",
+         "description": "Meet the people behind Deskohub who are ready to assist you with any inquiries.",
+         "positions": {
+           "manager": "Manager",
+           "operations": "Operations Manager",
+           "events": "Events Coordinator",
+           "support": "Customer Support"
+         }
+       }
+     }
+   }
+   ```
+
+8. **Update Navigation to Include Contact Page**:
+   ```typescript
+   // components/navigation.tsx
+   // Add the contact page to the navigation links array
+   
+   const links = [
+     { href: '/', label: t('nav.home') },
+     { href: '/desks', label: t('nav.desks') },
+     { href: '/gallery', label: t('nav.gallery') },
+     { href: '/menu', label: t('nav.menu') },
+     { href: '/training-room', label: t('nav.trainingRoom') },
+     { href: '/contact', label: t('nav.contact') }, // Add this line
+   ];
+   ```
+
+9. **Add Social Links Component** (if not already existing):
+   ```typescript
+   // components/social-links.tsx
+   import { 
+     FaFacebook, 
+     FaInstagram, 
+     FaTwitter, 
+     FaLinkedin 
+   } from 'react-icons/fa';
+   
+   export function SocialLinks() {
+     const socialLinks = [
+       { icon: FaFacebook, href: 'https://facebook.com/deskohub', label: 'Facebook' },
+       { icon: FaInstagram, href: 'https://instagram.com/deskohub', label: 'Instagram' },
+       { icon: FaTwitter, href: 'https://twitter.com/deskohub', label: 'Twitter' },
+       { icon: FaLinkedin, href: 'https://linkedin.com/company/deskohub', label: 'LinkedIn' },
+     ];
+     
+     return (
+       <div className="flex space-x-4">
+         {socialLinks.map((link, index) => {
+           const Icon = link.icon;
+           return (
+             <a
+               key={index}
+               href={link.href}
+               target="_blank"
+               rel="noopener noreferrer"
+               aria-label={link.label}
+               className="text-gray-600 hover:text-primary dark:text-gray-300 dark:hover:text-primary transition-colors"
+             >
+               <Icon className="w-6 h-6" />
+             </a>
+           );
+         })}
+       </div>
+     );
+   }
+   ```
+
+10. **Add Necessary Images**:
+    - Create a directory for team member photos: `/public/images/team/`
+    - Add placeholder images for team members: `jana.jpg`, `petr.jpg`, `martina.jpg`, `tomas.jpg`
+    - Add an OG image for social sharing: `/public/images/contact-og-image.jpg`
+
+# Test Strategy:
+## Test Strategy
+
+1. **Functionality Testing**:
+   - Verify the Contact page loads correctly at `/contact` and `/en/contact` routes
+   - Test that all components render properly with correct content
+   - Confirm that the contact form validation works as expected:
+     - Submit with empty required fields and verify error messages
+     - Submit with invalid email format and verify error message
+     - Submit with all valid data and verify success message
+   - Test that the map loads correctly and is interactive
+   - Verify that all links (social media, email, phone) are correctly formatted and clickable
+
+2. **Internationalization Testing**:
+   - Switch between Czech and English languages and verify all content is properly translated
+   - Check that form validation messages appear in the correct language
+   - Verify that form submission success/error messages are displayed in the current language
+   - Test that business hours, team positions, and other localized content displays correctly in both languages
+
+3. **Responsive Design Testing**:
+   - Test the page layout on various screen sizes:
+     - Mobile phones (320px - 480px)
+     - Tablets (768px - 1024px)
+     - Desktops (1024px+)
+   - Verify that the layout adjusts appropriately:
+     - Form and contact info stack vertically on mobile
+     - Team members display in a single column on mobile, multiple columns on larger screens
+     - Map is properly sized and usable on all devices
+
+4. **Accessibility Testing**:
+   - Run automated accessibility tests using tools like Lighthouse or axe
+   - Verify proper heading hierarchy (h1, h2, h3)
+   - Check that all form inputs have associated labels
+   - Ensure all images have appropriate alt text
+   - Test keyboard navigation through the form and page
+   - Verify sufficient color contrast for text elements
+
+5. **Form Submission Testing**:
+   - Test the server action by submitting the form with valid data
+   - Verify that the form data is correctly logged or processed
+   - Test error handling by simulating server errors
+   - Verify loading states display correctly during form submission
+
+6. **SEO Testing**:
+   - Verify that metadata is correctly generated for both languages
+   - Check that page title and description are appropriate
+   - Confirm that Open Graph tags are properly set for social sharing
+   - Test that the page is properly indexed by search engines
+
+7. **Integration Testing**:
+   - Verify that the Contact page is correctly linked from the main navigation
+   - Test that the page works correctly within the overall site flow
+   - Check that the theme (light/dark mode) is applied consistently
+
+8. **Performance Testing**:
+   - Measure page load time and ensure it's within acceptable limits
+   - Check for any unnecessary re-renders in React components
+   - Verify that images are properly optimized
+   - Test that the map component loads efficiently and doesn't block page rendering

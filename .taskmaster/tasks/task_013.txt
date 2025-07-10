@@ -1,6 +1,6 @@
 # Task ID: 13
 # Title: Migrate Next.js Image Components to Modern Next.js 13+ Format
-# Status: pending
+# Status: done
 # Dependencies: 1
 # Priority: medium
 # Description: Update all Next.js Image components across the project from legacy format to the modern Next.js 13+ style following the official migration guide to improve performance and accessibility.
@@ -136,3 +136,23 @@ import Image from 'next/image'
    - Test image loading with slow network connections
    - Verify proper image aspect ratios are maintained
    - Check that placeholder/blur-up behavior works as expected
+
+# Subtasks:
+## 1. Migrate hero.tsx Image components [completed]
+### Dependencies: None
+### Description: Updated the Image components in hero.tsx from legacy objectFit prop to the modern style={{ objectFit: 'cover' }} format. Build passes successfully.
+### Details:
+
+
+## 2. Continue systematic migration of remaining files [done]
+### Dependencies: None
+### Description: Work through the remaining files with Image components, updating them to the modern Next.js 13+ format. Follow the same pattern used in hero.tsx, replacing legacy props with appropriate style properties.
+### Details:
+
+
+## 3. Verify build and test migrated components [done]
+### Dependencies: None
+### Description: After each file migration, verify that the build passes and the components render correctly. Test responsive behavior across different viewport sizes.
+### Details:
+
+

@@ -14,6 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { getBooking } from "@/features/booking/lib/booking-storage";
 import { m } from "@/i18n";
+import { formatDate, formatTime } from "@/lib/utils/date-formatting";
 import type { RouteProps_locale_id } from "./route";
 
 export const metadata: Metadata = {
@@ -32,24 +33,15 @@ export default async function ReservationConfirmationPage({
 
   if (!booking) notFound();
 
-  // Format date and time for display
-  const formattedDate = new Date(booking.datetime).toLocaleDateString(
-    locale === "cs-CZ" ? "cs-CZ" : "en-US",
-    {
-      weekday: "long",
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    }
-  );
+  // Format date and time for display using consistent formatting
+  const formattedDate = formatDate(booking.datetime, locale, {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 
-  const formattedTime = new Date(booking.datetime).toLocaleTimeString(
-    locale === "cs-CZ" ? "cs-CZ" : "en-US",
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-    }
-  );
+  const formattedTime = formatTime(booking.datetime, locale);
 
   return (
     <div className="container max-w-4xl mx-auto py-12 px-4">
@@ -107,6 +99,16 @@ export default async function ReservationConfirmationPage({
                 <div>
                   <p className="font-medium">{m["booking.timeLabel"]()}</p>
                   <p className="text-gray-600">{formattedTime}</p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <Clock className="w-4 h-4 text-gray-500" />
+                <div>
+                  <p className="font-medium">{m["booking.durationLabel"]()}</p>
+                  <p className="text-gray-600">
+                    {m.durationFormat({ hours: booking.duration })}
+                  </p>
                 </div>
               </div>
 
