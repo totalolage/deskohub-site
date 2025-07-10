@@ -1,0 +1,1098 @@
+# Task ID: 27
+# Title: Create Comprehensive Training Rooms Page with Booking Integration
+# Status: pending
+# Dependencies: 1, 4, 6, 8, 21
+# Priority: high
+# Description: Develop a detailed training rooms page that showcases multiple available rooms with filtering options, detailed specifications, interactive availability calendar, and integration with the existing reservation system.
+# Details:
+## Implementation Steps
+
+1. **Create the Training Rooms Page Structure**:
+```typescript
+// app/[locale]/training-rooms/page.tsx
+import { createTranslator } from '@/paraglide/runtime';
+import { PageHeader } from '@/components/ui/page-header';
+import { TrainingRoomsHero } from '@/components/training-rooms/hero';
+import { TrainingRoomsList } from '@/components/training-rooms/rooms-list';
+import { TrainingRoomFilters } from '@/components/training-rooms/filters';
+import { Metadata } from 'next';
+
+// SEO metadata generation
+export async function generateMetadata({ params }): Promise<Metadata> {
+  const { locale } = params;
+  const t = createTranslator(locale);
+  
+  return {
+    title: t('training_rooms_page_title'),
+    description: t('training_rooms_page_description'),
+  };
+}
+
+export default function TrainingRoomsPage({ params }) {
+  const { locale } = params;
+  const t = createTranslator(locale);
+  
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <PageHeader 
+        title={t('training_rooms_title')} 
+        description={t('training_rooms_description')} 
+      />
+      
+      <TrainingRoomsHero />
+      
+      <section className="my-12">
+        <TrainingRoomFilters />
+        <TrainingRoomsList />
+      </section>
+    </main>
+  );
+}
+```
+
+2. **Create Training Rooms Data Model**:
+```typescript
+// types/training-room.ts
+export interface TrainingRoom {
+  id: string;
+  name: string;
+  slug: string;
+  description: string;
+  capacity: {
+    classroom: number;
+    theater: number;
+    boardroom: number;
+  };
+  size: {
+    squareMeters: number;
+    dimensions: string;
+  };
+  equipment: string[];
+  amenities: string[];
+  images: {
+    main: string;
+    gallery: string[];
+  };
+  pricing: {
+    hourly: number;
+    daily: number;
+    currency: string;
+  };
+  availability?: {
+    // Will be populated from API
+    dates: {
+      date: string;
+      slots: {
+        start: string;
+        end: string;
+        isAvailable: boolean;
+      }[];
+    }[];
+  };
+}
+```
+
+3. **Create Mock Data for Development**:
+```typescript
+// data/training-rooms.ts
+import { TrainingRoom } from '@/types/training-room';
+
+export const trainingRooms: TrainingRoom[] = [
+  {
+    id: 'room-1',
+    name: 'Executive Training Suite',
+    slug: 'executive-training-suite',
+    description: 'Our premium training space with state-of-the-art equipment and panoramic views.',
+    capacity: {
+      classroom: 24,
+      theater: 40,
+      boardroom: 20,
+    },
+    size: {
+      squareMeters: 75,
+      dimensions: '10m x 7.5m',
+    },
+    equipment: [
+      'Interactive whiteboard',
+      'Ceiling-mounted projector',
+      'Surround sound system',
+      'Video conferencing equipment',
+      'High-speed Wi-Fi',
+    ],
+    amenities: [
+      'Natural lighting',
+      'Climate control',
+      'Complimentary water and coffee',
+      'Breakout area',
+    ],
+    images: {
+      main: '/images/training-rooms/executive-suite-main.jpg',
+      gallery: [
+        '/images/training-rooms/executive-suite-1.jpg',
+        '/images/training-rooms/executive-suite-2.jpg',
+        '/images/training-rooms/executive-suite-3.jpg',
+      ],
+    },
+    pricing: {
+      hourly: 120,
+      daily: 800,
+      currency: 'EUR',
+    },
+  },
+  // Add 3-4 more room examples with different capacities and equipment
+]
+```
+
+4. **Create Hero Component**:
+```typescript
+// components/training-rooms/hero.tsx
+import Image from 'next/image';
+import { createTranslator } from '@/paraglide/runtime';
+import { useParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+
+export function TrainingRoomsHero() {
+  const { locale } = useParams();
+  const t = createTranslator(locale as string);
+  
+  return (
+    <section className="relative h-[500px] w-full overflow-hidden rounded-xl">
+      <Image
+        src="/images/training-rooms/hero-background.jpg"
+        alt={t('training_rooms_hero_alt')}
+        fill
+        className="object-cover"
+        priority
+      />
+      <div className="absolute inset-0 bg-black/50 flex flex-col items-center justify-center text-white p-8 text-center">
+        <h2 className="text-3xl md:text-4xl font-bold mb-4">{t('training_rooms_hero_title')}</h2>
+        <p className="text-lg md:text-xl max-w-2xl mb-8">{t('training_rooms_hero_description')}</p>
+        <Button size="lg" variant="default">{t('view_all_rooms')}</Button>
+      </div>
+    </section>
+  );
+}
+```
+
+5. **Create Filtering Component**:
+```typescript
+// components/training-rooms/filters.tsx
+import { useState } from 'react';
+import { createTranslator } from '@/paraglide/runtime';
+import { useParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Checkbox } from '@/components/ui/checkbox';
+import { DatePicker } from '@/components/ui/date-picker';
+
+export function TrainingRoomFilters() {
+  const { locale } = useParams();
+  const t = createTranslator(locale as string);
+  
+  const [capacity, setCapacity] = useState([10]);
+  const [date, setDate] = useState<Date | undefined>(undefined);
+  const [equipment, setEquipment] = useState({
+    projector: false,
+    whiteboard: false,
+    videoConference: false,
+    highSpeedWifi: false,
+  });
+  
+  const handleReset = () => {
+    setCapacity([10]);
+    setDate(undefined);
+    setEquipment({
+      projector: false,
+      whiteboard: false,
+      videoConference: false,
+      highSpeedWifi: false,
+    });
+  };
+  
+  return (
+    <div className="bg-muted p-6 rounded-lg mb-8">
+      <h3 className="text-xl font-semibold mb-4">{t('filter_rooms')}</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div>
+          <Label>{t('capacity')}: {capacity[0]}+ {t('people')}</Label>
+          <Slider
+            defaultValue={[10]}
+            max={50}
+            step={5}
+            onValueChange={setCapacity}
+          />
+        </div>
+        
+        <div>
+          <Label>{t('date')}</Label>
+          <DatePicker
+            selected={date}
+            onSelect={setDate}
+            placeholder={t('select_date')}
+          />
+        </div>
+        
+        <div>
+          <Label className="mb-2 block">{t('equipment')}</Label>
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="projector" 
+                checked={equipment.projector}
+                onCheckedChange={(checked) => 
+                  setEquipment({...equipment, projector: checked as boolean})
+                }
+              />
+              <Label htmlFor="projector">{t('projector')}</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="whiteboard" 
+                checked={equipment.whiteboard}
+                onCheckedChange={(checked) => 
+                  setEquipment({...equipment, whiteboard: checked as boolean})
+                }
+              />
+              <Label htmlFor="whiteboard">{t('whiteboard')}</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="videoConference" 
+                checked={equipment.videoConference}
+                onCheckedChange={(checked) => 
+                  setEquipment({...equipment, videoConference: checked as boolean})
+                }
+              />
+              <Label htmlFor="videoConference">{t('video_conferencing')}</Label>
+            </div>
+            <div className="flex items-center space-x-2">
+              <Checkbox 
+                id="highSpeedWifi" 
+                checked={equipment.highSpeedWifi}
+                onCheckedChange={(checked) => 
+                  setEquipment({...equipment, highSpeedWifi: checked as boolean})
+                }
+              />
+              <Label htmlFor="highSpeedWifi">{t('high_speed_wifi')}</Label>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex justify-end mt-6 space-x-4">
+        <Button variant="outline" onClick={handleReset}>{t('reset_filters')}</Button>
+        <Button>{t('apply_filters')}</Button>
+      </div>
+    </div>
+  );
+}
+```
+
+6. **Create Rooms List Component**:
+```typescript
+// components/training-rooms/rooms-list.tsx
+import { createTranslator } from '@/paraglide/runtime';
+import { useParams } from 'next/navigation';
+import { trainingRooms } from '@/data/training-rooms';
+import { TrainingRoomCard } from './room-card';
+
+export function TrainingRoomsList() {
+  const { locale } = useParams();
+  const t = createTranslator(locale as string);
+  
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-6">
+        <h3 className="text-xl font-semibold">{t('available_rooms')}</h3>
+        <div className="flex items-center space-x-2">
+          <span>{t('view')}:</span>
+          <button className="p-2 bg-primary text-primary-foreground rounded">
+            <GridIcon className="h-4 w-4" />
+          </button>
+          <button className="p-2 bg-muted text-muted-foreground rounded">
+            <ListIcon className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {trainingRooms.map((room) => (
+          <TrainingRoomCard key={room.id} room={room} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GridIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect width="7" height="7" x="3" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="3" rx="1" />
+      <rect width="7" height="7" x="14" y="14" rx="1" />
+      <rect width="7" height="7" x="3" y="14" rx="1" />
+    </svg>
+  );
+}
+
+function ListIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <line x1="8" x2="21" y1="6" y2="6" />
+      <line x1="8" x2="21" y1="12" y2="12" />
+      <line x1="8" x2="21" y1="18" y2="18" />
+      <line x1="3" x2="3.01" y1="6" y2="6" />
+      <line x1="3" x2="3.01" y1="12" y2="12" />
+      <line x1="3" x2="3.01" y1="18" y2="18" />
+    </svg>
+  );
+}
+```
+
+7. **Create Room Card Component**:
+```typescript
+// components/training-rooms/room-card.tsx
+import Image from 'next/image';
+import Link from 'next/link';
+import { createTranslator } from '@/paraglide/runtime';
+import { useParams } from 'next/navigation';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
+import { TrainingRoom } from '@/types/training-room';
+
+interface TrainingRoomCardProps {
+  room: TrainingRoom;
+}
+
+export function TrainingRoomCard({ room }: TrainingRoomCardProps) {
+  const { locale } = useParams();
+  const t = createTranslator(locale as string);
+  
+  return (
+    <div className="bg-card rounded-lg overflow-hidden shadow-md hover:shadow-lg transition-shadow">
+      <div className="relative h-48 w-full">
+        <Image
+          src={room.images.main}
+          alt={room.name}
+          fill
+          className="object-cover"
+        />
+      </div>
+      
+      <div className="p-6">
+        <h4 className="text-xl font-semibold mb-2">{room.name}</h4>
+        <p className="text-muted-foreground mb-4 line-clamp-2">{room.description}</p>
+        
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Badge variant="outline">
+            <UsersIcon className="h-3 w-3 mr-1" />
+            {t('up_to')} {room.capacity.theater} {t('people')}
+          </Badge>
+          <Badge variant="outline">
+            <SquareIcon className="h-3 w-3 mr-1" />
+            {room.size.squareMeters}m²
+          </Badge>
+          {room.equipment.slice(0, 2).map((item) => (
+            <Badge key={item} variant="secondary">{item}</Badge>
+          ))}
+          {room.equipment.length > 2 && (
+            <Badge variant="secondary">+{room.equipment.length - 2}</Badge>
+          )}
+        </div>
+        
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-sm text-muted-foreground">{t('from')}</p>
+            <p className="text-lg font-semibold">
+              {room.pricing.hourly} {room.pricing.currency}/{t('hour')}
+            </p>
+          </div>
+          
+          <div className="flex space-x-2">
+            <Button variant="outline" asChild>
+              <Link href={`/training-rooms/${room.slug}`}>
+                {t('details')}
+              </Link>
+            </Button>
+            <Button asChild>
+              <Link href={`/reservation?room=${room.slug}`}>
+                {t('book_now')}
+              </Link>
+            </Button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function UsersIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  );
+}
+
+function SquareIcon(props) {
+  return (
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+      <rect width="18" height="18" x="3" y="3" rx="2" />
+    </svg>
+  );
+}
+```
+
+8. **Create Room Detail Page**:
+```typescript
+// app/[locale]/training-rooms/[slug]/page.tsx
+import { createTranslator } from '@/paraglide/runtime';
+import { notFound } from 'next/navigation';
+import Image from 'next/image';
+import { PageHeader } from '@/components/ui/page-header';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { trainingRooms } from '@/data/training-rooms';
+import { RoomGallery } from '@/components/training-rooms/room-gallery';
+import { RoomSpecifications } from '@/components/training-rooms/room-specifications';
+import { RoomAvailability } from '@/components/training-rooms/room-availability';
+import { Metadata } from 'next';
+
+export async function generateMetadata({ params }): Promise<Metadata> {
+  const { locale, slug } = params;
+  const t = createTranslator(locale);
+  
+  const room = trainingRooms.find(r => r.slug === slug);
+  if (!room) return {};
+  
+  return {
+    title: `${room.name} | ${t('training_rooms')}`,
+    description: room.description,
+  };
+}
+
+export default function RoomDetailPage({ params }) {
+  const { locale, slug } = params;
+  const t = createTranslator(locale);
+  
+  const room = trainingRooms.find(r => r.slug === slug);
+  if (!room) return notFound();
+  
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <PageHeader 
+        title={room.name}
+        description={room.description}
+      />
+      
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 my-8">
+        <div className="lg:col-span-2">
+          <RoomGallery images={room.images.gallery} mainImage={room.images.main} />
+          
+          <Tabs defaultValue="details" className="mt-8">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="details">{t('details')}</TabsTrigger>
+              <TabsTrigger value="equipment">{t('equipment')}</TabsTrigger>
+              <TabsTrigger value="availability">{t('availability')}</TabsTrigger>
+            </TabsList>
+            <TabsContent value="details" className="p-4">
+              <RoomSpecifications room={room} />
+            </TabsContent>
+            <TabsContent value="equipment" className="p-4">
+              <h3 className="text-xl font-semibold mb-4">{t('equipment_and_amenities')}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <h4 className="font-medium mb-2">{t('equipment')}</h4>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {room.equipment.map(item => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+                <div>
+                  <h4 className="font-medium mb-2">{t('amenities')}</h4>
+                  <ul className="list-disc pl-5 space-y-1">
+                    {room.amenities.map(item => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            </TabsContent>
+            <TabsContent value="availability" className="p-4">
+              <RoomAvailability roomId={room.id} />
+            </TabsContent>
+          </Tabs>
+        </div>
+        
+        <div className="bg-card p-6 rounded-lg shadow-md h-fit">
+          <h3 className="text-xl font-semibold mb-4">{t('booking_information')}</h3>
+          
+          <div className="space-y-4 mb-6">
+            <div>
+              <p className="text-sm text-muted-foreground">{t('hourly_rate')}</p>
+              <p className="text-2xl font-bold">{room.pricing.hourly} {room.pricing.currency}</p>
+            </div>
+            <div>
+              <p className="text-sm text-muted-foreground">{t('daily_rate')}</p>
+              <p className="text-2xl font-bold">{room.pricing.daily} {room.pricing.currency}</p>
+            </div>
+            <div className="pt-4 border-t">
+              <p className="text-sm text-muted-foreground mb-2">{t('capacity')}</p>
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-lg font-semibold">{room.capacity.classroom}</p>
+                  <p className="text-xs text-muted-foreground">{t('classroom')}</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold">{room.capacity.theater}</p>
+                  <p className="text-xs text-muted-foreground">{t('theater')}</p>
+                </div>
+                <div>
+                  <p className="text-lg font-semibold">{room.capacity.boardroom}</p>
+                  <p className="text-xs text-muted-foreground">{t('boardroom')}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <Button className="w-full" size="lg" asChild>
+            <a href={`/reservation?room=${room.slug}`}>{t('book_this_room')}</a>
+          </Button>
+          
+          <p className="text-sm text-muted-foreground text-center mt-4">
+            {t('booking_note')}
+          </p>
+        </div>
+      </div>
+    </main>
+  );
+}
+```
+
+9. **Create Room Gallery Component**:
+```typescript
+// components/training-rooms/room-gallery.tsx
+import { useState } from 'react';
+import Image from 'next/image';
+import { Dialog, DialogContent } from '@/components/ui/dialog';
+
+interface RoomGalleryProps {
+  mainImage: string;
+  images: string[];
+}
+
+export function RoomGallery({ mainImage, images }: RoomGalleryProps) {
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const allImages = [mainImage, ...images];
+  
+  return (
+    <div>
+      <div className="relative h-[400px] w-full rounded-lg overflow-hidden mb-4">
+        <Image
+          src={mainImage}
+          alt="Room main view"
+          fill
+          className="object-cover"
+          onClick={() => setSelectedImage(mainImage)}
+        />
+      </div>
+      
+      <div className="grid grid-cols-4 gap-4">
+        {images.map((image, index) => (
+          <div 
+            key={index} 
+            className="relative h-24 rounded-md overflow-hidden cursor-pointer"
+            onClick={() => setSelectedImage(image)}
+          >
+            <Image
+              src={image}
+              alt={`Room view ${index + 1}`}
+              fill
+              className="object-cover"
+            />
+          </div>
+        ))}
+      </div>
+      
+      <Dialog open={!!selectedImage} onOpenChange={() => setSelectedImage(null)}>
+        <DialogContent className="max-w-4xl p-0 bg-transparent border-none">
+          <div className="relative h-[80vh] w-full">
+            {selectedImage && (
+              <Image
+                src={selectedImage}
+                alt="Room view"
+                fill
+                className="object-contain"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+```
+
+10. **Create Room Specifications Component**:
+```typescript
+// components/training-rooms/room-specifications.tsx
+import { createTranslator } from '@/paraglide/runtime';
+import { useParams } from 'next/navigation';
+import { TrainingRoom } from '@/types/training-room';
+
+interface RoomSpecificationsProps {
+  room: TrainingRoom;
+}
+
+export function RoomSpecifications({ room }: RoomSpecificationsProps) {
+  const { locale } = useParams();
+  const t = createTranslator(locale as string);
+  
+  return (
+    <div>
+      <h3 className="text-xl font-semibold mb-4">{t('room_specifications')}</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div>
+          <h4 className="font-medium mb-2">{t('capacity')}</h4>
+          <table className="w-full">
+            <tbody>
+              <tr className="border-b">
+                <td className="py-2">{t('classroom_style')}</td>
+                <td className="py-2 text-right font-medium">{room.capacity.classroom} {t('people')}</td>
+              </tr>
+              <tr className="border-b">
+                <td className="py-2">{t('theater_style')}</td>
+                <td className="py-2 text-right font-medium">{room.capacity.theater} {t('people')}</td>
+              </tr>
+              <tr className="border-b">
+                <td className="py-2">{t('boardroom_style')}</td>
+                <td className="py-2 text-right font-medium">{room.capacity.boardroom} {t('people')}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div>
+          <h4 className="font-medium mb-2">{t('dimensions')}</h4>
+          <table className="w-full">
+            <tbody>
+              <tr className="border-b">
+                <td className="py-2">{t('total_area')}</td>
+                <td className="py-2 text-right font-medium">{room.size.squareMeters} m²</td>
+              </tr>
+              <tr className="border-b">
+                <td className="py-2">{t('dimensions')}</td>
+                <td className="py-2 text-right font-medium">{room.size.dimensions}</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div className="mt-6">
+        <h4 className="font-medium mb-2">{t('pricing')}</h4>
+        <table className="w-full">
+          <tbody>
+            <tr className="border-b">
+              <td className="py-2">{t('hourly_rate')}</td>
+              <td className="py-2 text-right font-medium">{room.pricing.hourly} {room.pricing.currency}</td>
+            </tr>
+            <tr className="border-b">
+              <td className="py-2">{t('daily_rate')}</td>
+              <td className="py-2 text-right font-medium">{room.pricing.daily} {room.pricing.currency}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+```
+
+11. **Create Room Availability Component with Calendar**:
+```typescript
+// components/training-rooms/room-availability.tsx
+import { useState } from 'react';
+import { createTranslator } from '@/paraglide/runtime';
+import { useParams } from 'next/navigation';
+import { Calendar } from '@/components/ui/calendar';
+import { Button } from '@/components/ui/button';
+import { format } from 'date-fns';
+
+interface RoomAvailabilityProps {
+  roomId: string;
+}
+
+export function RoomAvailability({ roomId }: RoomAvailabilityProps) {
+  const { locale } = useParams();
+  const t = createTranslator(locale as string);
+  
+  const [date, setDate] = useState<Date | undefined>(new Date());
+  
+  // Mock time slots - in a real app, these would come from an API based on the selected date
+  const timeSlots = [
+    { start: '09:00', end: '10:00', isAvailable: true },
+    { start: '10:00', end: '11:00', isAvailable: true },
+    { start: '11:00', end: '12:00', isAvailable: false },
+    { start: '12:00', end: '13:00', isAvailable: false },
+    { start: '13:00', end: '14:00', isAvailable: true },
+    { start: '14:00', end: '15:00', isAvailable: true },
+    { start: '15:00', end: '16:00', isAvailable: true },
+    { start: '16:00', end: '17:00', isAvailable: false },
+    { start: '17:00', end: '18:00', isAvailable: true },
+  ];
+  
+  return (
+    <div>
+      <h3 className="text-xl font-semibold mb-4">{t('check_availability')}</h3>
+      
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+        <div>
+          <Calendar
+            mode="single"
+            selected={date}
+            onSelect={setDate}
+            className="rounded-md border"
+          />
+        </div>
+        
+        <div>
+          <h4 className="font-medium mb-4">
+            {date ? format(date, 'EEEE, MMMM d, yyyy') : t('select_date')}
+          </h4>
+          
+          {date && (
+            <div className="space-y-2">
+              {timeSlots.map((slot, index) => (
+                <div 
+                  key={index}
+                  className={`p-3 rounded-md border flex justify-between items-center ${
+                    slot.isAvailable ? 'bg-card' : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  <span>
+                    {slot.start} - {slot.end}
+                  </span>
+                  {slot.isAvailable ? (
+                    <Button size="sm" asChild>
+                      <a href={`/reservation?room=${roomId}&date=${format(date, 'yyyy-MM-dd')}&time=${slot.start}`}>
+                        {t('book')}
+                      </a>
+                    </Button>
+                  ) : (
+                    <span className="text-sm font-medium">{t('unavailable')}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+```
+
+12. **Integrate with Existing Reservation Form**:
+```typescript
+// Modify app/[locale]/reservation/page.tsx to accept room parameters
+import { createTranslator } from '@/paraglide/runtime';
+import { PageHeader } from '@/components/ui/page-header';
+import { ReservationForm } from '@/components/reservation-form';
+import { trainingRooms } from '@/data/training-rooms';
+
+export default function ReservationPage({ params, searchParams }) {
+  const { locale } = params;
+  const t = createTranslator(locale);
+  
+  const { room, date, time } = searchParams;
+  
+  // Find selected room if provided
+  const selectedRoom = room ? trainingRooms.find(r => r.slug === room || r.id === room) : null;
+  
+  return (
+    <main className="container mx-auto px-4 py-8">
+      <PageHeader 
+        title={t('make_reservation')} 
+        description={selectedRoom 
+          ? t('reservation_for_specific_room', { roomName: selectedRoom.name })
+          : t('reservation_description')
+        } 
+      />
+      
+      <div className="max-w-3xl mx-auto">
+        <ReservationForm 
+          initialRoom={selectedRoom?.name}
+          initialDate={date}
+          initialTime={time}
+        />
+      </div>
+    </main>
+  );
+}
+```
+
+13. **Update the ReservationForm Component to Accept Initial Values**:
+```typescript
+// components/reservation-form.jsx - Modify to accept initial values
+import { useState, useEffect } from 'react';
+import { useForm } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
+import * as z from 'zod';
+// ... other imports
+
+// Update props to accept initial values
+export function ReservationForm({ initialRoom, initialDate, initialTime }) {
+  // ... existing form setup
+  
+  // Set initial values if provided
+  useEffect(() => {
+    if (initialRoom || initialDate || initialTime) {
+      form.reset({
+        ...form.getValues(),
+        room: initialRoom || form.getValues().room,
+        date: initialDate ? new Date(initialDate) : form.getValues().date,
+        time: initialTime || form.getValues().time,
+      });
+    }
+  }, [initialRoom, initialDate, initialTime, form]);
+  
+  // ... rest of component
+}
+```
+
+14. **Add Translation Keys**:
+```typescript
+// messages/en.ts - Add new translation keys
+export default {
+  // ... existing translations
+  
+  // Training Rooms Page
+  training_rooms_page_title: "Training Rooms | Deskohub",
+  training_rooms_page_description: "Book our fully-equipped training rooms for your next workshop, meeting, or corporate event.",
+  training_rooms_title: "Training Rooms",
+  training_rooms_description: "Professional spaces for your workshops, meetings, and corporate events",
+  training_rooms_hero_title: "Professional Training Facilities",
+  training_rooms_hero_description: "Fully equipped spaces designed for productive learning and collaboration",
+  training_rooms_hero_alt: "Deskohub training room interior",
+  
+  // Filters
+  filter_rooms: "Filter Rooms",
+  capacity: "Capacity",
+  people: "people",
+  date: "Date",
+  select_date: "Select a date",
+  equipment: "Equipment",
+  projector: "Projector",
+  whiteboard: "Whiteboard",
+  video_conferencing: "Video Conferencing",
+  high_speed_wifi: "High-Speed Wi-Fi",
+  reset_filters: "Reset",
+  apply_filters: "Apply Filters",
+  
+  // Room List
+  available_rooms: "Available Rooms",
+  view: "View",
+  up_to: "Up to",
+  from: "From",
+  hour: "hour",
+  details: "Details",
+  book_now: "Book Now",
+  
+  // Room Details
+  equipment_and_amenities: "Equipment & Amenities",
+  amenities: "Amenities",
+  availability: "Availability",
+  booking_information: "Booking Information",
+  hourly_rate: "Hourly Rate",
+  daily_rate: "Daily Rate",
+  classroom: "Classroom",
+  theater: "Theater",
+  boardroom: "Boardroom",
+  book_this_room: "Book This Room",
+  booking_note: "Prices include VAT. Minimum booking is 2 hours.",
+  
+  // Room Specifications
+  room_specifications: "Room Specifications",
+  classroom_style: "Classroom Style",
+  theater_style: "Theater Style",
+  boardroom_style: "Boardroom Style",
+  total_area: "Total Area",
+  dimensions: "Dimensions",
+  pricing: "Pricing",
+  
+  // Availability
+  check_availability: "Check Availability",
+  book: "Book",
+  unavailable: "Unavailable",
+  
+  // Reservation
+  make_reservation: "Make a Reservation",
+  reservation_for_specific_room: "Book {roomName} for your next event",
+  reservation_description: "Book a training room for your next event",
+} as const;
+```
+
+15. **Update Navigation Links**:
+```typescript
+// components/navigation-links.tsx - Add training rooms to navigation
+export function NavigationLinks() {
+  // ... existing code
+  
+  return (
+    <nav className="...">
+      <Link href="/">{t('home')}</Link>
+      <Link href="/menu">{t('menu')}</Link>
+      <Link href="/board-games">{t('board_games')}</Link>
+      <Link href="/training-rooms">{t('training_rooms')}</Link>
+      <Link href="/gallery">{t('gallery')}</Link>
+      <Link href="/contact">{t('contact')}</Link>
+    </nav>
+  );
+}
+```
+
+16. **Add Responsive Design Adjustments**:
+```css
+/* Add to globals.css or create a new CSS module */
+@media (max-width: 768px) {
+  .training-rooms-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .room-filters {
+    flex-direction: column;
+  }
+  
+  .room-card-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+}
+```
+
+17. **Create API Route for Room Availability (Mock)**:
+```typescript
+// app/api/training-rooms/availability/route.ts
+import { NextResponse } from 'next/server';
+
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const roomId = searchParams.get('roomId');
+  const date = searchParams.get('date');
+  
+  // In a real application, this would query a database
+  // For now, we'll return mock data
+  
+  // Generate some random availability
+  const timeSlots = [];
+  const startHour = 9;
+  const endHour = 18;
+  
+  for (let hour = startHour; hour < endHour; hour++) {
+    timeSlots.push({
+      start: `${hour.toString().padStart(2, '0')}:00`,
+      end: `${(hour + 1).toString().padStart(2, '0')}:00`,
+      isAvailable: Math.random() > 0.3, // 70% chance of being available
+    });
+  }
+  
+  return NextResponse.json({
+    roomId,
+    date,
+    timeSlots,
+  });
+}
+```
+
+# Test Strategy:
+## Test Strategy
+
+1. **Functionality Testing**:
+   - Verify the Training Rooms page loads correctly at `/training-rooms` and `/en/training-rooms` routes
+   - Test that all components render properly with correct content and styling
+   - Confirm that the hero section displays properly with background image and text
+   - Test the filtering functionality:
+     - Verify capacity slider updates the displayed value
+     - Test date picker opens and allows date selection
+     - Verify equipment checkboxes can be toggled
+     - Test that filter reset button clears all selections
+   - Test the room cards:
+     - Verify all room information displays correctly
+     - Test that "Details" and "Book Now" buttons work and navigate to the correct pages
+     - Verify images load properly
+
+2. **Room Detail Page Testing**:
+   - Verify each room detail page loads correctly at `/training-rooms/[slug]`
+   - Test the image gallery:
+     - Verify thumbnail images load correctly
+     - Test clicking on images opens the lightbox
+     - Verify lightbox navigation works properly
+   - Test the tabs functionality:
+     - Verify switching between Details, Equipment, and Availability tabs works
+     - Confirm content in each tab displays correctly
+   - Test the booking sidebar:
+     - Verify pricing information displays correctly
+     - Test "Book This Room" button navigates to the reservation page with correct parameters
+
+3. **Availability Calendar Testing**:
+   - Verify the calendar component loads and displays correctly
+   - Test date selection updates the available time slots
+   - Verify available and unavailable time slots are visually distinct
+   - Test booking buttons on available time slots navigate to reservation page with correct parameters
+
+4. **Integration Testing with Reservation Form**:
+   - Verify that navigating from a room to the reservation form pre-fills the correct information:
+     - Test room selection is pre-filled
+     - Verify date is pre-filled when selected from availability calendar
+     - Test time slot is pre-filled when selected from availability calendar
+   - Complete a full booking flow from room selection to form submission
+
+5. **Responsive Design Testing**:
+   - Test the page on various screen sizes:
+     - Mobile phones (320px, 375px, 414px)
+     - Tablets (768px, 1024px)
+     - Desktop (1280px, 1440px, 1920px)
+   - Verify layout adjusts appropriately on different screen sizes:
+     - Confirm room cards stack vertically on mobile
+     - Test that filters collapse appropriately on smaller screens
+     - Verify room detail page layout adjusts for mobile viewing
+
+6. **Accessibility Testing**:
+   - Test keyboard navigation throughout the page
+   - Verify all interactive elements have appropriate focus states
+   - Check that images have proper alt text
+   - Test with screen readers to ensure all content is accessible
+   - Verify color contrast meets WCAG standards
+
+7. **Performance Testing**:
+   - Measure and optimize page load time
+   - Test image loading and optimization
+   - Verify lazy loading of images works correctly
+   - Test the performance of the filtering functionality with many rooms
+
+8. **Browser Compatibility Testing**:
+   - Test on multiple browsers:
+     - Chrome
+     - Firefox
+     - Safari
+     - Edge
+   - Verify consistent appearance and functionality across browsers
+
+9. **Error Handling Testing**:
+   - Test behavior when room data fails to load
+   - Verify proper handling of non-existent room slugs
+   - Test availability calendar when API returns errors
+
+10. **Internationalization Testing**:
+    - Verify all text elements use translation keys
+    - Test the page in both Czech and English languages
+    - Confirm date and time formats display correctly based on locale

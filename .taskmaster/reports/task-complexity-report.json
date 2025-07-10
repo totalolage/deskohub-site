@@ -1,0 +1,21 @@
+{
+  "meta": {
+    "generatedAt": "2025-07-10T13:54:30.666Z",
+    "tasksAnalyzed": 1,
+    "totalTasks": 24,
+    "analysisCount": 1,
+    "thresholdScore": 5,
+    "projectName": "Taskmaster",
+    "usedResearch": true
+  },
+  "complexityAnalysis": [
+    {
+      "taskId": 4,
+      "taskTitle": "Create Reservation Form Component with Form Validation",
+      "complexityScore": 7,
+      "recommendedSubtasks": 5,
+      "reasoning": "This task involves creating a complex form component with multiple fields, validation logic, responsive design, accessibility features, and integration with existing systems (i18n and theming). The code provided is substantial and requires implementation of form validation, state management, UI components from shadcn/ui, and proper error handling. The complexity comes from the need to handle various input types (text, date, time, select), implement comprehensive validation rules, ensure accessibility, and make the form responsive across devices.",
+      "expansionPrompt": "Break down the 'Create Reservation Form Component with Form Validation' task into 5 subtasks, focusing on: 1) Setting up the form structure and validation schema, 2) Implementing user information fields with validation, 3) Building reservation details section with date/time pickers, 4) Creating the special requirements section and submission handling, and 5) Adding accessibility features, internationalization, and theme integration. For each subtask, include specific implementation details, component requirements, and testing criteria."
+    }
+  ]
+}
