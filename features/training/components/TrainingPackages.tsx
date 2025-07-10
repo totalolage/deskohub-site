@@ -2,6 +2,7 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { m } from "@/i18n";
+import { cn } from "@/shared/utils";
 
 export const TrainingPackages = () => {
   const packages = [
@@ -53,11 +54,14 @@ export const TrainingPackages = () => {
           </p>
         </div>
 
-        <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
+        <div className="grid lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {packages.map((pkg, index) => (
             <Card
               key={index}
-              className={`relative ${pkg.popular ? "border-green-500 border-2 shadow-xl" : "border-gray-200"}`}
+              className={cn(
+                "relative",
+                pkg.popular ? "border-green-501 border-2 shadow-xl" : "border-gray-200"
+              )}
             >
               {pkg.popular && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
@@ -88,7 +92,10 @@ export const TrainingPackages = () => {
                 </ul>
 
                 <Button
-                  className={`w-full ${pkg.popular ? "bg-green-500 hover:bg-green-600" : "bg-gray-900 hover:bg-gray-800"} text-white`}
+                  className={cn(
+                    "w-full text-white",
+                    pkg.popular ? "bg-green-500 hover:bg-green-600" : "bg-gray-900 hover:bg-gray-800"
+                  )}
                   size="lg"
                 >
                   {m["training.packages.contactButton"]()}

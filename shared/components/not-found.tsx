@@ -120,7 +120,7 @@ export default function NotFoundPage() {
               className="border-2 border-green-500 text-green-600 hover:bg-green-50 px-8 py-3 rounded-full shadow-lg hover:shadow-xl transition-all duration-200 bg-transparent"
             >
               <RotateCcw
-                className={`w-5 h-5 mr-2 ${isRolling ? "animate-spin" : ""}`}
+                className={cn("w-5 h-5 mr-2", isRolling && "animate-spin")}
               />
               {isRolling
                 ? m["notFound.rollingText"]()

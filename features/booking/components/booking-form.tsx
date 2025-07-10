@@ -46,6 +46,7 @@ import {
   getMinBookingDateTime,
 } from "@/shared/utils/date-formatting";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
+import { cn } from "@/shared/utils";
 import styles from "./booking-form.module.css";
 
 export function BookingForm() {
@@ -467,7 +468,7 @@ export function BookingForm() {
 
           {/* Pricing Info */}
           <Card
-            className={`${styles.gridAreaPricing} bg-green-50 border-green-200`}
+            className={cn(styles.gridAreaPricing, "bg-green-50 border-green-200")}
           >
             <CardContent className="pt-6">
               <div className="text-center space-y-2">
@@ -479,7 +480,7 @@ export function BookingForm() {
           </Card>
 
           {/* Submit Button */}
-          <div className={`${styles.gridAreaSubmit} text-center`}>
+          <div className={cn(styles.gridAreaSubmit, "text-center")}>
             <Button
               type="submit"
               size="lg"
