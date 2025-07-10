@@ -160,7 +160,7 @@ export function BookingForm() {
                 render={({ field, fieldState }) => (
                   <FormItem
                     ref={registerErrorRef("datetime")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormLabel>
                       {new Intl.ListFormat(locale, {
@@ -205,7 +205,7 @@ export function BookingForm() {
                 render={({ field, fieldState }) => (
                   <FormItem
                     ref={registerErrorRef("guestCount")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormLabel>{m["booking.guestCountLabel"]()}</FormLabel>
                     <Select
@@ -254,7 +254,7 @@ export function BookingForm() {
                 render={({ field, fieldState }) => (
                   <FormItem
                     ref={registerErrorRef("duration")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
                     <Select
@@ -317,7 +317,7 @@ export function BookingForm() {
                 render={({ field, fieldState }) => (
                   <FormItem
                     ref={registerErrorRef("name")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormLabel>{m["booking.nameLabel"]()}</FormLabel>
                     <FormControl>
@@ -339,7 +339,7 @@ export function BookingForm() {
                 render={({ field, fieldState }) => (
                   <FormItem
                     ref={registerErrorRef("email")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormLabel>{m["booking.emailLabel"]()}</FormLabel>
                     <FormControl>
@@ -362,7 +362,7 @@ export function BookingForm() {
                 render={({ field, fieldState }) => (
                   <FormItem
                     ref={registerErrorRef("phone")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormLabel>{m["booking.phoneLabel"]()}</FormLabel>
                     <FormControl>
@@ -396,7 +396,7 @@ export function BookingForm() {
                 render={({ field }) => (
                   <FormItem
                     ref={registerErrorRef("tablePreference")}
-                    className="space-y-3 scroll-mt-24"
+                    className="space-y-3 scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormControl>
                       <RadioGroup
@@ -450,7 +450,7 @@ export function BookingForm() {
                 render={({ field }) => (
                   <FormItem
                     ref={registerErrorRef("specialRequests")}
-                    className="scroll-mt-24"
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
                     <FormControl>
                       <Textarea

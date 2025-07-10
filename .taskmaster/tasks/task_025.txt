@@ -125,3 +125,55 @@
 6. **Integration Testing**:
    - Verify that the pluralization works correctly when integrated with the Zod validation system
    - Test real form submissions in the application to ensure proper error message display
+
+# Subtasks:
+## 1. Analyze and Document Pluralization Requirements [pending]
+### Dependencies: None
+### Description: Review all translation files to identify messages requiring pluralization fixes and document the specific pluralization rules for Czech and English languages.
+### Details:
+1. Scan all files in `project.inlang/messages` directory
+2. Identify all validation messages containing numeric placeholders (`{min}`, `{max}`, etc.)
+3. Create a comprehensive list of messages requiring pluralization fixes
+4. Document Czech pluralization rules (one, few, many) and English rules (one, other)
+5. Prepare a reference table showing examples of correct pluralization for both languages
+
+## 2. Implement English Pluralization in Translation Files [pending]
+### Dependencies: 25.1
+### Description: Update all English translation files with proper MessageFormat 2.0 syntax for pluralization handling.
+### Details:
+1. Modify all identified English messages to use proper MessageFormat 2.0 syntax
+2. Focus on the simpler English pluralization rules (one, other)
+3. Example transformation: `"validation.minLength": "Must be at least {min} characters"` → `"validation.minLength": "Must be at least {min} {min, plural, one {character} other {characters}}"`
+4. Update all affected validation messages including minLength, maxLength, exactLength, minItems, maxItems
+5. Ensure consistent formatting across all pluralized messages
+
+## 3. Implement Czech Pluralization in Translation Files [pending]
+### Dependencies: 25.1
+### Description: Update all Czech translation files with proper MessageFormat 2.0 syntax accounting for the three pluralization forms in Czech.
+### Details:
+1. Modify all identified Czech messages to use proper MessageFormat 2.0 syntax
+2. Implement the three Czech pluralization forms: one (1), few (2-4), and many (5+)
+3. Example transformation: `"validation.minLength": "Musí mít alespoň {min} znaků"` → `"validation.minLength": "Musí mít alespoň {min} {min, plural, one {znak} few {znaky} other {znaků}}"`
+4. Update all affected validation messages with the same pattern
+5. Ensure grammatical correctness for all pluralization forms
+
+## 4. Create Helper Functions for Complex Pluralization Cases [pending]
+### Dependencies: 25.2, 25.3
+### Description: Develop utility functions to handle complex pluralization scenarios that may not be easily expressed with MessageFormat syntax alone.
+### Details:
+1. Create a new file `lib/i18n/pluralization.ts` for helper functions
+2. Implement `getCharacterPlural(count: number, locale: string)` function to return appropriate word forms
+3. Add similar helper functions for other common nouns requiring pluralization
+4. Ensure functions handle all edge cases for both languages
+5. Document usage examples for the development team
+
+## 5. Test and Verify Pluralization Implementation [pending]
+### Dependencies: 25.2, 25.3, 25.4
+### Description: Create a comprehensive testing strategy to verify correct pluralization across the application for both languages.
+### Details:
+1. Create a test page that displays validation errors with different numeric values
+2. Implement form fields that trigger each type of validation message
+3. Test with numeric values 1, 2, 3, 4, 5, and 10 to cover all pluralization forms
+4. Verify correct pluralization in both Czech and English languages
+5. Document any edge cases or issues discovered during testing
+
