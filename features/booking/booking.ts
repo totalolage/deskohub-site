@@ -1,14 +1,9 @@
-export interface BookingData {
+import type z from "zod/v4";
+import type { getBookingSchema } from "./schemas/booking";
+
+export interface BookingData
+  extends z.output<ReturnType<typeof getBookingSchema>> {
   id: string;
-  datetime: Date;
-  duration: number; // Duration in hours
-  guestCount: number;
-  name: string;
-  email: string;
-  phone: string;
-  tablePreference: string;
-  specialRequests?: string;
-  status: "pending" | "confirmed" | "cancelled";
   submittedAt: Date;
 }
 

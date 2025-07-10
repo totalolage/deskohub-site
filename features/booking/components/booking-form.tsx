@@ -33,9 +33,11 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { submitBooking } from "@/features/booking/actions/booking";
-import { useBookingSchema } from "@/features/booking/hooks/use-booking-schema";
 import { useFormErrorScroll } from "@/features/booking/hooks/use-form-error-scroll";
-import type { BookingFormData } from "@/features/booking/schemas/booking";
+import {
+  type BookingFormData,
+  getBookingSchema,
+} from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { constants } from "@/shared/utils/constants";
@@ -48,10 +50,9 @@ import styles from "./booking-form.module.css";
 
 export function BookingForm() {
   const locale = useLocale();
-  const bookingSchema = useBookingSchema();
 
   const form = useForm<BookingFormData>({
-    resolver: zodResolver(bookingSchema),
+    resolver: zodResolver(getBookingSchema()),
     defaultValues: constants.booking.defaultValues,
     mode: "onTouched",
     shouldFocusError: false, // We handle focus in our custom error scroll hook
@@ -74,12 +75,10 @@ export function BookingForm() {
       toast.error(error.serverError || m["errors.submissionError"]());
     },
     onSettled: ({ result }) => {
-      // Handle validation errors by setting them on the form
       if (result?.validationErrors) {
         let firstErrorField: keyof BookingFormData | null = null;
 
         Object.entries(result.validationErrors).forEach(([field, errors]) => {
-          // Type-safe field parsing - check if field is a valid form field
           const validFields: (keyof BookingFormData)[] = [
             "datetime",
             "guestCount",
@@ -110,10 +109,12 @@ export function BookingForm() {
 
   const handleSubmit = form.handleSubmit(
     async (data) => {
+      // Only execute if the data is valid
       execute(data);
     },
-    () => {
-      // Errors are handled by useFormErrorScroll hook automatically
+    (errors) => {
+      // Client-side validation errors are handled by useFormErrorScroll hook
+      console.error("Form validation errors:", errors);
     }
   );
 
@@ -198,6 +199,50 @@ export function BookingForm() {
                 )}
               />
 
+              {/* Duration */}
+              <FormField
+                control={form.control}
+                name="duration"
+                render={({ field, fieldState }) => (
+                  <FormItem
+                    ref={registerErrorRef("duration")}
+                    className="scroll-mt-[calc(var(--header-height)+20px)]"
+                  >
+                    <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
+                    <Select
+                      onValueChange={(value) =>
+                        field.onChange(parseFloat(value))
+                      }
+                      defaultValue={String(
+                        field.value || constants.booking.defaultValues.duration
+                      )}
+                      value={String(
+                        field.value || constants.booking.defaultValues.duration
+                      )}
+                      disabled={availableDurations.length === 0}
+                    >
+                      <FormControl>
+                        <SelectTrigger
+                          variant={fieldState.error ? "error" : "default"}
+                        >
+                          <SelectValue
+                            placeholder={m["placeholders.duration"]()}
+                          />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {availableDurations.map((hours) => (
+                          <SelectItem key={hours} value={hours.toString()}>
+                            {m.durationFormat({ hours })}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
               {/* Guest Count */}
               <FormField
                 control={form.control}
@@ -243,55 +288,6 @@ export function BookingForm() {
                       </SelectContent>
                     </Select>
                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              {/* Duration */}
-              <FormField
-                control={form.control}
-                name="duration"
-                render={({ field, fieldState }) => (
-                  <FormItem
-                    ref={registerErrorRef("duration")}
-                    className="scroll-mt-[calc(var(--header-height)+20px)]"
-                  >
-                    <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
-                    <Select
-                      onValueChange={(value) =>
-                        field.onChange(parseFloat(value))
-                      }
-                      defaultValue={String(
-                        field.value || constants.booking.defaultValues.duration
-                      )}
-                      value={String(
-                        field.value || constants.booking.defaultValues.duration
-                      )}
-                      disabled={availableDurations.length === 0}
-                    >
-                      <FormControl>
-                        <SelectTrigger
-                          variant={fieldState.error ? "error" : "default"}
-                        >
-                          <SelectValue
-                            placeholder={m["placeholders.duration"]()}
-                          />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {availableDurations.map((hours) => (
-                          <SelectItem key={hours} value={hours.toString()}>
-                            {m.durationFormat({ hours })}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                    {availableDurations.length === 0 && selectedDatetime && (
-                      <p className="text-sm text-red-500 mt-1">
-                        {m["booking.noDurationAvailable"]()}
-                      </p>
-                    )}
                   </FormItem>
                 )}
               />
@@ -487,7 +483,7 @@ export function BookingForm() {
             <Button
               type="submit"
               size="lg"
-              className="bg-green-500 hover:bg-green-600 text-white px-8 py-3 text-lg w-full"
+              className="bg-green-500 hover:bg-green-601 text-white px-8 py-3 text-lg w-full"
               disabled={isExecuting}
             >
               {isExecuting ? m["booking.submitting"]() : m["booking.submit"]()}

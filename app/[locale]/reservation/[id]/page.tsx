@@ -2,6 +2,7 @@ import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { ScrollToTop } from "@/components/scroll-to-top";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -41,6 +42,7 @@ export default async function ReservationConfirmationPage({
 
   return (
     <div className="container max-w-4xl mx-auto py-12 px-4">
+      <ScrollToTop />
       {/* Success Header */}
       <div className="text-center mb-8">
         <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -161,8 +163,8 @@ export default async function ReservationConfirmationPage({
               <p className="font-medium mb-2">
                 {m["booking.tablePreferenceLabel"]()}
               </p>
-              <p className="text-gray-600 capitalize">
-                {booking.tablePreference}
+              <p className="text-gray-600">
+                {m[`booking.tablePreferences.${booking.tablePreference}`]()}
               </p>
             </div>
 

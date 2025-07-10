@@ -1,124 +1,166 @@
-import { z } from "zod";
+import { z } from "zod/v4";
 import { m } from "@/i18n";
 import { constants } from "@/shared/utils/constants";
 import {
   getAvailableDurations,
+  getLocalTimeInRestaurantTimezone,
   isReservationWithinWorkingHours,
 } from "@/shared/utils/working-hours-timezone";
 
-// Single unified booking schema function that handles localization internally
+// In Zod v4, we should avoid coerce/preprocess for better type inference
+// Use transform or refine for custom parsing logic
+
+// Main booking schema using Zod v4's composable pattern
+// Using a factory function ensures messages are evaluated at runtime with correct locale
 export const getBookingSchema = () => {
+  // Datetime schema - expecting Date input from form
+  const datetimeSchema = z
+    .date({
+      error: m["booking.validation.datetime.required"](),
+    })
+    .min(new Date(), { error: m["booking.validation.datetime.mustBeFuture"]() })
+    .refine(
+      (date) => {
+        // Check if the booking time is within business hours
+        const { dayOfWeek, hours, minutes } =
+          getLocalTimeInRestaurantTimezone(date);
+
+        // Get working hours for the selected day
+        const workingHours =
+          dayOfWeek === 0 || dayOfWeek === 6
+            ? constants.workingHours.weekends
+            : constants.workingHours.weekdays;
+
+        // Check if the day is open
+        if (!workingHours.days.includes(dayOfWeek)) {
+          return false;
+        }
+
+        // Parse opening and closing times
+        const [openHours, openMinutes] = workingHours.open
+          .split(":")
+          .map(Number);
+        const [closeHours, closeMinutes] = workingHours.close
+          .split(":")
+          .map(Number);
+
+        const currentMinutes = hours * 60 + minutes;
+        const openingMinutes = openHours * 60 + openMinutes;
+        const closingMinutes =
+          closeHours === 24 ? 24 * 60 : closeHours * 60 + closeMinutes;
+
+        // Check if selected time is within opening hours
+        return (
+          currentMinutes >= openingMinutes && currentMinutes < closingMinutes
+        );
+      },
+      { message: m["booking.validation.datetime.outsideWorkingHours"]() }
+    );
+
+  // Guest count schema - expecting number input from form
+  const guestCountSchema = z
+    .number({
+      error: m["booking.validation.guestCount.required"](),
+    })
+    .int({ error: m["booking.validation.guestCount.integer"]() })
+    .min(constants.booking.validation.guestCount.min, {
+      error: m["booking.validation.guestCount.required"](),
+    })
+    .max(constants.booking.validation.guestCount.max, {
+      error: m["booking.validation.guestCount.maximum"]({
+        max: constants.booking.validation.guestCount.max,
+      }),
+    });
+
+  // Duration schema - expecting number input from form
+  const durationSchema = z
+    .number({
+      error: m["booking.validation.duration.minimum"](),
+    })
+    .min(constants.booking.validation.duration.min, {
+      error: m["booking.validation.duration.minimum"](),
+    })
+    .multipleOf(constants.booking.validation.duration.increment, {
+      error: m["booking.validation.duration.increment"](),
+    });
+
+  // Name schema
+  const nameSchema = z
+    .string()
+    .min(constants.booking.validation.name.min, {
+      error: m["booking.validation.name.minimum"]({
+        min: constants.booking.validation.name.min,
+      }),
+    })
+    .max(constants.booking.validation.name.max, {
+      error: m["booking.validation.name.maximum"]({
+        max: constants.booking.validation.name.max,
+      }),
+    });
+
+  // Email schema using Zod v4's improved email validation
+  const emailSchema = z
+    .email({ error: m["booking.validation.email.invalid"]() })
+    .min(1, { error: m["booking.validation.email.invalid"]() });
+
+  // Phone schema with regex validation
+  const phoneSchema = z
+    .string()
+    .min(constants.booking.validation.phone.min, {
+      error: m["booking.validation.phone.minimum"](),
+    })
+    .max(constants.booking.validation.phone.max, {
+      error: m["booking.validation.phone.maximum"](),
+    })
+    .regex(/^[+]?[0-9\s\-()]+$/, {
+      error: m["booking.validation.phone.invalid"](),
+    });
+
+  // Table preference schema using enum with default
+  const tablePreferenceSchema = z
+    .enum(constants.booking.validation.tablePreference.values)
+    .default(constants.booking.defaultValues.tablePreference);
+
+  // Special requests schema
+  const specialRequestsSchema = z
+    .string()
+    .max(constants.booking.validation.specialRequests.max, {
+      error: m["booking.validation.specialRequests.maximum"]({
+        max: constants.booking.validation.specialRequests.max,
+      }),
+    })
+    .optional();
+
   return z
     .object({
-      datetime: z.coerce
-        .date()
-        .min(new Date(), m["booking.validation.datetime.mustBeFuture"]()),
-      guestCount: z.coerce
-        .number()
-        .min(
-          constants.booking.validation.guestCount.min,
-          m["booking.validation.guestCount.required"]()
-        )
-        .max(
-          constants.booking.validation.guestCount.max,
-          m["booking.validation.guestCount.maximum"]({
-            max: constants.booking.validation.guestCount.max,
-          })
-        )
-        .int(m["booking.validation.guestCount.integer"]()),
-      duration: z.coerce
-        .number()
-        .min(
-          constants.booking.validation.duration.min,
-          m["booking.validation.duration.minimum"]()
-        )
-        .multipleOf(
-          constants.booking.validation.duration.increment,
-          m["booking.validation.duration.increment"]()
-        ),
-      name: z
-        .string()
-        .min(
-          constants.booking.validation.name.min,
-          m["booking.validation.name.minimum"]({
-            min: constants.booking.validation.name.min,
-          })
-        )
-        .max(
-          constants.booking.validation.name.max,
-          m["booking.validation.name.maximum"]({
-            max: constants.booking.validation.name.max,
-          })
-        ),
-      email: z.string().email(m["booking.validation.email.invalid"]()),
-      phone: z
-        .string()
-        .min(
-          constants.booking.validation.phone.min,
-          m["booking.validation.phone.minimum"]()
-        )
-        .max(
-          constants.booking.validation.phone.max,
-          m["booking.validation.phone.maximum"]()
-        )
-        .regex(/^[+]?[0-9\s\-()]+$/, m["booking.validation.phone.invalid"]()),
-      tablePreference: z
-        .enum(constants.booking.validation.tablePreference.values)
-        .optional()
-        .default(constants.booking.defaultValues.tablePreference),
-      specialRequests: z
-        .string()
-        .max(
-          constants.booking.validation.specialRequests.max,
-          m["booking.validation.specialRequests.maximum"]({
-            max: constants.booking.validation.specialRequests.max,
-          })
-        )
-        .optional(),
+      datetime: datetimeSchema,
+      guestCount: guestCountSchema,
+      duration: durationSchema,
+      name: nameSchema,
+      email: emailSchema,
+      phone: phoneSchema,
+      tablePreference: tablePreferenceSchema,
+      specialRequests: specialRequestsSchema,
     })
-    .superRefine((data, ctx) => {
-      // Validate that the entire reservation (start time + duration) is within working hours
-      if (data.datetime && data.duration) {
+    .refine(
+      (data) => {
+        // Validate that the entire reservation (start time + duration) is within working hours
+        if (!data.datetime || !data.duration) return true;
+
         // Check if duration is available for the selected time
         const availableDurations = getAvailableDurations(data.datetime);
         if (!availableDurations.includes(data.duration)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              m["booking.validation.datetime.durationExceedsWorkingHours"](),
-            path: ["duration"],
-          });
-          return;
+          return false;
         }
 
         // Double-check with the full validation
-        if (!isReservationWithinWorkingHours(data.datetime, data.duration)) {
-          ctx.addIssue({
-            code: z.ZodIssueCode.custom,
-            message:
-              m["booking.validation.datetime.durationExceedsWorkingHours"](),
-            path: ["duration"],
-          });
-        }
+        return isReservationWithinWorkingHours(data.datetime, data.duration);
+      },
+      {
+        message: m["booking.validation.datetime.durationExceedsWorkingHours"](),
+        path: ["duration"],
       }
-    });
+    );
 };
 
-type BookingFormSchema = ReturnType<typeof getBookingSchema>;
-
-/**
- * A utility type to be used for things like type inference, never for parsing or validation
- */
-export const bookingSchema = getBookingSchema() as Omit<
-  BookingFormSchema,
-  | "parse"
-  | "safeParse"
-  | "transform"
-  | "superRefine"
-  | "extend"
-  | "parseAsync"
-  | "safeParseAsync"
-  | "transformAsync"
->;
-
-export type BookingFormData = z.infer<BookingFormSchema>;
+export type BookingFormData = z.input<ReturnType<typeof getBookingSchema>>;

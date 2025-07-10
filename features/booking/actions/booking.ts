@@ -21,8 +21,7 @@ export const submitBooking = actionClient
       email: parsedInput.email,
       phone: parsedInput.phone,
       tablePreference: parsedInput.tablePreference,
-      specialRequests: parsedInput.specialRequests,
-      status: "pending",
+      specialRequests: parsedInput.specialRequests || "",
       submittedAt: new Date(),
     });
 

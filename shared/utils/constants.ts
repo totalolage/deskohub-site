@@ -25,6 +25,7 @@ export const constants = {
       },
     },
     defaultValues: {
+      datetime: undefined as Date | undefined,
       guestCount: 2,
       tablePreference: "any" as const,
       specialRequests: "",
