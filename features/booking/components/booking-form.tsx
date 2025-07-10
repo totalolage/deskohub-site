@@ -38,7 +38,10 @@ import type { BookingFormData } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { constants } from "@/lib/constants";
-import { formatDateTimeForInput, getMinBookingDateTime } from "@/lib/utils/date-formatting";
+import {
+  formatDateTimeForInput,
+  getMinBookingDateTime,
+} from "@/lib/utils/date-formatting";
 import { getAvailableDurations } from "@/lib/utils/working-hours-timezone";
 import styles from "./booking-form.module.css";
 
@@ -61,14 +64,24 @@ export function BookingForm() {
       // Handle validation errors by setting them on the form
       if (result?.validationErrors) {
         Object.entries(result.validationErrors).forEach(([field, errors]) => {
-          const parsedField = bookingSchema.keyof().safeParse(field);
-          if (!parsedField.success) return;
-
-          if (errors && Array.isArray(errors)) {
-            form.setError(parsedField.data, {
-              type: "server",
-              message: errors[0],
-            });
+          // Type-safe field parsing - check if field is a valid form field
+          const validFields: (keyof BookingFormData)[] = [
+            "datetime",
+            "guestCount",
+            "duration",
+            "name",
+            "email",
+            "phone",
+            "tablePreference",
+            "specialRequests",
+          ];
+          if (validFields.includes(field as keyof BookingFormData)) {
+            if (errors && Array.isArray(errors)) {
+              form.setError(field as keyof BookingFormData, {
+                type: "server",
+                message: errors[0],
+              });
+            }
           }
         });
       }
@@ -209,7 +222,9 @@ export function BookingForm() {
                   <FormItem>
                     <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
                     <Select
-                      onValueChange={(value) => field.onChange(parseFloat(value))}
+                      onValueChange={(value) =>
+                        field.onChange(parseFloat(value))
+                      }
                       defaultValue={String(
                         field.value || constants.booking.defaultValues.duration
                       )}
