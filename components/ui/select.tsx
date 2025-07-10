@@ -1,6 +1,7 @@
 "use client";
 
 import * as SelectPrimitive from "@radix-ui/react-select";
+import { cva, type VariantProps } from "class-variance-authority";
 import { Check, ChevronDown, ChevronUp } from "lucide-react";
 import type * as React from "react";
 
@@ -12,24 +13,38 @@ const SelectGroup = SelectPrimitive.Group;
 
 const SelectValue = SelectPrimitive.Value;
 
+const selectTriggerVariants = cva(
+  "flex h-10 w-full items-center justify-between rounded-md border bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
+  {
+    variants: {
+      variant: {
+        default: "border-input focus:ring-ring",
+        error: "border-destructive focus:ring-destructive",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+);
+
 export interface SelectTriggerProps
-  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger> {
+  extends React.ComponentPropsWithoutRef<typeof SelectPrimitive.Trigger>,
+    VariantProps<typeof selectTriggerVariants> {
   ref?: React.Ref<React.ComponentRef<typeof SelectPrimitive.Trigger>>;
 }
 
 function SelectTrigger({
   className,
   children,
+  variant,
   ref,
   ...props
 }: SelectTriggerProps) {
   return (
     <SelectPrimitive.Trigger
       ref={ref}
-      className={cn(
-        "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
-        className
-      )}
+      className={cn(selectTriggerVariants({ variant }), className)}
       {...props}
     >
       {children}

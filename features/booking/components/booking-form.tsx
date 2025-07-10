@@ -174,7 +174,7 @@ export function BookingForm() {
               <FormField
                 control={form.control}
                 name="guestCount"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>{m["booking.guestCountLabel"]()}</FormLabel>
                     <Select
@@ -189,7 +189,9 @@ export function BookingForm() {
                       )}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger
+                          variant={fieldState.error ? "error" : "default"}
+                        >
                           <SelectValue
                             placeholder={m["placeholders.guestCount"]()}
                           />
@@ -218,7 +220,7 @@ export function BookingForm() {
               <FormField
                 control={form.control}
                 name="duration"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
                     <Select
@@ -234,7 +236,9 @@ export function BookingForm() {
                       disabled={availableDurations.length === 0}
                     >
                       <FormControl>
-                        <SelectTrigger>
+                        <SelectTrigger
+                          variant={fieldState.error ? "error" : "default"}
+                        >
                           <SelectValue
                             placeholder={m["placeholders.duration"]()}
                           />
