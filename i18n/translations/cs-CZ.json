@@ -294,6 +294,81 @@
     "title": "Potvrzení rezervace | Deskohub",
     "description": "Děkujeme za vaši rezervaci v Deskohub"
   },
+  "training": {
+    "pageTitle": "Školící místnost - Deskohub",
+    "pageDescription": "Ideální prostor pro firemní akce, workshopy a teambuilding aktivity v Deskohub",
+    "hero": {
+      "title": "Teambuilding",
+      "subtitle": "ve školící místnosti",
+      "description": "Ideální prostor pro firemní akce, workshopy a teambuilding aktivity. Spojte užitečné s příjemným pomocí deskových her.",
+      "reserveButton": "Rezervovat místnost",
+      "galleryButton": "Zobrazit galerii"
+    },
+    "features": {
+      "title": "PROČ ZVOLIT NAŠI ŠKOLÍCÍ MÍSTNOST?",
+      "subtitle": "Pro váš úspěšný event",
+      "feature1": {
+        "title": "Flexibilní prostor",
+        "description": "Prostorná místnost s modulárním uspořádáním pro 10-50 osob"
+      },
+      "feature2": {
+        "title": "Moderní vybavení",
+        "description": "Projektor, plátno, flipchart a vše potřebné pro prezentace"
+      },
+      "feature3": {
+        "title": "Teambuilding aktivity",
+        "description": "Široký výběr deskových her pro teambuilding a ice-breaker aktivity"
+      },
+      "feature4": {
+        "title": "Catering",
+        "description": "Kompletní catering služby včetně coffee breaků a obědů"
+      }
+    },
+    "packages": {
+      "title": "BALÍČKY PRO FIREMNÍ AKCE",
+      "subtitle": "Vyberte si ideální řešení",
+      "halfDay": {
+        "title": "Půldenní pronájem",
+        "duration": "4 hodiny",
+        "price": "2 500 Kč",
+        "features": {
+          "feature1": "Prostor až pro 30 osob",
+          "feature2": "Základní vybavení",
+          "feature3": "Coffee break",
+          "feature4": "Wi-Fi připojení"
+        }
+      },
+      "fullDay": {
+        "title": "Celodenní pronájem",
+        "duration": "8 hodin",
+        "price": "4 500 Kč",
+        "features": {
+          "feature1": "Prostor až pro 50 osob",
+          "feature2": "Kompletní vybavení",
+          "feature3": "Coffee break + oběd",
+          "feature4": "Teambuilding aktivity"
+        },
+        "popular": "Nejoblíbenější"
+      },
+      "custom": {
+        "title": "Vlastní balíček",
+        "duration": "Na míru",
+        "price": "Individuální",
+        "features": {
+          "feature1": "Flexibilní kapacita",
+          "feature2": "Přizpůsobené vybavení",
+          "feature3": "Catering dle přání",
+          "feature4": "Speciální požadavky"
+        }
+      },
+      "contactButton": "Kontaktovat"
+    },
+    "cta": {
+      "title": "Připraveni naplánovat váš event?",
+      "description": "Kontaktujte nás ještě dnes a vytvoříme společně nezapomenutelnou akci pro váš tým.",
+      "button": "Kontaktovat nás"
+    }
+  },
   "notFound": {
     "title": "Stránka nenalezena",
     "subtitle": "Vypadá to, že jste hodili nesprávnou kombinací!",

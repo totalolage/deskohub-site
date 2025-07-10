@@ -289,6 +289,81 @@
     "title": "Reservation Confirmation | Deskohub",
     "description": "Thank you for your reservation at Deskohub"
   },
+  "training": {
+    "pageTitle": "Training Room - Deskohub",
+    "pageDescription": "Perfect space for corporate events, workshops and team building activities at Deskohub",
+    "hero": {
+      "title": "Team Building",
+      "subtitle": "in the training room",
+      "description": "Ideal space for corporate events, workshops and team building activities. Combine business with pleasure through board games.",
+      "reserveButton": "Reserve Room",
+      "galleryButton": "View Gallery"
+    },
+    "features": {
+      "title": "WHY CHOOSE OUR TRAINING ROOM?",
+      "subtitle": "For your successful event",
+      "feature1": {
+        "title": "Flexible Space",
+        "description": "Spacious room with modular setup for 10-50 people"
+      },
+      "feature2": {
+        "title": "Modern Equipment",
+        "description": "Projector, screen, flipchart and everything needed for presentations"
+      },
+      "feature3": {
+        "title": "Team Building Activities",
+        "description": "Wide selection of board games for team building and ice-breaker activities"
+      },
+      "feature4": {
+        "title": "Catering",
+        "description": "Complete catering services including coffee breaks and lunches"
+      }
+    },
+    "packages": {
+      "title": "CORPORATE EVENT PACKAGES",
+      "subtitle": "Choose your ideal solution",
+      "halfDay": {
+        "title": "Half-Day Rental",
+        "duration": "4 hours",
+        "price": "2,500 CZK",
+        "features": {
+          "feature1": "Space for up to 30 people",
+          "feature2": "Basic equipment",
+          "feature3": "Coffee break",
+          "feature4": "Wi-Fi connection"
+        }
+      },
+      "fullDay": {
+        "title": "Full-Day Rental",
+        "duration": "8 hours",
+        "price": "4,500 CZK",
+        "features": {
+          "feature1": "Space for up to 50 people",
+          "feature2": "Complete equipment",
+          "feature3": "Coffee break + lunch",
+          "feature4": "Team building activities"
+        },
+        "popular": "Most Popular"
+      },
+      "custom": {
+        "title": "Custom Package",
+        "duration": "Tailored",
+        "price": "Individual",
+        "features": {
+          "feature1": "Flexible capacity",
+          "feature2": "Customized equipment",
+          "feature3": "Catering on request",
+          "feature4": "Special requirements"
+        }
+      },
+      "contactButton": "Contact"
+    },
+    "cta": {
+      "title": "Ready to plan your event?",
+      "description": "Contact us today and let's create an unforgettable event for your team together.",
+      "button": "Contact Us"
+    }
+  },
   "notFound": {
     "title": "Page Not Found",
     "subtitle": "Oops! You rolled the wrong combination!",
