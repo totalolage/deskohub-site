@@ -1,9 +1,7 @@
-import { Contact } from "@/components/sections/contact";
-import { Gallery } from "@/components/sections/gallery";
-import { GamesGallery } from "@/components/sections/games-gallery";
-import { Hero } from "@/components/sections/hero";
-import { Location } from "@/components/sections/location";
-import { Stats } from "@/components/sections/stats";
+import { Contact } from "@/features/contact";
+import { Gallery, GamesGallery } from "@/features/gallery";
+import { Hero, Stats } from "@/features/home";
+import { Location } from "@/features/location";
 import { setLocale } from "@/i18n";
 import type { RouteProps_locale } from "./route";
 

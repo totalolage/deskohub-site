@@ -38,12 +38,12 @@ import { useFormErrorScroll } from "@/features/booking/hooks/use-form-error-scro
 import type { BookingFormData } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
-import { constants } from "@/lib/constants";
+import { constants } from "@/shared/utils/constants";
 import {
   formatDateTimeForInput,
   getMinBookingDateTime,
-} from "@/lib/utils/date-formatting";
-import { getAvailableDurations } from "@/lib/utils/working-hours-timezone";
+} from "@/shared/utils/date-formatting";
+import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
 import styles from "./booking-form.module.css";
 
 export function BookingForm() {

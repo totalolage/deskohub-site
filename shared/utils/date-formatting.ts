@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { constants } from "@/lib/constants";
+import { constants } from "@/shared/utils/constants";
 
 /**
  * Get current timestamp - cached for the duration of the request

@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { m } from "@/i18n";
-import { constants } from "@/lib/constants";
+import { constants } from "@/shared/utils/constants";
 import {
   getAvailableDurations,
   isReservationWithinWorkingHours,
-} from "@/lib/utils/working-hours-timezone";
+} from "@/shared/utils/working-hours-timezone";
 
 // Single unified booking schema function that handles localization internally
 export const getBookingSchema = () => {

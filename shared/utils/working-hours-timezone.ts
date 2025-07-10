@@ -1,4 +1,4 @@
-import { constants } from "@/lib/constants";
+import { constants } from "@/shared/utils/constants";
 
 /**
  * Converts a Date object to the restaurant's timezone

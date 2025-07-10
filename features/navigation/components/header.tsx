@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import logoImage from "@/assets/images/logo.png";
-import { LanguageSwitcher } from "@/components/language-switcher";
 import { Button } from "@/components/ui/button";
+import { LanguageSwitcher } from "@/features/i18n";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 

@@ -1,4 +1,4 @@
-import NotFoundPage from "@/components/not-found";
+import NotFoundPage from "@/shared/components/not-found";
 import RootLayout from "./rootLayout";
 
 export default function NotFound() {

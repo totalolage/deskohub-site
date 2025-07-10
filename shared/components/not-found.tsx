@@ -18,7 +18,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
-import { cn } from "@/lib/utils";
+import { cn } from "@/shared/utils";
 
 export default function NotFoundPage() {
   setLocale(useLocale(), { reload: false });

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import { v4 as uuidv4 } from "uuid";
 import { storeBooking } from "@/features/booking/lib/booking-storage";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
-import { actionClient } from "@/lib/safe-action-client";
+import { actionClient } from "@/shared/utils/safe-action-client";
 
 export const submitBooking = actionClient
   .inputSchema(getBookingSchema())

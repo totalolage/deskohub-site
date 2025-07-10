@@ -14,7 +14,7 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { getBooking } from "@/features/booking/lib/booking-storage";
 import { m } from "@/i18n";
-import { formatDate, formatTime } from "@/lib/utils/date-formatting";
+import { formatDate, formatTime } from "@/shared/utils/date-formatting";
 import type { RouteProps_locale_id } from "./route";
 
 export const metadata: Metadata = {

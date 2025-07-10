@@ -1,7 +1,7 @@
 import Image from "next/image";
 import heroImage from "@/assets/images/hero.jpg";
 import { m } from "@/i18n";
-import { constants } from "@/lib/constants";
+import { constants } from "@/shared/utils/constants";
 
 export function Hero() {
   return (
