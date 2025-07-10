@@ -1,4 +1,4 @@
-import { tryOrElse } from "@/lib/utils";
+import { tryOrElse } from "@/shared/utils";
 import { locales } from "../paraglide/runtime";
 
 export function getLocaleFromPathname(url: string) {

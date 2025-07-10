@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Locale } from "@/i18n";
-import { formatDate, formatTime } from "@/lib/utils/date-formatting";
+import { formatDate, formatTime } from "@/shared/utils/date-formatting";
 
 interface ClientOnlyDateProps {
   date?: Date | string;

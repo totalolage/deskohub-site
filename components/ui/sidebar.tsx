@@ -16,8 +16,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { useIsMobileScreen } from "@/lib/hooks/use-screen-size";
-import { cn } from "@/lib/utils";
+import { useIsMobileScreen } from "@/shared/hooks/use-screen-size";
+import { cn } from "@/shared/utils";
 
 const SIDEBAR_COOKIE_NAME = "sidebar:state";
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7;
