@@ -1,4 +1,16 @@
 export const constants = {
+  pricing: {
+    entryFee: {
+      withPurchase: 50,
+      withoutPurchase: 100,
+      childrenUnder15: 0,
+    },
+    training: {
+      halfDay: 2500,
+      fullDay: 4500,
+      custom: null as number | null, // Indicate custom pricing
+    },
+  },
   booking: {
     validation: {
       guestCount: {

@@ -2,13 +2,15 @@ import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { m } from "@/i18n";
+import { Price } from "@/shared/components/price";
 import { cn } from "@/shared/utils";
+import { constants } from "@/shared/utils/constants";
 
 export const TrainingPackages = () => {
   const packages = [
     {
       name: m["training.packages.halfDay.title"](),
-      price: m["training.packages.halfDay.price"](),
+      price: constants.pricing.training.halfDay,
       duration: m["training.packages.halfDay.duration"](),
       features: [
         m["training.packages.halfDay.features.feature1"](),
@@ -19,7 +21,7 @@ export const TrainingPackages = () => {
     },
     {
       name: m["training.packages.fullDay.title"](),
-      price: m["training.packages.fullDay.price"](),
+      price: constants.pricing.training.fullDay,
       duration: m["training.packages.fullDay.duration"](),
       features: [
         m["training.packages.fullDay.features.feature1"](),
@@ -31,7 +33,7 @@ export const TrainingPackages = () => {
     },
     {
       name: m["training.packages.custom.title"](),
-      price: m["training.packages.custom.price"](),
+      price: constants.pricing.training.custom,
       duration: m["training.packages.custom.duration"](),
       features: [
         m["training.packages.custom.features.feature1"](),
@@ -55,12 +57,14 @@ export const TrainingPackages = () => {
         </div>
 
         <div className="grid lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-          {packages.map((pkg, index) => (
+          {packages.map((pkg) => (
             <Card
-              key={index}
+              key={pkg.name}
               className={cn(
-                "relative",
-                pkg.popular ? "border-green-501 border-2 shadow-xl" : "border-gray-200"
+                "relative flex flex-col",
+                pkg.popular
+                  ? "border-green-501 border-2 shadow-xl"
+                  : "border-gray-200"
               )}
             >
               {pkg.popular && (
@@ -76,15 +80,19 @@ export const TrainingPackages = () => {
                   {pkg.name}
                 </CardTitle>
                 <div className="text-4xl font-bold text-green-600 mb-2">
-                  {pkg.price}
+                  {pkg.price !== null ? (
+                    <Price amount={pkg.price} />
+                  ) : (
+                    <span>{m["training.packages.custom.customPrice"]()}</span>
+                  )}
                 </div>
                 <p className="text-gray-600">{pkg.duration}</p>
               </CardHeader>
 
-              <CardContent>
+              <CardContent className="grow flex flex-col justify-end">
                 <ul className="space-y-4 mb-8">
-                  {pkg.features.map((feature, featureIndex) => (
-                    <li key={featureIndex} className="flex items-center">
+                  {pkg.features.map((feature) => (
+                    <li key={feature} className="flex items-center">
                       <Check className="w-5 h-5 text-green-500 mr-3 flex-shrink-0" />
                       <span className="text-gray-700">{feature}</span>
                     </li>
@@ -94,7 +102,9 @@ export const TrainingPackages = () => {
                 <Button
                   className={cn(
                     "w-full text-white",
-                    pkg.popular ? "bg-green-500 hover:bg-green-600" : "bg-gray-900 hover:bg-gray-800"
+                    pkg.popular
+                      ? "bg-green-500 hover:bg-green-600"
+                      : "bg-gray-900 hover:bg-gray-800"
                   )}
                   size="lg"
                 >

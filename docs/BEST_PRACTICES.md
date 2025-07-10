@@ -152,6 +152,113 @@ For dynamic content with parameters:
 // Outputs: "5 guests" or "5 hostů" depending on locale
 ```
 
+## Pricing and Currency Formatting
+
+### Use Intl API for All Prices
+
+All prices must be formatted using the JavaScript Intl API to ensure proper localization:
+
+```typescript
+// ✅ Good - Store prices as numbers in constants
+export const pricing = {
+  entryFee: {
+    withPurchase: 50,    // CZK
+    withoutPurchase: 100 // CZK
+  },
+  training: {
+    halfDay: 2500,       // CZK
+    fullDay: 4500        // CZK
+  }
+};
+
+// ✅ Good - Format using Intl API
+const formatPrice = (amount: number, locale: string = 'cs-CZ') => {
+  return new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency: 'CZK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
+};
+
+// Usage in components
+<span>{formatPrice(pricing.entryFee.withPurchase)}</span>
+// Outputs: "50 Kč" for Czech locale, "CZK 50" for English locale
+
+// ❌ Never hardcode prices in translations
+// Bad: "training.price": "2,500 CZK"
+// Bad: "entry.fee": "50 Kč"
+```
+
+### Price Constants Location
+
+All prices should be stored in `/shared/utils/constants.ts`:
+
+```typescript
+// shared/utils/constants.ts
+export const constants = {
+  pricing: {
+    entryFee: {
+      withPurchase: 50,
+      withoutPurchase: 100,
+      childrenUnder15: 0
+    },
+    training: {
+      halfDay: 2500,
+      fullDay: 4500,
+      custom: null // Indicate custom pricing
+    }
+  },
+  // ... other constants
+};
+```
+
+### Price Display Components
+
+Create reusable price display components:
+
+```typescript
+// ✅ Good - Reusable price component
+export const Price = ({ amount, locale }: { amount: number; locale?: string }) => {
+  const userLocale = locale || useLocale();
+  
+  const formatted = new Intl.NumberFormat(userLocale, {
+    style: 'currency',
+    currency: 'CZK',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0
+  }).format(amount);
+  
+  return <span className="font-semibold">{formatted}</span>;
+};
+
+// Usage
+<Price amount={constants.pricing.entryFee.withPurchase} />
+```
+
+### Future Airtable Integration
+
+When prices come from Airtable:
+
+```typescript
+// ✅ Good - Prepare for dynamic pricing
+interface PricingData {
+  entryFeeWithPurchase: number;
+  entryFeeWithoutPurchase: number;
+  trainingHalfDay: number;
+  trainingFullDay: number;
+}
+
+const usePricing = () => {
+  // For now, return from constants
+  return constants.pricing;
+  
+  // Future: fetch from Airtable
+  // const { data } = useAirtablePricing();
+  // return data || constants.pricing;
+};
+```
+
 ## TypeScript Best Practices
 
 ### Strict Types

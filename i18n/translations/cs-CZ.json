@@ -17,14 +17,24 @@
   "hero": {
     "title": "Hrejte, pijte, jezte",
     "subtitle": "vše u jednoho stolu",
-    "description": "Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratu."
+    "description": "Vstupné pro hráče deskových her, kteří si u nás něco objednají a pro zákazníky s nulovou útratou.",
+    "priceInfo": {
+      "withPurchase": "Vstupné s objednávkou: {price}",
+      "withoutPurchase": "Vstupné bez objednávky: {price}"
+    }
   },
   "hours": {
     "weekdays": "PO - PÁ",
     "weekends": "SO - NE"
   },
   "about": {
-    "description": "Vstupné pro hráče deskových her. Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratu. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO."
+    "description": "Vstupné pro hráče deskových her. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO.",
+    "priceInfo": {
+      "withPurchase": "S objednávkou: {price}",
+      "withoutPurchase": "Bez objednávky: {price}",
+      "childrenFree": "Děti do 15 let: Zdarma",
+      "mondayFree": "Pondělí: Bez vstupného"
+    }
   },
   "stats": {
     "boardGames": "Deskových Her",
@@ -330,7 +340,6 @@
       "halfDay": {
         "title": "Půldenní pronájem",
         "duration": "4 hodiny",
-        "price": "2 500 Kč",
         "features": {
           "feature1": "Prostor až pro 30 osob",
           "feature2": "Základní vybavení",
@@ -341,7 +350,6 @@
       "fullDay": {
         "title": "Celodenní pronájem",
         "duration": "8 hodin",
-        "price": "4 500 Kč",
         "features": {
           "feature1": "Prostor až pro 50 osob",
           "feature2": "Kompletní vybavení",
@@ -353,7 +361,7 @@
       "custom": {
         "title": "Vlastní balíček",
         "duration": "Na míru",
-        "price": "Individuální",
+        "customPrice": "Individuální cena",
         "features": {
           "feature1": "Flexibilní kapacita",
           "feature2": "Přizpůsobené vybavení",

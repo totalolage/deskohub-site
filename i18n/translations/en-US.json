@@ -17,14 +17,24 @@
   "hero": {
     "title": "Play, drink, eat",
     "subtitle": "everything at one table",
-    "description": "Entry fee for board game players. Price is 50 CZK for board game players who order something from us and 100 CZK for customers with zero spending."
+    "description": "Entry fee for board game players who order from us and for customers with zero spending.",
+    "priceInfo": {
+      "withPurchase": "Entry fee with purchase: {price}",
+      "withoutPurchase": "Entry fee without purchase: {price}"
+    }
   },
   "hours": {
     "weekdays": "MON - FRI",
     "weekends": "SAT - SUN"
   },
   "about": {
-    "description": "Entry fee for board game players. Price is 50 CZK for board game players who order something from us and 100 CZK for customers with zero spending. Entry fee is valid for 1 day without time limit. For children under 15 years old, entry is free. MONDAY WITHOUT ENTRY FEE."
+    "description": "Entry fee for board game players. Entry fee is valid for 1 day without time limit. For children under 15 years old, entry is free. MONDAY WITHOUT ENTRY FEE.",
+    "priceInfo": {
+      "withPurchase": "With purchase: {price}",
+      "withoutPurchase": "Without purchase: {price}",
+      "childrenFree": "Children under 15: Free",
+      "mondayFree": "Monday: No entry fee"
+    }
   },
   "stats": {
     "boardGames": "Board Games",
@@ -325,7 +335,6 @@
       "halfDay": {
         "title": "Half-Day Rental",
         "duration": "4 hours",
-        "price": "2,500 CZK",
         "features": {
           "feature1": "Space for up to 30 people",
           "feature2": "Basic equipment",
@@ -336,7 +345,6 @@
       "fullDay": {
         "title": "Full-Day Rental",
         "duration": "8 hours",
-        "price": "4,500 CZK",
         "features": {
           "feature1": "Space for up to 50 people",
           "feature2": "Complete equipment",
@@ -348,7 +356,7 @@
       "custom": {
         "title": "Custom Package",
         "duration": "Tailored",
-        "price": "Individual",
+        "customPrice": "Individual pricing",
         "features": {
           "feature1": "Flexible capacity",
           "feature2": "Customized equipment",

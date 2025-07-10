@@ -1,6 +1,7 @@
 import Image from "next/image";
 import heroImage from "@/assets/images/hero.jpg";
 import { m } from "@/i18n";
+import { Price } from "@/shared/components/price";
 import { constants } from "@/shared/utils/constants";
 
 export function Hero() {
@@ -46,6 +47,28 @@ export function Hero() {
           <p className="mt-8 text-md max-w-3xl mx-auto text-gray-200">
             {m["hero.description"]()}
           </p>
+          <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
+            <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
+              {m["hero.priceInfo.withPurchase"]({
+                price: (
+                  <Price
+                    amount={constants.pricing.entryFee.withPurchase}
+                    className="text-green-400"
+                  />
+                ),
+              })}
+            </span>
+            <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
+              {m["hero.priceInfo.withoutPurchase"]({
+                price: (
+                  <Price
+                    amount={constants.pricing.entryFee.withoutPurchase}
+                    className="text-green-400"
+                  />
+                ),
+              })}
+            </span>
+          </div>
         </div>
       </div>
     </section>

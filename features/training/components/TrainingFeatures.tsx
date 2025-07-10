@@ -1,9 +1,4 @@
-import {
-  Coffee,
-  Presentation,
-  Trophy,
-  Users,
-} from "lucide-react";
+import { Coffee, Presentation, Trophy, Users } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { m } from "@/i18n";
 
@@ -44,9 +39,9 @@ export const TrainingFeatures = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-8">
-          {features.map((feature, index) => (
+          {features.map((feature) => (
             <Card
-              key={index}
+              key={feature.title}
               className="border-0 shadow-lg hover:shadow-xl transition-shadow"
             >
               <CardContent className="p-8 text-center">
