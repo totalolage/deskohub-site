@@ -4,7 +4,7 @@ import { m } from "@/i18n";
 
 export const TrainingHero = () => {
   return (
-    <section className="relative min-h-[calc(100dvh_-_var(--header-height))] flex items-center justify-center overflow-hidden">
+    <section className="relative flex items-center justify-center overflow-hidden">
       <div className="absolute inset-0">
         <Image
           src="/images/hero.jpg"

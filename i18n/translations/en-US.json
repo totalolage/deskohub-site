@@ -19,8 +19,8 @@
     "subtitle": "everything at one table",
     "description": "Entry fee for board game players who order from us and for customers with zero spending.",
     "priceInfo": {
-      "withPurchase": "Entry fee with purchase: {price}",
-      "withoutPurchase": "Entry fee without purchase: {price}"
+      "withPurchase": "Entry fee with purchase:",
+      "withoutPurchase": "Entry fee without purchase:"
     }
   },
   "hours": {
@@ -30,8 +30,8 @@
   "about": {
     "description": "Entry fee for board game players. Entry fee is valid for 1 day without time limit. For children under 15 years old, entry is free. MONDAY WITHOUT ENTRY FEE.",
     "priceInfo": {
-      "withPurchase": "With purchase: {price}",
-      "withoutPurchase": "Without purchase: {price}",
+      "withPurchase": "With purchase:",
+      "withoutPurchase": "Without purchase:",
       "childrenFree": "Children under 15: Free",
       "mondayFree": "Monday: No entry fee"
     }
@@ -380,5 +380,39 @@
     "rollAgainButton": "Roll Again",
     "rollingText": "Rolling...",
     "footerMessage": "Join us for another game at Deskohub!"
+  },
+  "contact": {
+    "heroTitle": "Contact",
+    "heroSubtitle": "Get in touch with us and book your table for an unforgettable gaming experience",
+    "heroImageAlt": "Deskohub interior",
+    "infoTitle": "Contact Information",
+    "addressLabel": "Address",
+    "street": "Náměstí Míru 123",
+    "city": "110 00 Prague 1",
+    "country": "Czech Republic",
+    "phoneLabel": "Phone",
+    "phoneNumber": "+420 123 456 789",
+    "emailLabel": "Email",
+    "emailAddress": "info@deskohub.cz",
+    "hoursLabel": "Opening Hours",
+    "weekdays": "MON - FRI",
+    "weekdayHours": "17:00 - 23:00",
+    "weekend": "SAT - SUN",
+    "weekendHours": "15:00 - 24:00",
+    "formTitle": "Write to Us",
+    "formDescription": "Have a question or want to book a table? Send us a message and we'll get back to you as soon as possible.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Your name",
+    "phoneFormLabel": "Phone",
+    "phonePlaceholder": "+420 123 456 789",
+    "emailFormLabel": "Email",
+    "emailPlaceholder": "your@email.com",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Write your message here...",
+    "submitButton": "Send Message",
+    "mapTitle": "Where to Find Us",
+    "mapPlaceholder": "Map will be here",
+    "mapAddress": "Náměstí Míru 123, Prague 1",
+    "successMessage": "Your message has been sent successfully! We'll get back to you soon."
   }
 }

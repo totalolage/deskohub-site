@@ -49,24 +49,20 @@ export function Hero() {
           </p>
           <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
             <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
-              {m["hero.priceInfo.withPurchase"]({
-                price: (
-                  <Price
-                    amount={constants.pricing.entryFee.withPurchase}
-                    className="text-green-400"
-                  />
-                ),
-              })}
+              {m["hero.priceInfo.withPurchase"]()}
+              &nbsp;
+              <Price
+                amount={constants.pricing.entryFee.withPurchase}
+                className="text-green-400"
+              />
             </span>
             <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
-              {m["hero.priceInfo.withoutPurchase"]({
-                price: (
-                  <Price
-                    amount={constants.pricing.entryFee.withoutPurchase}
-                    className="text-green-400"
-                  />
-                ),
-              })}
+              {m["hero.priceInfo.withoutPurchase"]()}
+              &nbsp;
+              <Price
+                amount={constants.pricing.entryFee.withoutPurchase}
+                className="text-green-400"
+              />
             </span>
           </div>
         </div>

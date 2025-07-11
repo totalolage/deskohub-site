@@ -19,8 +19,8 @@
     "subtitle": "vše u jednoho stolu",
     "description": "Vstupné pro hráče deskových her, kteří si u nás něco objednají a pro zákazníky s nulovou útratou.",
     "priceInfo": {
-      "withPurchase": "Vstupné s objednávkou: {price}",
-      "withoutPurchase": "Vstupné bez objednávky: {price}"
+      "withPurchase": "Vstupné s objednávkou:",
+      "withoutPurchase": "Vstupné bez objednávky:"
     }
   },
   "hours": {
@@ -30,8 +30,8 @@
   "about": {
     "description": "Vstupné pro hráče deskových her. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO.",
     "priceInfo": {
-      "withPurchase": "S objednávkou: {price}",
-      "withoutPurchase": "Bez objednávky: {price}",
+      "withPurchase": "S objednávkou:",
+      "withoutPurchase": "Bez objednávky:",
       "childrenFree": "Děti do 15 let: Zdarma",
       "mondayFree": "Pondělí: Bez vstupného"
     }
@@ -385,5 +385,39 @@
     "rollAgainButton": "Hodit znovu",
     "rollingText": "Házím...",
     "footerMessage": "Připojte se k nám na další hru v Deskohub!"
+  },
+  "contact": {
+    "heroTitle": "Kontakt",
+    "heroSubtitle": "Spojte se s námi a rezervujte si svůj stůl pro nezapomenutelný herní zážitek",
+    "heroImageAlt": "Interiér Deskohub",
+    "infoTitle": "Kontaktní informace",
+    "addressLabel": "Adresa",
+    "street": "Náměstí Míru 123",
+    "city": "110 00 Praha 1",
+    "country": "Česká republika",
+    "phoneLabel": "Telefon",
+    "phoneNumber": "+420 123 456 789",
+    "emailLabel": "Email",
+    "emailAddress": "info@deskohub.cz",
+    "hoursLabel": "Otevírací doba",
+    "weekdays": "PO - PÁ",
+    "weekdayHours": "17:00 - 23:00",
+    "weekend": "SO - NE",
+    "weekendHours": "15:00 - 24:00",
+    "formTitle": "Napište nám",
+    "formDescription": "Máte dotaz nebo chcete rezervovat stůl? Napište nám zprávu a my se vám ozveme co nejdříve.",
+    "nameLabel": "Jméno",
+    "namePlaceholder": "Vaše jméno",
+    "phoneFormLabel": "Telefon",
+    "phonePlaceholder": "+420 123 456 789",
+    "emailFormLabel": "Email",
+    "emailPlaceholder": "vas@email.cz",
+    "messageLabel": "Zpráva",
+    "messagePlaceholder": "Napište nám svou zprávu...",
+    "submitButton": "Odeslat zprávu",
+    "mapTitle": "Kde nás najdete",
+    "mapPlaceholder": "Mapa bude zde",
+    "mapAddress": "Náměstí Míru 123, Praha 1",
+    "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme."
   }
 }

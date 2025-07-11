@@ -45,26 +45,22 @@ export function Gallery() {
           <div className="mt-6 flex flex-wrap justify-center gap-4">
             <div className="bg-white rounded-lg shadow-sm px-6 py-3">
               <span className="text-gray-700">
-                {m["about.priceInfo.withPurchase"]({
-                  price: (
-                    <Price
-                      amount={constants.pricing.entryFee.withPurchase}
-                      className="text-green-600 font-bold"
-                    />
-                  ),
-                })}
+                {m["about.priceInfo.withPurchase"]()}
+                &nbsp;
+                <Price
+                  amount={constants.pricing.entryFee.withPurchase}
+                  className="text-green-600 font-bold"
+                />
               </span>
             </div>
             <div className="bg-white rounded-lg shadow-sm px-6 py-3">
               <span className="text-gray-700">
-                {m["about.priceInfo.withoutPurchase"]({
-                  price: (
-                    <Price
-                      amount={constants.pricing.entryFee.withoutPurchase}
-                      className="text-green-600 font-bold"
-                    />
-                  ),
-                })}
+                {m["about.priceInfo.withoutPurchase"]()}
+                &nbsp;
+                <Price
+                  amount={constants.pricing.entryFee.withoutPurchase}
+                  className="text-green-600 font-bold"
+                />
               </span>
             </div>
             <div className="bg-green-100 rounded-lg shadow-sm px-6 py-3">
