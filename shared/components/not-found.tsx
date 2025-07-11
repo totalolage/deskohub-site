@@ -20,7 +20,7 @@ import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { cn } from "@/shared/utils";
 
-export default function NotFoundPage() {
+export function NotFound() {
   setLocale(useLocale(), { reload: false });
 
   const [diceRoll, setDiceRoll] = useState(4);

@@ -1,22 +1,11 @@
-import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { m } from "@/i18n";
+import { Hero } from "@/shared/components/hero";
 
 export const TrainingHero = () => {
   return (
-    <section className="relative flex items-center justify-center overflow-hidden">
-      <div className="absolute inset-0">
-        <Image
-          src="/images/hero.jpg"
-          alt="Deskohub training room"
-          fill
-          className="object-cover"
-          priority
-        />
-        <div className="absolute inset-0 bg-black/60" />
-      </div>
-
-      <div className="relative z-10 text-center max-w-4xl mx-auto px-4">
+    <Hero imageSrc="/images/hero.jpg">
+      <div className="text-center max-w-4xl mx-auto px-4">
         <h1 className="text-5xl md:text-7xl font-bold mb-6">
           <span className="text-green-400">{m["training.hero.title"]()}</span>
           <br />
@@ -43,6 +32,6 @@ export const TrainingHero = () => {
           </Button>
         </div>
       </div>
-    </section>
+    </Hero>
   );
 };

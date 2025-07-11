@@ -1,10 +1,10 @@
-import NotFoundPage from "@/shared/components/not-found";
+import { NotFound } from "@/shared/components";
 import RootLayout from "./rootLayout";
 
-export default function NotFound() {
+export default function NotFoundPage() {
   return (
     <RootLayout>
-      <NotFoundPage />
+      <NotFound />
     </RootLayout>
   );
 }
