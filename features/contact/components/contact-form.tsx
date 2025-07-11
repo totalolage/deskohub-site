@@ -25,7 +25,6 @@ import {
   getContactSchema,
 } from "@/features/contact/schemas/contact";
 import { m } from "@/i18n";
-import { cn } from "@/shared/utils";
 
 export function ContactForm() {
   const form = useForm<ContactFormData, unknown, ContactData>({
@@ -63,7 +62,7 @@ export function ContactForm() {
               <FormField
                 control={form.control}
                 name="name"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel className="text-gray-300">
                       {m["contact.nameLabel"]()} *
@@ -72,10 +71,8 @@ export function ContactForm() {
                       <Input
                         {...field}
                         type="text"
-                        className={cn(
-                          "bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400",
-                          form.formState.errors.name && "border-red-500"
-                        )}
+                        variant={fieldState.error ? "error" : "default"}
+                        className="bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400"
                         placeholder={m["contact.namePlaceholder"]()}
                       />
                     </FormControl>
@@ -87,7 +84,7 @@ export function ContactForm() {
               <FormField
                 control={form.control}
                 name="phone"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel className="text-gray-300">
                       {m["contact.phoneFormLabel"]()}
@@ -96,6 +93,7 @@ export function ContactForm() {
                       <Input
                         {...field}
                         type="tel"
+                        variant={fieldState.error ? "error" : "default"}
                         className="bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400"
                         placeholder={m["contact.phonePlaceholder"]()}
                       />
@@ -109,7 +107,7 @@ export function ContactForm() {
             <FormField
               control={form.control}
               name="email"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel className="text-gray-300">
                     {m["contact.emailFormLabel"]()} *
@@ -118,10 +116,8 @@ export function ContactForm() {
                     <Input
                       {...field}
                       type="email"
-                      className={cn(
-                        "bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400",
-                        form.formState.errors.email && "border-red-500"
-                      )}
+                      variant={fieldState.error ? "error" : "default"}
+                      className="bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400"
                       placeholder={m["contact.emailPlaceholder"]()}
                     />
                   </FormControl>
@@ -133,7 +129,7 @@ export function ContactForm() {
             <FormField
               control={form.control}
               name="message"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel className="text-gray-300">
                     {m["contact.messageLabel"]()} *
@@ -142,10 +138,8 @@ export function ContactForm() {
                     <Textarea
                       {...field}
                       rows={5}
-                      className={cn(
-                        "bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400",
-                        form.formState.errors.message && "border-red-500"
-                      )}
+                      variant={fieldState.error ? "error" : "default"}
+                      className="bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400"
                       placeholder={m["contact.messagePlaceholder"]()}
                     />
                   </FormControl>

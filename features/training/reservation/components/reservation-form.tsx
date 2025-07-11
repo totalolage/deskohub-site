@@ -86,12 +86,13 @@ export function ReservationForm() {
             <FormField
               control={form.control}
               name="name"
-              render={({ field }) => (
+              render={({ field, fieldState }) => (
                 <FormItem>
                   <FormLabel htmlFor="name">Full Name</FormLabel>
                   <FormControl>
                     <Input
                       id="name"
+                      variant={fieldState.error ? "error" : "default"}
                       placeholder="John Doe"
                       aria-label="Full Name"
                       aria-describedby="name-error"
@@ -108,13 +109,14 @@ export function ReservationForm() {
               <FormField
                 control={form.control}
                 name="email"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel htmlFor="email">Email</FormLabel>
                     <FormControl>
                       <Input
                         id="email"
                         type="email"
+                        variant={fieldState.error ? "error" : "default"}
                         placeholder="your@email.com"
                         aria-label="Email"
                         aria-describedby="email-error"
@@ -131,13 +133,14 @@ export function ReservationForm() {
               <FormField
                 control={form.control}
                 name="phone"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel htmlFor="phone">Phone Number</FormLabel>
                     <FormControl>
                       <Input
                         id="phone"
                         type="tel"
+                        variant={fieldState.error ? "error" : "default"}
                         placeholder="+1234567890"
                         aria-label="Phone Number"
                         aria-describedby="phone-error"
@@ -211,7 +214,7 @@ export function ReservationForm() {
               <FormField
                 control={form.control}
                 name="time"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel htmlFor="time-select">Time</FormLabel>
                     <Select
@@ -221,6 +224,7 @@ export function ReservationForm() {
                       <FormControl>
                         <SelectTrigger
                           id="time-select"
+                          variant={fieldState.error ? "error" : "default"}
                           aria-label="Select time"
                           aria-describedby="time-error"
                           aria-required="true"
@@ -254,7 +258,7 @@ export function ReservationForm() {
               <FormField
                 control={form.control}
                 name="duration"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel htmlFor="duration-select">
                       Duration (hours)
@@ -266,6 +270,7 @@ export function ReservationForm() {
                       <FormControl>
                         <SelectTrigger
                           id="duration-select"
+                          variant={fieldState.error ? "error" : "default"}
                           aria-label="Select duration"
                           aria-describedby="duration-error"
                           aria-required="true"
@@ -289,7 +294,7 @@ export function ReservationForm() {
               <FormField
                 control={form.control}
                 name="spaceType"
-                render={({ field }) => (
+                render={({ field, fieldState }) => (
                   <FormItem>
                     <FormLabel htmlFor="space-type-select">
                       Desk/Space Type
@@ -298,6 +303,7 @@ export function ReservationForm() {
                       <FormControl>
                         <SelectTrigger
                           id="space-type-select"
+                          variant={fieldState.error ? "error" : "default"}
                           aria-label="Select desk or space type"
                           aria-describedby="space-type-error"
                           aria-required="true"
@@ -330,7 +336,7 @@ export function ReservationForm() {
           <FormField
             control={form.control}
             name="specialRequirements"
-            render={({ field }) => (
+            render={({ field, fieldState }) => (
               <FormItem>
                 <FormLabel htmlFor="special-requirements">
                   Special Requirements
@@ -338,6 +344,7 @@ export function ReservationForm() {
                 <FormControl>
                   <Textarea
                     id="special-requirements"
+                    variant={fieldState.error ? "error" : "default"}
                     placeholder="Any special requirements or notes for your reservation..."
                     className="min-h-[100px]"
                     aria-label="Special requirements"

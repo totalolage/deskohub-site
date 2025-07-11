@@ -387,6 +387,90 @@ export const bookingAction = async (data: unknown) => {
 };
 ```
 
+### Form Input Error States
+
+All form inputs must use the error variant when displaying validation errors:
+
+```typescript
+// ✅ Good - Use error variant for all input components
+<Input
+  variant={form.formState.errors.email ? "error" : "default"}
+  {...field}
+/>
+
+<Select value={field.value} onValueChange={field.onChange}>
+  <SelectTrigger variant={fieldState.error ? "error" : "default"}>
+    <SelectValue />
+  </SelectTrigger>
+  <SelectContent>
+    {/* options */}
+  </SelectContent>
+</Select>
+
+<TextArea
+  variant={form.formState.errors.message ? "error" : "default"}
+  {...field}
+/>
+
+// ❌ Avoid - Don't use CSS classes for error styling
+<Input
+  className={cn(
+    "base-classes",
+    form.formState.errors.email && "border-red-500"
+  )}
+/>
+```
+
+#### Error Variant Requirements
+
+1. **All input components must support error variants**: Input, Select, TextArea, and any custom form controls
+2. **Use consistent variant prop**: `variant` with values "default" and "error"
+3. **Error styling must use theme tokens**: Use `border-destructive` instead of hardcoded colors
+4. **Integrate with form validation**: Always check `form.formState.errors` or `fieldState.error`
+
+#### Implementation Pattern
+
+```typescript
+// Component implementation
+interface InputProps {
+  variant?: "default" | "error";
+  // ... other props
+}
+
+const inputVariants = cva(
+  "base-classes",
+  {
+    variants: {
+      variant: {
+        default: "border-border",
+        error: "border-destructive focus:ring-destructive",
+      },
+    },
+    defaultVariants: {
+      variant: "default",
+    },
+  }
+);
+
+// Usage in forms
+<FormField
+  control={form.control}
+  name="email"
+  render={({ field, fieldState }) => (
+    <FormItem>
+      <FormLabel>Email</FormLabel>
+      <FormControl>
+        <Input
+          variant={fieldState.error ? "error" : "default"}
+          {...field}
+        />
+      </FormControl>
+      <FormMessage />
+    </FormItem>
+  )}
+/>
+```
+
 ## Testing Guidelines
 
 ### Component Testing
