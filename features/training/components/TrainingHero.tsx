@@ -1,11 +1,15 @@
 import { Button } from "@/components/ui/button";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
+import Link from "next/link";
 
 export const TrainingHero = () => {
   return (
-    <Hero imageSrc="/images/hero.jpg">
-      <div className="text-center max-w-4xl mx-auto px-4">
+    <Hero
+      imageSrc="/images/hero.jpg"
+      className="text-center max-w-4xl mx-auto px-4"
+    >
+      <div className="relative">
         <h1 className="text-5xl md:text-7xl font-bold mb-6">
           <span className="text-green-400">{m["training.hero.title"]()}</span>
           <br />
@@ -17,12 +21,14 @@ export const TrainingHero = () => {
         </p>
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
-          <Button
-            size="lg"
-            className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 text-lg"
-          >
-            {m["training.hero.reserveButton"]()}
-          </Button>
+          <Link href="/training-room/reservation">
+            <Button
+              size="lg"
+              className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 text-lg"
+            >
+              {m["training.hero.reserveButton"]()}
+            </Button>
+          </Link>
           <Button
             size="lg"
             variant="outline"

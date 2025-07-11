@@ -1,8 +1,8 @@
-import { ReservationForm } from "@/features/workspace-reservation";
 import { setLocale } from "@/i18n";
-import type { RouteProps_locale } from "../route";
+import { RouteProps_locale } from "../../route";
+import { ReservationForm } from "@/features/training/reservation";
 
-export default async function WorkspaceReservationPage({
+export default async function TrainingRoomReservationPage({
   params,
 }: RouteProps_locale) {
   setLocale((await params).locale);
