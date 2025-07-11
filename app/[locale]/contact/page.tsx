@@ -5,14 +5,17 @@ import {
   ContactInfo,
   ContactMap,
 } from "@/features/contact";
-import { m } from "@/i18n";
+import { m, setLocale } from "@/i18n";
+import type { RouteProps_locale } from "../route";
 
 export const metadata: Metadata = {
   title: `${m["contact.heroTitle"]()} | Deskohub`,
   description: m["contact.heroSubtitle"](),
 };
 
-export default function ContactPage() {
+export default async function ContactPage({ params }: RouteProps_locale) {
+  setLocale((await params).locale);
+
   return (
     <div className="min-h-screen bg-black">
       <ContactHero />

@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { getBooking } from "@/features/booking/lib/booking-storage";
-import { m } from "@/i18n";
+import { m, setLocale } from "@/i18n";
 import { formatDate, formatTime } from "@/shared/utils/date-formatting";
 import type { RouteProps_locale_id } from "./route";
 
@@ -27,6 +27,7 @@ export default async function ReservationConfirmationPage({
   params,
 }: Readonly<RouteProps_locale_id>) {
   const { id, locale } = await params;
+  setLocale(locale);
 
   const booking = await getBooking(id);
   if (!booking) notFound();

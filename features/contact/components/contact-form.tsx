@@ -74,7 +74,7 @@ export function ContactForm() {
                         type="text"
                         className={cn(
                           "bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400",
-                          form.formState.errors.name && "border-red-500",
+                          form.formState.errors.name && "border-red-500"
                         )}
                         placeholder={m["contact.namePlaceholder"]()}
                       />
@@ -120,7 +120,7 @@ export function ContactForm() {
                       type="email"
                       className={cn(
                         "bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400",
-                        form.formState.errors.email && "border-red-500",
+                        form.formState.errors.email && "border-red-500"
                       )}
                       placeholder={m["contact.emailPlaceholder"]()}
                     />
@@ -144,7 +144,7 @@ export function ContactForm() {
                       rows={5}
                       className={cn(
                         "bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400",
-                        form.formState.errors.message && "border-red-500",
+                        form.formState.errors.message && "border-red-500"
                       )}
                       placeholder={m["contact.messagePlaceholder"]()}
                     />
