@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef } from "react";
 import type { FieldErrors } from "react-hook-form";
 
 interface UseFormErrorScrollOptions {
-  offset?: number;
   behavior?: ScrollBehavior;
   focusOnError?: boolean;
   block?: ScrollLogicalPosition;
@@ -10,10 +9,9 @@ interface UseFormErrorScrollOptions {
 
 export function useFormErrorScroll<T extends Record<string, unknown>>(
   errors: FieldErrors<T>,
-  options: UseFormErrorScrollOptions = {}
+  options: UseFormErrorScrollOptions = {},
 ) {
   const {
-    offset = 100, // Default offset for sticky header
     behavior = "smooth",
     focusOnError = true,
     block = "center",
@@ -33,26 +31,29 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
     };
   }, []);
 
-  // Custom scroll function that respects offset
   const scrollToElement = useCallback(
     (element: HTMLElement) => {
       // Use native scrollIntoView with options
       element.scrollIntoView({ behavior, block });
 
-      // If we need precise offset control, calculate manually
-      if (offset !== 0) {
-        const elementRect = element.getBoundingClientRect();
-        const absoluteTop = elementRect.top + window.pageYOffset;
-        const scrollPosition = absoluteTop - offset;
+      const elementRect = element.getBoundingClientRect();
+      const absoluteTop = elementRect.top + window.pageYOffset;
+      // Get header height from --header-height CSS variable
+      const headerHeight = parseInt(
+        getComputedStyle(document.documentElement).getPropertyValue(
+          "--header-height",
+        ),
+        10,
+      );
+      const scrollPosition = absoluteTop - headerHeight - 20;
 
-        // Fallback to window.scrollTo for exact positioning
-        setTimeout(() => {
-          window.scrollTo({
-            top: scrollPosition,
-            behavior,
-          });
-        }, 50);
-      }
+      // Fallback to window.scrollTo for exact positioning
+      setTimeout(() => {
+        window.scrollTo({
+          top: scrollPosition,
+          behavior,
+        });
+      }, 50);
 
       if (focusOnError) {
         // Find the first focusable element within the error container
@@ -65,7 +66,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
         ].join(", ");
 
         const focusableElement = element.querySelector(
-          focusableSelectors
+          focusableSelectors,
         ) as HTMLElement;
 
         if (focusableElement) {
@@ -76,7 +77,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
         }
       }
     },
-    [behavior, block, offset, focusOnError]
+    [behavior, block, focusOnError],
   );
 
   // Scroll to first error when errors change
@@ -112,7 +113,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
         scrollToElement(element);
       }
     },
-    [scrollToElement]
+    [scrollToElement],
   );
 
   return {

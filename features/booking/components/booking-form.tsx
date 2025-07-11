@@ -63,11 +63,10 @@ export function BookingForm() {
   const { register: registerErrorRef } = useFormErrorScroll(
     form.formState.errors,
     {
-      offset: 100, // Adjust based on your sticky header height
       focusOnError: true,
       behavior: "smooth",
       block: "center",
-    }
+    },
   );
 
   const { execute, isExecuting } = useAction(submitBooking, {
@@ -90,20 +89,20 @@ export function BookingForm() {
             "tablePreference",
             "specialRequests",
           ];
-          if (validFields.includes(field as keyof BookingFormData)) {
-            if (errors && Array.isArray(errors)) {
-              if (!firstErrorField) {
-                firstErrorField = field as keyof BookingFormData;
-              }
-              form.setError(field as keyof BookingFormData, {
-                type: "server",
-                message: errors[0],
-              });
-            }
+          if (
+            validFields.includes(field as keyof BookingFormData) &&
+            errors &&
+            Array.isArray(errors)
+          ) {
+            if (!firstErrorField)
+              firstErrorField = field as keyof BookingFormData;
+
+            form.setError(field as keyof BookingFormData, {
+              type: "server",
+              message: errors[0],
+            });
           }
         });
-
-        // The useFormErrorScroll hook will automatically handle scrolling to the first error
       }
     },
   });
@@ -116,7 +115,7 @@ export function BookingForm() {
     (errors) => {
       // Client-side validation errors are handled by useFormErrorScroll hook
       console.error("Form validation errors:", errors);
-    }
+    },
   );
 
   // Watch datetime field to update available durations
@@ -146,7 +145,7 @@ export function BookingForm() {
             This keeps styles localized to the component and ensures proper loading */}
         <form onSubmit={handleSubmit} className={styles.bookingFormGrid}>
           {/* Basic Information */}
-          <Card className={styles.gridAreaDatetimeInfo}>
+          <Card className={cn( styles.gridAreaDatetimeInfo, "flex flex-col justify-between" )}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-green-500" />
@@ -215,10 +214,10 @@ export function BookingForm() {
                         field.onChange(parseFloat(value))
                       }
                       defaultValue={String(
-                        field.value || constants.booking.defaultValues.duration
+                        field.value || constants.booking.defaultValues.duration,
                       )}
                       value={String(
-                        field.value || constants.booking.defaultValues.duration
+                        field.value || constants.booking.defaultValues.duration,
                       )}
                       disabled={availableDurations.length === 0}
                     >
@@ -258,11 +257,11 @@ export function BookingForm() {
                       onValueChange={field.onChange}
                       defaultValue={String(
                         field.value ||
-                          constants.booking.defaultValues.guestCount
+                          constants.booking.defaultValues.guestCount,
                       )}
                       value={String(
                         field.value ||
-                          constants.booking.defaultValues.guestCount
+                          constants.booking.defaultValues.guestCount,
                       )}
                     >
                       <FormControl>
@@ -280,7 +279,7 @@ export function BookingForm() {
                             length: constants.booking.validation.guestCount.max,
                           },
                           (_, i) =>
-                            i + constants.booking.validation.guestCount.min
+                            i + constants.booking.validation.guestCount.min,
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
                             {m.guestCountPlural({ count: num })}
@@ -418,7 +417,7 @@ export function BookingForm() {
                                 {m[`booking.tablePreferences.${preference}`]()}
                               </FormLabel>
                             </div>
-                          )
+                          ),
                         )}
                       </RadioGroup>
                     </FormControl>
@@ -470,7 +469,7 @@ export function BookingForm() {
           <Card
             className={cn(
               styles.gridAreaPricing,
-              "bg-green-50 border-green-200"
+              "bg-green-50 border-green-200",
             )}
           >
             <CardContent className="pt-6">
