@@ -2,7 +2,7 @@ import heroImage from "@/assets/images/hero.jpg";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
 import { Price } from "@/shared/components/price";
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 
 export function HomeHero() {
   return (
@@ -21,8 +21,8 @@ export function HomeHero() {
               {m["hours.weekdays"]()}
             </div>
             <div className="text-lg font-semibold">
-              {constants.workingHours.weekdays.open}-
-              {constants.workingHours.weekdays.close}
+              {siteConstants.workingHours.weekdays.open}-
+              {siteConstants.workingHours.weekdays.close}
             </div>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
@@ -30,10 +30,10 @@ export function HomeHero() {
               {m["hours.weekends"]()}
             </div>
             <div className="text-lg font-semibold">
-              {constants.workingHours.weekends.open}-
-              {constants.workingHours.weekends.close === "24:00"
+              {siteConstants.workingHours.weekends.open}-
+              {siteConstants.workingHours.weekends.close === "24:00"
                 ? "00:00"
-                : constants.workingHours.weekends.close}
+                : siteConstants.workingHours.weekends.close}
             </div>
           </div>
         </div>
@@ -45,7 +45,7 @@ export function HomeHero() {
             {m["hero.priceInfo.withPurchase"]()}
             &nbsp;
             <Price
-              amount={constants.pricing.entryFee.withPurchase}
+              amount={siteConstants.pricing.entryFee.withPurchase}
               className="text-green-400"
             />
           </span>
@@ -53,7 +53,7 @@ export function HomeHero() {
             {m["hero.priceInfo.withoutPurchase"]()}
             &nbsp;
             <Price
-              amount={constants.pricing.entryFee.withoutPurchase}
+              amount={siteConstants.pricing.entryFee.withoutPurchase}
               className="text-green-400"
             />
           </span>

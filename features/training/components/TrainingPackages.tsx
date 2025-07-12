@@ -4,13 +4,13 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
 import { cn } from "@/shared/utils";
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 
 export const TrainingPackages = () => {
   const packages = [
     {
       name: m["training.packages.halfDay.title"](),
-      price: constants.pricing.training.halfDay,
+      price: siteConstants.pricing.training.halfDay,
       duration: m["training.packages.halfDay.duration"](),
       features: [
         m["training.packages.halfDay.features.feature1"](),
@@ -21,7 +21,7 @@ export const TrainingPackages = () => {
     },
     {
       name: m["training.packages.fullDay.title"](),
-      price: constants.pricing.training.fullDay,
+      price: siteConstants.pricing.training.fullDay,
       duration: m["training.packages.fullDay.duration"](),
       features: [
         m["training.packages.fullDay.features.feature1"](),
@@ -33,7 +33,7 @@ export const TrainingPackages = () => {
     },
     {
       name: m["training.packages.custom.title"](),
-      price: constants.pricing.training.custom,
+      price: siteConstants.pricing.training.custom,
       duration: m["training.packages.custom.duration"](),
       features: [
         m["training.packages.custom.features.feature1"](),

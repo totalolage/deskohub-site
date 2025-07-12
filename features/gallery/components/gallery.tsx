@@ -2,7 +2,7 @@ import Image from "next/image";
 import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 
 export function Gallery() {
   return (
@@ -48,7 +48,7 @@ export function Gallery() {
                 {m["about.priceInfo.withPurchase"]()}
                 &nbsp;
                 <Price
-                  amount={constants.pricing.entryFee.withPurchase}
+                  amount={siteConstants.pricing.entryFee.withPurchase}
                   className="text-green-600 font-bold"
                 />
               </span>
@@ -58,7 +58,7 @@ export function Gallery() {
                 {m["about.priceInfo.withoutPurchase"]()}
                 &nbsp;
                 <Price
-                  amount={constants.pricing.entryFee.withoutPurchase}
+                  amount={siteConstants.pricing.entryFee.withoutPurchase}
                   className="text-green-600 font-bold"
                 />
               </span>
