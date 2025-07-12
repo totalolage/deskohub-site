@@ -1,5 +1,5 @@
 import { MapPin } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent } from "@/shared/components/ui/card";
 import { m } from "@/i18n";
 
 export function ContactMap() {

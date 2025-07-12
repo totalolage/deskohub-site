@@ -1,15 +1,19 @@
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { m } from "@/i18n";
+} from "@/shared/components/ui/card";
+import { m, setLocale } from "@/i18n";
+import { RouteProps_locale_id } from "./route";
 
-export default function BookingNotFound() {
+export default async function BookingNotFound({ params }: RouteProps_locale_id) {
+  const { locale } = await params;
+  setLocale(locale, { reload: false });
+
   return (
     <div className="container max-w-3xl mx-auto py-12 px-4">
       <Card className="text-center">

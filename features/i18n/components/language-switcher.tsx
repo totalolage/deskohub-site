@@ -2,13 +2,13 @@
 
 import { Languages } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
+import { Button } from "@/shared/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+} from "@/shared/components/ui/dropdown-menu";
 import { type Locale, locales, m, setLocale } from "@/i18n";
 import { getLocaleFromPathname } from "@/i18n/utils/get-locale-from-pathname";
 import { useLocale } from "@/i18n/utils/use-locale";

@@ -2,17 +2,17 @@ import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ScrollToTop } from "@/components/scroll-to-top";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { ScrollToTop } from "@/shared/components/scroll-to-top";
+import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
 import {
   Card,
   CardContent,
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+} from "@/shared/components/ui/card";
+import { Separator } from "@/shared/components/ui/separator";
 import { getBooking } from "@/features/booking/lib/booking-storage";
 import { m, setLocale } from "@/i18n";
 import { formatDate, formatTime } from "@/shared/utils/date-formatting";
@@ -27,7 +27,7 @@ export default async function ReservationConfirmationPage({
   params,
 }: Readonly<RouteProps_locale_id>) {
   const { id, locale } = await params;
-  setLocale(locale);
+  setLocale(locale, { reload: false });
 
   const booking = await getBooking(id);
   if (!booking) notFound();

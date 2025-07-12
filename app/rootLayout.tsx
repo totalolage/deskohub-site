@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import type { PropsWithChildren } from "react";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/shared/components/ui/sonner";
 import { Footer, Header } from "@/features/navigation";
 import { getLocale } from "@/i18n";
 

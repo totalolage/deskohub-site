@@ -5,17 +5,17 @@ import { cva, type VariantProps } from "class-variance-authority";
 import Cookies from "js-cookie";
 import { PanelLeft } from "lucide-react";
 import * as React from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Separator } from "@/components/ui/separator";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/shared/components/ui/button";
+import { Input } from "@/shared/components/ui/input";
+import { Separator } from "@/shared/components/ui/separator";
+import { Sheet, SheetContent } from "@/shared/components/ui/sheet";
+import { Skeleton } from "@/shared/components/ui/skeleton";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-} from "@/components/ui/tooltip";
+} from "@/shared/components/ui/tooltip";
 import { useIsMobileScreen } from "@/shared/hooks/use-screen-size";
 import { cn } from "@/shared/utils";
 

@@ -3,7 +3,7 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import type * as React from "react";
 import { DayPicker } from "react-day-picker";
-import { buttonVariants } from "@/components/ui/button";
+import { buttonVariants } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 export type CalendarProps = React.ComponentProps<typeof DayPicker>;
