@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { m, setLocale } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -7,10 +8,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
-import { m, setLocale } from "@/i18n";
-import { RouteProps_locale_id } from "./route";
+import type { RouteProps_locale_id } from "./route";
 
-export default async function BookingNotFound({ params }: RouteProps_locale_id) {
+export default async function BookingNotFound({
+  params,
+}: RouteProps_locale_id) {
   const { locale } = await params;
   setLocale(locale, { reload: false });
 

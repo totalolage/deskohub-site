@@ -1,8 +1,13 @@
 import { Check } from "lucide-react";
-import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
+import { Button } from "@/shared/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 

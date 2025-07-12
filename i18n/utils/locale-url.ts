@@ -18,17 +18,17 @@ export function parseLocalizedPathname(pathname: string): {
 } {
   // Normalize pathname
   const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-  
+
   // Try to extract locale
   const match = normalizedPath.match(LOCALE_PREFIX_REGEX);
   if (!match) {
     return { locale: undefined, pathname: normalizedPath };
   }
-  
+
   const potentialLocale = match[0].substring(1); // Remove leading slash
   const locale = isLocale(potentialLocale) ? potentialLocale : undefined;
   const pathnameWithoutLocale = normalizedPath.slice(match[0].length) || "/";
-  
+
   return { locale, pathname: pathnameWithoutLocale };
 }
 
@@ -44,12 +44,12 @@ export function createLocalizedPathname(
 ): string {
   // Normalize pathname
   const normalizedPath = pathname.startsWith("/") ? pathname : `/${pathname}`;
-  
+
   // Handle root path
   if (normalizedPath === "/") {
     return `/${locale}`;
   }
-  
+
   return `/${locale}${normalizedPath}`;
 }
 
@@ -122,7 +122,7 @@ export const localeUrl = {
    */
   switch(pathname: string, locale: Locale): string {
     return this.set(pathname, locale);
-  }
+  },
 };
 
 /**
@@ -135,7 +135,9 @@ export const localeUrl = {
  */
 export function getAllLocalizedPaths(pathname: string): string[] {
   const { pathname: pathWithoutLocale } = parseLocalizedPathname(pathname);
-  return locales.map(locale => createLocalizedPathname(pathWithoutLocale, locale));
+  return locales.map((locale) =>
+    createLocalizedPathname(pathWithoutLocale, locale)
+  );
 }
 
 /**
@@ -147,7 +149,9 @@ export function getAllLocalizedPaths(pathname: string): string[] {
  * createLocalizedPathMatcher("/about") // matches "/cs-CZ/about", "/en-US/about", etc.
  */
 export function createLocalizedPathMatcher(pattern: string): RegExp {
-  const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const localePattern = locales.map(locale => locale.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+  const escapedPattern = pattern.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const localePattern = locales
+    .map((locale) => locale.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
   return new RegExp(`^/(${localePattern})${escapedPattern}$`);
 }

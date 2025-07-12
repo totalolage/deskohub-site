@@ -1,6 +1,6 @@
-import { PATHNAME_HEADER } from "@/shared/utils/constants";
 import { localeUrl } from "@/i18n/utils/locale-url";
-import { MiddlewareFactory } from "@/shared/utils/middleware-chain";
+import { PATHNAME_HEADER } from "@/shared/utils/constants";
+import type { MiddlewareFactory } from "@/shared/utils/middleware-chain";
 
 export const pathHeaderMiddleware: MiddlewareFactory =
   (next) => async (req, event, incomingResponse) => {
@@ -10,6 +10,6 @@ export const pathHeaderMiddleware: MiddlewareFactory =
     return next(
       Object.assign({}, req, { headers: updatedHeaders }),
       event,
-      incomingResponse,
+      incomingResponse
     );
   };

@@ -1,7 +1,7 @@
+import Link from "next/link";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
 import { Button } from "@/shared/components/ui/button";
-import Link from "next/link";
 
 export const TrainingHero = () => {
   return (

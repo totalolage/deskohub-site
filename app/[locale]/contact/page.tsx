@@ -5,13 +5,13 @@ import {
   ContactMap,
 } from "@/features/contact";
 import { m, setLocale } from "@/i18n";
-import type { RouteProps_locale } from "../route";
 import { metadata } from "@/shared/utils/metadata";
+import type { RouteProps_locale } from "../route";
 
 export const generateMetadata = metadata({
   title: m["contact.pageTitle"](),
   description: m["contact.pageDescription"](),
-})
+});
 
 export default async function ContactPage({ params }: RouteProps_locale) {
   const { locale } = await params;

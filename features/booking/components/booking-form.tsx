@@ -13,6 +13,33 @@ import {
 } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
+import { Badge } from "@/shared/components/ui/badge";
+import { Button } from "@/shared/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from "@/shared/components/ui/form";
+import { Input } from "@/shared/components/ui/input";
+import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/shared/components/ui/select";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 import {
@@ -21,14 +48,6 @@ import {
 } from "@/shared/utils/date-formatting";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
 import styles from "./booking-form.module.css";
-import { Badge } from "@/shared/components/ui/badge";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/shared/components/ui/form";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { Input } from "@/shared/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
-import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
-import { Textarea } from "@/shared/components/ui/textarea";
-import { Button } from "@/shared/components/ui/button";
 
 export function BookingForm() {
   const locale = useLocale();
@@ -47,7 +66,7 @@ export function BookingForm() {
       focusOnError: true,
       behavior: "smooth",
       block: "center",
-    },
+    }
   );
 
   const { execute, isExecuting } = useAction(submitBooking, {
@@ -96,7 +115,7 @@ export function BookingForm() {
     (errors) => {
       // Client-side validation errors are handled by useFormErrorScroll hook
       console.error("Form validation errors:", errors);
-    },
+    }
   );
 
   // Watch datetime field to update available durations
@@ -126,7 +145,12 @@ export function BookingForm() {
             This keeps styles localized to the component and ensures proper loading */}
         <form onSubmit={handleSubmit} className={styles.bookingFormGrid}>
           {/* Basic Information */}
-          <Card className={cn( styles.gridAreaDatetimeInfo, "flex flex-col justify-between" )}>
+          <Card
+            className={cn(
+              styles.gridAreaDatetimeInfo,
+              "flex flex-col justify-between"
+            )}
+          >
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-green-500" />
@@ -195,10 +219,12 @@ export function BookingForm() {
                         field.onChange(parseFloat(value))
                       }
                       defaultValue={String(
-                        field.value || siteConstants.booking.defaultValues.duration,
+                        field.value ||
+                          siteConstants.booking.defaultValues.duration
                       )}
                       value={String(
-                        field.value || siteConstants.booking.defaultValues.duration,
+                        field.value ||
+                          siteConstants.booking.defaultValues.duration
                       )}
                       disabled={availableDurations.length === 0}
                     >
@@ -238,11 +264,11 @@ export function BookingForm() {
                       onValueChange={field.onChange}
                       defaultValue={String(
                         field.value ||
-                          siteConstants.booking.defaultValues.guestCount,
+                          siteConstants.booking.defaultValues.guestCount
                       )}
                       value={String(
                         field.value ||
-                          siteConstants.booking.defaultValues.guestCount,
+                          siteConstants.booking.defaultValues.guestCount
                       )}
                     >
                       <FormControl>
@@ -257,10 +283,11 @@ export function BookingForm() {
                       <SelectContent>
                         {Array.from(
                           {
-                            length: siteConstants.booking.validation.guestCount.max,
+                            length:
+                              siteConstants.booking.validation.guestCount.max,
                           },
                           (_, i) =>
-                            i + siteConstants.booking.validation.guestCount.min,
+                            i + siteConstants.booking.validation.guestCount.min
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
                             {m.guestCountPlural({ count: num })}
@@ -398,7 +425,7 @@ export function BookingForm() {
                                 {m[`booking.tablePreferences.${preference}`]()}
                               </FormLabel>
                             </div>
-                          ),
+                          )
                         )}
                       </RadioGroup>
                     </FormControl>
@@ -450,7 +477,7 @@ export function BookingForm() {
           <Card
             className={cn(
               styles.gridAreaPricing,
-              "bg-green-50 border-green-200",
+              "bg-green-50 border-green-200"
             )}
           >
             <CardContent className="pt-6">

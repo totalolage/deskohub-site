@@ -1,7 +1,7 @@
+import { NextResponse } from "next/server";
 import { extractLocaleFromRequest } from "@/i18n";
 import { localeUrl } from "@/i18n/utils/locale-url";
-import { NextResponse } from "next/server";
-import { MiddlewareFactory } from "@/shared/utils/middleware-chain";
+import type { MiddlewareFactory } from "@/shared/utils/middleware-chain";
 
 export const localizationMiddleware: MiddlewareFactory =
   (next) => async (req, event, incomingResponse) => {

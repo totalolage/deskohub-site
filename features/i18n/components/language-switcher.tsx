@@ -2,6 +2,9 @@
 
 import { Languages } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
+import { type Locale, locales, m, setLocale } from "@/i18n";
+import { localeUrl } from "@/i18n/utils/locale-url";
+import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   DropdownMenu,
@@ -9,9 +12,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
-import { type Locale, locales, m, setLocale } from "@/i18n";
-import { useLocale } from "@/i18n/utils/use-locale";
-import { localeUrl } from "@/i18n/utils/locale-url";
 
 export function LanguageSwitcher() {
   const router = useRouter();

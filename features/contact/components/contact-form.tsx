@@ -5,8 +5,21 @@ import { Send } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { submitContactForm } from "@/features/contact/actions/contact";
+import {
+  type ContactData,
+  type ContactFormData,
+  contactDefaultValues,
+  getContactSchema,
+} from "@/features/contact/schemas/contact";
+import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
 import {
   Form,
   FormControl,
@@ -17,14 +30,6 @@ import {
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
-import { submitContactForm } from "@/features/contact/actions/contact";
-import {
-  type ContactData,
-  type ContactFormData,
-  contactDefaultValues,
-  getContactSchema,
-} from "@/features/contact/schemas/contact";
-import { m } from "@/i18n";
 
 export function ContactForm() {
   const form = useForm<ContactFormData, unknown, ContactData>({

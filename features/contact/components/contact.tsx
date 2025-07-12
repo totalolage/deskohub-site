@@ -1,5 +1,5 @@
-import { Button } from "@/shared/components/ui/button";
 import { m } from "@/i18n";
+import { Button } from "@/shared/components/ui/button";
 
 export function Contact() {
   return (

@@ -1,7 +1,7 @@
 import Image, { type ImageProps } from "next/image";
 import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
-import { Button } from "@/shared/components/ui/button";
 import { m } from "@/i18n";
+import { Button } from "@/shared/components/ui/button";
 
 export function GamesGallery() {
   const games = [

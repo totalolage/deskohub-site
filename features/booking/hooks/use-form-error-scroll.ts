@@ -9,7 +9,7 @@ interface UseFormErrorScrollOptions {
 
 export function useFormErrorScroll<T extends Record<string, unknown>>(
   errors: FieldErrors<T>,
-  options: UseFormErrorScrollOptions = {},
+  options: UseFormErrorScrollOptions = {}
 ) {
   const {
     behavior = "smooth",
@@ -41,9 +41,9 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
       // Get header height from --header-height CSS variable
       const headerHeight = parseInt(
         getComputedStyle(document.documentElement).getPropertyValue(
-          "--header-height",
+          "--header-height"
         ),
-        10,
+        10
       );
       const scrollPosition = absoluteTop - headerHeight - 20;
 
@@ -66,7 +66,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
         ].join(", ");
 
         const focusableElement = element.querySelector(
-          focusableSelectors,
+          focusableSelectors
         ) as HTMLElement;
 
         if (focusableElement) {
@@ -77,7 +77,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
         }
       }
     },
-    [behavior, block, focusOnError],
+    [behavior, block, focusOnError]
   );
 
   // Scroll to first error when errors change
@@ -113,7 +113,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
         scrollToElement(element);
       }
     },
-    [scrollToElement],
+    [scrollToElement]
   );
 
   return {

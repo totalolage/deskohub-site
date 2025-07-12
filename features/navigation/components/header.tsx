@@ -1,12 +1,12 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import logoImage from "@/assets/images/logo.png";
 import { LanguageSwitcher } from "@/features/i18n";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
-import Link from "next/link";
 
 export function Header() {
   const locale = useLocale();
@@ -27,19 +27,31 @@ export function Header() {
           <Link href="/" className="hover:text-green-400 transition-colors">
             {m["nav.home"]()}
           </Link>
-          <Link href="/board-games" className="hover:text-green-400 transition-colors">
+          <Link
+            href="/board-games"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.boardGames"]()}
           </Link>
-          <Link href="/gallery" className="hover:text-green-400 transition-colors">
+          <Link
+            href="/gallery"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.gallery"]()}
           </Link>
           <Link href="/menu" className="hover:text-green-400 transition-colors">
             {m["nav.menu"]()}
           </Link>
-          <Link href="/training-room" className="hover:text-green-400 transition-colors">
+          <Link
+            href="/training-room"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.trainingRoom"]()}
           </Link>
-          <Link href="/contact" className="hover:text-green-400 transition-colors">
+          <Link
+            href="/contact"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.contact"]()}
           </Link>
         </nav>

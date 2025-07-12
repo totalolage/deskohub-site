@@ -28,7 +28,7 @@ export function Hero({ imageSrc, fullHeight, children, className }: HeroProps) {
       className={cn(
         heroVariants({ fullHeight }),
         "relative overflow-hidden flex items-center justify-center flex-col",
-        className,
+        className
       )}
     >
       <Image

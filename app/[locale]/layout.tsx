@@ -1,16 +1,16 @@
-import { type PropsWithChildren } from "react";
+import type { Metadata } from "next";
+import type { PropsWithChildren } from "react";
 import { locales, setLocale } from "@/i18n";
 import { localeAsyncLocalStorage } from "@/i18n/utils/setup-server";
 import RootLayout from "../rootLayout";
 import type { RouteProps_locale } from "./route";
-import { Metadata } from "next";
 
 export async function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
 export async function generateMetadata(): Promise<Metadata> {
-  let origin =
+  const origin =
     process.env.NEXT_PUBLIC_BASE_URL ||
     (process.env.NODE_ENV !== "production"
       ? `http://localhost:${process.env.PORT || 3000}`
@@ -38,6 +38,6 @@ export default async function LocaleLayout({
     async () => {
       setLocale(locale, { reload: false });
       return <RootLayout>{children}</RootLayout>;
-    },
+    }
   );
 }

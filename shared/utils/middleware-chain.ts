@@ -1,20 +1,24 @@
-import { NextRequest, NextResponse, NextFetchEvent } from "next/server";
+import {
+  type NextFetchEvent,
+  type NextRequest,
+  NextResponse,
+} from "next/server";
 export type NextMiddleware = (
   request: NextRequest,
   event: NextFetchEvent,
-  response?: NextResponse,
+  response?: NextResponse
 ) =>
   | NextResponse
   | Response
   | null
   | undefined
-  | void
-  | Promise<NextResponse | Response | null | undefined | void>;
+  | undefined
+  | Promise<NextResponse | Response | null | undefined | undefined>;
 export type MiddlewareFactory = (next: NextMiddleware) => NextMiddleware;
 
 export function createMiddlewareChain(
   factories: MiddlewareFactory[],
-  index = 0,
+  index = 0
 ): NextMiddleware {
   if (factories[index])
     return factories[index]((req, event, res) => {

@@ -1,7 +1,7 @@
-import { AsyncLocalStorage } from "async_hooks";
+import { AsyncLocalStorage } from "node:async_hooks";
 import {
   overwriteServerAsyncLocalStorage,
-  ParaglideAsyncLocalStorage,
+  type ParaglideAsyncLocalStorage,
 } from "../paraglide/runtime";
 
 // Create and set up async local storage for Paraglide
@@ -13,4 +13,3 @@ const localeAsyncLocalStorage = new AsyncLocalStorage<
 overwriteServerAsyncLocalStorage(localeAsyncLocalStorage);
 
 export { localeAsyncLocalStorage };
-

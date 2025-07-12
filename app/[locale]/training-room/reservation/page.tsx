@@ -1,12 +1,12 @@
-import { m, setLocale } from "@/i18n";
-import { RouteProps_locale } from "../../route";
 import { ReservationForm } from "@/features/training/reservation";
+import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
+import type { RouteProps_locale } from "../../route";
 
 export const generateMetadata = metadata({
   title: m["trainingReservation.pageTitle"](),
   description: m["trainingReservation.pageDescription"](),
-})
+});
 
 export default async function TrainingRoomReservationPage({
   params,
