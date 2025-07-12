@@ -10,8 +10,8 @@ import {
   DropdownMenuTrigger,
 } from "@/shared/components/ui/dropdown-menu";
 import { type Locale, locales, m, setLocale } from "@/i18n";
-import { getLocaleFromPathname } from "@/i18n/utils/get-locale-from-pathname";
 import { useLocale } from "@/i18n/utils/use-locale";
+import { localeUrl } from "@/i18n/utils/locale-url";
 
 export function LanguageSwitcher() {
   const router = useRouter();
@@ -19,10 +19,8 @@ export function LanguageSwitcher() {
   const currentLocale = useLocale();
 
   const handleLanguageChange = (newLocale: Locale) => {
-    const localeLength = getLocaleFromPathname(pathname)?.length ?? 0;
-    const basePath = pathname.substring(localeLength + 1); // Account for leading slash
-
-    router.push(`/${newLocale}${basePath}`);
+    const newPath = localeUrl.set(pathname, newLocale);
+    router.push(newPath);
     setLocale(newLocale, { reload: false });
     document.documentElement.lang = newLocale;
   };
