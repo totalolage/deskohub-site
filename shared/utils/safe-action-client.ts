@@ -2,7 +2,7 @@ import {
   createSafeActionClient,
   DEFAULT_SERVER_ERROR_MESSAGE,
 } from "next-safe-action";
-import { localeMiddleware } from "./middleware/locale";
+import { localeMiddleware } from "./action-middleware/locale";
 
 export const actionClient = createSafeActionClient({
   // Handle server errors properly
