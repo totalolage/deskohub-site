@@ -436,5 +436,26 @@
     "mapPlaceholder": "Map will be here",
     "mapAddress": "Náměstí Míru 123, Prague 1",
     "successMessage": "Your message has been sent successfully! We'll get back to you soon."
+  },
+  "menu": {
+    "pageTitle": "Menu - Food & Drinks",
+    "pageDescription": "Explore our delicious food and drinks menu at Deskohub board game bar. Perfect snacks and beverages for your gaming experience.",
+    "hero": {
+      "title": "MENU",
+      "subtitle": "Discover our selection of food and drinks for the perfect gaming experience",
+      "imageAlt": "Deskohub Interior"
+    },
+    "downloadPDF": "Download menu (PDF)",
+    "openingHours": {
+      "weekdays": "MON - FRI",
+      "weekdaysTime": "17:00-23:00",
+      "weekend": "SAT - SUN",
+      "weekendTime": "15:00-24:00"
+    },
+    "sections": {
+      "food": "FOOD",
+      "drinks": "DRINKS"
+    },
+    "footerNote": "Entry fee for board game players: 50 CZK for customers who order from us and 100 CZK for customers with zero spending."
   }
 }

@@ -441,5 +441,26 @@
     "mapPlaceholder": "Mapa bude zde",
     "mapAddress": "Náměstí Míru 123, Praha 1",
     "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme."
+  },
+  "menu": {
+    "pageTitle": "Menu - Jídlo a nápoje",
+    "pageDescription": "Objevte naše lahodné menu jídel a nápojů v Deskohub bar s deskovými hrami. Perfektní občerstvení a nápoje pro váš herní zážitek.",
+    "hero": {
+      "title": "MENU",
+      "subtitle": "Objevte naši nabídku jídel a nápojů pro perfektní herní zážitek",
+      "imageAlt": "Interiér Deskohub"
+    },
+    "downloadPDF": "Stáhnout menu (PDF)",
+    "openingHours": {
+      "weekdays": "PO - PÁ",
+      "weekdaysTime": "17:00-23:00",
+      "weekend": "SO - NE",
+      "weekendTime": "15:00-24:00"
+    },
+    "sections": {
+      "food": "JÍDLO",
+      "drinks": "NÁPOJE"
+    },
+    "footerNote": "Vstupné pro hráče deskových her: Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratou."
   }
 }
