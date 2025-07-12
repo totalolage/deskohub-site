@@ -3,15 +3,6 @@
   "baseLocale": "cs-CZ",
   "locales": ["cs-CZ", "en-US"],
   "strategy": ["url", "cookie", "preferredLanguage", "baseLocale"],
-  "urlPatterns": [
-    {
-      "pattern": "https://:domain(.*)/:path*",
-      "localized": [
-        ["cs-CZ", "https://:domain(.*)/cs-CZ/:path*"],
-        ["en-US", "https://:domain(.*)/:path*"]
-      ]
-    }
-  ],
   "modules": [
     "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js",
     "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-empty-pattern@1/dist/index.js",

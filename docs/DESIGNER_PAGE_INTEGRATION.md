@@ -425,7 +425,7 @@ import type { RouteProps_locale } from "../route";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: `${m["pricing.pageTitle"]()} | Deskohub`,
+  title: m["pricing.pageTitle"](),
   description: m["pricing.pageDescription"](),
 };
 

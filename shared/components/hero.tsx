@@ -7,8 +7,8 @@ import { cn } from "@/shared/utils";
 const heroVariants = cva(null, {
   variants: {
     fullHeight: {
-      true: "h-[calc(100dvh_-_var(--header-height))]",
-      false: "",
+      true: "min-h-[calc(100dvh_-_var(--header-height))]",
+      false: "min-h-96",
     },
   },
   defaultVariants: {
@@ -27,7 +27,7 @@ export function Hero({ imageSrc, fullHeight, children, className }: HeroProps) {
     <section
       className={cn(
         heroVariants({ fullHeight }),
-        "relative overflow-hidden flex items-center justify-center flex-col py-32",
+        "relative overflow-hidden flex items-center justify-center flex-col",
         className,
       )}
     >
