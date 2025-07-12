@@ -1,4 +1,4 @@
-export { m } from "./paraglide/messages";
+export { m } from "./paraglide/messages.js";
 export {
   assertIsLocale,
   baseLocale,
@@ -8,4 +8,5 @@ export {
   locales,
   overwriteGetLocale,
   setLocale,
-} from "./paraglide/runtime";
+  extractLocaleFromRequest,
+} from "./paraglide/runtime.js";
