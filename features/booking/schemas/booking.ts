@@ -1,6 +1,6 @@
 import { z } from "zod/v4";
 import { m } from "@/i18n";
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 import {
   getAvailableDurations,
   getLocalTimeInRestaurantTimezone,
@@ -28,8 +28,8 @@ export const getBookingSchema = () => {
         // Get working hours for the selected day
         const workingHours =
           dayOfWeek === 0 || dayOfWeek === 6
-            ? constants.workingHours.weekends
-            : constants.workingHours.weekdays;
+            ? siteConstants.workingHours.weekends
+            : siteConstants.workingHours.weekdays;
 
         // Check if the day is open
         if (!workingHours.days.includes(dayOfWeek)) {
@@ -63,12 +63,12 @@ export const getBookingSchema = () => {
       error: m["booking.validation.guestCount.required"](),
     })
     .int({ error: m["booking.validation.guestCount.integer"]() })
-    .min(constants.booking.validation.guestCount.min, {
+    .min(siteConstants.booking.validation.guestCount.min, {
       error: m["booking.validation.guestCount.required"](),
     })
-    .max(constants.booking.validation.guestCount.max, {
+    .max(siteConstants.booking.validation.guestCount.max, {
       error: m["booking.validation.guestCount.maximum"]({
-        max: constants.booking.validation.guestCount.max,
+        max: siteConstants.booking.validation.guestCount.max,
       }),
     });
 
@@ -77,24 +77,24 @@ export const getBookingSchema = () => {
     .number({
       error: m["booking.validation.duration.minimum"](),
     })
-    .min(constants.booking.validation.duration.min, {
+    .min(siteConstants.booking.validation.duration.min, {
       error: m["booking.validation.duration.minimum"](),
     })
-    .multipleOf(constants.booking.validation.duration.increment, {
+    .multipleOf(siteConstants.booking.validation.duration.increment, {
       error: m["booking.validation.duration.increment"](),
     });
 
   // Name schema
   const nameSchema = z
     .string()
-    .min(constants.booking.validation.name.min, {
+    .min(siteConstants.booking.validation.name.min, {
       error: m["booking.validation.name.minimum"]({
-        min: constants.booking.validation.name.min,
+        min: siteConstants.booking.validation.name.min,
       }),
     })
-    .max(constants.booking.validation.name.max, {
+    .max(siteConstants.booking.validation.name.max, {
       error: m["booking.validation.name.maximum"]({
-        max: constants.booking.validation.name.max,
+        max: siteConstants.booking.validation.name.max,
       }),
     });
 
@@ -106,10 +106,10 @@ export const getBookingSchema = () => {
   // Phone schema with regex validation
   const phoneSchema = z
     .string()
-    .min(constants.booking.validation.phone.min, {
+    .min(siteConstants.booking.validation.phone.min, {
       error: m["booking.validation.phone.minimum"](),
     })
-    .max(constants.booking.validation.phone.max, {
+    .max(siteConstants.booking.validation.phone.max, {
       error: m["booking.validation.phone.maximum"](),
     })
     .regex(/^[+]?[0-9\s\-()]+$/, {
@@ -118,15 +118,15 @@ export const getBookingSchema = () => {
 
   // Table preference schema using enum with default
   const tablePreferenceSchema = z
-    .enum(constants.booking.validation.tablePreference.values)
-    .default(constants.booking.defaultValues.tablePreference);
+    .enum(siteConstants.booking.validation.tablePreference.values)
+    .default(siteConstants.booking.defaultValues.tablePreference);
 
   // Special requests schema
   const specialRequestsSchema = z
     .string()
-    .max(constants.booking.validation.specialRequests.max, {
+    .max(siteConstants.booking.validation.specialRequests.max, {
       error: m["booking.validation.specialRequests.maximum"]({
-        max: constants.booking.validation.specialRequests.max,
+        max: siteConstants.booking.validation.specialRequests.max,
       }),
     })
     .optional();

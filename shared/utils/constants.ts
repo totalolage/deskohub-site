@@ -1,4 +1,6 @@
-export const constants = {
+export const PATHNAME_HEADER = "x-pathname";
+
+export const siteConstants = {
   pricing: {
     entryFee: {
       withPurchase: 50,

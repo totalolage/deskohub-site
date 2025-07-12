@@ -5,33 +5,6 @@ import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Form,
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { Textarea } from "@/components/ui/textarea";
 import { submitBooking } from "@/features/booking/actions/booking";
 import { useFormErrorScroll } from "@/features/booking/hooks/use-form-error-scroll";
 import {
@@ -41,20 +14,28 @@ import {
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { cn } from "@/shared/utils";
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 import {
   formatDateTimeForInput,
   getMinBookingDateTime,
 } from "@/shared/utils/date-formatting";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
 import styles from "./booking-form.module.css";
+import { Badge } from "@/shared/components/ui/badge";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/shared/components/ui/form";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import { Input } from "@/shared/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/shared/components/ui/select";
+import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
+import { Textarea } from "@/shared/components/ui/textarea";
+import { Button } from "@/shared/components/ui/button";
 
 export function BookingForm() {
   const locale = useLocale();
 
   const form = useForm<BookingFormData>({
     resolver: zodResolver(getBookingSchema()),
-    defaultValues: constants.booking.defaultValues,
+    defaultValues: siteConstants.booking.defaultValues,
     mode: "onTouched",
     shouldFocusError: false, // We handle focus in our custom error scroll hook
   });
@@ -128,15 +109,15 @@ export function BookingForm() {
       <div className="flex justify-center gap-4 mb-6">
         <Badge variant="outline" className="px-4 py-2">
           <Clock className="w-4 h-4 mr-2" />
-          {m["hours.weekdays"]()} {constants.workingHours.weekdays.open}-
-          {constants.workingHours.weekdays.close}
+          {m["hours.weekdays"]()} {siteConstants.workingHours.weekdays.open}-
+          {siteConstants.workingHours.weekdays.close}
         </Badge>
         <Badge variant="outline" className="px-4 py-2">
           <Clock className="w-4 h-4 mr-2" />
-          {m["hours.weekends"]()} {constants.workingHours.weekends.open}-
-          {constants.workingHours.weekends.close === "24:00"
+          {m["hours.weekends"]()} {siteConstants.workingHours.weekends.open}-
+          {siteConstants.workingHours.weekends.close === "24:00"
             ? "00:00"
-            : constants.workingHours.weekends.close}
+            : siteConstants.workingHours.weekends.close}
         </Badge>
       </div>
 
@@ -214,10 +195,10 @@ export function BookingForm() {
                         field.onChange(parseFloat(value))
                       }
                       defaultValue={String(
-                        field.value || constants.booking.defaultValues.duration,
+                        field.value || siteConstants.booking.defaultValues.duration,
                       )}
                       value={String(
-                        field.value || constants.booking.defaultValues.duration,
+                        field.value || siteConstants.booking.defaultValues.duration,
                       )}
                       disabled={availableDurations.length === 0}
                     >
@@ -257,11 +238,11 @@ export function BookingForm() {
                       onValueChange={field.onChange}
                       defaultValue={String(
                         field.value ||
-                          constants.booking.defaultValues.guestCount,
+                          siteConstants.booking.defaultValues.guestCount,
                       )}
                       value={String(
                         field.value ||
-                          constants.booking.defaultValues.guestCount,
+                          siteConstants.booking.defaultValues.guestCount,
                       )}
                     >
                       <FormControl>
@@ -276,10 +257,10 @@ export function BookingForm() {
                       <SelectContent>
                         {Array.from(
                           {
-                            length: constants.booking.validation.guestCount.max,
+                            length: siteConstants.booking.validation.guestCount.max,
                           },
                           (_, i) =>
-                            i + constants.booking.validation.guestCount.min,
+                            i + siteConstants.booking.validation.guestCount.min,
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
                             {m.guestCountPlural({ count: num })}
@@ -400,7 +381,7 @@ export function BookingForm() {
                         defaultValue={field.value}
                         className="space-y-2"
                       >
-                        {constants.booking.validation.tablePreference.values.map(
+                        {siteConstants.booking.validation.tablePreference.values.map(
                           (preference) => (
                             <div
                               key={preference}
@@ -453,7 +434,7 @@ export function BookingForm() {
                         placeholder={m["booking.specialRequestsPlaceholder"]()}
                         rows={4}
                         maxLength={
-                          constants.booking.validation.specialRequests.max
+                          siteConstants.booking.validation.specialRequests.max
                         }
                         {...field}
                       />
