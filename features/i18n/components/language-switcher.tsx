@@ -23,6 +23,8 @@ export function LanguageSwitcher() {
     router.push(newPath);
     setLocale(newLocale, { reload: false });
     document.documentElement.lang = newLocale;
+    // Clear the router cache to ensure all preloaded routes use the new locale
+    router.refresh();
   };
 
   return (

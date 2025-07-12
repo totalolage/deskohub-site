@@ -6,7 +6,7 @@ import { LanguageSwitcher } from "@/features/i18n";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
-import { Link } from "@/shared/components/ui/link";
+import Link from "next/link";
 
 export function Header() {
   const locale = useLocale();
