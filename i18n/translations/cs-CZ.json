@@ -1,5 +1,9 @@
 {
   "language": "Česky",
+  "siteTitle": "Deskohub",
+  "siteDescription": "Hrajte, nápoje, jíde - vše v jednom místě. Navštivte nejlepší deskové hře pro všechny deskové zábavníky.",
+  "pageTitle": "Bar s deskovými hrami a restaurace",
+  "pageDescription": "Zažijte nejlepší bar s deskovými hrami ve městě. Hrajte z naší sbírky 300+ her při vychutnávání craft piva a vynikajícího jídla.",
   "nav": {
     "home": "DOMŮ",
     "boardGames": "DESKOVÉ HRY",
@@ -121,6 +125,14 @@
   "metadata": {
     "title": "Deskohub - Bar s deskovými hrami",
     "description": "Hrejte, pijte, jezte - vše u jednoho stolu. Navštivte nejlepší board game bar pro všechny milovníky deskových her."
+  },
+  "reservation": {
+    "pageTitle": "Rezervace stolu",
+    "pageDescription": "Rezervujte si stůl v Deskohub baru s deskovými hrami. Vyberte si preferované datum, čas a typ stolu pro dokonalý herní zážitek."
+  },
+  "reservationConfirmation": {
+    "pageTitle": "Rezervace potvrzena",
+    "pageDescription": "Vaše rezervace stolu v Deskohub byla úspěšně potvrzena. Zkontrolujte detaily vaší rezervace a potvrzení."
   },
   "booking": {
     "pageTitle": "Rezervace stolu",
@@ -305,7 +317,7 @@
     "description": "Děkujeme za vaši rezervaci v Deskohub"
   },
   "training": {
-    "pageTitle": "Školící místnost - Deskohub",
+    "pageTitle": "Školící místnost",
     "pageDescription": "Ideální prostor pro firemní akce, workshopy a teambuilding aktivity v Deskohub",
     "hero": {
       "title": "Teambuilding",
@@ -375,7 +387,15 @@
       "title": "Připraveni naplánovat váš event?",
       "description": "Kontaktujte nás ještě dnes a vytvoříme společně nezapomenutelnou akci pro váš tým.",
       "button": "Kontaktovat nás"
+    },
+    "reservation": {
+      "pageTitle": "Rezervace školící místnosti",
+      "pageDescription": "Rezervujte si naši školící místnost pro vaši firemní akci, workshop nebo teambuilding aktivitu v Deskohub"
     }
+  },
+  "trainingReservation": {
+    "pageTitle": "Rezervace školící místnosti",
+    "pageDescription": "Rezervujte si naši prostornou školící místnost pro firemní akce, workshopy a teambuilding aktivity. Dokončete svou rezervaci v Deskohub."
   },
   "notFound": {
     "title": "Stránka nenalezena",
@@ -387,6 +407,8 @@
     "footerMessage": "Připojte se k nám na další hru v Deskohub!"
   },
   "contact": {
+    "pageTitle": "Kontaktujte nás",
+    "pageDescription": "Spojte se s Deskohub - bar s deskovými hrami v Praze. Kontaktní informace, otevírací doba a lokace.",
     "heroTitle": "Kontakt",
     "heroSubtitle": "Spojte se s námi a rezervujte si svůj stůl pro nezapomenutelný herní zážitek",
     "heroImageAlt": "Interiér Deskohub",

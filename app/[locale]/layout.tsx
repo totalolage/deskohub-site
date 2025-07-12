@@ -1,45 +1,43 @@
-import { cache, type PropsWithChildren } from "react";
-import {
-  assertIsLocale,
-  baseLocale,
-  locales,
-  m,
-  overwriteGetLocale,
-  setLocale,
-} from "@/i18n";
+import { type PropsWithChildren } from "react";
+import { locales, setLocale } from "@/i18n";
+import { localeAsyncLocalStorage } from "@/i18n/utils/setup-server";
 import RootLayout from "../rootLayout";
 import type { RouteProps_locale } from "./route";
+import { Metadata } from "next";
 
 export async function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
-export async function generateMetadata({
-  params,
-}: Readonly<RouteProps_locale>) {
-  const { locale } = await params;
-  setLocale(locale, { reload: false });
+export async function generateMetadata(): Promise<Metadata> {
+  let origin =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    (process.env.NODE_ENV !== "production"
+      ? `http://localhost:${process.env.PORT || 3000}`
+      : undefined);
 
   return {
-    title: m["metadata.title"](),
-    description: m["metadata.description"](),
-    generator: "v0.dev",
+    metadataBase: origin ? new URL(origin) : undefined,
   };
 }
-
-// scopes the locale per request
-const ssrLocale = cache(() => ({
-  locale: baseLocale,
-}));
-
-// overwrite the getLocale function to use the locale from the request
-overwriteGetLocale(() => assertIsLocale(ssrLocale().locale));
 
 export default async function LocaleLayout({
   children,
   params,
 }: Readonly<PropsWithChildren<RouteProps_locale>>) {
-  ssrLocale().locale = (await params).locale;
+  const { locale } = await params;
 
-  return <RootLayout>{children}</RootLayout>;
+  // Run the layout in async local storage context
+  return localeAsyncLocalStorage.run(
+    {
+      locale,
+      origin:
+        process.env.NEXT_PUBLIC_BASE_URL ||
+        `http://localhost:${process.env.PORT || 3000}`,
+    },
+    async () => {
+      setLocale(locale, { reload: false });
+      return <RootLayout>{children}</RootLayout>;
+    },
+  );
 }

@@ -1,5 +1,4 @@
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
-import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
@@ -17,11 +16,12 @@ import { getBooking } from "@/features/booking/lib/booking-storage";
 import { m, setLocale } from "@/i18n";
 import { formatDate, formatTime } from "@/shared/utils/date-formatting";
 import type { RouteProps_locale_id } from "./route";
+import { metadata } from "@/shared/utils/metadata";
 
-export const metadata: Metadata = {
-  title: m["reservationMetadata.title"](),
-  description: m["reservationMetadata.description"](),
-};
+export const generateMetadata = metadata({
+  title: m["reservationConfirmation.pageTitle"](),
+  description: m["reservationConfirmation.pageDescription"](),
+})
 
 export default async function ReservationConfirmationPage({
   params,

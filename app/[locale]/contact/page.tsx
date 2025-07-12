@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import {
   ContactForm,
   ContactHero,
@@ -7,14 +6,16 @@ import {
 } from "@/features/contact";
 import { m, setLocale } from "@/i18n";
 import type { RouteProps_locale } from "../route";
+import { metadata } from "@/shared/utils/metadata";
 
-export const metadata: Metadata = {
-  title: `${m["contact.heroTitle"]()} | Deskohub`,
-  description: m["contact.heroSubtitle"](),
-};
+export const generateMetadata = metadata({
+  title: m["contact.pageTitle"](),
+  description: m["contact.pageDescription"](),
+})
 
 export default async function ContactPage({ params }: RouteProps_locale) {
-  setLocale((await params).locale);
+  const { locale } = await params;
+  setLocale(locale, { reload: false });
 
   return (
     <div className="min-h-screen bg-black">

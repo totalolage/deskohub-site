@@ -1,5 +1,9 @@
 {
   "language": "English",
+  "siteTitle": "Deskohub",
+  "siteDescription": "Play, drink, eat - everything at one table. Visit the best board game bar for all board game enthusiasts.",
+  "pageTitle": "Board Game Bar & Restaurant",
+  "pageDescription": "Experience the best board game bar in town. Play from our collection of 300+ games while enjoying craft beer and delicious food.",
   "nav": {
     "home": "HOME",
     "boardGames": "BOARD GAMES",
@@ -117,6 +121,14 @@
   "metadata": {
     "title": "Deskohub - Board Game Bar",
     "description": "Play, drink, eat - everything at one table. Visit the best board game bar for all board game enthusiasts."
+  },
+  "reservation": {
+    "pageTitle": "Table Reservation",
+    "pageDescription": "Reserve your table at Deskohub board game bar. Choose your preferred date, time, and table type for the perfect gaming experience."
+  },
+  "reservationConfirmation": {
+    "pageTitle": "Reservation Confirmed",
+    "pageDescription": "Your table reservation at Deskohub has been successfully confirmed. Check your booking details and confirmation."
   },
   "booking": {
     "pageTitle": "Book a Table",
@@ -300,7 +312,7 @@
     "description": "Thank you for your reservation at Deskohub"
   },
   "training": {
-    "pageTitle": "Training Room - Deskohub",
+    "pageTitle": "Training Room",
     "pageDescription": "Perfect space for corporate events, workshops and team building activities at Deskohub",
     "hero": {
       "title": "Team Building",
@@ -370,7 +382,15 @@
       "title": "Ready to plan your event?",
       "description": "Contact us today and let's create an unforgettable event for your team together.",
       "button": "Contact Us"
+    },
+    "reservation": {
+      "pageTitle": "Reserve Training Room",
+      "pageDescription": "Book our training room for your corporate event, workshop, or team building activity at Deskohub"
     }
+  },
+  "trainingReservation": {
+    "pageTitle": "Reserve Training Room",
+    "pageDescription": "Book our spacious training room for corporate events, workshops, and team building activities. Complete your reservation at Deskohub."
   },
   "notFound": {
     "title": "Page Not Found",
@@ -382,6 +402,8 @@
     "footerMessage": "Join us for another game at Deskohub!"
   },
   "contact": {
+    "pageTitle": "Contact Us",
+    "pageDescription": "Get in touch with Deskohub - board game bar in Prague. Contact information, opening hours, and location.",
     "heroTitle": "Contact",
     "heroSubtitle": "Get in touch with us and book your table for an unforgettable gaming experience",
     "heroImageAlt": "Deskohub interior",
