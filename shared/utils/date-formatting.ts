@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 
 /**
  * Get current timestamp - cached for the duration of the request
@@ -20,7 +20,7 @@ export function formatDate(
 
   // Always use explicit timezone to ensure consistency
   const formatter = new Intl.DateTimeFormat(locale, {
-    timeZone: constants.workingHours.timezone,
+    timeZone: siteConstants.workingHours.timezone,
     ...options,
   });
 
@@ -64,7 +64,7 @@ export function formatDateTimeForInput(date: Date | string): string {
 
   // Format in the restaurant's timezone
   const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: constants.workingHours.timezone,
+    timeZone: siteConstants.workingHours.timezone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

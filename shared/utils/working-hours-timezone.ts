@@ -1,4 +1,4 @@
-import { constants } from "@/shared/utils/constants";
+import { siteConstants } from "@/shared/utils/constants";
 
 /**
  * Converts a Date object to the restaurant's timezone
@@ -12,7 +12,7 @@ export function getLocalTimeInRestaurantTimezone(date: Date): {
 } {
   // Create formatter for restaurant timezone
   const formatter = new Intl.DateTimeFormat("en-US", {
-    timeZone: constants.workingHours.timezone,
+    timeZone: siteConstants.workingHours.timezone,
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
@@ -69,8 +69,8 @@ export function isReservationWithinWorkingHours(
   // Get working hours for the day
   const workingHours =
     startTime.dayOfWeek === 0 || startTime.dayOfWeek === 6
-      ? constants.workingHours.weekends
-      : constants.workingHours.weekdays;
+      ? siteConstants.workingHours.weekends
+      : siteConstants.workingHours.weekdays;
 
   // Check if the day is open
   if (!workingHours.days.includes(startTime.dayOfWeek)) {
@@ -126,8 +126,8 @@ export function isReservationWithinWorkingHours(
  * @returns Array of available duration options in hours
  */
 export function getAvailableDurations(datetime: Date | null): number[] {
-  const increment = constants.booking.validation.duration.increment;
-  const minDuration = constants.booking.validation.duration.min;
+  const increment = siteConstants.booking.validation.duration.increment;
+  const minDuration = siteConstants.booking.validation.duration.min;
 
   // If no datetime selected, return durations up to our longest operating hours (9 hours for weekends)
   if (!datetime) {
@@ -146,8 +146,8 @@ export function getAvailableDurations(datetime: Date | null): number[] {
   // Get working hours for the selected day
   const workingHours =
     dayOfWeek === 0 || dayOfWeek === 6
-      ? constants.workingHours.weekends
-      : constants.workingHours.weekdays;
+      ? siteConstants.workingHours.weekends
+      : siteConstants.workingHours.weekdays;
 
   // Check if the day is open
   if (!workingHours.days.includes(dayOfWeek)) {
