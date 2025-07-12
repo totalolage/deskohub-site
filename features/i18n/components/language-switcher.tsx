@@ -3,7 +3,7 @@
 import { Languages } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { type Locale, locales, m, setLocale } from "@/i18n";
-import { localeUrl } from "@/i18n/utils/locale-url";
+import { setLocaleInPathname } from "@/i18n/utils/locale-url";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -19,7 +19,7 @@ export function LanguageSwitcher() {
   const currentLocale = useLocale();
 
   const handleLanguageChange = (newLocale: Locale) => {
-    const newPath = localeUrl.set(pathname, newLocale);
+    const newPath = setLocaleInPathname(pathname, newLocale);
     router.push(newPath);
     setLocale(newLocale, { reload: false });
     document.documentElement.lang = newLocale;
