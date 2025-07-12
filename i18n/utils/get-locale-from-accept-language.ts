@@ -4,7 +4,11 @@ export function getLocaleFromAcceptLanguage(headers: Readonly<Headers>) {
   const acceptLanguage = headers.get("accept-language");
   const languages = acceptLanguage
     ?.split(",")
-    .map((locale) => locale.split(";")[0].trim().split("-")[0]);
+    .map((locale) => {
+      const parts = locale.split(";")[0]?.trim().split("-");
+      return parts?.[0];
+    })
+    .filter((lang): lang is string => lang !== undefined);
   const headerLocale = languages?.find(isLocale);
   if (headerLocale) return headerLocale;
 }

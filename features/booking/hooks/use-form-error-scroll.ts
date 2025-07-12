@@ -88,7 +88,7 @@ export function useFormErrorScroll<T extends Record<string, unknown>>(
       const firstError = errorFields[0];
 
       // Avoid scrolling to same error repeatedly
-      if (firstError !== lastScrolledError.current) {
+      if (firstError && firstError !== lastScrolledError.current) {
         const element = errorRefs.current[firstError];
 
         if (element) {

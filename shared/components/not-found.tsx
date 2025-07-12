@@ -27,7 +27,7 @@ export function NotFound() {
   const [isRolling, setIsRolling] = useState(false);
 
   const diceIcons = [Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
-  const DiceIcon = diceIcons[diceRoll - 1];
+  const DiceIcon = diceIcons[diceRoll - 1] ?? Dice4;
 
   const rollDice = () => {
     setIsRolling(true);

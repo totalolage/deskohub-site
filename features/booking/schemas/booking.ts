@@ -37,12 +37,13 @@ export const getBookingSchema = () => {
         }
 
         // Parse opening and closing times
-        const [openHours, openMinutes] = workingHours.open
-          .split(":")
-          .map(Number);
-        const [closeHours, closeMinutes] = workingHours.close
-          .split(":")
-          .map(Number);
+        const openTimeParts = workingHours.open.split(":").map(Number);
+        const closeTimeParts = workingHours.close.split(":").map(Number);
+
+        const openHours = openTimeParts[0] ?? 0;
+        const openMinutes = openTimeParts[1] ?? 0;
+        const closeHours = closeTimeParts[0] ?? 0;
+        const closeMinutes = closeTimeParts[1] ?? 0;
 
         const currentMinutes = hours * 60 + minutes;
         const openingMinutes = openHours * 60 + openMinutes;

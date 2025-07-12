@@ -43,7 +43,7 @@ export function getLocalTimeInRestaurantTimezone(date: Date): {
   const minutes = parseInt(minutePart.value, 10);
   const timeString = `${hourPart.value}:${minutePart.value}`;
 
-  return { dayOfWeek, hours, minutes, timeString };
+  return { dayOfWeek: dayOfWeek ?? 0, hours, minutes, timeString };
 }
 
 /**
@@ -78,8 +78,13 @@ export function isReservationWithinWorkingHours(
   }
 
   // Parse opening and closing times
-  const [openHours, openMinutes] = workingHours.open.split(":").map(Number);
-  const [closeHours, closeMinutes] = workingHours.close.split(":").map(Number);
+  const openTimeParts = workingHours.open.split(":").map(Number);
+  const closeTimeParts = workingHours.close.split(":").map(Number);
+
+  const openHours = openTimeParts[0] ?? 0;
+  const openMinutes = openTimeParts[1] ?? 0;
+  const closeHours = closeTimeParts[0] ?? 0;
+  const closeMinutes = closeTimeParts[1] ?? 0;
 
   const openTimeInMinutes = openHours * 60 + openMinutes;
   const closeTimeInMinutes =
@@ -155,8 +160,13 @@ export function getAvailableDurations(datetime: Date | null): number[] {
   }
 
   // Parse opening and closing times
-  const [openHours, openMinutes] = workingHours.open.split(":").map(Number);
-  const [closeHours, closeMinutes] = workingHours.close.split(":").map(Number);
+  const openTimeParts = workingHours.open.split(":").map(Number);
+  const closeTimeParts = workingHours.close.split(":").map(Number);
+
+  const openHours = openTimeParts[0] ?? 0;
+  const openMinutes = openTimeParts[1] ?? 0;
+  const closeHours = closeTimeParts[0] ?? 0;
+  const closeMinutes = closeTimeParts[1] ?? 0;
 
   const currentMinutes = hours * 60 + minutes;
   const openingMinutes = openHours * 60 + openMinutes;
