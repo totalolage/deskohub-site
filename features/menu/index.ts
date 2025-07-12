@@ -1,5 +1,11 @@
 export { generateMenuPDF } from "./actions/pdf-generator";
+export { MenuDrinksSection } from "./components/menu-drinks-section";
+export { MenuFoodSection } from "./components/menu-food-section";
+export { MenuFooterNote } from "./components/menu-footer-note";
+export { MenuHero } from "./components/menu-hero";
+export { MenuOpeningHours } from "./components/menu-opening-hours";
 export { MenuPage } from "./components/menu-page";
+export { MenuPDFDownload } from "./components/menu-pdf-download";
 export { MenuSectionComponent } from "./components/menu-section";
 export type { MenuItem, MenuSection } from "./menu-data";
 export { drinkMenu, foodMenu } from "./menu-data";
