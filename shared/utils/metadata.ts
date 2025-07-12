@@ -1,6 +1,6 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import { headers } from "next/headers";
-import type { RouteParams_locale } from "@/app/[locale]/route";
+import type { RouteProps_locale } from "@/app/[locale]/route";
 import { locales } from "@/i18n";
 import { localeUrl } from "@/i18n/utils/locale-url";
 import { PATHNAME_HEADER } from "@/shared/utils/constants";
@@ -13,7 +13,7 @@ export function metadata({
   description: string;
 }) {
   return async function generateMetadata(
-    _params: RouteParams_locale,
+    _params: RouteProps_locale,
     _parent: ResolvingMetadata
   ): Promise<Metadata> {
     const path = (await headers()).get(PATHNAME_HEADER);
