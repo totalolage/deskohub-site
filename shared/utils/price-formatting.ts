@@ -1,13 +1,10 @@
 /**
  * Formats a price amount using the Intl API for proper localization
  * @param amount - The price amount in CZK
- * @param locale - The locale to use for formatting (defaults to 'cs-CZ')
+ * @param locale - The locale to use for formatting
  * @returns Formatted price string
  */
-export const formatPrice = (
-  amount: number,
-  locale: string = "cs-CZ"
-): string => {
+export const formatPrice = (amount: number, locale: string): string => {
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: "CZK",
@@ -26,7 +23,7 @@ export const formatPrice = (
 export const formatPriceRange = (
   minAmount: number,
   maxAmount: number,
-  locale: string = "cs-CZ"
+  locale: string
 ): string => {
   const formatter = new Intl.NumberFormat(locale, {
     style: "currency",
@@ -35,11 +32,12 @@ export const formatPriceRange = (
     maximumFractionDigits: 0,
   });
 
-  // For Czech locale, we want "50 - 100 Kč" format
-  if (locale.startsWith("cs")) {
-    return `${formatter.format(minAmount).replace(" Kč", "")} - ${formatter.format(maxAmount)}`;
+  // Let the Intl API handle the formatting based on locale
+  // Use formatRange if available (newer browsers)
+  if (formatter.formatRange) {
+    return formatter.formatRange(minAmount, maxAmount);
   }
 
-  // For other locales, use standard format
+  // Fallback for older browsers
   return `${formatter.format(minAmount)} - ${formatter.format(maxAmount)}`;
 };
