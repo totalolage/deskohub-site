@@ -10,7 +10,8 @@
     "gallery": "GALERIE",
     "menu": "MENU",
     "trainingRoom": "ŠKOLÍCÍ MÍSTNOST",
-    "contact": "KONTAKT"
+    "contact": "KONTAKT",
+    "openMenu": "Otevřít menu"
   },
   "buttons": {
     "reservation": "Rezervace",
@@ -501,6 +502,7 @@
     },
     "downloadPDF": "Stáhnout menu (PDF)",
     "openingHours": {
+      "title": "Otevírací doba",
       "weekdays": "PO - PÁ",
       "weekdaysTime": "{hours}",
       "weekend": "SO - NE",

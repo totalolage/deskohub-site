@@ -10,7 +10,8 @@
     "gallery": "GALLERY",
     "menu": "MENU",
     "trainingRoom": "TRAINING ROOM",
-    "contact": "CONTACT"
+    "contact": "CONTACT",
+    "openMenu": "Open menu"
   },
   "buttons": {
     "reservation": "Reservation",
@@ -496,6 +497,7 @@
     },
     "downloadPDF": "Download menu (PDF)",
     "openingHours": {
+      "title": "Opening Hours",
       "weekdays": "MON - FRI",
       "weekdaysTime": "{hours}",
       "weekend": "SAT - SUN",

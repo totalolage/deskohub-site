@@ -7,6 +7,7 @@ import { LanguageSwitcher } from "@/features/i18n";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
+import { MobileMenu } from "./mobile-menu";
 
 export function Header() {
   const locale = useLocale();
@@ -56,12 +57,15 @@ export function Header() {
           </Link>
         </nav>
         <div className="flex items-center space-x-4">
-          <LanguageSwitcher />
-          <Link href="/reservation">
-            <Button className="bg-green-500 hover:bg-green-600 text-white">
-              {m["buttons.reservation"]()}
-            </Button>
-          </Link>
+          <div className="hidden md:flex items-center space-x-4">
+            <LanguageSwitcher />
+            <Link href="/reservation">
+              <Button className="bg-green-500 hover:bg-green-600 text-white">
+                {m["buttons.reservation"]()}
+              </Button>
+            </Link>
+          </div>
+          <MobileMenu />
         </div>
       </div>
     </header>
