@@ -1,4 +1,4 @@
-import heroImage from "@/assets/images/hero.jpg";
+import heroImage from "@/assets/images/photos/menu_and_coffee_mug_with_games_in_background.jpeg";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
 import { Price } from "@/shared/components/price";

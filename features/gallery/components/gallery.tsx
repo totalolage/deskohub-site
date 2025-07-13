@@ -1,5 +1,7 @@
 import Image from "next/image";
-import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
+import barFrontImage from "@/assets/images/photos/bar_front_1.jpeg";
+import boardGameShelvesImage from "@/assets/images/photos/boardgame_shelves_1.jpeg";
+import customersPlayingImage from "@/assets/images/photos/customers_playing_1.jpeg";
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
@@ -11,7 +13,7 @@ export function Gallery() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
           <div className="rounded-full overflow-hidden aspect-square">
             <Image
-              src={placeholderImage}
+              src={boardGameShelvesImage}
               alt={m["altText.boardGames"]()}
               width={300}
               height={300}
@@ -20,7 +22,7 @@ export function Gallery() {
           </div>
           <div className="rounded-full overflow-hidden aspect-square">
             <Image
-              src={placeholderImage}
+              src={customersPlayingImage}
               alt={m["altText.gamingArea"]()}
               width={300}
               height={300}
@@ -29,7 +31,7 @@ export function Gallery() {
           </div>
           <div className="rounded-full overflow-hidden aspect-square">
             <Image
-              src={placeholderImage}
+              src={barFrontImage}
               alt={m["altText.barAtmosphere"]()}
               width={300}
               height={300}

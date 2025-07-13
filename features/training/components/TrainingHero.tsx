@@ -1,11 +1,12 @@
 import Link from "next/link";
+import trainingRoomImage from "@/assets/images/photos/teambuilding_room_2.jpeg";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
 import { Button } from "@/shared/components/ui/button";
 
 export const TrainingHero = () => {
   return (
-    <Hero imageSrc="/images/hero.jpg" alignment="left">
+    <Hero imageSrc={trainingRoomImage.src} alignment="left">
       <div>
         <h1 className="text-5xl md:text-7xl font-bold mb-6">
           <span className="text-green-400">{m["training.hero.title"]()}</span>

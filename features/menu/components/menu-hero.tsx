@@ -1,10 +1,10 @@
-import heroImage from "@/assets/images/hero.jpg";
+import menuImage from "@/assets/images/photos/product_1.jpeg";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components";
 
 export function MenuHero() {
   return (
-    <Hero imageSrc={heroImage} alignment="left">
+    <Hero imageSrc={menuImage.src} alignment="left">
       <div>
         <h1 className="text-5xl md:text-7xl font-bold text-green-400 mb-4">
           {m["menu.hero.title"]()}

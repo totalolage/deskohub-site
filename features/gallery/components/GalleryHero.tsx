@@ -3,37 +3,42 @@
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import barWithStaff from "@/assets/images/photos/bar_with_staff_3.jpeg";
+import customersPlaying from "@/assets/images/photos/customers_playing_9.jpeg";
+import mainRoom from "@/assets/images/photos/main_room_2.jpeg";
+import trainingRoom from "@/assets/images/photos/teambuilding_room_1.jpeg";
+import viewFromBar from "@/assets/images/photos/view_from_bar.jpeg";
 import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 export function GalleryHero() {
   const heroImages = [
     {
-      src: "/images/hero.jpg",
+      src: viewFromBar,
       alt: m["gallery.hero.slides.atmosphere.title"](),
       title: m["gallery.hero.slides.atmosphere.title"](),
       description: m["gallery.hero.slides.atmosphere.description"](),
     },
     {
-      src: "/placeholder.svg?height=800&width=1200",
+      src: mainRoom,
       alt: m["gallery.hero.slides.mainRoom.title"](),
       title: m["gallery.hero.slides.mainRoom.title"](),
       description: m["gallery.hero.slides.mainRoom.description"](),
     },
     {
-      src: "/placeholder.svg?height=800&width=1200",
+      src: barWithStaff,
       alt: m["gallery.hero.slides.bar.title"](),
       title: m["gallery.hero.slides.bar.title"](),
       description: m["gallery.hero.slides.bar.description"](),
     },
     {
-      src: "/placeholder.svg?height=800&width=1200",
+      src: trainingRoom,
       alt: m["gallery.hero.slides.trainingRoom.title"](),
       title: m["gallery.hero.slides.trainingRoom.title"](),
       description: m["gallery.hero.slides.trainingRoom.description"](),
     },
     {
-      src: "/placeholder.svg?height=800&width=1200",
+      src: customersPlaying,
       alt: m["gallery.hero.slides.evening.title"](),
       title: m["gallery.hero.slides.evening.title"](),
       description: m["gallery.hero.slides.evening.description"](),
@@ -87,7 +92,7 @@ export function GalleryHero() {
             }`}
           >
             <Image
-              src={image.src || "/placeholder.svg"}
+              src={image.src}
               alt={image.alt}
               fill
               className="object-cover"

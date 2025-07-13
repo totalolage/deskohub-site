@@ -1,9 +1,10 @@
+import barFrontImage from "@/assets/images/photos/bar_with_staff_1.jpeg";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
 
 export function ContactHero() {
   return (
-    <Hero imageSrc="/images/hero.jpg" alignment="left">
+    <Hero imageSrc={barFrontImage.src} alignment="left">
       <div>
         <h1 className="text-5xl md:text-6xl font-bold text-green-400 mb-4">
           {m["contact.heroTitle"]()}

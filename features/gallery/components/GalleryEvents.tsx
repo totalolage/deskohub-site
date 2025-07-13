@@ -1,5 +1,11 @@
 import { Calendar, Users } from "lucide-react";
 import Image from "next/image";
+import boardGameInProgress from "@/assets/images/photos/boardgame_in_progress_1.jpeg";
+import customersPlaying1 from "@/assets/images/photos/customers_playing_4.jpeg";
+import customersPlaying2 from "@/assets/images/photos/customers_playing_5.jpeg";
+import customersPlaying3 from "@/assets/images/photos/customers_playing_6.jpeg";
+import customersPlaying4 from "@/assets/images/photos/customers_playing_7.jpeg";
+import customersPlaying5 from "@/assets/images/photos/customers_playing_8.jpeg";
 import { m } from "@/i18n";
 import { Badge } from "@/shared/components/ui/badge";
 import {
@@ -16,7 +22,7 @@ export function GalleryEvents() {
       date: "15. prosince 2024",
       participants: 24,
       photos: 18,
-      coverImage: "/placeholder.svg?height=300&width=400",
+      coverImage: boardGameInProgress,
       description: m["gallery.events.tournaments.catan.description"](),
     },
     {
@@ -24,7 +30,7 @@ export function GalleryEvents() {
       date: "22. prosince 2024",
       participants: 35,
       photos: 25,
-      coverImage: "/placeholder.svg?height=300&width=400",
+      coverImage: customersPlaying1,
       description: m["gallery.events.tournaments.christmas.description"](),
     },
     {
@@ -32,7 +38,7 @@ export function GalleryEvents() {
       date: "8. prosince 2024",
       participants: 18,
       photos: 22,
-      coverImage: "/placeholder.svg?height=300&width=400",
+      coverImage: customersPlaying2,
       description: m["gallery.events.tournaments.gameNight.description"](),
     },
     {
@@ -40,7 +46,7 @@ export function GalleryEvents() {
       date: "1. prosince 2024",
       participants: 42,
       photos: 31,
-      coverImage: "/placeholder.svg?height=300&width=400",
+      coverImage: customersPlaying3,
       description: m["gallery.events.tournaments.familyDay.description"](),
     },
     {
@@ -48,7 +54,7 @@ export function GalleryEvents() {
       date: "25. listopadu 2024",
       participants: 16,
       photos: 14,
-      coverImage: "/placeholder.svg?height=300&width=400",
+      coverImage: customersPlaying4,
       description: m["gallery.events.tournaments.magic.description"](),
     },
     {
@@ -56,7 +62,7 @@ export function GalleryEvents() {
       date: "18. listopadu 2024",
       participants: 12,
       photos: 20,
-      coverImage: "/placeholder.svg?height=300&width=400",
+      coverImage: customersPlaying5,
       description: m["gallery.events.tournaments.dnd.description"](),
     },
   ];
@@ -79,7 +85,7 @@ export function GalleryEvents() {
             >
               <div className="relative aspect-[4/3] overflow-hidden">
                 <Image
-                  src={album.coverImage || "/placeholder.svg"}
+                  src={album.coverImage}
                   alt={album.title}
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-300"

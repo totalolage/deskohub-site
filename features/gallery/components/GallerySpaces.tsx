@@ -1,36 +1,42 @@
 import Image from "next/image";
+import barWithStaffImage from "@/assets/images/photos/bar_with_staff_aesthetic_photo_front.jpeg";
+import boardGameShelves from "@/assets/images/photos/boardgame_shelves_2.jpeg";
+import customersPlayingImage from "@/assets/images/photos/customers_playing_3.jpeg";
+import mainRoomImage from "@/assets/images/photos/main_room_1.jpeg";
+import trainingRoomImage from "@/assets/images/photos/training_room_5.jpeg";
+import viewFromBarImage from "@/assets/images/photos/view_from_bar.jpeg";
 import { m } from "@/i18n";
 import { Card } from "@/shared/components/ui/card";
 
 export function GallerySpaces() {
   const establishingShots = [
     {
-      src: "/placeholder.svg?height=400&width=600",
+      src: mainRoomImage,
       alt: m["gallery.spaces.locations.mainRoom"](),
       title: m["gallery.spaces.locations.mainRoom"](),
     },
     {
-      src: "/placeholder.svg?height=400&width=600",
+      src: viewFromBarImage,
       alt: m["gallery.spaces.locations.cozyCorner"](),
       title: m["gallery.spaces.locations.cozyCorner"](),
     },
     {
-      src: "/placeholder.svg?height=400&width=600",
+      src: barWithStaffImage,
       alt: m["gallery.spaces.locations.bar"](),
       title: m["gallery.spaces.locations.bar"](),
     },
     {
-      src: "/placeholder.svg?height=400&width=600",
+      src: boardGameShelves,
       alt: m["gallery.spaces.locations.gamesCollection"](),
       title: m["gallery.spaces.locations.gamesCollection"](),
     },
     {
-      src: "/placeholder.svg?height=400&width=600",
+      src: customersPlayingImage,
       alt: m["gallery.spaces.locations.eveningAtmosphere"](),
       title: m["gallery.spaces.locations.eveningAtmosphere"](),
     },
     {
-      src: "/placeholder.svg?height=400&width=600",
+      src: trainingRoomImage,
       alt: m["gallery.spaces.locations.trainingRoom"](),
       title: m["gallery.spaces.locations.trainingRoom"](),
     },
@@ -54,7 +60,7 @@ export function GallerySpaces() {
             >
               <div className="relative aspect-[3/2] overflow-hidden">
                 <Image
-                  src={shot.src || "/placeholder.svg"}
+                  src={shot.src}
                   alt={shot.alt}
                   fill
                   className="object-cover group-hover:scale-105 transition-transform duration-300"
