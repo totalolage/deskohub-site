@@ -1,18 +1,12 @@
-import type { Metadata } from "next";
 import { BoardGamesHero, BoardGamesList } from "@/features/board-games";
 import { m, setLocale } from "@/i18n";
+import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
-export async function generateMetadata({
-  params,
-}: RouteProps_locale): Promise<Metadata> {
-  setLocale((await params).locale);
-
-  return {
-    title: m["boardGames.pageTitle"](),
-    description: m["boardGames.pageDescription"](),
-  };
-}
+export const generateMetadata = metadata({
+  title: m["boardGames.pageTitle"](),
+  description: m["boardGames.pageDescription"](),
+});
 
 export default async function BoardGamesPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
