@@ -1,0 +1,189 @@
+# Task ID: 29
+# Title: Add Country Flags to Language Selector Component
+# Status: pending
+# Dependencies: 1, 6
+# Priority: low
+# Description: Integrate flag icons or emojis next to language options in the language switcher to provide visual language identification, enhancing the user experience when selecting between Czech and English languages.
+# Details:
+## Implementation Steps
+
+1. **Choose Flag Implementation Approach**:
+   - Option A: Use country flag emoji characters (🇨🇿, 🇬🇧)
+   - Option B: Use SVG flag icons from a library like `country-flag-icons` or `react-country-flag`
+
+2. **Install Required Dependencies** (if using SVG approach):
+   ```bash
+   npm install react-country-flag
+   # OR
+   npm install country-flag-icons
+   ```
+
+3. **Update Language Selector Component**:
+   ```tsx
+   // components/language-switcher.tsx
+   import { useRouter } from 'next/navigation';
+   import { useCurrentLocale, availableLanguageTags } from '@/paraglide/runtime';
+   import ReactCountryFlag from 'react-country-flag'; // If using this library
+   
+   // Map language codes to country codes for flags
+   const languageToCountry = {
+     cs: 'CZ',
+     en: 'GB'
+   };
+   
+   export function LanguageSwitcher() {
+     const currentLocale = useCurrentLocale();
+     const router = useRouter();
+     
+     // Function to switch language
+     const switchLanguage = (locale) => {
+       // Existing language switching logic
+     };
+     
+     return (
+       <div className="language-switcher">
+         {availableLanguageTags.map((lang) => (
+           <button 
+             key={lang}
+             onClick={() => switchLanguage(lang)}
+             className={`lang-option ${currentLocale === lang ? 'active' : ''}`}
+             aria-label={`Switch to ${lang === 'cs' ? 'Czech' : 'English'}`}
+           >
+             <ReactCountryFlag
+               countryCode={languageToCountry[lang]}
+               svg
+               style={{
+                 width: '1em',
+                 height: '1em',
+                 marginRight: '0.5em'
+               }}
+               aria-hidden="true"
+             />
+             {lang === 'cs' ? 'Česky' : 'English'}
+           </button>
+         ))}
+       </div>
+     );
+   }
+   ```
+
+4. **Add Styling for Flags**:
+   ```css
+   /* components/language-switcher.css or in your global CSS */
+   .language-switcher {
+     display: flex;
+     gap: 0.5rem;
+   }
+   
+   .lang-option {
+     display: flex;
+     align-items: center;
+     padding: 0.5rem;
+     border-radius: 0.25rem;
+     transition: background-color 0.2s;
+   }
+   
+   .lang-option.active {
+     font-weight: bold;
+     background-color: var(--accent-color-light);
+   }
+   
+   /* Ensure proper vertical alignment of flags with text */
+   .lang-option img, 
+   .lang-option svg {
+     display: inline-block;
+     vertical-align: middle;
+     margin-right: 0.5rem;
+   }
+   ```
+
+5. **Alternative Emoji Implementation** (if preferred over SVG):
+   ```tsx
+   // Simple emoji implementation
+   const languageToFlag = {
+     cs: '🇨🇿',
+     en: '🇬🇧'
+   };
+   
+   // Then in the component:
+   <button 
+     key={lang}
+     onClick={() => switchLanguage(lang)}
+     className={`lang-option ${currentLocale === lang ? 'active' : ''}`}
+   >
+     <span className="flag-emoji" aria-hidden="true">{languageToFlag[lang]}</span>
+     {lang === 'cs' ? 'Česky' : 'English'}
+   </button>
+   ```
+
+6. **Ensure Accessibility**:
+   - Add appropriate `aria-label` attributes to buttons
+   - Set `aria-hidden="true"` on flag icons/emojis
+   - Ensure sufficient color contrast for active/inactive states
+   - Test with screen readers to verify proper announcements
+
+7. **Responsive Design Considerations**:
+   - Implement a compact mobile view that might show only flags on very small screens
+   - Add a tooltip on hover to show the language name when only flags are visible
+   ```tsx
+   <div className="language-switcher-mobile">
+     {availableLanguageTags.map((lang) => (
+       <button 
+         key={lang}
+         onClick={() => switchLanguage(lang)}
+         className={`lang-option-mobile ${currentLocale === lang ? 'active' : ''}`}
+         aria-label={`Switch to ${lang === 'cs' ? 'Czech' : 'English'}`}
+         title={lang === 'cs' ? 'Česky' : 'English'}
+       >
+         <ReactCountryFlag countryCode={languageToCountry[lang]} svg />
+       </button>
+     ))}
+   </div>
+   ```
+
+# Test Strategy:
+## Test Strategy
+
+1. **Visual Testing**:
+   - Verify flags appear correctly next to language names in the language selector
+   - Confirm proper alignment and spacing between flag icons and text
+   - Check that active language state is visually distinct
+   - Test on different screen sizes to ensure responsive behavior
+   - Verify flags render properly across different browsers (Chrome, Firefox, Safari, Edge)
+
+2. **Functional Testing**:
+   ```bash
+   # Run component tests
+   npm run test components/language-switcher.test.tsx
+   ```
+   
+   - Verify language switching still works correctly after adding flags
+   - Test that clicking on a language option correctly changes the UI language
+   - Confirm URL-based language routing continues to function as expected
+
+3. **Accessibility Testing**:
+   - Run automated accessibility tests:
+   ```bash
+   npm run test:a11y
+   ```
+   
+   - Test with screen readers (NVDA, VoiceOver) to ensure proper announcements
+   - Verify keyboard navigation works correctly
+   - Check that color contrast meets WCAG AA standards
+   - Confirm that flags have appropriate aria attributes and don't interfere with screen reader experience
+
+4. **Cross-browser Testing**:
+   - Test in Chrome, Firefox, Safari, and Edge
+   - Verify flag rendering is consistent across browsers
+   - Check for any CSS compatibility issues
+
+5. **Mobile Testing**:
+   - Test on iOS and Android devices
+   - Verify touch targets are appropriately sized
+   - Confirm responsive design works as expected on small screens
+   - Test with different device pixel ratios to ensure flag icons remain crisp
+
+6. **Performance Testing**:
+   - Measure any impact on page load time
+   - If using SVG flags, verify they are properly optimized
+   - Check bundle size impact if adding a flag library

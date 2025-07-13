@@ -77,8 +77,13 @@
   },
   "boardGamesCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} board game",
         "countPlural=other": "{count} board games"
@@ -87,8 +92,13 @@
   ],
   "happyPlayersCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} happy player",
         "countPlural=other": "{count} happy players"
@@ -97,8 +107,13 @@
   ],
   "yearsExperienceCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} year of experience",
         "countPlural=other": "{count} years of experience"
@@ -107,8 +122,13 @@
   ],
   "gameNightsCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} game night",
         "countPlural=other": "{count} game nights"
@@ -205,19 +225,75 @@
       "guestCount": {
         "required": "Number of guests is required",
         "minimum": "Number of guests is required",
-        "maximum": "Maximum {max} guests allowed",
+        "maximum": [
+          {
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
+            "match": {
+              "maxPlural=one": "Maximum {max} guest allowed",
+              "maxPlural=other": "Maximum {max} guests allowed"
+            }
+          }
+        ],
         "integer": "Number of guests must be a whole number"
       },
       "name": {
         "required": "Full name is required",
-        "minimum": "Name must be at least {min} characters",
-        "maximum": "Name must be less than {max} characters",
+        "minimum": [
+          {
+            "declarations": [
+              "input min",
+              "local minPlural = min: plural"
+            ],
+            "selectors": [
+              "minPlural"
+            ],
+            "match": {
+              "minPlural=one": "Name must be at least {min} character",
+              "minPlural=other": "Name must be at least {min} characters"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
+            "match": {
+              "maxPlural=one": "Name must be less than {max} character",
+              "maxPlural=other": "Name must be less than {max} characters"
+            }
+          }
+        ],
         "invalid": "Name can only contain letters, spaces, hyphens, and apostrophes"
       },
       "email": {
         "required": "Email address is required",
         "invalid": "Please enter a valid email address",
-        "maximum": "Email must be less than {max} characters"
+        "maximum": [
+          {
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
+            "match": {
+              "maxPlural=one": "Email must be less than {max} character",
+              "maxPlural=other": "Email must be less than {max} characters"
+            }
+          }
+        ]
       },
       "phone": {
         "required": "Phone number is required",
@@ -227,14 +303,56 @@
       },
       "duration": {
         "minimum": "Minimum duration is 30 minutes",
-        "maximum": "Maximum duration is {max} hours",
+        "maximum": [
+          {
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
+            "match": {
+              "maxPlural=one": "Maximum duration is {max} hour",
+              "maxPlural=other": "Maximum duration is {max} hours"
+            }
+          }
+        ],
         "increment": "Duration must be in 30-minute increments"
       },
       "specialRequests": {
-        "maximum": "Special requests must be less than {max} characters"
+        "maximum": [
+          {
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
+            "match": {
+              "maxPlural=one": "Special requests must be less than {max} character",
+              "maxPlural=other": "Special requests must be less than {max} characters"
+            }
+          }
+        ]
       },
       "preOrders": {
-        "maximum": "Pre-orders must be less than {max} characters"
+        "maximum": [
+          {
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
+            "match": {
+              "maxPlural=one": "Pre-orders must be less than {max} character",
+              "maxPlural=other": "Pre-orders must be less than {max} characters"
+            }
+          }
+        ]
       },
       "general": "Please fix the validation errors",
       "personCount": {
@@ -281,8 +399,13 @@
   },
   "guestCountPlural": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} person",
         "countPlural=other": "{count} people"
@@ -291,7 +414,9 @@
   ],
   "durationFormat": [
     {
-      "declarations": ["input hours"],
+      "declarations": [
+        "input hours"
+      ],
       "selectors": [],
       "match": {
         "hours=0.5": "30 minutes",
@@ -523,8 +648,13 @@
       "onlyAvailable": "Only available",
       "foundGames": [
         {
-          "declarations": ["input count", "local countPlural = count: plural"],
-          "selectors": ["countPlural"],
+          "declarations": [
+            "input count",
+            "local countPlural = count: plural"
+          ],
+          "selectors": [
+            "countPlural"
+          ],
           "match": {
             "countPlural=zero": "No games found",
             "countPlural=one": "Found 1 game",

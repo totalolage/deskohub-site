@@ -155,3 +155,41 @@
    - No visual regressions
    - Bundle size has decreased or remained the same
    - Application performance is the same or better
+
+# Subtasks:
+## 1. Set up static analysis tools and create component inventory [pending]
+### Dependencies: None
+### Description: Install and configure ESLint plugins for detecting unused code and create a comprehensive inventory of all components in the codebase.
+### Details:
+Install ESLint plugins (eslint-plugin-unused-imports, eslint-plugin-no-unused-components). Update ESLint configuration to detect unused imports and components. Create a complete inventory of all component files using find commands to locate all .tsx files in the components and app directories.
+
+## 2. Run static analysis and create tracking spreadsheet [pending]
+### Dependencies: 28.1
+### Description: Execute static analysis tools to identify potentially unused components and create a structured tracking spreadsheet to document findings.
+### Details:
+Run ESLint and next-unused to identify unused imports, components, and files. Create a tracking spreadsheet with columns for component name, file path, usage status, verification method, notes, and recommended action (keep/remove).
+
+## 3. Perform manual verification of potentially unused components [pending]
+### Dependencies: 28.2
+### Description: Systematically verify each component flagged as potentially unused through multiple search methods to confirm its actual usage status.
+### Details:
+For each component flagged as potentially unused, search the codebase for direct imports, dynamic imports, and string references. Check for environment-specific usage (dev/prod). Update the tracking spreadsheet with verification results and final determination (used/unused).
+
+## 4. Create backup and begin component removal [pending]
+### Dependencies: 28.3
+### Description: Create a backup branch before starting the removal process and systematically remove confirmed unused components.
+### Details:
+Create a backup branch with git checkout -b component-cleanup-backup. Create a working branch for component removal. Remove confirmed unused components one at a time, starting with the most clearly unused ones. Run the application and tests after each removal to verify no regressions.
+
+## 5. Handle edge cases and clean up import statements [pending]
+### Dependencies: 28.4
+### Description: Address special cases of component usage and clean up any remaining import statements referencing removed components.
+### Details:
+Handle components with special usage patterns (environment-specific, dynamic imports, string references). Remove unused imports from files throughout the codebase. Update any import statements that reference removed components. Run static analysis again to verify all unused imports are removed.
+
+## 6. Perform final verification and update documentation [pending]
+### Dependencies: 28.5
+### Description: Conduct comprehensive testing to ensure application stability and update documentation to reflect the changes made.
+### Details:
+Run the full test suite. Manually test key application flows. Verify the build process completes without errors. Compare bundle size before and after to quantify improvements. Update component documentation to remove references to deleted components. Create a summary report of removed components and the impact on bundle size and maintainability.
+

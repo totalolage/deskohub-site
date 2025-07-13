@@ -1,6 +1,6 @@
 # Task ID: 18
 # Title: Implement Board Games Page with Game Gallery and Booking Information
-# Status: pending
+# Status: done
 # Dependencies: 1, 6, 17
 # Priority: medium
 # Description: Create a dedicated Board Games page at the /board-games route that showcases available games at Deskohub, with detailed information about games, rules, and booking options, supporting both Czech and English languages.

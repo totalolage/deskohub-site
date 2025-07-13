@@ -1,0 +1,364 @@
+# Task ID: 31
+# Title: Implement Mobile Menu Functionality with Accessibility Support
+# Status: pending
+# Dependencies: 1, 6, 17, 23
+# Priority: medium
+# Description: Implement a responsive mobile menu with hamburger icon, slide-out navigation drawer, smooth animations, and full accessibility support including ARIA attributes and keyboard navigation.
+# Details:
+## Objective
+Create a fully accessible mobile menu system that provides a seamless navigation experience on smaller devices while maintaining proper accessibility standards.
+
+## Implementation Steps
+
+1. **Enhance the Existing Mobile Menu Component**:
+```tsx
+// components/ui/mobile-menu.tsx
+import { useState, useEffect, useRef } from 'react';
+import { createTranslator } from '@/paraglide/runtime';
+import { Button } from '@/components/ui/button';
+import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet';
+import { Menu, X } from 'lucide-react';
+import { NavigationLinks } from '@/components/navigation-links';
+import { cn } from '@/lib/utils';
+import { useLocale } from '@/paraglide/runtime';
+import { useRouter } from 'next/navigation';
+import { useOnClickOutside } from '@/hooks/use-click-outside';
+
+interface MobileMenuProps {
+  className?: string;
+}
+
+export function MobileMenu({ className }: MobileMenuProps) {
+  const locale = useLocale();
+  const t = createTranslator(locale);
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const router = useRouter();
+  
+  // Close menu when route changes
+  useEffect(() => {
+    const handleRouteChange = () => setIsOpen(false);
+    window.addEventListener('popstate', handleRouteChange);
+    return () => window.removeEventListener('popstate', handleRouteChange);
+  }, [router]);
+  
+  // Handle keyboard navigation
+  useEffect(() => {
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isOpen) {
+        setIsOpen(false);
+      }
+    };
+    
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [isOpen]);
+  
+  // Handle focus trap inside menu when open
+  useEffect(() => {
+    if (isOpen) {
+      // Lock body scroll when menu is open
+      document.body.style.overflow = 'hidden';
+      
+      // Focus first interactive element
+      const focusableElements = menuRef.current?.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+      );
+      
+      if (focusableElements && focusableElements.length > 0) {
+        (focusableElements[0] as HTMLElement).focus();
+      }
+    } else {
+      // Restore body scroll when menu is closed
+      document.body.style.overflow = '';
+    }
+    
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isOpen]);
+  
+  // Close menu when clicking outside
+  useOnClickOutside(menuRef, () => setIsOpen(false));
+  
+  return (
+    <div className={cn("md:hidden", className)} ref={menuRef}>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setIsOpen(!isOpen)}
+        aria-expanded={isOpen}
+        aria-label={isOpen ? t('close_menu') : t('open_menu')}
+        aria-controls="mobile-menu-panel"
+      >
+        {isOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+      </Button>
+      
+      <div
+        id="mobile-menu-panel"
+        className={cn(
+          "fixed inset-0 z-50 bg-background/95 backdrop-blur-sm transition-transform duration-300 ease-in-out",
+          isOpen ? "translate-x-0" : "translate-x-full"
+        )}
+        aria-hidden={!isOpen}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="mobile-menu-heading"
+      >
+        <div className="flex h-16 items-center justify-between px-4 border-b">
+          <h2 id="mobile-menu-heading" className="text-lg font-semibold">
+            {t('navigation')}
+          </h2>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsOpen(false)}
+            aria-label={t('close_menu')}
+          >
+            <X className="h-6 w-6" />
+          </Button>
+        </div>
+        
+        <nav className="p-6 space-y-6">
+          <NavigationLinks 
+            className="flex flex-col space-y-4 text-lg" 
+            onLinkClick={() => setIsOpen(false)}
+            aria-labelledby="mobile-menu-heading"
+          />
+        </nav>
+      </div>
+    </div>
+  );
+}
+```
+
+2. **Update the NavigationLinks Component for Accessibility**:
+```tsx
+// components/navigation-links.tsx
+import Link from 'next/link';
+import { usePathname } from 'next/navigation';
+import { createTranslator, useLocale } from '@/paraglide/runtime';
+import { cn } from '@/lib/utils';
+
+interface NavigationLinksProps {
+  className?: string;
+  onLinkClick?: () => void;
+  'aria-labelledby'?: string;
+}
+
+export function NavigationLinks({ 
+  className, 
+  onLinkClick,
+  'aria-labelledby': ariaLabelledBy
+}: NavigationLinksProps) {
+  const locale = useLocale();
+  const t = createTranslator(locale);
+  const pathname = usePathname();
+  
+  const links = [
+    { href: '/', label: t('home') },
+    { href: '/desks', label: t('desks') },
+    { href: '/menu', label: t('menu') },
+    { href: '/gallery', label: t('gallery') },
+    { href: '/training-room', label: t('training_room') },
+    { href: '/contact', label: t('contact') },
+  ];
+  
+  return (
+    <ul className={cn('flex', className)} aria-labelledby={ariaLabelledBy}>
+      {links.map((link) => {
+        const isActive = pathname === `/${locale}${link.href}` || 
+                         (link.href === '/' && pathname === `/${locale}`);
+        
+        return (
+          <li key={link.href}>
+            <Link
+              href={link.href}
+              className={cn(
+                'block px-3 py-2 transition-colors hover:text-primary',
+                isActive ? 'font-medium text-primary' : 'text-muted-foreground'
+              )}
+              onClick={onLinkClick}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              {link.label}
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+```
+
+3. **Create a Custom Hook for Click Outside Detection**:
+```tsx
+// hooks/use-click-outside.ts
+import { useEffect, RefObject } from 'react';
+
+export function useOnClickOutside<T extends HTMLElement>(
+  ref: RefObject<T>,
+  handler: (event: MouseEvent | TouchEvent) => void
+) {
+  useEffect(() => {
+    const listener = (event: MouseEvent | TouchEvent) => {
+      const el = ref?.current;
+      if (!el || el.contains(event.target as Node)) {
+        return;
+      }
+      
+      handler(event);
+    };
+    
+    document.addEventListener('mousedown', listener);
+    document.addEventListener('touchstart', listener);
+    
+    return () => {
+      document.removeEventListener('mousedown', listener);
+      document.removeEventListener('touchstart', listener);
+    };
+  }, [ref, handler]);
+}
+```
+
+4. **Add Translation Keys for Menu Accessibility**:
+```json
+// messages/en.json
+{
+  "open_menu": "Open menu",
+  "close_menu": "Close menu",
+  "navigation": "Navigation"
+}
+
+// messages/cs.json
+{
+  "open_menu": "Otevřít menu",
+  "close_menu": "Zavřít menu",
+  "navigation": "Navigace"
+}
+```
+
+5. **Update the Layout Component to Include the Mobile Menu**:
+```tsx
+// app/[locale]/layout.tsx
+import { Header } from '@/components/header';
+import { Footer } from '@/components/footer';
+import { MobileMenu } from '@/components/ui/mobile-menu';
+
+export default function RootLayout({
+  children,
+  params,
+}: {
+  children: React.ReactNode;
+  params: { locale: string };
+}) {
+  return (
+    <html lang={params.locale}>
+      <body>
+        <Header>
+          <MobileMenu className="ml-auto" />
+        </Header>
+        <main>{children}</main>
+        <Footer />
+      </body>
+    </html>
+  );
+}
+```
+
+6. **Add CSS for Animations and Transitions**:
+```css
+/* Add to globals.css */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.mobile-menu-enter {
+  animation: fadeIn 0.3s ease-out, slideIn 0.3s ease-out;
+}
+
+.mobile-menu-exit {
+  animation: fadeIn 0.3s ease-in reverse, slideIn 0.3s ease-in reverse;
+}
+```
+
+## Technical Considerations
+
+1. **Accessibility Requirements**:
+   - Use proper ARIA attributes (`aria-expanded`, `aria-controls`, `aria-hidden`, `aria-modal`, `aria-labelledby`)
+   - Implement keyboard navigation with focus management
+   - Ensure screen reader compatibility
+   - Provide proper text alternatives for icons
+
+2. **Performance Optimization**:
+   - Use CSS transitions instead of JavaScript for animations when possible
+   - Implement proper cleanup in useEffect hooks to prevent memory leaks
+   - Use React.memo for components that don't need frequent re-renders
+
+3. **Mobile UX Best Practices**:
+   - Lock body scroll when menu is open to prevent background scrolling
+   - Implement touch-friendly targets (minimum 44x44px)
+   - Add visual feedback for touch interactions
+   - Ensure smooth animations (60fps) by using transform/opacity properties
+
+4. **Browser Compatibility**:
+   - Test on iOS Safari, Chrome for Android, and other mobile browsers
+   - Use feature detection for newer CSS features
+   - Provide fallbacks for older browsers if necessary
+
+# Test Strategy:
+## Test Strategy
+
+1. **Accessibility Testing**:
+   - Use automated tools like Axe or Lighthouse to check for accessibility issues
+   - Test with screen readers (VoiceOver on iOS/macOS, NVDA or JAWS on Windows)
+   - Verify keyboard navigation works properly:
+     - Menu can be opened with Enter/Space on the hamburger button
+     - Tab navigation cycles through all menu items
+     - Escape key closes the menu
+     - Focus returns to the hamburger button when menu is closed
+   - Verify proper ARIA attributes are present and correctly updated
+   - Test with different color contrast settings and zoom levels
+
+2. **Responsive Design Testing**:
+   - Test on various screen sizes (320px, 375px, 414px, 768px, 1024px, 1440px)
+   - Verify the mobile menu is hidden on screens ≥768px (md breakpoint)
+   - Verify the desktop navigation is hidden on screens <768px
+   - Test the transition between mobile and desktop layouts at the breakpoint
+   - Ensure the menu is usable in both portrait and landscape orientations
+
+3. **Interaction Testing**:
+   - Verify the hamburger icon toggles the menu open/closed
+   - Test that clicking outside the menu closes it
+   - Verify that clicking a navigation link closes the menu and navigates to the correct page
+   - Test that the back button works correctly after navigation
+   - Verify that scrolling is locked when the menu is open
+   - Test touch gestures (swipe to close) if implemented
+
+4. **Animation Testing**:
+   - Verify animations are smooth (60fps) on actual mobile devices
+   - Test on low-end devices to ensure performance is acceptable
+   - Verify animations respect user preferences (reduced motion settings)
+   - Test that animations complete correctly and don't get stuck
+
+5. **Cross-Browser Testing**:
+   - Test on Chrome, Safari, Firefox, and Edge
+   - Test on iOS Safari and Chrome for Android
+   - Verify functionality on older browser versions if required by project requirements
+
+6. **Integration Testing**:
+   - Verify the mobile menu works correctly with the language switching functionality
+   - Test that active page highlighting works correctly
+   - Verify the menu state resets appropriately when navigating between pages
+   - Test that the menu works correctly with dynamic content changes
+
+7. **User Testing**:
+   - Conduct usability testing with real users on actual mobile devices
+   - Gather feedback on the menu's usability, accessibility, and performance
+   - Make adjustments based on user feedback
