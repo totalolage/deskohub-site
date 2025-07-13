@@ -7,7 +7,7 @@ import { siteConstants } from "@/shared/utils/constants";
 export function HomeHero() {
   return (
     <Hero imageSrc={heroImage.src} fullHeight>
-      <div className="max-w-4xl text-center text-white px-6 relative">
+      <div className="max-w-4xl text-white px-6 mx-auto">
         <h1 className="font-bold mb-8 leading-tight flex flex-col gap-y-2">
           <span className="text-6xl md:text-8xl text-green-500">
             {m["hero.title"]()}
