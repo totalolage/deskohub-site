@@ -457,5 +457,55 @@
       "drinks": "DRINKS"
     },
     "footerNote": "Entry fee for board game players: 50 CZK for customers who order from us and 100 CZK for customers with zero spending."
+  },
+  "boardGames": {
+    "pageTitle": "Board Games - Deskohub",
+    "pageDescription": "Explore our extensive collection of board games for all ages and skill levels at Deskohub board game bar.",
+    "hero": {
+      "title": "Board Games",
+      "subtitle": "Discover our extensive collection of board games for all ages and skill levels"
+    },
+    "filters": {
+      "searchPlaceholder": "Search games...",
+      "category": "Category",
+      "difficulty": "Difficulty",
+      "onlyAvailable": "Only available",
+      "foundGames": [
+        {
+          "declarations": ["input count", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
+          "match": {
+            "countPlural=zero": "No games found",
+            "countPlural=one": "Found 1 game",
+            "countPlural=other": "Found {count} games"
+          }
+        }
+      ],
+      "categories": {
+        "all": "All",
+        "strategic": "Strategic",
+        "family": "Family",
+        "dungeonCrawler": "Dungeon Crawler",
+        "party": "Party"
+      },
+      "difficulties": {
+        "all": "All",
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+      }
+    },
+    "table": {
+      "game": "Game",
+      "players": "Players",
+      "duration": "Game Duration",
+      "difficulty": "Difficulty",
+      "category": "Category",
+      "rating": "Rating",
+      "availability": "Availability"
+    },
+    "available": "Available",
+    "unavailable": "Unavailable",
+    "noGamesFound": "No games match your criteria."
   }
 }

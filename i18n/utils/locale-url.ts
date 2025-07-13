@@ -47,7 +47,7 @@ export function getAllLocalizedPaths(pathname: string) {
     localesAndPaths.map(([, path]) => path),
     {
       entires: () => localesAndPaths,
-    },
+    }
   );
 
   return pathsWithEntries;

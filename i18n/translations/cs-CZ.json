@@ -462,5 +462,57 @@
       "drinks": "NÁPOJE"
     },
     "footerNote": "Vstupné pro hráče deskových her: Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratou."
+  },
+  "boardGames": {
+    "pageTitle": "Deskové hry - Deskohub",
+    "pageDescription": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů v Deskohub bar s deskovými hrami.",
+    "hero": {
+      "title": "Deskové hry",
+      "subtitle": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů"
+    },
+    "filters": {
+      "searchPlaceholder": "Hledat hry...",
+      "category": "Kategorie",
+      "difficulty": "Obtížnost",
+      "onlyAvailable": "Pouze dostupné",
+      "foundGames": [
+        {
+          "declarations": ["input count", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
+          "match": {
+            "countPlural=zero": "Nenalezeny žádné hry",
+            "countPlural=one": "Nalezena {count} hra",
+            "countPlural=few": "Nalezeny {count} hry",
+            "countPlural=many": "Nalezeno {count} her",
+            "countPlural=other": "Nalezeno {count} her"
+          }
+        }
+      ],
+      "categories": {
+        "all": "Všechny",
+        "strategic": "Strategické",
+        "family": "Rodinné",
+        "dungeonCrawler": "Dungeon Crawler",
+        "party": "Párty"
+      },
+      "difficulties": {
+        "all": "Všechny",
+        "easy": "Lehké",
+        "medium": "Střední",
+        "hard": "Těžké"
+      }
+    },
+    "table": {
+      "game": "Hra",
+      "players": "Hráči",
+      "duration": "Doba hry",
+      "difficulty": "Obtížnost",
+      "category": "Kategorie",
+      "rating": "Hodnocení",
+      "availability": "Dostupnost"
+    },
+    "available": "Dostupné",
+    "unavailable": "Nedostupné",
+    "noGamesFound": "Žádné hry neodpovídají vašim kritériím."
   }
 }

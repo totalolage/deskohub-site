@@ -17,6 +17,94 @@ This document outlines coding standards, patterns, and best practices for the De
 - **Don't create circular dependencies**: Features should not depend on each other
 - **Don't put shared code in features**: Use `/shared` for truly reusable code
 
+## Page Implementation Guidelines
+
+### Page Structure and Sections
+
+Pages should be split into logical sections, with each section being a separate component:
+
+```typescript
+// ✅ Good - Page composed of section components
+// app/[locale]/training-room/page.tsx
+export default async function TrainingRoomPage({ params }: RouteProps_locale) {
+  setLocale((await params).locale);
+  
+  return (
+    <>
+      <TrainingHero />
+      <TrainingPackages />
+      <TrainingGallery />
+      <TrainingBenefits />
+      <TrainingCTA />
+    </>
+  );
+}
+
+// ❌ Avoid - Monolithic page with all content inline
+export default async function TrainingRoomPage() {
+  return (
+    <div>
+      <section className="hero">
+        {/* All hero content inline */}
+      </section>
+      <section className="packages">
+        {/* All packages content inline */}
+      </section>
+      {/* More inline content */}
+    </div>
+  );
+}
+```
+
+### Server vs Client Components
+
+**Default to Server Components** - Only use Client Components for the smallest localized behaviors:
+
+```typescript
+// ✅ Good - Server component for static content
+// features/home/components/HomeHero.tsx
+export const HomeHero = () => {
+  return (
+    <section className="hero">
+      <h1>{m["home.hero.title"]()}</h1>
+      <p>{m["home.hero.description"]()}</p>
+    </section>
+  );
+};
+
+// ✅ Good - Client component scoped to interactive behavior only
+// features/booking/components/DatePicker.tsx
+"use client";
+
+export const DatePicker = ({ onDateChange }: DatePickerProps) => {
+  const [selectedDate, setSelectedDate] = useState<Date>();
+  
+  // Interactive logic here
+  return <Calendar />;
+};
+
+// ❌ Avoid - Making entire sections client components unnecessarily
+"use client";
+
+export const EntireSection = () => {
+  // Only the form needs interactivity, not the whole section
+  return (
+    <section>
+      <h2>Static Content</h2>
+      <p>More static content</p>
+      <InteractiveForm /> {/* Only this needs to be client */}
+    </section>
+  );
+};
+```
+
+### Section Component Best Practices
+
+1. **Keep sections focused** - Each section should have a single responsibility
+2. **Use semantic HTML** - Wrap sections in `<section>` tags with appropriate ARIA labels
+3. **Consistent spacing** - Use standardized padding/margin patterns across sections
+4. **Responsive by default** - Ensure all sections work across breakpoints
+
 ## Component Guidelines
 
 ### Functional Components
