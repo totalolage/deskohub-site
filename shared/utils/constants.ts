@@ -1,6 +1,18 @@
 export const PATHNAME_HEADER = "x-pathname";
 
 export const siteConstants = {
+  contact: {
+    phone: "+420777060478",
+    phoneTraining: "+420608200377",
+    email: "info@deskohub.cz",
+    address: {
+      street: "Turnovská 10/430",
+      city: "Prague", // English name, will be translated
+      cityDistrict: "8",
+      postalCode: "180 00",
+      countryCode: "CZ",
+    },
+  },
   pricing: {
     entryFee: {
       withPurchase: 50,
@@ -8,9 +20,15 @@ export const siteConstants = {
       childrenUnder15: 0,
     },
     training: {
+      hourly: 900,
+      daily: 5500,
       halfDay: 2500,
       fullDay: 4500,
       custom: null as number | null, // Indicate custom pricing
+    },
+    trainingRoom: {
+      capacity: 20,
+      size: 20, // m²
     },
   },
   booking: {
@@ -55,14 +73,18 @@ export const siteConstants = {
     weekdays: {
       // Monday to Friday
       days: [1, 2, 3, 4, 5],
-      open: "17:00",
+      open: "15:00",
       close: "23:00",
+      formatted: "15:00 - 23:00",
+      formattedNoSpaces: "15:00-23:00",
     },
     weekends: {
       // Saturday and Sunday
       days: [0, 6],
-      open: "15:00",
-      close: "24:00",
+      open: "11:00",
+      close: "23:00",
+      formatted: "11:00 - 23:00",
+      formattedNoSpaces: "11:00-23:00",
     },
   },
 };
