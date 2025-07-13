@@ -11,10 +11,10 @@
     "dev:i18n": "chokidar \"i18n/translations/*.json\" -c \"bun i18n:compile\"",
     "predev:i18n": "bun i18n:compile",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./i18n/paraglide",
-    "check": "bunx biome check .",
-    "check:fix": "bunx biome check --write .",
+    "lint": "bunx biome check .",
+    "lint:fix": "bunx biome check --write .",
     "typecheck": "bunx tsc --noEmit",
-    "validate": "run-p check typecheck",
+    "validate": "run-p lint typecheck",
     "start": "bunx next start"
   },
   "dependencies": {
@@ -77,6 +77,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.1.0",
+    "@total-typescript/ts-reset": "^0.6.1",
     "@types/js-cookie": "^3.0.6",
     "@types/node": "^22",
     "@types/react": "^19",

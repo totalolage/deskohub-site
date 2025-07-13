@@ -379,6 +379,34 @@ const isBooking = (data: unknown): data is Booking => {
 const booking = data as Booking;
 ```
 
+### Enhanced Type Safety with ts-reset
+
+The project uses `@total-typescript/ts-reset` to provide stricter and more intuitive TypeScript behavior:
+
+```typescript
+// With ts-reset, these common APIs have improved types:
+
+// ✅ Array.find returns T | undefined (not just T)
+const found = [1, 2, 3].find(n => n === 4); // number | undefined
+
+// ✅ JSON.parse returns unknown (not any)
+const parsed = JSON.parse(jsonString); // unknown - requires proper validation
+
+// ✅ Array.filter narrows types correctly
+const numbers = mixedArray.filter((item): item is number => typeof item === 'number');
+
+// ✅ Object.keys returns string[] for better flexibility
+const keys = Object.keys(myObject); // string[]
+```
+
+**Key Benefits:**
+- Catches potential runtime errors at compile time
+- Forces proper handling of edge cases (undefined, unknown types)
+- Improves code reliability and maintainability
+- Better IDE autocomplete and type inference
+
+**Note:** When you see type errors after adding ts-reset, they're revealing actual potential issues that need to be handled properly.
+
 ## Error Handling
 
 ### Use Try-Catch for Async Operations
@@ -611,7 +639,7 @@ WIP
 Before submitting code:
 
 - [ ] All TypeScript errors resolved
-- [ ] Linting passes (`bun run check`)
+- [ ] Linting passes (`bun run lint`)
 - [ ] Build succeeds (`bun run build`)
 - [ ] No hardcoded strings (use i18n)
 - [ ] No hardcoded colors (use theme)

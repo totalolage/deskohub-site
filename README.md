@@ -72,7 +72,7 @@ bun install
 bun run dev
 
 # Type checking and linting
-bun run check
+bun run lint
 
 # Build for production
 bun run build
@@ -94,8 +94,8 @@ Create a `.env.local` file in the root directory:
 - `bun run dev` - Start development server
 - `bun run build` - Build for production
 - `bun run start` - Start production server
-- `bun run check` - Run type checking and linting
-- `bun run check:fix` - Fix linting issues
+- `bun run lint` - Run type checking and linting
+- `bun run lint:fix` - Fix linting issues
 
 ## 🤝 Contributing
 

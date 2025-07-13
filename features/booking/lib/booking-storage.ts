@@ -37,7 +37,7 @@ const loadBookings = async (): Promise<Record<string, BookingStorageItem>> => {
   const file = await getStorageFile();
   try {
     const content = await fs.readFile(file, "utf8");
-    return JSON.parse(content);
+    return JSON.parse(content) as Record<string, BookingStorageItem>;
   } catch {
     return {};
   }

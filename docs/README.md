@@ -62,7 +62,7 @@ bun install
 bun run dev
 
 # Type checking and linting
-bun run check
+bun run lint
 
 # Build for production
 bun run build

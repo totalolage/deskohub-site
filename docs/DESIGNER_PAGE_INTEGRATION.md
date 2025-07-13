@@ -346,7 +346,7 @@ When converting designer components, use this decision tree:
 
 1. **Type and lint checking**
    ```bash
-   bun run check
+   bun run lint
    ```
 
 2. **Build verification**
@@ -410,7 +410,7 @@ Use consistent max-width containers and padding as seen in existing pages.
 - [ ] Standardized components to match feature patterns
 - [ ] Used shared utilities from `/shared/utils`
 - [ ] Fixed styling to use theme tokens
-- [ ] Ran type checking (`bun run check`)
+- [ ] Ran type checking (`bun run lint`)
 - [ ] Built successfully (`bun run build`)
 - [ ] Tested all functionality
 - [ ] Cleaned up generated code
@@ -591,7 +591,7 @@ touch features/pricing/index.ts
 mv components/hero-section.tsx features/pricing/components/PricingHero.tsx
 
 # After integration
-bun run check
+bun run lint
 bun run build
 
 # Test in development

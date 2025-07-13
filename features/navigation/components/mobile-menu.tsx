@@ -1,29 +1,29 @@
 "use client";
 
+import { Calendar, Menu } from "lucide-react";
+import Image from "next/image";
+import Link from "next/link";
 import { useState } from "react";
-import { Menu, Calendar } from "lucide-react";
+import logoImage from "@/assets/images/logo/for-dark-bg.png";
+import { LanguageSwitcher } from "@/features/i18n";
+import { m, setLocale } from "@/i18n";
+import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Sheet,
   SheetContent,
-  SheetTrigger,
   SheetHeader,
   SheetTitle,
+  SheetTrigger,
 } from "@/shared/components/ui/sheet";
-import Image from "next/image";
-import Link from "next/link";
-import logoImage from "@/assets/images/logo/for-dark-bg.png";
-import { m, setLocale } from "@/i18n";
-import { useLocale } from "@/i18n/utils/use-locale";
-import { LanguageSwitcher } from "@/features/i18n";
 
 const navigationItems = [
-  { label: "nav.home", href: "/" },
-  { label: "nav.boardGames", href: "/board-games" },
-  { label: "nav.gallery", href: "/gallery" },
-  { label: "nav.menu", href: "/menu" },
-  { label: "nav.trainingRoom", href: "/training-room" },
-  { label: "nav.contact", href: "/contact" },
+  { label: "nav.home", href: "/", text: () => m["nav.home"]() },
+  { label: "nav.boardGames", href: "/board-games", text: () => m["nav.boardGames"]() },
+  { label: "nav.gallery", href: "/gallery", text: () => m["nav.gallery"]() },
+  { label: "nav.menu", href: "/menu", text: () => m["nav.menu"]() },
+  { label: "nav.trainingRoom", href: "/training-room", text: () => m["nav.trainingRoom"]() },
+  { label: "nav.contact", href: "/contact", text: () => m["nav.contact"]() },
 ];
 
 export function MobileMenu() {
@@ -35,7 +35,11 @@ export function MobileMenu() {
     <div className="md:hidden">
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" className="text-white hover:bg-white/10">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="text-white hover:bg-white/10"
+          >
             <Menu className="h-6 w-6" />
             <span className="sr-only">{m["nav.openMenu"]()}</span>
           </Button>
@@ -43,14 +47,16 @@ export function MobileMenu() {
         <SheetContent side="right" className="w-80 bg-gray-900 border-gray-800">
           <SheetHeader className="border-b border-gray-800 pb-4">
             <div className="flex items-center gap-3">
-              <Image 
-                src={logoImage} 
-                alt={m["altText.deskohub"]()} 
-                width={40} 
-                height={40} 
-                className="rounded-lg" 
+              <Image
+                src={logoImage}
+                alt={m["altText.deskohub"]()}
+                width={40}
+                height={40}
+                className="rounded-lg"
               />
-              <SheetTitle className="text-white text-lg font-bold">Deskohub</SheetTitle>
+              <SheetTitle className="text-white text-lg font-bold">
+                Deskohub
+              </SheetTitle>
             </div>
           </SheetHeader>
 
@@ -62,14 +68,16 @@ export function MobileMenu() {
                 className="flex items-center px-4 py-3 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors duration-200 font-medium"
                 onClick={() => setIsOpen(false)}
               >
-                {m[item.label]()}
+                {item.text()}
               </Link>
             ))}
           </nav>
 
           <div className="mt-8 space-y-4">
             <div className="px-4 py-3 bg-gray-800 rounded-lg">
-              <h3 className="text-white font-semibold mb-2">{m["menu.openingHours.title"]()}</h3>
+              <h3 className="text-white font-semibold mb-2">
+                {m["menu.openingHours.title"]()}
+              </h3>
               <div className="text-sm text-gray-300 space-y-1">
                 <div className="flex justify-between">
                   <span>{m["menu.openingHours.weekdays"]()}</span>
