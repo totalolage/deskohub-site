@@ -81,7 +81,7 @@ export function GalleryHero() {
       <div className="absolute inset-0">
         {heroImages.map((image, index) => (
           <div
-            key={index}
+            key={JSON.stringify(image)}
             className={`absolute inset-0 transition-opacity duration-1000 ${
               index === currentSlide ? "opacity-100" : "opacity-0"
             }`}
@@ -137,10 +137,10 @@ export function GalleryHero() {
       {/* Dots Indicator */}
       <div className="absolute bottom-8 left-1/2 transform -translate-x-1/2 z-20">
         <div className="flex space-x-2">
-          {heroImages.map((_, index) => (
+          {heroImages.map((heroImage, index) => (
             <button
+              key={JSON.stringify(heroImage)}
               type="button"
-              key={index}
               className={`w-3 h-3 rounded-full transition-all duration-300 ${
                 index === currentSlide
                   ? "bg-green-400 scale-125"

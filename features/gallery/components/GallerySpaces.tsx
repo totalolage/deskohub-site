@@ -47,9 +47,9 @@ export function GallerySpaces() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {establishingShots.map((shot, index) => (
+          {establishingShots.map((shot) => (
             <Card
-              key={index}
+              key={JSON.stringify(shot)}
               className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group"
             >
               <div className="relative aspect-[3/2] overflow-hidden">

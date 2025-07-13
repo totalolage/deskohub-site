@@ -72,9 +72,9 @@ export function GalleryEvents() {
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {eventAlbums.map((album, index) => (
+          {eventAlbums.map((album) => (
             <Card
-              key={index}
+              key={JSON.stringify(album)}
               className="overflow-hidden hover:shadow-lg transition-shadow cursor-pointer group"
             >
               <div className="relative aspect-[4/3] overflow-hidden">

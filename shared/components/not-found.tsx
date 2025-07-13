@@ -13,7 +13,7 @@ import {
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import logoImage from "@/assets/images/logo.png";
+import logoImage from "@/assets/images/logo/for-light-bg.png";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";

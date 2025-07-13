@@ -1,6 +1,11 @@
+"use client";
+
+import Image from "next/image";
+import { renderToString } from "react-dom/server";
+import logoImageBW from "@/assets/images/logo/black-and-white.png";
 import { drinkMenu, foodMenu } from "../menu-data";
 
-export function generateMenuPDF() {
+export async function generateMenuPDF() {
   // Create a simple HTML content for PDF generation
   const htmlContent = `
     <!DOCTYPE html>
@@ -11,7 +16,7 @@ export function generateMenuPDF() {
       <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
         .header { text-align: center; margin-bottom: 30px; }
-        .logo { color: #22c55e; font-size: 24px; font-weight: bold; }
+        .logo { max-width: 150px; height: auto; margin-bottom: 10px; }
         .section { margin-bottom: 30px; }
         .section-title { color: #22c55e; font-size: 20px; font-weight: bold; margin-bottom: 15px; }
         .item { display: flex; justify-content: space-between; margin-bottom: 10px; padding: 8px; border-bottom: 1px solid #eee; }
@@ -22,7 +27,15 @@ export function generateMenuPDF() {
     </head>
     <body>
       <div class="header">
-        <div class="logo">🎲 Deskohub</div>
+      ${renderToString(
+        <Image
+          className="logo"
+          src={logoImageBW}
+          width={150}
+          height={80}
+          alt={"Deskohub logo"}
+        />
+      )}
         <h1>Menu</h1>
       </div>
       

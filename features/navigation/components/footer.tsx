@@ -1,5 +1,5 @@
 import Image from "next/image";
-import logoImage from "@/assets/images/logo.png";
+import logoImage from "@/assets/images/logo/for-light-bg.png";
 import { m } from "@/i18n";
 
 export function Footer() {
