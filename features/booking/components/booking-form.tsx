@@ -46,6 +46,7 @@ import {
   formatDateTimeForInput,
   getMinBookingDateTime,
 } from "@/shared/utils/date-formatting";
+import { formatPrice } from "@/shared/utils/price-formatting";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
 import styles from "./booking-form.module.css";
 
@@ -483,7 +484,16 @@ export function BookingForm() {
             <CardContent className="pt-6">
               <div className="text-center space-y-2">
                 <h3 className="font-semibold text-green-800">
-                  {m["booking.pricingInfo"]()}
+                  {m["booking.pricingInfo"]({
+                    priceWith: formatPrice(
+                      siteConstants.pricing.entryFee.withPurchase,
+                      locale
+                    ),
+                    priceWithout: formatPrice(
+                      siteConstants.pricing.entryFee.withoutPurchase,
+                      locale
+                    ),
+                  })}
                 </h3>
               </div>
             </CardContent>

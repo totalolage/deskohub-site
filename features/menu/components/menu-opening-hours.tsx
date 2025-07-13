@@ -1,4 +1,5 @@
 import { m } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 
 export function MenuOpeningHours() {
   return (
@@ -9,7 +10,9 @@ export function MenuOpeningHours() {
             {m["menu.openingHours.weekdays"]()}
           </div>
           <div className="text-white text-xl">
-            {m["menu.openingHours.weekdaysTime"]()}
+            {m["menu.openingHours.weekdaysTime"]({
+              hours: siteConstants.workingHours.weekdays.formattedNoSpaces,
+            })}
           </div>
         </div>
         <div className="text-center">
@@ -17,7 +20,9 @@ export function MenuOpeningHours() {
             {m["menu.openingHours.weekend"]()}
           </div>
           <div className="text-white text-xl">
-            {m["menu.openingHours.weekendTime"]()}
+            {m["menu.openingHours.weekendTime"]({
+              hours: siteConstants.workingHours.weekends.formattedNoSpaces,
+            })}
           </div>
         </div>
       </div>
