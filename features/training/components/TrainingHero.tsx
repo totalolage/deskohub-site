@@ -5,22 +5,19 @@ import { Button } from "@/shared/components/ui/button";
 
 export const TrainingHero = () => {
   return (
-    <Hero
-      imageSrc="/images/hero.jpg"
-      className="text-center max-w-4xl mx-auto px-4"
-    >
-      <div className="relative">
+    <Hero imageSrc="/images/hero.jpg" alignment="left">
+      <div>
         <h1 className="text-5xl md:text-7xl font-bold mb-6">
           <span className="text-green-400">{m["training.hero.title"]()}</span>
           <br />
           <span className="text-white">{m["training.hero.subtitle"]()}</span>
         </h1>
 
-        <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-2xl mx-auto">
+        <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-2xl">
           {m["training.hero.description"]()}
         </p>
 
-        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+        <div className="flex flex-col sm:flex-row gap-4">
           <Link href="/training-room/reservation">
             <Button
               size="lg"
