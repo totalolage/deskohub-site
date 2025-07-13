@@ -507,5 +507,81 @@
     "available": "Available",
     "unavailable": "Unavailable",
     "noGamesFound": "No games match your criteria."
+  },
+  "gallery": {
+    "pageTitle": "Gallery - Deskohub",
+    "pageDescription": "Explore the atmosphere of our gaming center where friends meet over board games",
+    "hero": {
+      "title": "Gallery",
+      "slides": {
+        "atmosphere": {
+          "title": "Cozy Atmosphere",
+          "description": "Enjoy coffee and games in a pleasant environment"
+        },
+        "mainRoom": {
+          "title": "Main Gaming Room",
+          "description": "More than 500 board games in one place"
+        },
+        "bar": {
+          "title": "Bar & Refreshments",
+          "description": "Wide selection of drinks and snacks"
+        },
+        "trainingRoom": {
+          "title": "Training Room",
+          "description": "Ideal space for corporate events and workshops"
+        },
+        "evening": {
+          "title": "Evening Atmosphere",
+          "description": "Romantic lighting for evening gaming"
+        }
+      },
+      "previousImage": "Previous image",
+      "nextImage": "Next image",
+      "goToImage": "Go to image"
+    },
+    "spaces": {
+      "title": "Our Spaces",
+      "subtitle": "Explore the atmosphere of our gaming center where friends meet over board games",
+      "locations": {
+        "mainRoom": "Main Gaming Room",
+        "cozyCorner": "Cozy Corner",
+        "bar": "Bar & Refreshments",
+        "gamesCollection": "Our Games Collection",
+        "eveningAtmosphere": "Evening Atmosphere",
+        "trainingRoom": "Training Room"
+      }
+    },
+    "events": {
+      "title": "Events & Activities",
+      "subtitle": "Check out photos from our regular events, tournaments, and special occasions",
+      "photos": "photos",
+      "participants": "participants",
+      "tournaments": {
+        "catan": {
+          "title": "Catan Tournament",
+          "description": "Major tournament in the popular Settlers of Catan game"
+        },
+        "christmas": {
+          "title": "Christmas Game Night",
+          "description": "Special Christmas atmosphere with themed games"
+        },
+        "gameNight": {
+          "title": "Board Game Night",
+          "description": "All-night gaming marathon for enthusiasts"
+        },
+        "familyDay": {
+          "title": "Family Game Day",
+          "description": "Special event for families with children"
+        },
+        "magic": {
+          "title": "Magic: The Gathering Draft",
+          "description": "Tournament in the popular card game Magic"
+        },
+        "dnd": {
+          "title": "Dungeons & Dragons Session",
+          "description": "Epic adventure in the world of D&D"
+        }
+      }
+    }
   }
 }

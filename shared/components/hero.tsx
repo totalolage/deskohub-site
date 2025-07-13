@@ -7,7 +7,7 @@ import { cn } from "@/shared/utils";
 const heroVariants = cva(null, {
   variants: {
     fullHeight: {
-      true: "min-h-[calc(100dvh_-_var(--header-height))]",
+      true: "min-h-[calc(100dvh_-_var(--header-height)_-_90px)]",
       false: "min-h-96",
     },
     alignment: {

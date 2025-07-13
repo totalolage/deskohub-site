@@ -1,6 +1,6 @@
 import type * as React from "react";
 
-import { cn } from "@/shared/utils";
+import { cn } from "@/shared/utils/index";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;

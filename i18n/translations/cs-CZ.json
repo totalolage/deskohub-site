@@ -514,5 +514,81 @@
     "available": "Dostupné",
     "unavailable": "Nedostupné",
     "noGamesFound": "Žádné hry neodpovídají vašim kritériím."
+  },
+  "gallery": {
+    "pageTitle": "Galerie - Deskohub",
+    "pageDescription": "Prohlédněte si atmosféru našeho herního centra, kde se setkávají přátelé nad deskovými hrami",
+    "hero": {
+      "title": "Galerie",
+      "slides": {
+        "atmosphere": {
+          "title": "Útulná atmosféra",
+          "description": "Vychutnejte si kávu a hry v příjemném prostředí"
+        },
+        "mainRoom": {
+          "title": "Hlavní herní místnost",
+          "description": "Více než 500 deskových her na jednom místě"
+        },
+        "bar": {
+          "title": "Bar a občerstvení",
+          "description": "Široká nabídka nápojů a občerstvení"
+        },
+        "trainingRoom": {
+          "title": "Školící místnost",
+          "description": "Ideální prostor pro firemní akce a workshopy"
+        },
+        "evening": {
+          "title": "Večerní atmosféra",
+          "description": "Romantické osvětlení pro večerní hraní"
+        }
+      },
+      "previousImage": "Předchozí obrázek",
+      "nextImage": "Další obrázek",
+      "goToImage": "Přejít na obrázek"
+    },
+    "spaces": {
+      "title": "Naše prostory",
+      "subtitle": "Prohlédněte si atmosféru našeho herního centra, kde se setkávají přátelé nad deskovými hrami",
+      "locations": {
+        "mainRoom": "Hlavní herní místnost",
+        "cozyCorner": "Útulný koutek",
+        "bar": "Bar a občerstvení",
+        "gamesCollection": "Naše sbírka her",
+        "eveningAtmosphere": "Večerní atmosféra",
+        "trainingRoom": "Školící místnost"
+      }
+    },
+    "events": {
+      "title": "Akce a události",
+      "subtitle": "Podívejte se na fotografie z našich pravidelných akcí, turnajů a speciálních událostí",
+      "photos": "fotek",
+      "participants": "účastníků",
+      "tournaments": {
+        "catan": {
+          "title": "Turnaj v Catan",
+          "description": "Velký turnaj v oblíbené hře Osadníci z Katanu"
+        },
+        "christmas": {
+          "title": "Vánoční herní večer",
+          "description": "Speciální vánoční atmosféra s tematickými hrami"
+        },
+        "gameNight": {
+          "title": "Noc deskových her",
+          "description": "Celonočí herní maraton pro nadšence"
+        },
+        "familyDay": {
+          "title": "Rodinný herní den",
+          "description": "Speciální akce pro rodiny s dětmi"
+        },
+        "magic": {
+          "title": "Magic: The Gathering Draft",
+          "description": "Turnaj v populární karetní hře Magic"
+        },
+        "dnd": {
+          "title": "Dungeons & Dragons Session",
+          "description": "Epické dobrodružství v světě D&D"
+        }
+      }
+    }
   }
 }
