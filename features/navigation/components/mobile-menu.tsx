@@ -53,6 +53,7 @@ export function MobileMenu() {
                 width={40}
                 height={40}
                 className="rounded-lg"
+                priority
               />
               <SheetTitle className="text-white text-lg font-bold">
                 Deskohub

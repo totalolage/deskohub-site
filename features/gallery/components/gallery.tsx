@@ -18,6 +18,7 @@ export function Gallery() {
               width={300}
               height={300}
               className="w-full h-full object-cover"
+              priority
             />
           </div>
           <div className="rounded-full overflow-hidden aspect-square">
@@ -27,6 +28,7 @@ export function Gallery() {
               width={300}
               height={300}
               className="w-full h-full object-cover"
+              priority
             />
           </div>
           <div className="rounded-full overflow-hidden aspect-square">
@@ -36,6 +38,7 @@ export function Gallery() {
               width={300}
               height={300}
               className="w-full h-full object-cover"
+              priority
             />
           </div>
         </div>

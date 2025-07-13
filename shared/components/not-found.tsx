@@ -61,6 +61,7 @@ export function NotFound() {
               width={200}
               height={80}
               className="object-contain"
+              priority
             />
           </div>
 
