@@ -1,9 +1,16 @@
 import { Calendar, Mail, Phone } from "lucide-react";
-import { m } from "@/i18n";
+import { getLocale, m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
+import { siteConstants } from "@/shared/utils/constants";
+import {
+  formatPhoneNumber,
+  getPhoneLink,
+} from "@/shared/utils/phone-formatting";
 
 export const TrainingCTA = () => {
+  const locale = getLocale();
+
   return (
     <section className="py-20 bg-gradient-to-r from-green-600 to-green-700">
       <div className="container mx-auto px-4">
@@ -12,29 +19,46 @@ export const TrainingCTA = () => {
             {m["training.cta.title"]()}
           </h2>
           <p className="text-xl text-green-100 mb-12">
-            {m["training.cta.description"]()}
+            {m["training.cta.description"]({
+              email: siteConstants.contact.email,
+              phone: formatPhoneNumber(
+                siteConstants.contact.phoneTraining,
+                locale
+              ),
+            })}
           </p>
 
           <div className="grid md:grid-cols-3 gap-6 mb-12">
-            <Card className="bg-white/10 border-white/20 backdrop-blur-sm">
-              <CardContent className="p-6 text-center">
-                <Phone className="w-8 h-8 text-white mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  Zavolejte
-                </h3>
-                <p className="text-green-100">+420 123 456 789</p>
-              </CardContent>
-            </Card>
+            <a
+              href={`tel:${getPhoneLink(siteConstants.contact.phone)}`}
+              className="block"
+            >
+              <Card className="bg-white/10 border-white/20 backdrop-blur-sm hover:bg-white/20 transition-colors">
+                <CardContent className="p-6 text-center">
+                  <Phone className="w-8 h-8 text-white mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    Zavolejte
+                  </h3>
+                  <p className="text-green-100">
+                    {formatPhoneNumber(siteConstants.contact.phone, locale)}
+                  </p>
+                </CardContent>
+              </Card>
+            </a>
 
-            <Card className="bg-white/10 border-white/20 backdrop-blur-sm">
-              <CardContent className="p-6 text-center">
-                <Mail className="w-8 h-8 text-white mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  Napište
-                </h3>
-                <p className="text-green-100">info@deskohub.cz</p>
-              </CardContent>
-            </Card>
+            <a href={`mailto:${siteConstants.contact.email}`} className="block">
+              <Card className="bg-white/10 border-white/20 backdrop-blur-sm hover:bg-white/20 transition-colors">
+                <CardContent className="p-6 text-center">
+                  <Mail className="w-8 h-8 text-white mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    Napište
+                  </h3>
+                  <p className="text-green-100">
+                    {siteConstants.contact.email}
+                  </p>
+                </CardContent>
+              </Card>
+            </a>
 
             <Card className="bg-white/10 border-white/20 backdrop-blur-sm">
               <CardContent className="p-6 text-center">

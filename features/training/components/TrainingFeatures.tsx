@@ -1,26 +1,26 @@
-import { Coffee, Presentation, Trophy, Users } from "lucide-react";
+import { Edit, Layout, Thermometer, Wifi } from "lucide-react";
 import { m } from "@/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
 
 export const TrainingFeatures = () => {
   const features = [
     {
-      icon: Users,
+      icon: Wifi,
       title: m["training.features.feature1.title"](),
       description: m["training.features.feature1.description"](),
     },
     {
-      icon: Presentation,
+      icon: Layout,
       title: m["training.features.feature2.title"](),
       description: m["training.features.feature2.description"](),
     },
     {
-      icon: Coffee,
+      icon: Thermometer,
       title: m["training.features.feature3.title"](),
       description: m["training.features.feature3.description"](),
     },
     {
-      icon: Trophy,
+      icon: Edit,
       title: m["training.features.feature4.title"](),
       description: m["training.features.feature4.description"](),
     },

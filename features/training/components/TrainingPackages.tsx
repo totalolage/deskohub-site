@@ -15,10 +15,14 @@ export const TrainingPackages = () => {
   const packages = [
     {
       name: m["training.packages.halfDay.title"](),
-      price: siteConstants.pricing.training.halfDay,
-      duration: m["training.packages.halfDay.duration"](),
+      price: siteConstants.pricing.training.hourly,
+      duration: m["training.packages.halfDay.duration"]({
+        price: siteConstants.pricing.training.hourly,
+      }),
       features: [
-        m["training.packages.halfDay.features.feature1"](),
+        m["training.packages.halfDay.features.feature1"]({
+          capacity: siteConstants.pricing.trainingRoom.capacity,
+        }),
         m["training.packages.halfDay.features.feature2"](),
         m["training.packages.halfDay.features.feature3"](),
         m["training.packages.halfDay.features.feature4"](),
@@ -26,10 +30,14 @@ export const TrainingPackages = () => {
     },
     {
       name: m["training.packages.fullDay.title"](),
-      price: siteConstants.pricing.training.fullDay,
-      duration: m["training.packages.fullDay.duration"](),
+      price: siteConstants.pricing.training.daily,
+      duration: m["training.packages.fullDay.duration"]({
+        price: siteConstants.pricing.training.daily,
+      }),
       features: [
-        m["training.packages.fullDay.features.feature1"](),
+        m["training.packages.fullDay.features.feature1"]({
+          capacity: siteConstants.pricing.trainingRoom.capacity,
+        }),
         m["training.packages.fullDay.features.feature2"](),
         m["training.packages.fullDay.features.feature3"](),
         m["training.packages.fullDay.features.feature4"](),

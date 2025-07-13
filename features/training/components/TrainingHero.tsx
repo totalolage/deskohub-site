@@ -2,7 +2,9 @@ import Link from "next/link";
 import trainingRoomImage from "@/assets/images/photos/teambuilding_room_2.jpeg";
 import { m } from "@/i18n";
 import { Hero } from "@/shared/components/hero";
+import { Price } from "@/shared/components/price";
 import { Button } from "@/shared/components/ui/button";
+import { siteConstants } from "@/shared/utils/constants";
 
 export const TrainingHero = () => {
   return (
@@ -17,6 +19,35 @@ export const TrainingHero = () => {
         <p className="text-xl md:text-2xl text-white/90 mb-8 max-w-2xl">
           {m["training.hero.description"]()}
         </p>
+
+        <div className="flex flex-wrap gap-6 mb-8">
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <p className="text-white/70 text-sm mb-1">
+              {m["training.capacity.people"]({
+                capacity: siteConstants.pricing.trainingRoom.capacity,
+              })}
+            </p>
+            <p className="text-2xl font-bold text-white">
+              <Price amount={siteConstants.pricing.training.hourly} />
+              <span className="text-base font-normal">
+                {m["training.capacity.hourly"]({ price: "" }).trim()}
+              </span>
+            </p>
+          </div>
+          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
+            <p className="text-white/70 text-sm mb-1">
+              {m["training.capacity.size"]({
+                size: siteConstants.pricing.trainingRoom.size,
+              })}
+            </p>
+            <p className="text-2xl font-bold text-white">
+              <Price amount={siteConstants.pricing.training.daily} />
+              <span className="text-base font-normal">
+                {m["training.capacity.daily"]({ price: "" }).trim()}
+              </span>
+            </p>
+          </div>
+        </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
           <Link href="/training-room/reservation">
