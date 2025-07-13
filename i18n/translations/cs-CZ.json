@@ -1,9 +1,9 @@
 {
   "language": "Česky",
   "siteTitle": "Deskohub",
-  "siteDescription": "Hrajte, nápoje, jíde - vše v jednom místě. Navštivte nejlepší deskové hře pro všechny deskové zábavníky.",
-  "pageTitle": "Bar s deskovými hrami a restaurace",
-  "pageDescription": "Zažijte nejlepší bar s deskovými hrami ve městě. Hrajte z naší sbírky 300+ her při vychutnávání craft piva a vynikajícího jídla.",
+  "siteDescription": "Deskoherní klub a školící místnost - nekonečno perspektiv. Místo, kde fantazie potkává realitu v odrazech nekonečných světů.",
+  "pageTitle": "Deskoherní klub a školící místnost",
+  "pageDescription": "Deskohub - místo pro všechny, kdo milují deskové hry, strategické, kampaňové či párty hry. Provozováno deskohráči.",
   "nav": {
     "home": "DOMŮ",
     "boardGames": "DESKOVÉ HRY",
@@ -19,9 +19,9 @@
     "contact": "KONTAKT"
   },
   "hero": {
-    "title": "Hrejte, pijte, jezte",
-    "subtitle": "vše u jednoho stolu",
-    "description": "Vstupné pro hráče deskových her, kteří si u nás něco objednají a pro zákazníky s nulovou útratou.",
+    "title": "Svět za zrcadlem",
+    "subtitle": "kde se zrcadlí vášeň pro hry a profesionální růst",
+    "description": "Místo pro všechny, kdo milují deskové hry. Klidné zákoutí pro vaši oblíbenou společenskou hru i možnost naučit se nové hry.",
     "priceInfo": {
       "withPurchase": "Vstupné s objednávkou:",
       "withoutPurchase": "Vstupné bez objednávky:"
@@ -32,12 +32,40 @@
     "weekends": "SO - NE"
   },
   "about": {
-    "description": "Vstupné pro hráče deskových her. Vstupné platí 1 den bez hodinového omezení. Pro děti vstup do 15 let zdarma. PONDĚLÍ BEZ VSTUPNÉHO.",
+    "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
     "priceInfo": {
       "withPurchase": "S objednávkou:",
       "withoutPurchase": "Bez objednávky:",
       "childrenFree": "Děti do 15 let: Zdarma",
       "mondayFree": "Pondělí: Bez vstupného"
+    }
+  },
+  "features": {
+    "title": "PROČ DESKOHUB?",
+    "subtitle": "Ideální prostor pro vaši hernu",
+    "feature1": {
+      "title": "100+ deskových her",
+      "description": "Velký výběr deskových a karetních her pro všechny"
+    },
+    "feature2": {
+      "title": "Velké stoly s playmatkami",
+      "description": "Komfortní herní prostor pro vaše hry"
+    },
+    "feature3": {
+      "title": "Vysvětlování pravidel",
+      "description": "Rádi vám vysvětlíme pravidla a zahrajeme s vámi"
+    },
+    "feature4": {
+      "title": "Kvalitní osvětlení",
+      "description": "Ideální světelné podmínky pro herní zážitek"
+    },
+    "feature5": {
+      "title": "Komunita",
+      "description": "Poznejte nové spřízněné duše"
+    },
+    "feature6": {
+      "title": "Provozováno deskohráči",
+      "description": "Rozumíme vašim potřebám"
     }
   },
   "stats": {
@@ -116,15 +144,14 @@
   "footer": {
     "tagline": "Bar • Deskové hry • Komunita",
     "socialLinks": {
-      "instagram": "Instagram",
+      "youtube": "YouTube",
       "facebook": "Facebook",
-      "tiktok": "TikTok",
-      "linkedin": "LinkedIn"
+      "instagram": "Instagram"
     }
   },
   "metadata": {
-    "title": "Deskohub - Bar s deskovými hrami",
-    "description": "Hrejte, pijte, jezte - vše u jednoho stolu. Navštivte nejlepší board game bar pro všechny milovníky deskových her."
+    "title": "Deskohub - Deskoherní klub a školící místnost",
+    "description": "Místo, kde fantazie potkává realitu. Deskové hry, školící místnost a komunita deskohráčů v Praze."
   },
   "reservation": {
     "pageTitle": "Rezervace stolu",
@@ -161,7 +188,7 @@
     "preOrderDrinks": "Nápoje",
     "preOrderDetails": "Detaily předobjednávky",
     "preOrderDetailsPlaceholder": "Prosím uveďte své preference pro jídlo a nápoje...",
-    "pricingInfo": "Vstupné: 50 Kč s objednávkou, 100 Kč bez objednávky",
+    "pricingInfo": "Vstupné: {priceWith} s objednávkou, {priceWithout} bez objednávky",
     "submit": "Rezervovat stůl",
     "submitting": "Odesílání...",
     "successTitle": "Rezervace úspěšná!",
@@ -181,7 +208,7 @@
       "guestCount": {
         "required": "Počet hostů je povinný",
         "minimum": "Počet hostů je povinný",
-        "maximum": "Maximálně 10 hostů povoleno",
+        "maximum": "Maximálně {max} hostů povoleno",
         "integer": "Počet hostů musí být celé číslo"
       },
       "name": {
@@ -317,58 +344,68 @@
     "description": "Děkujeme za vaši rezervaci v Deskohub"
   },
   "training": {
-    "pageTitle": "Školící místnost",
-    "pageDescription": "Ideální prostor pro firemní akce, workshopy a teambuilding aktivity v Deskohub",
+    "pageTitle": "Školící místnost či zasedačka",
+    "pageDescription": "Pronajměte si místnost až pro 20 osob. Vhodná pro školení, obchodní setkání, workshopy nebo týmové brainstormingy. Jen kousek od metra Palmovka.",
     "hero": {
-      "title": "Teambuilding",
-      "subtitle": "ve školící místnosti",
-      "description": "Ideální prostor pro firemní akce, workshopy a teambuilding aktivity. Spojte užitečné s příjemným pomocí deskových her.",
+      "title": "Pronajměte si místnost až pro 20 osob",
+      "subtitle": "Školící místnost či zasedačka",
+      "description": "V Deskohubu nabízíme k pronájmu školící místnost, která lze využít i pro obchodní setkání jako zasedací místnost. Vhodná je i pro workshopy nebo týmové brainstormingy. Nachází se jen kousek od stanice metra Palmovka, což zajišťuje snadný přístup pro všechny účastníky.",
       "reserveButton": "Rezervovat místnost",
       "galleryButton": "Zobrazit galerii"
     },
     "features": {
-      "title": "PROČ ZVOLIT NAŠI ŠKOLÍCÍ MÍSTNOST?",
-      "subtitle": "Pro váš úspěšný event",
+      "title": "VYBAVENÍ",
+      "subtitle": "Vše pro váš úspěšný event",
       "feature1": {
-        "title": "Flexibilní prostor",
-        "description": "Prostorná místnost s modulárním uspořádáním pro 10-50 osob"
+        "title": "Rychlý internet",
+        "description": "Spolehlivé vysokorychlostní připojení pro všechny účastníky"
       },
       "feature2": {
-        "title": "Moderní vybavení",
-        "description": "Projektor, plátno, flipchart a vše potřebné pro prezentace"
+        "title": "Flexibilní uspořádání",
+        "description": "Až 4 stoly - možnost uspořádání do tvaru U či do dvou řad, možnost odebrat stoly"
       },
       "feature3": {
-        "title": "Teambuilding aktivity",
-        "description": "Široký výběr deskových her pro teambuilding a ice-breaker aktivity"
+        "title": "Špičkové technologie",
+        "description": "Projektor, klimatizace, pohodlný nábytek a velké množství zásuvek"
       },
       "feature4": {
-        "title": "Catering",
-        "description": "Kompletní catering služby včetně coffee breaků a obědů"
+        "title": "Flipchart nebo tabule",
+        "description": "Prezentační pomůcky pro kreativní práci"
       }
     },
+    "catering": {
+      "title": "Catering a občerstvení",
+      "description": "Nabízíme možnost objednat si catering do vedlejší místnosti. Rádi zajistíme pití a občerstvení."
+    },
+    "capacity": {
+      "people": "Až {capacity} osob",
+      "hourly": "{price}/h",
+      "daily": "{price}/den",
+      "size": "{size} m² místnost"
+    },
     "packages": {
-      "title": "BALÍČKY PRO FIREMNÍ AKCE",
-      "subtitle": "Vyberte si ideální řešení",
+      "title": "CENÍK A MOŽNOSTI PRONÁJMU",
+      "subtitle": "Flexibilní možnosti dle vašich potřeb",
       "halfDay": {
-        "title": "Půldenní pronájem",
-        "duration": "4 hodiny",
+        "title": "Hodinový pronájem",
+        "duration": "{price}/h",
         "features": {
-          "feature1": "Prostor až pro 30 osob",
-          "feature2": "Základní vybavení",
-          "feature3": "Coffee break",
-          "feature4": "Wi-Fi připojení"
+          "feature1": "Prostor až pro {capacity} osob",
+          "feature2": "Všechno vybavení v ceně",
+          "feature3": "Rychlý internet",
+          "feature4": "Klimatizace"
         }
       },
       "fullDay": {
         "title": "Celodenní pronájem",
-        "duration": "8 hodin",
+        "duration": "{price}/den",
         "features": {
-          "feature1": "Prostor až pro 50 osob",
-          "feature2": "Kompletní vybavení",
-          "feature3": "Coffee break + oběd",
-          "feature4": "Teambuilding aktivity"
+          "feature1": "Prostor až pro {capacity} osob",
+          "feature2": "Všechno vybavení v ceně",
+          "feature3": "Možnost cateringu",
+          "feature4": "Flexibilní uspořádání"
         },
-        "popular": "Nejoblíbenější"
+        "popular": "Nejvýhodnější"
       },
       "custom": {
         "title": "Vlastní balíček",
@@ -384,8 +421,8 @@
       "contactButton": "Kontaktovat"
     },
     "cta": {
-      "title": "Připraveni naplánovat váš event?",
-      "description": "Kontaktujte nás ještě dnes a vytvoříme společně nezapomenutelnou akci pro váš tým.",
+      "title": "Pro rezervaci nebo více informací",
+      "description": "Nás neváhejte kontaktovat na email: {email} či telefonní číslo {phone}. Těšíme se na vaši návštěvu a zajištění perfektního zážitku pro vás a vaše hosty.",
       "button": "Kontaktovat nás"
     },
     "reservation": {
@@ -414,18 +451,17 @@
     "heroImageAlt": "Interiér Deskohub",
     "infoTitle": "Kontaktní informace",
     "addressLabel": "Adresa",
-    "street": "Náměstí Míru 123",
-    "city": "110 00 Praha 1",
-    "country": "Česká republika",
+    "street": "{street}",
+    "city": "{postalCode} {city} {district}",
     "phoneLabel": "Telefon",
-    "phoneNumber": "+420 123 456 789",
+    "phoneNumber": "{phone}",
     "emailLabel": "Email",
-    "emailAddress": "info@deskohub.cz",
+    "emailAddress": "{email}",
     "hoursLabel": "Otevírací doba",
     "weekdays": "PO - PÁ",
-    "weekdayHours": "17:00 - 23:00",
+    "weekdayHours": "{hours}",
     "weekend": "SO - NE",
-    "weekendHours": "15:00 - 24:00",
+    "weekendHours": "{hours}",
     "formTitle": "Napište nám",
     "formDescription": "Máte dotaz nebo chcete rezervovat stůl? Napište nám zprávu a my se vám ozveme co nejdříve.",
     "nameLabel": "Jméno",
@@ -439,7 +475,20 @@
     "submitButton": "Odeslat zprávu",
     "mapTitle": "Kde nás najdete",
     "mapPlaceholder": "Mapa bude zde",
-    "mapAddress": "Náměstí Míru 123, Praha 1",
+    "mapAddress": "{address}",
+    "transport": {
+      "title": "Jak se k nám dostanete?",
+      "mhd": {
+        "title": "MHD:",
+        "metro": "Metro: Palmovka (Linka B) – 5 minut chůze",
+        "tram": "Tramvaj: Palmovka – tramvaje č. 1, 6, 8, 16, 25, 10 – 5 minut chůze",
+        "bus": "Autobus: Balabenka – linky 109, 140, 185 - 10 minut chůze"
+      },
+      "car": {
+        "title": "Autem:",
+        "parking": "Jsou tu modré a fialové zóny, ale volná místa v okolí občas jsou."
+      }
+    },
     "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme."
   },
   "menu": {
@@ -453,15 +502,15 @@
     "downloadPDF": "Stáhnout menu (PDF)",
     "openingHours": {
       "weekdays": "PO - PÁ",
-      "weekdaysTime": "17:00-23:00",
+      "weekdaysTime": "{hours}",
       "weekend": "SO - NE",
-      "weekendTime": "15:00-24:00"
+      "weekendTime": "{hours}"
     },
     "sections": {
       "food": "JÍDLO",
       "drinks": "NÁPOJE"
     },
-    "footerNote": "Vstupné pro hráče deskových her: Cena je 50 Kč pro deskohráče, kteří si u nás něco objednají a 100 Kč pro zákazníky s nulovou útratou."
+    "footerNote": "Vstupné pro hráče deskových her: Cena je {priceWith} pro deskohráče, kteří si u nás něco objednají a {priceWithout} pro zákazníky s nulovou útratou."
   },
   "boardGames": {
     "pageTitle": "Deskové hry - Deskohub",

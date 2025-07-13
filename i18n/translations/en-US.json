@@ -1,9 +1,9 @@
 {
   "language": "English",
   "siteTitle": "Deskohub",
-  "siteDescription": "Play, drink, eat - everything at one table. Visit the best board game bar for all board game enthusiasts.",
-  "pageTitle": "Board Game Bar & Restaurant",
-  "pageDescription": "Experience the best board game bar in town. Play from our collection of 300+ games while enjoying craft beer and delicious food.",
+  "siteDescription": "Board game club and training room - infinity of perspectives. A place where fantasy meets reality in reflections of infinite worlds.",
+  "pageTitle": "Board Game Club & Training Room",
+  "pageDescription": "Deskohub - a place for everyone who loves board games, strategic, campaign or party games. Operated by board gamers.",
   "nav": {
     "home": "HOME",
     "boardGames": "BOARD GAMES",
@@ -19,9 +19,9 @@
     "contact": "CONTACT"
   },
   "hero": {
-    "title": "Play, drink, eat",
-    "subtitle": "everything at one table",
-    "description": "Entry fee for board game players who order from us and for customers with zero spending.",
+    "title": "World Behind the Mirror",
+    "subtitle": "where passion for games and professional growth reflects",
+    "description": "A place for everyone who loves board games. Quiet corners for your favorite social game and the opportunity to learn new games.",
     "priceInfo": {
       "withPurchase": "Entry fee with purchase:",
       "withoutPurchase": "Entry fee without purchase:"
@@ -32,12 +32,40 @@
     "weekends": "SAT - SUN"
   },
   "about": {
-    "description": "Entry fee for board game players. Entry fee is valid for 1 day without time limit. For children under 15 years old, entry is free. MONDAY WITHOUT ENTRY FEE.",
+    "description": "A place for everyone who loves board games, whether strategic, campaign or party games. An ideal space for meeting friends and getting to know new kindred spirits.",
     "priceInfo": {
       "withPurchase": "With purchase:",
       "withoutPurchase": "Without purchase:",
       "childrenFree": "Children under 15: Free",
       "mondayFree": "Monday: No entry fee"
+    }
+  },
+  "features": {
+    "title": "WHY DESKOHUB?",
+    "subtitle": "The ideal space for your gaming experience",
+    "feature1": {
+      "title": "100+ board games",
+      "description": "Large selection of board and card games for everyone"
+    },
+    "feature2": {
+      "title": "Large tables with playmats",
+      "description": "Comfortable gaming space for your games"
+    },
+    "feature3": {
+      "title": "Rules explanation",
+      "description": "We'll gladly explain the rules and play with you"
+    },
+    "feature4": {
+      "title": "Quality lighting",
+      "description": "Ideal lighting conditions for gaming experience"
+    },
+    "feature5": {
+      "title": "Community",
+      "description": "Meet new like-minded people"
+    },
+    "feature6": {
+      "title": "Operated by gamers",
+      "description": "We understand your needs"
     }
   },
   "stats": {
@@ -112,15 +140,14 @@
   "footer": {
     "tagline": "Bar • Board games • Community",
     "socialLinks": {
-      "instagram": "Instagram",
+      "youtube": "YouTube",
       "facebook": "Facebook",
-      "tiktok": "TikTok",
-      "linkedin": "LinkedIn"
+      "instagram": "Instagram"
     }
   },
   "metadata": {
-    "title": "Deskohub - Board Game Bar",
-    "description": "Play, drink, eat - everything at one table. Visit the best board game bar for all board game enthusiasts."
+    "title": "Deskohub - Board Game Club & Training Room",
+    "description": "A place where fantasy meets reality. Board games, training room and board gamer community in Prague."
   },
   "reservation": {
     "pageTitle": "Table Reservation",
@@ -157,7 +184,7 @@
     "preOrderDrinks": "Drinks",
     "preOrderDetails": "Pre-order Details",
     "preOrderDetailsPlaceholder": "Please specify your food and drink preferences...",
-    "pricingInfo": "Entry fee: 50 CZK with order, 100 CZK without order",
+    "pricingInfo": "Entry fee: {priceWith} with order, {priceWithout} without order",
     "submit": "Book Table",
     "submitting": "Submitting...",
     "successTitle": "Booking Successful!",
@@ -177,7 +204,7 @@
       "guestCount": {
         "required": "Number of guests is required",
         "minimum": "Number of guests is required",
-        "maximum": "Maximum 10 guests allowed",
+        "maximum": "Maximum {max} guests allowed",
         "integer": "Number of guests must be a whole number"
       },
       "name": {
@@ -312,58 +339,68 @@
     "description": "Thank you for your reservation at Deskohub"
   },
   "training": {
-    "pageTitle": "Training Room",
-    "pageDescription": "Perfect space for corporate events, workshops and team building activities at Deskohub",
+    "pageTitle": "Training Room or Meeting Room",
+    "pageDescription": "Rent a room for up to 20 people. Suitable for training, business meetings, workshops or team brainstorming. Just a short walk from Palmovka metro.",
     "hero": {
-      "title": "Team Building",
-      "subtitle": "in the training room",
-      "description": "Ideal space for corporate events, workshops and team building activities. Combine business with pleasure through board games.",
+      "title": "Rent a room for up to 20 people",
+      "subtitle": "Training room or meeting room",
+      "description": "At Deskohub we offer a training room for rent that can also be used for business meetings as a conference room. It is also suitable for workshops or team brainstorming. Located just a short walk from Palmovka metro station, ensuring easy access for all participants.",
       "reserveButton": "Reserve Room",
       "galleryButton": "View Gallery"
     },
     "features": {
-      "title": "WHY CHOOSE OUR TRAINING ROOM?",
-      "subtitle": "For your successful event",
+      "title": "EQUIPMENT",
+      "subtitle": "Everything for your successful event",
       "feature1": {
-        "title": "Flexible Space",
-        "description": "Spacious room with modular setup for 10-50 people"
+        "title": "Fast Internet",
+        "description": "Reliable high-speed connection for all participants"
       },
       "feature2": {
-        "title": "Modern Equipment",
-        "description": "Projector, screen, flipchart and everything needed for presentations"
+        "title": "Flexible Layout",
+        "description": "Up to 4 tables - can be arranged in U-shape or two rows, tables can be removed"
       },
       "feature3": {
-        "title": "Team Building Activities",
-        "description": "Wide selection of board games for team building and ice-breaker activities"
+        "title": "Top Technology",
+        "description": "Projector, air conditioning, comfortable furniture and plenty of power outlets"
       },
       "feature4": {
-        "title": "Catering",
-        "description": "Complete catering services including coffee breaks and lunches"
+        "title": "Flipchart or Whiteboard",
+        "description": "Presentation tools for creative work"
       }
     },
+    "catering": {
+      "title": "Catering and Refreshments",
+      "description": "We offer the option to order catering in the adjacent room. We'll be happy to provide drinks and refreshments."
+    },
+    "capacity": {
+      "people": "Up to {capacity} people",
+      "hourly": "{price}/h",
+      "daily": "{price}/day",
+      "size": "{size} m² room"
+    },
     "packages": {
-      "title": "CORPORATE EVENT PACKAGES",
-      "subtitle": "Choose your ideal solution",
+      "title": "PRICING AND RENTAL OPTIONS",
+      "subtitle": "Flexible options for your needs",
       "halfDay": {
-        "title": "Half-Day Rental",
-        "duration": "4 hours",
+        "title": "Hourly Rental",
+        "duration": "{price}/h",
         "features": {
-          "feature1": "Space for up to 30 people",
-          "feature2": "Basic equipment",
-          "feature3": "Coffee break",
-          "feature4": "Wi-Fi connection"
+          "feature1": "Space for up to {capacity} people",
+          "feature2": "All equipment included",
+          "feature3": "Fast internet",
+          "feature4": "Air conditioning"
         }
       },
       "fullDay": {
         "title": "Full-Day Rental",
-        "duration": "8 hours",
+        "duration": "{price}/day",
         "features": {
-          "feature1": "Space for up to 50 people",
-          "feature2": "Complete equipment",
-          "feature3": "Coffee break + lunch",
-          "feature4": "Team building activities"
+          "feature1": "Space for up to {capacity} people",
+          "feature2": "All equipment included",
+          "feature3": "Catering available",
+          "feature4": "Flexible layout"
         },
-        "popular": "Most Popular"
+        "popular": "Best Value"
       },
       "custom": {
         "title": "Custom Package",
@@ -379,8 +416,8 @@
       "contactButton": "Contact"
     },
     "cta": {
-      "title": "Ready to plan your event?",
-      "description": "Contact us today and let's create an unforgettable event for your team together.",
+      "title": "For reservations or more information",
+      "description": "Feel free to contact us at email: {email} or phone number {phone}. We look forward to your visit and ensuring a perfect experience for you and your guests.",
       "button": "Contact Us"
     },
     "reservation": {
@@ -409,18 +446,17 @@
     "heroImageAlt": "Deskohub interior",
     "infoTitle": "Contact Information",
     "addressLabel": "Address",
-    "street": "Náměstí Míru 123",
-    "city": "110 00 Prague 1",
-    "country": "Czech Republic",
+    "street": "{street}",
+    "city": "{postalCode} {city} {district}",
     "phoneLabel": "Phone",
-    "phoneNumber": "+420 123 456 789",
+    "phoneNumber": "{phone}",
     "emailLabel": "Email",
-    "emailAddress": "info@deskohub.cz",
+    "emailAddress": "{email}",
     "hoursLabel": "Opening Hours",
     "weekdays": "MON - FRI",
-    "weekdayHours": "17:00 - 23:00",
+    "weekdayHours": "{hours}",
     "weekend": "SAT - SUN",
-    "weekendHours": "15:00 - 24:00",
+    "weekendHours": "{hours}",
     "formTitle": "Write to Us",
     "formDescription": "Have a question or want to book a table? Send us a message and we'll get back to you as soon as possible.",
     "nameLabel": "Name",
@@ -434,7 +470,20 @@
     "submitButton": "Send Message",
     "mapTitle": "Where to Find Us",
     "mapPlaceholder": "Map will be here",
-    "mapAddress": "Náměstí Míru 123, Prague 1",
+    "mapAddress": "{address}",
+    "transport": {
+      "title": "How to Get Here?",
+      "mhd": {
+        "title": "Public Transport:",
+        "metro": "Metro: Palmovka (Line B) – 5 minute walk",
+        "tram": "Tram: Palmovka – trams no. 1, 6, 8, 16, 25, 10 – 5 minute walk",
+        "bus": "Bus: Balabenka – lines 109, 140, 185 - 10 minute walk"
+      },
+      "car": {
+        "title": "By Car:",
+        "parking": "There are blue and purple zones here, but free spots in the area are sometimes available."
+      }
+    },
     "successMessage": "Your message has been sent successfully! We'll get back to you soon."
   },
   "menu": {
@@ -448,15 +497,15 @@
     "downloadPDF": "Download menu (PDF)",
     "openingHours": {
       "weekdays": "MON - FRI",
-      "weekdaysTime": "17:00-23:00",
+      "weekdaysTime": "{hours}",
       "weekend": "SAT - SUN",
-      "weekendTime": "15:00-24:00"
+      "weekendTime": "{hours}"
     },
     "sections": {
       "food": "FOOD",
       "drinks": "DRINKS"
     },
-    "footerNote": "Entry fee for board game players: 50 CZK for customers who order from us and 100 CZK for customers with zero spending."
+    "footerNote": "Entry fee for board game players: {priceWith} for customers who order from us and {priceWithout} for customers with zero spending."
   },
   "boardGames": {
     "pageTitle": "Board Games - Deskohub",
