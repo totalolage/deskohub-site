@@ -13,7 +13,7 @@ export default async function RootLayout({
       <body>
         <div className="min-h-screen bg-white [--header-height:80px]">
           <Header />
-          <main className="min-h-[calc(100dvh-var(--header-height))] ">
+          <main className="min-h-[calc(100dvh-var(--header-height))] isolate">
             {children}
           </main>
           <Footer />
