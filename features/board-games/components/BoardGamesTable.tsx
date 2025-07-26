@@ -68,9 +68,6 @@ export const BoardGamesTable = ({ games }: BoardGamesTableProps) => {
               <th className="px-6 py-4 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">
                 {m["boardGames.table.rating"]()}
               </th>
-              <th className="px-6 py-4 text-left text-sm font-medium text-gray-300 uppercase tracking-wider">
-                {m["boardGames.table.availability"]()}
-              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-700">
@@ -138,20 +135,6 @@ export const BoardGamesTable = ({ games }: BoardGamesTableProps) => {
                     <Star className="w-4 h-4 text-yellow-400 fill-current mr-1" />
                     <span className="text-sm text-gray-300">{game.rating}</span>
                   </div>
-                </td>
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={cn(
-                      "inline-flex px-2 py-1 text-xs font-semibold rounded-full",
-                      game.available
-                        ? "bg-green-100 text-green-800"
-                        : "bg-red-100 text-red-800"
-                    )}
-                  >
-                    {game.available
-                      ? m["boardGames.available"]()
-                      : m["boardGames.unavailable"]()}
-                  </span>
                 </td>
               </tr>
             ))}

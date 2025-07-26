@@ -1,8 +1,7 @@
 "use client";
 
-import { Filter, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { m } from "@/i18n";
-import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
 import {
   Select,
@@ -20,7 +19,6 @@ interface FilterState {
   searchTerm: string;
   selectedCategory: string;
   selectedDifficulty: string;
-  showAvailableOnly: boolean;
   sortOption: SortOption;
 }
 
@@ -113,20 +111,6 @@ export const BoardGamesFilters = ({
               ))}
             </SelectContent>
           </Select>
-          <Button
-            variant={filters.showAvailableOnly ? "default" : "outline"}
-            onClick={() =>
-              onFilterChange("showAvailableOnly", !filters.showAvailableOnly)
-            }
-            className={
-              filters.showAvailableOnly
-                ? "bg-green-500 hover:bg-green-600"
-                : "border-gray-600 text-white hover:bg-gray-700"
-            }
-          >
-            <Filter className="w-4 h-4 mr-2" />
-            {m["boardGames.filters.onlyAvailable"]()}
-          </Button>
         </div>
 
         {/* Second row: Sort dropdown and View Toggle */}

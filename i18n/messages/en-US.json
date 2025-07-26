@@ -583,7 +583,6 @@
       "searchPlaceholder": "Search games...",
       "category": "Category",
       "difficulty": "Difficulty",
-      "onlyAvailable": "Only available",
       "foundGames": [
         {
           "declarations": ["input count", "local countPlural = count: plural"],
@@ -626,11 +625,8 @@
       "duration": "Game Duration",
       "difficulty": "Difficulty",
       "category": "Category",
-      "rating": "Rating",
-      "availability": "Availability"
+      "rating": "Rating"
     },
-    "available": "Available",
-    "unavailable": "Unavailable",
     "noGamesFound": "No games match your criteria."
   },
   "gallery": {

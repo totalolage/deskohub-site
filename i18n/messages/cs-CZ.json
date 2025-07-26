@@ -595,7 +595,6 @@
       "searchPlaceholder": "Hledat hry...",
       "category": "Kategorie",
       "difficulty": "Obtížnost",
-      "onlyAvailable": "Pouze dostupné",
       "foundGames": [
         {
           "declarations": ["input count", "local countPlural = count: plural"],
@@ -639,11 +638,8 @@
       "duration": "Doba hry",
       "difficulty": "Obtížnost",
       "category": "Kategorie",
-      "rating": "Hodnocení",
-      "availability": "Dostupnost"
+      "rating": "Hodnocení"
     },
-    "available": "Dostupné",
-    "unavailable": "Nedostupné",
     "noGamesFound": "Žádné hry neodpovídají vašim kritériím."
   },
   "gallery": {

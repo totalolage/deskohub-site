@@ -9,7 +9,6 @@ export interface BoardGame {
   difficulty?: "easy" | "medium" | "hard";
   category?: string;
   rating: number; // Out of 10
-  available: boolean;
   description?: TranslatableString;
   // Additional fields from CSV
   expansions?: string;

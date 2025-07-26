@@ -59,13 +59,6 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
             height={200}
             className="w-full h-48 object-cover rounded-lg"
           />
-          {!game.available && (
-            <div className="absolute inset-0 bg-black bg-opacity-60 rounded-lg flex items-center justify-center">
-              <span className="text-red-400 font-semibold">
-                {m["boardGames.unavailable"]()}
-              </span>
-            </div>
-          )}
         </div>
       </CardHeader>
       <CardContent>

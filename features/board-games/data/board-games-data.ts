@@ -20,7 +20,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -40,7 +39,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "AI: 100% Human",
@@ -57,7 +55,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Akropolis",
@@ -74,7 +71,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: {
@@ -95,7 +91,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Anachrony",
@@ -113,7 +108,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -134,7 +128,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -155,7 +148,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -175,7 +167,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-6",
     difficulty: "hard",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: {
@@ -198,7 +189,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Azul",
@@ -215,7 +205,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: {
@@ -237,7 +226,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -257,7 +245,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: {
@@ -277,7 +264,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Cristal Palace",
@@ -287,7 +273,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Beyond the Sun",
@@ -305,7 +290,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Bios: Megafauna (Second Edition)",
@@ -323,7 +307,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Bios: Mesofauna",
@@ -340,7 +323,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Bitoku",
@@ -357,7 +339,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Bonfire",
@@ -373,7 +354,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Brass: Birmingham",
@@ -391,7 +371,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -411,7 +390,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Family",
-    available: true,
   },
   {
     name: {
@@ -431,7 +409,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Party",
-    available: true,
   },
   {
     name: "The Castles of Burgundy",
@@ -448,7 +425,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "CATAN",
@@ -464,7 +440,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Caverna: The Cave Farmers",
@@ -482,7 +457,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-7",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Churchill",
@@ -499,7 +473,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -520,7 +493,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Clank! In! Space!: A Deck-Building Adventure",
@@ -538,7 +510,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: "Clank! Legacy: Acquisitions Incorporated",
@@ -556,7 +527,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: {
@@ -574,7 +544,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: {
@@ -592,7 +561,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-8+",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: {
@@ -610,7 +578,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-8+",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Codex Naturalis",
@@ -626,7 +593,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Cooper Island",
@@ -642,7 +608,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Daitoshi",
@@ -657,7 +622,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -677,7 +641,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -697,7 +660,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -718,7 +680,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: "Desítka",
@@ -728,7 +689,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Discordia",
@@ -739,7 +699,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Dixit",
@@ -756,7 +715,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3-6",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Dominant Species: Marine",
@@ -774,7 +732,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -795,7 +752,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Dune: Imperium – Uprising",
@@ -813,7 +769,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Ecologic",
@@ -823,7 +778,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Eldritch Horror",
@@ -842,7 +796,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-8",
     difficulty: "hard",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: "Evacuation",
@@ -859,7 +812,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Everdell",
@@ -877,7 +829,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Flatiron",
@@ -887,7 +838,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Divukraj",
@@ -897,7 +847,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Family",
-    available: true,
   },
   {
     name: {
@@ -918,7 +867,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Molly house",
@@ -928,7 +876,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Party",
-    available: true,
   },
   {
     name: "Fantasy Realms: Deluxe Edition",
@@ -946,7 +893,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3-6",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "The First Tsar: Ivan the Terrible",
@@ -964,7 +910,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "The Fox in the Forest Duet",
@@ -981,7 +926,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Gùgōng",
@@ -993,7 +937,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Hanabi",
@@ -1009,7 +952,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Hanamikoji",
@@ -1025,7 +967,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2",
     difficulty: "easy",
     category: "Strategic",
-    available: true,
   },
   {
     name: "High Frontier 4 All",
@@ -1042,7 +983,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Imperium: Classics",
@@ -1057,7 +997,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Imperium: Horizons",
@@ -1073,7 +1012,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Imperium: Legends",
@@ -1089,7 +1027,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Inis",
@@ -1106,7 +1043,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Inventions: Evolution of Ideas",
@@ -1124,7 +1060,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "It's a Wonderful World",
@@ -1141,7 +1076,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "John Company: Second Edition",
@@ -1158,7 +1092,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-6",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "The King Is Dead: Second Edition",
@@ -1176,7 +1109,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Kaskádie",
@@ -1186,7 +1118,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Kutná Hora",
@@ -1196,7 +1127,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Lisboa",
@@ -1212,7 +1142,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Lords of Waterdeep",
@@ -1228,7 +1157,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Lost Ruins of Arnak",
@@ -1246,7 +1174,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Messina 1347",
@@ -1261,7 +1188,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "MLEM: Space Agency",
@@ -1276,7 +1202,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Mottainai",
@@ -1291,7 +1216,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Munchkin",
@@ -1306,7 +1230,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3-6",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Munchkin Zombies",
@@ -1321,7 +1244,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3-6",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Neanderthal",
@@ -1337,7 +1259,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Nemesis",
@@ -1353,7 +1274,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "hard",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: "Noctiluca",
@@ -1368,7 +1288,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Nucleum",
@@ -1385,7 +1304,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Northgard",
@@ -1396,7 +1314,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-6",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -1414,7 +1331,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-8",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "On Mars",
@@ -1429,7 +1345,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Outlive",
@@ -1444,7 +1359,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: {
@@ -1464,7 +1378,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Pax Pamir: Second Edition",
@@ -1481,7 +1394,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Pax Emancipation",
@@ -1491,7 +1403,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-3",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Petrichor",
@@ -1507,7 +1418,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Point Salad",
@@ -1522,7 +1432,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-6",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: {
@@ -1542,7 +1451,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Port Royal",
@@ -1559,7 +1467,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Proroctví",
@@ -1569,7 +1476,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Rats of Wistar",
@@ -1584,7 +1490,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "The Red Cathedral",
@@ -1599,7 +1504,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Res Arcana",
@@ -1615,7 +1519,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Roam",
@@ -1630,7 +1533,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Robinson Crusoe",
@@ -1640,7 +1542,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: "Samurai Sword",
@@ -1657,7 +1558,6 @@ export const boardGamesData: BoardGame[] = [
     players: "3-7",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Scythe",
@@ -1674,7 +1574,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Sea Salt & Paper",
@@ -1690,7 +1589,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Seasons",
@@ -1706,7 +1604,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Secret Hitler",
@@ -1716,7 +1613,6 @@ export const boardGamesData: BoardGame[] = [
     players: "5-10",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: "Seti",
@@ -1726,7 +1622,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Seven Dragons",
@@ -1741,7 +1636,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Shipyard (Second Edition)",
@@ -1758,7 +1652,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Sid Meier's Civilization: The Board Game",
@@ -1777,7 +1670,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Sleeping Gods",
@@ -1793,7 +1685,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
   {
     name: "Spirit Island",
@@ -1812,7 +1703,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Stroganov",
@@ -1827,7 +1717,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Šestiměstí",
@@ -1837,7 +1726,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-6",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Take 5",
@@ -1852,7 +1740,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-10",
     difficulty: "easy",
     category: "Party",
-    available: true,
   },
   {
     name: {
@@ -1871,7 +1758,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-8",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Through the Ages: A New Story of Civilization",
@@ -1888,7 +1774,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Trickerion: Collector's Edition",
@@ -1905,7 +1790,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Tyrants of the Underdark: Board Game",
@@ -1920,7 +1804,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Unconscious Mind - Delux",
@@ -1937,7 +1820,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Underwater Cities",
@@ -1954,7 +1836,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "The White Castle",
@@ -1970,7 +1851,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Vijayanagara: The Deccan Empires of Medieval India, 1290-1398",
@@ -1979,7 +1859,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-3",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Windmill Valley",
@@ -1994,7 +1873,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "easy",
     category: "Family",
-    available: true,
   },
   {
     name: "Wingspan",
@@ -2012,7 +1890,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-5",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Witchstone",
@@ -2027,7 +1904,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Woodcraft",
@@ -2043,7 +1919,6 @@ export const boardGamesData: BoardGame[] = [
     players: "1-4",
     difficulty: "hard",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Zkáza na orbitě",
@@ -2052,7 +1927,6 @@ export const boardGamesData: BoardGame[] = [
     players: "2-4",
     difficulty: "medium",
     category: "Strategic",
-    available: true,
   },
   {
     name: "Zaklínač",
@@ -2061,6 +1935,5 @@ export const boardGamesData: BoardGame[] = [
     players: "2-5",
     difficulty: "medium",
     category: "Dungeon Crawler",
-    available: true,
   },
 ];

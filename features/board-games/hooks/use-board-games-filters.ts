@@ -16,7 +16,6 @@ interface FilterState {
   searchTerm: string;
   selectedCategory: string;
   selectedDifficulty: string;
-  showAvailableOnly: boolean;
   sortOption: SortOption;
 }
 
@@ -36,7 +35,6 @@ export const useBoardGamesFilters = ({ games }: UseFiltersOptions) => {
     searchTerm: "",
     selectedCategory: m["boardGames.filters.categories.all"](),
     selectedDifficulty: m["boardGames.filters.difficulties.all"](),
-    showAvailableOnly: false,
     sortOption: DEFAULT_SORT_OPTION,
   });
 
@@ -73,14 +71,7 @@ export const useBoardGamesFilters = ({ games }: UseFiltersOptions) => {
           m[`boardGames.filters.difficulties.${game.difficulty}`]() ===
             filters.selectedDifficulty);
 
-      const matchesAvailability = !filters.showAvailableOnly || game.available;
-
-      return (
-        matchesSearch &&
-        matchesCategory &&
-        matchesDifficulty &&
-        matchesAvailability
-      );
+      return matchesSearch && matchesCategory && matchesDifficulty;
     });
 
     // Sort games
