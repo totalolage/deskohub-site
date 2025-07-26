@@ -4,8 +4,4 @@ export { BoardGamesHero } from "./components/BoardGamesHero";
 export { BoardGamesList } from "./components/BoardGamesList";
 export { BoardGamesTable } from "./components/BoardGamesTable";
 
-export type {
-  BoardGame,
-  BoardGamesFilterState,
-  ViewMode,
-} from "./types/board-games.types";
+export type { BoardGame, ViewMode } from "./types/board-games.types";

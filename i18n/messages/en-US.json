@@ -607,6 +607,17 @@
         "easy": "Easy",
         "medium": "Medium",
         "hard": "Hard"
+      },
+      "sortBy": "Sort by",
+      "sort": {
+        "nameAsc": "Name (A-Z)",
+        "nameDesc": "Name (Z-A)",
+        "ratingAsc": "Rating (Low to High)",
+        "ratingDesc": "Rating (High to Low)",
+        "playersAsc": "Players (Few to Many)",
+        "playersDesc": "Players (Many to Few)",
+        "durationAsc": "Duration (Short to Long)",
+        "durationDesc": "Duration (Long to Short)"
       }
     },
     "table": {

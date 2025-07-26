@@ -18,10 +18,3 @@ export interface BoardGame {
 }
 
 export type ViewMode = "cards" | "table";
-
-export interface BoardGamesFilterState {
-  searchTerm: string;
-  selectedCategory: string;
-  selectedDifficulty: string;
-  showAvailableOnly: boolean;
-}

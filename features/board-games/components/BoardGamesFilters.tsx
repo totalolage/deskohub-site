@@ -1,6 +1,6 @@
 "use client";
 
-import { Filter, LayoutGrid, List, Search } from "lucide-react";
+import { Filter, Search } from "lucide-react";
 import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Input } from "@/shared/components/ui/input";
@@ -11,31 +11,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/shared/components/ui/select";
+import type { SortOption } from "../constants/sort-options";
 import type { ViewMode } from "../types/board-games.types";
+import { getSortOptions } from "../utils/get-sort-options";
+import { ViewModeToggle } from "./ViewModeToggle";
+
+interface FilterState {
+  searchTerm: string;
+  selectedCategory: string;
+  selectedDifficulty: string;
+  showAvailableOnly: boolean;
+  sortOption: SortOption;
+}
 
 interface BoardGamesFiltersProps {
-  searchTerm: string;
-  setSearchTerm: (value: string) => void;
-  selectedCategory: string;
-  setSelectedCategory: (value: string) => void;
-  selectedDifficulty: string;
-  setSelectedDifficulty: (value: string) => void;
-  showAvailableOnly: boolean;
-  setShowAvailableOnly: (value: boolean) => void;
+  filters: FilterState;
+  onFilterChange: <K extends keyof FilterState>(
+    key: K,
+    value: FilterState[K]
+  ) => void;
   viewMode: ViewMode;
   setViewMode: (value: ViewMode) => void;
   filteredCount: number;
 }
 
 export const BoardGamesFilters = ({
-  searchTerm,
-  setSearchTerm,
-  selectedCategory,
-  setSelectedCategory,
-  selectedDifficulty,
-  setSelectedDifficulty,
-  showAvailableOnly,
-  setShowAvailableOnly,
+  filters,
+  onFilterChange,
   viewMode,
   setViewMode,
   filteredCount,
@@ -55,20 +57,26 @@ export const BoardGamesFilters = ({
     m["boardGames.filters.difficulties.hard"](),
   ];
 
+  const sortOptions = getSortOptions();
+
   return (
     <div className="bg-gray-800 rounded-lg p-6 mb-8">
-      <div className="flex items-center justify-between mb-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 flex-1 mr-4">
+      <div className="flex flex-col gap-4">
+        {/* First row: Search, Category, Difficulty, Available filter */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-3 h-4 w-4 text-gray-400" />
             <Input
               placeholder={m["boardGames.filters.searchPlaceholder"]()}
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              value={filters.searchTerm}
+              onChange={(e) => onFilterChange("searchTerm", e.target.value)}
               className="pl-10 bg-gray-700 border-gray-600 text-white placeholder-gray-400"
             />
           </div>
-          <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+          <Select
+            value={filters.selectedCategory}
+            onValueChange={(value) => onFilterChange("selectedCategory", value)}
+          >
             <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
               <SelectValue placeholder={m["boardGames.filters.category"]()} />
             </SelectTrigger>
@@ -85,8 +93,10 @@ export const BoardGamesFilters = ({
             </SelectContent>
           </Select>
           <Select
-            value={selectedDifficulty}
-            onValueChange={setSelectedDifficulty}
+            value={filters.selectedDifficulty}
+            onValueChange={(value) =>
+              onFilterChange("selectedDifficulty", value)
+            }
           >
             <SelectTrigger className="bg-gray-700 border-gray-600 text-white">
               <SelectValue placeholder={m["boardGames.filters.difficulty"]()} />
@@ -104,10 +114,12 @@ export const BoardGamesFilters = ({
             </SelectContent>
           </Select>
           <Button
-            variant={showAvailableOnly ? "default" : "outline"}
-            onClick={() => setShowAvailableOnly(!showAvailableOnly)}
+            variant={filters.showAvailableOnly ? "default" : "outline"}
+            onClick={() =>
+              onFilterChange("showAvailableOnly", !filters.showAvailableOnly)
+            }
             className={
-              showAvailableOnly
+              filters.showAvailableOnly
                 ? "bg-green-500 hover:bg-green-600"
                 : "border-gray-600 text-white hover:bg-gray-700"
             }
@@ -117,35 +129,34 @@ export const BoardGamesFilters = ({
           </Button>
         </div>
 
-        {/* View Toggle */}
-        <div className="flex items-center bg-gray-700 rounded-lg p-1">
-          <Button
-            variant={viewMode === "cards" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("cards")}
-            className={`${
-              viewMode === "cards"
-                ? "bg-green-500 hover:bg-green-600 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-600"
-            }`}
+        {/* Second row: Sort dropdown and View Toggle */}
+        <div className="flex items-center justify-between gap-4">
+          <Select
+            value={filters.sortOption}
+            onValueChange={(value: SortOption) =>
+              onFilterChange("sortOption", value)
+            }
           >
-            <LayoutGrid className="w-4 h-4" />
-          </Button>
-          <Button
-            variant={viewMode === "table" ? "default" : "ghost"}
-            size="sm"
-            onClick={() => setViewMode("table")}
-            className={`${
-              viewMode === "table"
-                ? "bg-green-500 hover:bg-green-600 text-white"
-                : "text-gray-400 hover:text-white hover:bg-gray-600"
-            }`}
-          >
-            <List className="w-4 h-4" />
-          </Button>
+            <SelectTrigger className="bg-gray-700 border-gray-600 text-white w-full md:w-64">
+              <SelectValue placeholder={m["boardGames.filters.sortBy"]()} />
+            </SelectTrigger>
+            <SelectContent className="bg-gray-700 border-gray-600">
+              {sortOptions.map((option) => (
+                <SelectItem
+                  key={option.value}
+                  value={option.value}
+                  className="text-white hover:bg-gray-600"
+                >
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <ViewModeToggle viewMode={viewMode} onChange={setViewMode} />
         </div>
       </div>
-      <p className="text-gray-400 text-sm">
+      <p className="text-gray-400 text-sm mt-4">
         {m["boardGames.filters.foundGames"]({ count: filteredCount })}
       </p>
     </div>

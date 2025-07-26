@@ -620,6 +620,17 @@
         "easy": "Lehké",
         "medium": "Střední",
         "hard": "Těžké"
+      },
+      "sortBy": "Řadit podle",
+      "sort": {
+        "nameAsc": "Název (A-Z)",
+        "nameDesc": "Název (Z-A)",
+        "ratingAsc": "Hodnocení (nejnižší)",
+        "ratingDesc": "Hodnocení (nejvyšší)",
+        "playersAsc": "Počet hráčů (nejméně)",
+        "playersDesc": "Počet hráčů (nejvíce)",
+        "durationAsc": "Délka hry (nejkratší)",
+        "durationDesc": "Délka hry (nejdelší)"
       }
     },
     "table": {
