@@ -19,10 +19,18 @@ import {
 
 const navigationItems = [
   { label: "nav.home", href: "/", text: () => m["nav.home"]() },
-  { label: "nav.boardGames", href: "/board-games", text: () => m["nav.boardGames"]() },
+  {
+    label: "nav.boardGames",
+    href: "/board-games",
+    text: () => m["nav.boardGames"](),
+  },
   { label: "nav.gallery", href: "/gallery", text: () => m["nav.gallery"]() },
   { label: "nav.menu", href: "/menu", text: () => m["nav.menu"]() },
-  { label: "nav.trainingRoom", href: "/training-room", text: () => m["nav.trainingRoom"]() },
+  {
+    label: "nav.trainingRoom",
+    href: "/training-room",
+    text: () => m["nav.trainingRoom"](),
+  },
   { label: "nav.contact", href: "/contact", text: () => m["nav.contact"]() },
 ];
 

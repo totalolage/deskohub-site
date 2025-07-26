@@ -1,92 +1,24 @@
 "use client";
 
-import { useState } from "react";
-import { m } from "@/i18n";
-import type { BoardGame, ViewMode } from "../types/board-games.types";
+import { useMemo, useState } from "react";
+import { getLocale, m } from "@/i18n";
+import type { TranslatableString } from "@/types/translatable-string";
+import { boardGamesData } from "../data/board-games-data";
+import type { ViewMode } from "../types/board-games.types";
 import { BoardGamesCard } from "./BoardGamesCard";
 import { BoardGamesFilters } from "./BoardGamesFilters";
 import { BoardGamesTable } from "./BoardGamesTable";
 
-// Temporary mock data - should be replaced with actual data fetching
-const boardGames: BoardGame[] = [
-  {
-    id: 1,
-    name: "Catan",
-    image: "/placeholder.svg?height=200&width=200",
-    players: "3-4",
-    duration: "60-90 min",
-    difficulty: "medium",
-    category: "Strategic",
-    rating: 4.5,
-    available: true,
-    description:
-      "Classic strategy game about building civilization on the island of Catan.",
-  },
-  {
-    id: 2,
-    name: "Azul",
-    image: "/placeholder.svg?height=200&width=200",
-    players: "2-4",
-    duration: "30-45 min",
-    difficulty: "easy",
-    category: "Family",
-    rating: 4.8,
-    available: true,
-    description:
-      "Beautiful game about creating mosaics inspired by Portuguese tiles.",
-  },
-  {
-    id: 3,
-    name: "Wingspan",
-    image: "/placeholder.svg?height=200&width=200",
-    players: "1-5",
-    duration: "40-70 min",
-    difficulty: "medium",
-    category: "Strategic",
-    rating: 4.7,
-    available: false,
-    description:
-      "Engine-building game about birds with stunning illustrations.",
-  },
-  {
-    id: 4,
-    name: "Ticket to Ride",
-    image: "/placeholder.svg?height=200&width=200",
-    players: "2-5",
-    duration: "30-60 min",
-    difficulty: "easy",
-    category: "Family",
-    rating: 4.4,
-    available: true,
-    description: "Adventure railway journey across continents.",
-  },
-  {
-    id: 5,
-    name: "Gloomhaven",
-    image: "/placeholder.svg?height=200&width=200",
-    players: "1-4",
-    duration: "60-120 min",
-    difficulty: "hard",
-    category: "Dungeon Crawler",
-    rating: 4.9,
-    available: true,
-    description: "Epic tactical RPG adventure in a dark fantasy world.",
-  },
-  {
-    id: 6,
-    name: "Splendor",
-    image: "/placeholder.svg?height=200&width=200",
-    players: "2-4",
-    duration: "30 min",
-    difficulty: "easy",
-    category: "Strategic",
-    rating: 4.3,
-    available: true,
-    description: "Elegant game about gem trading and building an empire.",
-  },
-];
+// Convert rating string to number for compatibility
+const normalizeRating = (rating: string | number): number => {
+  if (typeof rating === "number") return rating;
+  const ratingStr = String(rating);
+  const match = ratingStr.match(/(\d+\.?\d*)/);
+  return match?.[1] ? parseFloat(match[1]) : 0;
+};
 
 export const BoardGamesList = () => {
+  const locale = getLocale();
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState(
     m["boardGames.filters.categories.all"]()
@@ -96,6 +28,26 @@ export const BoardGamesList = () => {
   );
   const [showAvailableOnly, setShowAvailableOnly] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
+
+  // Helper to get localized text
+  const getLocalizedText = (text: TranslatableString | undefined): string => {
+    if (!text) return "";
+    if (typeof text === "string") return text;
+    return text[locale] || "";
+  };
+
+  // Normalize the data for display
+  const boardGames = useMemo(
+    () =>
+      boardGamesData.map((game, index) => ({
+        ...game,
+        id: index + 1,
+        rating: normalizeRating(game.rating),
+        duration: game.duration,
+        image: game.image || "/placeholder.svg?height=200&width=200",
+      })),
+    []
+  );
 
   const categories = {
     all: m["boardGames.filters.categories.all"](),
@@ -113,15 +65,17 @@ export const BoardGamesList = () => {
   };
 
   const filteredGames = boardGames.filter((game) => {
-    const matchesSearch = game.name
+    const gameName = getLocalizedText(game.name);
+    const matchesSearch = gameName
       .toLowerCase()
       .includes(searchTerm.toLowerCase());
     const matchesCategory =
       selectedCategory === categories.all || game.category === selectedCategory;
     const matchesDifficulty =
       selectedDifficulty === difficulties.all ||
-      m[`boardGames.filters.difficulties.${game.difficulty}`]() ===
-        selectedDifficulty;
+      (game.difficulty &&
+        m[`boardGames.filters.difficulties.${game.difficulty}`]() ===
+          selectedDifficulty);
     const matchesAvailability = !showAvailableOnly || game.available;
 
     return (

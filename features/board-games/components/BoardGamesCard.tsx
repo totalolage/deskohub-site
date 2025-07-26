@@ -1,6 +1,6 @@
 import { Clock, Star, Users } from "lucide-react";
 import Image from "next/image";
-import { m } from "@/i18n";
+import { getLocale, m } from "@/i18n";
 import { Badge } from "@/shared/components/ui/badge";
 import {
   Card,
@@ -9,6 +9,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
+import type { TranslatableString } from "@/types/translatable-string";
 import type { BoardGame } from "../types/board-games.types";
 
 interface BoardGamesCardProps {
@@ -16,6 +17,24 @@ interface BoardGamesCardProps {
 }
 
 export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
+  const locale = getLocale();
+
+  // Helper to get localized text
+  const getLocalizedText = (text: TranslatableString): string => {
+    if (typeof text === "string") return text;
+    return text[locale]!;
+  };
+
+  // Helper to format duration
+  const formatDuration = (
+    duration: number | [number, number] | string | undefined
+  ): string => {
+    if (typeof duration === "string") return duration;
+    if (typeof duration === "number") return `${duration} min`;
+    if (Array.isArray(duration)) return `${duration[0]}-${duration[1]} min`;
+    return "";
+  };
+
   const getDifficultyColor = (difficulty: string) => {
     switch (difficulty) {
       case "easy":
@@ -35,7 +54,7 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
         <div className="relative">
           <Image
             src={game.image || "/placeholder.svg"}
-            alt={game.name}
+            alt={getLocalizedText(game.name)}
             width={200}
             height={200}
             className="w-full h-48 object-cover rounded-lg"
@@ -51,38 +70,50 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
       </CardHeader>
       <CardContent>
         <div className="flex items-start justify-between mb-2">
-          <CardTitle className="text-white text-lg">{game.name}</CardTitle>
+          <CardTitle className="text-white text-lg">
+            {getLocalizedText(game.name)}
+          </CardTitle>
           <div className="flex items-center">
             <Star className="w-4 h-4 text-yellow-400 fill-current" />
             <span className="text-sm text-gray-300 ml-1">{game.rating}</span>
           </div>
         </div>
 
-        <p className="text-gray-400 text-sm mb-4">{game.description}</p>
+        {game.description && (
+          <p className="text-gray-400 text-sm mb-4 line-clamp-2">
+            {getLocalizedText(game.description)}
+          </p>
+        )}
 
         <div className="flex flex-wrap gap-2 mb-4">
-          <Badge variant="outline" className="border-gray-600 text-gray-300">
-            <Users className="w-3 h-3 mr-1" />
-            {game.players}
-          </Badge>
+          {game.players && (
+            <Badge variant="outline" className="border-gray-600 text-gray-300">
+              <Users className="w-3 h-3 mr-1" />
+              {game.players}
+            </Badge>
+          )}
           <Badge variant="outline" className="border-gray-600 text-gray-300">
             <Clock className="w-3 h-3 mr-1" />
-            {game.duration}
+            {formatDuration(game.duration)}
           </Badge>
-          <Badge
-            variant="outline"
-            className={cn(
-              "border-gray-600",
-              getDifficultyColor(game.difficulty)
-            )}
-          >
-            {m[`boardGames.filters.difficulties.${game.difficulty}`]()}
-          </Badge>
+          {game.difficulty && (
+            <Badge
+              variant="outline"
+              className={cn(
+                "border-gray-600",
+                getDifficultyColor(game.difficulty)
+              )}
+            >
+              {m[`boardGames.filters.difficulties.${game.difficulty}`]()}
+            </Badge>
+          )}
         </div>
 
-        <Badge className="bg-green-500/20 text-green-400 hover:bg-green-500/30">
-          {game.category}
-        </Badge>
+        {game.category && (
+          <Badge className="bg-green-500/20 text-green-400 hover:bg-green-500/30">
+            {game.category}
+          </Badge>
+        )}
       </CardContent>
     </Card>
   );

@@ -77,13 +77,8 @@
   },
   "boardGamesCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} desková hra",
         "countPlural=few": "{count} deskové hry",
@@ -93,13 +88,8 @@
   ],
   "happyPlayersCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} spokojený hráč",
         "countPlural=few": "{count} spokojení hráči",
@@ -109,13 +99,8 @@
   ],
   "yearsExperienceCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} rok zkušeností",
         "countPlural=few": "{count} roky zkušeností",
@@ -125,13 +110,8 @@
   ],
   "gameNightsCount": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} herní večer",
         "countPlural=few": "{count} herní večery",
@@ -231,13 +211,8 @@
         "minimum": "Počet hostů je povinný",
         "maximum": [
           {
-            "declarations": [
-              "input max",
-              "local maxPlural = max: plural"
-            ],
-            "selectors": [
-              "maxPlural"
-            ],
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
             "match": {
               "maxPlural=one": "Maximálně {max} host povolen",
               "maxPlural=few": "Maximálně {max} hosté povoleni",
@@ -251,13 +226,8 @@
         "required": "Jméno a příjmení je povinné",
         "minimum": [
           {
-            "declarations": [
-              "input min",
-              "local minPlural = min: plural"
-            ],
-            "selectors": [
-              "minPlural"
-            ],
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
             "match": {
               "minPlural=one": "Jméno musí mít alespoň {min} znak",
               "minPlural=few": "Jméno musí mít alespoň {min} znaky",
@@ -267,13 +237,8 @@
         ],
         "maximum": [
           {
-            "declarations": [
-              "input max",
-              "local maxPlural = max: plural"
-            ],
-            "selectors": [
-              "maxPlural"
-            ],
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
             "match": {
               "maxPlural=one": "Jméno musí mít méně než {max} znak",
               "maxPlural=few": "Jméno musí mít méně než {max} znaky",
@@ -288,13 +253,8 @@
         "invalid": "Prosím zadejte platnou e-mailovou adresu",
         "maximum": [
           {
-            "declarations": [
-              "input max",
-              "local maxPlural = max: plural"
-            ],
-            "selectors": [
-              "maxPlural"
-            ],
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
             "match": {
               "maxPlural=one": "E-mail musí mít méně než {max} znak",
               "maxPlural=few": "E-mail musí mít méně než {max} znaky",
@@ -313,13 +273,8 @@
         "minimum": "Minimální doba trvání je 30 minut",
         "maximum": [
           {
-            "declarations": [
-              "input max",
-              "local maxPlural = max: plural"
-            ],
-            "selectors": [
-              "maxPlural"
-            ],
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
             "match": {
               "maxPlural=one": "Maximální doba trvání je {max} hodina",
               "maxPlural=few": "Maximální doba trvání je {max} hodiny",
@@ -332,13 +287,8 @@
       "specialRequests": {
         "maximum": [
           {
-            "declarations": [
-              "input max",
-              "local maxPlural = max: plural"
-            ],
-            "selectors": [
-              "maxPlural"
-            ],
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
             "match": {
               "maxPlural=one": "Speciální požadavky musí mít méně než {max} znak",
               "maxPlural=few": "Speciální požadavky musí mít méně než {max} znaky",
@@ -350,13 +300,8 @@
       "preOrders": {
         "maximum": [
           {
-            "declarations": [
-              "input max",
-              "local maxPlural = max: plural"
-            ],
-            "selectors": [
-              "maxPlural"
-            ],
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
             "match": {
               "maxPlural=one": "Předobjednávky musí mít méně než {max} znak",
               "maxPlural=few": "Předobjednávky musí mít méně než {max} znaky",
@@ -410,13 +355,8 @@
   },
   "guestCountPlural": [
     {
-      "declarations": [
-        "input count",
-        "local countPlural = count: plural"
-      ],
-      "selectors": [
-        "countPlural"
-      ],
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
       "match": {
         "countPlural=one": "{count} osoba",
         "countPlural=few": "{count} osoby",
@@ -426,9 +366,7 @@
   ],
   "durationFormat": [
     {
-      "declarations": [
-        "input hours"
-      ],
+      "declarations": ["input hours"],
       "selectors": [],
       "match": {
         "hours=0.5": "30 minut",
@@ -660,13 +598,8 @@
       "onlyAvailable": "Pouze dostupné",
       "foundGames": [
         {
-          "declarations": [
-            "input count",
-            "local countPlural = count: plural"
-          ],
-          "selectors": [
-            "countPlural"
-          ],
+          "declarations": ["input count", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
           "match": {
             "countPlural=zero": "Nenalezeny žádné hry",
             "countPlural=one": "Nalezena {count} hra",

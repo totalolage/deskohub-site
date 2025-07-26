@@ -1,14 +1,20 @@
+import type { TranslatableString } from "@/types/translatable-string";
+
 export interface BoardGame {
-  id: number;
-  name: string;
-  image: string;
-  players: string;
-  duration: string;
-  difficulty: "easy" | "medium" | "hard";
-  category: string;
-  rating: number;
+  id?: number;
+  name: TranslatableString;
+  image?: string;
+  players?: string;
+  duration?: number | [number, number]; // Minutes
+  difficulty?: "easy" | "medium" | "hard";
+  category?: string;
+  rating: number; // Out of 10
   available: boolean;
-  description: string;
+  description?: TranslatableString;
+  // Additional fields from CSV
+  expansions?: string;
+  language?: "n/a" | (string & {});
+  bggLink?: string;
 }
 
 export type ViewMode = "cards" | "table";
