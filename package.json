@@ -8,7 +8,7 @@
     "next:build": "bunx next build",
     "dev": "run-p dev:next dev:i18n",
     "dev:next": "bunx next dev",
-    "dev:i18n": "chokidar \"i18n/translations/*.json\" -c \"bun i18n:compile\"",
+    "dev:i18n": "chokidar \"i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "predev:i18n": "bun i18n:compile",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./i18n/paraglide",
     "lint": "bunx biome check .",

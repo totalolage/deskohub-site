@@ -83,7 +83,7 @@ deskohub-site/
 │
 ├── i18n/                       # Internationalization config
 │   ├── paraglide/             # Generated translations
-│   └── translations/          # Source translation files
+│   └── messages/              # Source translation files
 │
 ├── assets/                     # Static assets
 │   └── images/
