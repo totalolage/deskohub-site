@@ -15,5 +15,3 @@ export interface BoardGame {
   language?: "n/a" | (string & {});
   bggLink?: string;
 }
-
-export type ViewMode = "cards" | "table";

@@ -1,13 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { m } from "@/i18n";
 import { boardGamesData } from "../data/board-games-data";
 import { useBoardGamesFilters } from "../hooks/use-board-games-filters";
-import type { ViewMode } from "../types/board-games.types";
 import { BoardGamesCard } from "./BoardGamesCard";
 import { BoardGamesFilters } from "./BoardGamesFilters";
-import { BoardGamesTable } from "./BoardGamesTable";
 
 // Convert rating string to number for compatibility
 const normalizeRating = (rating: string | number): number => {
@@ -18,8 +16,6 @@ const normalizeRating = (rating: string | number): number => {
 };
 
 export const BoardGamesList = () => {
-  const [viewMode, setViewMode] = useState<ViewMode>("cards");
-
   // Normalize the data for display
   const boardGames = useMemo(
     () =>
@@ -42,20 +38,14 @@ export const BoardGamesList = () => {
       <BoardGamesFilters
         filters={filters}
         onFilterChange={updateFilter}
-        viewMode={viewMode}
-        setViewMode={setViewMode}
         filteredCount={filteredGames.length}
       />
 
-      {viewMode === "cards" ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredGames.map((game) => (
-            <BoardGamesCard key={game.id} game={game} />
-          ))}
-        </div>
-      ) : (
-        <BoardGamesTable games={filteredGames} />
-      )}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        {filteredGames.map((game) => (
+          <BoardGamesCard key={game.id} game={game} />
+        ))}
+      </div>
 
       {filteredGames.length === 0 && (
         <div className="text-center py-12">
