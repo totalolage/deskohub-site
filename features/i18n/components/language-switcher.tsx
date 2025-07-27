@@ -20,7 +20,7 @@ export function LanguageSwitcher() {
 
   const handleLanguageChange = (newLocale: Locale) => {
     const newPath = setLocaleInPathname(pathname, newLocale);
-    router.push(newPath);
+    router.push(newPath, { scroll: false });
     setLocale(newLocale, { reload: false });
     document.documentElement.lang = newLocale;
     // Clear the router cache to ensure all preloaded routes use the new locale
