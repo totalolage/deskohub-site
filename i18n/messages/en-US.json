@@ -580,6 +580,7 @@
       "subtitle": "Discover our extensive collection of board games for all ages and skill levels"
     },
     "filters": {
+      "search": "Search",
       "searchPlaceholder": "Search games...",
       "category": "Category",
       "difficulty": "Difficulty",

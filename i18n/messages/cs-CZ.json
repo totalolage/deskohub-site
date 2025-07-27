@@ -592,6 +592,7 @@
       "subtitle": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů"
     },
     "filters": {
+      "search": "Hledat",
       "searchPlaceholder": "Hledat hry...",
       "category": "Kategorie",
       "difficulty": "Obtížnost",
