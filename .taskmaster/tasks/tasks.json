@@ -70,54 +70,6 @@
         ]
       },
       {
-        "id": 5,
-        "title": "Research and Design AirTable Integration for Reservation System",
-        "description": "Investigate AirTable API capabilities and design a comprehensive integration strategy for the Deskohub reservation system, including authentication methods, data structure design, and real-time availability management, based on completed research confirming AirTable as an appropriate solution for our MVP.",
-        "status": "pending",
-        "dependencies": [4],
-        "priority": "medium",
-        "details": "1. Analyze AirTable API capabilities:\n   - Examine REST API endpoints and JavaScript SDK options\n   - Document available methods for creating, reading, updating, and deleting reservation records\n   - Evaluate rate limiting constraints and determine appropriate request patterns\n   - Confirm compatibility with Deskohub's existing tech stack\n\n2. Design authentication implementation:\n   - Research OAuth vs. API key authentication options\n   - Document secure credential storage approaches\n   - Create authentication flow diagram for integration\n\n3. Design data structure for reservations:\n   - Map reservation form fields to AirTable table structure\n   - Design normalized data model with appropriate relationships\n   - Document schema for tables needed (Reservations, Users, Spaces, etc.)\n   - Example table structure:\n   ```\n   Reservations Table:\n   - id: Record ID\n   - user_id: Link to Users table\n   - space_id: Link to Spaces table\n   - start_datetime: DateTime\n   - end_datetime: DateTime\n   - status: Single select (Confirmed, Pending, Cancelled)\n   - special_requirements: Long text\n   ```\n\n4. Develop real-time availability checking strategy:\n   - Implement webhook-based approach as confirmed by research\n   - Document algorithm for checking space availability\n   - Design conflict detection logic\n   - Create flowchart for reservation validation process\n\n5. Plan webhook integration for notifications:\n   - Document webhook setup process for AirTable\n   - Design notification event types (reservation created, updated, cancelled)\n   - Create notification handling architecture\n\n6. Document data synchronization patterns:\n   - Evaluate options for handling offline/online scenarios\n   - Design caching strategy for improved performance\n   - Document error handling and retry mechanisms\n\n7. Create integration test plan:\n   - Define test cases for each integration point\n   - Document expected behaviors and edge cases\n   - Create sample API requests and responses\n\n8. Prepare for future integrations:\n   - Document potential pathway to Google Reserve integration for enhanced visibility\n   - Analyze compatibility with Skedda's AirTable integration for coworking-specific features\n   - Outline migration strategy if scaling requires moving to Nexudus or other dedicated platforms",
-        "testStrategy": "1. Verify research completeness:\n   - Confirm documentation of all AirTable API endpoints relevant to reservation system\n   - Validate authentication options are thoroughly explored with security considerations\n   - Ensure data structure design includes all necessary fields from the reservation form\n\n2. Validate technical feasibility:\n   - Create proof-of-concept API calls to verify authentication works\n   - Test sample data creation in AirTable to validate schema design\n   - Verify rate limits are properly documented and mitigation strategies are defined\n   - Test compatibility with existing tech stack components\n\n3. Review integration architecture:\n   - Evaluate the proposed data synchronization patterns for efficiency\n   - Verify conflict detection logic handles all identified edge cases\n   - Confirm notification system design meets project requirements\n   - Test webhook implementation for real-time availability checking\n\n4. Test documentation quality:\n   - Ensure all diagrams and flowcharts are clear and accurate\n   - Verify code examples are properly formatted and executable\n   - Confirm all technical terms are explained appropriately\n\n5. Validate against reservation form requirements:\n   - Cross-reference the AirTable schema design with the reservation form fields\n   - Verify all user inputs from Task #4 can be properly stored in the proposed data structure\n\n6. Evaluate future-proofing:\n   - Assess how well the design accommodates potential future integrations with Google Reserve\n   - Verify compatibility with coworking-specific systems like Skedda\n   - Test scalability of the proposed solution",
-        "subtasks": [
-          {
-            "id": 1,
-            "title": "Review completed research on reservation systems",
-            "description": "Analyze findings on Google Reserve, major restaurant systems (OpenTable, Resy, Yelp Guest Manager, Tock), and coworking systems (Skedda, Nexudus, Tidaro, Robin, Envoy) to inform AirTable integration design.",
-            "status": "pending",
-            "dependencies": [],
-            "details": "",
-            "testStrategy": ""
-          },
-          {
-            "id": 2,
-            "title": "Document AirTable MVP advantages",
-            "description": "Create documentation highlighting why AirTable is appropriate for the MVP: cost-effectiveness, flexibility, custom data structure capabilities, real-time availability options, and tech stack compatibility.",
-            "status": "pending",
-            "dependencies": [],
-            "details": "",
-            "testStrategy": ""
-          },
-          {
-            "id": 3,
-            "title": "Research Skedda's AirTable integration",
-            "description": "Investigate how Skedda ($7/month) integrates with AirTable for potential insights or compatibility with our implementation approach.",
-            "status": "pending",
-            "dependencies": [],
-            "details": "",
-            "testStrategy": ""
-          },
-          {
-            "id": 4,
-            "title": "Outline future integration pathways",
-            "description": "Document potential migration paths to Google Reserve (for visibility) or dedicated coworking platforms (Nexudus) as the system scales beyond MVP.",
-            "status": "pending",
-            "dependencies": [],
-            "details": "",
-            "testStrategy": ""
-          }
-        ]
-      },
-      {
         "id": 6,
         "title": "Implement URL-based Language Switching with Next.js App Router",
         "description": "Implement proper URL-based language routing for the Deskohub website using Next.js App Router middleware, enabling language switching between Czech (/) and English (/en/) URLs with correct content translation.",
@@ -766,7 +718,7 @@
             "id": 6,
             "title": "Perform final verification and update documentation",
             "description": "Conduct comprehensive testing to ensure application stability and update documentation to reflect the changes made.",
-            "dependencies": [5],
+            "dependencies": [],
             "details": "Run the full test suite. Manually test key application flows. Verify the build process completes without errors. Compare bundle size before and after to quantify improvements. Update component documentation to remove references to deleted components. Create a summary report of removed components and the impact on bundle size and maintainability.",
             "status": "pending",
             "testStrategy": "Perform end-to-end testing of critical user flows. Compare performance metrics before and after cleanup to quantify improvements."
@@ -824,7 +776,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-07-13T22:01:35.683Z"
+      "updated": "2025-07-27T17:24:41.957Z"
     }
   }
 }
