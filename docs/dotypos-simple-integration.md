@@ -6,9 +6,11 @@ DeskOHub integrates with Dotypos to create reservations in their POS system. The
 
 ## Architecture
 
-### Single Service Design
+### Separate Feature Design
 
-The entire Dotypos integration is contained in a single file: `features/booking/backend/dotypos.ts`
+The Dotypos integration is its own feature located at: `features/dotypos/`
+
+This separation allows the POS integration to be used by multiple features, not just bookings.
 
 This service:
 - Reads configuration from environment variables
@@ -18,11 +20,11 @@ This service:
 
 ### Integration Point
 
-The Dotypos service is the sole source of truth for reservations and is called directly from the booking action (`features/booking/actions/booking.ts`):
+The Dotypos service is the sole source of truth for reservations. The booking feature uses an adapter (`features/booking/backend/dotypos-adapter.ts`) to connect to it:
 
 ```typescript
-// Create reservation in Dotypos (this is our source of truth)
-const reservation = yield* createDotyposReservation(bookingData);
+// In the booking action, use the adapter
+const reservation = yield* createBookingReservation(bookingData);
 
 yield* Effect.log(
   `Dotypos reservation created: ${reservation.id} (status: ${reservation.status})`
@@ -55,12 +57,17 @@ DOTYPOS_CLOUD_ID=your_cloud_id
 
 ## Implementation Details
 
-### The Single Function
+### Core Functions
 
 ```typescript
-export const createDotyposReservation = (
-  booking: BookingData
-): Effect.Effect<ReservationResponse, ExternalAPIError | NetworkError | ValidationError>
+// In features/dotypos/backend/client.ts
+export const createReservation = (
+  input: ReservationInput
+): Effect.Effect<DotyposReservation, ExternalAPIError | NetworkError | ValidationError>
+
+export const getReservation = (
+  reservationId: string
+): Effect.Effect<DotyposReservation, ExternalAPIError | NetworkError | ValidationError>
 ```
 
 This function:

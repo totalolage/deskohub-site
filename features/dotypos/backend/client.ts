@@ -4,7 +4,7 @@ import {
   NetworkError,
   ValidationError,
 } from "@/shared/backend/errors";
-import type { BookingData } from "../booking";
+import type { DotyposReservation, DotyposTokenResponse } from "../types";
 
 /**
  * Dotypos Configuration Schema
@@ -36,17 +36,16 @@ const DotyposReservationSchema = Schema.Struct({
 });
 
 /**
- * Simple reservation response for the app
+ * Input data for creating a reservation
  */
-export interface ReservationResponse {
-  id: string;
-  status: "confirmed" | "pending" | "cancelled";
-  createdAt: Date;
-  customerName: string;
-  customerEmail?: string;
-  customerPhone?: string;
+export interface ReservationInput {
   datetime: Date;
+  duration: number; // hours
   guestCount: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  tablePreference?: string;
   specialRequests?: string;
 }
 
@@ -59,10 +58,10 @@ export interface ReservationResponse {
  * 3. Creates the reservation
  * 4. Returns a simple response
  */
-export const createDotyposReservation = (
-  booking: BookingData
+export const createReservation = (
+  input: ReservationInput
 ): Effect.Effect<
-  ReservationResponse,
+  DotyposReservation,
   ExternalAPIError | NetworkError | ValidationError
 > =>
   Effect.gen(function* () {
@@ -82,11 +81,11 @@ export const createDotyposReservation = (
     const reservationData = {
       _branchId: 1, // Default branch
       _cloudId: parseInt(config.cloudId),
-      startDate: booking.datetime.getTime(),
-      endDate: booking.datetime.getTime() + booking.duration * 60 * 60 * 1000,
-      seats: booking.guestCount,
+      startDate: input.datetime.getTime(),
+      endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
+      seats: input.guestCount,
       status: "CONFIRMED" as const,
-      note: buildNote(booking),
+      note: buildNote(input),
     };
 
     // Create reservation
@@ -146,12 +145,12 @@ export const createDotyposReservation = (
       id: String(reservation.id),
       status: "confirmed" as const,
       createdAt: new Date(),
-      customerName: booking.name,
-      customerEmail: booking.email,
-      customerPhone: booking.phone,
-      datetime: booking.datetime,
-      guestCount: booking.guestCount,
-      specialRequests: booking.specialRequests,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      datetime: input.datetime,
+      guestCount: input.guestCount,
+      specialRequests: input.specialRequests,
     };
   });
 
@@ -214,11 +213,7 @@ const getAccessToken = (config: {
     }
 
     const data = yield* Effect.tryPromise({
-      try: () =>
-        response.json() as Promise<{
-          access_token: string;
-          expires_in: number;
-        }>,
+      try: () => response.json() as Promise<DotyposTokenResponse>,
       catch: (error) =>
         new ExternalAPIError(
           "Dotypos",
@@ -252,10 +247,10 @@ const getAccessToken = (config: {
 /**
  * Get a Dotypos reservation by ID
  */
-export const getDotyposReservation = (
+export const getReservation = (
   reservationId: string
 ): Effect.Effect<
-  ReservationResponse,
+  DotyposReservation,
   ExternalAPIError | NetworkError | ValidationError
 > =>
   Effect.gen(function* () {
@@ -365,23 +360,23 @@ export const getDotyposReservation = (
 /**
  * Build note field with customer information
  */
-const buildNote = (booking: BookingData): string => {
+const buildNote = (input: ReservationInput): string => {
   const parts: string[] = [];
 
-  if (booking.name) {
-    parts.push(`Customer: ${booking.name}`);
+  if (input.customerName) {
+    parts.push(`Customer: ${input.customerName}`);
   }
-  if (booking.email) {
-    parts.push(`Email: ${booking.email}`);
+  if (input.customerEmail) {
+    parts.push(`Email: ${input.customerEmail}`);
   }
-  if (booking.phone) {
-    parts.push(`Phone: ${booking.phone}`);
+  if (input.customerPhone) {
+    parts.push(`Phone: ${input.customerPhone}`);
   }
-  if (booking.tablePreference) {
-    parts.push(`Table preference: ${booking.tablePreference}`);
+  if (input.tablePreference) {
+    parts.push(`Table preference: ${input.tablePreference}`);
   }
-  if (booking.specialRequests) {
-    parts.push(booking.specialRequests);
+  if (input.specialRequests) {
+    parts.push(input.specialRequests);
   }
 
   return parts.join(" | ");

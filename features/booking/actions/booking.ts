@@ -4,7 +4,7 @@ import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
-import { createDotyposReservation } from "../backend/dotypos";
+import { createBookingReservation } from "../backend/dotypos-adapter";
 import type { BookingData } from "../booking";
 
 const _submitBookingEffect = createEffectSafeAction(
@@ -26,7 +26,7 @@ const _submitBookingEffect = createEffectSafeAction(
       };
 
       // Create reservation in Dotypos (this is our source of truth)
-      const reservation = yield* createDotyposReservation(bookingData);
+      const reservation = yield* createBookingReservation(bookingData);
 
       yield* Effect.log(
         `Dotypos reservation created: ${reservation.id} (status: ${reservation.status}) for locale: ${locale}`
