@@ -324,9 +324,9 @@ export const Price = ({ amount, locale }: { amount: number; locale?: string }) =
 <Price amount={constants.pricing.entryFee.withPurchase} />
 ```
 
-### Future Airtable Integration
+### Future External API Integration
 
-When prices come from Airtable:
+When prices come from external APIs:
 
 ```typescript
 // ✅ Good - Prepare for dynamic pricing
@@ -341,8 +341,8 @@ const usePricing = () => {
   // For now, return from constants
   return constants.pricing;
   
-  // Future: fetch from Airtable
-  // const { data } = useAirtablePricing();
+  // Future: fetch from external API
+  // const { data } = useExternalPricing();
   // return data || constants.pricing;
 };
 ```
