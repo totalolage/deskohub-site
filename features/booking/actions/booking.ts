@@ -1,6 +1,6 @@
 "use server";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
@@ -41,7 +41,8 @@ const _submitBookingEffect = createEffectSafeAction(
           input,
         },
       })
-    )
+    ),
+  Layer.empty // No dependencies needed for this action
 );
 
 // Server action that handles the redirect
@@ -54,7 +55,7 @@ export const submitBooking = async (input: unknown) => {
     }
 
     // This shouldn't happen if the Effect succeeds
-    throw new Error("Failed to create booking", {cause: result});
+    throw new Error("Failed to create booking", { cause: result });
   } catch (error) {
     console.error("Booking submission error:", error);
     throw error;

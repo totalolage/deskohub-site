@@ -1,7 +1,6 @@
+import { Effect } from "effect";
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { Effect } from "effect";
 import { getDotyposReservation } from "@/features/booking/backend/dotypos";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
@@ -31,10 +30,8 @@ export default async function ReservationConfirmationPage({
   setLocale(locale, { reload: false });
 
   // Fetch reservation from Dotypos (our source of truth)
-  const reservationResult = await Effect.runPromise(
-    getDotyposReservation(id)
-  );
-  
+  const reservationResult = await Effect.runPromise(getDotyposReservation(id));
+
   // No fallback - if Dotypos fails, the error propagates
 
   // Map Dotypos response to our booking structure
@@ -46,7 +43,7 @@ export default async function ReservationConfirmationPage({
     name: reservationResult.customerName,
     email: reservationResult.customerEmail || "",
     phone: reservationResult.customerPhone || "",
-    tablePreference: "no-preference" as const, // Default since Dotypos doesn't store this directly
+    tablePreference: "any" as const, // Default since Dotypos doesn't store this directly
     specialRequests: reservationResult.specialRequests || "",
     submittedAt: reservationResult.createdAt,
   };
