@@ -6,7 +6,7 @@
  */
 
 import { Config, Context, Effect, Layer, Schema } from "effect";
-import { createClient } from "../generated";
+import { createClient } from "../generated/client";
 import * as api from "../generated/sdk.gen";
 import type {
   CreateReservationRequest,
@@ -33,8 +33,13 @@ const DotyposConfigSchema = Schema.Struct({
 
 type DotyposConfig = Schema.Schema.Type<typeof DotyposConfigSchema>;
 
+class DotyposConfigTag extends Context.Tag("DotyposConfig")<
+  DotyposConfigTag,
+  DotyposConfig
+>() {}
+
 const ConfigLayer = Layer.effect(
-  Context.GenericTag<DotyposConfig>("DotyposConfig"),
+  DotyposConfigTag,
   Effect.gen(function* () {
     const config = yield* Config.all({
       clientId: Config.string("DOTYPOS_CLIENT_ID"),
@@ -44,7 +49,11 @@ const ConfigLayer = Layer.effect(
       apiUrl: Config.string("DOTYPOS_API_URL").pipe(
         Config.withDefault("https://api.dotykacka.cz/v2")
       ),
-    });
+    }).pipe(
+      Effect.mapError((error) => 
+        new ValidationError(`Dotypos configuration error: ${error}`)
+      )
+    );
     
     return config;
   })
@@ -56,6 +65,7 @@ const ConfigLayer = Layer.effect(
 class DotyposClient extends Context.Tag("DotyposClient")<
   DotyposClient,
   {
+    readonly config: DotyposConfig;
     readonly getToken: () => Effect.Effect<string, ExternalAPIError | NetworkError>;
     readonly createReservation: (
       request: CreateReservationRequest
@@ -74,14 +84,21 @@ let tokenCache: { token: string; expiresAt: number } | null = null;
 const DotyposClientLive = Layer.effect(
   DotyposClient,
   Effect.gen(function* () {
-    const config = yield* Context.get(Context.GenericTag<DotyposConfig>("DotyposConfig"));
+    const config = yield* DotyposConfigTag;
     
     // Create the API client with the base URL
     const client = createClient({
       baseUrl: config.apiUrl,
     });
 
-    return {
+    const service: {
+      readonly config: DotyposConfig;
+      readonly getToken: () => Effect.Effect<string, ExternalAPIError | NetworkError>;
+      readonly createReservation: (request: CreateReservationRequest) => Effect.Effect<Reservation, ExternalAPIError | NetworkError | ValidationError>;
+      readonly getReservation: (id: string) => Effect.Effect<Reservation, ExternalAPIError | NetworkError | ValidationError>;
+    } = {
+      config,
+      
       getToken: () =>
         Effect.gen(function* () {
           // Check cache
@@ -139,9 +156,7 @@ const DotyposClientLive = Layer.effect(
       createReservation: (request: CreateReservationRequest) =>
         Effect.gen(function* () {
           const token = yield* Effect.retry(
-            Effect.gen(function* () {
-              return yield* this.getToken();
-            }),
+            service.getToken(),
             { times: 2 }
           );
 
@@ -181,9 +196,7 @@ const DotyposClientLive = Layer.effect(
       getReservation: (id: string) =>
         Effect.gen(function* () {
           const token = yield* Effect.retry(
-            Effect.gen(function* () {
-              return yield* this.getToken();
-            }),
+            service.getToken(),
             { times: 2 }
           );
 
@@ -230,13 +243,17 @@ const DotyposClientLive = Layer.effect(
           return response;
         }),
     };
+
+    return service;
   })
 );
 
 /**
  * Complete Dotypos service layer
  */
-export const DotyposServiceLive = Layer.provide(DotyposClientLive, ConfigLayer);
+export const DotyposServiceLive = DotyposClientLive.pipe(
+  Layer.provide(ConfigLayer)
+);
 
 /**
  * High-level service functions
@@ -319,7 +336,7 @@ export const createReservation = (
 > =>
   Effect.gen(function* () {
     const client = yield* DotyposClient;
-    const config = yield* Context.get(Context.GenericTag<DotyposConfig>("DotyposConfig"));
+    const config = client.config;
 
     const request: CreateReservationRequest = {
       _branchId: 1, // Default branch
