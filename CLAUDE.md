@@ -37,6 +37,13 @@ task-master generate                                         # Update task markd
 
 ## Key Files & Project Structure
 
+### Project Architecture
+- **Feature-Based Architecture** - Code is organized around business features, not technical layers
+- **See `docs/PROJECT_STRUCTURE.md`** for complete architecture documentation
+- Features are self-contained modules in `/features/` directory
+- Shared code goes in `/shared/` directory
+- UI components from shadcn/ui are in `/components/ui/`
+
 ### Project Configuration
 - **This is a BUN project** - Use `bun` instead of `npm` for all commands
 - Build tool: `bun`
@@ -63,24 +70,48 @@ task-master generate                                         # Update task markd
 
 ```
 project/
-├── .taskmaster/
-│   ├── tasks/              # Task files directory
-│   │   ├── tasks.json      # Main task database
-│   │   ├── task-1.md      # Individual task files
-│   │   └── task-2.md
-│   ├── docs/              # Documentation directory
-│   │   ├── prd.txt        # Product requirements
-│   ├── reports/           # Analysis reports directory
-│   │   └── task-complexity-report.json
-│   ├── templates/         # Template files
-│   │   └── example_prd.txt  # Example PRD template
-│   └── config.json        # AI models & settings
-├── .claude/
-│   ├── settings.json      # Claude Code configuration
-│   └── commands/         # Custom slash commands
-├── .env                  # API keys
-├── .mcp.json            # MCP configuration
-└── CLAUDE.md            # This file - auto-loaded by Claude Code
+├── .taskmaster/            # Task Master files
+├── app/                   # Next.js App Router pages
+│   └── [locale]/         # Internationalized routes
+├── features/              # Feature-based modules (business logic)
+│   └── [feature]/
+│       ├── actions/      # Server actions
+│       ├── backend/      # Backend services (Effect.ts)
+│       ├── components/   # Feature components
+│       ├── hooks/        # Feature hooks
+│       ├── schemas/      # Validation schemas
+│       └── index.ts      # Public API exports
+├── shared/                # Shared across features
+│   ├── backend/          # Shared backend utilities
+│   ├── components/       # Shared components
+│   ├── hooks/            # Shared hooks
+│   └── utils/            # Shared utilities
+├── components/            # UI component library
+│   └── ui/               # shadcn/ui components
+├── docs/                  # Documentation
+│   └── PROJECT_STRUCTURE.md  # Full architecture docs
+├── .env                   # API keys
+├── .mcp.json             # MCP configuration
+└── CLAUDE.md             # This file - auto-loaded by Claude Code
+```
+
+### Import Conventions
+
+```typescript
+// ✅ CORRECT - Import from feature's public API
+import { BookingForm } from "@/features/booking";
+
+// ✅ CORRECT - Import shared utilities
+import { cn } from "@/shared/utils";
+
+// ✅ CORRECT - Import UI components
+import { Button } from "@/components/ui/button";
+
+// ❌ WRONG - Never import from feature internals
+import { InternalComponent } from "@/features/booking/components/internal";
+
+// ❌ WRONG - Never create services outside of features
+import { Service } from "@/src/services/..."; // Use features/[feature]/backend/
 ```
 
 ## MCP Integration

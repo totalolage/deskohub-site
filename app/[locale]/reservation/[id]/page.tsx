@@ -1,7 +1,8 @@
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getBooking } from "@/features/booking/lib/booking-storage";
+import { Effect } from "effect";
+import { getDotyposReservation } from "@/features/booking/backend/dotypos";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { Badge } from "@/shared/components/ui/badge";
@@ -29,8 +30,31 @@ export default async function ReservationConfirmationPage({
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
 
-  const booking = await getBooking(id);
-  if (!booking) notFound();
+  // Fetch reservation from Dotypos (our source of truth)
+  const reservationResult = await Effect.runPromise(
+    getDotyposReservation(id).pipe(
+      Effect.catchAll((error) => {
+        console.error("Failed to fetch reservation:", error);
+        return Effect.fail(error);
+      })
+    )
+  ).catch(() => null);
+
+  if (!reservationResult) notFound();
+
+  // Map Dotypos response to our booking structure
+  const booking = {
+    id: reservationResult.id,
+    datetime: reservationResult.datetime,
+    duration: 2, // Default duration, could be calculated from Dotypos end time
+    guestCount: reservationResult.guestCount,
+    name: reservationResult.customerName,
+    email: reservationResult.customerEmail || "",
+    phone: reservationResult.customerPhone || "",
+    tablePreference: "no-preference" as const, // Default since Dotypos doesn't store this directly
+    specialRequests: reservationResult.specialRequests || "",
+    submittedAt: reservationResult.createdAt,
+  };
 
   const formattedDate = formatDate(booking.datetime, locale, {
     weekday: "long",

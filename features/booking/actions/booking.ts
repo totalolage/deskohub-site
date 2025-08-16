@@ -4,17 +4,16 @@ import { Effect } from "effect";
 import { redirect } from "next/navigation";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
-import { BookingLive } from "../backend/booking.layers";
-import { BookingService } from "../backend/booking.service";
+import { createDotyposReservation } from "../backend/dotypos";
+import type { BookingData } from "../booking";
 
 const _submitBookingEffect = createEffectSafeAction(
   getBookingSchema(),
   (input, { locale }) =>
     Effect.gen(function* () {
-      const service = yield* BookingService;
-
-      // Create the booking
-      const bookingId = yield* service.createBooking({
+      // Prepare booking data for Dotypos
+      const bookingData: BookingData = {
+        id: "", // Will be set by Dotypos
         datetime: input.datetime,
         duration: input.duration,
         guestCount: input.guestCount,
@@ -23,15 +22,18 @@ const _submitBookingEffect = createEffectSafeAction(
         phone: input.phone,
         tablePreference: input.tablePreference,
         specialRequests: input.specialRequests || "",
-      });
+        submittedAt: new Date(),
+      };
 
-      // Log the booking creation for observability
+      // Create reservation in Dotypos (this is our source of truth)
+      const reservation = yield* createDotyposReservation(bookingData);
+
       yield* Effect.log(
-        `Booking created with ID: ${bookingId} for locale: ${locale}`
+        `Dotypos reservation created: ${reservation.id} (status: ${reservation.status}) for locale: ${locale}`
       );
 
-      // Return the booking ID - redirect will be handled by the action
-      return { bookingId };
+      // Return the Dotypos reservation ID
+      return { bookingId: reservation.id };
     }).pipe(
       Effect.withSpan("submitBooking", {
         attributes: {
@@ -39,8 +41,7 @@ const _submitBookingEffect = createEffectSafeAction(
           input,
         },
       })
-    ),
-  BookingLive
+    )
 );
 
 // Server action that handles the redirect
@@ -53,7 +54,7 @@ export const submitBooking = async (input: unknown) => {
     }
 
     // This shouldn't happen if the Effect succeeds
-    throw new Error("Failed to create booking");
+    throw new Error("Failed to create booking", {cause: result});
   } catch (error) {
     console.error("Booking submission error:", error);
     throw error;
