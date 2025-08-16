@@ -1,7 +1,13 @@
 /**
  * Adapter to connect booking feature with Dotypos POS integration
  */
-import { createReservation, type ReservationInput } from "@/features/dotypos";
+
+import { Effect } from "effect";
+import { 
+  createReservation, 
+  DotyposServiceLive,
+  type ReservationInput 
+} from "@/features/dotypos";
 import type { BookingData } from "../booking";
 
 /**
@@ -22,6 +28,9 @@ export const bookingToReservationInput = (
 
 /**
  * Create a Dotypos reservation from booking data
+ * This function provides the DotyposServiceLive layer automatically
  */
 export const createBookingReservation = (booking: BookingData) =>
-  createReservation(bookingToReservationInput(booking));
+  createReservation(bookingToReservationInput(booking)).pipe(
+    Effect.provide(DotyposServiceLive)
+  );

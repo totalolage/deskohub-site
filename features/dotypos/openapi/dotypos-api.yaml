@@ -1,0 +1,404 @@
+openapi: 3.0.3
+info:
+  title: Dotypos API
+  description: Dotypos POS System API for managing reservations and authentication
+  version: 2.0.0
+servers:
+  - url: https://api.dotykacka.cz/v2
+    description: Production API server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /auth/token:
+    post:
+      tags:
+        - Authentication
+      summary: Obtain or refresh access token
+      operationId: getAccessToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/RefreshTokenRequest'
+                - $ref: '#/components/schemas/PasswordTokenRequest'
+      responses:
+        '200':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/reservations:
+    post:
+      tags:
+        - Reservations
+      summary: Create a new reservation
+      operationId: createReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateReservationRequest'
+      responses:
+        '201':
+          description: Reservation created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Reservations
+      summary: List reservations
+      operationId: listReservations
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of reservations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/reservations/{reservationId}:
+    get:
+      tags:
+        - Reservations
+      summary: Get reservation by ID
+      operationId: getReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+      responses:
+        '200':
+          description: Reservation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Reservations
+      summary: Update reservation
+      operationId: updateReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReservationRequest'
+      responses:
+        '200':
+          description: Reservation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Reservations
+      summary: Cancel reservation
+      operationId: cancelReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+      responses:
+        '204':
+          description: Reservation cancelled successfully
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    RefreshTokenRequest:
+      type: object
+      required:
+        - grant_type
+        - client_id
+        - client_secret
+        - refresh_token
+      properties:
+        grant_type:
+          type: string
+          enum: [refresh_token]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        refresh_token:
+          type: string
+
+    PasswordTokenRequest:
+      type: object
+      required:
+        - grant_type
+        - client_id
+        - client_secret
+        - username
+        - password
+      properties:
+        grant_type:
+          type: string
+          enum: [password]
+        client_id:
+          type: string
+        client_secret:
+          type: string
+        username:
+          type: string
+        password:
+          type: string
+
+    TokenResponse:
+      type: object
+      required:
+        - access_token
+        - token_type
+        - expires_in
+      properties:
+        access_token:
+          type: string
+        token_type:
+          type: string
+        expires_in:
+          type: integer
+          description: Token expiration time in seconds
+        refresh_token:
+          type: string
+          description: Refresh token (only returned for password grant)
+
+    CreateReservationRequest:
+      type: object
+      required:
+        - _branchId
+        - _cloudId
+        - startDate
+        - endDate
+        - seats
+        - status
+      properties:
+        _branchId:
+          type: integer
+          description: Branch ID
+        _cloudId:
+          type: integer
+          description: Cloud ID
+        startDate:
+          type: integer
+          format: int64
+          description: Start date/time as Unix timestamp in milliseconds
+        endDate:
+          type: integer
+          format: int64
+          description: End date/time as Unix timestamp in milliseconds
+        seats:
+          type: integer
+          description: Number of seats/guests
+        status:
+          type: string
+          enum: [NEW, CONFIRMED, CANCELLED]
+        note:
+          type: string
+          description: Additional notes (used for customer info)
+
+    UpdateReservationRequest:
+      type: object
+      properties:
+        startDate:
+          type: integer
+          format: int64
+          description: Start date/time as Unix timestamp in milliseconds
+        endDate:
+          type: integer
+          format: int64
+          description: End date/time as Unix timestamp in milliseconds
+        seats:
+          type: integer
+          description: Number of seats/guests
+        status:
+          type: string
+          enum: [NEW, CONFIRMED, CANCELLED]
+        note:
+          type: string
+          description: Additional notes
+
+    Reservation:
+      type: object
+      properties:
+        id:
+          type: integer
+        _branchId:
+          type: integer
+        _cloudId:
+          type: integer
+        startDate:
+          type: integer
+          format: int64
+          description: Start date/time as Unix timestamp in milliseconds
+        endDate:
+          type: integer
+          format: int64
+          description: End date/time as Unix timestamp in milliseconds
+        seats:
+          type: integer
+        status:
+          type: string
+          enum: [NEW, CONFIRMED, CANCELLED]
+        note:
+          type: string
+        created:
+          type: integer
+          format: int64
+          description: Creation timestamp in milliseconds
+        versionDate:
+          type: integer
+          format: int64
+          description: Last update timestamp in milliseconds
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        error_description:
+          type: string
+        code:
+          type: integer

@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
-import { getReservation } from "@/features/dotypos";
+import { getReservation, DotyposServiceLive } from "@/features/dotypos";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { Badge } from "@/shared/components/ui/badge";
@@ -30,7 +30,9 @@ export default async function ReservationConfirmationPage({
   setLocale(locale, { reload: false });
 
   // Fetch reservation from Dotypos (our source of truth)
-  const reservationResult = await Effect.runPromise(getReservation(id));
+  const reservationResult = await Effect.runPromise(
+    getReservation(id).pipe(Effect.provide(DotyposServiceLive))
+  );
 
   // No fallback - if Dotypos fails, the error propagates
 
