@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // Required for Effect
+    "exactOptionalPropertyTypes": true,
+    "strict": true,
+
+    // Effect-specific optimizations
+    "skipLibCheck": false,
+    "noUncheckedIndexedAccess": true,
+
+    // For better error messages
+    "verbatimModuleSyntax": true
+  },
+  "include": [
+    "shared/backend/**/*",
+    "features/**/backend/**/*",
+    "features/**/actions/**/*"
+  ]
+}

@@ -18,6 +18,8 @@
     "start": "bunx next start"
   },
   "dependencies": {
+    "@effect/platform-node": "^0.94.0",
+    "@effect/schema": "^0.75.5",
     "@hookform/resolvers": "^5.1.1",
     "@inlang/paraglide-js": "^2.2.0",
     "@radix-ui/react-accordion": "1.2.2",
@@ -53,6 +55,7 @@
     "clsx": "^2.1.1",
     "cmdk": "1.0.4",
     "date-fns": "4.1.0",
+    "effect": "^3.17.2",
     "embla-carousel-react": "8.5.1",
     "input-otp": "1.4.1",
     "js-cookie": "^3.0.5",
@@ -88,5 +91,6 @@
     "postcss": "^8.5",
     "tailwindcss": "^3.4.17",
     "typescript": "^5"
-  }
+  },
+  "packageManager": "pnpm@8.15.9+sha512.499434c9d8fdd1a2794ebf4552b3b25c0a633abcee5bb15e7b5de90f32f47b513aca98cd5cfd001c31f0db454bc3804edccd578501e4ca293a6816166bbd9f81"
 }
