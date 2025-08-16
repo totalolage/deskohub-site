@@ -32,15 +32,10 @@ export default async function ReservationConfirmationPage({
 
   // Fetch reservation from Dotypos (our source of truth)
   const reservationResult = await Effect.runPromise(
-    getDotyposReservation(id).pipe(
-      Effect.catchAll((error) => {
-        console.error("Failed to fetch reservation:", error);
-        return Effect.fail(error);
-      })
-    )
-  ).catch(() => null);
-
-  if (!reservationResult) notFound();
+    getDotyposReservation(id)
+  );
+  
+  // No fallback - if Dotypos fails, the error propagates
 
   // Map Dotypos response to our booking structure
   const booking = {

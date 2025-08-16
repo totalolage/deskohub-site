@@ -10,18 +10,10 @@ import type { BookingData } from "../booking";
  * Dotypos Configuration Schema
  */
 const DotyposConfig = Config.all({
-  clientId: Config.string("DOTYPOS_CLIENT_ID").pipe(
-    Config.withDefault("")
-  ),
-  clientSecret: Config.string("DOTYPOS_CLIENT_SECRET").pipe(
-    Config.withDefault("")
-  ),
-  refreshToken: Config.string("DOTYPOS_REFRESH_TOKEN").pipe(
-    Config.withDefault("")
-  ),
-  cloudId: Config.string("DOTYPOS_CLOUD_ID").pipe(
-    Config.withDefault("")
-  ),
+  clientId: Config.string("DOTYPOS_CLIENT_ID"),
+  clientSecret: Config.string("DOTYPOS_CLIENT_SECRET"),
+  refreshToken: Config.string("DOTYPOS_REFRESH_TOKEN"),
+  cloudId: Config.string("DOTYPOS_CLOUD_ID"),
   apiUrl: Config.string("DOTYPOS_API_URL").pipe(
     Config.withDefault("https://api.dotykacka.cz/v2")
   ),
@@ -77,13 +69,7 @@ export const createDotyposReservation = (
     // Get configuration
     const config = yield* Config.unwrap(DotyposConfig);
 
-    // Check if Dotypos is configured
-    if (!config.clientId || !config.refreshToken || !config.cloudId) {
-      // Dotypos not configured - this should fail as we need Dotypos
-      return yield* Effect.fail(
-        new ValidationError("Dotypos is not configured. Reservations cannot be created.")
-      );
-    }
+    // No fallback - configuration is required
 
     // Get access token
     const accessToken = yield* getAccessToken(config);
@@ -93,7 +79,7 @@ export const createDotyposReservation = (
       _branchId: 1, // Default branch
       _cloudId: parseInt(config.cloudId),
       startDate: booking.datetime.getTime(),
-      endDate: booking.datetime.getTime() + (booking.duration || 2) * 60 * 60 * 1000,
+      endDate: booking.datetime.getTime() + booking.duration * 60 * 60 * 1000,
       seats: booking.guestCount,
       status: "CONFIRMED" as const,
       note: buildNote(booking),
@@ -119,8 +105,8 @@ export const createDotyposReservation = (
     if (!response.ok) {
       const errorText = yield* Effect.tryPromise({
         try: () => response.text(),
-        catch: () => new Error("Unknown error"),
-      }).pipe(Effect.catchAll(() => Effect.succeed("Unknown error")));
+        catch: (error) => new ExternalAPIError("Dotypos", `Failed to read error response: ${error}`, response.status),
+      });
 
       return yield* Effect.fail(
         new ExternalAPIError(
@@ -133,8 +119,8 @@ export const createDotyposReservation = (
 
     const data = yield* Effect.tryPromise({
       try: () => response.json(),
-      catch: () =>
-        new ValidationError("Failed to parse Dotypos response"),
+      catch: (error) =>
+        new ValidationError(`Failed to parse Dotypos response: ${error}`),
     });
 
     const reservation = yield* Schema.decodeUnknown(DotyposReservationSchema)(data).pipe(
@@ -148,7 +134,7 @@ export const createDotyposReservation = (
     );
 
     return {
-      id: String(reservation.id || "unknown"),
+      id: String(reservation.id),
       status: "confirmed" as const,
       createdAt: new Date(),
       customerName: booking.name,
@@ -201,8 +187,8 @@ const getAccessToken = (config: {
     if (!response.ok) {
       const errorText = yield* Effect.tryPromise({
         try: () => response.text(),
-        catch: () => new Error("Unknown error"),
-      }).pipe(Effect.catchAll(() => Effect.succeed("Unknown error")));
+        catch: (error) => new ExternalAPIError("Dotypos", `Failed to read error response: ${error}`, response.status),
+      });
 
       return yield* Effect.fail(
         new ExternalAPIError(
@@ -215,12 +201,18 @@ const getAccessToken = (config: {
 
     const data = yield* Effect.tryPromise({
       try: () => response.json(),
-      catch: () =>
-        new ExternalAPIError("Dotypos", "Failed to parse auth response", 500),
+      catch: (error) =>
+        new ExternalAPIError("Dotypos", `Failed to parse auth response: ${error}`, 500),
     });
 
     // Cache the token
-    const expiresIn = data.expires_in || 3600;
+    if (!data.access_token || !data.expires_in) {
+      return yield* Effect.fail(
+        new ExternalAPIError("Dotypos", "Invalid auth response: missing access_token or expires_in", 500)
+      );
+    }
+    
+    const expiresIn = data.expires_in;
     cachedToken = {
       token: data.access_token,
       expiresAt: Date.now() + expiresIn * 1000,
@@ -244,12 +236,7 @@ export const getDotyposReservation = (
     // Get configuration
     const config = yield* Config.unwrap(DotyposConfig);
 
-    // Check if Dotypos is configured
-    if (!config.clientId || !config.refreshToken || !config.cloudId) {
-      return yield* Effect.fail(
-        new ValidationError("Dotypos is not configured")
-      );
-    }
+    // No fallback - configuration is required
 
     // Get access token
     const accessToken = yield* getAccessToken(config);
@@ -279,8 +266,8 @@ export const getDotyposReservation = (
 
       const errorText = yield* Effect.tryPromise({
         try: () => response.text(),
-        catch: () => new Error("Unknown error"),
-      }).pipe(Effect.catchAll(() => Effect.succeed("Unknown error")));
+        catch: (error) => new ExternalAPIError("Dotypos", `Failed to read error response: ${error}`, response.status),
+      });
 
       return yield* Effect.fail(
         new ExternalAPIError(
@@ -293,8 +280,8 @@ export const getDotyposReservation = (
 
     const data = yield* Effect.tryPromise({
       try: () => response.json(),
-      catch: () =>
-        new ValidationError("Failed to parse Dotypos response"),
+      catch: (error) =>
+        new ValidationError(`Failed to parse Dotypos response: ${error}`),
     });
 
     const reservation = yield* Schema.decodeUnknown(DotyposReservationSchema)(data).pipe(
@@ -305,7 +292,15 @@ export const getDotyposReservation = (
 
     // Parse customer info from note
     const note = reservation.note || "";
-    const customerName = note.match(/Customer: ([^|]+)/)?.[1]?.trim() || "Unknown";
+    const customerNameMatch = note.match(/Customer: ([^|]+)/)?.[1]?.trim();
+    
+    if (!customerNameMatch) {
+      return yield* Effect.fail(
+        new ValidationError(`Reservation ${reservationId} has no customer information`)
+      );
+    }
+    
+    const customerName = customerNameMatch;
     const customerEmail = note.match(/Email: ([^|]+)/)?.[1]?.trim();
     const customerPhone = note.match(/Phone: ([^|]+)/)?.[1]?.trim();
     const specialRequests = note.split("|").pop()?.trim();

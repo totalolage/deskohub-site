@@ -86,19 +86,19 @@ Customer: John Doe | Email: john@example.com | Phone: +420123456789 | Special re
 ## Benefits of This Approach
 
 1. **Simplicity**: One file, one function, easy to understand
-2. **Resilience**: Failures don't affect core booking functionality
+2. **Data Integrity**: No fallbacks - failures are explicit and visible
 3. **Maintainability**: No complex layers or dependencies
 4. **Performance**: Minimal overhead, direct API calls
-5. **Flexibility**: Easy to modify or remove if needed
+5. **Reliability**: Single source of truth ensures consistency
 
 ## Testing
 
 To test the integration:
 
-1. Set environment variables
+1. Set environment variables (required - no fallback)
 2. Submit a booking through the form
 3. Check logs for Dotypos reservation creation
-4. If not configured, see mock reservation in logs
+4. If not configured, booking will fail with clear error message
 
 ## Future Considerations
 
