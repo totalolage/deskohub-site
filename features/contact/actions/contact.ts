@@ -1,24 +1,38 @@
 "use server";
 
-import { getContactSchema } from "@/features/contact/schemas/contact";
-import { actionClient } from "@/shared/utils/safe-action-client";
+import { Effect, pipe } from "effect";
+import {
+  ContactService,
+  ContactServiceLive,
+} from "@/features/contact/backend/contact.service";
+import { ContactFormSchema } from "@/features/contact/schemas/contact-effect";
+import { createEffectAction } from "@/shared/backend/utils/effect-action";
+import { effectActionClient } from "@/shared/backend/utils/effect-safe-action";
 
-export const submitContactForm = actionClient
-  .inputSchema(getContactSchema())
-  .action(async ({ parsedInput }) => {
-    // Log the contact form submission for now
-    // In production, this would send an email or save to a database
-    console.log("Contact form submission:", {
-      ...parsedInput,
-      submittedAt: new Date().toISOString(),
-    });
+// Create the Effect-based contact action
+const _submitContactEffect = createEffectAction(
+  ContactFormSchema,
+  (validatedInput) =>
+    pipe(
+      ContactService,
+      Effect.flatMap((service) => service.submit(validatedInput)),
+      Effect.map((submission) => ({
+        success: true as const,
+        data: {
+          message: "Contact form submitted successfully",
+          submissionId: submission.submittedAt,
+        },
+      })),
+      Effect.provide(ContactServiceLive)
+    )
+);
 
-    // Simulate processing time
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+// Server action
+export const submitContactForm = async (input: unknown) => {
+  return _submitContactEffect(input);
+};
 
-    // Return success response
-    return {
-      success: true,
-      message: "Contact form submitted successfully",
-    };
-  });
+// Create the safe action wrapper for Next.js compatibility
+export const submitContactFormWithEffect = effectActionClient({
+  handler: submitContactForm,
+});

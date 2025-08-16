@@ -44,7 +44,11 @@ export function ContactForm() {
       form.reset();
     },
     onError: ({ error }) => {
-      toast.error(error.serverError || m["errors.submissionError"]());
+      toast.error(
+        typeof error.serverError === "string"
+          ? error.serverError
+          : m["errors.submissionError"]()
+      );
     },
   });
 
