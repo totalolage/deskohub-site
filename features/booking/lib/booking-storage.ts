@@ -8,7 +8,6 @@ import type {
 } from "@/features/booking/booking";
 
 // File-based storage for bookings that persists across hot reloads
-// This will be replaced with Airtable integration later
 const globalForBookings = globalThis as unknown as {
   bookingStorageFile: string | undefined;
 };

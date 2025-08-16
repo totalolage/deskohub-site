@@ -73,7 +73,11 @@ export function BookingForm() {
   const { execute, isExecuting } = useAction(submitBooking, {
     onError: ({ error }) => {
       // Show server error as toast
-      toast.error(error.serverError || m["errors.submissionError"]());
+      toast.error(
+        typeof error.serverError === "string"
+          ? error.serverError
+          : m["errors.submissionError"]()
+      );
     },
     onSettled: ({ result }) => {
       if (result?.validationErrors) {
@@ -100,7 +104,8 @@ export function BookingForm() {
 
             form.setError(field as keyof BookingFormData, {
               type: "server",
-              message: errors[0],
+              message:
+                typeof errors[0] === "string" ? errors[0] : "Validation error",
             });
           }
         });

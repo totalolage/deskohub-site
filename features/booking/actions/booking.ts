@@ -1,29 +1,61 @@
 "use server";
 
+import { Effect } from "effect";
 import { redirect } from "next/navigation";
-import { v4 as uuidv4 } from "uuid";
-import { storeBooking } from "@/features/booking/lib/booking-storage";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
-import { actionClient } from "@/shared/utils/safe-action-client";
+import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import { BookingLive } from "../backend/booking.layers";
+import { BookingService } from "../backend/booking.service";
 
-export const submitBooking = actionClient
-  .inputSchema(getBookingSchema())
-  .action(async ({ parsedInput }) => {
-    const bookingId = uuidv4();
+const _submitBookingEffect = createEffectSafeAction(
+  getBookingSchema(),
+  (input, { locale }) =>
+    Effect.gen(function* () {
+      const service = yield* BookingService;
 
-    // Store booking data (temporary storage until Airtable integration)
-    await storeBooking({
-      id: bookingId,
-      datetime: parsedInput.datetime,
-      duration: parsedInput.duration,
-      guestCount: parsedInput.guestCount,
-      name: parsedInput.name,
-      email: parsedInput.email,
-      phone: parsedInput.phone,
-      tablePreference: parsedInput.tablePreference,
-      specialRequests: parsedInput.specialRequests || "",
-      submittedAt: new Date(),
-    });
+      // Create the booking
+      const bookingId = yield* service.createBooking({
+        datetime: input.datetime,
+        duration: input.duration,
+        guestCount: input.guestCount,
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        tablePreference: input.tablePreference,
+        specialRequests: input.specialRequests || "",
+      });
 
-    redirect(`/reservation/${bookingId}`);
-  });
+      // Log the booking creation for observability
+      yield* Effect.log(
+        `Booking created with ID: ${bookingId} for locale: ${locale}`
+      );
+
+      // Return the booking ID - redirect will be handled by the action
+      return { bookingId };
+    }).pipe(
+      Effect.withSpan("submitBooking", {
+        attributes: {
+          locale,
+          input,
+        },
+      })
+    ),
+  BookingLive
+);
+
+// Server action that handles the redirect
+export const submitBooking = async (input: unknown) => {
+  try {
+    const result = await _submitBookingEffect(input);
+
+    if (result && typeof result === "object" && "bookingId" in result) {
+      redirect(`/reservation/${result.bookingId}`);
+    }
+
+    // This shouldn't happen if the Effect succeeds
+    throw new Error("Failed to create booking");
+  } catch (error) {
+    console.error("Booking submission error:", error);
+    throw error;
+  }
+};
