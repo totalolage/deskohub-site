@@ -26,6 +26,7 @@ import type {
   CreateReservationRequest,
   Reservation,
 } from "../generated/types.gen";
+// Response validation is handled by the generated SDK
 import type { DotyposReservation } from "../types";
 
 /**
@@ -52,36 +53,6 @@ interface TokenCache {
   token: string;
   expiresAt: number;
 }
-
-/**
- * Token Response Schema for validation
- */
-const TokenResponseSchema = Schema.Struct({
-  access_token: Schema.NonEmptyString,
-  expires_in: Schema.Number.pipe(Schema.positive()),
-  token_type: Schema.optional(Schema.String),
-  refresh_token: Schema.optional(Schema.String),
-});
-
-/**
- * Reservation Status Schema - matches generated API types
- */
-const ReservationStatusSchema = Schema.Literal("NEW", "CONFIRMED", "CANCELLED");
-
-/**
- * Reservation Schema for API responses
- */
-const ReservationResponseSchema = Schema.Struct({
-  id: Schema.Number.pipe(Schema.positive()),
-  status: Schema.optional(ReservationStatusSchema),
-  created: Schema.optional(Schema.Number.pipe(Schema.positive())),
-  startDate: Schema.optional(Schema.Number.pipe(Schema.positive())),
-  endDate: Schema.optional(Schema.Number.pipe(Schema.positive())),
-  seats: Schema.optional(Schema.Number.pipe(Schema.positive())),
-  note: Schema.optional(Schema.String),
-  _branchId: Schema.optional(Schema.Number.pipe(Schema.positive())),
-  _cloudId: Schema.optional(Schema.Number.pipe(Schema.positive())),
-});
 
 class DotyposConfigTag extends Context.Tag("DotyposConfig")<
   DotyposConfigTag,
@@ -115,7 +86,6 @@ const ConfigLayer = Layer.effect(
           })
       )
     );
-
     return config;
   })
 );
@@ -127,17 +97,11 @@ interface DotyposApi {
   readonly createReservation: (params: {
     path: { cloudId: string };
     body: CreateReservationRequest;
-  }) => Effect.Effect<
-    Schema.Schema.Type<typeof ReservationResponseSchema>,
-    ExternalAPIError | NetworkError
-  >;
+  }) => Effect.Effect<Reservation, ExternalAPIError | NetworkError>;
 
   readonly getReservation: (params: {
     path: { cloudId: string; reservationId: string };
-  }) => Effect.Effect<
-    Schema.Schema.Type<typeof ReservationResponseSchema>,
-    ExternalAPIError | NetworkError
-  >;
+  }) => Effect.Effect<Reservation, ExternalAPIError | NetworkError>;
 }
 
 class DotyposApiTag extends Context.Tag("DotyposApi")<
@@ -258,13 +222,13 @@ const DotyposApiLayer = Layer.scoped(
           return cached.token;
         }
 
-        // Get new token using the client
-        const result = yield* Effect.tryPromise({
+        // Get new token using the client (SDK handles validation)
+        const response = yield* Effect.tryPromise({
           try: async () => {
             const result = await generatedApi.getAccessToken({
               client,
               body: {
-                grant_type: "refresh_token" as const,
+                grant_type: "refresh_token",
                 client_id: config.clientId,
                 client_secret: config.clientSecret,
                 refresh_token: config.refreshToken,
@@ -287,27 +251,12 @@ const DotyposApiLayer = Layer.scoped(
             transformHttpError(error, "Authentication", config.apiUrl),
         });
 
-        // Validate response using Schema
-        const response = yield* Schema.decodeUnknown(TokenResponseSchema)(
-          result
-        ).pipe(
-          Effect.mapError(
-            (error) =>
-              new ExternalAPIError({
-                service: "Dotypos",
-                message: `Invalid token response: ${error.message}`,
-                statusCode: 500,
-              })
-          )
-        );
-
         // Update cache atomically
-        yield* Ref.set(tokenCacheRef, {
+        const newCache = {
           token: response.access_token,
           expiresAt: Date.now() + response.expires_in * 1000,
-        });
-
-        yield* Effect.log("Dotypos access token refreshed");
+        };
+        yield* Ref.set(tokenCacheRef, newCache);
         return response.access_token;
       });
 
@@ -315,10 +264,9 @@ const DotyposApiLayer = Layer.scoped(
     const api: DotyposApi = {
       createReservation: (params) =>
         Effect.gen(function* () {
-          // Get token (retry is handled at the service level)
           const token = yield* getToken();
 
-          const rawResult = yield* Effect.tryPromise({
+          const result = yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.createReservation({
                 client,
@@ -344,20 +292,6 @@ const DotyposApiLayer = Layer.scoped(
               transformHttpError(error, "Create reservation", config.apiUrl),
           });
 
-          // Validate and transform response
-          const result = yield* Schema.decodeUnknown(ReservationResponseSchema)(
-            rawResult
-          ).pipe(
-            Effect.mapError(
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  message: `Invalid reservation response: ${error.message}`,
-                  statusCode: 500,
-                })
-            )
-          );
-
           return result;
         }),
 
@@ -366,7 +300,8 @@ const DotyposApiLayer = Layer.scoped(
           // Get token (retry is handled at the service level)
           const token = yield* getToken();
 
-          const rawResult = yield* Effect.tryPromise({
+          // SDK handles response validation automatically
+          const result = yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.getReservation({
                 client,
@@ -393,20 +328,6 @@ const DotyposApiLayer = Layer.scoped(
               transformHttpError(error, "Get reservation", config.apiUrl),
           });
 
-          // Validate and transform response
-          const result = yield* Schema.decodeUnknown(ReservationResponseSchema)(
-            rawResult
-          ).pipe(
-            Effect.mapError(
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  message: `Invalid reservation response: ${error.message}`,
-                  statusCode: 500,
-                })
-            )
-          );
-
           return result;
         }),
     };
@@ -426,31 +347,12 @@ const DotyposClientLive = Layer.effect(
       createReservation: (request: CreateReservationRequest) =>
         api
           .createReservation({
-            path: {
-              cloudId: config.cloudId,
-            },
+            path: { cloudId: config.cloudId },
             body: request,
           })
           .pipe(
             Effect.timeout(Duration.millis(config.apiTimeout)),
             Effect.retry(retryPolicy),
-            Effect.tap((response) =>
-              Effect.log(`Created Dotypos reservation: ${response.id}`)
-            ),
-            // Map to Reservation type
-            Effect.map(
-              (response): Reservation => ({
-                id: response.id,
-                status: response.status,
-                created: response.created,
-                startDate: response.startDate,
-                endDate: response.endDate,
-                seats: response.seats,
-                note: response.note,
-                _branchId: response._branchId,
-                _cloudId: response._cloudId,
-              })
-            ),
             // Map timeout error to NetworkError
             Effect.catchTag("TimeoutException", () =>
               Effect.fail(
@@ -485,20 +387,6 @@ const DotyposClientLive = Layer.effect(
               }
               return error;
             }),
-            // Map to Reservation type
-            Effect.map(
-              (response): Reservation => ({
-                id: response.id,
-                status: response.status,
-                created: response.created,
-                startDate: response.startDate,
-                endDate: response.endDate,
-                seats: response.seats,
-                note: response.note,
-                _branchId: response._branchId,
-                _cloudId: response._cloudId,
-              })
-            ),
             // Map timeout error to NetworkError
             Effect.catchTag("TimeoutException", () =>
               Effect.fail(
@@ -528,38 +416,17 @@ export { DotyposClient, DotyposConfigTag };
  * High-level service functions
  */
 
-/**
- * Reservation Input Schema with validation
- */
-const ReservationInputSchema = Schema.Struct({
-  datetime: Schema.instanceOf(Date),
-  duration: Schema.Number.pipe(
-    Schema.positive(),
-    Schema.lessThanOrEqualTo(8), // Max 8 hour reservation
-    Schema.annotations({ description: "Duration in hours" })
-  ),
-  guestCount: Schema.Number.pipe(
-    Schema.positive(),
-    Schema.int(),
-    Schema.lessThanOrEqualTo(50), // Max 50 guests
-    Schema.annotations({ description: "Number of guests" })
-  ),
-  customerName: Schema.NonEmptyString,
-  customerEmail: Schema.String.pipe(
-    Schema.pattern(/^[^\s@]+@[^\s@]+\.[^\s@]+$/),
-    Schema.annotations({ description: "Must be a valid email address" })
-  ),
-  customerPhone: Schema.String.pipe(
-    Schema.pattern(/^\+?[0-9\s\-()]+$/),
-    Schema.annotations({ description: "Must be a valid phone number" })
-  ),
-  tablePreference: Schema.optional(Schema.String),
-  specialRequests: Schema.optional(Schema.String),
-});
-
-export type ReservationInput = Schema.Schema.Type<
-  typeof ReservationInputSchema
->;
+// Simple type without Effect Schema validation (validation happens in Zod schema)
+export interface ReservationInput {
+  datetime: Date;
+  duration: number;
+  guestCount: number;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  tablePreference?: string;
+  specialRequests?: string;
+}
 
 /**
  * Build note field with customer information and metadata
@@ -590,16 +457,16 @@ const buildNote = (input: ReservationInput): string => {
 };
 
 /**
- * Schema for parsed note data
+ * Parsed note data type
  */
-const ParsedNoteSchema = Schema.Struct({
-  customerName: Schema.Union(Schema.String, Schema.Null),
-  customerEmail: Schema.optional(Schema.String),
-  customerPhone: Schema.optional(Schema.String),
-  duration: Schema.optional(Schema.Number),
-  tablePreference: Schema.optional(Schema.String),
-  specialRequests: Schema.optional(Schema.String),
-});
+interface ParsedNote {
+  customerName: string | null;
+  customerEmail?: string;
+  customerPhone?: string;
+  duration?: number;
+  tablePreference?: string;
+  specialRequests?: string;
+}
 
 /**
  * Note field parser using regex patterns
@@ -615,9 +482,7 @@ const NOTE_PATTERNS = {
 /**
  * Parse customer info and metadata from note field
  */
-const parseNote = (
-  note: string | undefined
-): Schema.Schema.Type<typeof ParsedNoteSchema> => {
+const parseNote = (note: string | undefined): ParsedNote => {
   if (!note) {
     return {
       customerName: null,
@@ -660,37 +525,24 @@ const parseNote = (
  * Create a reservation
  */
 export const createReservation = (
-  input: unknown
+  input: ReservationInput
 ): Effect.Effect<
   DotyposReservation,
   ExternalAPIError | NetworkError | ValidationError,
   DotyposClient
 > =>
   Effect.gen(function* () {
-    // Validate input
-    const validatedInput = yield* Schema.decodeUnknown(ReservationInputSchema)(
-      input
-    ).pipe(
-      Effect.mapError(
-        (error) =>
-          new ValidationError({
-            message: `Invalid reservation input: ${error.message}`,
-          })
-      )
-    );
-
     const client = yield* DotyposClient;
+    const note = buildNote(input);
 
     const request: CreateReservationRequest = {
       _branchId: 1, // Default branch
       _cloudId: parseInt(client.cloudId),
-      startDate: validatedInput.datetime.getTime(),
-      endDate:
-        validatedInput.datetime.getTime() +
-        validatedInput.duration * 60 * 60 * 1000,
-      seats: validatedInput.guestCount,
+      startDate: input.datetime.getTime(),
+      endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
+      seats: input.guestCount,
       status: "CONFIRMED",
-      note: buildNote(validatedInput),
+      note: note,
     };
 
     const reservation = yield* client.createReservation(request);
@@ -701,12 +553,12 @@ export const createReservation = (
       createdAt: reservation.created
         ? new Date(reservation.created)
         : new Date(),
-      customerName: validatedInput.customerName,
-      customerEmail: validatedInput.customerEmail,
-      customerPhone: validatedInput.customerPhone,
-      datetime: validatedInput.datetime,
-      guestCount: validatedInput.guestCount,
-      specialRequests: validatedInput.specialRequests,
+      customerName: input.customerName,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+      datetime: input.datetime,
+      guestCount: input.guestCount,
+      specialRequests: input.specialRequests,
     };
   });
 

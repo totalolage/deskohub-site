@@ -1,8 +1,8 @@
 import { Effect, type Layer, pipe } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/i18n";
+import { formatEffectError } from "@/shared/utils/error-formatting";
 import { actionClient } from "@/shared/utils/safe-action-client";
-import { formatBackendError } from "./effect-action";
 
 export function createEffectSafeAction<I, O, E, R>(
   schema: z.ZodSchema<I>,
@@ -12,30 +12,16 @@ export function createEffectSafeAction<I, O, E, R>(
   return actionClient
     .inputSchema(schema)
     .action(async ({ parsedInput, ctx }) => {
-      const program = pipe(
-        handler(parsedInput, { locale: ctx.locale }),
-        Effect.provide(layers),
-        Effect.match({
-          onFailure: (error) => ({
-            success: false as const,
-            error: formatBackendError(error),
-          }),
-          onSuccess: (data) => ({
-            success: true as const,
-            data,
-          }),
-        })
+      return Effect.runPromise(
+        pipe(
+          handler(parsedInput, { locale: ctx.locale }),
+          Effect.provide(layers),
+          Effect.mapError((error) => {
+            const formatted = formatEffectError(error);
+            throw new Error(formatted.message);
+          })
+        )
       );
-
-      const result = await Effect.runPromise(program);
-
-      if (!result.success) {
-        // Log the error for debugging
-        console.error("Effect action error:", result.error);
-        throw new Error(result.error.message);
-      }
-
-      return result.data;
     });
 }
 

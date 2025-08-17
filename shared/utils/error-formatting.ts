@@ -1,29 +1,6 @@
-import { Schema } from "@effect/schema";
-import { Effect, pipe } from "effect";
-import { ValidationError } from "@/shared/backend/errors";
-
-export function createEffectAction<I, O, E>(
-  schema: Schema.Schema<I>,
-  handler: (input: I) => Effect.Effect<O, E, never>
-) {
-  return async (input: unknown) => {
-    const program = pipe(
-      Schema.decodeUnknown(schema)(input),
-      Effect.mapError(
-        (parseError) => new ValidationError({ message: parseError.message })
-      ),
-      Effect.flatMap(handler),
-      Effect.catchAll((error) =>
-        Effect.fail({
-          success: false,
-          error: formatBackendError(error),
-        })
-      )
-    );
-
-    return Effect.runPromise(program);
-  };
-}
+/**
+ * Generic error formatting utilities
+ */
 
 interface ErrorWithTag {
   _tag: string;
@@ -51,7 +28,10 @@ function isErrorWithTag(error: unknown): error is ErrorWithTag {
   return typeof error._tag === "string";
 }
 
-export function formatBackendError(error: unknown): {
+/**
+ * Format Effect errors into a consistent structure
+ */
+export function formatEffectError(error: unknown): {
   code: string;
   message: string;
   details?: unknown;
