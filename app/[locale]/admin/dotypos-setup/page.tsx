@@ -194,7 +194,9 @@ DOTYPOS_API_URL=https://api.dotykacka.cz/v2`
                   </div>
 
                   <Button
-                    onClick={() => (window.location.href = authUrl)}
+                    onClick={() => {
+                      window.location.href = authUrl;
+                    }}
                     className="w-full"
                   >
                     <ExternalLink className="mr-2 h-4 w-4" />

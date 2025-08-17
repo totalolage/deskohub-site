@@ -40,10 +40,10 @@ export const ContactServiceLive = Layer.succeed(
       }).pipe(
         Effect.catchAll((error) =>
           Effect.fail(
-            new StorageError(
-              `Failed to submit contact form: ${error}`,
-              "contact.submit"
-            )
+            new StorageError({
+              message: `Failed to submit contact form: ${error}`,
+              operation: "contact.submit",
+            })
           )
         )
       ),

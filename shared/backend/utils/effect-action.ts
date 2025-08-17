@@ -9,7 +9,9 @@ export function createEffectAction<I, O, E>(
   return async (input: unknown) => {
     const program = pipe(
       Schema.decodeUnknown(schema)(input),
-      Effect.mapError((parseError) => new ValidationError(parseError.message)),
+      Effect.mapError(
+        (parseError) => new ValidationError({ message: parseError.message })
+      ),
       Effect.flatMap(handler),
       Effect.catchAll((error) =>
         Effect.fail({
