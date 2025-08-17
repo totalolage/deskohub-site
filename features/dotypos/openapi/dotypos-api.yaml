@@ -122,7 +122,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: 0
+            default: "0"
       responses:
         '200':
           description: List of reservations
@@ -282,16 +282,14 @@ paths:
           in: query
           schema:
             type: integer
-            default: 0
+            default: "0"
       responses:
         '200':
-          description: List of customers
+          description: Paginated list of customers
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Customer'
+                $ref: '#/components/schemas/PaginatedCustomers'
         '401':
           description: Unauthorized
           content:
@@ -464,7 +462,7 @@ components:
           type: integer
           format: int64
           description: Reservation flags (bitwise flags)
-          default: 0
+          default: "0"
         startDate:
           type: number
           description: Start date/time as Unix timestamp in milliseconds
@@ -529,54 +527,104 @@ components:
           type: number
           description: Last update timestamp in milliseconds
 
+    PaginatedCustomers:
+      type: object
+      properties:
+        currentPage:
+          type: string
+          description: Current page number
+        perPage:
+          type: string
+          description: Items per page
+        totalItemsOnPage:
+          type: string
+          description: Number of items on current page
+        totalItemsCount:
+          type: string
+          description: Total number of items
+        firstPage:
+          type: string
+          description: First page number
+        lastPage:
+          type: string
+          description: Last page number
+        nextPage:
+          type: string
+          nullable: true
+          description: Next page number
+        prevPage:
+          type: string
+          nullable: true
+          description: Previous page number
+        data:
+          type: array
+          description: Array of customers
+          items:
+            $ref: '#/components/schemas/Customer'
+
     Customer:
       type: object
       properties:
         id:
-          type: integer
+          type: string
           description: Customer ID
         _cloudId:
-          type: integer
+          type: string
           description: Cloud ID
         firstName:
           type: string
+          nullable: true
           description: First name
         lastName:
           type: string
+          nullable: true
           description: Last name
         email:
           type: string
+          nullable: true
           description: Email address
         phone:
           type: string
+          nullable: true
           description: Phone number
         addressLine1:
           type: string
+          nullable: true
           description: Address line 1
         addressLine2:
           type: string
+          nullable: true
           description: Address line 2
         city:
           type: string
+          nullable: true
           description: City
         zip:
           type: string
+          nullable: true
           description: ZIP code
         country:
           type: string
+          nullable: true
           description: Country code
         companyName:
           type: string
+          nullable: true
           description: Company name
         vatId:
           type: string
+          nullable: true
           description: VAT ID
         note:
           type: string
+          nullable: true
           description: Customer note
         points:
-          type: number
+          type: string
           description: Customer points
+        flags:
+          type: string
+          description: Customer flags
         deleted:
           type: boolean
           description: Is deleted
@@ -584,11 +632,11 @@ components:
           type: boolean
           description: Is displayed
         created:
-          type: number
-          description: Creation timestamp
+          type: string
+          description: Creation timestamp (ISO 8601)
         versionDate:
-          type: number
-          description: Last modification timestamp
+          type: string
+          description: Last modification timestamp (ISO 8601)
 
     CreateCustomerRequest:
       type: object
@@ -599,7 +647,7 @@ components:
         - flags
       properties:
         _cloudId:
-          type: integer
+          type: string
           description: Cloud ID
         firstName:
           type: string
@@ -608,10 +656,9 @@ components:
           type: string
           description: Last name
         flags:
-          type: integer
-          format: int64
+          type: string
           description: Customer flags (bitwise flags)
-          default: 0
+          default: "0"
         email:
           type: string
           description: Email address
@@ -651,9 +698,9 @@ components:
           description: Is deleted
           default: false
         points:
-          type: number
+          type: string
           description: Customer points
-          default: 0
+          default: "0"
 
     ErrorResponse:
       type: object

@@ -441,6 +441,12 @@ const DotyposApiLayer = Layer.scoped(
           
           const result = yield* Effect.tryPromise({
             try: async () => {
+              console.log("Searching customers with params:", {
+                path: params.path,
+                query: params.query,
+                url: `/clouds/${params.path.cloudId}/customers`,
+              });
+              
               const response = await generatedApi.getCustomers({
                 client,
                 path: params.path,
@@ -455,6 +461,8 @@ const DotyposApiLayer = Layer.scoped(
                 hasData: !!response.data,
                 dataLength: response.data?.length,
                 status: response.response?.status,
+                error: response.error,
+                violations: response.error?.violations,
               });
               
               if (response.error) {
@@ -467,6 +475,12 @@ const DotyposApiLayer = Layer.scoped(
                 };
               }
 
+              // Extract customers from paginated response
+              if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+                const customers = response.data.data || [];
+                console.log(`Extracted ${customers.length} customers from paginated response`);
+                return customers;
+              }
               return response.data || [];
             },
             catch: (error) =>
@@ -621,9 +635,10 @@ const DotyposClientLive = Layer.effect(
           // Search by email if provided
           if (customerData.email) {
             yield* Effect.logDebug("Searching customer by email", { email: customerData.email });
+            // Try first without filter to get all customers, then filter locally
             const customers = yield* api.searchCustomers({
               path: { cloudId: config.cloudId },
-              query: { filter: customerData.email, limit: 10 }
+              query: { limit: 100 }  // Get more customers to search through
             }).pipe(
               Effect.timeout(Duration.millis(config.apiTimeout)),
               Effect.retry(retryPolicy),
@@ -652,7 +667,7 @@ const DotyposClientLive = Layer.effect(
             yield* Effect.logDebug("Searching customer by phone", { phone: customerData.phone });
             const customers = yield* api.searchCustomers({
               path: { cloudId: config.cloudId },
-              query: { filter: customerData.phone, limit: 10 }
+              query: { limit: 100 }
             }).pipe(
               Effect.timeout(Duration.millis(config.apiTimeout)),
               Effect.retry(retryPolicy),
@@ -685,15 +700,15 @@ const DotyposClientLive = Layer.effect(
           yield* Effect.logInfo("Creating new customer", customerData);
           
           const newCustomerRequest: CreateCustomerRequest = {
-            _cloudId: parseInt(config.cloudId),
+            _cloudId: config.cloudId,
             firstName: customerData.firstName,
             lastName: customerData.lastName,
             email: customerData.email,
             phone: customerData.phone,
             display: true,
             deleted: false,
-            points: 0,
-            flags: 0, // Required field according to BC1 changes
+            points: "0",
+            flags: "0", // Required field according to BC1 changes
           };
           
           const newCustomer = yield* api.createCustomer({
@@ -867,32 +882,35 @@ export const createReservation = (
       employeeId: client.employeeId
     });
     
-    // TODO: Customer integration disabled temporarily due to API issues
-    // The customer endpoints return 400 errors - need to investigate with Dotypos
-    /*
     // Split customer name into first and last name
     const nameParts = input.customerName.trim().split(/\s+/);
     const firstName = nameParts[0] || "";
     const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
     
-    const customer = yield* client.findOrCreateCustomer({
-      firstName,
-      lastName,
-      email: input.customerEmail,
-      phone: input.customerPhone,
-    });
-    
-    yield* Effect.logInfo("Got customer for reservation", {
-      customerId: customer.id,
-      customerName: `${customer.firstName} ${customer.lastName}`,
-    });
-    */
+    // Try to find or create customer
+    let customerId: number | null = null;
+    try {
+      const customer = yield* client.findOrCreateCustomer({
+        firstName,
+        lastName,
+        email: input.customerEmail,
+        phone: input.customerPhone,
+      });
+      
+      yield* Effect.logInfo("Got customer for reservation", {
+        customerId: customer.id,
+        customerName: `${customer.firstName} ${customer.lastName}`,
+      });
+      
+      customerId = customer.id ? parseInt(customer.id) : null;
+    } catch (error) {
+      yield* Effect.logWarning("Failed to find/create customer, proceeding without customer ID", error);
+    }
     
     const note = buildNote(input);
     yield* Effect.logDebug("Built note", { note });
 
-    // Build request with only required fields
-    // Omit _customerId, _employeeId, _tableId if they're not available
+    // Build request with customer ID if available
     const request: CreateReservationRequest = {
       _branchId: 1, // Default branch
       _cloudId: parseInt(client.cloudId),
@@ -902,10 +920,9 @@ export const createReservation = (
       status: "CONFIRMED",
       note: note,
       flags: 0, // Default flags value (required, cannot be null)
-      // TODO: Add these when we have valid IDs:
-      // _customerId: customerId,
-      // _employeeId: parseInt(client.employeeId),
-      // _tableId: tableId,
+      // Only include these if we have valid values
+      ...(customerId && { _customerId: customerId }),
+      ...(client.employeeId && { _employeeId: parseInt(client.employeeId) }),
     } as CreateReservationRequest;
     
     yield* Effect.logDebug("Prepared CreateReservationRequest", request);

@@ -48,7 +48,7 @@ export const zCreateReservationRequest = z.object({
     ])),
     flags: z.optional(z.coerce.bigint().register(z.globalRegistry, {
         description: 'Reservation flags (bitwise flags)'
-    })).default(BigInt(0)),
+    })).default(BigInt('0')),
     startDate: z.number().register(z.globalRegistry, {
         description: 'Start date/time as Unix timestamp in milliseconds'
     }),
@@ -114,50 +114,65 @@ export const zReservation = z.object({
 });
 
 export const zCustomer = z.object({
-    id: z.optional(z.int().register(z.globalRegistry, {
+    id: z.optional(z.string().register(z.globalRegistry, {
         description: 'Customer ID'
     })),
-    _cloudId: z.optional(z.int().register(z.globalRegistry, {
+    _cloudId: z.optional(z.string().register(z.globalRegistry, {
         description: 'Cloud ID'
     })),
-    firstName: z.optional(z.string().register(z.globalRegistry, {
-        description: 'First name'
-    })),
-    lastName: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Last name'
-    })),
-    email: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Email address'
-    })),
-    phone: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Phone number'
-    })),
-    addressLine1: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Address line 1'
-    })),
-    addressLine2: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Address line 2'
-    })),
-    city: z.optional(z.string().register(z.globalRegistry, {
-        description: 'City'
-    })),
-    zip: z.optional(z.string().register(z.globalRegistry, {
-        description: 'ZIP code'
-    })),
-    country: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Country code'
-    })),
-    companyName: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Company name'
-    })),
-    vatId: z.optional(z.string().register(z.globalRegistry, {
-        description: 'VAT ID'
-    })),
-    note: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Customer note'
-    })),
-    points: z.optional(z.number().register(z.globalRegistry, {
+    firstName: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    lastName: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    email: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    phone: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    addressLine1: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    addressLine2: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    city: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    zip: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    country: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    companyName: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    vatId: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    note: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    points: z.optional(z.string().register(z.globalRegistry, {
         description: 'Customer points'
+    })),
+    flags: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Customer flags'
     })),
     deleted: z.optional(z.boolean().register(z.globalRegistry, {
         description: 'Is deleted'
@@ -165,16 +180,48 @@ export const zCustomer = z.object({
     display: z.optional(z.boolean().register(z.globalRegistry, {
         description: 'Is displayed'
     })),
-    created: z.optional(z.number().register(z.globalRegistry, {
-        description: 'Creation timestamp'
+    created: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Creation timestamp (ISO 8601)'
     })),
-    versionDate: z.optional(z.number().register(z.globalRegistry, {
-        description: 'Last modification timestamp'
+    versionDate: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Last modification timestamp (ISO 8601)'
+    }))
+});
+
+export const zPaginatedCustomers = z.object({
+    currentPage: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Current page number'
+    })),
+    perPage: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Items per page'
+    })),
+    totalItemsOnPage: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Number of items on current page'
+    })),
+    totalItemsCount: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Total number of items'
+    })),
+    firstPage: z.optional(z.string().register(z.globalRegistry, {
+        description: 'First page number'
+    })),
+    lastPage: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Last page number'
+    })),
+    nextPage: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    prevPage: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    data: z.optional(z.array(zCustomer).register(z.globalRegistry, {
+        description: 'Array of customers'
     }))
 });
 
 export const zCreateCustomerRequest = z.object({
-    _cloudId: z.int().register(z.globalRegistry, {
+    _cloudId: z.string().register(z.globalRegistry, {
         description: 'Cloud ID'
     }),
     firstName: z.string().register(z.globalRegistry, {
@@ -183,9 +230,9 @@ export const zCreateCustomerRequest = z.object({
     lastName: z.string().register(z.globalRegistry, {
         description: 'Last name'
     }),
-    flags: z.coerce.bigint().register(z.globalRegistry, {
+    flags: z.string().register(z.globalRegistry, {
         description: 'Customer flags (bitwise flags)'
-    }).default(BigInt(0)),
+    }).default('0'),
     email: z.optional(z.string().register(z.globalRegistry, {
         description: 'Email address'
     })),
@@ -222,9 +269,9 @@ export const zCreateCustomerRequest = z.object({
     deleted: z.optional(z.boolean().register(z.globalRegistry, {
         description: 'Is deleted'
     })).default(false),
-    points: z.optional(z.number().register(z.globalRegistry, {
+    points: z.optional(z.string().register(z.globalRegistry, {
         description: 'Customer points'
-    })).default(0)
+    })).default('0')
 });
 
 export const zErrorResponse = z.object({
@@ -270,11 +317,9 @@ export const zGetReservationResponse = zReservation;
 export const zUpdateReservationResponse = zReservation;
 
 /**
- * List of customers
+ * Paginated list of customers
  */
-export const zGetCustomersResponse = z.array(zCustomer).register(z.globalRegistry, {
-    description: 'List of customers'
-});
+export const zGetCustomersResponse = zPaginatedCustomers;
 
 /**
  * Customers created successfully

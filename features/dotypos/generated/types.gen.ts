@@ -111,67 +111,110 @@ export type Reservation = {
     versionDate?: number;
 };
 
+export type PaginatedCustomers = {
+    /**
+     * Current page number
+     */
+    currentPage?: string;
+    /**
+     * Items per page
+     */
+    perPage?: string;
+    /**
+     * Number of items on current page
+     */
+    totalItemsOnPage?: string;
+    /**
+     * Total number of items
+     */
+    totalItemsCount?: string;
+    /**
+     * First page number
+     */
+    firstPage?: string;
+    /**
+     * Last page number
+     */
+    lastPage?: string;
+    /**
+     * Next page number
+     */
+    nextPage?: string | null;
+    /**
+     * Previous page number
+     */
+    prevPage?: string | null;
+    /**
+     * Array of customers
+     */
+    data?: Array<Customer>;
+};
+
 export type Customer = {
     /**
      * Customer ID
      */
-    id?: number;
+    id?: string;
     /**
      * Cloud ID
      */
-    _cloudId?: number;
+    _cloudId?: string;
     /**
      * First name
      */
-    firstName?: string;
+    firstName?: string | null;
     /**
      * Last name
      */
-    lastName?: string;
+    lastName?: string | null;
     /**
      * Email address
      */
-    email?: string;
+    email?: string | null;
     /**
      * Phone number
      */
-    phone?: string;
+    phone?: string | null;
     /**
      * Address line 1
      */
-    addressLine1?: string;
+    addressLine1?: string | null;
     /**
      * Address line 2
      */
-    addressLine2?: string;
+    addressLine2?: string | null;
     /**
      * City
      */
-    city?: string;
+    city?: string | null;
     /**
      * ZIP code
      */
-    zip?: string;
+    zip?: string | null;
     /**
      * Country code
      */
-    country?: string;
+    country?: string | null;
     /**
      * Company name
      */
-    companyName?: string;
+    companyName?: string | null;
     /**
      * VAT ID
      */
-    vatId?: string;
+    vatId?: string | null;
     /**
      * Customer note
      */
-    note?: string;
+    note?: string | null;
     /**
      * Customer points
      */
-    points?: number;
+    points?: string;
+    /**
+     * Customer flags
+     */
+    flags?: string;
     /**
      * Is deleted
      */
@@ -181,20 +224,20 @@ export type Customer = {
      */
     display?: boolean;
     /**
-     * Creation timestamp
+     * Creation timestamp (ISO 8601)
      */
-    created?: number;
+    created?: string;
     /**
-     * Last modification timestamp
+     * Last modification timestamp (ISO 8601)
      */
-    versionDate?: number;
+    versionDate?: string;
 };
 
 export type CreateCustomerRequest = {
     /**
      * Cloud ID
      */
-    _cloudId: number;
+    _cloudId: string;
     /**
      * First name
      */
@@ -206,7 +249,7 @@ export type CreateCustomerRequest = {
     /**
      * Customer flags (bitwise flags)
      */
-    flags: number;
+    flags: string;
     /**
      * Email address
      */
@@ -258,7 +301,7 @@ export type CreateCustomerRequest = {
     /**
      * Customer points
      */
-    points?: number;
+    points?: string;
 };
 
 export type ErrorResponse = {
@@ -518,9 +561,9 @@ export type GetCustomersError = GetCustomersErrors[keyof GetCustomersErrors];
 
 export type GetCustomersResponses = {
     /**
-     * List of customers
+     * Paginated list of customers
      */
-    200: Array<Customer>;
+    200: PaginatedCustomers;
 };
 
 export type GetCustomersResponse = GetCustomersResponses[keyof GetCustomersResponses];
