@@ -1,43 +1,53 @@
-export class BackendError {
-  readonly _tag: string = "BackendError";
-  constructor(
-    readonly code: string,
-    readonly message: string,
-    readonly details?: unknown
-  ) {}
-}
+import { Data } from "effect";
 
-export class StorageError extends BackendError {
-  override readonly _tag = "StorageError" as const;
-  constructor(message: string, operation?: string) {
-    super("STORAGE_ERROR", message, { operation });
+export class BackendError extends Data.TaggedError("BackendError")<{
+  readonly code: string;
+  readonly message: string;
+  readonly details?: unknown;
+}> {}
+
+export class StorageError extends Data.TaggedError("StorageError")<{
+  readonly message: string;
+  readonly operation?: string;
+}> {
+  get code() {
+    return "STORAGE_ERROR";
   }
 }
 
-export class ValidationError extends BackendError {
-  override readonly _tag = "ValidationError" as const;
-  constructor(message: string, field?: string) {
-    super("VALIDATION_ERROR", message, { field });
+export class ValidationError extends Data.TaggedError("ValidationError")<{
+  readonly message: string;
+  readonly field?: string;
+}> {
+  get code() {
+    return "VALIDATION_ERROR";
   }
 }
 
-export class ExternalAPIError extends BackendError {
-  override readonly _tag = "ExternalAPIError" as const;
-  constructor(service: string, message: string, statusCode?: number) {
-    super("EXTERNAL_API_ERROR", message, { service, statusCode });
+export class ExternalAPIError extends Data.TaggedError("ExternalAPIError")<{
+  readonly service: string;
+  readonly message: string;
+  readonly statusCode?: number;
+}> {
+  get code() {
+    return "EXTERNAL_API_ERROR";
   }
 }
 
-export class NetworkError extends BackendError {
-  override readonly _tag = "NetworkError" as const;
-  constructor(message: string, url?: string) {
-    super("NETWORK_ERROR", message, { url });
+export class NetworkError extends Data.TaggedError("NetworkError")<{
+  readonly message: string;
+  readonly url?: string;
+}> {
+  get code() {
+    return "NETWORK_ERROR";
   }
 }
 
-export class ParseError extends BackendError {
-  override readonly _tag = "ParseError" as const;
-  constructor(message: string, data?: unknown) {
-    super("PARSE_ERROR", message, { data });
+export class ParseError extends Data.TaggedError("ParseError")<{
+  readonly message: string;
+  readonly data?: unknown;
+}> {
+  get code() {
+    return "PARSE_ERROR";
   }
 }
