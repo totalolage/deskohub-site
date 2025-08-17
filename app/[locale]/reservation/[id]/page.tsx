@@ -1,7 +1,8 @@
 import { Effect } from "effect";
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
-import { getReservation, DotyposServiceLive } from "@/features/dotypos";
+import { notFound } from "next/navigation";
+import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { Badge } from "@/shared/components/ui/badge";
@@ -29,23 +30,37 @@ export default async function ReservationConfirmationPage({
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
 
-  // Fetch reservation from Dotypos (our source of truth)
+  // Fetch reservation from Dotypos with proper error handling
   const reservationResult = await Effect.runPromise(
-    getReservation(id).pipe(Effect.provide(DotyposServiceLive))
+    getReservation(id).pipe(
+      Effect.provide(DotyposServiceLive),
+      Effect.match({
+        onFailure: (error) => {
+          // Log error for debugging
+          console.error("Failed to fetch reservation:", error);
+          // Return null to trigger 404
+          return null;
+        },
+        onSuccess: (reservation) => reservation,
+      })
+    )
   );
 
-  // No fallback - if Dotypos fails, the error propagates
+  // If reservation not found or error, show 404
+  if (!reservationResult) {
+    notFound();
+  }
 
   // Map Dotypos response to our booking structure
   const booking = {
     id: reservationResult.id,
     datetime: reservationResult.datetime,
-    duration: 2, // Default duration, could be calculated from Dotypos end time
+    duration: reservationResult.duration || 2, // Use duration from reservation, fallback to 2
     guestCount: reservationResult.guestCount,
     name: reservationResult.customerName,
     email: reservationResult.customerEmail || "",
     phone: reservationResult.customerPhone || "",
-    tablePreference: "any" as const, // Default since Dotypos doesn't store this directly
+    tablePreference: "any" as const, // Default since it's not retrieved from note parsing yet
     specialRequests: reservationResult.specialRequests || "",
     submittedAt: reservationResult.createdAt,
   };
