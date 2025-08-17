@@ -9,14 +9,14 @@ import { getContactSchema } from "@/features/contact/schemas/contact";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // Single server action that handles contact form submission
-export const submitContactForm = createEffectSafeAction(
+const _submitContactForm = createEffectSafeAction(
   getContactSchema(),
   (input, { locale }) =>
     Effect.gen(function* () {
       const service = yield* ContactService;
       const submission = yield* service.submit(input);
 
-      yield* Effect.log(
+      yield* Effect.logInfo(
         `Contact form submitted: ${submission.submittedAt} for locale: ${locale}`
       );
 
@@ -34,3 +34,9 @@ export const submitContactForm = createEffectSafeAction(
     ),
   ContactServiceLive
 );
+
+// Export an explicitly async wrapper that Next.js will recognize
+export const submitContactForm = async (...args: Parameters<typeof _submitContactForm>): Promise<any> => {
+  "use server";
+  return _submitContactForm(...args);
+};

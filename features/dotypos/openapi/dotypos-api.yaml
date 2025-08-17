@@ -11,23 +11,33 @@ security:
   - bearerAuth: []
 
 paths:
-  /auth/token:
+  /signin/token:
     post:
       tags:
         - Authentication
-      summary: Obtain or refresh access token
+      summary: Get access token from refresh token
       operationId: getAccessToken
       security: []
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+            description: User {refresh_token}
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              oneOf:
-                - $ref: '#/components/schemas/RefreshTokenRequest'
-                - $ref: '#/components/schemas/PasswordTokenRequest'
+              type: object
+              properties:
+                _cloudId:
+                  type: string
+                  description: Cloud ID to get access to
+              # _cloudId is optional - can be empty {} for listing clouds
       responses:
-        '200':
+        '201':
           description: Successful authentication
           content:
             application/json:
@@ -64,14 +74,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateReservationRequest'
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateReservationRequest'
+              maxItems: 100
+              description: Array of reservations to create (max 100)
       responses:
-        '201':
-          description: Reservation created successfully
+        '200':
+          description: Reservations created successfully
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Reservation'
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
         '400':
           description: Bad request
           content:
@@ -240,6 +256,126 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /clouds/{cloudId}/customers:
+    get:
+      tags:
+        - Customers
+      summary: Get customers
+      operationId: getCustomers
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filter
+          in: query
+          description: Filter customers (e.g., by email or phone)
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of customers
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Customers
+      summary: Create customers
+      operationId: createCustomers
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '200':
+          description: Customers created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/customers/{customerId}:
+    get:
+      tags:
+        - Customers
+      summary: Get customer by ID
+      operationId: getCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Customer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -290,20 +426,11 @@ components:
     TokenResponse:
       type: object
       required:
-        - access_token
-        - token_type
-        - expires_in
+        - accessToken
       properties:
-        access_token:
+        accessToken:
           type: string
-        token_type:
-          type: string
-        expires_in:
-          type: integer
-          description: Token expiration time in seconds
-        refresh_token:
-          type: string
-          description: Refresh token (only returned for password grant)
+          description: JWT access token for API authentication
 
     CreateReservationRequest:
       type: object
@@ -321,6 +448,23 @@ components:
         _cloudId:
           type: integer
           description: Cloud ID
+        _customerId:
+          type: integer
+          description: Customer ID
+          nullable: true
+        _employeeId:
+          type: integer
+          description: Employee ID
+          nullable: true
+        _tableId:
+          type: integer
+          description: Table ID
+          nullable: true
+        flags:
+          type: integer
+          format: int64
+          description: Reservation flags (bitwise flags)
+          default: 0
         startDate:
           type: number
           description: Start date/time as Unix timestamp in milliseconds
@@ -384,6 +528,132 @@ components:
         versionDate:
           type: number
           description: Last update timestamp in milliseconds
+
+    Customer:
+      type: object
+      properties:
+        id:
+          type: integer
+          description: Customer ID
+        _cloudId:
+          type: integer
+          description: Cloud ID
+        firstName:
+          type: string
+          description: First name
+        lastName:
+          type: string
+          description: Last name
+        email:
+          type: string
+          description: Email address
+        phone:
+          type: string
+          description: Phone number
+        addressLine1:
+          type: string
+          description: Address line 1
+        addressLine2:
+          type: string
+          description: Address line 2
+        city:
+          type: string
+          description: City
+        zip:
+          type: string
+          description: ZIP code
+        country:
+          type: string
+          description: Country code
+        companyName:
+          type: string
+          description: Company name
+        vatId:
+          type: string
+          description: VAT ID
+        note:
+          type: string
+          description: Customer note
+        points:
+          type: number
+          description: Customer points
+        deleted:
+          type: boolean
+          description: Is deleted
+        display:
+          type: boolean
+          description: Is displayed
+        created:
+          type: number
+          description: Creation timestamp
+        versionDate:
+          type: number
+          description: Last modification timestamp
+
+    CreateCustomerRequest:
+      type: object
+      required:
+        - _cloudId
+        - firstName
+        - lastName
+        - flags
+      properties:
+        _cloudId:
+          type: integer
+          description: Cloud ID
+        firstName:
+          type: string
+          description: First name
+        lastName:
+          type: string
+          description: Last name
+        flags:
+          type: integer
+          format: int64
+          description: Customer flags (bitwise flags)
+          default: 0
+        email:
+          type: string
+          description: Email address
+        phone:
+          type: string
+          description: Phone number
+        addressLine1:
+          type: string
+          description: Address line 1
+        addressLine2:
+          type: string
+          description: Address line 2
+        city:
+          type: string
+          description: City
+        zip:
+          type: string
+          description: ZIP code
+        country:
+          type: string
+          description: Country code
+        companyName:
+          type: string
+          description: Company name
+        vatId:
+          type: string
+          description: VAT ID
+        note:
+          type: string
+          description: Customer note
+        display:
+          type: boolean
+          description: Is displayed
+          default: true
+        deleted:
+          type: boolean
+          description: Is deleted
+          default: false
+        points:
+          type: number
+          description: Customer points
+          default: 0
 
     ErrorResponse:
       type: object

@@ -267,7 +267,7 @@ export function BookingForm() {
                   >
                     <FormLabel>{m["booking.guestCountLabel"]()}</FormLabel>
                     <Select
-                      onValueChange={field.onChange}
+                      onValueChange={(value) => field.onChange(parseInt(value, 10))}
                       defaultValue={String(
                         field.value ||
                           siteConstants.booking.defaultValues.guestCount

@@ -25,6 +25,8 @@ import * as generatedApi from "../generated/sdk.gen";
 import type {
   CreateReservationRequest,
   Reservation,
+  Customer,
+  CreateCustomerRequest,
 } from "../generated/types.gen";
 // Response validation is handled by the generated SDK
 import type { DotyposReservation } from "../types";
@@ -37,6 +39,7 @@ const DotyposConfigSchema = Schema.Struct({
   clientSecret: Schema.NonEmptyString,
   refreshToken: Schema.NonEmptyString,
   cloudId: Schema.NonEmptyString,
+  employeeId: Schema.NonEmptyString,
   apiUrl: Schema.NonEmptyString,
   apiTimeout: Schema.Number.pipe(
     Schema.positive(),
@@ -62,11 +65,13 @@ class DotyposConfigTag extends Context.Tag("DotyposConfig")<
 const ConfigLayer = Layer.effect(
   DotyposConfigTag,
   Effect.gen(function* () {
+    yield* Effect.logDebug("Loading Dotypos configuration");
     const rawConfig = yield* Config.all({
       clientId: Config.string("DOTYPOS_CLIENT_ID"),
       clientSecret: Config.string("DOTYPOS_CLIENT_SECRET"),
       refreshToken: Config.string("DOTYPOS_REFRESH_TOKEN"),
       cloudId: Config.string("DOTYPOS_CLOUD_ID"),
+      employeeId: Config.string("DOTYPOS_EMPLOYEE_ID"),
       apiUrl: Config.string("DOTYPOS_API_URL").pipe(
         Config.withDefault("https://api.dotykacka.cz/v2")
       ),
@@ -74,11 +79,24 @@ const ConfigLayer = Layer.effect(
         Config.withDefault(30000)
       ),
     });
+    
+    yield* Effect.logDebug("Raw config loaded", {
+      clientId: rawConfig.clientId,
+      hasClientSecret: !!rawConfig.clientSecret,
+      hasRefreshToken: !!rawConfig.refreshToken,
+      cloudId: rawConfig.cloudId,
+      employeeId: rawConfig.employeeId,
+      apiUrl: rawConfig.apiUrl,
+      apiTimeout: rawConfig.apiTimeout,
+    });
 
     // Validate config using Schema
     const config = yield* Schema.decodeUnknown(DotyposConfigSchema)(
       rawConfig
     ).pipe(
+      Effect.tapError((error) =>
+        Effect.logError("Configuration validation failed", error)
+      ),
       Effect.mapError(
         (error) =>
           new ValidationError({
@@ -86,6 +104,7 @@ const ConfigLayer = Layer.effect(
           })
       )
     );
+    yield* Effect.logInfo("Dotypos configuration loaded successfully");
     return config;
   })
 );
@@ -102,6 +121,16 @@ interface DotyposApi {
   readonly getReservation: (params: {
     path: { cloudId: string; reservationId: string };
   }) => Effect.Effect<Reservation, ExternalAPIError | NetworkError>;
+
+  readonly searchCustomers: (params: {
+    path: { cloudId: string };
+    query?: { filter?: string; limit?: number; offset?: number };
+  }) => Effect.Effect<Customer[], ExternalAPIError | NetworkError>;
+
+  readonly createCustomer: (params: {
+    path: { cloudId: string };
+    body: CreateCustomerRequest;
+  }) => Effect.Effect<Customer, ExternalAPIError | NetworkError>;
 }
 
 class DotyposApiTag extends Context.Tag("DotyposApi")<
@@ -116,6 +145,7 @@ class DotyposClient extends Context.Tag("DotyposClient")<
   DotyposClient,
   {
     readonly cloudId: string;
+    readonly employeeId: string;
     readonly createReservation: (
       request: CreateReservationRequest
     ) => Effect.Effect<
@@ -126,6 +156,17 @@ class DotyposClient extends Context.Tag("DotyposClient")<
       id: string
     ) => Effect.Effect<
       Reservation,
+      ExternalAPIError | NetworkError | ValidationError
+    >;
+    readonly findOrCreateCustomer: (
+      customerData: {
+        firstName: string;
+        lastName: string;
+        email?: string;
+        phone?: string;
+      }
+    ) => Effect.Effect<
+      Customer,
       ExternalAPIError | NetworkError | ValidationError
     >;
   }
@@ -219,22 +260,29 @@ const DotyposApiLayer = Layer.scoped(
         // Check cache
         const cached = yield* Ref.get(tokenCacheRef);
         if (cached && Date.now() < cached.expiresAt - 60000) {
+          yield* Effect.logDebug("Using cached token");
           return cached.token;
         }
 
+        yield* Effect.logDebug("Fetching new access token", {
+          clientId: config.clientId,
+          hasClientSecret: !!config.clientSecret,
+          hasRefreshToken: !!config.refreshToken,
+        });
+        
         // Get new token using the client (SDK handles validation)
         const response = yield* Effect.tryPromise({
           try: async () => {
             const result = await generatedApi.getAccessToken({
               client,
+              headers: {
+                Authorization: `User ${config.refreshToken}`,
+              },
               body: {
-                grant_type: "refresh_token",
-                client_id: config.clientId,
-                client_secret: config.clientSecret,
-                refresh_token: config.refreshToken,
+                _cloudId: config.cloudId,
               },
             });
-
+            
             if (result.error) {
               throw {
                 statusCode: result.response?.status || 401,
@@ -249,34 +297,72 @@ const DotyposApiLayer = Layer.scoped(
           },
           catch: (error) =>
             transformHttpError(error, "Authentication", config.apiUrl),
-        });
+        }).pipe(
+          Effect.tap(() => Effect.logInfo("Authentication successful")),
+          Effect.tapError((error) => 
+            Effect.logError("Authentication failed", error)
+          )
+        );
 
         // Update cache atomically
         const newCache = {
-          token: response.access_token,
-          expiresAt: Date.now() + response.expires_in * 1000,
+          token: response.accessToken,
+          expiresAt: Date.now() + 3600 * 1000, // Default to 1 hour expiry
         };
         yield* Ref.set(tokenCacheRef, newCache);
-        return response.access_token;
-      });
+        yield* Effect.logDebug("Token cached", {
+          expiresIn: 3600,
+        });
+        return response.accessToken;
+      }).pipe(Effect.withSpan("getAccessToken"));
 
     // Create authenticated API using Effect patterns
     const api: DotyposApi = {
       createReservation: (params) =>
         Effect.gen(function* () {
+          yield* Effect.logDebug("DotyposApi.createReservation called", params);
+          
           const token = yield* getToken();
+          yield* Effect.logDebug("Got access token");
+
+          // The API expects an array of reservations
+          const requestBody = [params.body]; // Wrap single reservation in array
+          
+          yield* Effect.logDebug("Sending request to Dotypos API", {
+            path: params.path,
+            body: requestBody,
+            bodyStringified: JSON.stringify(requestBody),
+          });
 
           const result = yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.createReservation({
                 client,
-                ...params,
+                path: params.path,
+                body: requestBody,
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
               });
-
+              
+              console.log("Dotypos API response:", {
+                status: response.response?.status,
+                hasError: !!response.error,
+                hasData: !!response.data,
+                error: response.error,
+                data: response.data,
+              });
+              
               if (response.error) {
+                // Log validation violations if present
+                if (response.error.violations) {
+                  console.error("Validation violations:", JSON.stringify(response.error.violations, null, 2));
+                }
+                console.error("API error details", {
+                  error: response.error,
+                  status: response.response?.status,
+                  responseBody: response.response?.body,
+                });
                 throw {
                   statusCode: response.response?.status || 400,
                   message:
@@ -286,14 +372,30 @@ const DotyposApiLayer = Layer.scoped(
                 };
               }
 
-              return response.data;
+              // The API returns an array, extract the first reservation
+              const reservations = response.data;
+              if (!Array.isArray(reservations) || reservations.length === 0) {
+                throw {
+                  statusCode: 500,
+                  message: "Unexpected response format from reservation API",
+                };
+              }
+              
+              return reservations[0];
             },
             catch: (error) =>
               transformHttpError(error, "Create reservation", config.apiUrl),
-          });
+          }).pipe(
+            Effect.tap((data) => 
+              Effect.logInfo("API call successful", data)
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("API call failed", error)
+            )
+          );
 
           return result;
-        }),
+        }).pipe(Effect.withSpan("dotyposApi.createReservation")),
 
       getReservation: (params) =>
         Effect.gen(function* () {
@@ -330,6 +432,104 @@ const DotyposApiLayer = Layer.scoped(
 
           return result;
         }),
+
+      searchCustomers: (params) =>
+        Effect.gen(function* () {
+          yield* Effect.logDebug("DotyposApi.searchCustomers called", params);
+          
+          const token = yield* getToken();
+          
+          const result = yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.getCustomers({
+                client,
+                path: params.path,
+                query: params.query,
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              
+              console.log("Customer search response:", {
+                hasError: !!response.error,
+                hasData: !!response.data,
+                dataLength: response.data?.length,
+                status: response.response?.status,
+              });
+              
+              if (response.error) {
+                throw {
+                  statusCode: response.response?.status || 400,
+                  message:
+                    response.error.error_description ||
+                    response.error.error ||
+                    "Failed to search customers",
+                };
+              }
+
+              return response.data || [];
+            },
+            catch: (error) =>
+              transformHttpError(error, "Search customers", config.apiUrl),
+          }).pipe(
+            Effect.tap((customers) =>
+              Effect.logDebug(`Found ${customers.length} customers`)
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("Customer search failed", error)
+            )
+          );
+
+          return result;
+        }).pipe(Effect.withSpan("dotyposApi.searchCustomers")),
+
+      createCustomer: (params) =>
+        Effect.gen(function* () {
+          yield* Effect.logDebug("DotyposApi.createCustomer called", params);
+          
+          const token = yield* getToken();
+          
+          // The API expects an array of customers
+          const requestBody = [params.body];
+          
+          const result = yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.createCustomers({
+                client,
+                path: params.path,
+                body: requestBody,
+                headers: {
+                  Authorization: `Bearer ${token}`,
+                },
+              });
+              
+              if (response.error) {
+                throw {
+                  statusCode: response.response?.status || 400,
+                  message:
+                    response.error.error_description ||
+                    response.error.error ||
+                    "Failed to create customer",
+                };
+              }
+
+              // The API returns an array, extract the first customer
+              const customers = response.data;
+              if (!Array.isArray(customers) || customers.length === 0) {
+                throw {
+                  statusCode: 500,
+                  message: "Unexpected response format from customer API",
+                };
+              }
+              
+              return customers[0];
+            },
+            catch: (error) =>
+              transformHttpError(error, "Create customer", config.apiUrl),
+          });
+
+          return result;
+        }).pipe(Effect.withSpan("dotyposApi.createCustomer")),
     };
 
     return api;
@@ -344,6 +544,7 @@ const DotyposClientLive = Layer.effect(
 
     return {
       cloudId: config.cloudId,
+      employeeId: config.employeeId,
       createReservation: (request: CreateReservationRequest) =>
         api
           .createReservation({
@@ -351,17 +552,29 @@ const DotyposClientLive = Layer.effect(
             body: request,
           })
           .pipe(
+            Effect.tap((res) =>
+              Effect.logDebug("API call successful", res)
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("API call failed", error)
+            ),
             Effect.timeout(Duration.millis(config.apiTimeout)),
             Effect.retry(retryPolicy),
             // Map timeout error to NetworkError
             Effect.catchTag("TimeoutException", () =>
-              Effect.fail(
-                new NetworkError({
-                  message: `Request timed out after ${config.apiTimeout}ms`,
-                  url: config.apiUrl,
-                })
-              )
-            )
+              Effect.gen(function* () {
+                yield* Effect.logError("Request timed out", {
+                  timeout: config.apiTimeout,
+                });
+                return yield* Effect.fail(
+                  new NetworkError({
+                    message: `Request timed out after ${config.apiTimeout}ms`,
+                    url: config.apiUrl,
+                  })
+                );
+              })
+            ),
+            Effect.withSpan("dotyposClient.createReservation")
           ),
 
       getReservation: (id: string) =>
@@ -397,6 +610,116 @@ const DotyposClientLive = Layer.effect(
               )
             )
           ),
+      
+      findOrCreateCustomer: (customerData) =>
+        Effect.gen(function* () {
+          yield* Effect.logInfo("Finding or creating customer", customerData);
+          
+          // First, try to find existing customer by email or phone
+          let existingCustomer: Customer | undefined;
+          
+          // Search by email if provided
+          if (customerData.email) {
+            yield* Effect.logDebug("Searching customer by email", { email: customerData.email });
+            const customers = yield* api.searchCustomers({
+              path: { cloudId: config.cloudId },
+              query: { filter: customerData.email, limit: 10 }
+            }).pipe(
+              Effect.timeout(Duration.millis(config.apiTimeout)),
+              Effect.retry(retryPolicy),
+              Effect.catchTag("TimeoutException", () =>
+                Effect.fail(
+                  new NetworkError({
+                    message: `Request timed out after ${config.apiTimeout}ms`,
+                    url: config.apiUrl,
+                  })
+                )
+              )
+            );
+            
+            // Find exact email match
+            existingCustomer = customers.find(c => c.email === customerData.email);
+            if (existingCustomer) {
+              yield* Effect.logInfo("Found existing customer by email", { 
+                customerId: existingCustomer.id,
+                email: existingCustomer.email 
+              });
+            }
+          }
+          
+          // If not found by email, try phone
+          if (!existingCustomer && customerData.phone) {
+            yield* Effect.logDebug("Searching customer by phone", { phone: customerData.phone });
+            const customers = yield* api.searchCustomers({
+              path: { cloudId: config.cloudId },
+              query: { filter: customerData.phone, limit: 10 }
+            }).pipe(
+              Effect.timeout(Duration.millis(config.apiTimeout)),
+              Effect.retry(retryPolicy),
+              Effect.catchTag("TimeoutException", () =>
+                Effect.fail(
+                  new NetworkError({
+                    message: `Request timed out after ${config.apiTimeout}ms`,
+                    url: config.apiUrl,
+                  })
+                )
+              )
+            );
+            
+            // Find exact phone match
+            existingCustomer = customers.find(c => c.phone === customerData.phone);
+            if (existingCustomer) {
+              yield* Effect.logInfo("Found existing customer by phone", { 
+                customerId: existingCustomer.id,
+                phone: existingCustomer.phone 
+              });
+            }
+          }
+          
+          // If customer exists, return it
+          if (existingCustomer) {
+            return existingCustomer;
+          }
+          
+          // Create new customer
+          yield* Effect.logInfo("Creating new customer", customerData);
+          
+          const newCustomerRequest: CreateCustomerRequest = {
+            _cloudId: parseInt(config.cloudId),
+            firstName: customerData.firstName,
+            lastName: customerData.lastName,
+            email: customerData.email,
+            phone: customerData.phone,
+            display: true,
+            deleted: false,
+            points: 0,
+            flags: 0, // Required field according to BC1 changes
+          };
+          
+          const newCustomer = yield* api.createCustomer({
+            path: { cloudId: config.cloudId },
+            body: newCustomerRequest
+          }).pipe(
+            Effect.tap((customer) =>
+              Effect.logInfo("Customer created successfully", { 
+                customerId: customer.id,
+                name: `${customer.firstName} ${customer.lastName}`
+              })
+            ),
+            Effect.timeout(Duration.millis(config.apiTimeout)),
+            Effect.retry(retryPolicy),
+            Effect.catchTag("TimeoutException", () =>
+              Effect.fail(
+                new NetworkError({
+                  message: `Request timed out after ${config.apiTimeout}ms`,
+                  url: config.apiUrl,
+                })
+              )
+            )
+          );
+          
+          return newCustomer;
+        }).pipe(Effect.withSpan("dotyposClient.findOrCreateCustomer")),
     };
   })
 );
@@ -532,9 +855,44 @@ export const createReservation = (
   DotyposClient
 > =>
   Effect.gen(function* () {
+    yield* Effect.logInfo("Creating reservation", {
+      input,
+      datetimeType: typeof input.datetime,
+      isDate: input.datetime instanceof Date,
+    });
+    
     const client = yield* DotyposClient;
+    yield* Effect.logDebug("Got DotyposClient", { 
+      cloudId: client.cloudId,
+      employeeId: client.employeeId
+    });
+    
+    // TODO: Customer integration disabled temporarily due to API issues
+    // The customer endpoints return 400 errors - need to investigate with Dotypos
+    /*
+    // Split customer name into first and last name
+    const nameParts = input.customerName.trim().split(/\s+/);
+    const firstName = nameParts[0] || "";
+    const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+    
+    const customer = yield* client.findOrCreateCustomer({
+      firstName,
+      lastName,
+      email: input.customerEmail,
+      phone: input.customerPhone,
+    });
+    
+    yield* Effect.logInfo("Got customer for reservation", {
+      customerId: customer.id,
+      customerName: `${customer.firstName} ${customer.lastName}`,
+    });
+    */
+    
     const note = buildNote(input);
+    yield* Effect.logDebug("Built note", { note });
 
+    // Build request with only required fields
+    // Omit _customerId, _employeeId, _tableId if they're not available
     const request: CreateReservationRequest = {
       _branchId: 1, // Default branch
       _cloudId: parseInt(client.cloudId),
@@ -543,11 +901,20 @@ export const createReservation = (
       seats: input.guestCount,
       status: "CONFIRMED",
       note: note,
-    };
+      flags: 0, // Default flags value (required, cannot be null)
+      // TODO: Add these when we have valid IDs:
+      // _customerId: customerId,
+      // _employeeId: parseInt(client.employeeId),
+      // _tableId: tableId,
+    } as CreateReservationRequest;
+    
+    yield* Effect.logDebug("Prepared CreateReservationRequest", request);
 
     const reservation = yield* client.createReservation(request);
+    
+    yield* Effect.logInfo("Received reservation response", reservation);
 
-    return {
+    const result = {
       id: String(reservation.id),
       status: "confirmed" as const,
       createdAt: reservation.created
@@ -560,7 +927,17 @@ export const createReservation = (
       guestCount: input.guestCount,
       specialRequests: input.specialRequests,
     };
-  });
+    
+    yield* Effect.logDebug("Returning DotyposReservation", result);
+    return result;
+  }).pipe(
+    Effect.withSpan("createReservation", {
+      attributes: {
+        "reservation.customerName": input.customerName,
+        "reservation.guestCount": input.guestCount,
+      },
+    })
+  );
 
 /**
  * Get a reservation by ID
