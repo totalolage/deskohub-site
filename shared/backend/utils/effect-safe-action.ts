@@ -1,4 +1,4 @@
-import { Effect, type Layer, pipe } from "effect";
+import { Effect, type Layer, pipe, Logger, LogLevel, Cause, Duration } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/i18n";
 import { formatEffectError } from "@/shared/utils/error-formatting";
@@ -12,38 +12,54 @@ export function createEffectSafeAction<I, O, E, R>(
   return actionClient
     .inputSchema(schema)
     .action(async ({ parsedInput, ctx }) => {
-      return Effect.runPromise(
-        pipe(
-          handler(parsedInput, { locale: ctx.locale }),
-          Effect.provide(layers),
-          Effect.mapError((error) => {
-            const formatted = formatEffectError(error);
-            throw new Error(formatted.message);
-          })
+      const program = pipe(
+        Effect.gen(function* () {
+          yield* Effect.logDebug("Safe action executed", {
+            locale: ctx.locale,
+            inputKeys: Object.keys(parsedInput),
+          });
+          
+          const result = yield* handler(parsedInput, { locale: ctx.locale });
+          
+          yield* Effect.logDebug("Action completed successfully");
+          return result;
+        }),
+        Effect.tapError((error) =>
+          Effect.logError("Action failed", error)
+        ),
+        Effect.withSpan("safeAction", {
+          attributes: {
+            "action.locale": ctx.locale,
+          },
+        }),
+        Effect.provide(layers),
+        // Add a global timeout of 45 seconds to ensure the action completes
+        // This is shorter than Next.js's default timeout to ensure we get an error
+        Effect.timeout(Duration.seconds(45)),
+        Effect.catchTag("TimeoutException", () =>
+          Effect.fail(new Error("Request timed out. Please try again."))
         )
       );
+      
+      // Use simpler logger configuration
+      const programWithLogging = Logger.withMinimumLogLevel(program, LogLevel.All);
+      
+      try {
+        // Run the Effect with a timeout
+        const result = await Effect.runPromise(programWithLogging);
+        console.log("Effect action succeeded:", result);
+        return result;
+      } catch (error) {
+        // Log the full error for debugging
+        console.error("Effect action failed with error:", error);
+        
+        // Format the error for the user
+        const formatted = formatEffectError(error);
+        console.error("Formatted error:", formatted);
+        
+        // Throw an error that next-safe-action will catch
+        throw new Error(formatted.message || "An unexpected error occurred");
+      }
     });
 }
 
-// Wrapper for Effect-based actions
-export function effectActionClient<O, E>({
-  handler,
-}: {
-  handler: (
-    input: unknown
-  ) => Promise<{ success: true; data: O } | { success: false; error: E }>;
-}) {
-  return async (input: unknown) => {
-    const result = await handler(input);
-    if (!result.success) {
-      throw new Error(
-        typeof result.error === "object" &&
-          result.error !== null &&
-          "message" in result.error
-          ? String(result.error.message)
-          : "Action failed"
-      );
-    }
-    return result.data;
-  };
-}
