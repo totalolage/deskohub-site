@@ -31,6 +31,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["**/generated/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noExplicitAny": "off"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",

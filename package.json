@@ -13,7 +13,7 @@
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./i18n/paraglide",
     "dotypos:generate": "cd features/dotypos/openapi && bunx openapi-ts",
     "lint": "bunx biome check .",
-    "lint:fix": "bunx biome check --write .",
+    "lint:fix": "bunx biome check --write --unsafe .",
     "typecheck": "bunx tsc --noEmit",
     "validate": "run-p lint typecheck",
     "start": "bunx next start"
