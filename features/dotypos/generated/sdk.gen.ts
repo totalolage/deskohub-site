@@ -22,6 +22,14 @@ import type {
   UpdateReservationErrors,
   UpdateReservationResponses,
 } from "./types.gen";
+import {
+  zCancelReservationResponse,
+  zCreateReservationResponse,
+  zGetAccessTokenResponse,
+  zGetReservationResponse,
+  zListReservationsResponse,
+  zUpdateReservationResponse,
+} from "./zod.gen";
 
 export type Options<
   TData extends TDataShape = TDataShape,
@@ -51,6 +59,9 @@ export const getAccessToken = <ThrowOnError extends boolean = false>(
     GetAccessTokenErrors,
     ThrowOnError
   >({
+    responseValidator: async (data) => {
+      return await zGetAccessTokenResponse.parseAsync(data);
+    },
     url: "/auth/token",
     ...options,
     headers: {
@@ -71,6 +82,9 @@ export const listReservations = <ThrowOnError extends boolean = false>(
     ListReservationsErrors,
     ThrowOnError
   >({
+    responseValidator: async (data) => {
+      return await zListReservationsResponse.parseAsync(data);
+    },
     security: [
       {
         scheme: "bearer",
@@ -93,6 +107,9 @@ export const createReservation = <ThrowOnError extends boolean = false>(
     CreateReservationErrors,
     ThrowOnError
   >({
+    responseValidator: async (data) => {
+      return await zCreateReservationResponse.parseAsync(data);
+    },
     security: [
       {
         scheme: "bearer",
@@ -119,6 +136,9 @@ export const cancelReservation = <ThrowOnError extends boolean = false>(
     CancelReservationErrors,
     ThrowOnError
   >({
+    responseValidator: async (data) => {
+      return await zCancelReservationResponse.parseAsync(data);
+    },
     security: [
       {
         scheme: "bearer",
@@ -141,6 +161,9 @@ export const getReservation = <ThrowOnError extends boolean = false>(
     GetReservationErrors,
     ThrowOnError
   >({
+    responseValidator: async (data) => {
+      return await zGetReservationResponse.parseAsync(data);
+    },
     security: [
       {
         scheme: "bearer",
@@ -163,6 +186,9 @@ export const updateReservation = <ThrowOnError extends boolean = false>(
     UpdateReservationErrors,
     ThrowOnError
   >({
+    responseValidator: async (data) => {
+      return await zUpdateReservationResponse.parseAsync(data);
+    },
     security: [
       {
         scheme: "bearer",

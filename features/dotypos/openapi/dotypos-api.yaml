@@ -322,12 +322,10 @@ components:
           type: integer
           description: Cloud ID
         startDate:
-          type: integer
-          format: int64
+          type: number
           description: Start date/time as Unix timestamp in milliseconds
         endDate:
-          type: integer
-          format: int64
+          type: number
           description: End date/time as Unix timestamp in milliseconds
         seats:
           type: integer
@@ -343,12 +341,10 @@ components:
       type: object
       properties:
         startDate:
-          type: integer
-          format: int64
+          type: number
           description: Start date/time as Unix timestamp in milliseconds
         endDate:
-          type: integer
-          format: int64
+          type: number
           description: End date/time as Unix timestamp in milliseconds
         seats:
           type: integer
@@ -370,12 +366,10 @@ components:
         _cloudId:
           type: integer
         startDate:
-          type: integer
-          format: int64
+          type: number
           description: Start date/time as Unix timestamp in milliseconds
         endDate:
-          type: integer
-          format: int64
+          type: number
           description: End date/time as Unix timestamp in milliseconds
         seats:
           type: integer
@@ -385,12 +379,10 @@ components:
         note:
           type: string
         created:
-          type: integer
-          format: int64
+          type: number
           description: Creation timestamp in milliseconds
         versionDate:
-          type: integer
-          format: int64
+          type: number
           description: Last update timestamp in milliseconds
 
     ErrorResponse:

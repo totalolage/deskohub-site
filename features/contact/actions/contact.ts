@@ -1,38 +1,36 @@
 "use server";
 
-import { Effect, pipe } from "effect";
+import { Effect } from "effect";
 import {
   ContactService,
   ContactServiceLive,
 } from "@/features/contact/backend/contact.service";
-import { ContactFormSchema } from "@/features/contact/schemas/contact-effect";
-import { createEffectAction } from "@/shared/backend/utils/effect-action";
-import { effectActionClient } from "@/shared/backend/utils/effect-safe-action";
+import { getContactSchema } from "@/features/contact/schemas/contact";
+import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
-// Create the Effect-based contact action
-const _submitContactEffect = createEffectAction(
-  ContactFormSchema,
-  (validatedInput) =>
-    pipe(
-      ContactService,
-      Effect.flatMap((service) => service.submit(validatedInput)),
-      Effect.map((submission) => ({
-        success: true as const,
-        data: {
-          message: "Contact form submitted successfully",
-          submissionId: submission.submittedAt,
+// Single server action that handles contact form submission
+export const submitContactForm = createEffectSafeAction(
+  getContactSchema(),
+  (input, { locale }) =>
+    Effect.gen(function* () {
+      const service = yield* ContactService;
+      const submission = yield* service.submit(input);
+
+      yield* Effect.log(
+        `Contact form submitted: ${submission.submittedAt} for locale: ${locale}`
+      );
+
+      return {
+        message: "Contact form submitted successfully",
+        submissionId: submission.submittedAt,
+      };
+    }).pipe(
+      Effect.withSpan("submitContactForm", {
+        attributes: {
+          locale,
+          input,
         },
-      })),
-      Effect.provide(ContactServiceLive)
-    )
+      })
+    ),
+  ContactServiceLive
 );
-
-// Server action
-export const submitContactForm = async (input: unknown) => {
-  return _submitContactEffect(input);
-};
-
-// Create the safe action wrapper for Next.js compatibility
-export const submitContactFormWithEffect = effectActionClient({
-  handler: submitContactForm,
-});
