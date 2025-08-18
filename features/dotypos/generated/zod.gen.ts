@@ -2,19 +2,12 @@
 
 import { z } from "zod";
 
-export const zRefreshTokenRequest = z.object({
-  grant_type: z.enum(["refresh_token"]),
-  client_id: z.string(),
-  client_secret: z.string(),
-  refresh_token: z.string(),
-});
-
-export const zPasswordTokenRequest = z.object({
-  grant_type: z.enum(["password"]),
-  client_id: z.string(),
-  client_secret: z.string(),
-  username: z.string(),
-  password: z.string(),
+export const zTokenRequest = z.object({
+  _cloudId: z.optional(
+    z.string().register(z.globalRegistry, {
+      description: "Cloud ID for cloud-specific token (optional)",
+    })
+  ),
 });
 
 export const zTokenResponse = z.object({
@@ -31,22 +24,22 @@ export const zCreateReservationRequest = z.object({
     description: "Cloud ID",
   }),
   _customerId: z.optional(
-    z.int().register(z.globalRegistry, {
-      description: "Customer ID",
+    z.string().register(z.globalRegistry, {
+      description: "Customer ID (long)",
     })
   ),
   _employeeId: z.optional(
-    z.int().register(z.globalRegistry, {
-      description: "Employee ID",
+    z.string().register(z.globalRegistry, {
+      description: "Employee ID (long)",
     })
   ),
   _tableId: z
     .optional(
-      z.int().register(z.globalRegistry, {
-        description: "Table ID",
+      z.string().register(z.globalRegistry, {
+        description: "Table ID (long)",
       })
     )
-    .default(0),
+    .default("0"),
   flags: z
     .optional(
       z.coerce.bigint().register(z.globalRegistry, {
@@ -97,8 +90,8 @@ export const zUpdateReservationRequest = z.object({
 
 export const zReservation = z.object({
   id: z.optional(
-    z.int().register(z.globalRegistry, {
-      description: "Reservation ID",
+    z.string().register(z.globalRegistry, {
+      description: "Reservation ID (long)",
     })
   ),
   _branchId: z.int().register(z.globalRegistry, {
@@ -108,18 +101,18 @@ export const zReservation = z.object({
     description: "Cloud ID",
   }),
   _customerId: z.optional(
-    z.int().register(z.globalRegistry, {
-      description: "Customer ID",
+    z.string().register(z.globalRegistry, {
+      description: "Customer ID (long)",
     })
   ),
   _employeeId: z.optional(
-    z.int().register(z.globalRegistry, {
-      description: "Employee ID",
+    z.string().register(z.globalRegistry, {
+      description: "Employee ID (long)",
     })
   ),
   _tableId: z.optional(
-    z.int().register(z.globalRegistry, {
-      description: "Table ID",
+    z.string().register(z.globalRegistry, {
+      description: "Table ID (long)",
     })
   ),
   created: z.optional(
@@ -293,11 +286,11 @@ export const zCustomer = z.object({
       description: "Customer tags",
     })
   ),
-  points: z.string().register(z.globalRegistry, {
-    description: "Customer points (as string)",
+  points: z.number().register(z.globalRegistry, {
+    description: "Customer points (double)",
   }),
-  flags: z.string().register(z.globalRegistry, {
-    description: "Customer flags",
+  flags: z.coerce.bigint().register(z.globalRegistry, {
+    description: "Customer flags (long)",
   }),
   display: z.boolean().register(z.globalRegistry, {
     description: "Is displayed",
@@ -362,12 +355,12 @@ export const zCreateCustomerRequest = z.object({
   lastName: z.string().register(z.globalRegistry, {
     description: "Last name",
   }),
-  flags: z
-    .string()
+  flags: z.coerce
+    .bigint()
     .register(z.globalRegistry, {
       description: "Customer flags (bitwise flags)",
     })
-    .default("0"),
+    .default(BigInt(0)),
   email: z.optional(
     z.string().register(z.globalRegistry, {
       description: "Email address",
@@ -434,11 +427,11 @@ export const zCreateCustomerRequest = z.object({
     .default(false),
   points: z
     .optional(
-      z.string().register(z.globalRegistry, {
+      z.number().register(z.globalRegistry, {
         description: "Customer points",
       })
     )
-    .default("0"),
+    .default(0),
   internalNote: z
     .optional(
       z.string().register(z.globalRegistry, {
@@ -590,7 +583,7 @@ export const zUpdateCustomerRequest = z.object({
     })
   ),
   flags: z.optional(
-    z.string().register(z.globalRegistry, {
+    z.coerce.bigint().register(z.globalRegistry, {
       description: "Customer flags (bitwise flags)",
     })
   ),
@@ -620,8 +613,8 @@ export const zTable = z.object({
     description: "Table name/number",
   }),
   seats: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Number of seats (as string from API)",
+    z.int().register(z.globalRegistry, {
+      description: "Number of seats",
     })
   ),
   display: z.optional(
@@ -640,24 +633,38 @@ export const zTable = z.object({
     })
   ),
   positionX: z.optional(
-    z.string().register(z.globalRegistry, {
+    z.int().register(z.globalRegistry, {
       description: "X position",
     })
   ),
   positionY: z.optional(
-    z.string().register(z.globalRegistry, {
+    z.int().register(z.globalRegistry, {
       description: "Y position",
     })
   ),
   rotation: z.optional(
-    z.string().register(z.globalRegistry, {
+    z.int().register(z.globalRegistry, {
       description: "Rotation angle",
     })
   ),
   type: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Table type (e.g., CIRCLE4, SQUARE6, GENERIC, DELIVERY)",
-    })
+    z
+      .enum([
+        "SQUARE",
+        "SQUARE6",
+        "CIRCLE2",
+        "CIRCLE4",
+        "DELIVERY",
+        "CHAIR_SINGLE",
+        "ROUND",
+        "DOOR",
+        "GENERIC",
+        "CAR1",
+        "CAR2",
+      ])
+      .register(z.globalRegistry, {
+        description: "Table type",
+      })
   ),
   tags: z.optional(
     z.array(z.string()).register(z.globalRegistry, {

@@ -30,12 +30,7 @@ paths:
         content:
           application/json:
             schema:
-              type: object
-              properties:
-                _cloudId:
-                  type: string
-                  description: Cloud ID to get access to
-              # _cloudId is optional - can be empty {} for listing clouds
+              $ref: '#/components/schemas/TokenRequest'
       responses:
         '201':
           description: Successful authentication
@@ -389,7 +384,7 @@ paths:
           in: path
           required: true
           schema:
-            type: integer
+            type: string
       responses:
         '200':
           description: Customer details
@@ -466,44 +461,12 @@ components:
       bearerFormat: JWT
 
   schemas:
-    RefreshTokenRequest:
+    TokenRequest:
       type: object
-      required:
-        - grant_type
-        - client_id
-        - client_secret
-        - refresh_token
       properties:
-        grant_type:
+        _cloudId:
           type: string
-          enum: [refresh_token]
-        client_id:
-          type: string
-        client_secret:
-          type: string
-        refresh_token:
-          type: string
-
-    PasswordTokenRequest:
-      type: object
-      required:
-        - grant_type
-        - client_id
-        - client_secret
-        - username
-        - password
-      properties:
-        grant_type:
-          type: string
-          enum: [password]
-        client_id:
-          type: string
-        client_secret:
-          type: string
-        username:
-          type: string
-        password:
-          type: string
+          description: Cloud ID for cloud-specific token (optional)
 
     TokenResponse:
       type: object
@@ -531,15 +494,15 @@ components:
           type: integer
           description: Cloud ID
         _customerId:
-          type: integer
-          description: Customer ID
+          type: string
+          description: Customer ID (long)
         _employeeId:
-          type: integer
-          description: Employee ID
+          type: string
+          description: Employee ID (long)
         _tableId:
-          type: integer
-          description: Table ID
-          default: 0
+          type: string
+          description: Table ID (long)
+          default: "0"
         flags:
           type: integer
           format: int64
@@ -591,8 +554,8 @@ components:
         - status
       properties:
         id:
-          type: integer
-          description: Reservation ID
+          type: string
+          description: Reservation ID (long)
         _branchId:
           type: integer
           description: Branch ID
@@ -600,14 +563,14 @@ components:
           type: integer
           description: Cloud ID
         _customerId:
-          type: integer
-          description: Customer ID
+          type: string
+          description: Customer ID (long)
         _employeeId:
-          type: integer
-          description: Employee ID
+          type: string
+          description: Employee ID (long)
         _tableId:
-          type: integer
-          description: Table ID
+          type: string
+          description: Table ID (long)
         created:
           type: number
           description: Creation timestamp in milliseconds
@@ -762,11 +725,12 @@ components:
           items:
             type: string
         points:
-          type: string
-          description: Customer points (as string)
+          type: number
+          description: Customer points (double)
         flags:
-          type: string
-          description: Customer flags
+          type: integer
+          format: int64
+          description: Customer flags (long)
         display:
           type: boolean
           description: Is displayed
@@ -795,9 +759,10 @@ components:
           type: string
           description: Last name
         flags:
-          type: string
+          type: integer
+          format: int64
           description: Customer flags (bitwise flags)
-          default: "0"
+          default: 0
         email:
           type: string
           description: Email address
@@ -837,9 +802,9 @@ components:
           description: Is deleted
           default: false
         points:
-          type: string
+          type: number
           description: Customer points
-          default: "0"
+          default: 0
         internalNote:
           type: string
           description: Internal note
@@ -936,7 +901,8 @@ components:
           type: string
           description: Company ID
         flags:
-          type: string
+          type: integer
+          format: int64
           description: Customer flags (bitwise flags)
 
     PaginatedTables:
@@ -1001,8 +967,8 @@ components:
           description: Table name/number
           maxLength: 180
         seats:
-          type: string
-          description: Number of seats (as string from API)
+          type: integer
+          description: Number of seats
         display:
           type: boolean
           description: Is displayed
@@ -1013,17 +979,18 @@ components:
           type: string
           description: Location name
         positionX:
-          type: string
+          type: integer
           description: X position
         positionY:
-          type: string
+          type: integer
           description: Y position
         rotation:
-          type: string
+          type: integer
           description: Rotation angle
         type:
           type: string
-          description: Table type (e.g., CIRCLE4, SQUARE6, GENERIC, DELIVERY)
+          enum: [SQUARE, SQUARE6, CIRCLE2, CIRCLE4, DELIVERY, CHAIR_SINGLE, ROUND, DOOR, GENERIC, CAR1, CAR2]
+          description: Table type
         tags:
           type: array
           description: Table tags
