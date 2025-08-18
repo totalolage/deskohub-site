@@ -4,13 +4,7 @@ import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
 import { createReservation, DotyposServiceLive } from "@/features/dotypos";
-// TEMPORARY: Using mock service for testing
-import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
-
-// TEMPORARY: Toggle between real and mock service
-const USE_MOCK = process.env.USE_MOCK === "true";
-const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
 
 // Create the action with the helper
 const _submitBooking = createEffectSafeAction(
@@ -39,7 +33,7 @@ const _submitBooking = createEffectSafeAction(
         Effect.tapError((error) =>
           Effect.logError("Reservation creation failed", error)
         ),
-        Effect.provide(ServiceLayer)
+        Effect.provide(DotyposServiceLive)
       );
 
       yield* Effect.logInfo("Returning reservation for redirect", {

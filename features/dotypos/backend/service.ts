@@ -815,78 +815,44 @@ const DotyposClientLive = Layer.effect(
         Effect.gen(function* () {
           yield* Effect.logInfo("Finding or creating customer", customerData);
 
-          // First, try to find existing customer by email or phone
-          let existingCustomer: Customer | undefined;
-
-          // Search by email if provided
-          if (customerData.email) {
-            yield* Effect.logDebug("Searching customer by email", {
-              email: customerData.email,
-            });
-            // Try first without filter to get all customers, then filter locally
-            const customers = yield* api
-              .searchCustomers({
-                path: { cloudId: config.cloudId },
-                query: { limit: 100 }, // Get more customers to search through
-              })
-              .pipe(
-                Effect.timeout(Duration.millis(config.apiTimeout)),
-                Effect.retry(retryPolicy),
-                Effect.catchTag("TimeoutException", () =>
-                  Effect.fail(
-                    new NetworkError({
-                      message: `Request timed out after ${config.apiTimeout}ms`,
-                      url: config.apiUrl,
-                    })
-                  )
+          // Fetch customers once and search locally
+          const customers = yield* api
+            .searchCustomers({
+              path: { cloudId: config.cloudId },
+              query: {
+                limit: 100,
+                // Use filter if email is provided (API might support it)
+                ...(customerData.email && { filter: customerData.email }),
+              },
+            })
+            .pipe(
+              Effect.timeout(Duration.millis(config.apiTimeout)),
+              Effect.retry(retryPolicy),
+              Effect.catchTag("TimeoutException", () =>
+                Effect.fail(
+                  new NetworkError({
+                    message: `Request timed out after ${config.apiTimeout}ms`,
+                    url: config.apiUrl,
+                  })
                 )
-              );
-
-            // Find exact email match
-            existingCustomer = customers.find(
-              (c) => c.email === customerData.email
+              )
             );
-            if (existingCustomer) {
-              yield* Effect.logInfo("Found existing customer by email", {
-                customerId: existingCustomer.id,
-                email: existingCustomer.email,
-              });
-            }
-          }
 
-          // If not found by email, try phone
-          if (!existingCustomer && customerData.phone) {
-            yield* Effect.logDebug("Searching customer by phone", {
-              phone: customerData.phone,
+          // Find by email or phone
+          const existingCustomer = customers.find(
+            (c) =>
+              (customerData.email && c.email === customerData.email) ||
+              (customerData.phone && c.phone === customerData.phone)
+          );
+
+          if (existingCustomer) {
+            yield* Effect.logInfo("Found existing customer", {
+              customerId: existingCustomer.id,
+              matchedBy:
+                existingCustomer.email === customerData.email
+                  ? "email"
+                  : "phone",
             });
-            const customers = yield* api
-              .searchCustomers({
-                path: { cloudId: config.cloudId },
-                query: { limit: 100 },
-              })
-              .pipe(
-                Effect.timeout(Duration.millis(config.apiTimeout)),
-                Effect.retry(retryPolicy),
-                Effect.catchTag("TimeoutException", () =>
-                  Effect.fail(
-                    new NetworkError({
-                      message: `Request timed out after ${config.apiTimeout}ms`,
-                      url: config.apiUrl,
-                    })
-                  )
-                )
-              );
-
-            // Find exact phone match
-            existingCustomer = customers.find(
-              (c) => c.phone === customerData.phone
-            );
-            if (existingCustomer) {
-              yield* Effect.logInfo("Found existing customer by phone", {
-                customerId: existingCustomer.id,
-                phone: existingCustomer.phone,
-              });
-            }
           }
 
           // If customer exists, check if it needs updating
@@ -1067,29 +1033,15 @@ export { DotyposClient, DotyposConfigTag };
  * Build note field with customer information and metadata
  */
 const buildNote = (input: BookingFormData): string => {
-  const parts: string[] = [];
-
-  if (input.name) {
-    parts.push(`Customer: ${input.name}`);
-  }
-  if (input.email) {
-    parts.push(`Email: ${input.email}`);
-  }
-  if (input.phone) {
-    parts.push(`Phone: ${input.phone}`);
-  }
-  if (input.duration) {
-    parts.push(`Duration: ${input.duration}h`);
-  }
-  if (input.needsLargerTable) {
-    parts.push(`Needs larger table: Yes`);
-  }
-  if (input.needsPrivateSpace) {
-    parts.push(`Needs private space: Yes`);
-  }
-  if (input.specialRequests) {
-    parts.push(input.specialRequests);
-  }
+  const parts = [
+    input.name && `Customer: ${input.name}`,
+    input.email && `Email: ${input.email}`,
+    input.phone && `Phone: ${input.phone}`,
+    input.duration && `Duration: ${input.duration}h`,
+    input.needsLargerTable && `Needs larger table: Yes`,
+    input.needsPrivateSpace && `Needs private space: Yes`,
+    input.specialRequests,
+  ].filter(Boolean);
 
   return parts.join(" | ");
 };
@@ -1170,23 +1122,13 @@ export const createReservation = (
   DotyposClient
 > =>
   Effect.gen(function* () {
-    yield* Effect.logInfo("Creating reservation", {
-      input,
-      datetimeType: typeof input.datetime,
-      isDate: input.datetime instanceof Date,
-    });
+    yield* Effect.logInfo("Creating reservation", input);
 
     const client = yield* DotyposClient;
-    yield* Effect.logDebug("Got DotyposClient", {
-      cloudId: client.cloudId,
-      branchId: client.branchId,
-      employeeId: client.employeeId,
-    });
 
-    // Split customer name into first and last name
-    const nameParts = input.name.trim().split(/\s+/);
-    const firstName = nameParts[0] || "";
-    const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
+    // Simple name splitting - just first and rest
+    const [firstName = "", ...lastNameParts] = input.name.trim().split(/\s+/);
+    const lastName = lastNameParts.join(" ") || firstName;
 
     // Try to find or create customer
     let customerId: string | null = null;
@@ -1197,25 +1139,14 @@ export const createReservation = (
         email: input.email,
         phone: input.phone,
       });
-
-      yield* Effect.logInfo("Got customer for reservation", {
-        customerId: customer.id,
-        customerName: `${customer.firstName} ${customer.lastName}`,
-      });
-
       customerId = customer.id || null;
+      yield* Effect.logInfo("Customer resolved", { customerId });
     } catch (error) {
-      yield* Effect.logWarning(
-        "Failed to find/create customer, proceeding without customer ID",
-        error
-      );
+      yield* Effect.logWarning("Proceeding without customer ID", error);
     }
 
+    // Build note once
     const note = buildNote(input);
-    yield* Effect.logDebug("Built note", { note });
-
-    // Select the best table based on preferences if not already selected
-    let tableId: string | undefined;
 
     // Auto-select table based on preferences
     const tables = yield* client.getTables();
@@ -1226,20 +1157,16 @@ export const createReservation = (
       availableTables: tables,
     });
 
+    const tableId = selection?.selectedTableId;
     if (selection) {
-      tableId = selection.selectedTableId;
-      yield* Effect.logInfo("Auto-selected table", {
+      yield* Effect.logInfo("Table selected", {
         tableId,
         tableName: selection.selectedTableName,
         seats: selection.seats,
-        reason: selection.reason,
       });
-    } else {
-      yield* Effect.logWarning("No suitable table found, using default");
-      tableId = undefined;
     }
 
-    // Build request with customer ID if available
+    // Build request
     const request: CreateReservationRequest = {
       _branchId: client.branchId,
       _cloudId: client.cloudId,
@@ -1247,28 +1174,17 @@ export const createReservation = (
       endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
       seats: input.guestCount,
       status: "CONFIRMED",
-      note: note,
-      flags: 0, // Default flags value (required, cannot be null)
+      note,
+      flags: 0,
       ...(tableId && { _tableId: tableId }),
-      // Only include these if we have valid values
       ...(customerId && { _customerId: customerId }),
       ...(client.employeeId && { _employeeId: client.employeeId }),
-    } as CreateReservationRequest;
-
-    yield* Effect.logDebug("Prepared CreateReservationRequest", request);
-
-    const reservation = yield* client.createReservation(request);
-
-    yield* Effect.logInfo("Received reservation response", reservation);
-
-    // Store customer info in the note field for retrieval
-    const enrichedReservation: Reservation = {
-      ...reservation,
-      note: buildNote(input), // Keep the full note with customer info
     };
 
-    yield* Effect.logDebug("Returning Reservation", enrichedReservation);
-    return enrichedReservation;
+    const reservation = yield* client.createReservation(request);
+    yield* Effect.logInfo("Reservation created", { id: reservation.id });
+
+    return reservation;
   }).pipe(
     Effect.withSpan("createReservation", {
       attributes: {

@@ -3,8 +3,6 @@ import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
-// TEMPORARY: Using mock service for testing
-import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
@@ -33,14 +31,10 @@ export default async function ReservationConfirmationPage({
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
 
-  // TEMPORARY: Toggle between real and mock service
-  const USE_MOCK = process.env.USE_MOCK === "true";
-  const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
-
   // Fetch reservation from Dotypos with proper error handling
   const reservationResult = await Effect.runPromise(
     getReservation(id).pipe(
-      Effect.provide(ServiceLayer),
+      Effect.provide(DotyposServiceLive),
       Effect.match({
         onFailure: (error) => {
           // Log error for debugging
