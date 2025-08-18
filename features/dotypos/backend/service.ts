@@ -317,6 +317,7 @@ const DotyposApiLayer = Layer.scoped(
               body: {
                 _cloudId: config.cloudId,
               },
+              signal: AbortSignal.timeout(config.apiTimeout),
             });
 
             if (result.error) {
@@ -389,6 +390,8 @@ const DotyposApiLayer = Layer.scoped(
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                signal:
+                  AbortSignal.timeout(config.apiTimeout),
               });
 
               console.log("Dotypos API response:", {
@@ -478,6 +481,7 @@ const DotyposApiLayer = Layer.scoped(
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                signal: AbortSignal.timeout(config.apiTimeout),
               });
 
               if (response.error) {
@@ -521,6 +525,7 @@ const DotyposApiLayer = Layer.scoped(
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                signal: AbortSignal.timeout(config.apiTimeout),
               });
 
               console.log("Customer search response:", {
@@ -595,6 +600,7 @@ const DotyposApiLayer = Layer.scoped(
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                signal: AbortSignal.timeout(config.apiTimeout),
               });
 
               console.log("Create customer response:", {
@@ -648,6 +654,7 @@ const DotyposApiLayer = Layer.scoped(
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                signal: AbortSignal.timeout(config.apiTimeout),
               });
 
               console.log("Update customer response:", {
@@ -692,6 +699,7 @@ const DotyposApiLayer = Layer.scoped(
                 headers: {
                   Authorization: `Bearer ${token}`,
                 },
+                signal: AbortSignal.timeout(config.apiTimeout),
               });
 
               if (response.error) {
@@ -758,22 +766,7 @@ const DotyposClientLive = Layer.effect(
             Effect.tapError((error) =>
               Effect.logError("API call failed", error)
             ),
-            Effect.timeout(Duration.millis(config.apiTimeout)),
             Effect.retry(retryPolicy),
-            // Map timeout error to NetworkError
-            Effect.catchTag("TimeoutException", () =>
-              Effect.gen(function* () {
-                yield* Effect.logError("Request timed out", {
-                  timeout: config.apiTimeout,
-                });
-                return yield* Effect.fail(
-                  new NetworkError({
-                    message: `Request timed out after ${config.apiTimeout}ms`,
-                    url: config.apiUrl,
-                  })
-                );
-              })
-            ),
             Effect.withSpan("dotyposClient.createReservation")
           ),
 
@@ -786,7 +779,6 @@ const DotyposClientLive = Layer.effect(
             },
           })
           .pipe(
-            Effect.timeout(Duration.millis(config.apiTimeout)),
             Effect.retry(retryPolicy),
             Effect.mapError((error) => {
               // Add special handling for 404
@@ -799,16 +791,7 @@ const DotyposClientLive = Layer.effect(
                 });
               }
               return error;
-            }),
-            // Map timeout error to NetworkError
-            Effect.catchTag("TimeoutException", () =>
-              Effect.fail(
-                new NetworkError({
-                  message: `Request timed out after ${config.apiTimeout}ms`,
-                  url: config.apiUrl,
-                })
-              )
-            )
+            })
           ),
 
       findOrCreateCustomer: (customerData) =>
@@ -826,16 +809,7 @@ const DotyposClientLive = Layer.effect(
               },
             })
             .pipe(
-              Effect.timeout(Duration.millis(config.apiTimeout)),
-              Effect.retry(retryPolicy),
-              Effect.catchTag("TimeoutException", () =>
-                Effect.fail(
-                  new NetworkError({
-                    message: `Request timed out after ${config.apiTimeout}ms`,
-                    url: config.apiUrl,
-                  })
-                )
-              )
+              Effect.retry(retryPolicy)
             );
 
           // Find by email or phone
@@ -907,16 +881,7 @@ const DotyposClientLive = Layer.effect(
                       updatedFields: Object.keys(updateRequest),
                     })
                   ),
-                  Effect.timeout(Duration.millis(config.apiTimeout)),
                   Effect.retry(retryPolicy),
-                  Effect.catchTag("TimeoutException", () =>
-                    Effect.fail(
-                      new NetworkError({
-                        message: `Request timed out after ${config.apiTimeout}ms`,
-                        url: config.apiUrl,
-                      })
-                    )
-                  ),
                   // If update fails, return the existing customer anyway
                   Effect.orElse(() =>
                     Effect.gen(function* () {
@@ -978,16 +943,7 @@ const DotyposClientLive = Layer.effect(
                   name: `${customer.firstName} ${customer.lastName}`,
                 })
               ),
-              Effect.timeout(Duration.millis(config.apiTimeout)),
-              Effect.retry(retryPolicy),
-              Effect.catchTag("TimeoutException", () =>
-                Effect.fail(
-                  new NetworkError({
-                    message: `Request timed out after ${config.apiTimeout}ms`,
-                    url: config.apiUrl,
-                  })
-                )
-              )
+              Effect.retry(retryPolicy)
             );
 
           return newCustomer;
@@ -999,16 +955,7 @@ const DotyposClientLive = Layer.effect(
             path: { cloudId: config.cloudId },
           })
           .pipe(
-            Effect.timeout(Duration.millis(config.apiTimeout)),
-            Effect.retry(retryPolicy),
-            Effect.catchTag("TimeoutException", () =>
-              Effect.fail(
-                new NetworkError({
-                  message: `Request timed out after ${config.apiTimeout}ms`,
-                  url: config.apiUrl,
-                })
-              )
-            )
+            Effect.retry(retryPolicy)
           ),
     };
   })
