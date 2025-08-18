@@ -1,29 +1,41 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/shared/components/ui/card";
-import { Button } from "@/shared/components/ui/button";
-import { CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useState } from "react";
+import { Button } from "@/shared/components/ui/button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
 
 export default function DotyposCallbackPage() {
   const searchParams = useSearchParams();
-  const [status, setStatus] = useState<"loading" | "success" | "error">("loading");
+  const [status, setStatus] = useState<"loading" | "success" | "error">(
+    "loading"
+  );
   const [message, setMessage] = useState("");
-  const [tokens, setTokens] = useState<{ accessToken?: string; refreshToken?: string; cloudId?: string } | null>(null);
+  const [tokens, setTokens] = useState<{
+    accessToken?: string;
+    refreshToken?: string;
+    cloudId?: string;
+  } | null>(null);
 
   useEffect(() => {
     console.log("Dotypos Callback Page loaded");
     console.log("Current URL:", window.location.href);
     console.log("Search params:", searchParams.toString());
-    
+
     // Dotykacka returns token directly, not an authorization code
     const token = searchParams.get("token"); // This is the refresh token
     const cloudId = searchParams.get("cloudid");
     const state = searchParams.get("state");
     const error = searchParams.get("error");
-    
+
     console.log("Received refresh token:", token ? "***present***" : "missing");
     console.log("Received cloud ID:", cloudId);
     console.log("Received state:", state);
@@ -52,7 +64,7 @@ export default function DotyposCallbackPage() {
     }
   }, [searchParams]);
 
-  const exchangeCodeForTokens = async (code: string) => {
+  const _exchangeCodeForTokens = async (code: string) => {
     try {
       console.log("Sending token exchange request to API...");
       const response = await fetch("/api/admin/dotypos/token", {
@@ -69,15 +81,34 @@ export default function DotyposCallbackPage() {
         throw new Error(`Token exchange failed: ${response.statusText}`);
       }
 
-      const data = await response.json();
+      const data: unknown = await response.json();
       console.log("Token exchange successful:", data);
-      setTokens(data);
+
+      if (data && typeof data === "object" && !Array.isArray(data)) {
+        const tokenData = data as Record<string, unknown>;
+        setTokens({
+          accessToken:
+            typeof tokenData.accessToken === "string"
+              ? tokenData.accessToken
+              : undefined,
+          refreshToken:
+            typeof tokenData.refreshToken === "string"
+              ? tokenData.refreshToken
+              : undefined,
+          cloudId:
+            typeof tokenData.cloudId === "string"
+              ? tokenData.cloudId
+              : undefined,
+        });
+      }
       setStatus("success");
       setMessage("Authentication successful! Tokens received.");
     } catch (error) {
       console.error("Token exchange error:", error);
       setStatus("error");
-      setMessage(error instanceof Error ? error.message : "Token exchange failed");
+      setMessage(
+        error instanceof Error ? error.message : "Token exchange failed"
+      );
     }
   };
 
@@ -99,18 +130,23 @@ export default function DotyposCallbackPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="text-sm">
-            <p className={status === "error" ? "text-red-600" : "text-gray-600"}>
+            <p
+              className={status === "error" ? "text-red-600" : "text-gray-600"}
+            >
               {message}
             </p>
           </div>
 
           {tokens && (
             <div className="space-y-2 p-4 bg-gray-100 rounded-lg">
-              <p className="text-xs font-semibold text-gray-700">Authentication Details (for development only):</p>
+              <p className="text-xs font-semibold text-gray-700">
+                Authentication Details (for development only):
+              </p>
               <div className="space-y-1">
                 {tokens.refreshToken && (
                   <p className="text-xs break-all">
-                    <strong>Refresh Token:</strong> {tokens.refreshToken.substring(0, 20)}...
+                    <strong>Refresh Token:</strong>{" "}
+                    {tokens.refreshToken.substring(0, 20)}...
                   </p>
                 )}
                 {tokens.cloudId && (
@@ -120,7 +156,8 @@ export default function DotyposCallbackPage() {
                 )}
                 {tokens.accessToken && (
                   <p className="text-xs break-all">
-                    <strong>Access Token:</strong> {tokens.accessToken.substring(0, 20)}...
+                    <strong>Access Token:</strong>{" "}
+                    {tokens.accessToken.substring(0, 20)}...
                   </p>
                 )}
               </div>
@@ -129,7 +166,8 @@ export default function DotyposCallbackPage() {
                   ⚠️ Add these to your .env file:
                 </p>
                 <code className="text-xs bg-white p-2 block rounded border border-gray-300">
-                  DOTYPOS_REFRESH_TOKEN={tokens.refreshToken}<br/>
+                  DOTYPOS_REFRESH_TOKEN={tokens.refreshToken}
+                  <br />
                   DOTYPOS_CLOUD_ID={tokens.cloudId || "381429880"}
                 </code>
               </div>

@@ -36,7 +36,9 @@ const _submitContactForm = createEffectSafeAction(
 );
 
 // Export an explicitly async wrapper that Next.js will recognize
-export const submitContactForm = async (...args: Parameters<typeof _submitContactForm>): Promise<any> => {
+export const submitContactForm = async (
+  ...args: Parameters<typeof _submitContactForm>
+) => {
   "use server";
-  return _submitContactForm(...args);
+  return await _submitContactForm(...args);
 };
