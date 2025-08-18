@@ -1177,7 +1177,7 @@ export const createReservation = (
       startDate: input.datetime.getTime(),
       endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
       seats: input.guestCount,
-      status: "CONFIRMED",
+      status: "NEW",
       note,
       flags: 0,
       ...(tableId && { _tableId: tableId }),
