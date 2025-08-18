@@ -474,6 +474,12 @@ const DotyposApiLayer = Layer.scoped(
                 status: response.response?.status,
                 error: response.error,
               });
+              if (response.error && "violations" in response.error) {
+                console.error(
+                  "Filter violations:",
+                  JSON.stringify(response.error.violations, null, 2)
+                );
+              }
 
               if (response.error) {
                 throw {
@@ -725,33 +731,107 @@ const DotyposClientLive = Layer.effect(
         Effect.gen(function* () {
           yield* Effect.logInfo("Finding or creating customer", customerData);
 
-          // Fetch customers once and search locally
-          const customers = yield* api
-            .searchCustomers({
-              path: { cloudId: config.cloudId },
-              query: {
-                limit: 100,
-                // Use filter if email is provided (API might support it)
-                ...(customerData.email && { filter: customerData.email }),
-              },
-            })
-            .pipe(Effect.retry(retryPolicy));
+          // Helper function to search customers by a specific field
+          const searchByField = (fieldName: "email" | "phone", value: string) =>
+            Effect.gen(function* () {
+              const filter = `${fieldName}|like|${value}`;
+              yield* Effect.logDebug(
+                `Searching by ${fieldName} with filter`,
+                filter
+              );
 
-          // Find by email or phone
-          const existingCustomer = customers.find(
-            (c) =>
-              (customerData.email && c.email === customerData.email) ||
-              (customerData.phone && c.phone === customerData.phone)
-          );
+              return yield* api
+                .searchCustomers({
+                  path: { cloudId: config.cloudId },
+                  query: {
+                    limit: 100,
+                    filter,
+                  },
+                })
+                .pipe(
+                  // Handle 404 as empty result (no customers found)
+                  Effect.catchIf(
+                    (error) =>
+                      error instanceof ExternalAPIError &&
+                      error.statusCode === 404,
+                    () => Effect.succeed([] as Customer[])
+                  ),
+                  // Only retry if not a 404
+                  Effect.retry(
+                    Schedule.exponential("100 millis").pipe(
+                      Schedule.jittered,
+                      Schedule.either(Schedule.recurs(2)),
+                      Schedule.whileInput(
+                        (error) =>
+                          !(
+                            error instanceof ExternalAPIError &&
+                            error.statusCode === 404
+                          )
+                      )
+                    )
+                  )
+                );
+            });
 
-          if (existingCustomer) {
+          let existingCustomer: Customer | undefined;
+          const matchingCustomers: Customer[] = [];
+
+          // Search by email if provided
+          if (customerData.email) {
+            const customersByEmail = yield* searchByField(
+              "email",
+              customerData.email
+            );
+            const emailMatch = customersByEmail.find(
+              (c) => c.email === customerData.email
+            );
+            if (emailMatch) {
+              matchingCustomers.push(emailMatch);
+            }
+          }
+
+          // Search by phone if provided (independent of email search)
+          if (customerData.phone) {
+            const customersByPhone = yield* searchByField(
+              "phone",
+              customerData.phone
+            );
+            const phoneMatch = customersByPhone.find(
+              (c) => c.phone === customerData.phone
+            );
+            if (phoneMatch) {
+              // Only add if not already found by email (avoid duplicates)
+              if (!matchingCustomers.find((c) => c.id === phoneMatch.id)) {
+                matchingCustomers.push(phoneMatch);
+              }
+            }
+          }
+
+          // If we found any matching customers, use the first one
+          if (matchingCustomers.length > 0) {
+            existingCustomer = matchingCustomers[0]!;
+
+            const matchedBy: string[] = [];
+            if (existingCustomer.email === customerData.email)
+              matchedBy.push("email");
+            if (existingCustomer.phone === customerData.phone)
+              matchedBy.push("phone");
+
             yield* Effect.logInfo("Found existing customer", {
               customerId: existingCustomer.id,
-              matchedBy:
-                existingCustomer.email === customerData.email
-                  ? "email"
-                  : "phone",
+              matchedBy: matchedBy.join(" and "),
+              totalMatchesFound: matchingCustomers.length,
             });
+
+            if (matchingCustomers.length > 1) {
+              yield* Effect.logWarning(
+                "Multiple customers found matching criteria",
+                {
+                  customerIds: matchingCustomers.map((c) => c.id),
+                  usingCustomerId: existingCustomer.id,
+                }
+              );
+            }
           }
 
           // If customer exists, check if it needs updating
