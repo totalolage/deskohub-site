@@ -1,4 +1,4 @@
-import { Effect, type Layer, pipe, Logger, LogLevel, Cause, Duration } from "effect";
+import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/i18n";
 import { formatEffectError } from "@/shared/utils/error-formatting";
@@ -16,17 +16,18 @@ export function createEffectSafeAction<I, O, E, R>(
         Effect.gen(function* () {
           yield* Effect.logDebug("Safe action executed", {
             locale: ctx.locale,
-            inputKeys: Object.keys(parsedInput),
+            inputKeys:
+              parsedInput && typeof parsedInput === "object"
+                ? Object.keys(parsedInput)
+                : [],
           });
-          
+
           const result = yield* handler(parsedInput, { locale: ctx.locale });
-          
+
           yield* Effect.logDebug("Action completed successfully");
           return result;
         }),
-        Effect.tapError((error) =>
-          Effect.logError("Action failed", error)
-        ),
+        Effect.tapError((error) => Effect.logError("Action failed", error)),
         Effect.withSpan("safeAction", {
           attributes: {
             "action.locale": ctx.locale,
@@ -40,26 +41,28 @@ export function createEffectSafeAction<I, O, E, R>(
           Effect.fail(new Error("Request timed out. Please try again."))
         )
       );
-      
+
       // Use simpler logger configuration
-      const programWithLogging = Logger.withMinimumLogLevel(program, LogLevel.All);
-      
+      const programWithLogging = Logger.withMinimumLogLevel(
+        program,
+        LogLevel.All
+      );
+
       try {
         // Run the Effect with a timeout
         const result = await Effect.runPromise(programWithLogging);
         console.log("Effect action succeeded:", result);
         return result;
-      } catch (error) {
+      } catch (error: any) {
         // Log the full error for debugging
         console.error("Effect action failed with error:", error);
-        
+
         // Format the error for the user
         const formatted = formatEffectError(error);
         console.error("Formatted error:", formatted);
-        
+
         // Throw an error that next-safe-action will catch
         throw new Error(formatted.message || "An unexpected error occurred");
       }
     });
 }
-

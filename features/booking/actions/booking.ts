@@ -1,10 +1,16 @@
 "use server";
 
-import { Effect, Layer, Logger, LogLevel } from "effect";
+import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
 import { createReservation, DotyposServiceLive } from "@/features/dotypos";
+// TEMPORARY: Using mock service for testing
+import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+
+// TEMPORARY: Toggle between real and mock service
+const USE_MOCK = true;
+const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
 
 // Create the action with the helper
 const _submitBooking = createEffectSafeAction(
@@ -15,34 +21,33 @@ const _submitBooking = createEffectSafeAction(
         input,
         inputKeys: Object.keys(input),
       });
-      
-      const reservationData = {
+
+      const reservation = yield* createReservation({
         datetime: input.datetime,
         duration: input.duration,
         guestCount: input.guestCount,
-        customerName: input.name,
-        customerEmail: input.email,
-        customerPhone: input.phone,
-        tablePreference: input.tablePreference,
+        name: input.name,
+        email: input.email,
+        phone: input.phone,
+        needsLargerTable: input.needsLargerTable,
+        needsPrivateSpace: input.needsPrivateSpace,
         specialRequests: input.specialRequests || "",
-      };
-      
-      yield* Effect.logDebug("Prepared reservation data", reservationData);
-      
-      const reservation = yield* createReservation(reservationData).pipe(
+      }).pipe(
         Effect.tap((res) =>
           Effect.logInfo("Reservation created successfully", res)
         ),
         Effect.tapError((error) =>
           Effect.logError("Reservation creation failed", error)
         ),
-        Effect.provide(DotyposServiceLive)
+        Effect.provide(ServiceLayer)
       );
 
-      yield* Effect.logInfo("Redirecting to reservation page", {
+      yield* Effect.logInfo("Returning reservation for redirect", {
         reservationId: reservation.id,
       });
-      redirect(`/reservation/${reservation.id}`);
+
+      // Return the reservation so we can redirect outside the Effect
+      return reservation;
     }).pipe(
       Effect.withSpan("submitBooking", {
         attributes: {
@@ -56,7 +61,17 @@ const _submitBooking = createEffectSafeAction(
 );
 
 // Export an explicitly async wrapper that Next.js will recognize
-export const submitBooking = async (...args: Parameters<typeof _submitBooking>): Promise<any> => {
+export const submitBooking = async (
+  ...args: Parameters<typeof _submitBooking>
+) => {
   "use server";
-  return _submitBooking(...args);
+  const result = await _submitBooking(...args);
+  
+  // Check if we have a successful result with an ID
+  if (result?.data?.id) {
+    // Redirect happens here, outside of the Effect context
+    redirect(`/reservation/${result.data.id}`);
+  }
+  
+  return result;
 };
