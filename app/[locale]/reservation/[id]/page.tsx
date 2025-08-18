@@ -34,7 +34,7 @@ export default async function ReservationConfirmationPage({
   setLocale(locale, { reload: false });
 
   // TEMPORARY: Toggle between real and mock service
-  const USE_MOCK = true;
+  const USE_MOCK = process.env.USE_MOCK === "true";
   const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
 
   // Fetch reservation from Dotypos with proper error handling

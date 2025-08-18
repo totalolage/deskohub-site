@@ -9,7 +9,7 @@ import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock"
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // TEMPORARY: Toggle between real and mock service
-const USE_MOCK = true;
+const USE_MOCK = process.env.USE_MOCK === "true";
 const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
 
 // Create the action with the helper
@@ -66,12 +66,12 @@ export const submitBooking = async (
 ) => {
   "use server";
   const result = await _submitBooking(...args);
-  
+
   // Check if we have a successful result with an ID
   if (result?.data?.id) {
     // Redirect happens here, outside of the Effect context
     redirect(`/reservation/${result.data.id}`);
   }
-  
+
   return result;
 };

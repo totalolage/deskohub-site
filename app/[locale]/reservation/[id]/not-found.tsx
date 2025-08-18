@@ -10,7 +10,6 @@ import {
 } from "@/shared/components/ui/card";
 
 export default function BookingNotFound() {
-
   return (
     <div className="container max-w-3xl mx-auto py-12 px-4">
       <Card className="text-center">
