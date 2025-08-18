@@ -5,17 +5,13 @@
  * for better error handling and composition.
  */
 
-import {
-  Config,
-  Context,
-  Duration,
-  Effect,
-  Layer,
-  Ref,
-  Schedule,
-  Schema,
-} from "effect";
+import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
 import type { BookingFormData } from "@/features/booking";
+import {
+  DotyposConfig,
+  DotyposConfigLayer,
+  DotyposConfigTag,
+} from "@/shared/backend/config/dotypos.config";
 import {
   ExternalAPIError,
   NetworkError,
@@ -51,87 +47,12 @@ interface ApiErrorWithViolations {
 // Removed DotyposReservation import - using API types directly
 
 /**
- * Dotypos Configuration Schema with validation
- */
-const DotyposConfigSchema = Schema.Struct({
-  clientId: Schema.NonEmptyString,
-  clientSecret: Schema.NonEmptyString,
-  refreshToken: Schema.NonEmptyString,
-  cloudId: Schema.NonEmptyString,
-  branchId: Schema.NonEmptyString,
-  employeeId: Schema.NonEmptyString,
-  apiUrl: Schema.NonEmptyString,
-  apiTimeout: Schema.Number.pipe(
-    Schema.positive(),
-    Schema.annotations({ description: "API timeout in milliseconds" })
-  ),
-});
-
-type DotyposConfig = Schema.Schema.Type<typeof DotyposConfigSchema>;
-
-/**
- * Token cache type
+ * Token cache type for managing authentication tokens
  */
 interface TokenCache {
   token: string;
   expiresAt: number;
 }
-
-class DotyposConfigTag extends Context.Tag("DotyposConfig")<
-  DotyposConfigTag,
-  DotyposConfig
->() {}
-
-const ConfigLayer = Layer.effect(
-  DotyposConfigTag,
-  Effect.gen(function* () {
-    yield* Effect.logDebug("Loading Dotypos configuration");
-    const rawConfig = yield* Config.all({
-      clientId: Config.string("DOTYPOS_CLIENT_ID"),
-      clientSecret: Config.string("DOTYPOS_CLIENT_SECRET"),
-      refreshToken: Config.string("DOTYPOS_REFRESH_TOKEN"),
-      cloudId: Config.string("DOTYPOS_CLOUD_ID"),
-      branchId: Config.string("DOTYPOS_BRANCH_ID").pipe(
-        Config.withDefault("128665136") // Default to "Pokladna" branch
-      ),
-      employeeId: Config.string("DOTYPOS_EMPLOYEE_ID"),
-      apiUrl: Config.string("DOTYPOS_API_URL").pipe(
-        Config.withDefault("https://api.dotykacka.cz/v2")
-      ),
-      apiTimeout: Config.number("DOTYPOS_API_TIMEOUT").pipe(
-        Config.withDefault(30000)
-      ),
-    });
-
-    yield* Effect.logDebug("Raw config loaded", {
-      clientId: rawConfig.clientId,
-      hasClientSecret: !!rawConfig.clientSecret,
-      hasRefreshToken: !!rawConfig.refreshToken,
-      cloudId: rawConfig.cloudId,
-      branchId: rawConfig.branchId,
-      employeeId: rawConfig.employeeId,
-      apiUrl: rawConfig.apiUrl,
-      apiTimeout: rawConfig.apiTimeout,
-    });
-
-    // Validate config using Schema
-    const config = yield* Schema.decodeUnknown(DotyposConfigSchema)(
-      rawConfig
-    ).pipe(
-      Effect.tapError((error) =>
-        Effect.logError("Configuration validation failed", error)
-      ),
-      Effect.mapError(
-        (error) =>
-          new ValidationError({
-            message: `Invalid Dotypos configuration: ${error.message}`,
-          })
-      )
-    );
-    yield* Effect.logInfo("Dotypos configuration loaded successfully");
-    return config;
-  })
-);
 
 /**
  * Authenticated Dotypos API using Effect patterns
@@ -966,7 +887,7 @@ const DotyposClientLive = Layer.effect(
  */
 export const DotyposServiceLive = DotyposClientLive.pipe(
   Layer.provide(DotyposApiLayer),
-  Layer.provide(ConfigLayer)
+  Layer.provide(DotyposConfigLayer)
 );
 
 // Export for use in service functions
