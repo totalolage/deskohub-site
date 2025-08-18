@@ -734,7 +734,11 @@ const DotyposClientLive = Layer.effect(
           // Helper function to search customers by a specific field
           const searchByField = (fieldName: "email" | "phone", value: string) =>
             Effect.gen(function* () {
-              const filter = `${fieldName}|like|${value}`;
+              const valueSanitized = value.replace(
+                "|",
+                encodeURIComponent("|")
+              );
+              const filter = `${fieldName}|like|${valueSanitized}`;
               yield* Effect.logDebug(
                 `Searching by ${fieldName} with filter`,
                 filter
@@ -910,36 +914,19 @@ const DotyposClientLive = Layer.effect(
           // Create new customer
           yield* Effect.logInfo("Creating new customer", customerData);
 
-          const newCustomerRequest: CreateCustomerRequest = {
-            _cloudId: config.cloudId,
-            firstName: customerData.firstName,
-            lastName: customerData.lastName,
-            email: customerData.email || "",
-            phone: customerData.phone || "",
-            addressLine1: "",
-            addressLine2: "",
-            city: "",
-            zip: "",
-            country: "",
-            companyName: "",
-            companyId: "",
-            vatId: "",
-            barcode: "",
-            note: "",
-            internalNote: "",
-            hexColor: "#2196F3", // Default blue color
-            headerPrint: "",
-            tags: [],
-            display: true,
-            deleted: false,
-            points: 0,
-            flags: 0, // Required field according to BC1 changes
-          };
-
           const newCustomer = yield* api
             .createCustomer({
               path: { cloudId: config.cloudId },
-              body: newCustomerRequest,
+              body: {
+                _cloudId: config.cloudId,
+                firstName: customerData.firstName,
+                lastName: customerData.lastName,
+                email: customerData.email,
+                phone: customerData.phone,
+                display: true,
+                deleted: false,
+                flags: 0, // Required field according to BC1 changes
+              },
             })
             .pipe(
               Effect.tap((customer) =>
