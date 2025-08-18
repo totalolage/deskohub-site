@@ -45,9 +45,6 @@ export const siteConstants = {
         min: 9,
         max: 20,
       },
-      tablePreference: {
-        values: ["standard", "large", "private", "any"] as const,
-      },
       specialRequests: {
         max: 500,
       },
@@ -59,7 +56,8 @@ export const siteConstants = {
     defaultValues: {
       datetime: undefined as Date | undefined,
       guestCount: 2,
-      tablePreference: "any" as const,
+      needsLargerTable: false,
+      needsPrivateSpace: false,
       specialRequests: "",
       name: "",
       email: "",
@@ -73,17 +71,17 @@ export const siteConstants = {
     weekdays: {
       // Monday to Friday
       days: [1, 2, 3, 4, 5],
-      open: "15:00",
+      open: "17:00",
       close: "23:00",
-      formatted: "15:00 - 23:00",
-      formattedNoSpaces: "15:00-23:00",
+      formatted: "17:00 - 23:00",
+      formattedNoSpaces: "17:00-23:00",
     },
     weekends: {
       // Saturday and Sunday
       days: [0, 6],
-      open: "11:00",
+      open: "15:00",
       close: "23:00",
-      formatted: "11:00 - 23:00",
+      formatted: "15:00 - 23:00",
       formattedNoSpaces: "11:00-23:00",
     },
   },
