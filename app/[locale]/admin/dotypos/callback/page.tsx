@@ -3,7 +3,7 @@
 import { CheckCircle, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -13,7 +13,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 
-export default function DotyposCallbackPage() {
+function DotyposCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<"loading" | "success" | "error">(
     "loading"
@@ -187,5 +187,27 @@ export default function DotyposCallbackPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+export default function DotyposCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
+          <Card className="w-full max-w-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Loader2 className="animate-spin" />
+                Dotypos Authentication
+              </CardTitle>
+              <CardDescription>Loading...</CardDescription>
+            </CardHeader>
+          </Card>
+        </div>
+      }
+    >
+      <DotyposCallbackContent />
+    </Suspense>
   );
 }
