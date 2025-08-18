@@ -3,6 +3,9 @@ import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
+// TEMPORARY: Using mock service for testing
+import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock";
+import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { Badge } from "@/shared/components/ui/badge";
@@ -30,10 +33,14 @@ export default async function ReservationConfirmationPage({
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
 
+  // TEMPORARY: Toggle between real and mock service
+  const USE_MOCK = true;
+  const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
+
   // Fetch reservation from Dotypos with proper error handling
   const reservationResult = await Effect.runPromise(
     getReservation(id).pipe(
-      Effect.provide(DotyposServiceLive),
+      Effect.provide(ServiceLayer),
       Effect.match({
         onFailure: (error) => {
           // Log error for debugging
@@ -51,18 +58,25 @@ export default async function ReservationConfirmationPage({
     notFound();
   }
 
-  // Map Dotypos response to our booking structure
+  // Convert API response to display format
+  const displayData = getReservationDisplayData(reservationResult);
+
+  // Map to booking structure for the UI
   const booking = {
-    id: reservationResult.id,
-    datetime: reservationResult.datetime,
-    duration: reservationResult.duration || 2, // Use duration from reservation, fallback to 2
-    guestCount: reservationResult.guestCount,
-    name: reservationResult.customerName,
-    email: reservationResult.customerEmail || "",
-    phone: reservationResult.customerPhone || "",
-    tablePreference: "any" as const, // Default since it's not retrieved from note parsing yet
-    specialRequests: reservationResult.specialRequests || "",
-    submittedAt: reservationResult.createdAt,
+    id: displayData.id,
+    datetime: displayData.datetime || new Date(),
+    duration: displayData.duration || 2,
+    guestCount: displayData.guestCount,
+    name: displayData.customerName || "Unknown",
+    email: displayData.customerEmail || "",
+    phone: displayData.customerPhone || "",
+    tablePreference: displayData.needsLargerTable
+      ? ("large" as const)
+      : displayData.needsPrivateSpace
+        ? ("private" as const)
+        : ("standard" as const),
+    specialRequests: displayData.specialRequests || "",
+    submittedAt: displayData.createdAt || new Date(),
   };
 
   const formattedDate = formatDate(booking.datetime, locale, {
@@ -198,7 +212,11 @@ export default async function ReservationConfirmationPage({
                 {m["booking.tablePreferenceLabel"]()}
               </p>
               <p className="text-gray-600">
-                {m[`booking.tablePreferences.${booking.tablePreference}`]()}
+                {{
+                  private: m["booking.tablePreferences.privateSpace"],
+                  standard: m["booking.tablePreferences.standard"],
+                  large: m["booking.tablePreferences.largerTable"],
+                }[booking.tablePreference]()}
               </p>
             </div>
 
