@@ -8,7 +8,7 @@
 import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
 import type { BookingFormData } from "@/features/booking";
 import {
-  DotyposConfig,
+  type DotyposConfig,
   DotyposConfigLayer,
   DotyposConfigTag,
 } from "@/shared/backend/config/dotypos.config";
@@ -193,6 +193,35 @@ const transformHttpError = (
 };
 
 /**
+ * Helper to create API call options with auth and timeout
+ */
+type ApiCallOptions = {
+  path?: Record<string, string>;
+  query?: Record<string, unknown>;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
+
+const createApiOptions = <T extends ApiCallOptions>(
+  token: string,
+  config: DotyposConfig,
+  client: ReturnType<typeof createClient>,
+  options: T
+): T & {
+  client: ReturnType<typeof createClient>;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+} => ({
+  ...options,
+  client,
+  headers: {
+    Authorization: `Bearer ${token}`,
+    ...options.headers,
+  },
+  signal: AbortSignal.timeout(config.apiTimeout),
+});
+
+/**
  * Create authenticated API layer
  */
 const DotyposApiLayer = Layer.scoped(
@@ -281,7 +310,6 @@ const DotyposApiLayer = Layer.scoped(
           yield* Effect.logDebug("DotyposApi.createReservation called", params);
 
           const token = yield* getToken();
-          yield* Effect.logDebug("Got access token");
 
           // The API expects an array of reservations
           const requestBody = [params.body]; // Wrap single reservation in array
@@ -304,16 +332,12 @@ const DotyposApiLayer = Layer.scoped(
                 JSON.stringify(requestBody, null, 2)
               );
 
-              const response = await generatedApi.createReservation({
-                client,
-                path: params.path,
-                body: requestBody,
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                signal:
-                  AbortSignal.timeout(config.apiTimeout),
-              });
+              const response = await generatedApi.createReservation(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  body: requestBody,
+                })
+              );
 
               console.log("Dotypos API response:", {
                 status: response.response?.status,
@@ -390,20 +414,14 @@ const DotyposApiLayer = Layer.scoped(
 
       getReservation: (params) =>
         Effect.gen(function* () {
-          // Get token (retry is handled at the service level)
           const token = yield* getToken();
 
           // SDK handles response validation automatically
           const result = yield* Effect.tryPromise({
             try: async () => {
-              const response = await generatedApi.getReservation({
-                client,
-                ...params,
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                signal: AbortSignal.timeout(config.apiTimeout),
-              });
+              const response = await generatedApi.getReservation(
+                createApiOptions(token, config, client, params)
+              );
 
               if (response.error) {
                 // Create structured error object
@@ -439,15 +457,12 @@ const DotyposApiLayer = Layer.scoped(
                 url: `/clouds/${params.path.cloudId}/customers`,
               });
 
-              const response = await generatedApi.getCustomers({
-                client,
-                path: params.path,
-                query: params.query,
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                signal: AbortSignal.timeout(config.apiTimeout),
-              });
+              const response = await generatedApi.getCustomers(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  query: params.query,
+                })
+              );
 
               console.log("Customer search response:", {
                 hasError: !!response.error,
@@ -514,15 +529,12 @@ const DotyposApiLayer = Layer.scoped(
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              const response = await generatedApi.createCustomers({
-                client,
-                path: params.path,
-                body: requestBody,
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                signal: AbortSignal.timeout(config.apiTimeout),
-              });
+              const response = await generatedApi.createCustomers(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  body: requestBody,
+                })
+              );
 
               console.log("Create customer response:", {
                 hasError: !!response.error,
@@ -568,15 +580,12 @@ const DotyposApiLayer = Layer.scoped(
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              const response = await generatedApi.updateCustomer({
-                client,
-                path: params.path,
-                body: params.body,
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                signal: AbortSignal.timeout(config.apiTimeout),
-              });
+              const response = await generatedApi.updateCustomer(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  body: params.body,
+                })
+              );
 
               console.log("Update customer response:", {
                 hasError: !!response.error,
@@ -613,15 +622,12 @@ const DotyposApiLayer = Layer.scoped(
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              const response = await generatedApi.getTables({
-                client,
-                path: params.path,
-                query: { limit: 100 },
-                headers: {
-                  Authorization: `Bearer ${token}`,
-                },
-                signal: AbortSignal.timeout(config.apiTimeout),
-              });
+              const response = await generatedApi.getTables(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  query: { limit: 100 },
+                })
+              );
 
               if (response.error) {
                 throw {
@@ -729,9 +735,7 @@ const DotyposClientLive = Layer.effect(
                 ...(customerData.email && { filter: customerData.email }),
               },
             })
-            .pipe(
-              Effect.retry(retryPolicy)
-            );
+            .pipe(Effect.retry(retryPolicy));
 
           // Find by email or phone
           const existingCustomer = customers.find(
@@ -875,9 +879,7 @@ const DotyposClientLive = Layer.effect(
           .getTables({
             path: { cloudId: config.cloudId },
           })
-          .pipe(
-            Effect.retry(retryPolicy)
-          ),
+          .pipe(Effect.retry(retryPolicy)),
     };
   })
 );
@@ -1005,7 +1007,7 @@ export const createReservation = (
       email: input.email,
       phone: input.phone,
     });
-    
+
     if (!customer.id) {
       return yield* Effect.fail(
         new ValidationError({
@@ -1013,7 +1015,7 @@ export const createReservation = (
         })
       );
     }
-    
+
     yield* Effect.logInfo("Customer resolved", { customerId: customer.id });
 
     // Build note once

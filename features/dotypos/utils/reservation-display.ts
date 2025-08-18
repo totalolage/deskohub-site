@@ -12,7 +12,7 @@ export function parseReservationNote(note?: string) {
   if (!note) return {};
 
   const parsed: Record<string, string | undefined> = {};
-  
+
   // Try pipe-separated format first (new format)
   if (note.includes(" | ")) {
     const parts = note.split(" | ");
@@ -71,7 +71,10 @@ export function parseReservationNote(note?: string) {
             parsed.needsPrivateSpace = value === "Yes" ? "true" : "false";
             break;
           case "Duration":
-            parsed.duration = value.replace(" hours", "").replace("h", "").trim();
+            parsed.duration = value
+              .replace(" hours", "")
+              .replace("h", "")
+              .trim();
             break;
           case "Special Requests":
             parsed.specialRequests = value;
@@ -109,9 +112,10 @@ export function getReservationDisplayData(reservation: Reservation) {
       ? new Date(reservation.startDate)
       : undefined,
     endDate: reservation.endDate ? new Date(reservation.endDate) : undefined,
-    guestCount: typeof reservation.seats === 'string' 
-      ? parseInt(reservation.seats, 10) || 1 
-      : reservation.seats || 1,
+    guestCount:
+      typeof reservation.seats === "string"
+        ? parseInt(reservation.seats, 10) || 1
+        : reservation.seats || 1,
     duration,
     customerName: parsedNote.customerName,
     customerEmail: parsedNote.customerEmail,

@@ -1,6 +1,6 @@
 /**
  * Dotypos Configuration
- * 
+ *
  * Centralized configuration for Dotypos API integration
  */
 
