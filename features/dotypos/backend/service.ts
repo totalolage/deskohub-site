@@ -400,13 +400,29 @@ const DotyposApiLayer = Layer.scoped(
                   error: response.error,
                   status: response.response?.status,
                   responseBody: response.response?.body,
+                  requestBody: requestBody,
                 });
+
+                // Extract error message from violations if available
+                let errorMessage = "Failed to create reservation";
+                const errorWithViolations = response.error as any;
+                if (
+                  errorWithViolations.violations &&
+                  Array.isArray(errorWithViolations.violations)
+                ) {
+                  const violationMessages = errorWithViolations.violations
+                    .map((v: any) => `${v.path?.join(".")}: ${v.message}`)
+                    .join(", ");
+                  errorMessage = `Validation failed: ${violationMessages}`;
+                } else if (response.error.error_description) {
+                  errorMessage = response.error.error_description;
+                } else if (response.error.error) {
+                  errorMessage = response.error.error;
+                }
+
                 throw {
                   statusCode: response.response?.status || 400,
-                  message:
-                    response.error.error_description ||
-                    response.error.error ||
-                    "Failed to create reservation",
+                  message: errorMessage,
                 };
               }
 
@@ -965,8 +981,8 @@ const DotyposClientLive = Layer.effect(
             tags: [],
             display: true,
             deleted: false,
-            points: "0",
-            flags: "0", // Required field according to BC1 changes
+            points: 0,
+            flags: 0, // Required field according to BC1 changes
           };
 
           const newCustomer = yield* api
@@ -1158,7 +1174,7 @@ export const createReservation = (
     const lastName = nameParts.slice(1).join(" ") || nameParts[0] || "";
 
     // Try to find or create customer
-    let customerId: number | null = null;
+    let customerId: string | null = null;
     try {
       const customer = yield* client.findOrCreateCustomer({
         firstName,
@@ -1172,7 +1188,7 @@ export const createReservation = (
         customerName: `${customer.firstName} ${customer.lastName}`,
       });
 
-      customerId = customer.id ? parseInt(customer.id) : null;
+      customerId = customer.id || null;
     } catch (error) {
       yield* Effect.logWarning(
         "Failed to find/create customer, proceeding without customer ID",
@@ -1184,7 +1200,7 @@ export const createReservation = (
     yield* Effect.logDebug("Built note", { note });
 
     // Select the best table based on preferences if not already selected
-    let tableId: number | undefined;
+    let tableId: string | undefined;
 
     // Auto-select table based on preferences
     const tables = yield* client.getTables();
@@ -1196,7 +1212,7 @@ export const createReservation = (
     });
 
     if (selection) {
-      tableId = parseInt(selection.selectedTableId);
+      tableId = selection.selectedTableId;
       yield* Effect.logInfo("Auto-selected table", {
         tableId,
         tableName: selection.selectedTableName,
@@ -1221,7 +1237,7 @@ export const createReservation = (
       ...(tableId && { _tableId: tableId }),
       // Only include these if we have valid values
       ...(customerId && { _customerId: customerId }),
-      ...(client.employeeId && { _employeeId: parseInt(client.employeeId) }),
+      ...(client.employeeId && { _employeeId: client.employeeId }),
     } as CreateReservationRequest;
 
     yield* Effect.logDebug("Prepared CreateReservationRequest", request);
@@ -1241,7 +1257,7 @@ export const createReservation = (
   }).pipe(
     Effect.withSpan("createReservation", {
       attributes: {
-        "reservation.customerName": input.customerName,
+        "reservation.customerName": input.name,
         "reservation.guestCount": input.guestCount,
       },
     })
@@ -1277,7 +1293,10 @@ export const getAvailableTables = (): Effect.Effect<
 
     for (const table of availableTables) {
       if (table.seats == null) continue;
-      const seats = parseInt(table.seats);
+      const seats =
+        typeof table.seats === "number"
+          ? table.seats
+          : parseInt(String(table.seats));
       const tablesSet = tablesBySeats.get(seats) ?? new Set<Table>();
       tablesSet.add(table);
       tablesBySeats.set(seats, tablesSet);
@@ -1315,10 +1334,14 @@ export const getAvailableTables = (): Effect.Effect<
       (t) => t.name.toLowerCase() === "dnd"
     );
     if (dndTable?.id && dndTable?.seats) {
+      const dndSeats =
+        typeof dndTable.seats === "number"
+          ? dndTable.seats
+          : parseInt(String(dndTable.seats));
       options.push({
-        label: `DnD (${dndTable.seats} players)`,
+        label: `DnD (${dndSeats} players)`,
         value: dndTable.id,
-        seats: parseInt(dndTable.seats),
+        seats: dndSeats,
         tableNumbers: [dndTable.name],
       });
     }

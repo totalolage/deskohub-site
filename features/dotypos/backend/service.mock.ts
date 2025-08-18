@@ -20,7 +20,7 @@ const mockTables: Table[] = [
     id: "1",
     _cloudId: "123",
     name: "1",
-    seats: "4",
+    seats: 4,
     display: true,
     enabled: true,
   },
@@ -28,7 +28,7 @@ const mockTables: Table[] = [
     id: "2",
     _cloudId: "123",
     name: "2",
-    seats: "4",
+    seats: 4,
     display: true,
     enabled: true,
   },
@@ -36,7 +36,7 @@ const mockTables: Table[] = [
     id: "3",
     _cloudId: "123",
     name: "3",
-    seats: "6",
+    seats: 6,
     display: true,
     enabled: true,
   },
@@ -44,7 +44,7 @@ const mockTables: Table[] = [
     id: "4",
     _cloudId: "123",
     name: "4",
-    seats: "6",
+    seats: 6,
     display: true,
     enabled: true,
   },
@@ -52,7 +52,7 @@ const mockTables: Table[] = [
     id: "5",
     _cloudId: "123",
     name: "5",
-    seats: "8",
+    seats: 8,
     display: true,
     enabled: true,
   },
@@ -60,7 +60,7 @@ const mockTables: Table[] = [
     id: "6",
     _cloudId: "123",
     name: "6",
-    seats: "2",
+    seats: 2,
     display: true,
     enabled: true,
   },
@@ -68,7 +68,7 @@ const mockTables: Table[] = [
     id: "7",
     _cloudId: "123",
     name: "7",
-    seats: "2",
+    seats: 2,
     display: true,
     enabled: true,
   },
@@ -76,7 +76,7 @@ const mockTables: Table[] = [
     id: "8",
     _cloudId: "123",
     name: "DnD",
-    seats: "10",
+    seats: 10,
     display: true,
     enabled: true,
   },
@@ -84,7 +84,7 @@ const mockTables: Table[] = [
     id: "9",
     _cloudId: "123",
     name: "Private Room",
-    seats: "12",
+    seats: 12,
     display: true,
     enabled: true,
   },
@@ -111,7 +111,7 @@ export const DotyposServiceMockLive = Layer.succeed(
         yield* Effect.logInfo("MOCK: Creating reservation", request);
 
         const newReservation: Reservation = {
-          id: nextReservationId++,
+          id: String(nextReservationId++),
           _branchId: request._branchId,
           _cloudId: request._cloudId,
           _customerId: request._customerId,
@@ -139,7 +139,7 @@ export const DotyposServiceMockLive = Layer.succeed(
     getReservation: (id: string) =>
       Effect.gen(function* () {
         yield* Effect.logInfo("MOCK: Getting reservation", { id });
-        const reservation = mockReservations.find((r) => r.id === parseInt(id));
+        const reservation = mockReservations.find((r) => r.id === id);
 
         if (!reservation) {
           return yield* Effect.fail(
@@ -189,8 +189,8 @@ export const DotyposServiceMockLive = Layer.succeed(
           lastName: customerData.lastName,
           email: customerData.email,
           phone: customerData.phone,
-          flags: "0",
-          points: "0",
+          flags: 0,
+          points: 0,
           display: true,
           deleted: false,
         };
@@ -205,27 +205,6 @@ export const DotyposServiceMockLive = Layer.succeed(
       Effect.gen(function* () {
         yield* Effect.logInfo("MOCK: Getting tables");
         return mockTables;
-      }),
-
-    getReservation: (id: string) =>
-      Effect.gen(function* () {
-        yield* Effect.logInfo("MOCK: Getting reservation", { id });
-        
-        const reservation = mockReservations.find(r => String(r.id) === id);
-        
-        if (!reservation) {
-          yield* Effect.logError("MOCK: Reservation not found", { id });
-          return yield* Effect.fail(
-            new ExternalAPIError({
-              message: `Reservation ${id} not found`,
-              api: "mock",
-              statusCode: 404,
-            })
-          );
-        }
-        
-        yield* Effect.logInfo("MOCK: Found reservation", reservation);
-        return reservation;
       }),
   })
 );
