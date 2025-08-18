@@ -6,39 +6,77 @@ import type { Reservation } from "../generated/types.gen";
 
 /**
  * Parse the note field to extract customer information
+ * Handles both pipe-separated and newline-separated formats
  */
 export function parseReservationNote(note?: string) {
   if (!note) return {};
 
-  const lines = note.split("\n");
   const parsed: Record<string, string | undefined> = {};
-
-  for (const line of lines) {
-    const [key, ...valueParts] = line.split(": ");
-    if (key && valueParts.length > 0) {
-      const value = valueParts.join(": ").trim();
-      switch (key) {
-        case "Customer":
-          parsed.customerName = value;
-          break;
-        case "Email":
-          parsed.customerEmail = value;
-          break;
-        case "Phone":
-          parsed.customerPhone = value;
-          break;
-        case "Needs larger table":
-          parsed.needsLargerTable = value === "Yes" ? "true" : "false";
-          break;
-        case "Needs private space":
-          parsed.needsPrivateSpace = value === "Yes" ? "true" : "false";
-          break;
-        case "Duration":
-          parsed.duration = value.replace(" hours", "");
-          break;
-        case "Special Requests":
-          parsed.specialRequests = value;
-          break;
+  
+  // Try pipe-separated format first (new format)
+  if (note.includes(" | ")) {
+    const parts = note.split(" | ");
+    for (const part of parts) {
+      const [key, ...valueParts] = part.split(": ");
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join(": ").trim();
+        switch (key) {
+          case "Customer":
+            parsed.customerName = value;
+            break;
+          case "Email":
+            parsed.customerEmail = value;
+            break;
+          case "Phone":
+            parsed.customerPhone = value;
+            break;
+          case "Duration":
+            parsed.duration = value.replace("h", "").trim();
+            break;
+          case "Needs larger table":
+            parsed.needsLargerTable = value === "Yes" ? "true" : "false";
+            break;
+          case "Needs private space":
+            parsed.needsPrivateSpace = value === "Yes" ? "true" : "false";
+            break;
+          default:
+            // Anything else is treated as special requests
+            if (!key.includes("Needs") && !parsed.specialRequests) {
+              parsed.specialRequests = part;
+            }
+        }
+      }
+    }
+  } else {
+    // Fall back to newline-separated format (old format)
+    const lines = note.split("\n");
+    for (const line of lines) {
+      const [key, ...valueParts] = line.split(": ");
+      if (key && valueParts.length > 0) {
+        const value = valueParts.join(": ").trim();
+        switch (key) {
+          case "Customer":
+            parsed.customerName = value;
+            break;
+          case "Email":
+            parsed.customerEmail = value;
+            break;
+          case "Phone":
+            parsed.customerPhone = value;
+            break;
+          case "Needs larger table":
+            parsed.needsLargerTable = value === "Yes" ? "true" : "false";
+            break;
+          case "Needs private space":
+            parsed.needsPrivateSpace = value === "Yes" ? "true" : "false";
+            break;
+          case "Duration":
+            parsed.duration = value.replace(" hours", "").replace("h", "").trim();
+            break;
+          case "Special Requests":
+            parsed.specialRequests = value;
+            break;
+        }
       }
     }
   }
@@ -57,7 +95,9 @@ export function getReservationDisplayData(reservation: Reservation) {
   if (parsedNote.duration) {
     duration = parseInt(parsedNote.duration, 10);
   } else if (reservation.startDate && reservation.endDate) {
-    const durationMs = reservation.endDate - reservation.startDate;
+    const startMs = new Date(reservation.startDate).getTime();
+    const endMs = new Date(reservation.endDate).getTime();
+    const durationMs = endMs - startMs;
     duration = Math.round(durationMs / (1000 * 60 * 60)); // Convert to hours
   }
 
@@ -69,7 +109,9 @@ export function getReservationDisplayData(reservation: Reservation) {
       ? new Date(reservation.startDate)
       : undefined,
     endDate: reservation.endDate ? new Date(reservation.endDate) : undefined,
-    guestCount: reservation.seats || 1,
+    guestCount: typeof reservation.seats === 'string' 
+      ? parseInt(reservation.seats, 10) || 1 
+      : reservation.seats || 1,
     duration,
     customerName: parsedNote.customerName,
     customerEmail: parsedNote.customerEmail,

@@ -482,32 +482,33 @@ components:
       required:
         - _branchId
         - _cloudId
+        - _customerId
         - startDate
         - endDate
         - seats
         - status
       properties:
         _branchId:
-          type: integer
-          description: Branch ID
+          type: string
+          description: Branch ID (long as string)
         _cloudId:
-          type: integer
-          description: Cloud ID
+          type: string
+          description: Cloud ID (long as string)
         _customerId:
           type: string
-          description: Customer ID (long)
+          description: Customer ID (long as string)
         _employeeId:
           type: string
-          description: Employee ID (long)
+          description: Employee ID (long as string)
         _tableId:
           type: string
-          description: Table ID (long)
+          description: Table ID (long as string)
           default: "0"
         flags:
           type: integer
           format: int64
           description: Reservation flags (bitwise flags)
-          default: "0"
+          default: 0
         startDate:
           type: number
           description: Start date/time as Unix timestamp in milliseconds
@@ -555,13 +556,13 @@ components:
       properties:
         id:
           type: string
-          description: Reservation ID (long)
+          description: Reservation ID (long as string)
         _branchId:
-          type: integer
-          description: Branch ID
+          type: string
+          description: Branch ID (long as string)
         _cloudId:
-          type: integer
-          description: Cloud ID
+          type: string
+          description: Cloud ID (long as string)
         _customerId:
           type: string
           description: Customer ID (long)
@@ -572,20 +573,20 @@ components:
           type: string
           description: Table ID (long)
         created:
-          type: number
-          description: Creation timestamp in milliseconds
+          type: string
+          description: Creation timestamp (ISO 8601 format)
         flags:
-          type: integer
-          description: Reservation flags
+          type: string
+          description: Reservation flags (string representation)
         startDate:
-          type: number
-          description: Start date/time as Unix timestamp in milliseconds
+          type: string
+          description: Start date/time (ISO 8601 format)
         endDate:
-          type: number
-          description: End date/time as Unix timestamp in milliseconds
+          type: string
+          description: End date/time (ISO 8601 format)
         seats:
-          type: integer
-          description: Number of seats
+          type: string
+          description: Number of seats (string representation)
         status:
           type: string
           enum: [NEW, CONFIRMED, CANCELLED]
@@ -594,8 +595,8 @@ components:
           type: string
           description: Additional notes
         versionDate:
-          type: number
-          description: Last update timestamp in milliseconds
+          type: string
+          description: Last update timestamp (ISO 8601 format)
 
     PaginatedCustomers:
       type: object
@@ -649,88 +650,113 @@ components:
           description: Cloud ID
         _discountGroupId:
           type: string
+          nullable: true
           description: Discount group ID
         _sellerId:
           type: string
+          nullable: true
           description: Seller ID
         firstName:
           type: string
+          nullable: true
           description: First name (at least one of firstName, lastName, or companyName must be non-blank)
         lastName:
           type: string
+          nullable: true
           description: Last name (at least one of firstName, lastName, or companyName must be non-blank)
         companyName:
           type: string
+          nullable: true
           description: Company name (at least one of firstName, lastName, or companyName must be non-blank)
         companyId:
           type: string
+          nullable: true
           description: Company ID
         email:
           type: string
+          nullable: true
           description: Email address
         phone:
           type: string
+          nullable: true
           description: Phone number
         addressLine1:
           type: string
+          nullable: true
           description: Address line 1
         addressLine2:
           type: string
+          nullable: true
           description: Address line 2
         city:
           type: string
+          nullable: true
           description: City
         zip:
           type: string
+          nullable: true
           description: ZIP code
         country:
           type: string
+          nullable: true
           description: Country code
         vatId:
           type: string
+          nullable: true
           description: VAT ID
         barcode:
           type: string
+          nullable: true
           description: Customer barcode
         birthday:
           type: string
+          nullable: true
           description: Birthday timestamp
         created:
           type: string
+          nullable: true
           description: Creation timestamp (ISO 8601)
         expireDate:
           type: string
+          nullable: true
           description: Expiration date timestamp
         externalId:
           type: string
+          nullable: true
           description: External ID
         headerPrint:
           type: string
+          nullable: true
           description: Header print text
         hexColor:
           type: string
+          nullable: true
           description: Hex color code
         internalNote:
           type: string
+          nullable: true
           description: Internal note
         modifiedBy:
           type: string
-          description: Modified by user
+          nullable: true
+          description: Modified by user ID (string representation)
         note:
           type: string
+          nullable: true
           description: Customer note
         tags:
           type: array
+          nullable: true
           description: Customer tags
           items:
             type: string
         points:
-          type: number
-          description: Customer points (double)
+          type: string
+          nullable: true
+          description: Customer points (string representation of number)
         flags:
-          type: integer
-          format: int64
-          description: Customer flags (long)
+          type: string
+          description: Customer flags (string representation of long)
         display:
           type: boolean
           description: Is displayed
@@ -910,30 +936,30 @@ components:
       properties:
         currentPage:
           type: string
-          description: Current page number
+          description: Current page number (string representation)
         perPage:
           type: string
-          description: Items per page
+          description: Items per page (string representation)
         totalItemsOnPage:
           type: string
-          description: Number of items on current page
+          description: Number of items on current page (string representation)
         totalItemsCount:
           type: string
-          description: Total number of items
+          description: Total number of items (string representation)
         firstPage:
           type: string
-          description: First page number
+          description: First page number (string representation)
         lastPage:
           type: string
-          description: Last page number
+          description: Last page number (string representation)
         nextPage:
           type: string
           nullable: true
-          description: Next page number
+          description: Next page number (string representation)
         prevPage:
           type: string
           nullable: true
-          description: Previous page number
+          description: Previous page number (string representation)
         data:
           type: array
           description: Array of tables
@@ -948,27 +974,27 @@ components:
       properties:
         id:
           type: string
-          description: Table ID
+          description: Table ID (long as string)
         _branchId:
           type: string
-          description: Branch ID
+          description: Branch ID (long as string)
         _cloudId:
           type: string
-          description: Cloud ID
+          description: Cloud ID (long as string)
         _sellerId:
           type: string
-          description: Seller ID
+          description: Seller ID (long as string)
           nullable: true
         _tableGroupId:
           type: string
-          description: Table group ID
+          description: Table group ID (long as string)
         name:
           type: string
           description: Table name/number
           maxLength: 180
         seats:
-          type: integer
-          description: Number of seats
+          type: string
+          description: Number of seats (string representation)
         display:
           type: boolean
           description: Is displayed
@@ -979,14 +1005,14 @@ components:
           type: string
           description: Location name
         positionX:
-          type: integer
-          description: X position
+          type: string
+          description: X position (string representation)
         positionY:
-          type: integer
-          description: Y position
+          type: string
+          description: Y position (string representation)
         rotation:
-          type: integer
-          description: Rotation angle
+          type: string
+          description: Rotation angle (string representation)
         type:
           type: string
           enum: [SQUARE, SQUARE6, CIRCLE2, CIRCLE4, DELIVERY, CHAIR_SINGLE, ROUND, DOOR, GENERIC, CAR1, CAR2]

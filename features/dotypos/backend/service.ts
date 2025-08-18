@@ -1241,8 +1241,8 @@ export const createReservation = (
 
     // Build request with customer ID if available
     const request: CreateReservationRequest = {
-      _branchId: parseInt(client.branchId),
-      _cloudId: parseInt(client.cloudId),
+      _branchId: client.branchId,
+      _cloudId: client.cloudId,
       startDate: input.datetime.getTime(),
       endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
       seats: input.guestCount,
