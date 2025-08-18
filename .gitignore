@@ -16,9 +16,6 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files
-.env*
-
 # vercel
 .vercel
 
@@ -32,8 +29,6 @@ logs
 dev-debug.log
 # Dependency directories
 node_modules/
-# Environment variables
-.env
 # Editor directories and files
 .idea
 .vscode
@@ -50,3 +45,4 @@ node_modules/
 # tasks/ 
 
 **/*.local*
+.env*.local
