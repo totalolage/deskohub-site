@@ -1130,20 +1130,23 @@ export const createReservation = (
     const [firstName = "", ...lastNameParts] = input.name.trim().split(/\s+/);
     const lastName = lastNameParts.join(" ") || firstName;
 
-    // Try to find or create customer
-    let customerId: string | null = null;
-    try {
-      const customer = yield* client.findOrCreateCustomer({
-        firstName,
-        lastName,
-        email: input.email,
-        phone: input.phone,
-      });
-      customerId = customer.id || null;
-      yield* Effect.logInfo("Customer resolved", { customerId });
-    } catch (error) {
-      yield* Effect.logWarning("Proceeding without customer ID", error);
+    // Find or create customer (required for reservation)
+    const customer = yield* client.findOrCreateCustomer({
+      firstName,
+      lastName,
+      email: input.email,
+      phone: input.phone,
+    });
+    
+    if (!customer.id) {
+      return yield* Effect.fail(
+        new ValidationError({
+          message: "Failed to create or find customer",
+        })
+      );
     }
+    
+    yield* Effect.logInfo("Customer resolved", { customerId: customer.id });
 
     // Build note once
     const note = buildNote(input);
@@ -1166,10 +1169,11 @@ export const createReservation = (
       });
     }
 
-    // Build request
+    // Build request with required customer ID
     const request: CreateReservationRequest = {
       _branchId: client.branchId,
       _cloudId: client.cloudId,
+      _customerId: customer.id,
       startDate: input.datetime.getTime(),
       endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
       seats: input.guestCount,
@@ -1177,7 +1181,6 @@ export const createReservation = (
       note,
       flags: 0,
       ...(tableId && { _tableId: tableId }),
-      ...(customerId && { _customerId: customerId }),
       ...(client.employeeId && { _employeeId: client.employeeId }),
     };
 

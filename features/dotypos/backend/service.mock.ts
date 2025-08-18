@@ -116,12 +116,12 @@ export const DotyposServiceMockLive = Layer.succeed(
           _cloudId: request._cloudId,
           _customerId: request._customerId,
           _tableId: request._tableId,
-          seats: request.seats,
-          startDate: request.startDate,
-          endDate: request.endDate,
+          seats: String(request.seats),
+          startDate: String(request.startDate),
+          endDate: String(request.endDate),
           status: request.status,
           note: request.note,
-          created: Date.now(),
+          created: new Date().toISOString(),
         };
 
         mockReservations.push(newReservation);
