@@ -173,10 +173,14 @@
     "contactDescription": "Your contact details for booking confirmation",
     "tablePreferenceLabel": "Table Preference",
     "tablePreferences": {
-      "standard": "Standard Table",
-      "large": "Large Table",
-      "private": "Private Area",
-      "any": "Any Available"
+      "largerTable": "We need a larger table for a larger game",
+      "largerTableDescription": "Select this if you're planning to play a game that requires more table space",
+      "privateSpace": "We need a private space (e.g., DnD session)",
+      "privateSpaceDescription": "Select this for private gaming sessions",
+      "privateSpaceDisabled": "Private space is only available for groups of 5 or fewer people",
+      "standard": "Standard table",
+      "large": "Large table",
+      "private": "Private space"
     },
     "specialRequestsLabel": "Special Requests",
     "specialRequestsPlaceholder": "Any special requirements or requests...",

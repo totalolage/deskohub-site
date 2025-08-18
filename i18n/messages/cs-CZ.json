@@ -177,10 +177,14 @@
     "contactDescription": "Vaše kontaktní informace pro potvrzení rezervace",
     "tablePreferenceLabel": "Preference stolu",
     "tablePreferences": {
+      "largerTable": "Potřebujeme větší stůl pro větší hru",
+      "largerTableDescription": "Vyberte, pokud plánujete hrát hru, která vyžaduje více místa na stole",
+      "privateSpace": "Potřebujeme soukromý prostor (např. DnD sezení)",
+      "privateSpaceDescription": "Vyberte pro soukromé herní sezení",
+      "privateSpaceDisabled": "Soukromý prostor je k dispozici pouze pro skupiny do 5 osob",
       "standard": "Standardní stůl",
       "large": "Velký stůl",
-      "private": "Soukromá oblast",
-      "any": "Jakýkoli dostupný"
+      "private": "Soukromý prostor"
     },
     "specialRequestsLabel": "Speciální požadavky",
     "specialRequestsPlaceholder": "Jakékoli speciální požadavky nebo přání...",
