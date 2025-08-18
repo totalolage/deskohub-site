@@ -14,6 +14,7 @@ export {
   getReservation,
   type ReservationInput,
 } from "./backend/service";
+
 // Re-export generated types if needed by consumers
 export type {
   CreateReservationRequest,
@@ -22,5 +23,12 @@ export type {
   TokenResponse,
   UpdateReservationRequest,
 } from "./generated/types.gen";
-// Export types
-export type { DotyposReservation } from "./types";
+
+// Export display utilities
+// Note: formatDateTime and formatDuration now require locale parameter
+export {
+  formatDateTime, // (date, locale) => string
+  formatDuration, // (hours, locale) => string
+  getReservationDisplayData,
+  parseReservationNote,
+} from "./utils/reservation-display";

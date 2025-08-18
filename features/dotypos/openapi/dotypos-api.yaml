@@ -337,6 +337,42 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /clouds/{cloudId}/tables:
+    get:
+      tags:
+        - Tables
+      summary: Get tables
+      operationId: getTables
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: "0"
+      responses:
+        '200':
+          description: Paginated list of tables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTables'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /clouds/{cloudId}/customers/{customerId}:
     get:
       tags:
@@ -361,6 +397,54 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    put:
+      tags:
+        - Customers
+      summary: Update customer
+      operationId: updateCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
         '404':
           description: Customer not found
           content:
@@ -449,15 +533,13 @@ components:
         _customerId:
           type: integer
           description: Customer ID
-          nullable: true
         _employeeId:
           type: integer
           description: Employee ID
-          nullable: true
         _tableId:
           type: integer
           description: Table ID
-          nullable: true
+          default: 0
         flags:
           type: integer
           format: int64
@@ -500,13 +582,38 @@ components:
 
     Reservation:
       type: object
+      required:
+        - _branchId
+        - _cloudId
+        - seats
+        - startDate
+        - endDate
+        - status
       properties:
         id:
           type: integer
+          description: Reservation ID
         _branchId:
           type: integer
+          description: Branch ID
         _cloudId:
           type: integer
+          description: Cloud ID
+        _customerId:
+          type: integer
+          description: Customer ID
+        _employeeId:
+          type: integer
+          description: Employee ID
+        _tableId:
+          type: integer
+          description: Table ID
+        created:
+          type: number
+          description: Creation timestamp in milliseconds
+        flags:
+          type: integer
+          description: Reservation flags
         startDate:
           type: number
           description: Start date/time as Unix timestamp in milliseconds
@@ -515,14 +622,14 @@ components:
           description: End date/time as Unix timestamp in milliseconds
         seats:
           type: integer
+          description: Number of seats
         status:
           type: string
           enum: [NEW, CONFIRMED, CANCELLED]
+          description: Reservation status
         note:
           type: string
-        created:
-          type: number
-          description: Creation timestamp in milliseconds
+          description: Additional notes
         versionDate:
           type: number
           description: Last update timestamp in milliseconds
@@ -564,6 +671,12 @@ components:
 
     Customer:
       type: object
+      required:
+        - _cloudId
+        - deleted
+        - display
+        - flags
+        - points
       properties:
         id:
           type: string
@@ -571,69 +684,95 @@ components:
         _cloudId:
           type: string
           description: Cloud ID
+        _discountGroupId:
+          type: string
+          description: Discount group ID
+        _sellerId:
+          type: string
+          description: Seller ID
         firstName:
           type: string
-          nullable: true
-          description: First name
+          description: First name (at least one of firstName, lastName, or companyName must be non-blank)
         lastName:
           type: string
-          nullable: true
-          description: Last name
+          description: Last name (at least one of firstName, lastName, or companyName must be non-blank)
+        companyName:
+          type: string
+          description: Company name (at least one of firstName, lastName, or companyName must be non-blank)
+        companyId:
+          type: string
+          description: Company ID
         email:
           type: string
-          nullable: true
           description: Email address
         phone:
           type: string
-          nullable: true
           description: Phone number
         addressLine1:
           type: string
-          nullable: true
           description: Address line 1
         addressLine2:
           type: string
-          nullable: true
           description: Address line 2
         city:
           type: string
-          nullable: true
           description: City
         zip:
           type: string
-          nullable: true
           description: ZIP code
         country:
           type: string
-          nullable: true
           description: Country code
-        companyName:
-          type: string
-          nullable: true
-          description: Company name
         vatId:
           type: string
-          nullable: true
           description: VAT ID
-        note:
+        barcode:
           type: string
-          nullable: true
-          description: Customer note
-        points:
+          description: Customer barcode
+        birthday:
           type: string
-          description: Customer points
-        flags:
-          type: string
-          description: Customer flags
-        deleted:
-          type: boolean
-          description: Is deleted
-        display:
-          type: boolean
-          description: Is displayed
+          description: Birthday timestamp
         created:
           type: string
           description: Creation timestamp (ISO 8601)
+        expireDate:
+          type: string
+          description: Expiration date timestamp
+        externalId:
+          type: string
+          description: External ID
+        headerPrint:
+          type: string
+          description: Header print text
+        hexColor:
+          type: string
+          description: Hex color code
+        internalNote:
+          type: string
+          description: Internal note
+        modifiedBy:
+          type: string
+          description: Modified by user
+        note:
+          type: string
+          description: Customer note
+        tags:
+          type: array
+          description: Customer tags
+          items:
+            type: string
+        points:
+          type: string
+          description: Customer points (as string)
+        flags:
+          type: string
+          description: Customer flags
+        display:
+          type: boolean
+          description: Is displayed
+        deleted:
+          type: boolean
+          description: Is deleted
         versionDate:
           type: string
           description: Last modification timestamp (ISO 8601)
@@ -701,6 +840,198 @@ components:
           type: string
           description: Customer points
           default: "0"
+        internalNote:
+          type: string
+          description: Internal note
+          default: ""
+        hexColor:
+          type: string
+          description: Hex color for customer
+          default: "#2196F3"
+        headerPrint:
+          type: string
+          description: Header print text
+          default: ""
+        tags:
+          type: array
+          description: Customer tags
+          items:
+            type: string
+          default: []
+        barcode:
+          type: string
+          description: Customer barcode
+          default: ""
+        companyId:
+          type: string
+          description: Company ID
+          default: ""
+
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: First name
+        lastName:
+          type: string
+          description: Last name
+        email:
+          type: string
+          description: Email address
+        phone:
+          type: string
+          description: Phone number
+        addressLine1:
+          type: string
+          description: Address line 1
+        addressLine2:
+          type: string
+          description: Address line 2
+        city:
+          type: string
+          description: City
+        zip:
+          type: string
+          description: ZIP code
+        country:
+          type: string
+          description: Country code
+        companyName:
+          type: string
+          description: Company name
+        vatId:
+          type: string
+          description: VAT ID
+        note:
+          type: string
+          description: Customer note
+        display:
+          type: boolean
+          description: Is displayed
+        deleted:
+          type: boolean
+          description: Is deleted
+        points:
+          type: string
+          description: Customer points
+        internalNote:
+          type: string
+          description: Internal note
+        hexColor:
+          type: string
+          description: Hex color for customer
+        headerPrint:
+          type: string
+          description: Header print text
+        tags:
+          type: array
+          description: Customer tags
+          items:
+            type: string
+        barcode:
+          type: string
+          description: Customer barcode
+        companyId:
+          type: string
+          description: Company ID
+        flags:
+          type: string
+          description: Customer flags (bitwise flags)
+
+    PaginatedTables:
+      type: object
+      properties:
+        currentPage:
+          type: string
+          description: Current page number
+        perPage:
+          type: string
+          description: Items per page
+        totalItemsOnPage:
+          type: string
+          description: Number of items on current page
+        totalItemsCount:
+          type: string
+          description: Total number of items
+        firstPage:
+          type: string
+          description: First page number
+        lastPage:
+          type: string
+          description: Last page number
+        nextPage:
+          type: string
+          nullable: true
+          description: Next page number
+        prevPage:
+          type: string
+          nullable: true
+          description: Previous page number
+        data:
+          type: array
+          description: Array of tables
+          items:
+            $ref: '#/components/schemas/Table'
+
+    Table:
+      type: object
+      required:
+        - _cloudId
+        - name
+      properties:
+        id:
+          type: string
+          description: Table ID
+        _branchId:
+          type: string
+          description: Branch ID
+        _cloudId:
+          type: string
+          description: Cloud ID
+        _sellerId:
+          type: string
+          description: Seller ID
+          nullable: true
+        _tableGroupId:
+          type: string
+          description: Table group ID
+        name:
+          type: string
+          description: Table name/number
+          maxLength: 180
+        seats:
+          type: string
+          description: Number of seats (as string from API)
+        display:
+          type: boolean
+          description: Is displayed
+        enabled:
+          type: boolean
+          description: Is enabled
+        locationName:
+          type: string
+          description: Location name
+        positionX:
+          type: string
+          description: X position
+        positionY:
+          type: string
+          description: Y position
+        rotation:
+          type: string
+          description: Rotation angle
+        type:
+          type: string
+          description: Table type (e.g., CIRCLE4, SQUARE6, GENERIC, DELIVERY)
+        tags:
+          type: array
+          description: Table tags
+          items:
+            type: string
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
 
     ErrorResponse:
       type: object
