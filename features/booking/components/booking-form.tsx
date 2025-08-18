@@ -9,6 +9,7 @@ import { submitBooking } from "@/features/booking/actions/booking";
 import { useFormErrorScroll } from "@/features/booking/hooks/use-form-error-scroll";
 import {
   type BookingFormData,
+  type BookingFormUserInput,
   getBookingSchema,
 } from "@/features/booking/schemas/booking";
 import { m } from "@/i18n";
@@ -22,6 +23,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Form,
   FormControl,
@@ -31,7 +33,6 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
-import { RadioGroup, RadioGroupItem } from "@/shared/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -53,8 +54,10 @@ import styles from "./booking-form.module.css";
 export function BookingForm() {
   const locale = useLocale();
 
-  const form = useForm<BookingFormData>({
-    resolver: zodResolver(getBookingSchema()),
+  const bookingSchema = getBookingSchema();
+
+  const form = useForm<BookingFormUserInput>({
+    resolver: zodResolver(bookingSchema),
     defaultValues: siteConstants.booking.defaultValues,
     mode: "onTouched",
     shouldFocusError: false, // We handle focus in our custom error scroll hook
@@ -84,18 +87,8 @@ export function BookingForm() {
         let firstErrorField: keyof BookingFormData | null = null;
 
         Object.entries(result.validationErrors).forEach(([field, errors]) => {
-          const validFields: (keyof BookingFormData)[] = [
-            "datetime",
-            "guestCount",
-            "duration",
-            "name",
-            "email",
-            "phone",
-            "tablePreference",
-            "specialRequests",
-          ];
           if (
-            validFields.includes(field as keyof BookingFormData) &&
+            bookingSchema.keyof().safeParse(field).success &&
             errors &&
             Array.isArray(errors)
           ) {
@@ -267,7 +260,9 @@ export function BookingForm() {
                   >
                     <FormLabel>{m["booking.guestCountLabel"]()}</FormLabel>
                     <Select
-                      onValueChange={(value) => field.onChange(parseInt(value, 10))}
+                      onValueChange={(value) =>
+                        field.onChange(parseInt(value, 10))
+                      }
                       defaultValue={String(
                         field.value ||
                           siteConstants.booking.defaultValues.guestCount
@@ -399,45 +394,86 @@ export function BookingForm() {
               </CardTitle>
               <CardDescription>{m["descriptions.tableType"]()}</CardDescription>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
+              {/* Larger Table Checkbox */}
               <FormField
                 control={form.control}
-                name="tablePreference"
+                name="needsLargerTable"
                 render={({ field }) => (
                   <FormItem
-                    ref={registerErrorRef("tablePreference")}
-                    className="space-y-3 scroll-mt-[calc(var(--header-height)+20px)]"
+                    ref={registerErrorRef("needsLargerTable")}
+                    className="flex flex-row items-start space-x-3 space-y-0"
                   >
                     <FormControl>
-                      <RadioGroup
-                        onValueChange={field.onChange}
-                        defaultValue={field.value}
-                        className="space-y-2"
-                      >
-                        {siteConstants.booking.validation.tablePreference.values.map(
-                          (preference) => (
-                            <div
-                              key={preference}
-                              className="flex items-center space-x-2"
-                            >
-                              <RadioGroupItem
-                                value={preference}
-                                id={preference}
-                              />
-                              <FormLabel
-                                htmlFor={preference}
-                                className="cursor-pointer"
-                              >
-                                {m[`booking.tablePreferences.${preference}`]()}
-                              </FormLabel>
-                            </div>
-                          )
-                        )}
-                      </RadioGroup>
+                      <Checkbox
+                        checked={field.value}
+                        onCheckedChange={(checked) => {
+                          field.onChange(checked);
+                          if (checked)
+                            form.setValue("needsPrivateSpace", false);
+                        }}
+                      />
                     </FormControl>
-                    <FormMessage />
+                    <div className="space-y-1 leading-none">
+                      <FormLabel className="cursor-pointer">
+                        {m["booking.tablePreferences.largerTable"]()}
+                      </FormLabel>
+                      <p className="text-sm text-muted-foreground">
+                        {m["booking.tablePreferences.largerTableDescription"]()}
+                      </p>
+                    </div>
                   </FormItem>
                 )}
+              />
+
+              {/* Private Space Checkbox */}
+              <FormField
+                control={form.control}
+                name="needsPrivateSpace"
+                render={({ field }) => {
+                  const guestCount = form.watch("guestCount");
+                  const isDisabled = guestCount > 5;
+
+                  return (
+                    <FormItem
+                      ref={registerErrorRef("needsPrivateSpace")}
+                      className="flex flex-row items-start space-x-3 space-y-0"
+                    >
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value && !isDisabled}
+                          onCheckedChange={(checked) => {
+                            if (!isDisabled) {
+                              field.onChange(checked);
+                              if (checked)
+                                form.setValue("needsLargerTable", false);
+                            }
+                          }}
+                          disabled={isDisabled}
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel
+                          className={cn(
+                            "cursor-pointer",
+                            isDisabled && "opacity-50"
+                          )}
+                        >
+                          {m["booking.tablePreferences.privateSpace"]()}
+                        </FormLabel>
+                        <p className="text-sm text-muted-foreground">
+                          {isDisabled
+                            ? m[
+                                "booking.tablePreferences.privateSpaceDisabled"
+                              ]()
+                            : m[
+                                "booking.tablePreferences.privateSpaceDescription"
+                              ]()}
+                        </p>
+                      </div>
+                    </FormItem>
+                  );
+                }}
               />
             </CardContent>
           </Card>

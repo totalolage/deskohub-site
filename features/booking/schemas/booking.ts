@@ -117,10 +117,9 @@ export const getBookingSchema = () => {
       error: m["booking.validation.phone.invalid"](),
     });
 
-  // Table preference schema using enum with default
-  const tablePreferenceSchema = z
-    .enum(siteConstants.booking.validation.tablePreference.values)
-    .default(siteConstants.booking.defaultValues.tablePreference);
+  // Table preference schemas using booleans instead of enum
+  const needsLargerTableSchema = z.boolean().default(false);
+  const needsPrivateSpaceSchema = z.boolean().default(false);
 
   // Special requests schema
   const specialRequestsSchema = z
@@ -140,7 +139,8 @@ export const getBookingSchema = () => {
       name: nameSchema,
       email: emailSchema,
       phone: phoneSchema,
-      tablePreference: tablePreferenceSchema,
+      needsLargerTable: needsLargerTableSchema,
+      needsPrivateSpace: needsPrivateSpaceSchema,
       specialRequests: specialRequestsSchema,
     })
     .refine(
@@ -164,4 +164,5 @@ export const getBookingSchema = () => {
     );
 };
 
-export type BookingFormData = z.input<ReturnType<typeof getBookingSchema>>;
+export type BookingFormUserInput = z.input<ReturnType<typeof getBookingSchema>>;
+export type BookingFormData = z.output<ReturnType<typeof getBookingSchema>>;
