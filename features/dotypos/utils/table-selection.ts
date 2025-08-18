@@ -47,10 +47,9 @@ export function selectBestTable(
   }
 
   // Parse seats to numbers for comparison
-  const tablesWithSeats = validTables.filter((t): t is (
-    typeof t &
-    Required<Pick<Table, "seats">>
-  ) => !!t.seats);
+  const tablesWithSeats = validTables.filter(
+    (t): t is typeof t & Required<Pick<Table, "seats">> => !!t.seats
+  );
 
   let selectedTable: (typeof tablesWithSeats)[0] | undefined;
   let reason = "";
@@ -89,9 +88,7 @@ export function selectBestTable(
 
       if (!selectedTable) {
         // If no large table fits, get the largest available
-        selectedTable = largeTables.sort(
-          (a, b) => b.seats - a.seats
-        )[0];
+        selectedTable = largeTables.sort((a, b) => b.seats - a.seats)[0];
         reason =
           "Selected largest available table (may need additional seating)";
       } else {
@@ -132,9 +129,7 @@ export function selectBestTable(
 
     if (!selectedTable) {
       // Last resort: biggest table available
-      selectedTable = tablesWithSeats.sort(
-        (a, b) => b.seats - a.seats
-      )[0];
+      selectedTable = tablesWithSeats.sort((a, b) => b.seats - a.seats)[0];
       reason = "Selected largest available table (group may need to split)";
     }
   }

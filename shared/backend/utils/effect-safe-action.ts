@@ -53,7 +53,7 @@ export function createEffectSafeAction<I, O, E, R>(
         const result = await Effect.runPromise(programWithLogging);
         console.log("Effect action succeeded:", result);
         return result;
-      } catch (error: any) {
+      } catch (error: unknown) {
         // Log the full error for debugging
         console.error("Effect action failed with error:", error);
 

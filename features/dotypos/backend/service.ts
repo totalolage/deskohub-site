@@ -33,6 +33,20 @@ import type {
 } from "../generated/types.gen";
 import { selectBestTable } from "../utils/table-selection";
 
+/**
+ * Extended error response type that includes validation violations
+ * This is not part of the OpenAPI spec but is returned by the API
+ */
+interface ApiErrorWithViolations {
+  error?: string;
+  error_description?: string;
+  code?: number;
+  violations?: Array<{
+    path?: string[];
+    message: string;
+  }>;
+}
+
 // Response validation is handled by the generated SDK
 // Removed DotyposReservation import - using API types directly
 
@@ -405,13 +419,14 @@ const DotyposApiLayer = Layer.scoped(
 
                 // Extract error message from violations if available
                 let errorMessage = "Failed to create reservation";
-                const errorWithViolations = response.error as any;
+                const errorWithViolations =
+                  response.error as ApiErrorWithViolations;
                 if (
                   errorWithViolations.violations &&
                   Array.isArray(errorWithViolations.violations)
                 ) {
                   const violationMessages = errorWithViolations.violations
-                    .map((v: any) => `${v.path?.join(".")}: ${v.message}`)
+                    .map((v) => `${v.path?.join(".")}: ${v.message}`)
                     .join(", ");
                   errorMessage = `Validation failed: ${violationMessages}`;
                 } else if (response.error.error_description) {
