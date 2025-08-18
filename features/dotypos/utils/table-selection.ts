@@ -47,12 +47,10 @@ export function selectBestTable(
   }
 
   // Parse seats to numbers for comparison
-  const tablesWithSeats = validTables
-    .map((t) => ({
-      ...t,
-      seatCount: parseInt(t.seats || "0"),
-    }))
-    .filter((t) => t.seatCount > 0);
+  const tablesWithSeats = validTables.filter((t): t is (
+    typeof t &
+    Required<Pick<Table, "seats">>
+  ) => !!t.seats);
 
   let selectedTable: (typeof tablesWithSeats)[0] | undefined;
   let reason = "";
@@ -73,31 +71,31 @@ export function selectBestTable(
     } else {
       // Fallback to largest available table for some privacy
       selectedTable = tablesWithSeats
-        .filter((t) => t.seatCount >= guestCount)
-        .sort((a, b) => b.seatCount - a.seatCount)[0];
+        .filter((t) => t.seats >= guestCount)
+        .sort((a, b) => b.seats - a.seats)[0];
       reason = "No private room available, selected largest suitable table";
     }
   }
   // Priority 2: Larger table for larger game
   else if (needsLargerTable) {
     // Select tables with 7+ seats
-    const largeTables = tablesWithSeats.filter((t) => t.seatCount >= 7);
+    const largeTables = tablesWithSeats.filter((t) => t.seats >= 7);
 
     if (largeTables.length > 0) {
       // Find the smallest large table that still fits the group
       selectedTable = largeTables
-        .filter((t) => t.seatCount >= guestCount)
-        .sort((a, b) => a.seatCount - b.seatCount)[0];
+        .filter((t) => t.seats >= guestCount)
+        .sort((a, b) => a.seats - b.seats)[0];
 
       if (!selectedTable) {
         // If no large table fits, get the largest available
         selectedTable = largeTables.sort(
-          (a, b) => b.seatCount - a.seatCount
+          (a, b) => b.seats - a.seats
         )[0];
         reason =
           "Selected largest available table (may need additional seating)";
       } else {
-        reason = `Selected large table with ${selectedTable.seatCount} seats for game`;
+        reason = `Selected large table with ${selectedTable.seats} seats for game`;
       }
     } else {
       // No large tables, fallback to best fit
@@ -112,16 +110,16 @@ export function selectBestTable(
 
     // First try exact match or slightly larger
     selectedTable = tablesWithSeats
-      .filter((t) => t.seatCount >= targetSize)
-      .sort((a, b) => a.seatCount - b.seatCount)[0];
+      .filter((t) => t.seats >= targetSize)
+      .sort((a, b) => a.seats - b.seats)[0];
 
     if (selectedTable) {
-      reason = `Selected table with ${selectedTable.seatCount} seats (group + game space)`;
+      reason = `Selected table with ${selectedTable.seats} seats (group + game space)`;
     } else {
       // If no table fits group + 1, get best fit for group size
       selectedTable = findBestFitTable(tablesWithSeats, guestCount);
       reason = selectedTable
-        ? `Selected best available table with ${selectedTable.seatCount} seats`
+        ? `Selected best available table with ${selectedTable.seats} seats`
         : "Selected available table";
     }
   }
@@ -129,13 +127,13 @@ export function selectBestTable(
   // If no table selected yet, fallback to any table that fits
   if (!selectedTable) {
     selectedTable = tablesWithSeats
-      .filter((t) => t.seatCount >= guestCount)
-      .sort((a, b) => a.seatCount - b.seatCount)[0];
+      .filter((t) => t.seats >= guestCount)
+      .sort((a, b) => a.seats - b.seats)[0];
 
     if (!selectedTable) {
       // Last resort: biggest table available
       selectedTable = tablesWithSeats.sort(
-        (a, b) => b.seatCount - a.seatCount
+        (a, b) => b.seats - a.seats
       )[0];
       reason = "Selected largest available table (group may need to split)";
     }
@@ -148,7 +146,7 @@ export function selectBestTable(
   return {
     selectedTableId: selectedTable.id,
     selectedTableName: selectedTable.name,
-    seats: selectedTable.seatCount,
+    seats: selectedTable.seats,
     reason,
   };
 }
@@ -158,29 +156,29 @@ export function selectBestTable(
  * Prefers exact match, then slightly larger, then any that fits
  */
 function findBestFitTable(
-  tables: Array<{ seatCount: number } & Table>,
+  tables: Array<{ seats: number } & Table>,
   guestCount: number
 ): (typeof tables)[0] | undefined {
   // First try exact match
-  let selected = tables.find((t) => t.seatCount === guestCount);
+  let selected = tables.find((t) => t.seats === guestCount);
 
   if (!selected) {
     // Try slightly larger (up to 2 extra seats)
     selected = tables
-      .filter((t) => t.seatCount >= guestCount && t.seatCount <= guestCount + 2)
-      .sort((a, b) => a.seatCount - b.seatCount)[0];
+      .filter((t) => t.seats >= guestCount && t.seats <= guestCount + 2)
+      .sort((a, b) => a.seats - b.seats)[0];
   }
 
   if (!selected) {
     // Any table that fits
     selected = tables
-      .filter((t) => t.seatCount >= guestCount)
-      .sort((a, b) => a.seatCount - b.seatCount)[0];
+      .filter((t) => t.seats >= guestCount)
+      .sort((a, b) => a.seats - b.seats)[0];
   }
 
   if (!selected) {
     // Table too small but closest to needed size
-    selected = tables.sort((a, b) => b.seatCount - a.seatCount)[0];
+    selected = tables.sort((a, b) => b.seats - a.seats)[0];
   }
 
   return selected;
@@ -196,7 +194,9 @@ export function needsMultipleTables(
   const maxSeats = Math.max(
     ...availableTables
       .filter((t) => t.seats)
-      .map((t) => parseInt(t.seats || "0"))
+      .map((t) =>
+        typeof t.seats === "number" ? t.seats : parseInt(String(t.seats || "0"))
+      )
   );
 
   return guestCount > maxSeats;
@@ -213,10 +213,13 @@ export function suggestTableCombination(
     .filter((t) => t.enabled && t.display && t.seats)
     .map((t) => ({
       ...t,
-      seatCount: parseInt(t.seats || "0"),
+      seats:
+        typeof t.seats === "number"
+          ? t.seats
+          : parseInt(String(t.seats || "0")),
     }))
-    .filter((t) => t.seatCount > 0)
-    .sort((a, b) => b.seatCount - a.seatCount);
+    .filter((t) => t.seats > 0)
+    .sort((a, b) => b.seats - a.seats);
 
   const combinations: Table[][] = [];
   let remainingGuests = guestCount;
@@ -227,7 +230,7 @@ export function suggestTableCombination(
     if (remainingGuests <= 0) break;
 
     selectedTables.push(table);
-    remainingGuests -= table.seatCount;
+    remainingGuests -= table.seats;
 
     if (remainingGuests <= 0) {
       combinations.push([...selectedTables]);

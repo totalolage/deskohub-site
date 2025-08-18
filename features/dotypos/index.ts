@@ -12,7 +12,6 @@ export {
   DotyposConfigTag,
   DotyposServiceLive,
   getReservation,
-  type ReservationInput,
 } from "./backend/service";
 
 // Re-export generated types if needed by consumers
