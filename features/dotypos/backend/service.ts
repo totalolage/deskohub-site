@@ -311,8 +311,13 @@ const DotyposApiLayer = Layer.scoped(
 
           const token = yield* getToken();
 
+          // Remove null values from the body to prevent API validation errors
+          const cleanBody = Object.fromEntries(
+            Object.entries(params.body).filter(([_, value]) => value !== null)
+          ) as typeof params.body;
+
           // The API expects an array of reservations
-          const requestBody = [params.body]; // Wrap single reservation in array
+          const requestBody = [cleanBody]; // Wrap single reservation in array
 
           yield* Effect.logDebug("Sending request to Dotypos API", {
             url: `/clouds/${params.path.cloudId}/reservations`,
@@ -525,8 +530,13 @@ const DotyposApiLayer = Layer.scoped(
 
           const token = yield* getToken();
 
+          // Remove null values from the body to prevent API validation errors
+          const cleanBody = Object.fromEntries(
+            Object.entries(params.body).filter(([_, value]) => value !== null)
+          ) as typeof params.body;
+
           // The API expects an array of customers
-          const requestBody = [params.body];
+          const requestBody = [cleanBody];
 
           console.log(
             "Creating customer with body:",
@@ -584,12 +594,17 @@ const DotyposApiLayer = Layer.scoped(
 
           const token = yield* getToken();
 
+          // Remove null values from the body to prevent API validation errors
+          const cleanBody = Object.fromEntries(
+            Object.entries(params.body).filter(([_, value]) => value !== null)
+          ) as typeof params.body;
+
           const result = yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.updateCustomer(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  body: params.body,
+                  body: cleanBody,
                 })
               );
 
