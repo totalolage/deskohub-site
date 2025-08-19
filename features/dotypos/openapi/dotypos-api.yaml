@@ -792,33 +792,43 @@ components:
         email:
           type: string
           description: Email address
+          nullable: true
         phone:
           type: string
           description: Phone number
+          nullable: true
         addressLine1:
           type: string
           description: Address line 1
+          nullable: true
         addressLine2:
           type: string
           description: Address line 2
+          nullable: true
         city:
           type: string
           description: City
+          nullable: true
         zip:
           type: string
           description: ZIP code
+          nullable: true
         country:
           type: string
           description: Country code
+          nullable: true
         companyName:
           type: string
           description: Company name
+          nullable: true
         vatId:
           type: string
           description: VAT ID
+          nullable: true
         note:
           type: string
           description: Customer note
+          nullable: true
         display:
           type: boolean
           description: Is displayed
@@ -830,11 +840,17 @@ components:
         points:
           type: number
           description: Customer points
+          nullable: true
           default: 0
         internalNote:
           type: string
           description: Internal note
+          nullable: true
           default: ""
+        companyId:
+          type: string
+          description: Company ID
+          nullable: true
         hexColor:
           type: string
           description: Hex color for customer
@@ -852,10 +868,6 @@ components:
         barcode:
           type: string
           description: Customer barcode
-          default: ""
-        companyId:
-          type: string
-          description: Company ID
           default: ""
 
     UpdateCustomerRequest:
