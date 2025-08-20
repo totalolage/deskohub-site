@@ -23,9 +23,11 @@ export const getBookingSchema = () => {
       (date) => {
         // Check if minutes are in 30-minute increments using modular arithmetic
         const minutes = date.getMinutes();
-        return minutes % siteConstants.booking.validation.time.minuteIncrement === 0;
+        return (
+          minutes % siteConstants.booking.validation.time.minuteIncrement === 0
+        );
       },
-      { message: m["booking.validation.datetime.thirtyMinuteIncrements"]()}
+      { message: m["booking.validation.datetime.thirtyMinuteIncrements"]() }
     )
     .refine(
       (date) => {

@@ -180,7 +180,10 @@ export function BookingForm() {
                       <Input
                         type="datetime-local"
                         min={getMinBookingDateTime()}
-                        step={siteConstants.booking.validation.time.minuteIncrement * 60}
+                        step={
+                          siteConstants.booking.validation.time
+                            .minuteIncrement * 60
+                        }
                         variant={fieldState.error ? "error" : "default"}
                         {...field}
                         value={

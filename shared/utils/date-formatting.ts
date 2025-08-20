@@ -89,7 +89,24 @@ export function formatDateTimeForInput(date: Date | string): string {
 /**
  * Get the minimum datetime for booking (current time)
  * Formatted for datetime-local input
+ * Rounds up to the nearest 30-minute increment to match the step attribute
  */
 export function getMinBookingDateTime(): string {
-  return formatDateTimeForInput(new Date());
+  const now = new Date();
+  const minutes = now.getMinutes();
+  const roundedMinutes = Math.ceil(minutes / 30) * 30;
+
+  // If we need to round up to the next hour
+  if (roundedMinutes === 60) {
+    now.setHours(now.getHours() + 1);
+    now.setMinutes(0);
+  } else {
+    now.setMinutes(roundedMinutes);
+  }
+
+  // Reset seconds and milliseconds
+  now.setSeconds(0);
+  now.setMilliseconds(0);
+
+  return formatDateTimeForInput(now);
 }
