@@ -1,49 +1,72 @@
-import { Config, Effect, Option } from "effect";
+/**
+ * Email Configuration
+ *
+ * Configuration for the email service
+ */
 
-// Email service configuration
-export interface EmailConfig {
-  provider: "resend" | "sendgrid" | "smtp";
-  apiKey?: string;
-  from: string;
-  replyTo?: string;
-  // SMTP specific
-  smtpHost?: string;
-  smtpPort?: number;
-  smtpUser?: string;
-  smtpPassword?: string;
-  smtpSecure?: boolean;
-}
+import { Config, Layer } from "effect";
+import type { EmailProviderConfig } from "@/features/email";
+import { EmailConfigTag } from "@/features/email";
 
-// Create config from environment variables
-export const EmailConfigLive = Effect.gen(function* () {
-  const provider = yield* Config.string("EMAIL_PROVIDER").pipe(
-    Config.withDefault("resend")
-  );
-  const apiKey = yield* Config.string("EMAIL_API_KEY").pipe(Config.option);
-  const from = yield* Config.string("EMAIL_FROM").pipe(
-    Config.withDefault("noreply@deskohub.cz")
-  );
-  const replyTo = yield* Config.string("EMAIL_REPLY_TO").pipe(Config.option);
-  const smtpHost = yield* Config.string("SMTP_HOST").pipe(Config.option);
-  const smtpPort = yield* Config.number("SMTP_PORT").pipe(Config.option);
-  const smtpUser = yield* Config.string("SMTP_USER").pipe(Config.option);
-  const smtpPassword = yield* Config.string("SMTP_PASSWORD").pipe(
-    Config.option
-  );
-  const smtpSecure = yield* Config.boolean("SMTP_SECURE").pipe(Config.option);
-
-  return {
-    provider: provider as EmailConfig["provider"],
-    apiKey: Option.getOrUndefined(apiKey),
-    from,
-    replyTo: Option.getOrUndefined(replyTo),
-    smtpHost: Option.getOrUndefined(smtpHost),
-    smtpPort: Option.getOrUndefined(smtpPort),
-    smtpUser: Option.getOrUndefined(smtpUser),
-    smtpPassword: Option.getOrUndefined(smtpPassword),
-    smtpSecure: Option.getOrUndefined(smtpSecure),
-  };
+/**
+ * Email configuration from environment variables
+ */
+const emailConfig = Config.all({
+  provider: Config.withDefault(
+    Config.literal(
+      "resend",
+      "smtp",
+      "sendgrid",
+      "mailgun",
+      "console"
+    )("EMAIL_PROVIDER"),
+    "console" as const
+  ),
+  defaultFromEmail: Config.withDefault(
+    Config.string("EMAIL_FROM_ADDRESS"),
+    "noreply@deskohub.com"
+  ),
+  defaultFromName: Config.withDefault(
+    Config.string("EMAIL_FROM_NAME"),
+    "DeskohHub"
+  ),
+  apiKey: Config.option(Config.string("EMAIL_API_KEY")),
+  smtpHost: Config.option(Config.string("EMAIL_SMTP_HOST")),
+  smtpPort: Config.option(Config.number("EMAIL_SMTP_PORT")),
+  smtpUser: Config.option(Config.string("EMAIL_SMTP_USER")),
+  smtpPassword: Config.option(Config.string("EMAIL_SMTP_PASSWORD")),
+  smtpSecure: Config.withDefault(Config.boolean("EMAIL_SMTP_SECURE"), true),
+  testMode: Config.withDefault(Config.boolean("EMAIL_TEST_MODE"), false),
 });
 
-// Helper to load config
-export const getEmailConfig = EmailConfigLive;
+/**
+ * Email configuration layer
+ */
+export const EmailConfigLayer = Layer.effect(
+  EmailConfigTag,
+  emailConfig.pipe(
+    Config.map((config) => {
+      const providerConfig: EmailProviderConfig = {
+        provider: config.provider,
+        defaultFrom: {
+          email: config.defaultFromEmail,
+          name: config.defaultFromName,
+        },
+        apiKey: config.apiKey._tag === "Some" ? config.apiKey.value : undefined,
+        smtpHost:
+          config.smtpHost._tag === "Some" ? config.smtpHost.value : undefined,
+        smtpPort:
+          config.smtpPort._tag === "Some" ? config.smtpPort.value : undefined,
+        smtpUser:
+          config.smtpUser._tag === "Some" ? config.smtpUser.value : undefined,
+        smtpPassword:
+          config.smtpPassword._tag === "Some"
+            ? config.smtpPassword.value
+            : undefined,
+        smtpSecure: config.smtpSecure,
+        testMode: config.testMode,
+      };
+      return providerConfig;
+    })
+  )
+);
