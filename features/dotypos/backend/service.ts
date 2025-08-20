@@ -131,6 +131,7 @@ class DotyposClient extends Context.Tag("DotyposClient")<
 
 /**
  * Retry policy with exponential backoff and jitter
+ * - Only retries on server errors (500+)
  * - Starts at 100ms, doubles each retry with jitter
  * - Maximum 3 retries
  * - Maximum total time: ~7 seconds
@@ -138,6 +139,16 @@ class DotyposClient extends Context.Tag("DotyposClient")<
 const retryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
   Schedule.either(Schedule.recurs(3)),
+  Schedule.whileInput<ExternalAPIError | NetworkError>((error) => {
+    // Only retry on server errors (500+) or network errors
+    if (error._tag === "NetworkError") {
+      return true;
+    }
+    if (error._tag === "ExternalAPIError" && error.statusCode >= 500) {
+      return true;
+    }
+    return false;
+  }),
   Schedule.map(() => void 0)
 );
 
@@ -530,13 +541,8 @@ const DotyposApiLayer = Layer.scoped(
 
           const token = yield* getToken();
 
-          // Remove null values from the body to prevent API validation errors
-          const cleanBody = Object.fromEntries(
-            Object.entries(params.body).filter(([_, value]) => value !== null)
-          ) as typeof params.body;
-
-          // The API expects an array of customers
-          const requestBody = [cleanBody];
+          // The API expects an array of customers with all fields present (including nulls)
+          const requestBody = [params.body];
 
           console.log(
             "Creating customer with body:",
@@ -936,11 +942,26 @@ const DotyposClientLive = Layer.effect(
                 _cloudId: config.cloudId,
                 firstName: customerData.firstName,
                 lastName: customerData.lastName,
-                email: customerData.email,
-                phone: customerData.phone,
+                email: customerData.email || null,
+                phone: customerData.phone || null,
+                addressLine1: "",
+                addressLine2: null,
+                city: null,
+                zip: "",
+                country: null,
+                companyName: "",
+                vatId: "",
+                note: null,
                 display: true,
                 deleted: false,
-                flags: 0, // Required field according to BC1 changes
+                points: 0,
+                internalNote: "",
+                companyId: "",
+                hexColor: "#2196F3",
+                headerPrint: "",
+                tags: [],
+                barcode: "",
+                flags: 0,
               },
             })
             .pipe(
