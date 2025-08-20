@@ -154,6 +154,24 @@ export const DotyposServiceMockLive = Layer.succeed(
         return reservation;
       }),
 
+    getCustomer: (id: string) =>
+      Effect.gen(function* () {
+        yield* Effect.logInfo("MOCK: Getting customer", { id });
+        const customer = mockCustomers.find((c) => c.id === id);
+
+        if (!customer) {
+          return yield* Effect.fail(
+            new ExternalAPIError({
+              service: "DotyposMock",
+              message: `Customer ${id} not found`,
+              statusCode: 404,
+            })
+          );
+        }
+
+        return customer;
+      }),
+
     findOrCreateCustomer: (customerData: {
       firstName: string;
       lastName: string;
