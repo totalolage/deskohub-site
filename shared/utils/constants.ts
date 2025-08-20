@@ -49,8 +49,11 @@ export const siteConstants = {
         max: 500,
       },
       duration: {
-        min: 0.5, // 30 minutes minimum
-        increment: 0.5, // 30 minute increments
+        min: 0.5, // 30 minutes minimum in hours
+        increment: 0.5, // 30 minute increments in hours
+      },
+      time: {
+        minuteIncrement: 30, // Time selection must be in 30-minute increments
       },
     },
     defaultValues: {

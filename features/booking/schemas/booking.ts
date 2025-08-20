@@ -21,6 +21,14 @@ export const getBookingSchema = () => {
     .min(new Date(), { error: m["booking.validation.datetime.mustBeFuture"]() })
     .refine(
       (date) => {
+        // Check if minutes are in 30-minute increments using modular arithmetic
+        const minutes = date.getMinutes();
+        return minutes % siteConstants.booking.validation.time.minuteIncrement === 0;
+      },
+      { message: m["booking.validation.datetime.thirtyMinuteIncrements"]()}
+    )
+    .refine(
+      (date) => {
         // Check if the booking time is within business hours
         const { dayOfWeek, hours, minutes } =
           getLocalTimeInRestaurantTimezone(date);

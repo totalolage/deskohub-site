@@ -204,6 +204,7 @@
         "required": "Date and time are required",
         "mustBeFuture": "Date and time must be in the future",
         "outsideWorkingHours": "Please select a time during our working hours",
+        "thirtyMinuteIncrements": "Please select a time at :00 or :30 minutes",
         "durationExceedsWorkingHours": "Your reservation extends beyond our closing time. Please select a shorter duration or an earlier time."
       },
       "guestCount": {
