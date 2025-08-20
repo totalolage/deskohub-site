@@ -154,7 +154,11 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
     if (error._tag === "NetworkError") {
       return true;
     }
-    if (error._tag === "ExternalAPIError" && error.statusCode && error.statusCode >= 500) {
+    if (
+      error._tag === "ExternalAPIError" &&
+      error.statusCode &&
+      error.statusCode >= 500
+    ) {
       return true;
     }
     return false;
@@ -621,7 +625,10 @@ const DotyposApiLayer = Layer.scoped(
               if (!response.data || response.error) {
                 throw {
                   status: response.response?.status || 500,
-                  message: response.error?.error_description || response.error?.error || "Failed to get customer",
+                  message:
+                    response.error?.error_description ||
+                    response.error?.error ||
+                    "Failed to get customer",
                   error: response.error?.error || "Failed to get customer",
                 };
               }
