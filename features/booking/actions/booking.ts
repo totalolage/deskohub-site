@@ -4,6 +4,10 @@ import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { getBookingSchema } from "@/features/booking/schemas/booking";
 import { createReservation, DotyposServiceLive } from "@/features/dotypos";
+import {
+  StandaloneEmailServiceLive,
+  sendReservationConfirmationEmail,
+} from "@/features/email";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // Create the action with the helper
@@ -32,9 +36,39 @@ const _submitBooking = createEffectSafeAction(
         ),
         Effect.tapError((error) =>
           Effect.logError("Reservation creation failed", error)
-        ),
-        Effect.provide(DotyposServiceLive)
+        )
       );
+
+      // Send confirmation email
+      if (reservation.id) {
+        // Create a simple customer object for the email
+        const customer = {
+          id: "",
+          firstName: input.name.split(" ")[0] || input.name,
+          lastName: input.name.split(" ").slice(1).join(" ") || "",
+          email: input.email,
+          phone: input.phone,
+          // Minimal fields needed for email - cast to Customer type
+        } as Parameters<typeof sendReservationConfirmationEmail>[1];
+
+        yield* sendReservationConfirmationEmail(
+          reservation,
+          customer,
+          input.specialRequests
+        ).pipe(
+          Effect.tap(() =>
+            Effect.logInfo("Confirmation email sent", {
+              reservationId: reservation.id,
+              email: input.email,
+            })
+          ),
+          Effect.tapError((error) =>
+            Effect.logError("Failed to send confirmation email", { error })
+          ),
+          // Don't fail the action if email fails
+          Effect.catchAll(() => Effect.void)
+        );
+      }
 
       yield* Effect.logInfo("Returning reservation for redirect", {
         reservationId: reservation.id,
@@ -51,7 +85,9 @@ const _submitBooking = createEffectSafeAction(
         },
       })
     ),
-  Layer.empty
+  Layer.mergeAll(DotyposServiceLive, StandaloneEmailServiceLive).pipe(
+    Layer.orDie
+  )
 );
 
 // Export an explicitly async wrapper that Next.js will recognize

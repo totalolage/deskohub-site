@@ -1225,6 +1225,8 @@ export const createReservation = (
     const reservation = yield* client.createReservation(request);
     yield* Effect.logInfo("Reservation created", { id: reservation.id });
 
+    // Email is sent at the action layer (booking.ts) where the email service is available
+
     return reservation;
   }).pipe(
     Effect.withSpan("createReservation", {
