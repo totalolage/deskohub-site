@@ -32,7 +32,7 @@ export default async function ReservationConfirmationPage({
   setLocale(locale, { reload: false });
 
   // Fetch reservation from Dotypos with proper error handling
-  const reservationResult = await Effect.runPromise(
+  const result = await Effect.runPromise(
     getReservation(id).pipe(
       Effect.provide(DotyposServiceLive),
       Effect.match({
@@ -42,34 +42,36 @@ export default async function ReservationConfirmationPage({
           // Return null to trigger 404
           return null;
         },
-        onSuccess: (reservation) => reservation,
+        onSuccess: (data) => data,
       })
     )
   );
 
   // If reservation not found or error, show 404
-  if (!reservationResult) {
+  if (!result) {
     notFound();
   }
 
-  // Convert API response to display format
-  const displayData = getReservationDisplayData(reservationResult);
+  const { reservation, customer } = result;
 
-  // Map to booking structure for the UI
+  // Convert API response to display format
+  const displayData = getReservationDisplayData(reservation);
+
+  // Map to booking structure for the UI, using customer data directly
   const booking = {
     id: displayData.id,
     datetime: displayData.datetime || new Date(),
     duration: displayData.duration || 2,
     guestCount: displayData.guestCount,
-    name: displayData.customerName || "Unknown",
-    email: displayData.customerEmail || "",
-    phone: displayData.customerPhone || "",
+    name: `${customer.firstName} ${customer.lastName}`.trim() || "Unknown",
+    email: customer.email || "",
+    phone: customer.phone || "",
     tablePreference: displayData.needsLargerTable
       ? ("large" as const)
       : displayData.needsPrivateSpace
         ? ("private" as const)
         : ("standard" as const),
-    specialRequests: displayData.specialRequests || "",
+    specialRequests: reservation.note || "", // Note now only contains special requests
     submittedAt: displayData.createdAt || new Date(),
   };
 

@@ -77,6 +77,10 @@ interface DotyposApi {
     body: CreateCustomerRequest;
   }) => Effect.Effect<Customer, ExternalAPIError | NetworkError>;
 
+  readonly getCustomer: (params: {
+    path: { cloudId: string; customerId: string };
+  }) => Effect.Effect<Customer, ExternalAPIError | NetworkError>;
+
   readonly updateCustomer: (params: {
     path: { cloudId: string; customerId: string };
     body: UpdateCustomerRequest;
@@ -111,6 +115,12 @@ class DotyposClient extends Context.Tag("DotyposClient")<
       id: string
     ) => Effect.Effect<
       Reservation,
+      ExternalAPIError | NetworkError | ValidationError
+    >;
+    readonly getCustomer: (
+      id: string
+    ) => Effect.Effect<
+      Customer,
       ExternalAPIError | NetworkError | ValidationError
     >;
     readonly findOrCreateCustomer: (customerData: {
@@ -594,6 +604,37 @@ const DotyposApiLayer = Layer.scoped(
           return result;
         }).pipe(Effect.withSpan("dotyposApi.createCustomer")),
 
+      getCustomer: (params) =>
+        Effect.gen(function* () {
+          yield* Effect.logDebug("DotyposApi.getCustomer called", params);
+
+          const token = yield* getToken();
+
+          const result = yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.getCustomer(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                })
+              );
+
+              if (!response.data || response.error) {
+                throw {
+                  status: response.response?.status || 500,
+                  message: response.error?.message || "Failed to get customer",
+                  error: response.error?.error || "Failed to get customer",
+                };
+              }
+
+              return response.data as Customer;
+            },
+            catch: (error) =>
+              transformHttpError(error, "Get customer", config.apiUrl),
+          });
+
+          return result;
+        }).pipe(Effect.withSpan("dotyposApi.getCustomer")),
+
       updateCustomer: (params) =>
         Effect.gen(function* () {
           yield* Effect.logDebug("DotyposApi.updateCustomer called", params);
@@ -742,6 +783,30 @@ const DotyposClientLive = Layer.effect(
               ) {
                 return new ValidationError({
                   message: `Reservation ${id} not found`,
+                });
+              }
+              return error;
+            })
+          ),
+
+      getCustomer: (id: string) =>
+        api
+          .getCustomer({
+            path: {
+              cloudId: config.cloudId,
+              customerId: id,
+            },
+          })
+          .pipe(
+            Effect.retry(retryPolicy),
+            Effect.mapError((error) => {
+              // Add special handling for 404
+              if (
+                error instanceof ExternalAPIError &&
+                error.statusCode === 404
+              ) {
+                return new ValidationError({
+                  message: `Customer ${id} not found`,
                 });
               }
               return error;
@@ -1003,20 +1068,13 @@ export { DotyposClient, DotyposConfigTag };
  */
 
 /**
- * Build note field with customer information and metadata
+ * Build note field with only special requests
+ * Customer details are now stored in the customer record itself
  */
 const buildNote = (input: BookingFormData): string => {
-  const parts = [
-    input.name && `Customer: ${input.name}`,
-    input.email && `Email: ${input.email}`,
-    input.phone && `Phone: ${input.phone}`,
-    input.duration && `Duration: ${input.duration}h`,
-    input.needsLargerTable && `Needs larger table: Yes`,
-    input.needsPrivateSpace && `Needs private space: Yes`,
-    input.specialRequests,
-  ].filter(Boolean);
-
-  return parts.join(" | ");
+  // Only include special requests in the note field
+  // Customer details are available via the customer ID
+  return input.specialRequests || "";
 };
 
 /**
@@ -1045,7 +1103,7 @@ const NOTE_PATTERNS = {
 /**
  * Parse customer info and metadata from note field
  */
-const parseNote = (note: string | undefined): ParsedNote => {
+const _parseNote = (note: string | undefined): ParsedNote => {
   if (!note) {
     return {
       customerName: null,
@@ -1273,12 +1331,12 @@ export const getAvailableTables = (): Effect.Effect<
   }).pipe(Effect.withSpan("getAvailableTables"));
 
 /**
- * Get a reservation by ID
+ * Get a reservation by ID with customer details
  */
 export const getReservation = (
   id: string
 ): Effect.Effect<
-  Reservation,
+  { reservation: Reservation; customer: Customer },
   ExternalAPIError | NetworkError | ValidationError,
   DotyposClient
 > =>
@@ -1286,16 +1344,17 @@ export const getReservation = (
     const client = yield* DotyposClient;
     const reservation = yield* client.getReservation(id);
 
-    // Just validate that we have customer info in the note
-    const parsedNote = parseNote(reservation.note ?? undefined);
-    if (!parsedNote.customerName) {
+    // Get customer details if available
+    if (!reservation._customerId) {
       return yield* Effect.fail(
         new ValidationError({
-          message: `Reservation ${id} has no customer information`,
+          message: `Reservation ${id} has no customer ID`,
         })
       );
     }
 
-    // Return the raw reservation - parsing will happen at display time
-    return reservation;
+    const customer = yield* client.getCustomer(reservation._customerId);
+
+    // Return both reservation and customer
+    return { reservation, customer };
   });

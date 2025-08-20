@@ -89,15 +89,13 @@ export function parseReservationNote(note?: string) {
 
 /**
  * Convert a reservation from API format to display format
+ * Note: Customer details are now fetched separately via customer ID
+ * The note field only contains special requests
  */
 export function getReservationDisplayData(reservation: Reservation) {
-  const parsedNote = parseReservationNote(reservation.note);
-
-  // Calculate duration from timestamps if not in note
+  // Calculate duration from timestamps
   let duration: number | undefined;
-  if (parsedNote.duration) {
-    duration = parseInt(parsedNote.duration, 10);
-  } else if (reservation.startDate && reservation.endDate) {
+  if (reservation.startDate && reservation.endDate) {
     const startMs = new Date(reservation.startDate).getTime();
     const endMs = new Date(reservation.endDate).getTime();
     const durationMs = endMs - startMs;
@@ -117,12 +115,11 @@ export function getReservationDisplayData(reservation: Reservation) {
         ? parseInt(reservation.seats, 10) || 1
         : reservation.seats || 1,
     duration,
-    customerName: parsedNote.customerName,
-    customerEmail: parsedNote.customerEmail,
-    customerPhone: parsedNote.customerPhone,
-    needsLargerTable: parsedNote.needsLargerTable === "true",
-    needsPrivateSpace: parsedNote.needsPrivateSpace === "true",
-    specialRequests: parsedNote.specialRequests,
+    // Customer details are now fetched separately
+    // Table preferences could be stored in reservation metadata or deduced from table selection
+    needsLargerTable: false,
+    needsPrivateSpace: false,
+    specialRequests: reservation.note || "",
   };
 }
 
