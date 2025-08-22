@@ -173,7 +173,7 @@ export function ReservationConfirmation({
         <p className="text-gray-600 text-lg">{getStatusMessage()}</p>
         {details.id && (
           <Badge variant="outline" className="mt-4 px-4 py-2">
-            {m["booking.bookingId"]({ id: details.id })}
+            {m["thankYou.bookingId"]({ id: details.id })}
           </Badge>
         )}
       </div>
@@ -185,7 +185,7 @@ export function ReservationConfirmation({
             <Calendar className={`w-5 h-5 text-${color}-600`} />
             {type === "training-room" 
               ? m["trainingReservation.details.title"]()
-              : m["booking.bookingDetails"]()}
+              : m["thankYou.bookingDetails"]()}
           </CardTitle>
           <CardDescription>
             {type === "training-room"
