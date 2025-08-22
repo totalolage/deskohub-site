@@ -38,8 +38,8 @@ export class DotyposConfigTag extends Context.Tag("DotyposConfig")<
  * Configuration Layer that uses validated environment variables
  */
 export const DotyposConfigLayer = Layer.succeed(DotyposConfigTag, {
-  clientId: env.NEXT_PUBLIC_DOTYPOS_CLIENT_ID,
-  clientSecret: env.NEXT_PUBLIC_DOTYPOS_CLIENT_SECRET,
+  clientId: env.DOTYPOS_CLIENT_ID,
+  clientSecret: env.DOTYPOS_CLIENT_SECRET,
   refreshToken: env.DOTYPOS_REFRESH_TOKEN,
   cloudId: env.DOTYPOS_CLOUD_ID,
   branchId: env.DOTYPOS_BRANCH_ID,

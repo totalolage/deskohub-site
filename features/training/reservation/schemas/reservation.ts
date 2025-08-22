@@ -22,13 +22,6 @@ export const workspaceConstants = {
       max: 500,
     },
   },
-  spaceTypes: [
-    "standard",
-    "premium",
-    "meeting_small",
-    "meeting_large",
-    "private_office",
-  ] as const,
   defaultValues: {
     name: "",
     email: "",
@@ -36,7 +29,6 @@ export const workspaceConstants = {
     date: undefined as Date | undefined,
     time: "",
     duration: 1,
-    spaceType: "standard" as const,
     specialRequirements: "",
   },
 };
@@ -66,10 +58,10 @@ const emailSchema = z
 
 const phoneSchema = z
   .string({
-    error: "Please enter a valid phone number",
+    error: "Please enter a phone number",
   })
-  .regex(/^\+?[0-9]{9,15}$/, {
-    error: "Please enter a valid phone number",
+  .min(1, {
+    error: "Please enter a phone number",
   });
 
 // Reservation detail schemas
@@ -92,10 +84,6 @@ const durationSchema = z
     error: `Duration must be at most ${workspaceConstants.validation.duration.max} hours`,
   });
 
-const spaceTypeSchema = z.enum(workspaceConstants.spaceTypes, {
-  error: "Please select a desk/space type",
-});
-
 // Additional information schema
 const specialRequirementsSchema = z
   .string()
@@ -115,7 +103,6 @@ export const reservationSchema = z.object({
   date: dateSchema,
   time: timeSchema,
   duration: durationSchema,
-  spaceType: spaceTypeSchema,
 
   // Additional information
   specialRequirements: specialRequirementsSchema,

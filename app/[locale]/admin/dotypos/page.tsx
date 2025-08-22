@@ -7,12 +7,12 @@ import { Button } from "@/shared/components/ui/button";
 
 export default function DotyposAuthPage() {
   // Client credentials from Dotykacka support
-  const clientId = env.NEXT_PUBLIC_DOTYPOS_CLIENT_ID;
-  const clientSecret = env.NEXT_PUBLIC_DOTYPOS_CLIENT_SECRET;
+  const clientId = env.DOTYPOS_CLIENT_ID;
+  const clientSecret = env.DOTYPOS_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
     console.error(
-      "Missing NEXT_PUBLIC_DOTYPOS_CLIENT_ID or NEXT_PUBLIC_DOTYPOS_CLIENT_SECRET environment variable",
+      "Missing DOTYPOS_CLIENT_ID or DOTYPOS_CLIENT_SECRET environment variable",
       {
         clientId: clientId ? "***configured***" : "missing",
         clientSecret: clientSecret ? "***configured***" : "missing",

@@ -114,17 +114,14 @@ export const getBookingSchema = () => {
     .email({ error: m["booking.validation.email.invalid"]() })
     .min(1, { error: m["booking.validation.email.invalid"]() });
 
-  // Phone schema with regex validation
+  // Phone schema - basic validation only
   const phoneSchema = z
     .string()
-    .min(siteConstants.booking.validation.phone.min, {
+    .min(1, {
       error: m["booking.validation.phone.minimum"](),
     })
     .max(siteConstants.booking.validation.phone.max, {
       error: m["booking.validation.phone.maximum"](),
-    })
-    .regex(/^[+]?[0-9\s\-()]+$/, {
-      error: m["booking.validation.phone.invalid"](),
     });
 
   // Table preference schemas using booleans instead of enum

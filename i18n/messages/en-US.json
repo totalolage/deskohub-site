@@ -18,7 +18,8 @@
     "showMore": "SHOW MORE",
     "seeList": "SEE LIST",
     "ourLocation": "OUR LOCATION",
-    "contact": "CONTACT"
+    "contact": "CONTACT",
+    "backToHome": "Back to Home"
   },
   "hero": {
     "title": "World Behind the Mirror",
@@ -78,8 +79,13 @@
   },
   "boardGamesCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} board game",
         "countPlural=other": "{count} board games"
@@ -88,8 +94,13 @@
   ],
   "happyPlayersCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} happy player",
         "countPlural=other": "{count} happy players"
@@ -98,8 +109,13 @@
   ],
   "yearsExperienceCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} year of experience",
         "countPlural=other": "{count} years of experience"
@@ -108,8 +124,13 @@
   ],
   "gameNightsCount": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} game night",
         "countPlural=other": "{count} game nights"
@@ -213,8 +234,13 @@
         "minimum": "Number of guests is required",
         "maximum": [
           {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
             "match": {
               "maxPlural=one": "Maximum {max} guest allowed",
               "maxPlural=other": "Maximum {max} guests allowed"
@@ -227,8 +253,13 @@
         "required": "Full name is required",
         "minimum": [
           {
-            "declarations": ["input min", "local minPlural = min: plural"],
-            "selectors": ["minPlural"],
+            "declarations": [
+              "input min",
+              "local minPlural = min: plural"
+            ],
+            "selectors": [
+              "minPlural"
+            ],
             "match": {
               "minPlural=one": "Name must be at least {min} character",
               "minPlural=other": "Name must be at least {min} characters"
@@ -237,8 +268,13 @@
         ],
         "maximum": [
           {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
             "match": {
               "maxPlural=one": "Name must be less than {max} character",
               "maxPlural=other": "Name must be less than {max} characters"
@@ -252,8 +288,13 @@
         "invalid": "Please enter a valid email address",
         "maximum": [
           {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
             "match": {
               "maxPlural=one": "Email must be less than {max} character",
               "maxPlural=other": "Email must be less than {max} characters"
@@ -271,8 +312,13 @@
         "minimum": "Minimum duration is 30 minutes",
         "maximum": [
           {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
             "match": {
               "maxPlural=one": "Maximum duration is {max} hour",
               "maxPlural=other": "Maximum duration is {max} hours"
@@ -284,8 +330,13 @@
       "specialRequests": {
         "maximum": [
           {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
             "match": {
               "maxPlural=one": "Special requests must be less than {max} character",
               "maxPlural=other": "Special requests must be less than {max} characters"
@@ -296,8 +347,13 @@
       "preOrders": {
         "maximum": [
           {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
+            "declarations": [
+              "input max",
+              "local maxPlural = max: plural"
+            ],
+            "selectors": [
+              "maxPlural"
+            ],
             "match": {
               "maxPlural=one": "Pre-orders must be less than {max} character",
               "maxPlural=other": "Pre-orders must be less than {max} characters"
@@ -350,8 +406,13 @@
   },
   "guestCountPlural": [
     {
-      "declarations": ["input count", "local countPlural = count: plural"],
-      "selectors": ["countPlural"],
+      "declarations": [
+        "input count",
+        "local countPlural = count: plural"
+      ],
+      "selectors": [
+        "countPlural"
+      ],
       "match": {
         "countPlural=one": "{count} person",
         "countPlural=other": "{count} people"
@@ -360,7 +421,9 @@
   ],
   "durationFormat": [
     {
-      "declarations": ["input hours"],
+      "declarations": [
+        "input hours"
+      ],
       "selectors": [],
       "match": {
         "hours=0.5": "30 minutes",
@@ -497,7 +560,51 @@
   },
   "trainingReservation": {
     "pageTitle": "Reserve Training Room",
-    "pageDescription": "Book our spacious training room for corporate events, workshops, and team building activities. Complete your reservation at Deskohub."
+    "pageDescription": "Book our spacious training room for corporate events, workshops, and team building activities. Complete your reservation at Deskohub.",
+    "form": {
+      "title": "Reserve Training Room",
+      "yourInformation": "Your Information",
+      "fullName": "Full Name",
+      "fullNamePlaceholder": "John Doe",
+      "email": "Email",
+      "emailPlaceholder": "your@email.com",
+      "phone": "Phone Number",
+      "phonePlaceholder": "+420 123 456 789",
+      "reservationDetails": "Reservation Details",
+      "date": "Date",
+      "pickDate": "Pick a date",
+      "time": "Time",
+      "selectTime": "Select a time",
+      "duration": "Duration (hours)",
+      "selectDuration": "Select duration",
+      "spaceType": "Space Type",
+      "trainingRoom": "Training Room",
+      "trainingRoomCapacity": "Capacity: 20 people",
+      "specialRequirements": "Special Requirements",
+      "specialRequirementsPlaceholder": "Any special requirements or notes for your reservation...",
+      "submit": "Complete Reservation",
+      "submitting": "Submitting..."
+    },
+    "success": {
+      "title": "Reservation Submitted Successfully!",
+      "description": "We'll send you a confirmation email shortly."
+    },
+    "error": {
+      "title": "Failed to Submit Reservation",
+      "description": "Please try again later or contact us directly."
+    },
+    "details": {
+      "title": "Reservation Details",
+      "description": "Please keep this information for your records"
+    },
+    "confirmation": {
+      "title": "Reservation Confirmed!",
+      "message": "Your training room reservation has been successfully submitted."
+    },
+    "nextSteps": "What's Next?",
+    "nextStepsDescription": "You will receive a confirmation email within 24 hours. Our team will contact you to confirm the availability and finalize your training room booking.",
+    "needChanges": "Need to Make Changes?",
+    "contactForChanges": "Feel free to contact us if you need to modify your reservation"
   },
   "notFound": {
     "title": "Page Not Found",
@@ -594,8 +701,13 @@
       "difficulty": "Difficulty",
       "foundGames": [
         {
-          "declarations": ["input count", "local countPlural = count: plural"],
-          "selectors": ["countPlural"],
+          "declarations": [
+            "input count",
+            "local countPlural = count: plural"
+          ],
+          "selectors": [
+            "countPlural"
+          ],
           "match": {
             "countPlural=zero": "No games found",
             "countPlural=one": "Found 1 game",
@@ -713,5 +825,13 @@
         }
       }
     }
+  },
+  "reservationSubmitted": {
+    "title": "Reservation Submitted",
+    "message": "Your reservation request has been submitted successfully. We will contact you soon to confirm."
+  },
+  "reservationRejected": {
+    "title": "Reservation Unavailable",
+    "message": "Unfortunately, we are unable to process your reservation at this time. Please try again or contact us for assistance."
   }
 }

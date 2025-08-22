@@ -3,9 +3,9 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
-import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { useAction } from "next-safe-action/hooks";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import {
@@ -31,69 +31,62 @@ import {
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
+import { m } from "@/i18n";
 import {
   type ReservationFormData,
   reservationSchema,
   workspaceConstants,
 } from "../schemas/reservation";
+import { submitTrainingRoomReservation } from "../actions/submit-reservation";
 
 export function ReservationForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
   const form = useForm<ReservationFormData>({
     resolver: zodResolver(reservationSchema),
     defaultValues: workspaceConstants.defaultValues,
   });
 
+  const { execute, isExecuting } = useAction(submitTrainingRoomReservation, {
+    onSuccess: (result) => {
+      if (result.data?.success) {
+        // Server action will handle the redirect
+        toast.success(m["trainingReservation.success.title"](), {
+          description: m["trainingReservation.success.description"](),
+        });
+      }
+    },
+    onError: (error) => {
+      console.error("Error submitting reservation:", error);
+      toast.error(m["trainingReservation.error.title"](), {
+        description: m["trainingReservation.error.description"](),
+      });
+    },
+  });
+
   async function onSubmit(values: ReservationFormData) {
-    setIsSubmitting(true);
-    try {
-      // TODO: Implement API call to submit reservation
-      console.log("Form submitted:", values);
-
-      // Simulate API call delay
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Show success message
-      toast.success("Reservation submitted successfully!", {
-        description: "We'll send you a confirmation email shortly.",
-      });
-
-      // Reset form after successful submission
-      form.reset();
-    } catch (error) {
-      // Handle error
-      console.error("Error submitting form:", error);
-      toast.error("Failed to submit reservation", {
-        description:
-          error instanceof Error ? error.message : "Please try again later.",
-      });
-    } finally {
-      setIsSubmitting(false);
-    }
+    execute(values);
   }
 
   return (
     <div className="reservation-form-container max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">Make a Reservation</h2>
+      <h2 className="text-2xl font-bold mb-6">{m["trainingReservation.form.title"]()}</h2>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* User Information Section */}
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Your Information</h3>
+            <h3 className="text-lg font-medium">{m["trainingReservation.form.yourInformation"]()}</h3>
 
             <FormField
               control={form.control}
               name="name"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel htmlFor="name">Full Name</FormLabel>
+                  <FormLabel htmlFor="name">{m["trainingReservation.form.fullName"]()}</FormLabel>
                   <FormControl>
                     <Input
                       id="name"
                       variant={fieldState.error ? "error" : "default"}
-                      placeholder="John Doe"
+                      placeholder={m["trainingReservation.form.fullNamePlaceholder"]()}
                       aria-label="Full Name"
                       aria-describedby="name-error"
                       aria-required="true"
@@ -111,13 +104,13 @@ export function ReservationForm() {
                 name="email"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel htmlFor="email">Email</FormLabel>
+                    <FormLabel htmlFor="email">{m["trainingReservation.form.email"]()}</FormLabel>
                     <FormControl>
                       <Input
                         id="email"
                         type="email"
                         variant={fieldState.error ? "error" : "default"}
-                        placeholder="your@email.com"
+                        placeholder={m["trainingReservation.form.emailPlaceholder"]()}
                         aria-label="Email"
                         aria-describedby="email-error"
                         aria-required="true"
@@ -135,13 +128,13 @@ export function ReservationForm() {
                 name="phone"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel htmlFor="phone">Phone Number</FormLabel>
+                    <FormLabel htmlFor="phone">{m["trainingReservation.form.phone"]()}</FormLabel>
                     <FormControl>
                       <Input
                         id="phone"
                         type="tel"
                         variant={fieldState.error ? "error" : "default"}
-                        placeholder="+1234567890"
+                        placeholder={m["trainingReservation.form.phonePlaceholder"]()}
                         aria-label="Phone Number"
                         aria-describedby="phone-error"
                         aria-required="true"
@@ -158,7 +151,7 @@ export function ReservationForm() {
 
           {/* Reservation Details Section */}
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">Reservation Details</h3>
+            <h3 className="text-lg font-medium">{m["trainingReservation.form.reservationDetails"]()}</h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
@@ -166,7 +159,7 @@ export function ReservationForm() {
                 name="date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel htmlFor="date-button">Date</FormLabel>
+                    <FormLabel htmlFor="date-button">{m["trainingReservation.form.date"]()}</FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
@@ -186,7 +179,7 @@ export function ReservationForm() {
                             {field.value ? (
                               format(field.value, "PPP")
                             ) : (
-                              <span>Pick a date</span>
+                              <span>{m["trainingReservation.form.pickDate"]()}</span>
                             )}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
@@ -216,7 +209,7 @@ export function ReservationForm() {
                 name="time"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel htmlFor="time-select">Time</FormLabel>
+                    <FormLabel htmlFor="time-select">{m["trainingReservation.form.time"]()}</FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       defaultValue={field.value}
@@ -229,7 +222,7 @@ export function ReservationForm() {
                           aria-describedby="time-error"
                           aria-required="true"
                         >
-                          <SelectValue placeholder="Select a time" />
+                          <SelectValue placeholder={m["trainingReservation.form.selectTime"]()} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -254,82 +247,41 @@ export function ReservationForm() {
               />
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <FormField
-                control={form.control}
-                name="duration"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel htmlFor="duration-select">
-                      Duration (hours)
-                    </FormLabel>
-                    <Select
-                      value={field.value?.toString()}
-                      onValueChange={(value) => field.onChange(parseInt(value))}
-                    >
-                      <FormControl>
-                        <SelectTrigger
-                          id="duration-select"
-                          variant={fieldState.error ? "error" : "default"}
-                          aria-label="Select duration"
-                          aria-describedby="duration-error"
-                          aria-required="true"
-                        >
-                          <SelectValue placeholder="Select duration" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        {[1, 2, 3, 4, 5, 6, 7, 8].map((hours) => (
-                          <SelectItem key={hours} value={hours.toString()}>
-                            {hours} {hours === 1 ? "hour" : "hours"}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    <FormMessage id="duration-error" />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="spaceType"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel htmlFor="space-type-select">
-                      Desk/Space Type
-                    </FormLabel>
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <FormControl>
-                        <SelectTrigger
-                          id="space-type-select"
-                          variant={fieldState.error ? "error" : "default"}
-                          aria-label="Select desk or space type"
-                          aria-describedby="space-type-error"
-                          aria-required="true"
-                        >
-                          <SelectValue placeholder="Select space type" />
-                        </SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="standard">Standard Desk</SelectItem>
-                        <SelectItem value="premium">Premium Desk</SelectItem>
-                        <SelectItem value="meeting_small">
-                          Small Meeting Room
+            <FormField
+              control={form.control}
+              name="duration"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel htmlFor="duration-select">
+                    {m["trainingReservation.form.duration"]()}
+                  </FormLabel>
+                  <Select
+                    value={field.value?.toString()}
+                    onValueChange={(value) => field.onChange(parseInt(value))}
+                  >
+                    <FormControl>
+                      <SelectTrigger
+                        id="duration-select"
+                        variant={fieldState.error ? "error" : "default"}
+                        aria-label="Select duration"
+                        aria-describedby="duration-error"
+                        aria-required="true"
+                      >
+                        <SelectValue placeholder={m["trainingReservation.form.selectDuration"]()} />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      {[1, 2, 3, 4, 5, 6, 7, 8].map((hours) => (
+                        <SelectItem key={hours} value={hours.toString()}>
+                          {hours} {hours === 1 ? "hour" : "hours"}
                         </SelectItem>
-                        <SelectItem value="meeting_large">
-                          Large Meeting Room
-                        </SelectItem>
-                        <SelectItem value="private_office">
-                          Private Office
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage id="space-type-error" />
-                  </FormItem>
-                )}
-              />
-            </div>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <FormMessage id="duration-error" />
+                </FormItem>
+              )}
+            />
           </div>
 
           {/* Special Requirements Section */}
@@ -339,13 +291,13 @@ export function ReservationForm() {
             render={({ field, fieldState }) => (
               <FormItem>
                 <FormLabel htmlFor="special-requirements">
-                  Special Requirements
+                  {m["trainingReservation.form.specialRequirements"]()}
                 </FormLabel>
                 <FormControl>
                   <Textarea
                     id="special-requirements"
                     variant={fieldState.error ? "error" : "default"}
-                    placeholder="Any special requirements or notes for your reservation..."
+                    placeholder={m["trainingReservation.form.specialRequirementsPlaceholder"]()}
                     className="min-h-[100px]"
                     aria-label="Special requirements"
                     aria-describedby="special-requirements-error special-requirements-count"
@@ -373,10 +325,10 @@ export function ReservationForm() {
           <Button
             type="submit"
             className="w-full"
-            disabled={isSubmitting}
-            aria-busy={isSubmitting}
+            disabled={isExecuting}
+            aria-busy={isExecuting}
           >
-            {isSubmitting ? "Submitting..." : "Complete Reservation"}
+            {isExecuting ? m["trainingReservation.form.submitting"]() : m["trainingReservation.form.submit"]()}
           </Button>
         </form>
       </Form>
