@@ -1,4 +1,7 @@
+"use client";
+
 import { MapPin } from "lucide-react";
+import dynamic from "next/dynamic";
 import { getLocale, m } from "@/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { siteConstants } from "@/shared/utils/constants";
@@ -6,6 +9,22 @@ import {
   getLocalizedCountryName,
   getTranslatedCityName,
 } from "@/shared/utils/geo-formatting";
+
+// Dynamic import for Leaflet (client-side only)
+const InteractiveMap = dynamic(
+  () => import("./interactive-map").then((mod) => mod.InteractiveMap),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-96 bg-gray-800 rounded-lg flex items-center justify-center">
+        <div className="text-center text-gray-400">
+          <MapPin className="w-12 h-12 mx-auto mb-4 animate-pulse" />
+          <p className="text-lg">{m["contact.mapPlaceholder"]()}</p>
+        </div>
+      </div>
+    ),
+  }
+);
 
 export function ContactMap() {
   const locale = getLocale();
@@ -23,17 +42,7 @@ export function ContactMap() {
       </h2>
       <Card className="bg-gray-900 border-gray-700">
         <CardContent className="p-0">
-          <div className="h-96 bg-gray-800 rounded-lg flex items-center justify-center">
-            <div className="text-center text-gray-400">
-              <MapPin className="w-12 h-12 mx-auto mb-4" />
-              <p className="text-lg">{m["contact.mapPlaceholder"]()}</p>
-              <p className="text-sm">
-                {m["contact.mapAddress"]({
-                  address: fullAddress,
-                })}
-              </p>
-            </div>
-          </div>
+          <InteractiveMap locale={locale} address={fullAddress} />
         </CardContent>
       </Card>
     </div>

@@ -12,6 +12,10 @@ export const siteConstants = {
       postalCode: "180 00",
       countryCode: "CZ",
     },
+    coordinates: {
+      lat: 50.103136,
+      lng: 14.479131,
+    },
   },
   pricing: {
     entryFee: {
