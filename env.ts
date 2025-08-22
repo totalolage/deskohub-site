@@ -8,6 +8,12 @@ export const env = createEnv({
    */
   server: {
     // Dotypos API Configuration (Server-only)
+    DOTYPOS_CLIENT_ID: z
+      .string()
+      .min(1, "DOTYPOS_CLIENT_ID is required"),
+    DOTYPOS_CLIENT_SECRET: z
+      .string()
+      .min(1, "DOTYPOS_CLIENT_SECRET is required"),
     DOTYPOS_REFRESH_TOKEN: z
       .string()
       .min(1, "DOTYPOS_REFRESH_TOKEN is required"),
@@ -29,14 +35,6 @@ export const env = createEnv({
    * These are exposed to the client via the NEXT_PUBLIC_ prefix.
    */
   client: {
-    // Dotypos OAuth Configuration (Client-accessible)
-    DOTYPOS_CLIENT_ID: z
-      .string()
-      .min(1, "DOTYPOS_CLIENT_ID is required"),
-    DOTYPOS_CLIENT_SECRET: z
-      .string()
-      .min(1, "DOTYPOS_CLIENT_SECRET is required"),
-
     // Statsig Configuration (Client-accessible)
     NEXT_PUBLIC_STATSIG_CLIENT_KEY: z.string(),
   },
@@ -50,6 +48,9 @@ export const env = createEnv({
     NODE_ENV: process.env.NODE_ENV,
 
     // Server variables
+    DOTYPOS_CLIENT_ID: process.env.DOTYPOS_CLIENT_ID,
+    DOTYPOS_CLIENT_SECRET:
+      process.env.DOTYPOS_CLIENT_SECRET,
     DOTYPOS_REFRESH_TOKEN: process.env.DOTYPOS_REFRESH_TOKEN,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -59,9 +60,6 @@ export const env = createEnv({
     STATSIG_SERVER_API_KEY: process.env.STATSIG_SERVER_API_KEY,
 
     // Client variables
-    DOTYPOS_CLIENT_ID: process.env.DOTYPOS_CLIENT_ID,
-    DOTYPOS_CLIENT_SECRET:
-      process.env.DOTYPOS_CLIENT_SECRET,
     NEXT_PUBLIC_STATSIG_CLIENT_KEY: process.env.NEXT_PUBLIC_STATSIG_CLIENT_KEY,
   },
 
