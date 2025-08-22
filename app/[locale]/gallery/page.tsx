@@ -1,7 +1,8 @@
-import { GalleryEvents, GalleryHero, GallerySpaces } from "@/features/gallery";
+import { GalleryEvents, GalleryHero, GallerySpaces, MinimalGallery } from "@/features/gallery";
 import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
+import { galleryFlag } from "@/flags";
 
 export const generateMetadata = metadata({
   title: m["gallery.pageTitle"](),
@@ -10,12 +11,17 @@ export const generateMetadata = metadata({
 
 export default async function GalleryPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
+  const useFancyGallery = await galleryFlag();
 
-  return (
-    <>
-      <GalleryHero />
-      <GallerySpaces />
-      <GalleryEvents />
-    </>
-  );
+  if (useFancyGallery) {
+    return (
+      <>
+        <GalleryHero />
+        <GallerySpaces />
+        <GalleryEvents />
+      </>
+    );
+  }
+
+  return <MinimalGallery />;
 }

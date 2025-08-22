@@ -7,6 +7,7 @@ import {
 import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
+import { galleryFlag } from "@/flags";
 
 export const generateMetadata = metadata({
   title: m["training.pageTitle"](),
@@ -16,10 +17,11 @@ export const generateMetadata = metadata({
 export default async function TrainingRoomPage({ params }: RouteProps_locale) {
   const { locale } = await params;
   setLocale(locale, { reload: false });
+  const showGallery = await galleryFlag();
 
   return (
     <>
-      <TrainingHero />
+      <TrainingHero showGalleryButton={showGallery} />
       <TrainingFeatures />
       <TrainingPackages />
       <TrainingCTA />

@@ -21,6 +21,11 @@ The DeskOHub website uses Statsig for feature flag management. This allows us to
 - **When Disabled**: Only shows static contact information (phone, email, address)
 - **Location**: `/contact` page
 
+### 4. Gallery (`gallery`)
+- **When Enabled**: Shows the fancy gallery with hero carousel, categorized spaces, and event showcases
+- **When Disabled**: Shows a minimal grid-based gallery with all images
+- **Location**: `/gallery` page
+
 ## Configuration
 
 ### Environment Variables
@@ -46,6 +51,7 @@ To manage feature flags:
    - `board_games_list`
    - `boardroom_reservations`
    - `contact_form`
+   - `gallery`
 
 ## Implementation
 
@@ -69,6 +75,7 @@ export const createFeatureFlag = (key: string) =>
 export const boardGamesListFlag = createFeatureFlag("board_games_list");
 export const boardroomReservationsFlag = createFeatureFlag("boardroom_reservations");
 export const contactFormFlag = createFeatureFlag("contact_form");
+export const galleryFlag = createFeatureFlag("gallery");
 ```
 
 ### Usage in Server Components
