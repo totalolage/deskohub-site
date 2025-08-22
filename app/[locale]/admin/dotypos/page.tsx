@@ -1,12 +1,24 @@
 "use client";
 
+import { notFound } from "next/navigation";
 import { useEffect } from "react";
 import { Button } from "@/shared/components/ui/button";
 
 export default function DotyposAuthPage() {
   // Client credentials from Dotykacka support
-  const clientId = "deskohub";
-  const clientSecret = "KXUjm8zjoF8Vjg0G03mo";
+  const clientId = process.env.DOTYPOS_CLIENT_ID;
+  const clientSecret = process.env.DOTYPOS_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    console.error(
+      "Missing DOTYPOS_CLIENT_ID or DOTYPOS_CLIENT_SECRET environment variable",
+      {
+        clientId: clientId ? "***configured***" : "missing",
+        clientSecret: clientSecret ? "***configured***" : "missing",
+      }
+    );
+    notFound();
+  }
 
   // Hardcoded redirect URL
   const redirectUrl = "http://localhost:3000/cs-CZ/admin/dotypos/callback";
@@ -15,7 +27,13 @@ export default function DotyposAuthPage() {
   const state = Math.random().toString(36).substring(7);
 
   // Correct Dotykacka OAuth URL with /client/connect endpoint
-  const authUrl = `https://admin.dotykacka.cz/client/connect?client_id=${clientId}&client_secret=${encodeURIComponent(clientSecret)}&scope=*&redirect_uri=${encodeURIComponent(redirectUrl)}&state=${state}`;
+  // const authUrl = `https://admin.dotykacka.cz/client/connect?client_id=${clientId}&client_secret=${encodeURIComponent(clientSecret)}&scope=*&redirect_uri=${encodeURIComponent(redirectUrl)}&state=${state}`;
+  const authUrl = new URL("https://admin.dotypos.com/client/connect");
+  authUrl.searchParams.append("client_id", clientId);
+  authUrl.searchParams.append("client_secret", clientSecret);
+  authUrl.searchParams.append("scope", "*");
+  authUrl.searchParams.append("redirect_uri", redirectUrl);
+  authUrl.searchParams.append("state", state);
 
   useEffect(() => {
     console.log("Dotypos Auth Page loaded");
@@ -32,7 +50,7 @@ export default function DotyposAuthPage() {
   const handleAuthenticate = () => {
     console.log("Authenticating with Dotypos...");
     console.log("Redirecting to:", authUrl);
-    window.location.href = authUrl;
+    window.location.href = authUrl.toString();
   };
 
   return (

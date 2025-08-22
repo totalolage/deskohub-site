@@ -1,4 +1,6 @@
 import { Calendar, Mail, Phone } from "lucide-react";
+import Link from "next/link";
+import { boardroomReservationsFlag } from "@/flags";
 import { getLocale, m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -8,8 +10,9 @@ import {
   getPhoneLink,
 } from "@/shared/utils/phone-formatting";
 
-export const TrainingCTA = () => {
+export const TrainingCTA = async () => {
   const locale = getLocale();
+  const boardroomReservationsEnabled = await boardroomReservationsFlag();
 
   return (
     <section className="py-20 bg-gradient-to-r from-green-600 to-green-700">
@@ -72,19 +75,25 @@ export const TrainingCTA = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button
-              size="lg"
-              className="bg-white text-green-600 hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
-            >
-              {m["training.cta.button"]()}
-            </Button>
-            <Button
-              size="lg"
-              variant="outline"
-              className="border-white text-white hover:bg-white hover:text-green-600 px-8 py-4 text-lg bg-transparent"
-            >
-              Stáhnout ceník
-            </Button>
+            {boardroomReservationsEnabled ? (
+              <Button
+                size="lg"
+                className="bg-white text-green-600 hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
+                asChild
+              >
+                <Link href="/training-room/reservation">
+                  {m["training.cta.button"]()}
+                </Link>
+              </Button>
+            ) : (
+              <Button
+                size="lg"
+                className="bg-white text-green-600 hover:bg-gray-100 px-8 py-4 text-lg font-semibold"
+                asChild
+              >
+                <Link href="/contact">{m["buttons.contact"]()}</Link>
+              </Button>
+            )}
           </div>
         </div>
       </div>
