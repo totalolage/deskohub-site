@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
+import { tableReservationsFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { Badge } from "@/shared/components/ui/badge";
@@ -30,6 +31,12 @@ export default async function ReservationConfirmationPage({
 }: Readonly<RouteProps_locale_id>) {
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
+
+  // Check if table reservations feature is enabled
+  const tableReservationsEnabled = await tableReservationsFlag();
+  if (!tableReservationsEnabled) {
+    notFound();
+  }
 
   // Fetch reservation from Dotypos with proper error handling
   const result = await Effect.runPromise(

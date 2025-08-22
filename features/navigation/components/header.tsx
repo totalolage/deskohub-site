@@ -9,7 +9,11 @@ import { useLocale } from "@/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import { MobileMenu } from "./mobile-menu";
 
-export function Header() {
+interface HeaderProps {
+  showReservations?: boolean;
+}
+
+export function Header({ showReservations = true }: HeaderProps) {
   const locale = useLocale();
   setLocale(locale, { reload: false });
 
@@ -60,13 +64,15 @@ export function Header() {
         <div className="flex items-center space-x-4">
           <div className="hidden md:flex items-center space-x-4">
             <LanguageSwitcher />
-            <Link href="/reservation">
-              <Button className="bg-green-500 hover:bg-green-600 text-white">
-                {m["buttons.reservation"]()}
-              </Button>
-            </Link>
+            {showReservations && (
+              <Link href="/reservation">
+                <Button className="bg-green-500 hover:bg-green-600 text-white">
+                  {m["buttons.reservation"]()}
+                </Button>
+              </Link>
+            )}
           </div>
-          <MobileMenu />
+          <MobileMenu showReservations={showReservations} />
         </div>
       </div>
     </header>

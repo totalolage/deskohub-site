@@ -26,3 +26,4 @@ export const boardroomReservationsFlag = createFeatureFlag(
   "boardroom_reservations"
 );
 export const contactFormFlag = createFeatureFlag("contact_form");
+export const tableReservationsFlag = createFeatureFlag("table_reservations");

@@ -34,7 +34,11 @@ const navigationItems = [
   { label: "nav.contact", href: "/contact", text: () => m["nav.contact"]() },
 ];
 
-export function MobileMenu() {
+interface MobileMenuProps {
+  showReservations?: boolean;
+}
+
+export function MobileMenu({ showReservations = true }: MobileMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const locale = useLocale();
   setLocale(locale, { reload: false });
@@ -103,15 +107,17 @@ export function MobileMenu() {
               <LanguageSwitcher />
             </div>
 
-            <Link href="/reservation" className="block">
-              <Button
-                className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-lg"
-                onClick={() => setIsOpen(false)}
-              >
-                <Calendar className="h-4 w-4 mr-2" />
-                {m["buttons.reservation"]()}
-              </Button>
-            </Link>
+            {showReservations && (
+              <Link href="/reservation" className="block">
+                <Button
+                  className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-lg"
+                  onClick={() => setIsOpen(false)}
+                >
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {m["buttons.reservation"]()}
+                </Button>
+              </Link>
+            )}
           </div>
 
           <div className="absolute bottom-6 left-6 right-6">

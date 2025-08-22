@@ -1,4 +1,6 @@
+import { notFound } from "next/navigation";
 import { BookingForm } from "@/features/booking/components/booking-form";
+import { tableReservationsFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
@@ -11,6 +13,12 @@ export const generateMetadata = metadata({
 export default async function ReservationPage({ params }: RouteProps_locale) {
   const { locale } = await params;
   setLocale(locale, { reload: false });
+
+  // Check if table reservations feature is enabled
+  const tableReservationsEnabled = await tableReservationsFlag();
+  if (!tableReservationsEnabled) {
+    notFound();
+  }
 
   return (
     <div className="container py-8 px-4 xl:max-w-5xl">
