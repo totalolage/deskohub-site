@@ -4,7 +4,8 @@
  * Centralized configuration for Dotypos API integration
  */
 
-import { Config, Context, Effect, Layer, Schema } from "effect";
+import { Context, Layer, Schema } from "effect";
+import { env } from "@/env";
 
 /**
  * Dotypos Configuration Schema with validation
@@ -34,31 +35,15 @@ export class DotyposConfigTag extends Context.Tag("DotyposConfig")<
 >() {}
 
 /**
- * Configuration Layer that reads from environment variables
+ * Configuration Layer that uses validated environment variables
  */
-export const DotyposConfigLayer = Layer.effect(
-  DotyposConfigTag,
-  Effect.gen(function* () {
-    yield* Effect.logDebug("Loading Dotypos configuration");
-    const rawConfig = yield* Config.all({
-      clientId: Config.string("DOTYPOS_CLIENT_ID"),
-      clientSecret: Config.string("DOTYPOS_CLIENT_SECRET"),
-      refreshToken: Config.string("DOTYPOS_REFRESH_TOKEN"),
-      cloudId: Config.string("DOTYPOS_CLOUD_ID"),
-      branchId: Config.string("DOTYPOS_BRANCH_ID").pipe(
-        Config.withDefault("128665136") // Default to "Pokladna" branch
-      ),
-      employeeId: Config.string("DOTYPOS_EMPLOYEE_ID"),
-      apiUrl: Config.string("DOTYPOS_API_URL").pipe(
-        Config.withDefault("https://api.dotykacka.cz/v2")
-      ),
-      apiTimeout: Config.number("DOTYPOS_API_TIMEOUT").pipe(
-        Config.withDefault(30000)
-      ),
-    });
-
-    const config = yield* Schema.decodeUnknown(DotyposConfigSchema)(rawConfig);
-    yield* Effect.logInfo("Dotypos configuration loaded successfully");
-    return config;
-  })
-);
+export const DotyposConfigLayer = Layer.succeed(DotyposConfigTag, {
+  clientId: env.NEXT_PUBLIC_DOTYPOS_CLIENT_ID,
+  clientSecret: env.NEXT_PUBLIC_DOTYPOS_CLIENT_SECRET,
+  refreshToken: env.DOTYPOS_REFRESH_TOKEN,
+  cloudId: env.DOTYPOS_CLOUD_ID,
+  branchId: env.DOTYPOS_BRANCH_ID,
+  employeeId: env.DOTYPOS_EMPLOYEE_ID,
+  apiUrl: env.DOTYPOS_API_URL,
+  apiTimeout: env.DOTYPOS_API_TIMEOUT,
+});
