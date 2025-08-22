@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { env } from "@/env";
 
 function isTokenRequest(body: unknown): body is { code: string } {
   return (
@@ -42,8 +43,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const clientId = process.env.DOTYPOS_CLIENT_ID;
-    const clientSecret = process.env.DOTYPOS_CLIENT_SECRET;
+    const clientId = env.NEXT_PUBLIC_DOTYPOS_CLIENT_ID;
+    const clientSecret = env.NEXT_PUBLIC_DOTYPOS_CLIENT_SECRET;
     const redirectUrl = "http://localhost:3000/cs-CZ/admin/dotypos/callback";
 
     console.log("Using credentials:");
