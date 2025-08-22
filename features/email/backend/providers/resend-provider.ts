@@ -1,4 +1,4 @@
-import { Config, Effect, Layer } from "effect";
+import { Config, Context, Effect, Layer } from "effect";
 import { Resend } from "resend";
 import type {
   EmailMessage,
@@ -11,8 +11,16 @@ interface ResendConfig {
   apiKey: string;
 }
 
+/**
+ * Resend Config Tag for dependency injection
+ */
+class ResendConfigTag extends Context.Tag("ResendConfig")<
+  ResendConfigTag,
+  ResendConfig
+>() {}
+
 const ResendConfigLayer = Layer.effect(
-  "ResendConfig",
+  ResendConfigTag,
   Effect.gen(function* () {
     const apiKey = yield* Config.string("RESEND_API_KEY").pipe(
       Config.withDefault("")
@@ -209,7 +217,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 export const ResendEmailProviderLive = Layer.effect(
   "EmailProvider",
   Effect.gen(function* () {
-    const config = yield* Effect.service("ResendConfig" as any);
+    const config = yield* ResendConfigTag;
     return createResendProvider(config);
   })
 ).pipe(Layer.provide(ResendConfigLayer));
