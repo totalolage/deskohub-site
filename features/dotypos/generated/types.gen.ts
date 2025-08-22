@@ -137,7 +137,10 @@ export type Reservation = {
   versionDate?: string;
 };
 
-export type PaginatedCustomers = {
+/**
+ * Base pagination properties shared by all paginated responses
+ */
+export type PaginationBase = {
   /**
    * Current page number
    */
@@ -170,6 +173,9 @@ export type PaginatedCustomers = {
    * Previous page number
    */
   prevPage?: string | null;
+};
+
+export type PaginatedCustomers = PaginationBase & {
   /**
    * Array of customers
    */
@@ -493,39 +499,7 @@ export type UpdateCustomerRequest = {
   flags?: number;
 };
 
-export type PaginatedTables = {
-  /**
-   * Current page number (string representation)
-   */
-  currentPage?: string;
-  /**
-   * Items per page (string representation)
-   */
-  perPage?: string;
-  /**
-   * Number of items on current page (string representation)
-   */
-  totalItemsOnPage?: string;
-  /**
-   * Total number of items (string representation)
-   */
-  totalItemsCount?: string;
-  /**
-   * First page number (string representation)
-   */
-  firstPage?: string;
-  /**
-   * Last page number (string representation)
-   */
-  lastPage?: string;
-  /**
-   * Next page number (string representation)
-   */
-  nextPage?: string | null;
-  /**
-   * Previous page number (string representation)
-   */
-  prevPage?: string | null;
+export type PaginatedTables = PaginationBase & {
   /**
    * Array of tables
    */
@@ -608,6 +582,188 @@ export type Table = {
    * Last modification timestamp (ISO 8601)
    */
   versionDate?: string;
+};
+
+export type PaginatedProducts = PaginationBase & {
+  /**
+   * Array of products
+   */
+  data?: Array<Product>;
+};
+
+export type Product = {
+  /**
+   * Product ID (long as string)
+   */
+  id?: string;
+  /**
+   * Category ID (long as string)
+   */
+  _categoryId: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId?: string;
+  /**
+   * Product name
+   */
+  name: string;
+  /**
+   * Alternative product name
+   */
+  alternativeName?: string | null;
+  /**
+   * Product description
+   */
+  description?: string | null;
+  /**
+   * EAN codes (can be array or string)
+   */
+  ean?: Array<string> | string | null;
+  /**
+   * External ID
+   */
+  externalId?: string | null;
+  /**
+   * Product flags (string representation)
+   */
+  flags?: string;
+  /**
+   * Hex color code
+   */
+  hexColor?: string | null;
+  /**
+   * Product image URL
+   */
+  imageUrl?: string | null;
+  /**
+   * Minimum margin (string representation)
+   */
+  minMargin?: string | null;
+  /**
+   * Modified by user ID
+   */
+  modifiedBy?: string | null;
+  /**
+   * Packaging information
+   */
+  packaging?: string | null;
+  /**
+   * Package size (string representation)
+   */
+  packageSize?: string | null;
+  /**
+   * Points value (string representation)
+   */
+  points?: string | null;
+  /**
+   * Price with VAT (string representation)
+   */
+  priceWithVat?: string | null;
+  /**
+   * Price without VAT (string representation)
+   */
+  priceWithoutVat: string;
+  /**
+   * Print ticket flag
+   */
+  printTicket?: boolean | null;
+  /**
+   * Stock deduction flag
+   */
+  stockDeduct?: boolean | null;
+  /**
+   * Product subtitle
+   */
+  subtitle?: string | null;
+  /**
+   * Product tags (can be array or string)
+   */
+  tags?: Array<string> | string | null;
+  /**
+   * Unit of measurement (actual values vary from documented enum)
+   */
+  unit?: string;
+  /**
+   * VAT rate (string representation)
+   */
+  vat: string;
+  /**
+   * Last modification timestamp (ISO 8601)
+   */
+  versionDate?: string;
+  /**
+   * Is deleted
+   */
+  deleted?: boolean | null;
+  /**
+   * Is displayed
+   */
+  display?: boolean | null;
+};
+
+export type Category = {
+  /**
+   * Category ID (long as string)
+   */
+  id?: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId?: string;
+  /**
+   * Category name
+   */
+  name?: string;
+  /**
+   * Hex color for the category
+   */
+  hexColor?: string | null;
+  /**
+   * Is deleted
+   */
+  deleted?: boolean;
+  /**
+   * Is displayed
+   */
+  display?: boolean;
+  /**
+   * External ID
+   */
+  externalId?: string | null;
+  /**
+   * Category flags (string representation of long)
+   */
+  flags?: string;
+  /**
+   * Fiscal name for the category
+   */
+  fiscalName?: string | null;
+  /**
+   * Sort order (string representation)
+   */
+  ordering?: string | null;
+  /**
+   * Translated names by locale
+   */
+  translatedName?: {
+    [key: string]: unknown;
+  } | null;
+  /**
+   * Last modification timestamp (ISO 8601)
+   */
+  versionDate?: string;
+  /**
+   * Category tags
+   */
+  tags?: Array<string> | null;
+};
+
+export type PaginatedCategories = PaginationBase & {
+  /**
+   * Array of categories
+   */
+  data?: Array<Category>;
 };
 
 export type ErrorResponse = {
@@ -944,6 +1100,143 @@ export type GetTablesResponses = {
 };
 
 export type GetTablesResponse = GetTablesResponses[keyof GetTablesResponses];
+
+export type GetProductsData = {
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Filter products (e.g., "_categoryId|eq|123")
+     */
+    filter?: string;
+    /**
+     * Sort products (e.g., "name", "-priceWithVat")
+     */
+    sort?: string;
+    limit?: number;
+    offset?: number;
+    /**
+     * Include related entities (comma-separated, e.g., "customizations,ingredients")
+     */
+    include?: string;
+  };
+  url: "/clouds/{cloudId}/products";
+};
+
+export type GetProductsErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+};
+
+export type GetProductsError = GetProductsErrors[keyof GetProductsErrors];
+
+export type GetProductsResponses = {
+  /**
+   * Paginated list of products
+   */
+  200: PaginatedProducts;
+};
+
+export type GetProductsResponse =
+  GetProductsResponses[keyof GetProductsResponses];
+
+export type GetProductData = {
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+    /**
+     * Product ID
+     */
+    productId: string;
+  };
+  query?: {
+    /**
+     * Include related entities (comma-separated, e.g., "customizations,ingredients")
+     */
+    include?: string;
+  };
+  url: "/clouds/{cloudId}/products/{productId}";
+};
+
+export type GetProductErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Product not found
+   */
+  404: ErrorResponse;
+};
+
+export type GetProductError = GetProductErrors[keyof GetProductErrors];
+
+export type GetProductResponses = {
+  /**
+   * Product details
+   */
+  200: Product;
+};
+
+export type GetProductResponse = GetProductResponses[keyof GetProductResponses];
+
+export type GetCategoriesData = {
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Page number
+     */
+    page?: string;
+    /**
+     * Items per page
+     */
+    limit?: string;
+    /**
+     * Filter expression
+     */
+    filter?: string;
+    /**
+     * Sort expression
+     */
+    sort?: string;
+  };
+  url: "/clouds/{cloudId}/categories";
+};
+
+export type GetCategoriesErrors = {
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+};
+
+export type GetCategoriesError = GetCategoriesErrors[keyof GetCategoriesErrors];
+
+export type GetCategoriesResponses = {
+  /**
+   * Paginated list of categories
+   */
+  200: PaginatedCategories;
+};
+
+export type GetCategoriesResponse =
+  GetCategoriesResponses[keyof GetCategoriesResponses];
 
 export type GetCustomerData = {
   body?: never;

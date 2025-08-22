@@ -15,12 +15,21 @@ import type {
   GetAccessTokenData,
   GetAccessTokenErrors,
   GetAccessTokenResponses,
+  GetCategoriesData,
+  GetCategoriesErrors,
+  GetCategoriesResponses,
   GetCustomerData,
   GetCustomerErrors,
   GetCustomerResponses,
   GetCustomersData,
   GetCustomersErrors,
   GetCustomersResponses,
+  GetProductData,
+  GetProductErrors,
+  GetProductResponses,
+  GetProductsData,
+  GetProductsErrors,
+  GetProductsResponses,
   GetReservationData,
   GetReservationErrors,
   GetReservationResponses,
@@ -42,8 +51,11 @@ import {
   zCreateCustomersResponse,
   zCreateReservationResponse,
   zGetAccessTokenResponse,
+  zGetCategoriesResponse,
   zGetCustomerResponse,
   zGetCustomersResponse,
+  zGetProductResponse,
+  zGetProductsResponse,
   zGetReservationResponse,
   zGetTablesResponse,
   zListReservationsResponse,
@@ -299,6 +311,75 @@ export const getTables = <ThrowOnError extends boolean = false>(
       },
     ],
     url: "/clouds/{cloudId}/tables",
+    ...options,
+  });
+};
+
+/**
+ * Get products
+ */
+export const getProducts = <ThrowOnError extends boolean = false>(
+  options: Options<GetProductsData, ThrowOnError>
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetProductsResponses,
+    GetProductsErrors,
+    ThrowOnError
+  >({
+    responseValidator: async (data) => {
+      return await zGetProductsResponse.parseAsync(data);
+    },
+    security: [
+      {
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/clouds/{cloudId}/products",
+    ...options,
+  });
+};
+
+/**
+ * Get product by ID
+ */
+export const getProduct = <ThrowOnError extends boolean = false>(
+  options: Options<GetProductData, ThrowOnError>
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetProductResponses,
+    GetProductErrors,
+    ThrowOnError
+  >({
+    responseValidator: async (data) => {
+      return await zGetProductResponse.parseAsync(data);
+    },
+    security: [
+      {
+        scheme: "bearer",
+        type: "http",
+      },
+    ],
+    url: "/clouds/{cloudId}/products/{productId}",
+    ...options,
+  });
+};
+
+/**
+ * Get product categories
+ */
+export const getCategories = <ThrowOnError extends boolean = false>(
+  options: Options<GetCategoriesData, ThrowOnError>
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetCategoriesResponses,
+    GetCategoriesErrors,
+    ThrowOnError
+  >({
+    responseValidator: async (data) => {
+      return await zGetCategoriesResponse.parseAsync(data);
+    },
+    url: "/clouds/{cloudId}/categories",
     ...options,
   });
 };

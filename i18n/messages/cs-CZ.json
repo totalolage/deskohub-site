@@ -631,7 +631,8 @@
     },
     "sections": {
       "food": "JÍDLO",
-      "drinks": "NÁPOJE"
+      "drinks": "NÁPOJE",
+      "other": "OSTATNÍ"
     },
     "footerNote": "Vstupné pro hráče deskových her: Cena je {priceWith} pro deskohráče, kteří si u nás něco objednají a {priceWithout} pro zákazníky s nulovou útratou."
   },

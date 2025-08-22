@@ -11,13 +11,17 @@ export {
   DotyposClient,
   DotyposConfigTag,
   DotyposServiceLive,
+  getMenuItems,
   getReservation,
+  type MenuItem,
 } from "./backend/service";
 
 // Re-export generated types if needed by consumers
 export type {
   CreateReservationRequest,
   ErrorResponse,
+  Product,
+  ProductCategory,
   Reservation,
   TokenResponse,
   UpdateReservationRequest,

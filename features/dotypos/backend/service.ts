@@ -20,9 +20,11 @@ import {
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
 import type {
+  Category,
   CreateCustomerRequest,
   CreateReservationRequest,
   Customer,
+  Product,
   Reservation,
   Table,
   UpdateCustomerRequest,
@@ -89,6 +91,22 @@ interface DotyposApi {
   readonly getTables: (params: {
     path: { cloudId: string };
   }) => Effect.Effect<Table[], ExternalAPIError | NetworkError>;
+
+  readonly getProducts: (params: {
+    path: { cloudId: string };
+    query?: {
+      filter?: string;
+      sort?: string;
+      limit?: number;
+      offset?: number;
+      include?: string;
+    };
+  }) => Effect.Effect<Product[], ExternalAPIError | NetworkError>;
+
+  readonly getCategories: (params: {
+    path: { cloudId: string };
+    query?: { limit?: number; offset?: number };
+  }) => Effect.Effect<Category[], ExternalAPIError | NetworkError>;
 }
 
 class DotyposApiTag extends Context.Tag("DotyposApi")<
@@ -134,6 +152,17 @@ class DotyposClient extends Context.Tag("DotyposClient")<
     >;
     readonly getTables: () => Effect.Effect<
       Table[],
+      ExternalAPIError | NetworkError | ValidationError
+    >;
+    readonly getProducts: (options?: {
+      categoryId?: string;
+      includeDeleted?: boolean;
+    }) => Effect.Effect<
+      Product[],
+      ExternalAPIError | NetworkError | ValidationError
+    >;
+    readonly getCategories: () => Effect.Effect<
+      Category[],
       ExternalAPIError | NetworkError | ValidationError
     >;
   }
@@ -741,6 +770,112 @@ const DotyposApiLayer = Layer.scoped(
 
           return result;
         }).pipe(Effect.withSpan("dotyposApi.getTables")),
+
+      getProducts: (params) =>
+        Effect.gen(function* () {
+          yield* Effect.logDebug("DotyposApi.getProducts called", params);
+
+          const token = yield* getToken();
+
+          const result = yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.getProducts(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  query: params.query || { limit: 100 },
+                })
+              );
+
+              if (response.error) {
+                throw {
+                  statusCode: response.response?.status || 400,
+                  message:
+                    response.error.error_description ||
+                    response.error.error ||
+                    "Failed to get products",
+                };
+              }
+
+              // Extract products from paginated response
+              if (
+                response.data &&
+                typeof response.data === "object" &&
+                "data" in response.data
+              ) {
+                const products = response.data.data || [];
+                console.log(
+                  `Extracted ${products.length} products from paginated response`
+                );
+                return products as Product[];
+              }
+              return [] as Product[];
+            },
+            catch: (error) =>
+              transformHttpError(error, "Get products", config.apiUrl),
+          }).pipe(
+            Effect.tap((products) =>
+              Effect.logDebug(`Fetched ${products.length} products`)
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("Failed to fetch products", error)
+            )
+          );
+
+          return result;
+        }).pipe(Effect.withSpan("dotyposApi.getProducts")),
+
+      getCategories: (params) =>
+        Effect.gen(function* () {
+          yield* Effect.logDebug("DotyposApi.getCategories called", params);
+
+          const token = yield* getToken();
+
+          const result = yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.getCategories(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  query: params.query || { limit: 100 },
+                })
+              );
+
+              if (response.error) {
+                throw {
+                  statusCode: response.response?.status || 400,
+                  message:
+                    response.error.error_description ||
+                    response.error.error ||
+                    "Failed to get categories",
+                };
+              }
+
+              // Extract categories from paginated response
+              if (
+                response.data &&
+                typeof response.data === "object" &&
+                "data" in response.data
+              ) {
+                const categories = response.data.data || [];
+                console.log(
+                  `Extracted ${categories.length} categories from paginated response`
+                );
+                return categories as Category[];
+              }
+              return [] as Category[];
+            },
+            catch: (error) =>
+              transformHttpError(error, "Get categories", config.apiUrl),
+          }).pipe(
+            Effect.tap((categories) =>
+              Effect.logDebug(`Fetched ${categories.length} categories`)
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("Failed to fetch categories", error)
+            )
+          );
+
+          return result;
+        }).pipe(Effect.withSpan("dotyposApi.getCategories")),
     };
 
     return api;
@@ -1055,6 +1190,38 @@ const DotyposClientLive = Layer.effect(
             path: { cloudId: config.cloudId },
           })
           .pipe(Effect.retry(retryPolicy)),
+
+      getProducts: (options) =>
+        api
+          .getProducts({
+            path: { cloudId: config.cloudId },
+            query: {
+              limit: 100,
+              ...(options?.categoryId && {
+                filter: `_categoryId|eq|${options.categoryId}`,
+              }),
+              ...(options?.includeDeleted === false && {
+                filter: "deleted|eq|false",
+              }),
+            },
+          })
+          .pipe(
+            Effect.map((products) =>
+              // Filter out deleted products by default unless explicitly requested
+              options?.includeDeleted === true
+                ? products
+                : products.filter((p) => !p.deleted && p.display)
+            ),
+            Effect.retry(retryPolicy)
+          ),
+
+      getCategories: () =>
+        api
+          .getCategories({
+            path: { cloudId: config.cloudId },
+            query: { limit: 100 },
+          })
+          .pipe(Effect.retry(retryPolicy)),
     };
   })
 );
@@ -1082,71 +1249,6 @@ const buildNote = (input: BookingFormData): string => {
   // Only include special requests in the note field
   // Customer details are available via the customer ID
   return input.specialRequests || "";
-};
-
-/**
- * Parsed note data type
- */
-interface ParsedNote {
-  customerName: string | null;
-  customerEmail?: string;
-  customerPhone?: string;
-  duration?: number;
-  tablePreference?: string;
-  specialRequests?: string;
-}
-
-/**
- * Note field parser using regex patterns
- */
-const NOTE_PATTERNS = {
-  customer: /Customer: ([^|]+)/,
-  email: /Email: ([^|]+)/,
-  phone: /Phone: ([^|]+)/,
-  duration: /Duration: (\d+)h/,
-  tablePreference: /Table preference: ([^|]+)/,
-} as const;
-
-/**
- * Parse customer info and metadata from note field
- */
-const _parseNote = (note: string | undefined): ParsedNote => {
-  if (!note) {
-    return {
-      customerName: null,
-      customerEmail: undefined,
-      customerPhone: undefined,
-      duration: undefined,
-      tablePreference: undefined,
-      specialRequests: undefined,
-    };
-  }
-
-  // Extract structured fields
-  const extract = (pattern: RegExp) => note.match(pattern)?.[1]?.trim();
-
-  const customerName = extract(NOTE_PATTERNS.customer) || null;
-  const customerEmail = extract(NOTE_PATTERNS.email);
-  const customerPhone = extract(NOTE_PATTERNS.phone);
-  const durationMatch = extract(NOTE_PATTERNS.duration);
-  const tablePreference = extract(NOTE_PATTERNS.tablePreference);
-
-  // Special requests is everything after the last structured field
-  const parts = note.split("|");
-  const lastPart = parts[parts.length - 1]?.trim();
-  const isStructuredField =
-    lastPart &&
-    Object.values(NOTE_PATTERNS).some((pattern) => pattern.test(lastPart));
-  const specialRequests = !isStructuredField ? lastPart : undefined;
-
-  return {
-    customerName,
-    customerEmail,
-    customerPhone,
-    duration: durationMatch ? parseInt(durationMatch) : undefined,
-    tablePreference,
-    specialRequests,
-  };
 };
 
 /**
@@ -1367,3 +1469,114 @@ export const getReservation = (
     // Return both reservation and customer
     return { reservation, customer };
   });
+
+/**
+ * Menu item type for UI with category info
+ */
+export interface MenuItemWithCategory {
+  id: string;
+  name: string;
+  description: string | null;
+  priceWithVat: number;
+  priceWithoutVat: number;
+  vat: number;
+  categoryId: string;
+  categoryName: string;
+  categoryDisplayIndex: number;
+  unit: string;
+  imageUrl: string | null;
+  available: boolean;
+}
+
+/**
+ * Get menu items with categories properly grouped
+ */
+export const getMenuItems = (): Effect.Effect<
+  {
+    items: MenuItemWithCategory[];
+    itemsByCategory: Map<string, MenuItemWithCategory[]>;
+    categories: Category[];
+  },
+  ExternalAPIError | NetworkError | ValidationError,
+  DotyposClient
+> =>
+  Effect.gen(function* () {
+    const client = yield* DotyposClient;
+
+    // Fetch both products and categories in parallel
+    const [products, categories] = yield* Effect.all(
+      [client.getProducts({ includeDeleted: false }), client.getCategories()],
+      { concurrency: 2 }
+    );
+
+    // Create a map of category ID to category data for quick lookup
+    const categoryMap = new Map<string, Category>();
+    for (const category of categories) {
+      if (category.id) {
+        categoryMap.set(category.id, category);
+      }
+    }
+
+    // Transform products to menu items with proper category names
+    const items: MenuItemWithCategory[] = products
+      .filter((p) => p.display && !p.deleted)
+      .map((product) => {
+        const category = product._categoryId
+          ? categoryMap.get(product._categoryId)
+          : undefined;
+
+        return {
+          id: product.id || "",
+          name: product.name,
+          description: product.description || product.subtitle || null,
+          priceWithVat:
+            typeof product.priceWithVat === "string"
+              ? parseFloat(product.priceWithVat)
+              : product.priceWithVat || 0,
+          priceWithoutVat:
+            typeof product.priceWithoutVat === "string"
+              ? parseFloat(product.priceWithoutVat)
+              : product.priceWithoutVat || 0,
+          vat:
+            typeof product.vat === "string"
+              ? parseFloat(product.vat)
+              : product.vat || 0,
+          categoryId: product._categoryId || "uncategorized",
+          categoryName: category?.name || "Uncategorized",
+          categoryDisplayIndex:
+            typeof category?.displayIndex === "string"
+              ? parseInt(category.displayIndex)
+              : category?.displayIndex || 999,
+          unit: product.unit || "pcs",
+          imageUrl: product.imageUrl || null,
+          available: product.stockDeduct === false || true, // If stock not tracked, always available
+        };
+      })
+      .sort((a, b) => {
+        // Sort by category display index first, then by name
+        if (a.categoryDisplayIndex !== b.categoryDisplayIndex) {
+          return a.categoryDisplayIndex - b.categoryDisplayIndex;
+        }
+        return a.name.localeCompare(b.name);
+      });
+
+    // Group items by category name (not ID) for better display
+    const itemsByCategory = new Map<string, MenuItemWithCategory[]>();
+    for (const item of items) {
+      const categoryItems = itemsByCategory.get(item.categoryName) || [];
+      categoryItems.push(item);
+      itemsByCategory.set(item.categoryName, categoryItems);
+    }
+
+    yield* Effect.logInfo("Menu items fetched with categories", {
+      itemsCount: items.length,
+      categoriesCount: categories.length,
+      categoriesWithItems: itemsByCategory.size,
+    });
+
+    return {
+      items,
+      itemsByCategory,
+      categories,
+    };
+  }).pipe(Effect.withSpan("getMenuItems"));

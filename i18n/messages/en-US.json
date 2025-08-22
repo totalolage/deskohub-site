@@ -621,8 +621,9 @@
       "weekendTime": "{hours}"
     },
     "sections": {
-      "food": "FOOD",
-      "drinks": "DRINKS"
+      "food": "Food",
+      "drinks": "Drinks",
+      "other": "Other"
     },
     "footerNote": "Entry fee for board game players: {priceWith} for customers who order from us and {priceWithout} for customers with zero spending."
   },

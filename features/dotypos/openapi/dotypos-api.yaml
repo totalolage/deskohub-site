@@ -368,6 +368,153 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+  /clouds/{cloudId}/products:
+    get:
+      tags:
+        - Products
+      summary: Get products
+      operationId: getProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: filter
+          in: query
+          description: Filter products (e.g., "_categoryId|eq|123")
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort products (e.g., "name", "-priceWithVat")
+          schema:
+            type: string
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+            maximum: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: "0"
+        - name: include
+          in: query
+          description: Include related entities (comma-separated, e.g., "customizations,ingredients")
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated list of products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProducts'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/products/{productId}:
+    get:
+      tags:
+        - Products
+      summary: Get product by ID
+      operationId: getProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - name: include
+          in: query
+          description: Include related entities (comma-separated, e.g., "customizations,ingredients")
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /clouds/{cloudId}/categories:
+    get:
+      summary: Get product categories
+      operationId: getCategories
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: page
+          in: query
+          schema:
+            type: string
+          description: Page number
+        - name: limit
+          in: query
+          schema:
+            type: string
+          description: Items per page
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: Filter expression
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Sort expression
+      responses:
+        '200':
+          description: Paginated list of categories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCategories'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+      security:
+        - bearer: []
+
   /clouds/{cloudId}/customers/{customerId}:
     get:
       tags:
@@ -598,8 +745,9 @@ components:
           type: string
           description: Last update timestamp (ISO 8601 format)
 
-    PaginatedCustomers:
+    PaginationBase:
       type: object
+      description: Base pagination properties shared by all paginated responses
       properties:
         currentPage:
           type: string
@@ -627,11 +775,17 @@ components:
           type: string
           nullable: true
           description: Previous page number
-        data:
-          type: array
-          description: Array of customers
-          items:
-            $ref: '#/components/schemas/Customer'
+
+    PaginatedCustomers:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of customers
+              items:
+                $ref: '#/components/schemas/Customer'
 
     Customer:
       type: object
@@ -956,39 +1110,15 @@ components:
           description: Customer flags (bitwise flags)
 
     PaginatedTables:
-      type: object
-      properties:
-        currentPage:
-          type: string
-          description: Current page number (string representation)
-        perPage:
-          type: string
-          description: Items per page (string representation)
-        totalItemsOnPage:
-          type: string
-          description: Number of items on current page (string representation)
-        totalItemsCount:
-          type: string
-          description: Total number of items (string representation)
-        firstPage:
-          type: string
-          description: First page number (string representation)
-        lastPage:
-          type: string
-          description: Last page number (string representation)
-        nextPage:
-          type: string
-          nullable: true
-          description: Next page number (string representation)
-        prevPage:
-          type: string
-          nullable: true
-          description: Previous page number (string representation)
-        data:
-          type: array
-          description: Array of tables
-          items:
-            $ref: '#/components/schemas/Table'
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of tables
+              items:
+                $ref: '#/components/schemas/Table'
 
     Table:
       type: object
@@ -1049,6 +1179,196 @@ components:
         versionDate:
           type: string
           description: Last modification timestamp (ISO 8601)
+
+    PaginatedProducts:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of products
+              items:
+                $ref: '#/components/schemas/Product'
+
+    Product:
+      type: object
+      required:
+        - _categoryId
+        - name
+        - priceWithoutVat
+        - vat
+      properties:
+        id:
+          type: string
+          description: Product ID (long as string)
+        _categoryId:
+          type: string
+          description: Category ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        name:
+          type: string
+          description: Product name
+          maxLength: 255
+        alternativeName:
+          type: string
+          nullable: true
+          description: Alternative product name
+        description:
+          type: string
+          nullable: true
+          description: Product description
+        ean:
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: string
+              nullable: true
+          description: EAN codes (can be array or string)
+        externalId:
+          type: string
+          nullable: true
+          description: External ID
+        flags:
+          type: string
+          description: Product flags (string representation)
+        hexColor:
+          type: string
+          nullable: true
+          description: Hex color code
+        imageUrl:
+          type: string
+          nullable: true
+          description: Product image URL
+        minMargin:
+          type: string
+          nullable: true
+          description: Minimum margin (string representation)
+        modifiedBy:
+          type: string
+          nullable: true
+          description: Modified by user ID
+        packaging:
+          type: string
+          nullable: true
+          description: Packaging information
+        packageSize:
+          type: string
+          nullable: true
+          description: Package size (string representation)
+        points:
+          type: string
+          nullable: true
+          description: Points value (string representation)
+        priceWithVat:
+          type: string
+          nullable: true
+          description: Price with VAT (string representation)
+        priceWithoutVat:
+          type: string
+          description: Price without VAT (string representation)
+        printTicket:
+          type: boolean
+          nullable: true
+          description: Print ticket flag
+        stockDeduct:
+          type: boolean
+          nullable: true
+          description: Stock deduction flag
+        subtitle:
+          type: string
+          nullable: true
+          description: Product subtitle
+        tags:
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: string
+              nullable: true
+          description: Product tags (can be array or string)
+        unit:
+          type: string
+          description: Unit of measurement (actual values vary from documented enum)
+        vat:
+          type: string
+          description: VAT rate (string representation)
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
+        deleted:
+          type: boolean
+          nullable: true
+          description: Is deleted
+        display:
+          type: boolean
+          nullable: true
+          description: Is displayed
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Category ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        name:
+          type: string
+          description: Category name
+        hexColor:
+          type: string
+          nullable: true
+          description: Hex color for the category
+        deleted:
+          type: boolean
+          description: Is deleted
+        display:
+          type: boolean
+          description: Is displayed
+        externalId:
+          type: string
+          nullable: true
+          description: External ID
+        flags:
+          type: string
+          description: Category flags (string representation of long)
+        fiscalName:
+          type: string
+          nullable: true
+          description: Fiscal name for the category
+        ordering:
+          type: string
+          nullable: true
+          description: Sort order (string representation)
+        translatedName:
+          type: object
+          nullable: true
+          description: Translated names by locale
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Category tags
+
+    PaginatedCategories:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of categories
+              items:
+                $ref: '#/components/schemas/Category'
 
     ErrorResponse:
       type: object

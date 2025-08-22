@@ -147,6 +147,48 @@ export const zReservation = z.object({
   ),
 });
 
+/**
+ * Base pagination properties shared by all paginated responses
+ */
+export const zPaginationBase = z
+  .object({
+    currentPage: z.optional(
+      z.string().register(z.globalRegistry, {
+        description: "Current page number",
+      })
+    ),
+    perPage: z.optional(
+      z.string().register(z.globalRegistry, {
+        description: "Items per page",
+      })
+    ),
+    totalItemsOnPage: z.optional(
+      z.string().register(z.globalRegistry, {
+        description: "Number of items on current page",
+      })
+    ),
+    totalItemsCount: z.optional(
+      z.string().register(z.globalRegistry, {
+        description: "Total number of items",
+      })
+    ),
+    firstPage: z.optional(
+      z.string().register(z.globalRegistry, {
+        description: "First page number",
+      })
+    ),
+    lastPage: z.optional(
+      z.string().register(z.globalRegistry, {
+        description: "Last page number",
+      })
+    ),
+    nextPage: z.optional(z.union([z.string(), z.null()])),
+    prevPage: z.optional(z.union([z.string(), z.null()])),
+  })
+  .register(z.globalRegistry, {
+    description: "Base pagination properties shared by all paginated responses",
+  });
+
 export const zCustomer = z.object({
   id: z.optional(
     z.string().register(z.globalRegistry, {
@@ -223,45 +265,15 @@ export const zCustomer = z.object({
   ),
 });
 
-export const zPaginatedCustomers = z.object({
-  currentPage: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Current page number",
-    })
-  ),
-  perPage: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Items per page",
-    })
-  ),
-  totalItemsOnPage: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Number of items on current page",
-    })
-  ),
-  totalItemsCount: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Total number of items",
-    })
-  ),
-  firstPage: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "First page number",
-    })
-  ),
-  lastPage: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Last page number",
-    })
-  ),
-  nextPage: z.optional(z.union([z.string(), z.null()])),
-  prevPage: z.optional(z.union([z.string(), z.null()])),
-  data: z.optional(
-    z.array(zCustomer).register(z.globalRegistry, {
-      description: "Array of customers",
-    })
-  ),
-});
+export const zPaginatedCustomers = zPaginationBase.and(
+  z.object({
+    data: z.optional(
+      z.array(zCustomer).register(z.globalRegistry, {
+        description: "Array of customers",
+      })
+    ),
+  })
+);
 
 export const zCreateCustomerRequest = z.object({
   _cloudId: z.string().register(z.globalRegistry, {
@@ -529,45 +541,140 @@ export const zTable = z.object({
   ),
 });
 
-export const zPaginatedTables = z.object({
-  currentPage: z.optional(
+export const zPaginatedTables = zPaginationBase.and(
+  z.object({
+    data: z.optional(
+      z.array(zTable).register(z.globalRegistry, {
+        description: "Array of tables",
+      })
+    ),
+  })
+);
+
+export const zProduct = z.object({
+  id: z.optional(
     z.string().register(z.globalRegistry, {
-      description: "Current page number (string representation)",
+      description: "Product ID (long as string)",
     })
   ),
-  perPage: z.optional(
+  _categoryId: z.string().register(z.globalRegistry, {
+    description: "Category ID (long as string)",
+  }),
+  _cloudId: z.optional(
     z.string().register(z.globalRegistry, {
-      description: "Items per page (string representation)",
+      description: "Cloud ID (long as string)",
     })
   ),
-  totalItemsOnPage: z.optional(
+  name: z.string().max(255).register(z.globalRegistry, {
+    description: "Product name",
+  }),
+  alternativeName: z.optional(z.union([z.string(), z.null()])),
+  description: z.optional(z.union([z.string(), z.null()])),
+  ean: z.optional(z.union([z.array(z.string()), z.string(), z.null()])),
+  externalId: z.optional(z.union([z.string(), z.null()])),
+  flags: z.optional(
     z.string().register(z.globalRegistry, {
-      description: "Number of items on current page (string representation)",
+      description: "Product flags (string representation)",
     })
   ),
-  totalItemsCount: z.optional(
+  hexColor: z.optional(z.union([z.string(), z.null()])),
+  imageUrl: z.optional(z.union([z.string(), z.null()])),
+  minMargin: z.optional(z.union([z.string(), z.null()])),
+  modifiedBy: z.optional(z.union([z.string(), z.null()])),
+  packaging: z.optional(z.union([z.string(), z.null()])),
+  packageSize: z.optional(z.union([z.string(), z.null()])),
+  points: z.optional(z.union([z.string(), z.null()])),
+  priceWithVat: z.optional(z.union([z.string(), z.null()])),
+  priceWithoutVat: z.string().register(z.globalRegistry, {
+    description: "Price without VAT (string representation)",
+  }),
+  printTicket: z.optional(z.union([z.boolean(), z.null()])),
+  stockDeduct: z.optional(z.union([z.boolean(), z.null()])),
+  subtitle: z.optional(z.union([z.string(), z.null()])),
+  tags: z.optional(z.union([z.array(z.string()), z.string(), z.null()])),
+  unit: z.optional(
     z.string().register(z.globalRegistry, {
-      description: "Total number of items (string representation)",
+      description:
+        "Unit of measurement (actual values vary from documented enum)",
     })
   ),
-  firstPage: z.optional(
+  vat: z.string().register(z.globalRegistry, {
+    description: "VAT rate (string representation)",
+  }),
+  versionDate: z.optional(
     z.string().register(z.globalRegistry, {
-      description: "First page number (string representation)",
+      description: "Last modification timestamp (ISO 8601)",
     })
   ),
-  lastPage: z.optional(
-    z.string().register(z.globalRegistry, {
-      description: "Last page number (string representation)",
-    })
-  ),
-  nextPage: z.optional(z.union([z.string(), z.null()])),
-  prevPage: z.optional(z.union([z.string(), z.null()])),
-  data: z.optional(
-    z.array(zTable).register(z.globalRegistry, {
-      description: "Array of tables",
-    })
-  ),
+  deleted: z.optional(z.union([z.boolean(), z.null()])),
+  display: z.optional(z.union([z.boolean(), z.null()])),
 });
+
+export const zPaginatedProducts = zPaginationBase.and(
+  z.object({
+    data: z.optional(
+      z.array(zProduct).register(z.globalRegistry, {
+        description: "Array of products",
+      })
+    ),
+  })
+);
+
+export const zCategory = z.object({
+  id: z.optional(
+    z.string().register(z.globalRegistry, {
+      description: "Category ID (long as string)",
+    })
+  ),
+  _cloudId: z.optional(
+    z.string().register(z.globalRegistry, {
+      description: "Cloud ID (long as string)",
+    })
+  ),
+  name: z.optional(
+    z.string().register(z.globalRegistry, {
+      description: "Category name",
+    })
+  ),
+  hexColor: z.optional(z.union([z.string(), z.null()])),
+  deleted: z.optional(
+    z.boolean().register(z.globalRegistry, {
+      description: "Is deleted",
+    })
+  ),
+  display: z.optional(
+    z.boolean().register(z.globalRegistry, {
+      description: "Is displayed",
+    })
+  ),
+  externalId: z.optional(z.union([z.string(), z.null()])),
+  flags: z.optional(
+    z.string().register(z.globalRegistry, {
+      description: "Category flags (string representation of long)",
+    })
+  ),
+  fiscalName: z.optional(z.union([z.string(), z.null()])),
+  ordering: z.optional(z.union([z.string(), z.null()])),
+  translatedName: z.optional(
+    z.union([z.record(z.string(), z.unknown()), z.null()])
+  ),
+  versionDate: z.optional(
+    z.string().register(z.globalRegistry, {
+      description: "Last modification timestamp (ISO 8601)",
+    })
+  ),
+  tags: z.optional(z.union([z.array(z.string()), z.null()])),
+});
+
+export const zPaginatedCategories = zPaginationBase.and(
+  z.object({
+    data: z.optional(
+      z.array(zCategory).register(z.globalRegistry, {
+        description: "Array of categories",
+      })
+    ),
+  })
+);
 
 export const zErrorResponse = z.object({
   error: z.optional(z.string()),
@@ -633,6 +740,21 @@ export const zCreateCustomersResponse = z
  * Paginated list of tables
  */
 export const zGetTablesResponse = zPaginatedTables;
+
+/**
+ * Paginated list of products
+ */
+export const zGetProductsResponse = zPaginatedProducts;
+
+/**
+ * Product details
+ */
+export const zGetProductResponse = zProduct;
+
+/**
+ * Paginated list of categories
+ */
+export const zGetCategoriesResponse = zPaginatedCategories;
 
 /**
  * Customer details
