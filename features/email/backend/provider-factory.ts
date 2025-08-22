@@ -1,7 +1,7 @@
 import { Config, Context, Effect, Layer } from "effect";
 import { ConsoleEmailProviderLive } from "./providers/console-provider";
 import { ResendEmailProviderLive } from "./providers/resend-provider";
-import type { EmailProvider } from "./service";
+import { EmailProviderTag, type EmailProvider } from "./service";
 
 export type EmailProviderType = "console" | "resend";
 
@@ -33,8 +33,8 @@ export const createEmailProviderLayer = (providerType?: EmailProviderType) => {
   }
 
   // Auto-detect based on environment variables
-  return Layer.effect(
-    EmailProviderFactoryTag,
+  // We'll determine which provider to use at runtime
+  return Layer.unwrapScoped(
     Effect.gen(function* () {
       const resendApiKey = yield* Config.string("RESEND_API_KEY").pipe(
         Config.withDefault("")
@@ -54,17 +54,6 @@ export const createEmailProviderLayer = (providerType?: EmailProviderType) => {
       yield* Effect.logInfo("Using Console email provider");
       return ConsoleEmailProviderLive;
     })
-  ).pipe(
-    Layer.flatMap((_factoryLayer) =>
-      // Extract the provider layer from the factory
-      Layer.effect(
-        "EmailProvider",
-        Effect.gen(function* () {
-          const providerLayer = yield* EmailProviderFactoryTag;
-          return providerLayer;
-        })
-      )
-    )
   );
 };
 

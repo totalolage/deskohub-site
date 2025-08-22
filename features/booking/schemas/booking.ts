@@ -1,4 +1,4 @@
-import { z } from "zod/v4";
+import { z } from "zod";
 import { m } from "@/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import {

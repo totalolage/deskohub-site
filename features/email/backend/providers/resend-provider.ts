@@ -2,9 +2,9 @@ import { Config, Context, Effect, Layer } from "effect";
 import { Resend } from "resend";
 import type {
   EmailMessage,
-  EmailProvider,
   EmailSendResult,
 } from "@/features/email/types/email.types";
+import { EmailProviderTag, EmailServiceError, type EmailProvider } from "@/features/email/backend/service";
 import { NetworkError } from "@/shared/backend/errors";
 
 interface ResendConfig {
@@ -53,7 +53,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           console.log("📧 EMAIL (Resend not configured - console fallback)");
           console.log("=".repeat(80));
           console.log(
-            `To: ${typeof message.to === "string" ? message.to : message.to.email}`
+            `To: ${typeof message.to === "string" ? message.to : Array.isArray(message.to) ? message.to.map(r => r.email).join(", ") : message.to.email}`
           );
           console.log(
             `From: ${typeof message.from === "string" ? message.from : message.from.email}`
@@ -99,16 +99,17 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                 to:
                   typeof message.to === "string"
                     ? [message.to]
+                    : Array.isArray(message.to)
+                    ? message.to.map(r => r.email)
                     : [message.to.email],
                 subject: message.subject,
                 html: message.html,
-                text: message.text,
-                reply_to: message.replyTo,
+                text: message.text || "",
+                replyTo: message.replyTo ? (typeof message.replyTo === 'string' ? message.replyTo : message.replyTo.email) : undefined,
               }),
             catch: (error) =>
               new NetworkError({
                 message: `Failed to send email via Resend: ${error instanceof Error ? error.message : String(error)}`,
-                cause: error,
               }),
           });
 
@@ -126,64 +127,6 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           return yield* Effect.fail(
             new NetworkError({
               message: `Resend API error: ${error instanceof Error ? error.message : String(error)}`,
-              cause: error,
-            })
-          );
-        }
-      }),
-
-    sendBatch: (messages: EmailMessage[]) =>
-      Effect.gen(function* () {
-        if (!resend) {
-          // Fallback to sending individually via console
-          const results = [];
-          for (const message of messages) {
-            const result = yield* createResendProvider(config).send(message);
-            results.push(result);
-          }
-          return results;
-        }
-
-        try {
-          const batchData = messages.map((message) => ({
-            from:
-              typeof message.from === "string"
-                ? message.from
-                : `${message.from.name || ""} <${message.from.email}>`.trim(),
-            to:
-              typeof message.to === "string"
-                ? [message.to]
-                : [message.to.email],
-            subject: message.subject,
-            html: message.html,
-            text: message.text,
-            reply_to: message.replyTo,
-          }));
-
-          const result = yield* Effect.tryPromise({
-            try: () => resend.batch.send(batchData),
-            catch: (error) =>
-              new NetworkError({
-                message: `Failed to send batch emails via Resend: ${
-                  error instanceof Error ? error.message : String(error)
-                }`,
-                cause: error,
-              }),
-          });
-
-          return (result.data || []).map((item, index) => ({
-            id: "id" in item ? item.id : `resend-batch-${Date.now()}-${index}`,
-            provider: "resend",
-            timestamp: new Date(),
-          })) as EmailSendResult[];
-        } catch (error) {
-          yield* Effect.logError("Resend batch send error", { error });
-          return yield* Effect.fail(
-            new NetworkError({
-              message: `Resend batch API error: ${
-                error instanceof Error ? error.message : String(error)
-              }`,
-              cause: error,
             })
           );
         }
@@ -196,26 +139,32 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           return false;
         }
 
-        try {
-          // Resend doesn't have a specific verify endpoint,
-          // but we can try to fetch domains to verify the API key works
-          yield* Effect.tryPromise({
-            try: () => resend.domains.list(),
-            catch: () => false,
-          });
-
-          yield* Effect.logInfo("Resend API key verified successfully");
-          return true;
-        } catch {
-          yield* Effect.logWarning("Resend API key verification failed");
-          return false;
-        }
+        return yield* Effect.tryPromise({
+          try: async () => {
+            // Resend doesn't have a specific verify endpoint,
+            // but we can try to fetch domains to verify the API key works
+            await resend.domains.list();
+            return true;
+          },
+          catch: (error) => {
+            return new EmailServiceError(
+              "Failed to verify Resend API key",
+              error
+            );
+          },
+        }).pipe(
+          Effect.tap((success) =>
+            success
+              ? Effect.logInfo("Resend API key verified successfully")
+              : Effect.logWarning("Resend API key verification failed")
+          )
+        );
       }),
   };
 };
 
 export const ResendEmailProviderLive = Layer.effect(
-  "EmailProvider",
+  EmailProviderTag,
   Effect.gen(function* () {
     const config = yield* ResendConfigTag;
     return createResendProvider(config);
