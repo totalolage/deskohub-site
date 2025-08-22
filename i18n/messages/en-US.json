@@ -16,6 +16,7 @@
   "buttons": {
     "reservation": "Reservation",
     "showMore": "SHOW MORE",
+    "seeList": "SEE LIST",
     "ourLocation": "OUR LOCATION",
     "contact": "CONTACT"
   },
@@ -581,7 +582,6 @@
     "pageTitle": "Board Games - Deskohub",
     "pageDescription": "Explore our extensive collection of board games for all ages and skill levels at Deskohub board game bar.",
     "title": "Board Games Collection",
-    "viewListPrompt": "Our board games collection is available in a detailed spreadsheet.",
     "viewSpreadsheet": "View Board Games List",
     "hero": {
       "title": "Board Games",

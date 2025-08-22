@@ -16,6 +16,7 @@
   "buttons": {
     "reservation": "Rezervace",
     "showMore": "ZOBRAZIT VÍCE",
+    "seeList": "ZOBRAZIT SEZNAM",
     "ourLocation": "NAŠE LOKACE",
     "contact": "KONTAKT"
   },
@@ -593,7 +594,6 @@
     "pageTitle": "Deskové hry - Deskohub",
     "pageDescription": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů v Deskohub bar s deskovými hrami.",
     "title": "Sbírka deskových her",
-    "viewListPrompt": "Naše sbírka deskových her je k dispozici v podrobné tabulce.",
     "viewSpreadsheet": "Zobrazit seznam deskových her",
     "hero": {
       "title": "Deskové hry",
