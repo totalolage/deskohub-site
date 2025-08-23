@@ -6,6 +6,7 @@ import {
   ReservationConfirmation,
   type ReservationStatus,
 } from "@/features/reservation/components/reservation-confirmation";
+import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
 import { tableReservationsFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
@@ -136,6 +137,13 @@ export default async function ReservationConfirmationPage({
         type="table"
         details={reservationDetails}
       />
+      <div className="container mx-auto px-4 pb-8">
+        <WebhookTestPanel
+          reservationId={reservation.id}
+          customerId={customer.id}
+          currentStatus={reservation.status}
+        />
+      </div>
     </>
   );
 }

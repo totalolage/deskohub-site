@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the simplified Dotypos integration for DeskOHub, focusing exclusively on reservation management. The integration does not handle complex table assignments, customer management, or multi-branch operations.
+This document describes the simplified Dotypos integration for DeskoHub, focusing exclusively on reservation management. The integration does not handle complex table assignments, customer management, or multi-branch operations.
 
 ## Architecture
 

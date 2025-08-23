@@ -2,7 +2,7 @@
 
 ## Overview
 
-The DeskOHub website uses Statsig for feature flag management. This allows us to control feature visibility in production without redeployment and includes built-in analytics and A/B testing capabilities.
+The DeskoHub website uses Statsig for feature flag management. This allows us to control feature visibility in production without redeployment and includes built-in analytics and A/B testing capabilities.
 
 ## Current Feature Flags
 

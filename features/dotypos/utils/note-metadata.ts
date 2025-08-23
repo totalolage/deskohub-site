@@ -15,7 +15,7 @@
  * ----------------------------------------
  */
 
-import type { Locale } from "@/i18n";
+import { isLocale, type Locale } from "@/i18n";
 
 export interface NoteMetadata {
   locale?: Locale;
@@ -131,9 +131,10 @@ export function parseNoteWithMetadata(
         const value = trimmedLine.substring(colonIndex + 1).trim();
         if (key && value) {
           // Special handling for locale to ensure it's a valid Locale type
-          if (key === "locale" && (value === "cs-CZ" || value === "en-US")) {
-            parsedNote.metadata.locale = value as Locale;
-          } else if (key !== "locale") {
+          if (key === "locale") {
+            if (isLocale(value)) parsedNote.metadata.locale = value;
+            else console.warn(`Invalid locale: "${value}"`);
+          } else {
             parsedNote.metadata[key] = value;
           }
         }

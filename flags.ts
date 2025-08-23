@@ -9,6 +9,7 @@ import {
   type FeatureFlagKey,
   MANUAL_BUCKETING_USER_IDS,
 } from "@/shared/config/feature-flags";
+import { isDev } from "@/shared/utils/environment";
 import { getFeatureFlagOverride } from "@/shared/utils/feature-flags/cookies";
 
 // Create the Statsig adapter using environment variables
@@ -24,7 +25,7 @@ export const createFeatureFlag = (key: FeatureFlagKey) =>
     // Identify function that checks for manual overrides
     identify: async () => {
       // In development, always use "developer" userID
-      if (env.NODE_ENV === "development") {
+      if (isDev()) {
         return {
           userID: "developer",
         };

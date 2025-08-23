@@ -3,7 +3,6 @@
 import { RefreshCw, Settings2, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { env } from "@/env";
 import {
   clearAllFeatureFlagOverridesAction,
   getAllFeatureFlagOverridesAction,
@@ -29,6 +28,7 @@ import {
   type FeatureFlagOverride,
   MANUAL_BUCKETING_USER_IDS,
 } from "@/shared/config/feature-flags";
+import { isDev } from "@/shared/utils/environment";
 
 interface FeatureFlagControlProps {
   flagKey: FeatureFlagKey;
@@ -183,10 +183,7 @@ export function FeatureFlagDebugger() {
     });
   };
 
-  const isDevelopment =
-    typeof window === "undefined"
-      ? env.NODE_ENV === "development"
-      : window.location.hostname === "localhost";
+  const isDevelopment = isDev();
   const activeOverridesCount = Object.keys(overrides).length;
 
   return (

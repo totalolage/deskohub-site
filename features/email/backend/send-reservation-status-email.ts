@@ -10,6 +10,7 @@ import type {
   Reservation,
 } from "@/features/dotypos/generated/types.gen";
 import type { Locale } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import { renderReservationConfirmedEmail } from "../templates/reservation-confirmed";
 import { renderReservationCreatedEmail } from "../templates/reservation-created";
 import { renderReservationDeclinedEmail } from "../templates/reservation-declined";
@@ -89,8 +90,8 @@ export const sendReservationCreatedEmail = (
 
     const emailMessage: EmailMessage = {
       from: {
-        email: "noreply@deskohub.cz",
-        name: "DeskOHub",
+        email: siteConstants.contact.reservationEmail,
+        name: siteConstants.name,
       },
       to: {
         email: customer.email,

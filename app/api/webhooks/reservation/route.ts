@@ -4,12 +4,14 @@ import { env } from "@/env";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import { StandaloneEmailServiceLive } from "@/features/email";
+import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
 import {
   sendReservationConfirmedEmail,
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
 } from "@/features/email/backend/send-reservation-status-email";
-import type { Locale } from "@/i18n";
+import { getLocale, type Locale } from "@/i18n";
+import { isDev } from "@/shared/utils/environment";
 
 /**
  * Dotypos Reservation Webhook Payload
@@ -74,16 +76,19 @@ export async function POST(request: Request) {
   console.log("=== Reservation Webhook Received ===");
 
   try {
-    // Check webhook security if configured
-    const url = new URL(request.url);
-    const providedSecret = url.searchParams.get("secret");
+    // Check webhook security (skip in development)
+    if (!isDev()) {
+      const url = new URL(request.url);
+      const providedSecret = url.searchParams.get("secret");
 
-    if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
-      console.error(
-        "Webhook authentication failed - invalid or missing secret"
-      );
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
+        console.error(
+          "Webhook authentication failed - invalid or missing secret"
+        );
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
     }
+    
     // Parse the webhook payload
     const payload = (await request.json()) as DotyposReservationPayload[];
 
@@ -145,8 +150,7 @@ export async function POST(request: Request) {
         );
         console.log("Parsed note:", JSON.stringify(parsedNote, null, 2));
 
-        // Determine locale from metadata or default to Czech
-        const locale: Locale = parsedNote.metadata.locale || "cs-CZ";
+        const locale: Locale = parsedNote.metadata.locale || getLocale();
         console.log(`Using locale: ${locale}`);
 
         // Determine which email to send based on status
@@ -160,13 +164,24 @@ export async function POST(request: Request) {
           // Send appropriate email based on status change
           switch (statusChange) {
             case "created":
+              // Send confirmation email to customer
               yield* sendReservationCreatedEmail(
                 fullReservation.reservation,
                 fullReservation.customer,
                 locale
               );
+
+              // Also send notification to business
+              yield* sendNewReservationNotification(
+                fullReservation.reservation,
+                fullReservation.customer,
+                locale
+              );
+
               emailSent = true;
-              console.log("✅ Reservation created email sent");
+              console.log(
+                "✅ Reservation created email sent to customer and notification sent to business"
+              );
               break;
 
             case "confirmed":

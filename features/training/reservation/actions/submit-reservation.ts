@@ -6,6 +6,7 @@ import { StandaloneEmailServiceLive } from "@/features/email";
 import { EmailServiceTag } from "@/features/email/backend/service";
 import type { EmailMessage } from "@/features/email/types/email.types";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import { siteConstants } from "@/shared/utils/constants";
 import { reservationSchema } from "../schemas/reservation";
 
 // Create the internal action
@@ -115,7 +116,7 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
           name: "DeskOHub Rezervace",
         },
         to: {
-          email: "reservations@deskohub.cz",
+          email: siteConstants.contact.reservationEmail,
           name: "DeskOHub Reservations",
         },
         subject: emailContent.subject,
@@ -139,7 +140,7 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
       const _result = yield* emailService.send(emailMessage).pipe(
         Effect.tap(() =>
           Effect.logInfo("Training room reservation email sent successfully", {
-            to: "reservations@deskohub.cz",
+            to: siteConstants.contact.reservationEmail,
             customerEmail: input.email,
           })
         ),
@@ -203,8 +204,8 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
             <p style="margin-top: 20px;">
               ${
                 locale === "cs-CZ"
-                  ? "Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu reservations@deskohub.cz."
-                  : "If you have any questions, please don't hesitate to contact us at reservations@deskohub.cz."
+                  ? `Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.`
+                  : `If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.`
               }
             </p>
             
@@ -227,7 +228,7 @@ Detaily rezervace:
 - Čas: ${formattedTime}
 - Doba trvání: ${duration} ${duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"}
 
-Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu reservations@deskohub.cz.
+Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.
 
 ---
 DeskOHub
@@ -243,7 +244,7 @@ Reservation Details:
 - Time: ${formattedTime}
 - Duration: ${duration} ${duration === 1 ? "hour" : "hours"}
 
-If you have any questions, please don't hesitate to contact us at reservations@deskohub.cz.
+If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.
 
 ---
 DeskOHub

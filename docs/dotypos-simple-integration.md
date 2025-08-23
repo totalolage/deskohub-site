@@ -2,7 +2,7 @@
 
 ## Overview
 
-DeskOHub integrates with Dotypos to create reservations in their POS system. The integration is intentionally simple and focused solely on creating reservations.
+DeskoHub integrates with Dotypos to create reservations in their POS system. The integration is intentionally simple and focused solely on creating reservations.
 
 ## Architecture
 
