@@ -7,6 +7,7 @@
 
 import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
 import type { BookingFormData } from "@/features/booking";
+import { getLocale } from "@/i18n";
 import {
   type DotyposConfig,
   DotyposConfigLayer,
@@ -29,6 +30,10 @@ import type {
   Table,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
+import {
+  createNoteWithMetadata,
+  createStandardMetadata,
+} from "../utils/note-metadata";
 import { selectBestTable } from "../utils/table-selection";
 
 /**
@@ -1242,13 +1247,13 @@ export { DotyposClient, DotyposConfigTag };
  */
 
 /**
- * Build note field with only special requests
+ * Build note field with special requests and metadata
  * Customer details are now stored in the customer record itself
  */
 const buildNote = (input: BookingFormData): string => {
-  // Only include special requests in the note field
-  // Customer details are available via the customer ID
-  return input.specialRequests || "";
+  // Include special requests and metadata in the note field
+  const metadata = createStandardMetadata(getLocale(), "website");
+  return createNoteWithMetadata(input.specialRequests, metadata);
 };
 
 /**

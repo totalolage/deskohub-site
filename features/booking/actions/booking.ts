@@ -20,17 +20,7 @@ const _submitBooking = createEffectSafeAction(
         inputKeys: Object.keys(input),
       });
 
-      const reservation = yield* createReservation({
-        datetime: input.datetime,
-        duration: input.duration,
-        guestCount: input.guestCount,
-        name: input.name,
-        email: input.email,
-        phone: input.phone,
-        needsLargerTable: input.needsLargerTable,
-        needsPrivateSpace: input.needsPrivateSpace,
-        specialRequests: input.specialRequests || "",
-      }).pipe(
+      const reservation = yield* createReservation(input).pipe(
         Effect.tap((res) =>
           Effect.logInfo("Reservation created successfully", res)
         ),
