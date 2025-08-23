@@ -1,23 +1,14 @@
 import { Effect } from "effect";
-import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
+import {
+  ReservationConfirmation,
+  type ReservationStatus,
+} from "@/features/reservation/components/reservation-confirmation";
 import { tableReservationsFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
-import { Badge } from "@/shared/components/ui/badge";
-import { Button } from "@/shared/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
-import { Separator } from "@/shared/components/ui/separator";
-import { formatDate, formatTime } from "@/shared/utils/date-formatting";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale_id } from "./route";
 
@@ -32,9 +23,14 @@ export default async function ReservationConfirmationPage({
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
 
+  console.log("=== Table Reservation Page Loading ===");
+  console.log("Reservation ID from URL:", id);
+  console.log("Locale:", locale);
+
   // Check if table reservations feature is enabled
   const tableReservationsEnabled = await tableReservationsFlag();
   if (!tableReservationsEnabled) {
+    console.log("Table reservations feature is disabled");
     notFound();
   }
 
@@ -45,244 +41,101 @@ export default async function ReservationConfirmationPage({
       Effect.match({
         onFailure: (error) => {
           // Log error for debugging
-          console.error("Failed to fetch reservation:", error);
+          console.error("=== Failed to fetch reservation ===");
+          console.error("Error:", error);
           // Return null to trigger 404
           return null;
         },
-        onSuccess: (data) => data,
+        onSuccess: (data) => {
+          console.log("=== Successfully fetched reservation ===");
+          console.log("Full result:", JSON.stringify(data, null, 2));
+          return data;
+        },
       })
     )
   );
 
   // If reservation not found or error, show 404
   if (!result) {
+    console.log("No result returned, showing 404");
     notFound();
   }
 
   const { reservation, customer } = result;
 
+  console.log("=== Reservation Details ===");
+  console.log("Reservation:", JSON.stringify(reservation, null, 2));
+  console.log("Reservation status:", reservation.status);
+  console.log("Customer:", JSON.stringify(customer, null, 2));
+
   // Convert API response to display format
   const displayData = getReservationDisplayData(reservation);
 
-  // Map to booking structure for the UI, using customer data directly
-  const booking = {
+  // Map Dotypos status to our simplified status model
+  let status: ReservationStatus = "submitted";
+  const apiStatus = reservation.status?.toUpperCase();
+
+  console.log("=== Status Mapping ===");
+  console.log("Original status:", reservation.status);
+  console.log("Uppercase status:", apiStatus);
+
+  if (apiStatus === "CONFIRMED") {
+    status = "confirmed";
+  } else if (apiStatus === "DECLINED" || apiStatus === "CANCELLED") {
+    status = "rejected";
+  } else if (apiStatus === "NEW") {
+    status = "submitted";
+  }
+
+  console.log("Mapped status:", status);
+
+  // Construct customer name from available fields
+  const customerName =
+    [customer.firstName, customer.lastName].filter(Boolean).join(" ").trim() ||
+    customer.companyName ||
+    "Unknown";
+
+  console.log("Customer name:", customerName);
+
+  // Parse time from the datetime
+  const datetime = displayData.datetime || new Date();
+  const time = datetime.toLocaleTimeString(locale, {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  // Map to the ReservationDetails structure
+  const reservationDetails = {
     id: displayData.id,
-    datetime: displayData.datetime || new Date(),
-    duration: displayData.duration || 2,
-    guestCount: displayData.guestCount,
-    name: `${customer.firstName} ${customer.lastName}`.trim() || "Unknown",
+    name: customerName,
     email: customer.email || "",
     phone: customer.phone || "",
+    date: datetime,
+    time,
+    duration: displayData.duration,
+    guestCount: displayData.guestCount,
+    specialRequests: reservation.note || undefined,
     tablePreference: displayData.needsLargerTable
       ? ("large" as const)
       : displayData.needsPrivateSpace
         ? ("private" as const)
         : ("standard" as const),
-    specialRequests: reservation.note || "", // Note now only contains special requests
-    submittedAt: displayData.createdAt || new Date(),
   };
 
-  const formattedDate = formatDate(booking.datetime, locale, {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-  const formattedTime = formatTime(booking.datetime, locale);
+  console.log("=== Final Reservation Details ===");
+  console.log(
+    "Details for component:",
+    JSON.stringify(reservationDetails, null, 2)
+  );
 
   return (
-    <div className="container max-w-4xl mx-auto py-12 px-4">
+    <>
       <ScrollToTop />
-      {/* Success Header */}
-      <div className="text-center mb-8">
-        <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-          <svg
-            className="w-8 h-8 text-green-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            role="img"
-            aria-label={m["accessibility.successCheckmark"]()}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M5 13l4 4L19 7"
-            />
-          </svg>
-        </div>
-        <h1 className="text-3xl font-bold text-green-800 mb-2">
-          {m["thankYou.title"]()}
-        </h1>
-        <p className="text-gray-600 text-lg">{m["thankYou.confirmation"]()}</p>
-        <Badge variant="outline" className="mt-4 px-4 py-2">
-          {m["thankYou.bookingId"]({ id })}
-        </Badge>
-      </div>
-
-      {/* Booking Details */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-green-600" />
-            {m["thankYou.bookingDetails"]()}
-          </CardTitle>
-          <CardDescription>{m["descriptions.keepInfo"]()}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Date & Time */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <Calendar className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">{m["booking.dateLabel"]()}</p>
-                  <p className="text-gray-600">{formattedDate}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Clock className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">{m["booking.durationLabel"]()}</p>
-                  <p className="text-gray-600">
-                    {m.durationFormat({ hours: booking.duration })}
-                  </p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Clock className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">{m["booking.timeLabel"]()}</p>
-                  <p className="text-gray-600">{formattedTime}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Users className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">
-                    {m["booking.guestCountLabel"]()}
-                  </p>
-                  <p className="text-gray-600">
-                    {m.guestCountPlural({ count: booking.guestCount })}
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            {/* Contact Information */}
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="w-4 h-4 bg-gray-500 rounded-full flex items-center justify-center">
-                  <span className="text-xs text-white font-bold">
-                    {booking.name.charAt(0).toUpperCase()}
-                  </span>
-                </div>
-                <div>
-                  <p className="font-medium">{m["booking.nameLabel"]()}</p>
-                  <p className="text-gray-600">{booking.name}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">{m["booking.emailLabel"]()}</p>
-                  <p className="text-gray-600">{booking.email}</p>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">{m["booking.phoneLabel"]()}</p>
-                  <p className="text-gray-600">{booking.phone}</p>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Details */}
-          <Separator className="my-6" />
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div>
-              <p className="font-medium mb-2">
-                {m["booking.tablePreferenceLabel"]()}
-              </p>
-              <p className="text-gray-600">
-                {{
-                  private: m["booking.tablePreferences.privateSpace"],
-                  standard: m["booking.tablePreferences.standard"],
-                  large: m["booking.tablePreferences.largerTable"],
-                }[booking.tablePreference]()}
-              </p>
-            </div>
-
-            {booking.specialRequests && (
-              <div>
-                <p className="font-medium mb-2">
-                  {m["booking.specialRequestsLabel"]()}
-                </p>
-                <p className="text-gray-600">{booking.specialRequests}</p>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Next Steps */}
-      <Card className="mb-8 bg-blue-50 border-blue-200">
-        <CardHeader>
-          <CardTitle className="text-blue-800">
-            {m["thankYou.nextSteps"]()}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-3 text-blue-700">
-            <p className="text-blue-700">
-              {m["thankYou.nextStepsDescription"]()}
-            </p>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Contact Information */}
-      <Card className="mb-8">
-        <CardHeader>
-          <CardTitle>{m["thankYou.questions"]()}</CardTitle>
-          <CardDescription>{m["thankYou.contactInfo"]()}</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="flex items-center gap-3">
-              <Mail className="w-5 h-5 text-green-600" />
-              <div>
-                <p className="font-medium">{m["labels.email"]()}</p>
-                <p className="text-green-600">contact@deskohub.com</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-3">
-              <Phone className="w-5 h-5 text-green-600" />
-              <div>
-                <p className="font-medium">{m["labels.phone"]()}</p>
-                <p className="text-green-600">+420 123 456 789</p>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <Button asChild className="bg-green-600 hover:bg-green-700">
-          <Link href="/">{m["thankYou.backToHome"]()}</Link>
-        </Button>
-      </div>
-    </div>
+      <ReservationConfirmation
+        status={status}
+        type="table"
+        details={reservationDetails}
+      />
+    </>
   );
 }

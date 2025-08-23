@@ -564,8 +564,9 @@
       "description": "Prosím uchovejte si tyto informace pro vaše záznamy"
     },
     "confirmation": {
-      "title": "Rezervace potvrzena!",
-      "message": "Vaše rezervace školící místnosti byla úspěšně odeslána."
+      "title": "Rezervace odeslána",
+      "message": "Vaše rezervace školící místnosti byla úspěšně odeslána. Zkontrolujeme ji a do 24 hodin vás budeme kontaktovat.",
+      "noIdMessage": "Nebylo poskytnuto ID rezervace. Zkontrolujte prosím svůj e-mail pro více informací."
     },
     "nextSteps": "Co bude následovat?",
     "nextStepsDescription": "Obdržíte potvrzující email do 24 hodin. Náš tým Vás bude kontaktovat pro potvrzení dostupnosti a dokončení rezervace školící místnosti.",

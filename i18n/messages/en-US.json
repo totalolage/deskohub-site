@@ -550,18 +550,19 @@
       "durationMax": "Duration must be at most {max} hours",
       "specialRequirementsMax": "Special requirements must be at most {max} characters"
     },
-    "details": {
-      "title": "Reservation Details",
-      "description": "Please keep this information for your records"
-    },
-    "confirmation": {
-      "title": "Reservation Confirmed!",
-      "message": "Your training room reservation has been successfully submitted."
-    },
     "nextSteps": "What's Next?",
     "nextStepsDescription": "You will receive a confirmation email within 24 hours. Our team will contact you to confirm the availability and finalize your training room booking.",
     "needChanges": "Need to Make Changes?",
-    "contactForChanges": "Feel free to contact us if you need to modify your reservation"
+    "contactForChanges": "Feel free to contact us if you need to modify your reservation",
+    "confirmation": {
+      "title": "Reservation Submitted",
+      "message": "Your training room reservation has been successfully submitted. We will review it and contact you within 24 hours.",
+      "noIdMessage": "No reservation ID provided. Please check your email for details."
+    },
+    "details": {
+      "title": "Reservation Details",
+      "description": "Please keep this information for your records"
+    }
   },
   "notFound": {
     "title": "Page Not Found",
