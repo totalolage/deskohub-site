@@ -1,3 +1,4 @@
+import type { Locale } from "@/i18n";
 import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
@@ -5,7 +6,7 @@ import type { ReservationConfirmationData } from "../types/email.types";
  */
 export function renderReservationCreatedEmail(
   data: ReservationConfirmationData,
-  locale: string = "cs-CZ"
+  locale: Locale
 ) {
   const isEnglish = locale.startsWith("en");
 

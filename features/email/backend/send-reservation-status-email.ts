@@ -9,6 +9,7 @@ import type {
   Customer,
   Reservation,
 } from "@/features/dotypos/generated/types.gen";
+import type { Locale } from "@/i18n";
 import { renderReservationConfirmedEmail } from "../templates/reservation-confirmed";
 import { renderReservationCreatedEmail } from "../templates/reservation-created";
 import { renderReservationDeclinedEmail } from "../templates/reservation-declined";
@@ -62,7 +63,7 @@ function prepareReservationData(
 export const sendReservationCreatedEmail = (
   reservation: Reservation,
   customer: Customer,
-  locale: string = "cs-CZ"
+  locale: Locale
 ) =>
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
@@ -133,7 +134,7 @@ export const sendReservationCreatedEmail = (
 export const sendReservationConfirmedEmail = (
   reservation: Reservation,
   customer: Customer,
-  locale: string = "cs-CZ"
+  locale: Locale
 ) =>
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
@@ -204,7 +205,7 @@ export const sendReservationConfirmedEmail = (
 export const sendReservationDeclinedEmail = (
   reservation: Reservation,
   customer: Customer,
-  locale: string = "cs-CZ"
+  locale: Locale
 ) =>
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;

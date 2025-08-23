@@ -18,7 +18,7 @@
 import type { Locale } from "@/i18n";
 
 export interface NoteMetadata {
-  locale?: string;
+  locale?: Locale;
   source?: string;
   timestamp?: string;
   [key: string]: string | undefined; // Allow additional metadata fields
@@ -84,26 +84,21 @@ export function createNoteWithMetadata(
 export function parseNoteWithMetadata(
   note: string | null | undefined
 ): ParsedNote {
-  if (!note) {
-    return {
-      specialRequests: "",
-      metadata: {},
-    };
-  }
+  const parsedNote: ParsedNote = {
+    specialRequests: "",
+    metadata: {},
+  };
+  if (!note) return parsedNote;
+
+  parsedNote.specialRequests = note.trim();
 
   // Check if the note contains metadata separator
   const separatorIndex = note.indexOf(METADATA_SEPARATOR);
 
-  if (separatorIndex === -1) {
-    // No metadata, entire note is special requests
-    return {
-      specialRequests: note.trim(),
-      metadata: {},
-    };
-  }
+  if (separatorIndex === -1) return parsedNote;
 
   // Extract special requests (everything before the separator)
-  const specialRequests = note.substring(0, separatorIndex).trim();
+  parsedNote.specialRequests = note.substring(0, separatorIndex).trim();
 
   // Extract metadata section
   const metadataSection = note.substring(
@@ -111,7 +106,6 @@ export function parseNoteWithMetadata(
   );
 
   // Parse metadata
-  const metadata: NoteMetadata = {};
   const lines = metadataSection.split("\n");
 
   let inMetadata = false;
@@ -136,16 +130,18 @@ export function parseNoteWithMetadata(
         const key = trimmedLine.substring(0, colonIndex).trim();
         const value = trimmedLine.substring(colonIndex + 1).trim();
         if (key && value) {
-          metadata[key] = value;
+          // Special handling for locale to ensure it's a valid Locale type
+          if (key === "locale" && (value === "cs-CZ" || value === "en-US")) {
+            parsedNote.metadata.locale = value as Locale;
+          } else if (key !== "locale") {
+            parsedNote.metadata[key] = value;
+          }
         }
       }
     }
   }
 
-  return {
-    specialRequests,
-    metadata,
-  };
+  return parsedNote;
 }
 
 /**
@@ -179,7 +175,7 @@ export function updateNoteMetadata(
  */
 export function createStandardMetadata(
   locale: Locale,
-  source: string = "website"
+  source: "website"
 ): NoteMetadata {
   return {
     locale,

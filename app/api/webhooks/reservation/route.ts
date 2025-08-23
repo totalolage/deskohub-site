@@ -9,6 +9,7 @@ import {
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
 } from "@/features/email/backend/send-reservation-status-email";
+import type { Locale } from "@/i18n";
 
 /**
  * Dotypos Reservation Webhook Payload
@@ -145,7 +146,7 @@ export async function POST(request: Request) {
         console.log("Parsed note:", JSON.stringify(parsedNote, null, 2));
 
         // Determine locale from metadata or default to Czech
-        const locale = parsedNote.metadata.locale || "cs-CZ";
+        const locale: Locale = parsedNote.metadata.locale || "cs-CZ";
         console.log(`Using locale: ${locale}`);
 
         // Determine which email to send based on status
