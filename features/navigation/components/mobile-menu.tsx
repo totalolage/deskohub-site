@@ -44,13 +44,13 @@ export function MobileMenu({ showReservations = true }: MobileMenuProps) {
   setLocale(locale, { reload: false });
 
   return (
-    <div className="md:hidden">
+    <div className="xl:hidden">
       <Sheet open={isOpen} onOpenChange={setIsOpen}>
         <SheetTrigger asChild>
           <Button
             variant="ghost"
             size="icon"
-            className="text-white hover:bg-white/10"
+            className="text-white hover:text-white hover:bg-white/10"
           >
             <Menu className="h-6 w-6" />
             <span className="sr-only">{m["nav.openMenu"]()}</span>

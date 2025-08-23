@@ -29,7 +29,7 @@ export function Header({ showReservations = true }: HeaderProps) {
             priority
           />
         </Link>
-        <nav className="hidden md:flex space-x-8">
+        <nav className="hidden xl:flex space-x-8">
           <Link href="/" className="hover:text-green-400 transition-colors">
             {m["nav.home"]()}
           </Link>
@@ -62,7 +62,7 @@ export function Header({ showReservations = true }: HeaderProps) {
           </Link>
         </nav>
         <div className="flex items-center space-x-4">
-          <div className="hidden md:flex items-center space-x-4">
+          <div className="hidden xl:flex items-center space-x-4">
             <LanguageSwitcher />
             {showReservations && (
               <Link href="/reservation">
