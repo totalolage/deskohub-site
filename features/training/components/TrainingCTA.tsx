@@ -40,7 +40,7 @@ export const TrainingCTA = async () => {
                 <CardContent className="p-6 text-center">
                   <Phone className="w-8 h-8 text-white mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-white mb-2">
-                    Zavolejte
+                    {m["training.cta.call"]()}
                   </h3>
                   <p className="text-green-100">
                     {formatPhoneNumber(siteConstants.contact.phone, locale)}
@@ -54,7 +54,7 @@ export const TrainingCTA = async () => {
                 <CardContent className="p-6 text-center">
                   <Mail className="w-8 h-8 text-white mx-auto mb-4" />
                   <h3 className="text-lg font-semibold text-white mb-2">
-                    Napište
+                    {m["training.cta.write"]()}
                   </h3>
                   <p className="text-green-100">
                     {siteConstants.contact.email}
@@ -63,15 +63,33 @@ export const TrainingCTA = async () => {
               </Card>
             </a>
 
-            <Card className="bg-white/10 border-white/20 backdrop-blur-sm">
-              <CardContent className="p-6 text-center">
-                <Calendar className="w-8 h-8 text-white mx-auto mb-4" />
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  Online
-                </h3>
-                <p className="text-green-100">Rezervační systém</p>
-              </CardContent>
-            </Card>
+            {boardroomReservationsEnabled ? (
+              <Link href="/training-room/reservation" className="block">
+                <Card className="bg-white/10 border-white/20 backdrop-blur-sm hover:bg-white/20 transition-colors">
+                  <CardContent className="p-6 text-center">
+                    <Calendar className="w-8 h-8 text-white mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-white mb-2">
+                      {m["training.cta.online"]()}
+                    </h3>
+                    <p className="text-green-100">
+                      {m["training.cta.onlineReservation"]()}
+                    </p>
+                  </CardContent>
+                </Card>
+              </Link>
+            ) : (
+              <Card className="bg-white/10 border-white/20 backdrop-blur-sm opacity-75">
+                <CardContent className="p-6 text-center">
+                  <Calendar className="w-8 h-8 text-white mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-white mb-2">
+                    {m["training.cta.online"]()}
+                  </h3>
+                  <p className="text-green-100">
+                    {m["training.cta.onlineReservation"]()}
+                  </p>
+                </CardContent>
+              </Card>
+            )}
           </div>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

@@ -489,7 +489,11 @@
     "cta": {
       "title": "For reservations or more information",
       "description": "Feel free to contact us at email: {email} or phone number {phone}. We look forward to your visit and ensuring a perfect experience for you and your guests.",
-      "button": "Contact Us"
+      "button": "Reserve Now",
+      "call": "Call",
+      "write": "Write",
+      "online": "Online",
+      "onlineReservation": "Reservation System"
     },
     "reservation": {
       "pageTitle": "Reserve Training Room",

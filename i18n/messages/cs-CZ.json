@@ -501,7 +501,11 @@
     "cta": {
       "title": "Pro rezervaci nebo více informací",
       "description": "Nás neváhejte kontaktovat na email: {email} či telefonní číslo {phone}. Těšíme se na vaši návštěvu a zajištění perfektního zážitku pro vás a vaše hosty.",
-      "button": "Kontaktovat nás"
+      "button": "Rezervovat nyní",
+      "call": "Zavolejte",
+      "write": "Napište",
+      "online": "Online",
+      "onlineReservation": "Rezervační systém"
     },
     "reservation": {
       "pageTitle": "Rezervace školící místnosti",
