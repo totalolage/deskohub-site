@@ -27,6 +27,9 @@ export const env = createEnv({
     // Webhook Security (Server-only)
     DOTYPOS_WEBHOOK_SECRET: z.uuid(),
 
+    // Email Service Configuration (Server-only)
+    RESEND_API_KEY: z.string().optional(),
+
     // Node environment
     NODE_ENV: z.enum(["development", "test", "production"]),
   },
@@ -59,6 +62,7 @@ export const env = createEnv({
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_WEBHOOK_SECRET: process.env.DOTYPOS_WEBHOOK_SECRET,
     STATSIG_SERVER_API_KEY: process.env.STATSIG_SERVER_API_KEY,
+    RESEND_API_KEY: process.env.RESEND_API_KEY,
 
     // Client variables
     NEXT_PUBLIC_STATSIG_CLIENT_KEY: process.env.NEXT_PUBLIC_STATSIG_CLIENT_KEY,

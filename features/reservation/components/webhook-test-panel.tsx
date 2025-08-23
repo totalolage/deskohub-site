@@ -126,7 +126,7 @@ export function WebhookTestPanel({
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json();
+      const data = await response.json() as { error?: string; [key: string]: any };
 
       setResponses((prev) => ({
         ...prev,

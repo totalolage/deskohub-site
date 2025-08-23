@@ -139,8 +139,8 @@ export default async function ReservationConfirmationPage({
       />
       <div className="container mx-auto px-4 pb-8">
         <WebhookTestPanel
-          reservationId={reservation.id}
-          customerId={customer.id}
+          reservationId={reservation.id || ""}
+          customerId={customer.id || ""}
           currentStatus={reservation.status}
         />
       </div>

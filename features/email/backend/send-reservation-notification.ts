@@ -8,7 +8,6 @@ import { Effect } from "effect";
 import type {
   Customer,
   Reservation,
-  Table,
 } from "@/features/dotypos/generated/types.gen";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/i18n";
@@ -22,7 +21,6 @@ import { EmailServiceTag } from "./service";
 export const sendNewReservationNotification = (
   reservation: Reservation,
   customer: Customer,
-  table: Table,
   locale: Locale
 ) =>
   Effect.gen(function* () {
@@ -86,7 +84,6 @@ export const sendNewReservationNotification = (
           <p style="margin: 5px 0;"><strong>Počet hostů:</strong> ${
             reservation.seats
           }</p>
-          <p style="margin: 5px 0;"><strong>Stůl:</strong> ${table.name}</p>
         </div>
 
         <h3 style="color: #666;">Kontaktní údaje zákazníka:</h3>
@@ -153,7 +150,6 @@ Doba trvání: ${duration} ${
       duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"
     }
 Počet hostů: ${reservation.seats}
-Stůl: ${table.name}
 
 Kontaktní údaje zákazníka:
 - Jméno: ${customerName}
