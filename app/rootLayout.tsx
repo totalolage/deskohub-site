@@ -4,6 +4,7 @@ import type { PropsWithChildren } from "react";
 import { Footer, Header } from "@/features/navigation";
 import { tableReservationsFlag } from "@/flags";
 import { getLocale } from "@/i18n";
+import { FeatureFlagDebugger } from "@/shared/components/feature-flag-debugger";
 import { Toaster } from "@/shared/components/ui/sonner";
 
 export default async function RootLayout({
@@ -21,6 +22,7 @@ export default async function RootLayout({
           </main>
           <Footer />
           <Toaster />
+          <FeatureFlagDebugger />
         </div>
       </body>
     </html>
