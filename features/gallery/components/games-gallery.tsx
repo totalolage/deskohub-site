@@ -1,9 +1,9 @@
 import Image, { type ImageProps } from "next/image";
 import Link from "next/link";
 import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
-import { boardGamesListFlag } from "@/flags";
 import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { boardGamesListFlag } from "@/shared/lib/feature-flags";
 
 export async function GamesGallery() {
   const boardGamesListEnabled = await boardGamesListFlag();

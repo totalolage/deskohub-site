@@ -196,9 +196,11 @@ Zdroj: Webový formulář
     };
 
     console.log("📧 Business notification email details:");
-    console.log(`  FROM: ${siteConstants.contact.reservationEmail} (DeskOHub Rezervace)`);
+    console.log(
+      `  FROM: ${siteConstants.contact.reservationEmail} (DeskOHub Rezervace)`
+    );
     console.log(`  TO: reservations@deskohub.cz (${siteConstants.name})`);
-    console.log(`  REPLY-TO: ${customer.email || 'none'} (${customerName})`);
+    console.log(`  REPLY-TO: ${customer.email || "none"} (${customerName})`);
     console.log(`  SUBJECT: ${subject}`);
 
     yield* emailService.send(emailMessage).pipe(

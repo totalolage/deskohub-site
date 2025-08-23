@@ -2,10 +2,10 @@ import "./globals.css";
 
 import type { PropsWithChildren } from "react";
 import { Footer, Header } from "@/features/navigation";
-import { tableReservationsFlag } from "@/flags";
 import { getLocale } from "@/i18n";
 import { FeatureFlagDebugger } from "@/shared/components/feature-flag-debugger";
 import { Toaster } from "@/shared/components/ui/sonner";
+import { tableReservationsFlag } from "@/shared/lib/feature-flags";
 
 export default async function RootLayout({
   children,

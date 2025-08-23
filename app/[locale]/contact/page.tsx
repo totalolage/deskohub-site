@@ -4,8 +4,8 @@ import {
   ContactInfo,
   ContactMap,
 } from "@/features/contact";
-import { contactFormFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
+import { contactFormFlag } from "@/shared/lib/feature-flags";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 

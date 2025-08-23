@@ -1,9 +1,9 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { BoardGamesHero, BoardGamesList } from "@/features/board-games";
-import { boardGamesListFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { boardGamesListFlag } from "@/shared/lib/feature-flags";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 

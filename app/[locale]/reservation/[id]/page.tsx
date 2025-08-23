@@ -8,9 +8,9 @@ import {
   type ReservationStatus,
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
-import { tableReservationsFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
+import { tableReservationsFlag } from "@/shared/lib/feature-flags";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale_id } from "./route";
 

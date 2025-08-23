@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
-import { menuPdfFlag } from "@/flags";
+import { menuPdfFlag } from "@/shared/lib/feature-flags";
 import { MenuClient } from "./menu-client";
 
 export async function MenuServer() {

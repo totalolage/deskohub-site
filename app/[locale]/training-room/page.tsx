@@ -4,8 +4,8 @@ import {
   TrainingHero,
   TrainingPackages,
 } from "@/features/training";
-import { galleryFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
+import { galleryFlag } from "@/shared/lib/feature-flags";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
