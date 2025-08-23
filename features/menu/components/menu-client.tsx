@@ -88,8 +88,12 @@ export function MenuClient({ categories }: MenuClientProps) {
 
     categories.forEach((category) => {
       if (!processedIds.has(category.id) && category.items.length > 0) {
-        if (defaultSection && groupedCategories[defaultSection]) {
-          groupedCategories[defaultSection].push(category);
+        if (defaultSection === "drinks") {
+          groupedCategories.drinks.push(category);
+        } else if (defaultSection === "food") {
+          groupedCategories.food.push(category);
+        } else if (defaultSection === "other") {
+          groupedCategories.other.push(category);
         }
       }
     });

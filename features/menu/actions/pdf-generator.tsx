@@ -100,8 +100,12 @@ export async function generateMenuPDF() {
           category.items[0]?.categoryId ||
           "unknown";
         if (!processedIds.has(categoryId) && category.items.length > 0) {
-          if (defaultSection && groupedCategories[defaultSection]) {
-            groupedCategories[defaultSection].push(category);
+          if (defaultSection === "drinks") {
+            groupedCategories.drinks.push(category);
+          } else if (defaultSection === "food") {
+            groupedCategories.food.push(category);
+          } else if (defaultSection === "other") {
+            groupedCategories.other.push(category);
           }
         }
       });
