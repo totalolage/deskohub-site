@@ -43,6 +43,7 @@ export function ReservationForm() {
   const form = useForm<ReservationFormData>({
     resolver: zodResolver(reservationSchema),
     defaultValues: workspaceConstants.defaultValues,
+    mode: "onBlur", // Better accessibility - validate on blur
   });
 
   const { execute, isExecuting } = useAction(submitTrainingRoomReservation, {
@@ -67,18 +68,26 @@ export function ReservationForm() {
   }
 
   return (
-    <div className="reservation-form-container max-w-2xl mx-auto">
+    <section
+      className="reservation-form-container max-w-2xl mx-auto"
+      aria-label={m["trainingReservation.form.title"]()}
+    >
       <h2 className="text-2xl font-bold mb-6">
         {m["trainingReservation.form.title"]()}
       </h2>
 
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form
+          onSubmit={form.handleSubmit(onSubmit)}
+          className="space-y-6"
+          noValidate // Use our custom validation
+          aria-label={m["trainingReservation.form.title"]()}
+        >
           {/* User Information Section */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">
+          <fieldset className="space-y-4">
+            <legend className="text-lg font-medium">
               {m["trainingReservation.form.yourInformation"]()}
-            </h3>
+            </legend>
 
             <FormField
               control={form.control}
@@ -126,6 +135,7 @@ export function ReservationForm() {
                         aria-label="Email"
                         aria-describedby="email-error"
                         aria-required="true"
+                        aria-invalid={!!fieldState.error}
                         autoComplete="email"
                         {...field}
                       />
@@ -154,6 +164,7 @@ export function ReservationForm() {
                         aria-label="Phone Number"
                         aria-describedby="phone-error"
                         aria-required="true"
+                        aria-invalid={!!fieldState.error}
                         autoComplete="tel"
                         {...field}
                       />
@@ -163,13 +174,13 @@ export function ReservationForm() {
                 )}
               />
             </div>
-          </div>
+          </fieldset>
 
           {/* Reservation Details Section */}
-          <div className="space-y-4">
-            <h3 className="text-lg font-medium">
+          <fieldset className="space-y-4">
+            <legend className="text-lg font-medium">
               {m["trainingReservation.form.reservationDetails"]()}
-            </h3>
+            </legend>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
@@ -314,7 +325,7 @@ export function ReservationForm() {
                 </FormItem>
               )}
             />
-          </div>
+          </fieldset>
 
           {/* Special Requirements Section */}
           <FormField
@@ -368,6 +379,6 @@ export function ReservationForm() {
           </Button>
         </form>
       </Form>
-    </div>
+    </section>
   );
 }

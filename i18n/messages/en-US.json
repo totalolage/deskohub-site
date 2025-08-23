@@ -531,6 +531,21 @@
       "title": "Failed to Submit Reservation",
       "description": "Please try again later or contact us directly."
     },
+    "validation": {
+      "nameRequired": "Name is required",
+      "nameMin": "Name must be at least {min} characters",
+      "nameMax": "Name must be at most {max} characters",
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address",
+      "emailMax": "Email must be at most {max} characters",
+      "phoneRequired": "Phone number is required",
+      "phoneInvalid": "Please enter a valid phone number",
+      "dateRequired": "Please select a date",
+      "timeRequired": "Please select a time",
+      "durationMin": "Duration must be at least {min} hour",
+      "durationMax": "Duration must be at most {max} hours",
+      "specialRequirementsMax": "Special requirements must be at most {max} characters"
+    },
     "details": {
       "title": "Reservation Details",
       "description": "Please keep this information for your records"

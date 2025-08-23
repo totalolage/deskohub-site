@@ -540,6 +540,21 @@
       "title": "Nepodařilo se odeslat rezervaci",
       "description": "Zkuste to prosím později nebo nás kontaktujte přímo."
     },
+    "validation": {
+      "nameRequired": "Jméno je povinné",
+      "nameMin": "Jméno musí mít alespoň {min} znaky",
+      "nameMax": "Jméno může mít maximálně {max} znaků",
+      "emailRequired": "Email je povinný",
+      "emailInvalid": "Zadejte prosím platnou emailovou adresu",
+      "emailMax": "Email může mít maximálně {max} znaků",
+      "phoneRequired": "Telefonní číslo je povinné",
+      "phoneInvalid": "Zadejte prosím platné telefonní číslo",
+      "dateRequired": "Vyberte prosím datum",
+      "timeRequired": "Vyberte prosím čas",
+      "durationMin": "Doba trvání musí být alespoň {min} hodina",
+      "durationMax": "Doba trvání může být maximálně {max} hodin",
+      "specialRequirementsMax": "Speciální požadavky mohou mít maximálně {max} znaků"
+    },
     "details": {
       "title": "Detaily rezervace",
       "description": "Prosím uchovejte si tyto informace pro vaše záznamy"

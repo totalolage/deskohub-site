@@ -1,4 +1,5 @@
 import { z } from "zod/v4";
+import { m } from "@/i18n";
 
 // Constants for workspace reservation validation
 export const workspaceConstants = {
@@ -38,57 +39,71 @@ export const workspaceConstants = {
 // User information schemas
 const nameSchema = z
   .string({
-    error: `Name must be at least ${workspaceConstants.validation.name.min} characters`,
+    error: m["trainingReservation.validation.nameRequired"](),
   })
   .min(workspaceConstants.validation.name.min, {
-    error: `Name must be at least ${workspaceConstants.validation.name.min} characters`,
+    error: m["trainingReservation.validation.nameMin"]({
+      min: workspaceConstants.validation.name.min.toString(),
+    }),
   })
   .max(workspaceConstants.validation.name.max, {
-    error: `Name must be at most ${workspaceConstants.validation.name.max} characters`,
+    error: m["trainingReservation.validation.nameMax"]({
+      max: workspaceConstants.validation.name.max.toString(),
+    }),
   });
 
 const emailSchema = z
   .string({
-    error: "Please enter a valid email address",
+    error: m["trainingReservation.validation.emailRequired"](),
   })
-  .email({ error: "Please enter a valid email address" })
+  .email({ error: m["trainingReservation.validation.emailInvalid"]() })
   .max(workspaceConstants.validation.email.max, {
-    error: `Email must be at most ${workspaceConstants.validation.email.max} characters`,
+    error: m["trainingReservation.validation.emailMax"]({
+      max: workspaceConstants.validation.email.max.toString(),
+    }),
   });
 
 const phoneSchema = z
   .string({
-    error: "Please enter a phone number",
+    error: m["trainingReservation.validation.phoneRequired"](),
   })
   .min(1, {
-    error: "Please enter a phone number",
+    error: m["trainingReservation.validation.phoneRequired"](),
   });
 
 // Reservation detail schemas
 const dateSchema = z.date({
-  error: "Please select a date",
+  error: m["trainingReservation.validation.dateRequired"](),
 });
 
 const timeSchema = z.string({
-  error: "Please select a time",
+  error: m["trainingReservation.validation.timeRequired"](),
 });
 
 const durationSchema = z
   .number({
-    error: `Duration must be at least ${workspaceConstants.validation.duration.min} hour`,
+    error: m["trainingReservation.validation.durationMin"]({
+      min: workspaceConstants.validation.duration.min.toString(),
+    }),
   })
   .min(workspaceConstants.validation.duration.min, {
-    error: `Duration must be at least ${workspaceConstants.validation.duration.min} hour`,
+    error: m["trainingReservation.validation.durationMin"]({
+      min: workspaceConstants.validation.duration.min.toString(),
+    }),
   })
   .max(workspaceConstants.validation.duration.max, {
-    error: `Duration must be at most ${workspaceConstants.validation.duration.max} hours`,
+    error: m["trainingReservation.validation.durationMax"]({
+      max: workspaceConstants.validation.duration.max.toString(),
+    }),
   });
 
 // Additional information schema
 const specialRequirementsSchema = z
   .string()
   .max(workspaceConstants.validation.specialRequirements.max, {
-    error: `Special requirements must be at most ${workspaceConstants.validation.specialRequirements.max} characters`,
+    error: m["trainingReservation.validation.specialRequirementsMax"]({
+      max: workspaceConstants.validation.specialRequirements.max.toString(),
+    }),
   })
   .optional();
 
