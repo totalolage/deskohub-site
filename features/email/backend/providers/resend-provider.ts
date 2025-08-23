@@ -102,15 +102,20 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                   : `${message.from.name || ""} <${message.from.email}>`.trim();
 
               console.log(`Sending from: ${fromAddress}`);
+              
+              const toAddresses = 
+                typeof message.to === "string"
+                  ? [message.to]
+                  : Array.isArray(message.to)
+                    ? message.to.map((r) => r.email)
+                    : [message.to.email];
+                    
+              console.log(`Sending to: ${toAddresses.join(", ")}`);
+              console.log(`Subject: ${message.subject}`);
 
               const response = await resend.emails.send({
                 from: fromAddress,
-                to:
-                  typeof message.to === "string"
-                    ? [message.to]
-                    : Array.isArray(message.to)
-                      ? message.to.map((r) => r.email)
-                      : [message.to.email],
+                to: toAddresses,
                 subject: message.subject,
                 html: message.html,
                 text: message.text || "",

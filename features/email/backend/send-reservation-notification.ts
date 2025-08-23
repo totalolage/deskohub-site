@@ -174,7 +174,7 @@ Zdroj: Webový formulář
         name: "DeskOHub Rezervace",
       },
       to: {
-        email: siteConstants.contact.email, // Send to the main business email
+        email: "reservations@deskohub.cz", // Send to the reservations inbox
         name: siteConstants.name,
       },
       subject,
@@ -195,19 +195,25 @@ Zdroj: Webový formulář
       },
     };
 
+    console.log("📧 Business notification email details:");
+    console.log(`  FROM: ${siteConstants.contact.reservationEmail} (DeskOHub Rezervace)`);
+    console.log(`  TO: reservations@deskohub.cz (${siteConstants.name})`);
+    console.log(`  REPLY-TO: ${customer.email || 'none'} (${customerName})`);
+    console.log(`  SUBJECT: ${subject}`);
+
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {
         console.log("✅ New reservation notification sent to business");
         return Effect.logInfo("New reservation notification sent", {
           reservationId: reservation.id,
-          to: siteConstants.contact.email,
+          to: "reservations@deskohub.cz",
         });
       }),
       Effect.tapError((error) => {
         console.error("❌ Failed to send reservation notification:", error);
         return Effect.logError("Failed to send reservation notification", {
           reservationId: reservation.id,
-          to: siteConstants.contact.email,
+          to: "reservations@deskohub.cz",
           error,
         });
       }),
