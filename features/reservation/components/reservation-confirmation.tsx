@@ -1,6 +1,6 @@
 "use client";
 
-import { cva, type VariantProps } from "class-variance-authority";
+import { cva } from "class-variance-authority";
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
