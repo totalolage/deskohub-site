@@ -24,6 +24,9 @@ export const env = createEnv({
     // Statsig Configuration (Server-only)
     STATSIG_SERVER_API_KEY: z.string(),
 
+    // Webhook Security (Server-only)
+    DOTYPOS_WEBHOOK_SECRET: z.uuid(),
+
     // Node environment
     NODE_ENV: z.enum(["development", "test", "production"]),
   },
@@ -54,6 +57,7 @@ export const env = createEnv({
     DOTYPOS_CLOUD_ID: process.env.DOTYPOS_CLOUD_ID,
     DOTYPOS_EMPLOYEE_ID: process.env.DOTYPOS_EMPLOYEE_ID,
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
+    DOTYPOS_WEBHOOK_SECRET: process.env.DOTYPOS_WEBHOOK_SECRET,
     STATSIG_SERVER_API_KEY: process.env.STATSIG_SERVER_API_KEY,
 
     // Client variables
