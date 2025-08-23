@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
+import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
 import {
   ReservationConfirmation,
@@ -105,6 +106,12 @@ export default async function ReservationConfirmationPage({
     minute: "2-digit",
   });
 
+  // Parse the note to extract only special requests
+  const parsedNote = reservation.note
+    ? parseNoteWithMetadata(reservation.note)
+    : null;
+  const specialRequests = parsedNote?.specialRequests || undefined;
+
   // Map to the ReservationDetails structure
   const reservationDetails = {
     id: displayData.id,
@@ -115,7 +122,7 @@ export default async function ReservationConfirmationPage({
     time,
     duration: displayData.duration,
     guestCount: displayData.guestCount,
-    specialRequests: reservation.note || undefined,
+    specialRequests,
     tablePreference: displayData.needsLargerTable
       ? ("large" as const)
       : displayData.needsPrivateSpace

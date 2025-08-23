@@ -231,8 +231,8 @@ export function FeatureFlagDebugger() {
           <DialogDescription>
             {isDevelopment ? (
               <span className="text-amber-600 font-medium">
-                ⚠️ Development Mode: All feature flags use "developer" userID.
-                Cookie overrides are disabled.
+                ⚠️ Development Mode: Cookie overrides take precedence. Default
+                userID is "developer" when no cookie is set.
               </span>
             ) : (
               <>
@@ -258,13 +258,14 @@ export function FeatureFlagDebugger() {
                     Development Mode Active
                   </h3>
                   <p className="text-amber-700">
-                    Feature flag overrides are disabled in development.
+                    Cookie overrides are now enabled in development.
                     <br />
-                    All flags use the "developer" userID for consistent testing.
+                    Set cookies to override flags, or they'll use "developer"
+                    userID by default.
                   </p>
                   <p className="text-sm text-amber-600 mt-4">
-                    Deploy to staging or production to test cookie-based
-                    overrides.
+                    You can set feature flag cookies to test different states
+                    locally.
                   </p>
                 </div>
               </div>

@@ -23,26 +23,30 @@ export const createFeatureFlag = (key: FeatureFlagKey) =>
     }),
     // Identify function that checks for manual overrides
     identify: async () => {
-      // In development, always use "developer" userID
+      // Always check for cookie-based manual override first
+      const override = await getFeatureFlagOverride(key);
+
+      // If there's a cookie override, use the corresponding user ID
+      if (override === "true") {
+        return {
+          userID: MANUAL_BUCKETING_USER_IDS.OPTIN,
+        };
+      } else if (override === "false") {
+        return {
+          userID: MANUAL_BUCKETING_USER_IDS.OPTOUT,
+        };
+      }
+
+      // If no cookie override, use environment-specific defaults
       if (isDev()) {
         return {
           userID: "developer",
         };
       }
 
-      // In production/deployed environments, check for cookie-based manual override
-      const override = await getFeatureFlagOverride(key);
-
-      // Determine the user ID based on override
-      let userID: string = MANUAL_BUCKETING_USER_IDS.DEFAULT;
-      if (override === "true") {
-        userID = MANUAL_BUCKETING_USER_IDS.OPTIN;
-      } else if (override === "false") {
-        userID = MANUAL_BUCKETING_USER_IDS.OPTOUT;
-      }
-
+      // In production without override, use default anonymous user
       return {
-        userID,
+        userID: MANUAL_BUCKETING_USER_IDS.DEFAULT,
       };
     },
   });

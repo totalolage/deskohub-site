@@ -3,6 +3,7 @@
 import { Effect } from "effect";
 import { getReservation as getReservationService } from "@/features/dotypos";
 import { DotyposServiceLive } from "@/features/dotypos/backend/service";
+import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import type { ReservationStatus } from "@/features/reservation/components/reservation-confirmation";
 
 export interface ReservationWithStatus {
@@ -112,6 +113,12 @@ export async function getReservationDetails(
 
     console.log("Constructed name:", customerName);
 
+    // Parse the note to extract only special requests
+    const parsedNote = result.reservation.note
+      ? parseNoteWithMetadata(result.reservation.note)
+      : null;
+    const specialRequests = parsedNote?.specialRequests || undefined;
+
     const finalResult = {
       id: reservationId,
       status,
@@ -121,7 +128,7 @@ export async function getReservationDetails(
       date: startDate,
       time,
       duration,
-      specialRequests: result.reservation.note || undefined,
+      specialRequests,
     };
 
     console.log("=== Final Result ===");
