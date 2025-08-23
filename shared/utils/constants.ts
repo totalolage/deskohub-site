@@ -1,6 +1,53 @@
 export const PATHNAME_HEADER = "x-pathname";
 
 export const siteConstants = {
+  menu: {
+    /**
+     * Categories grouped by section
+     * The keys are section identifiers, values are arrays of category IDs
+     * Use scripts/fetch-categories.ts to get the category IDs and names
+     */
+    categoryGroups: {
+      food: [
+        "1736938605506919", // Něco na zub
+        "1736942001880703", // Mám malý hlad
+        "541197685103289", // Pořádné jídlo
+        "1737014973909307", // Něco sladkého
+      ],
+      drinks: [
+        "3901129125927636", // Nealkoholické nápoje
+        "1507817247924883", // Teplé nápoje
+        "1507864793544647", // Alkoholické nápoje
+        "1507824601258015", // Koktejly
+      ],
+      other: [
+        "1736813943053711", // Omáčky
+        "3188160266476616", // Hry
+      ],
+    },
+    /**
+     * Categories to exclude from the menu entirely
+     * These categories won't be displayed even if they have items
+     */
+    excludedCategories: [
+      "1736748527670423", // Qerko - slevy
+      "1736937582354307", // Qerko - slevy (duplicate)
+      "1736748527631391", // Qerko - slevy (duplicate)
+      "1736937582251583", // Qerko - slevy (duplicate)
+      "2103754035291144", // Suroviny
+      "624137811421239", // Pronájem
+      "3057623321549468", // Vstup
+    ],
+    /**
+     * Whether to show uncategorized items in the "other" section
+     */
+    showUncategorized: true,
+    /**
+     * Default section for items that don't match any group
+     * Set to null to hide unmatched items
+     */
+    defaultSection: "other",
+  },
   contact: {
     phone: "+420777060478",
     phoneTraining: "+420608200377",

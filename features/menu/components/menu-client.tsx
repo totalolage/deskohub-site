@@ -2,66 +2,98 @@
 
 import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
 import { m } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
 import { MenuHero } from "./menu-hero";
 import { MenuOpeningHours } from "./menu-opening-hours";
 import { MenuPDFDownload } from "./menu-pdf-download";
 import { MenuSection } from "./menu-section";
 
-// Category display order and grouping
-const CATEGORY_GROUPS = {
-  drinks: [
-    "Nealkoholické nápoje",
-    "Teplé nápoje",
-    "Alkoholické nápoje",
-    "Pivo",
-    "Víno",
-    "Destiláty",
-    "Míchané nápoje",
-    "Koktejly",
-  ],
-  food: [
-    "Občerstvení",
-    "Teplá jídla",
-    "Předkrmy",
-    "Hlavní jídla",
-    "Dezerty",
-    "Sladké",
-    "Něco na zub",
-    "Mám malý hlad",
-    "Něco sladkého",
-    "Pořádné jídlo",
-  ],
-} as const;
-
 interface MenuClientProps {
-  categories: Array<{ name: string; items: MenuItemWithCategory[] }>;
+  categories: Array<{
+    id: string;
+    name: string;
+    items: MenuItemWithCategory[];
+  }>;
 }
 
 export function MenuClient({ categories }: MenuClientProps) {
-  // Group categories by type
+  // Group categories by type using ID-based configuration
   const groupedCategories = {
-    drinks: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
-    food: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
-    other: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
+    drinks: [] as Array<{
+      id: string;
+      name: string;
+      items: MenuItemWithCategory[];
+    }>,
+    food: [] as Array<{
+      id: string;
+      name: string;
+      items: MenuItemWithCategory[];
+    }>,
+    other: [] as Array<{
+      id: string;
+      name: string;
+      items: MenuItemWithCategory[];
+    }>,
   };
 
-  categories.forEach((category) => {
-    const isDrink = CATEGORY_GROUPS.drinks.some((name) =>
-      category.name.toLowerCase().includes(name.toLowerCase())
-    );
-    const isFood = CATEGORY_GROUPS.food.some((name) =>
-      category.name.toLowerCase().includes(name.toLowerCase())
-    );
+  // Create a map for quick category lookup by ID
+  const categoryMap = new Map(categories.map((cat) => [cat.id, cat]));
 
-    if (isDrink) {
-      groupedCategories.drinks.push(category);
-    } else if (isFood) {
+  // Process categories in the order defined in the config
+  // This ensures the display order matches the configuration
+
+  // Process food categories in config order
+  siteConstants.menu.categoryGroups.food.forEach((categoryId) => {
+    const category = categoryMap.get(categoryId);
+    if (
+      category &&
+      !siteConstants.menu.excludedCategories.includes(categoryId)
+    ) {
       groupedCategories.food.push(category);
-    } else if (category.items.length > 0) {
+    }
+  });
+
+  // Process drinks categories in config order
+  siteConstants.menu.categoryGroups.drinks.forEach((categoryId) => {
+    const category = categoryMap.get(categoryId);
+    if (
+      category &&
+      !siteConstants.menu.excludedCategories.includes(categoryId)
+    ) {
+      groupedCategories.drinks.push(category);
+    }
+  });
+
+  // Process other categories in config order
+  siteConstants.menu.categoryGroups.other.forEach((categoryId) => {
+    const category = categoryMap.get(categoryId);
+    if (
+      category &&
+      !siteConstants.menu.excludedCategories.includes(categoryId)
+    ) {
       groupedCategories.other.push(category);
     }
   });
+
+  // Handle uncategorized items if enabled
+  if (siteConstants.menu.showUncategorized) {
+    const defaultSection = siteConstants.menu.defaultSection;
+    const processedIds = new Set([
+      ...siteConstants.menu.categoryGroups.food,
+      ...siteConstants.menu.categoryGroups.drinks,
+      ...siteConstants.menu.categoryGroups.other,
+      ...siteConstants.menu.excludedCategories,
+    ]);
+
+    categories.forEach((category) => {
+      if (!processedIds.has(category.id) && category.items.length > 0) {
+        if (defaultSection && groupedCategories[defaultSection]) {
+          groupedCategories[defaultSection].push(category);
+        }
+      }
+    });
+  }
 
   return (
     <div className="bg-black">
@@ -79,7 +111,7 @@ export function MenuClient({ categories }: MenuClientProps) {
             </h1>
             {groupedCategories.food.map((category) => (
               <MenuSection
-                key={category.name}
+                key={category.id}
                 categoryName={category.name}
                 items={category.items}
               />
@@ -95,7 +127,7 @@ export function MenuClient({ categories }: MenuClientProps) {
             </h1>
             {groupedCategories.drinks.map((category) => (
               <MenuSection
-                key={category.name}
+                key={category.id}
                 categoryName={category.name}
                 items={category.items}
               />
@@ -111,7 +143,7 @@ export function MenuClient({ categories }: MenuClientProps) {
             </h1>
             {groupedCategories.other.map((category) => (
               <MenuSection
-                key={category.name}
+                key={category.id}
                 categoryName={category.name}
                 items={category.items}
               />

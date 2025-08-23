@@ -24,31 +24,10 @@ export async function generateMenuPDF() {
       })
     );
 
-    // Group categories by type (same logic as in menu-client.tsx)
-    const CATEGORY_GROUPS = {
-      drinks: [
-        "Nealkoholické nápoje",
-        "Teplé nápoje",
-        "Alkoholické nápoje",
-        "Pivo",
-        "Víno",
-        "Destiláty",
-        "Míchané nápoje",
-        "Koktejly",
-      ],
-      food: [
-        "Občerstvení",
-        "Teplá jídla",
-        "Předkrmy",
-        "Hlavní jídla",
-        "Dezerty",
-        "Sladké",
-        "Něco na zub",
-        "Mám malý hlad",
-        "Něco sladkého",
-        "Pořádné jídlo",
-      ],
-    };
+    // Use ID-based configuration from site constants
+    const { menu } = await import("@/shared/utils/constants").then(
+      (m) => m.siteConstants
+    );
 
     const groupedCategories = {
       drinks: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
@@ -56,22 +35,77 @@ export async function generateMenuPDF() {
       other: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
     };
 
-    categorizedItems.forEach((category) => {
-      const isDrink = CATEGORY_GROUPS.drinks.some((name) =>
-        category.name.toLowerCase().includes(name.toLowerCase())
-      );
-      const isFood = CATEGORY_GROUPS.food.some((name) =>
-        category.name.toLowerCase().includes(name.toLowerCase())
-      );
-
-      if (isDrink) {
-        groupedCategories.drinks.push(category);
-      } else if (isFood) {
-        groupedCategories.food.push(category);
-      } else if (category.items.length > 0) {
-        groupedCategories.other.push(category);
+    // Create a map of category names to IDs (similar to menu-server)
+    const categoryIdMap = new Map<string, string>();
+    result.categories.forEach((cat) => {
+      if (cat.name && cat.id) {
+        categoryIdMap.set(cat.name, cat.id);
       }
     });
+
+    // Create a map for quick category lookup by name
+    const categoriesByName = new Map(
+      categorizedItems.map((cat) => [cat.name, cat])
+    );
+
+    // Process categories in the order defined in the config
+    // This ensures the display order matches the configuration
+
+    // Helper function to add category by ID
+    const addCategoryById = (
+      categoryId: string,
+      targetGroup: Array<{ name: string; items: MenuItemWithCategory[] }>
+    ) => {
+      // Find category name that matches this ID
+      const categoryName = Array.from(categoryIdMap.entries()).find(
+        ([_name, id]) => id === categoryId
+      )?.[0];
+
+      if (categoryName) {
+        const category = categoriesByName.get(categoryName);
+        if (category && !menu.excludedCategories.includes(categoryId)) {
+          targetGroup.push(category);
+        }
+      }
+    };
+
+    // Process food categories in config order
+    menu.categoryGroups.food.forEach((categoryId) => {
+      addCategoryById(categoryId, groupedCategories.food);
+    });
+
+    // Process drinks categories in config order
+    menu.categoryGroups.drinks.forEach((categoryId) => {
+      addCategoryById(categoryId, groupedCategories.drinks);
+    });
+
+    // Process other categories in config order
+    menu.categoryGroups.other.forEach((categoryId) => {
+      addCategoryById(categoryId, groupedCategories.other);
+    });
+
+    // Handle uncategorized items if enabled
+    if (menu.showUncategorized) {
+      const defaultSection = menu.defaultSection;
+      const processedIds = new Set([
+        ...menu.categoryGroups.food,
+        ...menu.categoryGroups.drinks,
+        ...menu.categoryGroups.other,
+        ...menu.excludedCategories,
+      ]);
+
+      categorizedItems.forEach((category) => {
+        const categoryId =
+          categoryIdMap.get(category.name) ||
+          category.items[0]?.categoryId ||
+          "unknown";
+        if (!processedIds.has(categoryId) && category.items.length > 0) {
+          if (defaultSection && groupedCategories[defaultSection]) {
+            groupedCategories[defaultSection].push(category);
+          }
+        }
+      });
+    }
 
     // Create HTML content for PDF
     const htmlContent = `

@@ -33,13 +33,12 @@
   },
   "overrides": [
     {
-      "includes": ["**/generated/**"],
+      "includes": ["**/generated/**", "features/dotypos/generated/**"],
       "linter": {
-        "rules": {
-          "suspicious": {
-            "noExplicitAny": "off"
-          }
-        }
+        "enabled": false
+      },
+      "formatter": {
+        "enabled": false
       }
     }
   ],

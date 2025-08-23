@@ -13,9 +13,19 @@ export async function MenuServer() {
   try {
     const result = await Effect.runPromise(program);
 
-    // Convert Map to array for client component
+    // Create a map of category names to IDs
+    const categoryIdMap = new Map<string, string>();
+    result.categories.forEach((cat) => {
+      if (cat.name && cat.id) {
+        categoryIdMap.set(cat.name, cat.id);
+      }
+    });
+
+    // Convert Map to array for client component with category IDs
     const categories = Array.from(result.itemsByCategory.entries()).map(
       ([categoryName, items]) => ({
+        id:
+          categoryIdMap.get(categoryName) || items[0]?.categoryId || "unknown",
         name: categoryName,
         items: items,
       })
