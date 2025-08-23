@@ -14,6 +14,11 @@ export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
 export { ResendEmailProviderLive } from "./backend/providers/resend-provider";
 // Direct email sending functions
 export { sendReservationConfirmationEmail } from "./backend/send-reservation-email";
+export {
+  sendReservationConfirmedEmail,
+  sendReservationCreatedEmail,
+  sendReservationDeclinedEmail,
+} from "./backend/send-reservation-status-email";
 // Services and Tags (only what's actually used externally)
 export { EmailConfigTag, EmailServiceError } from "./backend/service";
 // Standalone Email Service
