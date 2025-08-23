@@ -224,5 +224,17 @@ export const DotyposServiceMockLive = Layer.succeed(
         yield* Effect.logInfo("MOCK: Getting tables");
         return mockTables;
       }),
+
+    getProducts: () =>
+      Effect.gen(function* () {
+        yield* Effect.logInfo("MOCK: Getting products");
+        return [];
+      }),
+
+    getCategories: () =>
+      Effect.gen(function* () {
+        yield* Effect.logInfo("MOCK: Getting categories");
+        return [];
+      }),
   })
 );

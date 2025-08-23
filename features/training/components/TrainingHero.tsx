@@ -10,7 +10,9 @@ interface TrainingHeroProps {
   showGalleryButton?: boolean;
 }
 
-export const TrainingHero = ({ showGalleryButton = false }: TrainingHeroProps) => {
+export const TrainingHero = ({
+  showGalleryButton = false,
+}: TrainingHeroProps) => {
   return (
     <Hero imageSrc={trainingRoomImage.src} alignment="left">
       <div>

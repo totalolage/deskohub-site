@@ -117,7 +117,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: "0"
+            default: 0
       responses:
         '200':
           description: List of reservations
@@ -277,7 +277,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: "0"
+            default: 0
       responses:
         '200':
           description: Paginated list of customers
@@ -353,7 +353,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: "0"
+            default: 0
       responses:
         '200':
           description: Paginated list of tables
@@ -401,7 +401,7 @@ paths:
           in: query
           schema:
             type: integer
-            default: "0"
+            default: 0
         - name: include
           in: query
           description: Include related entities (comma-separated, e.g., "customizations,ingredients")

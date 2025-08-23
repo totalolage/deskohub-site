@@ -1,7 +1,7 @@
 import { Config, Context, Effect, Layer } from "effect";
 import { ConsoleEmailProviderLive } from "./providers/console-provider";
 import { ResendEmailProviderLive } from "./providers/resend-provider";
-import { EmailProviderTag, type EmailProvider } from "./service";
+import type { EmailProvider } from "./service";
 
 export type EmailProviderType = "console" | "resend";
 

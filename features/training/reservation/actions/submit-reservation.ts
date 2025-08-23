@@ -2,11 +2,11 @@
 
 import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
-import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import { EmailServiceTag } from "@/features/email/backend/service";
-import { reservationSchema } from "../schemas/reservation";
 import type { EmailMessage } from "@/features/email/types/email.types";
+import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import { reservationSchema } from "../schemas/reservation";
 
 // Create the internal action
 const _submitTrainingRoomReservation = createEffectSafeAction(
@@ -15,7 +15,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
     Effect.gen(function* () {
       const emailService = yield* EmailServiceTag;
       const locale = context.locale;
-      
+
       yield* Effect.logInfo("Training room reservation submission", {
         input,
         locale,
@@ -23,12 +23,12 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
 
       // Format the date and time for display
       const formattedDate = input.date.toLocaleDateString(locale, {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
       });
-      
+
       const formattedTime = input.time;
       const duration = input.duration;
 
@@ -67,16 +67,20 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
               </tr>
               <tr>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Doba trvání:</strong></td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${duration === 1 ? 'hodina' : duration < 5 ? 'hodiny' : 'hodin'}</td>
+                <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"}</td>
               </tr>
             </table>
             
-            ${input.specialRequirements ? `
+            ${
+              input.specialRequirements
+                ? `
               <h3 style="color: #666; margin-top: 20px;">Speciální požadavky:</h3>
               <p style="background-color: #f5f5f5; padding: 12px; border-radius: 4px;">
                 ${input.specialRequirements}
               </p>
-            ` : ''}
+            `
+                : ""
+            }
             
             <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
             <p style="color: #999; font-size: 12px;">
@@ -95,31 +99,31 @@ Kontaktní údaje:
 Detaily rezervace:
 - Datum: ${formattedDate}
 - Čas: ${formattedTime}
-- Doba trvání: ${duration} ${duration === 1 ? 'hodina' : duration < 5 ? 'hodiny' : 'hodin'}
+- Doba trvání: ${duration} ${duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"}
 
-${input.specialRequirements ? `Speciální požadavky:\n${input.specialRequirements}` : ''}
+${input.specialRequirements ? `Speciální požadavky:\n${input.specialRequirements}` : ""}
 
 ---
 Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
-        `.trim()
+        `.trim(),
       };
 
       // Create the email message
       const emailMessage: EmailMessage = {
         from: {
           email: "noreply@deskohub.cz",
-          name: "DeskOHub Rezervace"
+          name: "DeskOHub Rezervace",
         },
         to: {
           email: "reservations@deskohub.cz",
-          name: "DeskOHub Reservations"
+          name: "DeskOHub Reservations",
         },
         subject: emailContent.subject,
         html: emailContent.html,
         text: emailContent.text,
         replyTo: {
           email: input.email,
-          name: input.name
+          name: input.name,
         },
         tags: ["training-room-reservation"],
         metadata: {
@@ -128,11 +132,11 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
           customerEmail: input.email,
           date: input.date.toISOString(),
           time: input.time,
-        }
+        },
       };
 
       // Send the email
-      const result = yield* emailService.send(emailMessage).pipe(
+      const _result = yield* emailService.send(emailMessage).pipe(
         Effect.tap(() =>
           Effect.logInfo("Training room reservation email sent successfully", {
             to: "reservations@deskohub.cz",
@@ -151,21 +155,23 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
       const confirmationMessage: EmailMessage = {
         from: {
           email: "noreply@deskohub.cz",
-          name: "DeskOHub"
+          name: "DeskOHub",
         },
         to: {
           email: input.email,
-          name: input.name
+          name: input.name,
         },
-        subject: locale === "cs-CZ" 
-          ? "Potvrzení rezervace školící místnosti - DeskOHub"
-          : "Training Room Reservation Confirmation - DeskOHub",
+        subject:
+          locale === "cs-CZ"
+            ? "Potvrzení rezervace školící místnosti - DeskOHub"
+            : "Training Room Reservation Confirmation - DeskOHub",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #333;">${locale === "cs-CZ" ? "Potvrzení rezervace" : "Reservation Confirmation"}</h2>
-            <p>${locale === "cs-CZ" 
-              ? "Děkujeme za Vaši rezervaci školící místnosti. Přijali jsme Vaši žádost a brzy Vás budeme kontaktovat s potvrzením."
-              : "Thank you for your training room reservation. We have received your request and will contact you soon with confirmation."
+            <p>${
+              locale === "cs-CZ"
+                ? "Děkujeme za Vaši rezervaci školící místnosti. Přijali jsme Vaši žádost a brzy Vás budeme kontaktovat s potvrzením."
+                : "Thank you for your training room reservation. We have received your request and will contact you soon with confirmation."
             }</p>
             
             <h3 style="color: #666;">${locale === "cs-CZ" ? "Detaily rezervace:" : "Reservation Details:"}</h3>
@@ -180,17 +186,25 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
               </tr>
               <tr>
                 <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${locale === "cs-CZ" ? "Doba trvání:" : "Duration:"}</strong></td>
-                <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${locale === "cs-CZ" 
-                  ? (duration === 1 ? 'hodina' : duration < 5 ? 'hodiny' : 'hodin')
-                  : (duration === 1 ? 'hour' : 'hours')
+                <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${
+                  locale === "cs-CZ"
+                    ? duration === 1
+                      ? "hodina"
+                      : duration < 5
+                        ? "hodiny"
+                        : "hodin"
+                    : duration === 1
+                      ? "hour"
+                      : "hours"
                 }</td>
               </tr>
             </table>
             
             <p style="margin-top: 20px;">
-              ${locale === "cs-CZ" 
-                ? "Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu reservations@deskohub.cz."
-                : "If you have any questions, please don't hesitate to contact us at reservations@deskohub.cz."
+              ${
+                locale === "cs-CZ"
+                  ? "Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu reservations@deskohub.cz."
+                  : "If you have any questions, please don't hesitate to contact us at reservations@deskohub.cz."
               }
             </p>
             
@@ -201,7 +215,9 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
             </p>
           </div>
         `,
-        text: locale === "cs-CZ" ? `
+        text:
+          locale === "cs-CZ"
+            ? `
 Potvrzení rezervace
 
 Děkujeme za Vaši rezervaci školící místnosti. Přijali jsme Vaši žádost a brzy Vás budeme kontaktovat s potvrzením.
@@ -209,14 +225,15 @@ Děkujeme za Vaši rezervaci školící místnosti. Přijali jsme Vaši žádost
 Detaily rezervace:
 - Datum: ${formattedDate}
 - Čas: ${formattedTime}
-- Doba trvání: ${duration} ${duration === 1 ? 'hodina' : duration < 5 ? 'hodiny' : 'hodin'}
+- Doba trvání: ${duration} ${duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"}
 
 Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu reservations@deskohub.cz.
 
 ---
 DeskOHub
 Váš prostor pro práci a kreativitu
-        `.trim() : `
+        `.trim()
+            : `
 Reservation Confirmation
 
 Thank you for your training room reservation. We have received your request and will contact you soon with confirmation.
@@ -224,7 +241,7 @@ Thank you for your training room reservation. We have received your request and 
 Reservation Details:
 - Date: ${formattedDate}
 - Time: ${formattedTime}
-- Duration: ${duration} ${duration === 1 ? 'hour' : 'hours'}
+- Duration: ${duration} ${duration === 1 ? "hour" : "hours"}
 
 If you have any questions, please don't hesitate to contact us at reservations@deskohub.cz.
 
@@ -254,9 +271,10 @@ Your space for work and creativity
       return {
         success: true,
         reservationId: `TR-${Date.now()}`,
-        message: locale === "cs-CZ" 
-          ? "Rezervace byla úspěšně odeslána" 
-          : "Reservation submitted successfully"
+        message:
+          locale === "cs-CZ"
+            ? "Rezervace byla úspěšně odeslána"
+            : "Reservation submitted successfully",
       };
     }).pipe(
       Effect.withSpan("submitTrainingRoomReservation", {
@@ -276,16 +294,16 @@ export const submitTrainingRoomReservation = async (
 ) => {
   "use server";
   const result = await _submitTrainingRoomReservation(...args);
-  
+
   // If successful, redirect to confirmation page
   if (result?.data?.success) {
     // Use the reservationId that was generated
     const reservationId = result.data.reservationId;
-    
+
     // Create a simple confirmation URL with just the ID
     // The confirmation page will display a generic success message
     redirect(`/training-room/reservation/confirmation?id=${reservationId}`);
   }
-  
+
   return result;
 };

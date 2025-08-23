@@ -8,9 +8,7 @@ export const env = createEnv({
    */
   server: {
     // Dotypos API Configuration (Server-only)
-    DOTYPOS_CLIENT_ID: z
-      .string()
-      .min(1, "DOTYPOS_CLIENT_ID is required"),
+    DOTYPOS_CLIENT_ID: z.string().min(1, "DOTYPOS_CLIENT_ID is required"),
     DOTYPOS_CLIENT_SECRET: z
       .string()
       .min(1, "DOTYPOS_CLIENT_SECRET is required"),
@@ -49,8 +47,7 @@ export const env = createEnv({
 
     // Server variables
     DOTYPOS_CLIENT_ID: process.env.DOTYPOS_CLIENT_ID,
-    DOTYPOS_CLIENT_SECRET:
-      process.env.DOTYPOS_CLIENT_SECRET,
+    DOTYPOS_CLIENT_SECRET: process.env.DOTYPOS_CLIENT_SECRET,
     DOTYPOS_REFRESH_TOKEN: process.env.DOTYPOS_REFRESH_TOKEN,
     DOTYPOS_API_URL: process.env.DOTYPOS_API_URL,
     DOTYPOS_BRANCH_ID: process.env.DOTYPOS_BRANCH_ID,
@@ -72,7 +69,7 @@ export const env = createEnv({
   onValidationError: (error) => {
     console.error(
       "❌ Invalid environment variables:",
-      error.map((err) => err.message).join("\n=======\n")
+      JSON.stringify(error, null, 2)
     );
     throw new Error("Invalid environment variables");
   },

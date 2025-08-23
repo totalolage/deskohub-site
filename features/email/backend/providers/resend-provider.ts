@@ -1,10 +1,14 @@
 import { Config, Context, Effect, Layer } from "effect";
 import { Resend } from "resend";
+import {
+  type EmailProvider,
+  EmailProviderTag,
+  EmailServiceError,
+} from "@/features/email/backend/service";
 import type {
   EmailMessage,
   EmailSendResult,
 } from "@/features/email/types/email.types";
-import { EmailProviderTag, EmailServiceError, type EmailProvider } from "@/features/email/backend/service";
 import { NetworkError } from "@/shared/backend/errors";
 
 interface ResendConfig {
@@ -53,7 +57,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           console.log("📧 EMAIL (Resend not configured - console fallback)");
           console.log("=".repeat(80));
           console.log(
-            `To: ${typeof message.to === "string" ? message.to : Array.isArray(message.to) ? message.to.map(r => r.email).join(", ") : message.to.email}`
+            `To: ${typeof message.to === "string" ? message.to : Array.isArray(message.to) ? message.to.map((r) => r.email).join(", ") : message.to.email}`
           );
           console.log(
             `From: ${typeof message.from === "string" ? message.from : message.from.email}`
@@ -100,12 +104,16 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                   typeof message.to === "string"
                     ? [message.to]
                     : Array.isArray(message.to)
-                    ? message.to.map(r => r.email)
-                    : [message.to.email],
+                      ? message.to.map((r) => r.email)
+                      : [message.to.email],
                 subject: message.subject,
                 html: message.html,
                 text: message.text || "",
-                replyTo: message.replyTo ? (typeof message.replyTo === 'string' ? message.replyTo : message.replyTo.email) : undefined,
+                replyTo: message.replyTo
+                  ? typeof message.replyTo === "string"
+                    ? message.replyTo
+                    : message.replyTo.email
+                  : undefined,
               }),
             catch: (error) =>
               new NetworkError({

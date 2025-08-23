@@ -105,7 +105,7 @@ interface DotyposApi {
 
   readonly getCategories: (params: {
     path: { cloudId: string };
-    query?: { limit?: number; offset?: number };
+    query?: { page?: string; limit?: string; filter?: string; sort?: string };
   }) => Effect.Effect<Category[], ExternalAPIError | NetworkError>;
 }
 
@@ -835,7 +835,7 @@ const DotyposApiLayer = Layer.scoped(
               const response = await generatedApi.getCategories(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  query: params.query || { limit: 100 },
+                  query: params.query || { limit: "100" },
                 })
               );
 
@@ -1219,7 +1219,7 @@ const DotyposClientLive = Layer.effect(
         api
           .getCategories({
             path: { cloudId: config.cloudId },
-            query: { limit: 100 },
+            query: { limit: "100" },
           })
           .pipe(Effect.retry(retryPolicy)),
     };
@@ -1543,10 +1543,7 @@ export const getMenuItems = (): Effect.Effect<
               : product.vat || 0,
           categoryId: product._categoryId || "uncategorized",
           categoryName: category?.name || "Uncategorized",
-          categoryDisplayIndex:
-            typeof category?.displayIndex === "string"
-              ? parseInt(category.displayIndex)
-              : category?.displayIndex || 999,
+          categoryDisplayIndex: 999, // Categories don't have display index in API
           unit: product.unit || "pcs",
           imageUrl: product.imageUrl || null,
           available: product.stockDeduct === false || true, // If stock not tracked, always available

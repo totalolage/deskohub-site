@@ -4,10 +4,10 @@ import {
   TrainingHero,
   TrainingPackages,
 } from "@/features/training";
+import { galleryFlag } from "@/flags";
 import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
-import { galleryFlag } from "@/flags";
 
 export const generateMetadata = metadata({
   title: m["training.pageTitle"](),

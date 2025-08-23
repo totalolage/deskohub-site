@@ -3,9 +3,10 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
+import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { useAction } from "next-safe-action/hooks";
+import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import {
@@ -31,13 +32,12 @@ import {
 } from "@/shared/components/ui/select";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
-import { m } from "@/i18n";
+import { submitTrainingRoomReservation } from "../actions/submit-reservation";
 import {
   type ReservationFormData,
   reservationSchema,
   workspaceConstants,
 } from "../schemas/reservation";
-import { submitTrainingRoomReservation } from "../actions/submit-reservation";
 
 export function ReservationForm() {
   const form = useForm<ReservationFormData>({
@@ -68,25 +68,33 @@ export function ReservationForm() {
 
   return (
     <div className="reservation-form-container max-w-2xl mx-auto">
-      <h2 className="text-2xl font-bold mb-6">{m["trainingReservation.form.title"]()}</h2>
+      <h2 className="text-2xl font-bold mb-6">
+        {m["trainingReservation.form.title"]()}
+      </h2>
 
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
           {/* User Information Section */}
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">{m["trainingReservation.form.yourInformation"]()}</h3>
+            <h3 className="text-lg font-medium">
+              {m["trainingReservation.form.yourInformation"]()}
+            </h3>
 
             <FormField
               control={form.control}
               name="name"
               render={({ field, fieldState }) => (
                 <FormItem>
-                  <FormLabel htmlFor="name">{m["trainingReservation.form.fullName"]()}</FormLabel>
+                  <FormLabel htmlFor="name">
+                    {m["trainingReservation.form.fullName"]()}
+                  </FormLabel>
                   <FormControl>
                     <Input
                       id="name"
                       variant={fieldState.error ? "error" : "default"}
-                      placeholder={m["trainingReservation.form.fullNamePlaceholder"]()}
+                      placeholder={m[
+                        "trainingReservation.form.fullNamePlaceholder"
+                      ]()}
                       aria-label="Full Name"
                       aria-describedby="name-error"
                       aria-required="true"
@@ -104,13 +112,17 @@ export function ReservationForm() {
                 name="email"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel htmlFor="email">{m["trainingReservation.form.email"]()}</FormLabel>
+                    <FormLabel htmlFor="email">
+                      {m["trainingReservation.form.email"]()}
+                    </FormLabel>
                     <FormControl>
                       <Input
                         id="email"
                         type="email"
                         variant={fieldState.error ? "error" : "default"}
-                        placeholder={m["trainingReservation.form.emailPlaceholder"]()}
+                        placeholder={m[
+                          "trainingReservation.form.emailPlaceholder"
+                        ]()}
                         aria-label="Email"
                         aria-describedby="email-error"
                         aria-required="true"
@@ -128,13 +140,17 @@ export function ReservationForm() {
                 name="phone"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel htmlFor="phone">{m["trainingReservation.form.phone"]()}</FormLabel>
+                    <FormLabel htmlFor="phone">
+                      {m["trainingReservation.form.phone"]()}
+                    </FormLabel>
                     <FormControl>
                       <Input
                         id="phone"
                         type="tel"
                         variant={fieldState.error ? "error" : "default"}
-                        placeholder={m["trainingReservation.form.phonePlaceholder"]()}
+                        placeholder={m[
+                          "trainingReservation.form.phonePlaceholder"
+                        ]()}
                         aria-label="Phone Number"
                         aria-describedby="phone-error"
                         aria-required="true"
@@ -151,7 +167,9 @@ export function ReservationForm() {
 
           {/* Reservation Details Section */}
           <div className="space-y-4">
-            <h3 className="text-lg font-medium">{m["trainingReservation.form.reservationDetails"]()}</h3>
+            <h3 className="text-lg font-medium">
+              {m["trainingReservation.form.reservationDetails"]()}
+            </h3>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
@@ -159,7 +177,9 @@ export function ReservationForm() {
                 name="date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel htmlFor="date-button">{m["trainingReservation.form.date"]()}</FormLabel>
+                    <FormLabel htmlFor="date-button">
+                      {m["trainingReservation.form.date"]()}
+                    </FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
@@ -179,7 +199,9 @@ export function ReservationForm() {
                             {field.value ? (
                               format(field.value, "PPP")
                             ) : (
-                              <span>{m["trainingReservation.form.pickDate"]()}</span>
+                              <span>
+                                {m["trainingReservation.form.pickDate"]()}
+                              </span>
                             )}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
@@ -209,7 +231,9 @@ export function ReservationForm() {
                 name="time"
                 render={({ field, fieldState }) => (
                   <FormItem>
-                    <FormLabel htmlFor="time-select">{m["trainingReservation.form.time"]()}</FormLabel>
+                    <FormLabel htmlFor="time-select">
+                      {m["trainingReservation.form.time"]()}
+                    </FormLabel>
                     <Select
                       onValueChange={field.onChange}
                       defaultValue={field.value}
@@ -222,7 +246,11 @@ export function ReservationForm() {
                           aria-describedby="time-error"
                           aria-required="true"
                         >
-                          <SelectValue placeholder={m["trainingReservation.form.selectTime"]()} />
+                          <SelectValue
+                            placeholder={m[
+                              "trainingReservation.form.selectTime"
+                            ]()}
+                          />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -267,7 +295,11 @@ export function ReservationForm() {
                         aria-describedby="duration-error"
                         aria-required="true"
                       >
-                        <SelectValue placeholder={m["trainingReservation.form.selectDuration"]()} />
+                        <SelectValue
+                          placeholder={m[
+                            "trainingReservation.form.selectDuration"
+                          ]()}
+                        />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
@@ -297,7 +329,9 @@ export function ReservationForm() {
                   <Textarea
                     id="special-requirements"
                     variant={fieldState.error ? "error" : "default"}
-                    placeholder={m["trainingReservation.form.specialRequirementsPlaceholder"]()}
+                    placeholder={m[
+                      "trainingReservation.form.specialRequirementsPlaceholder"
+                    ]()}
                     className="min-h-[100px]"
                     aria-label="Special requirements"
                     aria-describedby="special-requirements-error special-requirements-count"
@@ -328,7 +362,9 @@ export function ReservationForm() {
             disabled={isExecuting}
             aria-busy={isExecuting}
           >
-            {isExecuting ? m["trainingReservation.form.submitting"]() : m["trainingReservation.form.submit"]()}
+            {isExecuting
+              ? m["trainingReservation.form.submitting"]()
+              : m["trainingReservation.form.submit"]()}
           </Button>
         </form>
       </Form>

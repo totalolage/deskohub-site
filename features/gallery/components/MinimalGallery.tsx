@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { m } from "@/i18n";
+import barFront from "@/assets/images/photos/bar_front_1.jpeg";
 
 // Import all images
 import barWithStaff1 from "@/assets/images/photos/bar_with_staff_1.jpeg";
@@ -10,7 +10,6 @@ import barWithStaff3 from "@/assets/images/photos/bar_with_staff_3.jpeg";
 import barWithStaff4 from "@/assets/images/photos/bar_with_staff_4.jpeg";
 import barWithStaff5 from "@/assets/images/photos/bar_with_staff_5.jpeg";
 import barWithStaffAesthetic from "@/assets/images/photos/bar_with_staff_aesthetic_photo_front.jpeg";
-import barFront from "@/assets/images/photos/bar_front_1.jpeg";
 import boardgameInProgress from "@/assets/images/photos/boardgame_in_progress_1.jpeg";
 import boardgameShelves1 from "@/assets/images/photos/boardgame_shelves_1.jpeg";
 import boardgameShelves2 from "@/assets/images/photos/boardgame_shelves_2.jpeg";
@@ -45,6 +44,7 @@ import trainingRoom5 from "@/assets/images/photos/training_room_5.jpeg";
 import viewBehindBar from "@/assets/images/photos/view_behind_bar.jpeg";
 import viewFromBar from "@/assets/images/photos/view_from_bar.jpeg";
 import viewOfDoor from "@/assets/images/photos/view_of_door_from_behind_bar_with_staff.jpeg";
+import { m } from "@/i18n";
 
 export function MinimalGallery() {
   const galleryImages = [
@@ -53,7 +53,7 @@ export function MinimalGallery() {
     { src: mainRoom2, alt: "Main room" },
     { src: mainRoom3, alt: "Main room" },
     { src: viewFromBar, alt: "View from bar" },
-    
+
     // Bar area
     { src: barFront, alt: "Bar front" },
     { src: barWithStaff1, alt: "Bar with staff" },
@@ -65,7 +65,7 @@ export function MinimalGallery() {
     { src: viewBehindBar, alt: "View behind bar" },
     { src: viewOfDoor, alt: "View of door from bar" },
     { src: liquorShelf, alt: "Liquor shelf" },
-    
+
     // Customers playing
     { src: customersPlaying1, alt: "Customers playing games" },
     { src: customersPlaying2, alt: "Customers playing games" },
@@ -78,23 +78,23 @@ export function MinimalGallery() {
     { src: customersPlaying9, alt: "Customers playing games" },
     { src: customersPlaying10, alt: "Customers playing games" },
     { src: customersPlaying11, alt: "Customers playing games" },
-    
+
     // Games
     { src: boardgameInProgress, alt: "Board game in progress" },
     { src: boardgameShelves1, alt: "Board game shelves" },
     { src: boardgameShelves2, alt: "Board game shelves" },
-    
+
     // Training/Team building room
     { src: teambuildingRoom1, alt: "Team building room" },
     { src: teambuildingRoom2, alt: "Team building room" },
     { src: teambuildingRoom3, alt: "Team building room" },
     { src: teambuildingRoom4, alt: "Team building room" },
     { src: trainingRoom5, alt: "Training room" },
-    
+
     // Other
     { src: menuAndCoffee, alt: "Menu and coffee" },
     { src: product, alt: "Product" },
-    
+
     // Outside/Renovations
     { src: outsideRenovations1, alt: "Outside renovations" },
     { src: outsideRenovations2, alt: "Outside renovations" },
@@ -109,7 +109,7 @@ export function MinimalGallery() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-4">{m["gallery.hero.title"]()}</h1>
       </div>
-      
+
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
         {galleryImages.map((image, index) => (
           <div

@@ -4,6 +4,7 @@ import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { m } from "@/i18n/paraglide/messages";
+import { useLocale } from "@/i18n/utils/use-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -14,8 +15,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { Separator } from "@/shared/components/ui/separator";
-import { formatDate, formatTime } from "@/shared/utils/date-formatting";
-import { useLocale } from "@/i18n/utils/use-locale";
+import { formatDate } from "@/shared/utils/date-formatting";
 
 export type ReservationStatus = "submitted" | "confirmed" | "rejected";
 
@@ -62,7 +62,6 @@ export function ReservationConfirmation({
         return "green";
       case "rejected":
         return "red";
-      case "submitted":
       default:
         return "blue";
     }
@@ -104,7 +103,6 @@ export function ReservationConfirmation({
             />
           </svg>
         );
-      case "submitted":
       default:
         return (
           <svg
@@ -128,13 +126,12 @@ export function ReservationConfirmation({
     if (type === "training-room" && status === "submitted") {
       return m["trainingReservation.confirmation.title"]();
     }
-    
+
     switch (status) {
       case "confirmed":
         return m["thankYou.title"]();
       case "rejected":
         return m["reservationRejected.title"]();
-      case "submitted":
       default:
         return m["reservationSubmitted.title"]();
     }
@@ -154,7 +151,6 @@ export function ReservationConfirmation({
         return m["thankYou.confirmation"]();
       case "rejected":
         return m["reservationRejected.message"]();
-      case "submitted":
       default:
         return m["reservationSubmitted.message"]();
     }
@@ -164,7 +160,9 @@ export function ReservationConfirmation({
     <div className="container max-w-4xl mx-auto py-12 px-4">
       {/* Status Header */}
       <div className="text-center mb-8">
-        <div className={`w-16 h-16 bg-${color}-100 rounded-full flex items-center justify-center mx-auto mb-4`}>
+        <div
+          className={`w-16 h-16 bg-${color}-100 rounded-full flex items-center justify-center mx-auto mb-4`}
+        >
           {getStatusIcon()}
         </div>
         <h1 className={`text-3xl font-bold text-${color}-800 mb-2`}>
@@ -183,7 +181,7 @@ export function ReservationConfirmation({
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calendar className={`w-5 h-5 text-${color}-600`} />
-            {type === "training-room" 
+            {type === "training-room"
               ? m["trainingReservation.details.title"]()
               : m["thankYou.bookingDetails"]()}
           </CardTitle>
@@ -217,7 +215,9 @@ export function ReservationConfirmation({
                 <div className="flex items-center gap-3">
                   <Clock className="w-4 h-4 text-gray-500" />
                   <div>
-                    <p className="font-medium">{m["booking.durationLabel"]()}</p>
+                    <p className="font-medium">
+                      {m["booking.durationLabel"]()}
+                    </p>
                     <p className="text-gray-600">
                       {m.durationFormat({ hours: details.duration })}
                     </p>
@@ -229,7 +229,9 @@ export function ReservationConfirmation({
                 <div className="flex items-center gap-3">
                   <Users className="w-4 h-4 text-gray-500" />
                   <div>
-                    <p className="font-medium">{m["booking.guestCountLabel"]()}</p>
+                    <p className="font-medium">
+                      {m["booking.guestCountLabel"]()}
+                    </p>
                     <p className="text-gray-600">
                       {m.guestCountPlural({ count: details.guestCount })}
                     </p>
@@ -281,11 +283,13 @@ export function ReservationConfirmation({
                       {m["booking.tablePreferenceLabel"]()}
                     </p>
                     <p className="text-gray-600">
-                      {{
-                        private: m["booking.tablePreferences.privateSpace"](),
-                        standard: m["booking.tablePreferences.standard"](),
-                        large: m["booking.tablePreferences.largerTable"](),
-                      }[details.tablePreference]}
+                      {
+                        {
+                          private: m["booking.tablePreferences.privateSpace"](),
+                          standard: m["booking.tablePreferences.standard"](),
+                          large: m["booking.tablePreferences.largerTable"](),
+                        }[details.tablePreference]
+                      }
                     </p>
                   </div>
                 )}
@@ -337,7 +341,7 @@ export function ReservationConfirmation({
               <div>
                 <p className="font-medium">{m["labels.email"]()}</p>
                 <p className={`text-${color}-600`}>
-                  {type === "training-room" 
+                  {type === "training-room"
                     ? "reservations@deskohub.cz"
                     : "contact@deskohub.com"}
                 </p>
