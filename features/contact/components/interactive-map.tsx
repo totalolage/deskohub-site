@@ -10,6 +10,7 @@ import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 
 // Fix for default markers in React-Leaflet
+// biome-ignore lint/suspicious/noExplicitAny: Leaflet's type definitions don't expose _getIconUrl, but it's necessary to override for custom markers
 delete (L.Icon.Default.prototype as any)._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: "/leaflet/marker-icon-2x.png",

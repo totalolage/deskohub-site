@@ -52,6 +52,7 @@
     "@radix-ui/react-toggle": "1.1.1",
     "@radix-ui/react-toggle-group": "1.1.1",
     "@radix-ui/react-tooltip": "1.1.6",
+    "@react-pdf/renderer": "^4.3.0",
     "@statsig/react-bindings": "^3.24.3",
     "@t3-oss/env-nextjs": "^0.13.8",
     "arktype": "^2.1.20",

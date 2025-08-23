@@ -1,8 +1,12 @@
 import { Effect } from "effect";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
+import { menuPdfFlag } from "@/flags";
 import { MenuClient } from "./menu-client";
 
 export async function MenuServer() {
+  // Check feature flag for PDF download
+  const showPdfDownload = await menuPdfFlag();
+
   const program = getMenuItems().pipe(
     Effect.provide(DotyposServiceLive),
     Effect.tapError((error) =>
@@ -31,7 +35,9 @@ export async function MenuServer() {
       })
     );
 
-    return <MenuClient categories={categories} />;
+    return (
+      <MenuClient categories={categories} showPdfDownload={showPdfDownload} />
+    );
   } catch (error) {
     console.error("Error fetching menu data:", error);
     return (

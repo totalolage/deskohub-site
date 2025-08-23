@@ -78,6 +78,8 @@ export function ReservationConfirmation({
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            role="img"
+            aria-label="Confirmed"
           >
             <path
               strokeLinecap="round"
@@ -94,6 +96,8 @@ export function ReservationConfirmation({
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            role="img"
+            aria-label="Rejected"
           >
             <path
               strokeLinecap="round"
@@ -110,6 +114,8 @@ export function ReservationConfirmation({
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            role="img"
+            aria-label="Pending"
           >
             <path
               strokeLinecap="round"

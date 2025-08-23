@@ -111,9 +111,9 @@ export function MinimalGallery() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-        {galleryImages.map((image, index) => (
+        {galleryImages.map((image) => (
           <div
-            key={index}
+            key={image.src.src}
             className="relative aspect-square overflow-hidden rounded-lg shadow-md hover:shadow-xl transition-shadow duration-300"
           >
             <Image

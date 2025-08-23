@@ -15,9 +15,10 @@ interface MenuClientProps {
     name: string;
     items: MenuItemWithCategory[];
   }>;
+  showPdfDownload: boolean;
 }
 
-export function MenuClient({ categories }: MenuClientProps) {
+export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
   // Group categories by type using ID-based configuration
   const groupedCategories = {
     drinks: [] as Array<{
@@ -104,7 +105,7 @@ export function MenuClient({ categories }: MenuClientProps) {
       <MenuHero />
 
       <div className="max-w-4xl mx-auto px-6 py-16">
-        <MenuPDFDownload />
+        {showPdfDownload && <MenuPDFDownload />}
         <MenuOpeningHours />
 
         {/* Food Section */}

@@ -57,6 +57,8 @@ export default async function TrainingRoomConfirmationPage({
             fill="none"
             stroke="currentColor"
             viewBox="0 0 24 24"
+            role="img"
+            aria-label="Success checkmark"
           >
             <path
               strokeLinecap="round"
@@ -107,6 +109,8 @@ export default async function TrainingRoomConfirmationPage({
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                role="img"
+                aria-label="Email icon"
               >
                 <path
                   strokeLinecap="round"
@@ -128,6 +132,8 @@ export default async function TrainingRoomConfirmationPage({
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
+                role="img"
+                aria-label="Phone icon"
               >
                 <path
                   strokeLinecap="round"
