@@ -53,7 +53,7 @@ export const siteConstants = {
     phone: "+420777060478",
     phoneTraining: "+420608200377",
     email: "info@deskohub.cz",
-    reservationEmail: "reservations@deskohub.cz",
+    reservationEmail: "noreply@reservations.deskohub.cz",
     address: {
       street: "Turnovská 10/430",
       city: "Prague", // English name, will be translated

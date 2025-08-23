@@ -11,15 +11,20 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
+import { getLocale } from "@/i18n";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Button } from "@/shared/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/shared/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/shared/components/ui/card";
 import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/shared/components/ui/collapsible";
-import { getLocale } from "@/i18n";
 import { isDev } from "@/shared/utils/environment";
 
 interface WebhookTestPanelProps {
@@ -126,7 +131,10 @@ export function WebhookTestPanel({
         body: JSON.stringify(payload),
       });
 
-      const data = await response.json() as { error?: string; [key: string]: any };
+      const data = (await response.json()) as {
+        error?: string;
+        [key: string]: any;
+      };
 
       setResponses((prev) => ({
         ...prev,

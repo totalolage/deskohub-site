@@ -9,6 +9,7 @@ import type {
   Customer,
   Reservation,
 } from "@/features/dotypos/generated/types.gen";
+import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import { renderReservationConfirmedEmail } from "../templates/reservation-confirmed";
@@ -34,6 +35,13 @@ function prepareReservationData(
     (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)
   );
 
+  // Parse the note to extract only special requests if not provided
+  let finalSpecialRequests = specialRequests;
+  if (!finalSpecialRequests && reservation.note) {
+    const parsedNote = parseNoteWithMetadata(reservation.note);
+    finalSpecialRequests = parsedNote.specialRequests;
+  }
+
   return {
     customerName:
       [customer.firstName, customer.lastName]
@@ -49,7 +57,7 @@ function prepareReservationData(
       typeof reservation.seats === "string"
         ? parseInt(reservation.seats, 10)
         : reservation.seats || 1,
-    specialRequests: specialRequests || reservation.note || undefined,
+    specialRequests: finalSpecialRequests || undefined,
     // TODO: Add table name when available from table service
     tableName: undefined,
     // TODO: Add URLs when routes are available
@@ -161,8 +169,8 @@ export const sendReservationConfirmedEmail = (
 
     const emailMessage: EmailMessage = {
       from: {
-        email: "noreply@deskohub.cz",
-        name: "DeskOHub",
+        email: siteConstants.contact.reservationEmail,
+        name: siteConstants.name,
       },
       to: {
         email: customer.email,
@@ -232,8 +240,8 @@ export const sendReservationDeclinedEmail = (
 
     const emailMessage: EmailMessage = {
       from: {
-        email: "noreply@deskohub.cz",
-        name: "DeskOHub",
+        email: siteConstants.contact.reservationEmail,
+        name: siteConstants.name,
       },
       to: {
         email: customer.email,

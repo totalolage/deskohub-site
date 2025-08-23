@@ -23,7 +23,7 @@ if (env.RESEND_API_KEY) {
   console.log("   Emails will be logged to console only");
 }
 
-console.log("\n" + "=".repeat(60));
+console.log(`\n${"=".repeat(60)}`);
 console.log("Email Configuration:");
 console.log("=".repeat(60));
 
@@ -37,7 +37,7 @@ console.log("  reservations@deskohub.cz");
 console.log("\nReply-To Address:");
 console.log("  contact@deskohub.cz");
 
-console.log("\n" + "=".repeat(60));
+console.log(`\n${"=".repeat(60)}`);
 console.log("Webhook Configuration:");
 console.log("=".repeat(60));
 
@@ -50,13 +50,13 @@ if (env.DOTYPOS_WEBHOOK_SECRET) {
   console.log("   Webhooks may not work properly");
 }
 
-console.log("\n" + "=".repeat(60));
+console.log(`\n${"=".repeat(60)}`);
 console.log("Environment:");
 console.log("=".repeat(60));
 console.log(`NODE_ENV: ${env.NODE_ENV}`);
 console.log(`Development mode: ${env.NODE_ENV === "development"}`);
 
-console.log("\n" + "=".repeat(60));
+console.log(`\n${"=".repeat(60)}`);
 console.log("\nTo configure Resend:");
 console.log("1. Sign up at https://resend.com");
 console.log("2. Get your API key");

@@ -170,12 +170,12 @@ Zdroj: Webový formulář
 
     const emailMessage: EmailMessage = {
       from: {
-        email: "noreply@deskohub.cz",
+        email: siteConstants.contact.reservationEmail,
         name: "DeskOHub Rezervace",
       },
       to: {
-        email: siteConstants.contact.reservationEmail,
-        name: "DeskOHub Reservations",
+        email: siteConstants.contact.email, // Send to the main business email
+        name: siteConstants.name,
       },
       subject,
       html,
@@ -200,14 +200,14 @@ Zdroj: Webový formulář
         console.log("✅ New reservation notification sent to business");
         return Effect.logInfo("New reservation notification sent", {
           reservationId: reservation.id,
-          to: siteConstants.contact.reservationEmail,
+          to: siteConstants.contact.email,
         });
       }),
       Effect.tapError((error) => {
         console.error("❌ Failed to send reservation notification:", error);
         return Effect.logError("Failed to send reservation notification", {
           reservationId: reservation.id,
-          to: siteConstants.contact.reservationEmail,
+          to: siteConstants.contact.email,
           error,
         });
       }),

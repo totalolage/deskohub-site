@@ -3,7 +3,6 @@ import {
   type StatsigUser,
 } from "@flags-sdk/statsig";
 import { flag } from "flags/next";
-import { env } from "@/env";
 import {
   FEATURE_FLAGS_CONFIG,
   type FeatureFlagKey,

@@ -94,12 +94,17 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           });
 
           const result = yield* Effect.tryPromise({
-            try: () =>
-              resend.emails.send({
-                from:
-                  typeof message.from === "string"
-                    ? message.from
-                    : `${message.from.name || ""} <${message.from.email}>`.trim(),
+            try: async () => {
+              console.log("📧 Attempting to send via Resend API...");
+              const fromAddress =
+                typeof message.from === "string"
+                  ? message.from
+                  : `${message.from.name || ""} <${message.from.email}>`.trim();
+
+              console.log(`Sending from: ${fromAddress}`);
+
+              const response = await resend.emails.send({
+                from: fromAddress,
                 to:
                   typeof message.to === "string"
                     ? [message.to]
@@ -114,15 +119,30 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                     ? message.replyTo
                     : message.replyTo.email
                   : undefined,
-              }),
-            catch: (error) =>
-              new NetworkError({
+              });
+
+              console.log(
+                "Resend API response:",
+                JSON.stringify(response, null, 2)
+              );
+
+              if (response.error) {
+                throw new Error(`Resend API error: ${response.error.message}`);
+              }
+
+              return response;
+            },
+            catch: (error) => {
+              console.error("❌ Resend API call failed:", error);
+              return new NetworkError({
                 message: `Failed to send email via Resend: ${error instanceof Error ? error.message : String(error)}`,
-              }),
+              });
+            },
           });
 
           yield* Effect.logInfo("Email sent successfully via Resend", {
             id: result.data?.id,
+            response: result,
           });
 
           return {

@@ -21,9 +21,7 @@ import { EmailTemplateServiceLive } from "./template-service";
 export const StandaloneEmailServiceLive = EmailServiceLive.pipe(
   Layer.provide(EmailTemplateServiceLive),
   Layer.provide(
-    env.RESEND_API_KEY 
-      ? ResendEmailProviderLive 
-      : ConsoleEmailProviderLive
+    env.RESEND_API_KEY ? ResendEmailProviderLive : ConsoleEmailProviderLive
   ),
   Layer.provide(EmailConfigLayer)
 );

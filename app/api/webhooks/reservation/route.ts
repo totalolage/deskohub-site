@@ -88,7 +88,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
     }
-    
+
     // Parse the webhook payload
     const payload = (await request.json()) as DotyposReservationPayload[];
 

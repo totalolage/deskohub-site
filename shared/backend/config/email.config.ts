@@ -24,11 +24,11 @@ const emailConfig = Config.all({
   ),
   defaultFromEmail: Config.withDefault(
     Config.string("EMAIL_FROM_ADDRESS"),
-    "noreply@deskohub.com"
+    "noreply@reservations.deskohub.cz"
   ),
   defaultFromName: Config.withDefault(
     Config.string("EMAIL_FROM_NAME"),
-    "DeskohHub"
+    "DeskoHub"
   ),
   apiKey: Config.option(Config.string("EMAIL_API_KEY")),
   smtpHost: Config.option(Config.string("EMAIL_SMTP_HOST")),
