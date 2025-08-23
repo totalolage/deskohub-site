@@ -6,10 +6,9 @@ import {
   getAvailableTables,
   type TableOption,
 } from "@/features/dotypos/backend/service";
-// TEMPORARY: Using mock service for testing
 import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock";
 
-// TEMPORARY: Toggle between real and mock service
+// Toggle between real and mock service based on environment
 const USE_MOCK = process.env.USE_MOCK === "true";
 const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
 
