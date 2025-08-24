@@ -28,8 +28,7 @@ export default async function ReservationConfirmationPage({
 }: Readonly<RouteProps_locale_id>) {
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
-  const tableReservationsEnabled = siteConstants.featureFlags.tableReservations;
-  if (!tableReservationsEnabled) {
+  if (!siteConstants.featureFlags.tableReservations) {
     notFound();
   }
   const getCachedReservation = cache(

@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { track } from "@vercel/analytics";
 import { Send } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
@@ -40,19 +41,22 @@ export function ContactForm() {
 
   const { execute, isExecuting } = useAction(submitContactForm, {
     onSuccess: () => {
+      track("Contact Form Success");
       toast.success(m["contact.successMessage"]());
       form.reset();
     },
     onError: ({ error }) => {
-      toast.error(
-        typeof error.serverError === "string"
-          ? error.serverError
-          : m["errors.submissionError"]()
-      );
+      track("Contact Form Error", {
+        error: error.serverError || "Unknown error",
+      });
+      toast.error(error.serverError || m["errors.submissionError"]());
     },
   });
 
   const handleSubmit = form.handleSubmit((data) => {
+    track("Contact Form Submit", {
+      hasPhone: !!data.phone,
+    });
     execute(data);
   });
 

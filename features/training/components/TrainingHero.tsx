@@ -6,13 +6,7 @@ import { Price } from "@/shared/components/price";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 
-interface TrainingHeroProps {
-  showGalleryButton?: boolean;
-}
-
-export const TrainingHero = ({
-  showGalleryButton = false,
-}: TrainingHeroProps) => {
+export const TrainingHero = () => {
   return (
     <Hero imageSrc={trainingRoomImage.src} alignment="left">
       <div>
@@ -64,7 +58,7 @@ export const TrainingHero = ({
               {m["training.hero.reserveButton"]()}
             </Button>
           </Link>
-          {showGalleryButton && (
+          {siteConstants.featureFlags.gallery && (
             <Link href="/gallery">
               <Button
                 size="lg"

@@ -1,3 +1,4 @@
+import { track } from "@vercel/analytics";
 import { Search } from "lucide-react";
 import { m } from "@/i18n";
 import { Input } from "@/shared/components/ui/input";
@@ -60,9 +61,10 @@ export const BoardGamesFilters = ({
           </Label>
           <Select
             value={filters.sortOption}
-            onValueChange={(value: SortOption) =>
-              onFilterChange("sortOption", value)
-            }
+            onValueChange={(value: SortOption) => {
+              track("Board Games Sort", { sortBy: value });
+              onFilterChange("sortOption", value);
+            }}
           >
             <SelectTrigger
               id="sort-select"

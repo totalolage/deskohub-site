@@ -14,12 +14,11 @@ export const generateMetadata = metadata({
 
 export default async function BoardGamesPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
-  const boardGamesListEnabled = siteConstants.featureFlags.boardGamesList;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">
       <BoardGamesHero />
-      {boardGamesListEnabled ? (
+      {siteConstants.featureFlags.boardGamesList ? (
         <BoardGamesList />
       ) : (
         <div className="container mx-auto px-4 py-16">

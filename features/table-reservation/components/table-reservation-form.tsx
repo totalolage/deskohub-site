@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { track } from "@vercel/analytics";
 import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
@@ -75,6 +76,14 @@ export function TableReservationForm() {
 
   const { execute, isExecuting } = useAction(submitTableReservation, {
     onError: ({ error }) => {
+      // Track reservation error
+      track("Table Reservation Error", {
+        error:
+          typeof error.serverError === "string"
+            ? error.serverError
+            : "Unknown error",
+      });
+
       // Show server error as toast
       toast.error(
         typeof error.serverError === "string"
@@ -108,10 +117,25 @@ export function TableReservationForm() {
 
   const handleSubmit = form.handleSubmit(
     async (data) => {
+      // Track reservation submission
+      track("Table Reservation Submit", {
+        guestCount: data.guestCount,
+        duration: data.duration,
+        hasSpecialRequests: data.specialRequests ? "yes" : "no",
+        needsLargerTable: data.needsLargerTable ? "yes" : "no",
+        needsPrivateSpace: data.needsPrivateSpace ? "yes" : "no",
+      });
+
       // Only execute if the data is valid
       execute(data);
     },
     (errors) => {
+      // Track validation errors
+      const errorFields = Object.keys(errors).join(", ");
+      track("Table Reservation Validation Error", {
+        fields: errorFields,
+      });
+
       // Client-side validation errors are handled by useFormErrorScroll hook
       console.error("Form validation errors:", errors);
     }

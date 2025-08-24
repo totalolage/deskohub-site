@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@vercel/analytics";
 import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { m } from "@/i18n";
@@ -13,6 +14,7 @@ export function MenuPDFDownload() {
   const handleDownload = async () => {
     try {
       setIsGenerating(true);
+      track("Menu PDF Download");
       const result = await generateMenuPDF();
 
       if (result.success && result.pdfData) {

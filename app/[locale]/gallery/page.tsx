@@ -16,9 +16,8 @@ export const generateMetadata = metadata({
 
 export default async function GalleryPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
-  const useFancyGallery = siteConstants.featureFlags.gallery;
 
-  if (useFancyGallery) {
+  if (siteConstants.featureFlags.gallery) {
     return (
       <>
         <GalleryHero />

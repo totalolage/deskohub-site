@@ -1,5 +1,6 @@
 "use client";
 
+import { track } from "@vercel/analytics";
 import { Languages } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { type Locale, locales, m, setLocale } from "@/i18n";
@@ -19,6 +20,10 @@ export function LanguageSwitcher() {
   const currentLocale = useLocale();
 
   const handleLanguageChange = (newLocale: Locale) => {
+    track("Language Switch", {
+      from: currentLocale,
+      to: newLocale,
+    });
     const newPath = setLocaleInPathname(pathname, newLocale);
     setLocale(newLocale, { reload: false });
     document.documentElement.lang = newLocale;

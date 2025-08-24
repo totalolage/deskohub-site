@@ -35,11 +35,7 @@ const navigationItems = [
   { label: "nav.contact", href: "/contact", text: () => m["nav.contact"]() },
 ];
 
-interface MobileMenuProps {
-  showReservations?: boolean;
-}
-
-export function MobileMenu({ showReservations = true }: MobileMenuProps) {
+export function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const locale = useLocale();
   setLocale(locale, { reload: false });
@@ -108,7 +104,7 @@ export function MobileMenu({ showReservations = true }: MobileMenuProps) {
               <LanguageSwitcher />
             </div>
 
-            {showReservations && (
+            {siteConstants.featureFlags.tableReservations && (
               <Link href="/reservation" className="block">
                 <Button
                   className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-lg"

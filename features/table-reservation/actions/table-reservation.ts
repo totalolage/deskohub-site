@@ -1,5 +1,6 @@
 "use server";
 
+import { track } from "@vercel/analytics/server";
 import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { createReservation, DotyposServiceLive } from "@/features/dotypos";
@@ -17,9 +18,14 @@ const _submitTableReservation = createEffectSafeAction(
       });
 
       const reservation = yield* createReservation(input).pipe(
-        Effect.tap((res) =>
-          Effect.logInfo("Reservation created successfully", res)
-        ),
+        Effect.tap((res) => {
+          // Track successful reservation on server
+          track("Table Reservation Success", {
+            guestCount: input.guestCount,
+            duration: input.duration,
+          });
+          return Effect.logInfo("Reservation created successfully", res);
+        }),
         Effect.tapError((error) =>
           Effect.logError("Reservation creation failed", error)
         )

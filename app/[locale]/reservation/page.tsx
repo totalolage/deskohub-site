@@ -14,8 +14,7 @@ export default async function ReservationPage({ params }: RouteProps_locale) {
   const { locale } = await params;
   setLocale(locale, { reload: false });
 
-  const tableReservationsEnabled = siteConstants.featureFlags.tableReservations;
-  if (!tableReservationsEnabled) {
+  if (!siteConstants.featureFlags.tableReservations) {
     notFound();
   }
 

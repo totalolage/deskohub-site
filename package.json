@@ -53,6 +53,7 @@
     "@radix-ui/react-tooltip": "1.1.6",
     "@react-pdf/renderer": "^4.3.0",
     "@t3-oss/env-nextjs": "^0.13.8",
+    "@vercel/analytics": "^1.5.0",
     "arktype": "^2.1.20",
     "autoprefixer": "^10.4.20",
     "class-variance-authority": "^0.7.1",
