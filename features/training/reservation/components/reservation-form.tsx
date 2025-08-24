@@ -55,8 +55,7 @@ export function ReservationForm() {
         });
       }
     },
-    onError: (error) => {
-      console.error("Error submitting reservation:", error);
+    onError: (_error) => {
       toast.error(m["trainingReservation.error.title"](), {
         description: m["trainingReservation.error.description"](),
       });

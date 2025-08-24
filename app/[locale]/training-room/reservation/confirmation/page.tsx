@@ -24,25 +24,14 @@ export const generateMetadata = metadata({
 
 export default async function TrainingRoomConfirmationPage({
   params,
-  searchParams,
-}: Readonly<
-  RouteProps_locale & {
-    searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-  }
->) {
+}: Readonly<RouteProps_locale>) {
   const { locale } = await params;
-  const search = await searchParams;
   setLocale(locale, { reload: false });
 
-  // Get the reservation ID from the query params
-  // Note: Training room reservations generate temporary IDs (TR-xxx)
-  // and don't create real Dotypos reservations
-  const reservationId = (search.id as string) || "";
-
   // Training room reservations always show a static confirmation
-  // They don't fetch from Dotypos since they only send emails
+  // They don't create Dotypos reservations or have IDs
   const confirmationDetails = {
-    id: reservationId,
+    id: "", // No ID for training room reservations
     name: "",
     email: "",
     phone: "",
@@ -62,12 +51,10 @@ export default async function TrainingRoomConfirmationPage({
         customMessage={
           <div className="space-y-2">
             <p>{m["trainingReservation.confirmation.message"]()}</p>
-            {!reservationId && (
-              <p className="text-sm text-gray-500">
-                {m["trainingReservation.confirmation.noIdMessage"]?.() ||
-                  "No reservation ID provided. Please check your email for details."}
-              </p>
-            )}
+            <p className="text-sm text-gray-500">
+              {m["trainingReservation.confirmation.emailMessage"]?.() ||
+                "We have sent you a confirmation email with all the details."}
+            </p>
           </div>
         }
       />

@@ -271,7 +271,6 @@ Your space for work and creativity
 
       return {
         success: true,
-        reservationId: `TR-${Date.now()}`,
         message:
           locale === "cs-CZ"
             ? "Rezervace byla úspěšně odeslána"
@@ -298,12 +297,8 @@ export const submitTrainingRoomReservation = async (
 
   // If successful, redirect to confirmation page
   if (result?.data?.success) {
-    // Use the reservationId that was generated
-    const reservationId = result.data.reservationId;
-
-    // Create a simple confirmation URL with just the ID
-    // The confirmation page will display a generic success message
-    redirect(`/training-room/reservation/confirmation?id=${reservationId}`);
+    // Redirect to static confirmation page (no ID needed)
+    redirect(`/training-room/reservation/confirmation`);
   }
 
   return result;
