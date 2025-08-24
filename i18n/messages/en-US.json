@@ -633,6 +633,7 @@
       "imageAlt": "Deskohub Interior"
     },
     "downloadPDF": "Download menu (PDF)",
+    "generatingPDF": "Generating PDF...",
     "openingHours": {
       "title": "Opening Hours",
       "weekdays": "MON - FRI",

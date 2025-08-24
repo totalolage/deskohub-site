@@ -642,6 +642,7 @@
       "imageAlt": "Interiér Deskohub"
     },
     "downloadPDF": "Stáhnout menu (PDF)",
+    "generatingPDF": "Generování PDF...",
     "openingHours": {
       "title": "Otevírací doba",
       "weekdays": "PO - PÁ",
