@@ -1,9 +1,6 @@
-import { unstable_cache } from "next/cache";
 import { ReservationConfirmation } from "@/features/reservation/components/reservation-confirmation";
-import { getReservationDetails } from "@/features/training/reservation/actions/get-reservation";
 import { type Locale, setLocale } from "@/i18n";
 import { m } from "@/i18n/paraglide/messages";
-import { getReservationPageCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { metadata } from "@/shared/utils/metadata";
 
@@ -21,10 +18,9 @@ export const generateMetadata = metadata({
   description: m["trainingReservation.confirmation.message"](),
 });
 
-// Configure rendering with ISR
-// Page will be cached and revalidated via cache tags
-// We don't use 'force-static' to allow dynamic params
-export const revalidate = 3600; // Revalidate after 1 hour
+// This page is fully static - training room reservations
+// don't create real Dotypos reservations, just send emails
+// The confirmation page always shows a generic success message
 
 export default async function TrainingRoomConfirmationPage({
   params,
@@ -39,52 +35,13 @@ export default async function TrainingRoomConfirmationPage({
   setLocale(locale, { reload: false });
 
   // Get the reservation ID from the query params
+  // Note: Training room reservations generate temporary IDs (TR-xxx)
+  // and don't create real Dotypos reservations
   const reservationId = (search.id as string) || "";
 
-  // Create cached version of the reservation fetch
-  const getCachedReservationDetails = unstable_cache(
-    async (id: string) => {
-      if (!id) return null;
-      return await getReservationDetails(id);
-    },
-    ['training-reservation-detail'],
-    {
-      revalidate: 3600, // Cache for 1 hour
-      tags: reservationId ? getReservationPageCacheTags(reservationId) : [],
-    }
-  );
-
-  // Try to fetch reservation details from cache or API
-  const reservationDetails = reservationId
-    ? await getCachedReservationDetails(reservationId)
-    : null;
-
-  // If we have reservation details, use the ReservationConfirmation component
-  if (reservationDetails) {
-    return (
-      <>
-        <ScrollToTop />
-        <ReservationConfirmation
-          status={reservationDetails.status}
-          type="training-room"
-          details={{
-            id: reservationDetails.id,
-            name: reservationDetails.name,
-            email: reservationDetails.email,
-            phone: reservationDetails.phone,
-            date: reservationDetails.date,
-            time: reservationDetails.time,
-            duration: reservationDetails.duration,
-            specialRequests: reservationDetails.specialRequests,
-          }}
-        />
-      </>
-    );
-  }
-
-  // Fallback: Show a generic submitted status if we can't fetch the reservation
-  // This handles cases where the API is unavailable or the reservation ID is invalid
-  const fallbackDetails = {
+  // Training room reservations always show a static confirmation
+  // They don't fetch from Dotypos since they only send emails
+  const confirmationDetails = {
     id: reservationId,
     name: "",
     email: "",
@@ -101,7 +58,7 @@ export default async function TrainingRoomConfirmationPage({
       <ReservationConfirmation
         status="submitted"
         type="training-room"
-        details={fallbackDetails}
+        details={confirmationDetails}
         customMessage={
           <div className="space-y-2">
             <p>{m["trainingReservation.confirmation.message"]()}</p>
