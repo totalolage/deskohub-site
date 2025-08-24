@@ -144,12 +144,7 @@ export function BookingForm() {
             This keeps styles localized to the component and ensures proper loading */}
         <form onSubmit={handleSubmit} className={styles.bookingFormGrid}>
           {/* Basic Information */}
-          <Card
-            className={cn(
-              styles.gridAreaDatetimeInfo,
-              "flex flex-col justify-between"
-            )}
-          >
+          <Card className={cn(styles.gridAreaDatetimeInfo, "flex flex-col")}>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-green-500" />

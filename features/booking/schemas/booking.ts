@@ -1,3 +1,4 @@
+import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod";
 import { m } from "@/i18n";
 import { siteConstants } from "@/shared/utils/constants";
@@ -120,8 +121,8 @@ export const getBookingSchema = () => {
     .min(1, {
       error: m["booking.validation.phone.minimum"](),
     })
-    .max(siteConstants.booking.validation.phone.max, {
-      error: m["booking.validation.phone.maximum"](),
+    .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
+      error: m["booking.validation.phone.invalid"](),
     });
 
   // Table preference schemas using booleans instead of enum

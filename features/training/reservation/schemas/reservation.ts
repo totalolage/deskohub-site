@@ -1,3 +1,4 @@
+import { isValidPhoneNumber, parsePhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import { m } from "@/i18n";
 
@@ -53,9 +54,6 @@ const nameSchema = z
   });
 
 const emailSchema = z
-  .string({
-    error: m["trainingReservation.validation.emailRequired"](),
-  })
   .email({ error: m["trainingReservation.validation.emailInvalid"]() })
   .max(workspaceConstants.validation.email.max, {
     error: m["trainingReservation.validation.emailMax"]({
@@ -69,6 +67,15 @@ const phoneSchema = z
   })
   .min(1, {
     error: m["trainingReservation.validation.phoneRequired"](),
+  })
+  .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
+    error: m["trainingReservation.validation.phoneInvalid"](),
+  })
+  .transform((phone) => {
+    // Parse and format the phone number to E.164 format
+    // This ensures consistent storage format regardless of input format
+    const phoneNumber = parsePhoneNumber(phone, "CZ");
+    return phoneNumber.format("E.164"); // Returns format like "+420123456789"
   });
 
 // Reservation detail schemas
