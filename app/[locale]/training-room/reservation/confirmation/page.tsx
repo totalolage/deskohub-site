@@ -14,8 +14,8 @@ export interface RouteProps_locale {
 }
 
 export const generateMetadata = metadata({
-  title: m["trainingReservation.confirmation.title"](),
-  description: m["trainingReservation.confirmation.message"](),
+  title: m["trainingReservation.success.title"](),
+  description: m["trainingReservation.success.description"](),
 });
 
 // This page is fully static - training room reservations
@@ -50,10 +50,9 @@ export default async function TrainingRoomConfirmationPage({
         details={confirmationDetails}
         customMessage={
           <div className="space-y-2">
-            <p>{m["trainingReservation.confirmation.message"]()}</p>
+            <p>{m["trainingReservation.success.title"]()}</p>
             <p className="text-sm text-gray-500">
-              {m["trainingReservation.confirmation.emailMessage"]?.() ||
-                "We have sent you a confirmation email with all the details."}
+              {m["trainingReservation.success.description"]()}
             </p>
           </div>
         }
