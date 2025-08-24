@@ -1,7 +1,9 @@
+import { unstable_cache } from "next/cache";
 import { ReservationConfirmation } from "@/features/reservation/components/reservation-confirmation";
 import { getReservationDetails } from "@/features/training/reservation/actions/get-reservation";
 import { type Locale, setLocale } from "@/i18n";
 import { m } from "@/i18n/paraglide/messages";
+import { getReservationPageCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { metadata } from "@/shared/utils/metadata";
 
@@ -19,6 +21,11 @@ export const generateMetadata = metadata({
   description: m["trainingReservation.confirmation.message"](),
 });
 
+// Configure rendering with ISR
+// Page will be cached and revalidated via cache tags
+// We don't use 'force-static' to allow dynamic params
+export const revalidate = 3600; // Revalidate after 1 hour
+
 export default async function TrainingRoomConfirmationPage({
   params,
   searchParams,
@@ -34,9 +41,22 @@ export default async function TrainingRoomConfirmationPage({
   // Get the reservation ID from the query params
   const reservationId = (search.id as string) || "";
 
-  // Try to fetch reservation details from the API
+  // Create cached version of the reservation fetch
+  const getCachedReservationDetails = unstable_cache(
+    async (id: string) => {
+      if (!id) return null;
+      return await getReservationDetails(id);
+    },
+    ['training-reservation-detail'],
+    {
+      revalidate: 3600, // Cache for 1 hour
+      tags: reservationId ? getReservationPageCacheTags(reservationId) : [],
+    }
+  );
+
+  // Try to fetch reservation details from cache or API
   const reservationDetails = reservationId
-    ? await getReservationDetails(reservationId)
+    ? await getCachedReservationDetails(reservationId)
     : null;
 
   // If we have reservation details, use the ReservationConfirmation component

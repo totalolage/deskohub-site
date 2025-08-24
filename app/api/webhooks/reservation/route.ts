@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
@@ -11,6 +12,11 @@ import {
   sendReservationDeclinedEmail,
 } from "@/features/email/backend/send-reservation-status-email";
 import { getLocale, type Locale } from "@/i18n";
+import {
+  getAllReservationsCacheTag,
+  getCustomerReservationsCacheTag,
+  getReservationCacheTag,
+} from "@/shared/backend/utils/cache-tags";
 import { isDev } from "@/shared/utils/environment";
 
 /**
@@ -176,6 +182,31 @@ export async function POST(request: Request) {
               break;
           }
         }
+
+        // Invalidate cache for this reservation and related pages
+        const reservationIdStr = String(reservation.reservationid);
+        const customerIdStr = String(reservation.customerid);
+        
+        // Revalidate specific reservation page
+        revalidateTag(getReservationCacheTag(reservationIdStr));
+        
+        // Revalidate all reservations listing
+        revalidateTag(getAllReservationsCacheTag());
+        
+        // Revalidate customer's reservations if customer ID exists
+        if (customerIdStr) {
+          revalidateTag(getCustomerReservationsCacheTag(customerIdStr));
+        }
+        
+        yield* Effect.logInfo("Cache invalidated for reservation update", {
+          reservationId: reservationIdStr,
+          customerId: customerIdStr,
+          tags: [
+            getReservationCacheTag(reservationIdStr),
+            getAllReservationsCacheTag(),
+            getCustomerReservationsCacheTag(customerIdStr),
+          ],
+        });
 
         return {
           reservationId: reservation.reservationid,

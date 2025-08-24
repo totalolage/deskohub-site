@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { unstable_cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
@@ -9,6 +10,7 @@ import {
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
 import { m, setLocale } from "@/i18n";
+import { getReservationPageCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { tableReservationsFlag } from "@/shared/lib/feature-flags";
 import { metadata } from "@/shared/utils/metadata";
@@ -18,6 +20,11 @@ export const generateMetadata = metadata({
   title: m["reservationConfirmation.pageTitle"](),
   description: m["reservationConfirmation.pageDescription"](),
 });
+
+// Configure rendering with ISR
+// Page will be cached and revalidated via cache tags
+// We don't use 'force-static' to allow dynamic params
+export const revalidate = 3600; // Revalidate after 1 hour
 
 export default async function ReservationConfirmationPage({
   params,
@@ -33,21 +40,34 @@ export default async function ReservationConfirmationPage({
     notFound();
   }
 
-  // Fetch reservation from Dotypos with proper error handling
-  const result = await Effect.runPromise(
-    getReservation(id).pipe(
-      Effect.provide(DotyposServiceLive),
-      Effect.match({
-        onFailure: (_error) => {
-          // Return null to trigger 404
-          return null;
-        },
-        onSuccess: (data) => {
-          return data;
-        },
-      })
-    )
+  // Create cached version of the reservation fetch
+  const getCachedReservation = unstable_cache(
+    async (reservationId: string) => {
+      const result = await Effect.runPromise(
+        getReservation(reservationId).pipe(
+          Effect.provide(DotyposServiceLive),
+          Effect.match({
+            onFailure: (_error) => {
+              // Return null to trigger 404
+              return null;
+            },
+            onSuccess: (data) => {
+              return data;
+            },
+          })
+        )
+      );
+      return result;
+    },
+    ['reservation-detail'],
+    {
+      revalidate: 3600, // Cache for 1 hour
+      tags: getReservationPageCacheTags(id),
+    }
   );
+
+  // Fetch reservation from cache or Dotypos
+  const result = await getCachedReservation(id);
 
   // If reservation not found or error, show 404
   if (!result) {

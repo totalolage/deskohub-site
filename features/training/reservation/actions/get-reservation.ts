@@ -1,5 +1,7 @@
 "use server";
 
+import { unstable_noStore as noStore } from "next/cache";
+
 import { Effect } from "effect";
 import { getReservation as getReservationService } from "@/features/dotypos";
 import { DotyposServiceLive } from "@/features/dotypos/backend/service";
@@ -25,6 +27,8 @@ export interface ReservationWithStatus {
 export async function getReservationDetails(
   reservationId: string
 ): Promise<ReservationWithStatus | null> {
+  // Note: This function is called from a cached context in the page component
+  // The caching is handled at the page level, not here
   try {
     const result = await Effect.runPromise(
       getReservationService(reservationId).pipe(
