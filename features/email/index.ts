@@ -12,8 +12,7 @@ export {
 // Individual providers (for testing or explicit configuration)
 export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
 export { ResendEmailProviderLive } from "./backend/providers/resend-provider";
-// Direct email sending functions
-export { sendReservationConfirmationEmail } from "./backend/send-reservation-email";
+// Direct email sending functions (used by webhooks)
 export {
   sendReservationConfirmedEmail,
   sendReservationCreatedEmail,
