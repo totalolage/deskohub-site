@@ -8,7 +8,6 @@ import {
 } from "@/features/dotypos/backend/service";
 import { DotyposServiceMockLive } from "@/features/dotypos/backend/service.mock";
 
-// Toggle between real and mock service based on environment
 const USE_MOCK = process.env.USE_MOCK === "true";
 const ServiceLayer = USE_MOCK ? DotyposServiceMockLive : DotyposServiceLive;
 

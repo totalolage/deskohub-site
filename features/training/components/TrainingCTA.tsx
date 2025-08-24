@@ -3,7 +3,6 @@ import Link from "next/link";
 import { getLocale, m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
-import { boardroomReservationsFlag } from "@/shared/lib/feature-flags";
 import { siteConstants } from "@/shared/utils/constants";
 import {
   formatPhoneNumber,
@@ -12,7 +11,8 @@ import {
 
 export const TrainingCTA = async () => {
   const locale = getLocale();
-  const boardroomReservationsEnabled = await boardroomReservationsFlag();
+  const boardroomReservationsEnabled =
+    siteConstants.featureFlags.boardroomReservations;
 
   return (
     <section className="py-20 bg-gradient-to-r from-green-600 to-green-700">

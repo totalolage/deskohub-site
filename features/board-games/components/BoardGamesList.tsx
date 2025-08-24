@@ -7,7 +7,6 @@ import { useBoardGamesFilters } from "../hooks/use-board-games-filters";
 import { BoardGamesCard } from "./BoardGamesCard";
 import { BoardGamesFilters } from "./BoardGamesFilters";
 
-// Convert rating string to number for compatibility
 const normalizeRating = (rating: string | number): number => {
   if (typeof rating === "number") return rating;
   const ratingStr = String(rating);
@@ -16,7 +15,6 @@ const normalizeRating = (rating: string | number): number => {
 };
 
 export const BoardGamesList = () => {
-  // Normalize the data for display
   const boardGames = useMemo(
     () =>
       boardGamesData.map((game, index) => ({

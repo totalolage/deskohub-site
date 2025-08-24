@@ -3,15 +3,13 @@ import "./globals.css";
 import type { PropsWithChildren } from "react";
 import { Footer, Header } from "@/features/navigation";
 import { getLocale } from "@/i18n";
-import { FeatureFlagDebugger } from "@/shared/components/feature-flag-debugger";
 import { Toaster } from "@/shared/components/ui/sonner";
-import { tableReservationsFlag } from "@/shared/lib/feature-flags";
-import { isDev } from "@/shared/utils/environment";
+import { siteConstants } from "@/shared/utils/constants";
 
 export default async function RootLayout({
   children,
 }: Readonly<PropsWithChildren>) {
-  const showReservations = await tableReservationsFlag();
+  const showReservations = siteConstants.featureFlags.tableReservations;
 
   return (
     <html lang={getLocale()}>
@@ -23,7 +21,6 @@ export default async function RootLayout({
           </main>
           <Footer />
           <Toaster />
-          {isDev() && <FeatureFlagDebugger />}
         </div>
       </body>
     </html>

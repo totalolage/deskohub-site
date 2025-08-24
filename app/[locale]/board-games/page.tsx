@@ -3,7 +3,7 @@ import Link from "next/link";
 import { BoardGamesHero, BoardGamesList } from "@/features/board-games";
 import { m, setLocale } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
-import { boardGamesListFlag } from "@/shared/lib/feature-flags";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
@@ -14,7 +14,7 @@ export const generateMetadata = metadata({
 
 export default async function BoardGamesPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
-  const boardGamesListEnabled = await boardGamesListFlag();
+  const boardGamesListEnabled = siteConstants.featureFlags.boardGamesList;
 
   return (
     <div className="min-h-screen bg-gray-900 text-white">

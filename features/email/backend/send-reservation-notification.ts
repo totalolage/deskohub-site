@@ -26,8 +26,6 @@ export const sendNewReservationNotification = (
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
 
-    // Sending new reservation notification to business
-
     // Parse the note to extract special requests
     const parsedNote = parseNoteWithMetadata(reservation.note);
     const specialRequests = parsedNote.specialRequests;
@@ -194,8 +192,6 @@ Zdroj: Webový formulář
         source: "webhook",
       },
     };
-
-    // Business notification email details prepared
 
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {

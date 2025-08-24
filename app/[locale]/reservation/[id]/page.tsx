@@ -12,7 +12,7 @@ import { WebhookTestPanel } from "@/features/reservation/components/webhook-test
 import { getLocale, m, setLocale } from "@/i18n";
 import { getReservationPageCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
-import { tableReservationsFlag } from "@/shared/lib/feature-flags";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale_id } from "./route";
 
@@ -21,26 +21,17 @@ export const generateMetadata = metadata({
   description: m["reservationConfirmation.pageDescription"](),
 });
 
-// Configure rendering with ISR
-// Page will be cached and revalidated via cache tags
-// We don't use 'force-static' to allow dynamic params
-export const revalidate = 3600; // Revalidate after 1 hour
+export const revalidate = 3600;
 
 export default async function ReservationConfirmationPage({
   params,
 }: Readonly<RouteProps_locale_id>) {
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
-
-  // Loading reservation page with ID and locale
-
-  // Check if table reservations feature is enabled
-  const tableReservationsEnabled = await tableReservationsFlag();
+  const tableReservationsEnabled = siteConstants.featureFlags.tableReservations;
   if (!tableReservationsEnabled) {
     notFound();
   }
-
-  // Create cached version of the reservation fetch
   const getCachedReservation = cache(
     async (reservationId: string) => {
       const result = await Effect.runPromise(

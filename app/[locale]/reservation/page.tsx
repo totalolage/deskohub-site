@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { TableReservationForm } from "@/features/table-reservation/components/table-reservation-form";
 import { m, setLocale } from "@/i18n";
-import { tableReservationsFlag } from "@/shared/lib/feature-flags";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
@@ -14,8 +14,7 @@ export default async function ReservationPage({ params }: RouteProps_locale) {
   const { locale } = await params;
   setLocale(locale, { reload: false });
 
-  // Check if table reservations feature is enabled
-  const tableReservationsEnabled = await tableReservationsFlag();
+  const tableReservationsEnabled = siteConstants.featureFlags.tableReservations;
   if (!tableReservationsEnabled) {
     notFound();
   }

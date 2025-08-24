@@ -3,10 +3,10 @@ import Link from "next/link";
 import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
 import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
-import { boardGamesListFlag } from "@/shared/lib/feature-flags";
+import { siteConstants } from "@/shared/utils/constants";
 
 export async function GamesGallery() {
-  const boardGamesListEnabled = await boardGamesListFlag();
+  const boardGamesListEnabled = siteConstants.featureFlags.boardGamesList;
 
   const games = [
     {

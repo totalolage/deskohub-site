@@ -1,11 +1,10 @@
 import { Effect } from "effect";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
-import { menuPdfFlag } from "@/shared/lib/feature-flags";
+import { siteConstants } from "@/shared/utils/constants";
 import { MenuClient } from "./menu-client";
 
 export async function MenuServer() {
-  // Check feature flag for PDF download
-  const showPdfDownload = await menuPdfFlag();
+  const showPdfDownload = siteConstants.featureFlags.menuPdfDownload;
 
   const program = getMenuItems().pipe(
     Effect.provide(DotyposServiceLive),
@@ -17,7 +16,6 @@ export async function MenuServer() {
   try {
     const result = await Effect.runPromise(program);
 
-    // Create a map of category names to IDs
     const categoryIdMap = new Map<string, string>();
     result.categories.forEach((cat) => {
       if (cat.name && cat.id) {
@@ -25,7 +23,6 @@ export async function MenuServer() {
       }
     });
 
-    // Convert Map to array for client component with category IDs
     const categories = Array.from(result.itemsByCategory.entries()).map(
       ([categoryName, items]) => ({
         id:

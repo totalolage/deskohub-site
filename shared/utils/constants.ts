@@ -151,4 +151,13 @@ export const siteConstants = {
       formattedNoSpaces: "11:00-23:00",
     },
   },
+  // Feature flags - simple constants for prerendered site
+  featureFlags: {
+    boardGamesList: true,
+    boardroomReservations: false,
+    contactForm: true,
+    tableReservations: true,
+    gallery: true,
+    menuPdfDownload: true,
+  },
 };

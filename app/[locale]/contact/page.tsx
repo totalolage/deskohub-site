@@ -5,7 +5,7 @@ import {
   ContactMap,
 } from "@/features/contact";
 import { m, setLocale } from "@/i18n";
-import { contactFormFlag } from "@/shared/lib/feature-flags";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
@@ -17,7 +17,7 @@ export const generateMetadata = metadata({
 export default async function ContactPage({ params }: RouteProps_locale) {
   const { locale } = await params;
   setLocale(locale, { reload: false });
-  const contactFormEnabled = await contactFormFlag();
+  const contactFormEnabled = siteConstants.featureFlags.contactForm;
 
   return (
     <div className="min-h-screen bg-black">
