@@ -156,8 +156,8 @@ export const siteConstants = {
     boardGamesList: false,
     boardroomReservations: false,
     contactForm: false,
-    tableReservations: false,
+    tableReservations: true,
     gallery: false,
-    menuPdfDownload: false,
+    menuPdfDownload: true,
   },
 };
