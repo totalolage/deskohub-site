@@ -9,7 +9,6 @@ import type {
   WebhookResponse,
   WebhookResult,
   WebhookStatusChange,
-  WebhookSuccessResponse,
 } from "../types/webhook.types";
 
 /**
@@ -56,7 +55,7 @@ export async function sendTestWebhook(
       body: JSON.stringify(webhookPayload),
     });
 
-    const data = await response.json() as any;
+    const data = (await response.json()) as any;
 
     if (!response.ok) {
       return {

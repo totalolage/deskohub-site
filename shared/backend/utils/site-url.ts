@@ -19,7 +19,7 @@ export function getSiteUrl(): URL {
 
   const vercelUrl = env.VERCEL_PROJECT_PRODUCTION_URL;
   if (vercelUrl) {
-    return new URL(`https://${vercelUrl}`);
+    return new URL(vercelUrl);
   }
 
   // Fallback for development

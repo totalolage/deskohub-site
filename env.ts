@@ -78,7 +78,7 @@ export const env = createEnv({
 
     // Vercel environment variables
     VERCEL_ENV: process.env.VERCEL_ENV,
-    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`,
   },
 
   emptyStringAsUndefined: true,
