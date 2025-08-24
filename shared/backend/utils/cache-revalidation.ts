@@ -7,7 +7,7 @@
 import { revalidatePath, revalidateTag } from "next/cache";
 import {
   getAllReservationsCacheTag,
-  getCustomerReservationsCacheTag,
+  getCustomerCacheTag,
   getReservationCacheTag,
 } from "./cache-tags";
 
@@ -26,7 +26,7 @@ export async function revalidateReservation(
   
   // Revalidate customer's reservations if customer ID is provided
   if (customerId) {
-    revalidateTag(getCustomerReservationsCacheTag(customerId));
+    revalidateTag(getCustomerCacheTag(customerId));
   }
   
   // Also revalidate the specific reservation pages by path
@@ -51,5 +51,5 @@ export async function revalidateAllReservations(): Promise<void> {
 export async function revalidateCustomerReservations(
   customerId: string
 ): Promise<void> {
-  revalidateTag(getCustomerReservationsCacheTag(customerId));
+  revalidateTag(getCustomerCacheTag(customerId));
 }

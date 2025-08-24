@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Data, Effect, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
@@ -20,33 +20,7 @@ import {
 import { isDev } from "@/shared/utils/environment";
 
 /**
- * Dotypos Reservation Webhook Payload
- */
-interface DotyposReservationPayload {
-  branchid: number;
-  created: number;
-  customerid: number;
-  employeeid: number;
-  flags: number;
-  deleted: number;
-  note: string | null;
-  seats: number | string;
-  status: number;
-  tableid: number;
-  taglist: string | null;
-  versiondate: number;
-  reservationid: number;
-  startdate: number;
-  enddate: number;
-  cloudid: string;
-}
-
-/**
- * Map Dotypos status codes to our reservation states
- * Based on the examples:
- * - status: 0 = NEW (just created)
- * - status: 5 = CONFIRMED/ACCEPTED
- * - status: 10 = DECLINED/CANCELLED
+ * Dotypos Reservation Status Codes
  */
 enum DotyposReservationStatus {
   NEW = 0,
@@ -55,11 +29,63 @@ enum DotyposReservationStatus {
 }
 
 /**
+ * Webhook Errors
+ */
+class WebhookAuthError extends Data.TaggedError("WebhookAuthError")<{
+  readonly message: string;
+}> {}
+
+class WebhookValidationError extends Data.TaggedError("WebhookValidationError")<{
+  readonly message: string;
+  readonly issues?: unknown;
+}> {}
+
+/**
+ * Dotypos Reservation Webhook Payload Schema
+ * 
+ * Using Effect Schema for robust validation and type safety
+ */
+const DotyposReservationPayloadItem = Schema.Struct({
+  branchid: Schema.Number,
+  created: Schema.Number,
+  customerid: Schema.Number,
+  employeeid: Schema.Number,
+  flags: Schema.Number,
+  deleted: Schema.Number,
+  note: Schema.NullOr(Schema.String),
+  seats: Schema.Union(Schema.Number, Schema.String),
+  status: Schema.Number,
+  tableid: Schema.Number,
+  taglist: Schema.NullOr(Schema.String),
+  versiondate: Schema.Number,
+  reservationid: Schema.Number,
+  startdate: Schema.Number,
+  enddate: Schema.Number,
+  cloudid: Schema.String,
+});
+
+// The webhook sends an array with a single item
+const DotyposReservationPayload = Schema.NonEmptyArray(DotyposReservationPayloadItem);
+
+/**
+ * Webhook Processing Result Schema
+ */
+const WebhookResult = Schema.Struct({
+  reservationId: Schema.Number,
+  customerId: Schema.Number,
+  statusChange: Schema.Literal("created", "confirmed", "declined", "unknown"),
+  emailSent: Schema.Boolean,
+  customerEmail: Schema.NullOr(Schema.String),
+});
+
+type WebhookResult = Schema.Schema.Type<typeof WebhookResult>;
+
+/**
  * Determine what type of update this is by comparing status
  */
-function getStatusChangeType(
+const getStatusChangeType = (
   status: number
-): "created" | "confirmed" | "declined" | "unknown" {
+): "created" | "confirmed" | "declined" | "unknown" => {
   switch (status) {
     case DotyposReservationStatus.NEW:
       return "created";
@@ -70,7 +96,138 @@ function getStatusChangeType(
     default:
       return "unknown";
   }
-}
+};
+
+/**
+ * Validate webhook security
+ */
+const validateWebhookSecurity = (url: URL) =>
+  Effect.gen(function* () {
+    // Skip validation in development
+    if (isDev()) {
+      return;
+    }
+
+    const providedSecret = url.searchParams.get("secret");
+    
+    if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
+      yield* Effect.fail(
+        new WebhookAuthError({ message: "Invalid webhook secret" })
+      );
+    }
+  });
+
+/**
+ * Process the webhook payload
+ */
+const processWebhook = (payload: unknown) =>
+  Effect.gen(function* () {
+    // Validate and parse the payload
+    const validatedPayload = yield* Schema.decodeUnknown(DotyposReservationPayload)(
+      payload
+    ).pipe(
+      Effect.mapError((error) =>
+        new WebhookValidationError({
+          message: "Invalid payload format",
+          issues: error.message,
+        })
+      )
+    );
+
+    // Extract the first (and only) item
+    const reservation = validatedPayload[0];
+    
+    // Determine the type of status change
+    const statusChange = getStatusChangeType(reservation.status);
+
+    // Skip if unknown status or deleted
+    if (statusChange === "unknown" || reservation.deleted === 1) {
+      return {
+        skipped: true,
+        message: "Webhook processed (no action taken)",
+      };
+    }
+
+    // Fetch full reservation and customer details from Dotypos
+    const fullReservation = yield* getReservation(
+      String(reservation.reservationid)
+    );
+
+    // Parse the note to extract metadata including locale
+    const parsedNote = parseNoteWithMetadata(
+      fullReservation.reservation.note
+    );
+
+    const locale: Locale = parsedNote.metadata.locale || getLocale();
+
+    // Send appropriate emails based on status change
+    let emailSent = false;
+
+    if (fullReservation.customer.email) {
+      switch (statusChange) {
+        case "created":
+          // Send confirmation email to customer
+          yield* sendReservationCreatedEmail(
+            fullReservation.reservation,
+            fullReservation.customer,
+            locale
+          );
+
+          // Also send notification to business
+          yield* sendNewReservationNotification(
+            fullReservation.reservation,
+            fullReservation.customer,
+            locale
+          );
+
+          emailSent = true;
+          break;
+
+        case "confirmed":
+          yield* sendReservationConfirmedEmail(
+            fullReservation.reservation,
+            fullReservation.customer,
+            locale
+          );
+          emailSent = true;
+          break;
+
+        case "declined":
+          yield* sendReservationDeclinedEmail(
+            fullReservation.reservation,
+            fullReservation.customer,
+            locale
+          );
+          emailSent = true;
+          break;
+      }
+    }
+
+    // Invalidate cache for this reservation
+    const reservationIdStr = String(reservation.reservationid);
+    const customerIdStr = String(reservation.customerid);
+    
+    // Revalidate specific reservation page
+    revalidateTag(getReservationCacheTag(reservationIdStr));
+    
+    yield* Effect.logInfo("Cache invalidated for reservation update", {
+      reservationId: reservationIdStr,
+      customerId: customerIdStr,
+      tags: [
+        getReservationCacheTag(reservationIdStr),
+      ],
+    });
+
+    const result: WebhookResult = {
+      reservationId: reservation.reservationid,
+      customerId: reservation.customerid,
+      statusChange,
+      emailSent,
+      customerEmail: fullReservation.customer.email || null,
+    };
+
+    return { skipped: false, data: result };
+  });
 
 /**
  * POST /api/webhooks/reservation
@@ -78,152 +235,82 @@ function getStatusChangeType(
  * Receives reservation update webhooks from Dotypos
  */
 export async function POST(request: Request) {
+  const program = Effect.gen(function* () {
+    // Validate webhook security
+    const url = new URL(request.url);
+    yield* validateWebhookSecurity(url);
+
+    // Parse request body
+    const payload = yield* Effect.tryPromise({
+      try: () => request.json(),
+      catch: () =>
+        new WebhookValidationError({
+          message: "Failed to parse request body",
+        }),
+    });
+
+    // Process the webhook
+    const result = yield* processWebhook(payload);
+
+    return result;
+  }).pipe(
+    Effect.provide(DotyposServiceLive),
+    Effect.provide(StandaloneEmailServiceLive),
+    Effect.catchTags({
+      WebhookAuthError: (error) =>
+        Effect.succeed({
+          status: 401,
+          body: { error: "Unauthorized", message: error.message },
+        }),
+      WebhookValidationError: (error) =>
+        Effect.succeed({
+          status: 400,
+          body: {
+            error: "Invalid payload",
+            message: error.message,
+            issues: error.issues,
+          },
+        }),
+    }),
+    Effect.catchAll((error) => {
+      // Log the error but return success to prevent Dotypos from retrying
+      Effect.logError("Webhook processing error", error);
+      return Effect.succeed({
+        status: 200,
+        body: {
+          success: true,
+          error: "Internal processing error (logged)",
+        },
+      });
+    })
+  );
 
   try {
-    // Check webhook security (skip in development)
-    if (!isDev()) {
-      const url = new URL(request.url);
-      const providedSecret = url.searchParams.get("secret");
+    const result = await Effect.runPromise(program);
 
-      if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
+    // Handle different result types
+    if ("status" in result) {
+      return NextResponse.json(result.body, { status: result.status });
     }
 
-    // Parse the webhook payload
-    const payload = (await request.json()) as DotyposReservationPayload[];
-
-    // Dotypos sends an array with a single item
-    if (!Array.isArray(payload) || payload.length === 0) {
-      return NextResponse.json(
-        { error: "Invalid payload format" },
-        { status: 400 }
-      );
-    }
-
-    const reservation = payload[0];
-    if (!reservation) {
-      return NextResponse.json(
-        { error: "Invalid payload format" },
-        { status: 400 }
-      );
-    }
-
-    // Determine the type of status change
-    const statusChange = getStatusChangeType(reservation.status);
-
-    // Skip if unknown status or deleted
-    if (statusChange === "unknown" || reservation.deleted === 1) {
+    if ("skipped" in result && result.skipped) {
       return NextResponse.json({
         success: true,
-        message: "Webhook processed (no action taken)",
+        message: result.message,
       });
     }
 
-    // Process the webhook based on status
-    const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        // Fetch full reservation and customer details from Dotypos
-        const fullReservation = yield* getReservation(
-          String(reservation.reservationid)
-        );
-
-        // Parse the note to extract metadata including locale
-        const parsedNote = parseNoteWithMetadata(
-          fullReservation.reservation.note
-        );
-
-        const locale: Locale = parsedNote.metadata.locale || getLocale();
-
-        // Determine which email to send based on status
-        let emailSent = false;
-
-        if (fullReservation.customer.email) {
-          // Send appropriate email based on status change
-          switch (statusChange) {
-            case "created":
-              // Send confirmation email to customer
-              yield* sendReservationCreatedEmail(
-                fullReservation.reservation,
-                fullReservation.customer,
-                locale
-              );
-
-              // Also send notification to business
-              yield* sendNewReservationNotification(
-                fullReservation.reservation,
-                fullReservation.customer,
-                locale
-              );
-
-              emailSent = true;
-              break;
-
-            case "confirmed":
-              yield* sendReservationConfirmedEmail(
-                fullReservation.reservation,
-                fullReservation.customer,
-                locale
-              );
-              emailSent = true;
-              break;
-
-            case "declined":
-              yield* sendReservationDeclinedEmail(
-                fullReservation.reservation,
-                fullReservation.customer,
-                locale
-              );
-              emailSent = true;
-              break;
-
-            default:
-              // Skip email for unknown status
-              break;
-          }
-        }
-
-        // Invalidate cache for this reservation and related pages
-        const reservationIdStr = String(reservation.reservationid);
-        const customerIdStr = String(reservation.customerid);
-        
-        // Revalidate specific reservation page
-        revalidateTag(getReservationCacheTag(reservationIdStr));
-        
-        yield* Effect.logInfo("Cache invalidated for reservation update", {
-          reservationId: reservationIdStr,
-          customerId: customerIdStr,
-          tags: [
-            getReservationCacheTag(reservationIdStr),
-            getAllReservationsCacheTag(),
-            getCustomerCacheTag(customerIdStr),
-          ],
-        });
-
-        return {
-          reservationId: reservation.reservationid,
-          customerId: reservation.customerid,
-          statusChange,
-          emailSent,
-          customerEmail: fullReservation.customer.email || null,
-        };
-      }).pipe(
-        Effect.provide(DotyposServiceLive),
-        Effect.provide(StandaloneEmailServiceLive)
-      )
-    );
-
     return NextResponse.json({
       success: true,
-      data: result,
+      data: result.data,
     });
   } catch (error) {
-    // Return success to Dotypos to prevent webhook retries
-    // This prevents Dotypos from retrying the webhook unnecessarily
-    return NextResponse.json({
-      success: true,
-      error: "Internal processing error (logged)",
-    });
+    // This should rarely happen as we catch all errors in the Effect pipeline
+    console.error("Unexpected error in webhook handler:", error);
+    return NextResponse.json(
+      { success: true, error: "Internal processing error (logged)" },
+      { status: 200 }
+    );
   }
 }
 
@@ -239,5 +326,6 @@ export async function GET() {
     accepts: "POST",
     description: "Dotypos reservation update webhook",
     security: "enabled (query param: ?secret=UUID)",
+    validation: "Effect Schema validation enabled",
   });
 }
