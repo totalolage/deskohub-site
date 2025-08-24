@@ -1,6 +1,6 @@
 "use client";
 
-import { Calendar, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -17,6 +17,7 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { siteConstants } from "@/shared/utils/constants";
+import { ReservationButton } from "./reservation-button";
 
 const navigationItems = [
   { label: "nav.home", href: "/", text: () => m["nav.home"]() },
@@ -104,17 +105,13 @@ export function MobileMenu() {
               <LanguageSwitcher />
             </div>
 
-            {siteConstants.featureFlags.tableReservations && (
-              <Link href="/reservation" className="block">
-                <Button
-                  className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 rounded-lg"
-                  onClick={() => setIsOpen(false)}
-                >
-                  <Calendar className="h-4 w-4 mr-2" />
-                  {m["buttons.reservation"]()}
-                </Button>
-              </Link>
-            )}
+            <div className="px-4">
+              <ReservationButton
+                variant="full"
+                showIcon={true}
+                onClick={() => setIsOpen(false)}
+              />
+            </div>
           </div>
 
           <div className="absolute bottom-6 left-6 right-6">

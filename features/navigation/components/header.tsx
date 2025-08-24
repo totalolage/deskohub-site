@@ -6,9 +6,8 @@ import logoImage from "@/assets/images/logo/for-dark-bg.png";
 import { LanguageSwitcher } from "@/features/i18n";
 import { m, setLocale } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
-import { Button } from "@/shared/components/ui/button";
-import { siteConstants } from "@/shared/utils/constants";
 import { MobileMenu } from "./mobile-menu";
+import { ReservationButton } from "./reservation-button";
 
 export function Header() {
   const locale = useLocale();
@@ -61,25 +60,12 @@ export function Header() {
         <div className="flex items-center space-x-4">
           <div className="hidden xl:flex items-center space-x-4">
             <LanguageSwitcher />
-            {siteConstants.featureFlags.tableReservations && (
-              <Link href="/reservation">
-                <Button className="bg-green-500 hover:bg-green-600 text-white">
-                  {m["buttons.reservation"]()}
-                </Button>
-              </Link>
-            )}
+            <ReservationButton />
           </div>
           {/* Mobile reservation button - visible on smaller screens */}
-          {siteConstants.featureFlags.tableReservations && (
-            <Link href="/reservation" className="xl:hidden">
-              <Button 
-                size="sm"
-                className="bg-green-500 hover:bg-green-600 text-white"
-              >
-                {m["buttons.reservation"]()}
-              </Button>
-            </Link>
-          )}
+          <div className="xl:hidden">
+            <ReservationButton size="sm" />
+          </div>
           <MobileMenu />
         </div>
       </div>

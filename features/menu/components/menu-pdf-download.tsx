@@ -12,7 +12,7 @@ export function MenuPDFDownload() {
   const handleClick = () => {
     track("Menu PDF Download");
     setIsGenerating(true);
-    
+
     // Reset the loading state after a reasonable time
     // This accounts for the PDF generation and download initiation
     setTimeout(() => {
@@ -27,10 +27,14 @@ export function MenuPDFDownload() {
         disabled={isGenerating}
         className="bg-green-500 hover:bg-green-600 text-black font-semibold px-8 py-3 text-lg disabled:opacity-50 disabled:cursor-not-allowed"
       >
-        <a 
+        <a
           href={isGenerating ? "#" : "/api/menu/pdf"}
           download={!isGenerating}
-          onClick={isGenerating ? (e: React.MouseEvent) => e.preventDefault() : handleClick}
+          onClick={
+            isGenerating
+              ? (e: React.MouseEvent) => e.preventDefault()
+              : handleClick
+          }
         >
           {isGenerating ? (
             <>

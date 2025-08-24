@@ -24,25 +24,25 @@ export function Footer() {
             </div>
           </div>
           <div className="flex space-x-6 text-sm text-gray-600">
-            <a 
-              href={siteConstants.social.youtube} 
-              target="_blank" 
+            <a
+              href={siteConstants.social.youtube}
+              target="_blank"
               rel="noopener noreferrer"
               className="hover:text-green-500"
             >
               {m["footer.socialLinks.youtube"]()}
             </a>
-            <a 
-              href={siteConstants.social.facebook} 
-              target="_blank" 
+            <a
+              href={siteConstants.social.facebook}
+              target="_blank"
               rel="noopener noreferrer"
               className="hover:text-green-500"
             >
               {m["footer.socialLinks.facebook"]()}
             </a>
-            <a 
-              href={siteConstants.social.instagram} 
-              target="_blank" 
+            <a
+              href={siteConstants.social.instagram}
+              target="_blank"
               rel="noopener noreferrer"
               className="hover:text-green-500"
             >
