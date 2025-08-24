@@ -56,7 +56,7 @@ export async function sendTestWebhook(
       body: JSON.stringify(webhookPayload),
     });
 
-    const data = await response.json();
+    const data = await response.json() as any;
 
     if (!response.ok) {
       return {
@@ -90,7 +90,7 @@ export function isWebhookError(
  */
 export function isWebhookSuccess(
   response: WebhookResponse
-): response is WebhookSuccessResponse {
+): response is Extract<WebhookResponse, { success: true }> {
   return "success" in response && response.success === true;
 }
 

@@ -17,6 +17,7 @@ import {
 } from "@/shared/components/ui/card";
 import { Separator } from "@/shared/components/ui/separator";
 import { cn } from "@/shared/utils";
+import { siteConstants } from "@/shared/utils/constants";
 import { formatDate } from "@/shared/utils/date-formatting";
 
 // CVA variants for status-based styling
