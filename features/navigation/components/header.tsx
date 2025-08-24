@@ -69,6 +69,17 @@ export function Header() {
               </Link>
             )}
           </div>
+          {/* Mobile reservation button - visible on smaller screens */}
+          {siteConstants.featureFlags.tableReservations && (
+            <Link href="/reservation" className="xl:hidden">
+              <Button 
+                size="sm"
+                className="bg-green-500 hover:bg-green-600 text-white"
+              >
+                {m["buttons.reservation"]()}
+              </Button>
+            </Link>
+          )}
           <MobileMenu />
         </div>
       </div>
