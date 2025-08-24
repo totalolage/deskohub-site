@@ -133,7 +133,7 @@ export function parseNoteWithMetadata(
           // Special handling for locale to ensure it's a valid Locale type
           if (key === "locale") {
             if (isLocale(value)) parsedNote.metadata.locale = value;
-            else console.warn(`Invalid locale: "${value}"`);
+            // Skip invalid locales silently
           } else {
             parsedNote.metadata[key] = value;
           }

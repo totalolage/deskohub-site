@@ -35,10 +35,7 @@ export const sendReservationConfirmationEmail = (
       return;
     }
 
-    console.log(
-      "📧 Sending reservation confirmation email to:",
-      customer.email
-    );
+    // Sending reservation confirmation email
 
     // Prepare template data
     const templateData: ReservationConfirmationData = {
@@ -70,17 +67,12 @@ export const sendReservationConfirmationEmail = (
       )
       .pipe(
         Effect.tap(() => {
-          console.log("✅ Reservation confirmation email sent successfully");
           return Effect.logInfo("Reservation confirmation email sent", {
             reservationId: reservation.id,
             customerEmail: customer.email,
           });
         }),
         Effect.tapError((error) => {
-          console.error(
-            "❌ Failed to send reservation confirmation email:",
-            error
-          );
           return Effect.logError(
             "Failed to send reservation confirmation email",
             {

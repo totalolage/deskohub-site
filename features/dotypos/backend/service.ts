@@ -387,14 +387,7 @@ const DotyposApiLayer = Layer.scoped(
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              console.log(
-                "Creating reservation with full URL:",
-                `${config.apiUrl}/clouds/${params.path.cloudId}/reservations`
-              );
-              console.log(
-                "Request body:",
-                JSON.stringify(requestBody, null, 2)
-              );
+              // Creating reservation request
 
               const response = await generatedApi.createReservation(
                 createApiOptions(token, config, client, {
@@ -403,31 +396,10 @@ const DotyposApiLayer = Layer.scoped(
                 })
               );
 
-              console.log("Dotypos API response:", {
-                status: response.response?.status,
-                hasError: !!response.error,
-                hasData: !!response.data,
-                error: response.error,
-                data: response.data,
-              });
+              // Process API response
 
               if (response.error) {
-                // Log validation violations if present
-                if (
-                  "violations" in response.error &&
-                  response.error.violations
-                ) {
-                  console.error(
-                    "Validation violations:",
-                    JSON.stringify(response.error.violations, null, 2)
-                  );
-                }
-                console.error("API error details", {
-                  error: response.error,
-                  status: response.response?.status,
-                  responseBody: response.response?.body,
-                  requestBody: requestBody,
-                });
+                // Handle validation violations if present
 
                 // Extract error message from violations if available
                 let errorMessage = "Failed to create reservation";
@@ -515,11 +487,7 @@ const DotyposApiLayer = Layer.scoped(
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              console.log("Searching customers with params:", {
-                path: params.path,
-                query: params.query,
-                url: `/clouds/${params.path.cloudId}/customers`,
-              });
+              // Search for customers
 
               const response = await generatedApi.getCustomers(
                 createApiOptions(token, config, client, {
@@ -528,22 +496,8 @@ const DotyposApiLayer = Layer.scoped(
                 })
               );
 
-              console.log("Customer search response:", {
-                hasError: !!response.error,
-                hasData: !!response.data,
-                dataLength:
-                  response.data && "data" in response.data
-                    ? response.data.data?.length
-                    : 0,
-                status: response.response?.status,
-                error: response.error,
-              });
-              if (response.error && "violations" in response.error) {
-                console.error(
-                  "Filter violations:",
-                  JSON.stringify(response.error.violations, null, 2)
-                );
-              }
+              // Process customer search results
+              // Check for filter violations
 
               if (response.error) {
                 throw {
@@ -562,9 +516,7 @@ const DotyposApiLayer = Layer.scoped(
                 "data" in response.data
               ) {
                 const customers = response.data.data || [];
-                console.log(
-                  `Extracted ${customers.length} customers from paginated response`
-                );
+                // Extracted customers from paginated response
                 return customers as Customer[];
               }
               return [] as Customer[];
@@ -592,10 +544,7 @@ const DotyposApiLayer = Layer.scoped(
           // The API expects an array of customers with all fields present (including nulls)
           const requestBody = [params.body];
 
-          console.log(
-            "Creating customer with body:",
-            JSON.stringify(requestBody, null, 2)
-          );
+          // Creating customer
 
           const result = yield* Effect.tryPromise({
             try: async () => {
@@ -606,15 +555,10 @@ const DotyposApiLayer = Layer.scoped(
                 })
               );
 
-              console.log("Create customer response:", {
-                hasError: !!response.error,
-                hasData: !!response.data,
-                status: response.response?.status,
-                error: response.error,
-              });
+              // Process customer creation response
 
               if (response.error) {
-                console.error("Customer creation failed:", response.error);
+                // Customer creation failed
                 throw {
                   statusCode: response.response?.status || 400,
                   message:
@@ -696,15 +640,10 @@ const DotyposApiLayer = Layer.scoped(
                 })
               );
 
-              console.log("Update customer response:", {
-                hasError: !!response.error,
-                hasData: !!response.data,
-                status: response.response?.status,
-                error: response.error,
-              });
+              // Process customer update response
 
               if (response.error) {
-                console.error("Customer update failed:", response.error);
+                // Customer update failed
                 throw {
                   statusCode: response.response?.status || 400,
                   message:
@@ -755,9 +694,7 @@ const DotyposApiLayer = Layer.scoped(
                 "data" in response.data
               ) {
                 const tables = response.data.data || [];
-                console.log(
-                  `Extracted ${tables.length} tables from paginated response`
-                );
+                // Extracted tables from paginated response
                 return tables as Table[];
               }
               return [] as Table[];
@@ -808,9 +745,7 @@ const DotyposApiLayer = Layer.scoped(
                 "data" in response.data
               ) {
                 const products = response.data.data || [];
-                console.log(
-                  `Extracted ${products.length} products from paginated response`
-                );
+                // Extracted products from paginated response
                 return products as Product[];
               }
               return [] as Product[];
@@ -861,9 +796,7 @@ const DotyposApiLayer = Layer.scoped(
                 "data" in response.data
               ) {
                 const categories = response.data.data || [];
-                console.log(
-                  `Extracted ${categories.length} categories from paginated response`
-                );
+                // Extracted categories from paginated response
                 return categories as Category[];
               }
               return [] as Category[];

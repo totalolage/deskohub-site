@@ -26,9 +26,6 @@ function DotyposCallbackContent() {
   } | null>(null);
 
   useEffect(() => {
-    console.log("Dotypos Callback Page loaded");
-    console.log("Current URL:", window.location.href);
-    console.log("Search params:", searchParams.toString());
 
     // Dotykacka returns token directly, not an authorization code
     const token = searchParams.get("token"); // This is the refresh token
@@ -36,20 +33,15 @@ function DotyposCallbackContent() {
     const state = searchParams.get("state");
     const error = searchParams.get("error");
 
-    console.log("Received refresh token:", token ? "***present***" : "missing");
-    console.log("Received cloud ID:", cloudId);
-    console.log("Received state:", state);
-    console.log("Received error:", error);
+    // Extract OAuth callback parameters
 
     if (error) {
-      console.error("OAuth error received:", error);
       setStatus("error");
       setMessage(`Authentication failed: ${error}`);
       return;
     }
 
     if (token) {
-      console.log("Refresh token received directly from Dotykacka");
       // No need to exchange - we already have the refresh token
       setTokens({
         refreshToken: token,
@@ -58,7 +50,6 @@ function DotyposCallbackContent() {
       setStatus("success");
       setMessage("Authentication successful! Refresh token received.");
     } else {
-      console.error("No refresh token received");
       setStatus("error");
       setMessage("No refresh token received");
     }
@@ -66,23 +57,18 @@ function DotyposCallbackContent() {
 
   const _exchangeCodeForTokens = async (code: string) => {
     try {
-      console.log("Sending token exchange request to API...");
       const response = await fetch("/api/admin/dotypos/token", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
 
-      console.log("Token exchange response status:", response.status);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error("Token exchange failed:", errorText);
         throw new Error(`Token exchange failed: ${response.statusText}`);
       }
 
       const data: unknown = await response.json();
-      console.log("Token exchange successful:", data);
 
       if (data && typeof data === "object" && !Array.isArray(data)) {
         const tokenData = data as Record<string, unknown>;
@@ -104,7 +90,6 @@ function DotyposCallbackContent() {
       setStatus("success");
       setMessage("Authentication successful! Tokens received.");
     } catch (error) {
-      console.error("Token exchange error:", error);
       setStatus("error");
       setMessage(
         error instanceof Error ? error.message : "Token exchange failed"

@@ -95,13 +95,13 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              console.log("📧 Attempting to send via Resend API...");
+              // Attempting to send via Resend API
               const fromAddress =
                 typeof message.from === "string"
                   ? message.from
                   : `${message.from.name || ""} <${message.from.email}>`.trim();
 
-              console.log(`Sending from: ${fromAddress}`);
+              // Sending from configured address
 
               const toAddresses =
                 typeof message.to === "string"
@@ -110,8 +110,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                     ? message.to.map((r) => r.email)
                     : [message.to.email];
 
-              console.log(`Sending to: ${toAddresses.join(", ")}`);
-              console.log(`Subject: ${message.subject}`);
+              // Preparing email for recipients
 
               const response = await resend.emails.send({
                 from: fromAddress,
@@ -126,10 +125,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                   : undefined,
               });
 
-              console.log(
-                "Resend API response:",
-                JSON.stringify(response, null, 2)
-              );
+              // Resend API response received
 
               if (response.error) {
                 throw new Error(`Resend API error: ${response.error.message}`);
@@ -138,7 +134,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
               return response;
             },
             catch: (error) => {
-              console.error("❌ Resend API call failed:", error);
+              // Resend API call failed
               return new NetworkError({
                 message: `Failed to send email via Resend: ${error instanceof Error ? error.message : String(error)}`,
               });

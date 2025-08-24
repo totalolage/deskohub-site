@@ -88,7 +88,7 @@ export const sendReservationCreatedEmail = (
       return;
     }
 
-    console.log("📧 Sending reservation created email to:", customer.email);
+    // Sending reservation created email
 
     const templateData = prepareReservationData(reservation, customer);
     const { subject, html, text } = renderReservationCreatedEmail(
@@ -118,14 +118,12 @@ export const sendReservationCreatedEmail = (
 
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {
-        console.log("✅ Reservation created email sent successfully");
         return Effect.logInfo("Reservation created email sent", {
           reservationId: reservation.id,
           customerEmail: customer.email,
         });
       }),
       Effect.tapError((error) => {
-        console.error("❌ Failed to send reservation created email:", error);
         return Effect.logError("Failed to send reservation created email", {
           reservationId: reservation.id,
           customerEmail: customer.email,
@@ -159,7 +157,7 @@ export const sendReservationConfirmedEmail = (
       return;
     }
 
-    console.log("📧 Sending reservation confirmed email to:", customer.email);
+    // Sending reservation confirmed email
 
     const templateData = prepareReservationData(reservation, customer);
     const { subject, html, text } = renderReservationConfirmedEmail(
@@ -189,14 +187,12 @@ export const sendReservationConfirmedEmail = (
 
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {
-        console.log("✅ Reservation confirmed email sent successfully");
         return Effect.logInfo("Reservation confirmed email sent", {
           reservationId: reservation.id,
           customerEmail: customer.email,
         });
       }),
       Effect.tapError((error) => {
-        console.error("❌ Failed to send reservation confirmed email:", error);
         return Effect.logError("Failed to send reservation confirmed email", {
           reservationId: reservation.id,
           customerEmail: customer.email,
@@ -230,7 +226,7 @@ export const sendReservationDeclinedEmail = (
       return;
     }
 
-    console.log("📧 Sending reservation declined email to:", customer.email);
+    // Sending reservation declined email
 
     const templateData = prepareReservationData(reservation, customer);
     const { subject, html, text } = renderReservationDeclinedEmail(
@@ -260,14 +256,12 @@ export const sendReservationDeclinedEmail = (
 
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {
-        console.log("✅ Reservation declined email sent successfully");
         return Effect.logInfo("Reservation declined email sent", {
           reservationId: reservation.id,
           customerEmail: customer.email,
         });
       }),
       Effect.tapError((error) => {
-        console.error("❌ Failed to send reservation declined email:", error);
         return Effect.logError("Failed to send reservation declined email", {
           reservationId: reservation.id,
           customerEmail: customer.email,

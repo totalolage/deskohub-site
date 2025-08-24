@@ -34,20 +34,10 @@ export default async function TrainingRoomConfirmationPage({
   // Get the reservation ID from the query params
   const reservationId = (search.id as string) || "";
 
-  console.log("=== Confirmation Page Loading ===");
-  console.log("Search params:", search);
-  console.log("Extracted reservation ID:", reservationId);
-
   // Try to fetch reservation details from the API
   const reservationDetails = reservationId
     ? await getReservationDetails(reservationId)
     : null;
-
-  console.log("=== Reservation Details Result ===");
-  console.log("Got reservation details:", reservationDetails ? "Yes" : "No");
-  if (reservationDetails) {
-    console.log("Reservation status:", reservationDetails.status);
-  }
 
   // If we have reservation details, use the ReservationConfirmation component
   if (reservationDetails) {

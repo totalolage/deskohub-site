@@ -25,14 +25,11 @@ export default async function ReservationConfirmationPage({
   const { id, locale } = await params;
   setLocale(locale, { reload: false });
 
-  console.log("=== Table Reservation Page Loading ===");
-  console.log("Reservation ID from URL:", id);
-  console.log("Locale:", locale);
+  // Loading reservation page with ID and locale
 
   // Check if table reservations feature is enabled
   const tableReservationsEnabled = await tableReservationsFlag();
   if (!tableReservationsEnabled) {
-    console.log("Table reservations feature is disabled");
     notFound();
   }
 
@@ -41,16 +38,11 @@ export default async function ReservationConfirmationPage({
     getReservation(id).pipe(
       Effect.provide(DotyposServiceLive),
       Effect.match({
-        onFailure: (error) => {
-          // Log error for debugging
-          console.error("=== Failed to fetch reservation ===");
-          console.error("Error:", error);
+        onFailure: (_error) => {
           // Return null to trigger 404
           return null;
         },
         onSuccess: (data) => {
-          console.log("=== Successfully fetched reservation ===");
-          console.log("Full result:", JSON.stringify(data, null, 2));
           return data;
         },
       })
@@ -59,16 +51,12 @@ export default async function ReservationConfirmationPage({
 
   // If reservation not found or error, show 404
   if (!result) {
-    console.log("No result returned, showing 404");
     notFound();
   }
 
   const { reservation, customer } = result;
 
-  console.log("=== Reservation Details ===");
-  console.log("Reservation:", JSON.stringify(reservation, null, 2));
-  console.log("Reservation status:", reservation.status);
-  console.log("Customer:", JSON.stringify(customer, null, 2));
+  // Extract reservation and customer data
 
   // Convert API response to display format
   const displayData = getReservationDisplayData(reservation);
@@ -77,9 +65,7 @@ export default async function ReservationConfirmationPage({
   let status: ReservationStatus = "submitted";
   const apiStatus = reservation.status?.toUpperCase();
 
-  console.log("=== Status Mapping ===");
-  console.log("Original status:", reservation.status);
-  console.log("Uppercase status:", apiStatus);
+  // Map API status to UI status
 
   if (apiStatus === "CONFIRMED") {
     status = "confirmed";
@@ -89,7 +75,7 @@ export default async function ReservationConfirmationPage({
     status = "submitted";
   }
 
-  console.log("Mapped status:", status);
+  // Status mapped successfully
 
   // Construct customer name from available fields
   const customerName =
@@ -97,7 +83,7 @@ export default async function ReservationConfirmationPage({
     customer.companyName ||
     "Unknown";
 
-  console.log("Customer name:", customerName);
+  // Customer name constructed
 
   // Parse time from the datetime
   const datetime = displayData.datetime || new Date();
@@ -130,11 +116,7 @@ export default async function ReservationConfirmationPage({
         : ("standard" as const),
   };
 
-  console.log("=== Final Reservation Details ===");
-  console.log(
-    "Details for component:",
-    JSON.stringify(reservationDetails, null, 2)
-  );
+  // Reservation details prepared for display
 
   return (
     <>

@@ -26,7 +26,7 @@ export const sendNewReservationNotification = (
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
 
-    console.log("📧 Sending new reservation notification to business");
+    // Sending new reservation notification to business
 
     // Parse the note to extract special requests
     const parsedNote = parseNoteWithMetadata(reservation.note);
@@ -195,24 +195,16 @@ Zdroj: Webový formulář
       },
     };
 
-    console.log("📧 Business notification email details:");
-    console.log(
-      `  FROM: ${siteConstants.contact.reservationEmail} (DeskOHub Rezervace)`
-    );
-    console.log(`  TO: reservations@deskohub.cz (${siteConstants.name})`);
-    console.log(`  REPLY-TO: ${customer.email || "none"} (${customerName})`);
-    console.log(`  SUBJECT: ${subject}`);
+    // Business notification email details prepared
 
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {
-        console.log("✅ New reservation notification sent to business");
         return Effect.logInfo("New reservation notification sent", {
           reservationId: reservation.id,
           to: "reservations@deskohub.cz",
         });
       }),
       Effect.tapError((error) => {
-        console.error("❌ Failed to send reservation notification:", error);
         return Effect.logError("Failed to send reservation notification", {
           reservationId: reservation.id,
           to: "reservations@deskohub.cz",

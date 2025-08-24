@@ -62,7 +62,6 @@ function getStatusChangeType(
     case DotyposReservationStatus.DECLINED:
       return "declined";
     default:
-      console.warn(`Unknown reservation status: ${status}`);
       return "unknown";
   }
 }
@@ -73,7 +72,6 @@ function getStatusChangeType(
  * Receives reservation update webhooks from Dotypos
  */
 export async function POST(request: Request) {
-  console.log("=== Reservation Webhook Received ===");
 
   try {
     // Check webhook security (skip in development)
@@ -82,9 +80,6 @@ export async function POST(request: Request) {
       const providedSecret = url.searchParams.get("secret");
 
       if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
-        console.error(
-          "Webhook authentication failed - invalid or missing secret"
-        );
         return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
       }
     }
@@ -94,7 +89,6 @@ export async function POST(request: Request) {
 
     // Dotypos sends an array with a single item
     if (!Array.isArray(payload) || payload.length === 0) {
-      console.error("Invalid webhook payload: expected array");
       return NextResponse.json(
         { error: "Invalid payload format" },
         { status: 400 }
@@ -103,24 +97,17 @@ export async function POST(request: Request) {
 
     const reservation = payload[0];
     if (!reservation) {
-      console.error("Invalid webhook payload: no reservation data");
       return NextResponse.json(
         { error: "Invalid payload format" },
         { status: 400 }
       );
     }
 
-    console.log("Webhook payload:", JSON.stringify(reservation, null, 2));
-
     // Determine the type of status change
     const statusChange = getStatusChangeType(reservation.status);
-    console.log(
-      `Status change type: ${statusChange} (status code: ${reservation.status})`
-    );
 
     // Skip if unknown status or deleted
     if (statusChange === "unknown" || reservation.deleted === 1) {
-      console.log("Skipping webhook - unknown status or deleted reservation");
       return NextResponse.json({
         success: true,
         message: "Webhook processed (no action taken)",
@@ -131,36 +118,21 @@ export async function POST(request: Request) {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         // Fetch full reservation and customer details from Dotypos
-        console.log(
-          `Fetching reservation ${reservation.reservationid} and customer ${reservation.customerid}`
-        );
-
         const fullReservation = yield* getReservation(
           String(reservation.reservationid)
-        );
-
-        console.log(
-          "Full reservation data:",
-          JSON.stringify(fullReservation, null, 2)
         );
 
         // Parse the note to extract metadata including locale
         const parsedNote = parseNoteWithMetadata(
           fullReservation.reservation.note
         );
-        console.log("Parsed note:", JSON.stringify(parsedNote, null, 2));
 
         const locale: Locale = parsedNote.metadata.locale || getLocale();
-        console.log(`Using locale: ${locale}`);
 
         // Determine which email to send based on status
         let emailSent = false;
 
         if (fullReservation.customer.email) {
-          console.log(
-            `Sending ${statusChange} email to ${fullReservation.customer.email}`
-          );
-
           // Send appropriate email based on status change
           switch (statusChange) {
             case "created":
@@ -179,9 +151,6 @@ export async function POST(request: Request) {
               );
 
               emailSent = true;
-              console.log(
-                "✅ Reservation created email sent to customer and notification sent to business"
-              );
               break;
 
             case "confirmed":
@@ -191,7 +160,6 @@ export async function POST(request: Request) {
                 locale
               );
               emailSent = true;
-              console.log("✅ Reservation confirmed email sent");
               break;
 
             case "declined":
@@ -201,16 +169,12 @@ export async function POST(request: Request) {
                 locale
               );
               emailSent = true;
-              console.log("✅ Reservation declined email sent");
               break;
 
             default:
-              console.log(
-                `⏭️ Skipping email for unknown status: ${statusChange}`
-              );
+              // Skip email for unknown status
+              break;
           }
-        } else {
-          console.log("⚠️ Customer has no email address, skipping email");
         }
 
         return {
@@ -226,18 +190,12 @@ export async function POST(request: Request) {
       )
     );
 
-    console.log("=== Webhook Processing Complete ===");
-    console.log("Result:", result);
-
     return NextResponse.json({
       success: true,
       data: result,
     });
   } catch (error) {
-    console.error("=== Webhook Error ===");
-    console.error("Error processing webhook:", error);
-
-    // Log the error but return success to Dotypos
+    // Return success to Dotypos to prevent webhook retries
     // This prevents Dotypos from retrying the webhook unnecessarily
     return NextResponse.json({
       success: true,

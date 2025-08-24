@@ -11,13 +11,6 @@ export default function DotyposAuthPage() {
   const clientSecret = env.DOTYPOS_CLIENT_SECRET;
 
   if (!clientId || !clientSecret) {
-    console.error(
-      "Missing DOTYPOS_CLIENT_ID or DOTYPOS_CLIENT_SECRET environment variable",
-      {
-        clientId: clientId ? "***configured***" : "missing",
-        clientSecret: clientSecret ? "***configured***" : "missing",
-      }
-    );
     notFound();
   }
 
@@ -37,20 +30,10 @@ export default function DotyposAuthPage() {
   authUrl.searchParams.append("state", state);
 
   useEffect(() => {
-    console.log("Dotypos Auth Page loaded");
-    console.log("Client ID:", clientId);
-    console.log(
-      "Client Secret:",
-      clientSecret ? "***configured***" : "missing"
-    );
-    console.log("Redirect URL:", redirectUrl);
-    console.log("State:", state);
-    console.log("Full auth URL:", authUrl);
+    // Page loaded, auth URL ready
   }, [authUrl, clientId, clientSecret, redirectUrl, state]);
 
   const handleAuthenticate = () => {
-    console.log("Authenticating with Dotypos...");
-    console.log("Redirecting to:", authUrl);
     window.location.href = authUrl.toString();
   };
 
