@@ -13,7 +13,8 @@
       "**/*.ts",
       "**/*.tsx",
       "**/*.json",
-      "!.taskmaster/**"
+      "!.taskmaster/**",
+      "!**/generated/**"
     ]
   },
   "formatter": {
@@ -41,17 +42,6 @@
       }
     }
   },
-  "overrides": [
-    {
-      "includes": ["**/generated/**", "features/dotypos/generated/**"],
-      "linter": {
-        "enabled": false
-      },
-      "formatter": {
-        "enabled": false
-      }
-    }
-  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",
