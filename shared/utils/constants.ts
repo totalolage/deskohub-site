@@ -153,11 +153,11 @@ export const siteConstants = {
   },
   // Feature flags - simple constants for prerendered site
   featureFlags: {
-    boardGamesList: true,
+    boardGamesList: false,
     boardroomReservations: false,
-    contactForm: true,
-    tableReservations: true,
-    gallery: true,
-    menuPdfDownload: true,
+    contactForm: false,
+    tableReservations: false,
+    gallery: false,
+    menuPdfDownload: false,
   },
 };
