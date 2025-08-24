@@ -14,7 +14,7 @@ import {
 import { getLocale, type Locale } from "@/i18n";
 import {
   getAllReservationsCacheTag,
-  getCustomerReservationsCacheTag,
+  getCustomerCacheTag,
   getReservationCacheTag,
 } from "@/shared/backend/utils/cache-tags";
 import { isDev } from "@/shared/utils/environment";
@@ -190,21 +190,13 @@ export async function POST(request: Request) {
         // Revalidate specific reservation page
         revalidateTag(getReservationCacheTag(reservationIdStr));
         
-        // Revalidate all reservations listing
-        revalidateTag(getAllReservationsCacheTag());
-        
-        // Revalidate customer's reservations if customer ID exists
-        if (customerIdStr) {
-          revalidateTag(getCustomerReservationsCacheTag(customerIdStr));
-        }
-        
         yield* Effect.logInfo("Cache invalidated for reservation update", {
           reservationId: reservationIdStr,
           customerId: customerIdStr,
           tags: [
             getReservationCacheTag(reservationIdStr),
             getAllReservationsCacheTag(),
-            getCustomerReservationsCacheTag(customerIdStr),
+            getCustomerCacheTag(customerIdStr),
           ],
         });
 
