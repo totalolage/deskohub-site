@@ -6,6 +6,7 @@ import { getLocale } from "@/i18n";
 import { FeatureFlagDebugger } from "@/shared/components/feature-flag-debugger";
 import { Toaster } from "@/shared/components/ui/sonner";
 import { tableReservationsFlag } from "@/shared/lib/feature-flags";
+import { isDev } from "@/shared/utils/environment";
 
 export default async function RootLayout({
   children,
@@ -22,7 +23,7 @@ export default async function RootLayout({
           </main>
           <Footer />
           <Toaster />
-          <FeatureFlagDebugger />
+          {isDev() && <FeatureFlagDebugger />}
         </div>
       </body>
     </html>
