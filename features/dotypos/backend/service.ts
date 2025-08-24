@@ -18,6 +18,7 @@ import {
   NetworkError,
   ValidationError,
 } from "@/shared/backend/errors";
+import type { WithId } from "@/types/with-id";
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
 import type {
@@ -1385,13 +1386,21 @@ export const getAvailableTables = (): Effect.Effect<
 export const getReservation = (
   id: string
 ): Effect.Effect<
-  { reservation: Reservation; customer: Customer },
+  {
+    reservation: WithId<Reservation>;
+    customer: WithId<Customer>;
+  },
   ExternalAPIError | NetworkError | ValidationError,
   DotyposClient
 > =>
   Effect.gen(function* () {
     const client = yield* DotyposClient;
-    const reservation = yield* client.getReservation(id);
+
+    const reservationResult = yield* client.getReservation(id);
+    const reservation = {
+      ...reservationResult,
+      id,
+    };
 
     // Get customer details if available
     if (!reservation._customerId) {
@@ -1402,7 +1411,11 @@ export const getReservation = (
       );
     }
 
-    const customer = yield* client.getCustomer(reservation._customerId);
+    const customerResult = yield* client.getCustomer(reservation._customerId);
+    const customer = {
+      ...customerResult,
+      id: reservation._customerId,
+    };
 
     // Return both reservation and customer
     return { reservation, customer };

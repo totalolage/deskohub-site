@@ -1,4 +1,5 @@
 import type { Locale } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
@@ -115,11 +116,17 @@ export function renderReservationDeclinedEmail(
           </p>
         </div>
 
+        ${
+          data.reservationUrl
+            ? `
         <div style="text-align: center; margin: 30px 0;">
-          <a href="https://deskohub.cz/reservation" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+          <a href="${data.reservationUrl.toString()}" style="display: inline-block; background: #3b82f6; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
             ${isEnglish ? "Make a New Reservation" : "Vytvořit novou rezervaci"}
           </a>
         </div>
+        `
+            : ""
+        }
 
         <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #ddd;">
           <h3 style="color: #333;">
@@ -128,8 +135,8 @@ export function renderReservationDeclinedEmail(
           <p style="font-size: 14px; color: #666;">
             ${
               isEnglish
-                ? "If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at contact@deskohub.cz or call +420 123 456 789"
-                : "Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na contact@deskohub.cz nebo volejte +420 123 456 789"
+                ? `If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}`
+                : `Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}`
             }
           </p>
         </div>
@@ -145,7 +152,7 @@ export function renderReservationDeclinedEmail(
           DeskOHub<br>
           ${isEnglish ? "Board Game Bar & Coworking Space" : "Deskové hry & Coworking"}<br>
           📍 Prague, Czech Republic<br>
-          📧 contact@deskohub.cz | 📞 +420 123 456 789
+          📧 ${siteConstants.contact.email} | 📞 ${siteConstants.contact.phone}
         </p>
       </div>
     </body>
@@ -171,14 +178,14 @@ What's Next?
 • We apologize for any inconvenience
 
 Need Help?
-If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at contact@deskohub.cz or call +420 123 456 789
+If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}
 
 We hope to see you soon!
 DeskOHub Team
 
 DeskOHub - Board Game Bar & Coworking Space
 Prague, Czech Republic
-contact@deskohub.cz | +420 123 456 789`
+${siteConstants.contact.email} | ${siteConstants.contact.phone}`
     : `Rezervace zrušena
 
 Vážený/á ${data.customerName},
@@ -197,14 +204,14 @@ Co dál?
 • Omlouváme se za případné nepříjemnosti
 
 Potřebujete pomoc?
-Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na contact@deskohub.cz nebo volejte +420 123 456 789
+Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}
 
 Doufáme, že se brzy uvidíme!
 DeskOHub Team
 
 DeskOHub - Deskové hry & Coworking
 Praha, Česká republika
-contact@deskohub.cz | +420 123 456 789`;
+${siteConstants.contact.email} | ${siteConstants.contact.phone}`;
 
   return { subject, html, text };
 }

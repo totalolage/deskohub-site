@@ -1,4 +1,5 @@
 import type { Locale } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
@@ -162,7 +163,7 @@ export function renderReservationConfirmedEmail(
           data.confirmationUrl
             ? `
         <div style="text-align: center; margin: 30px 0;">
-          <a href="${data.confirmationUrl}" style="display: inline-block; background: #22c55e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
+          <a href="${data.confirmationUrl.toString()}" style="display: inline-block; background: #22c55e; color: white; padding: 12px 30px; text-decoration: none; border-radius: 6px; font-weight: bold;">
             ${isEnglish ? "View Reservation" : "Zobrazit rezervaci"}
           </a>
         </div>
@@ -177,8 +178,8 @@ export function renderReservationConfirmedEmail(
           <p style="font-size: 14px; color: #666;">
             ${
               isEnglish
-                ? "Contact us at contact@deskohub.cz or call +420 123 456 789"
-                : "Kontaktujte nás na contact@deskohub.cz nebo volejte +420 123 456 789"
+                ? `Contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}`
+                : `Kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}`
             }
           </p>
         </div>
@@ -194,7 +195,7 @@ export function renderReservationConfirmedEmail(
           DeskOHub<br>
           ${isEnglish ? "Board Game Bar & Coworking Space" : "Deskové hry & Coworking"}<br>
           📍 Prague, Czech Republic<br>
-          📧 contact@deskohub.cz | 📞 +420 123 456 789
+          📧 ${siteConstants.contact.email} | 📞 ${siteConstants.contact.phone}
         </p>
       </div>
     </body>
@@ -225,14 +226,14 @@ Important Information:
 • We'll hold your table for 15 minutes after the reservation time
 
 Need to make changes?
-Contact us at contact@deskohub.cz or call +420 123 456 789
+Contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}
 
 See you soon!
 DeskOHub Team
 
 DeskOHub - Board Game Bar & Coworking Space
 Prague, Czech Republic
-contact@deskohub.cz | +420 123 456 789`
+${siteConstants.contact.email} | ${siteConstants.contact.phone}`
     : `✅ Rezervace potvrzena!
 
 Vážený/á ${data.customerName},
@@ -256,14 +257,14 @@ Důležité informace:
 • Váš stůl budeme držet 15 minut po času rezervace
 
 Potřebujete provést změny?
-Kontaktujte nás na contact@deskohub.cz nebo volejte +420 123 456 789
+Kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}
 
 Brzy na viděnou!
 DeskOHub Team
 
 DeskOHub - Deskové hry & Coworking
 Praha, Česká republika
-contact@deskohub.cz | +420 123 456 789`;
+${siteConstants.contact.email} | ${siteConstants.contact.phone}`;
 
   return { subject, html, text };
 }

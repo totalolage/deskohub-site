@@ -62,8 +62,9 @@ export interface ReservationConfirmationData {
   guestCount: number;
   specialRequests?: string;
   tableName?: string;
-  confirmationUrl?: string;
+  confirmationUrl?: URL;
   cancelUrl?: string;
+  reservationUrl?: URL;
 }
 
 /**

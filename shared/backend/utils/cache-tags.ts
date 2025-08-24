@@ -1,6 +1,6 @@
 /**
  * Cache Tags for Next.js Caching
- * 
+ *
  * Centralized cache tag management for reservation pages
  * and other cacheable resources.
  */
@@ -16,7 +16,7 @@ export function getReservationCacheTag(reservationId: string): string {
  * Generate a cache tag for all reservations
  */
 export function getAllReservationsCacheTag(): string {
-  return 'all-reservations';
+  return "all-reservations";
 }
 
 /**
@@ -37,10 +37,10 @@ export function getReservationPageCacheTags(
     getReservationCacheTag(reservationId),
     getAllReservationsCacheTag(),
   ];
-  
+
   if (customerId) {
     tags.push(getCustomerCacheTag(customerId));
   }
-  
+
   return tags;
 }

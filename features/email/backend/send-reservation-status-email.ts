@@ -11,6 +11,7 @@ import type {
 } from "@/features/dotypos/generated/types.gen";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/i18n";
+import { buildAbsoluteUrl } from "@/shared/backend/utils/site-url";
 import { siteConstants } from "@/shared/utils/constants";
 import { renderReservationConfirmedEmail } from "../templates/reservation-confirmed";
 import { renderReservationCreatedEmail } from "../templates/reservation-created";
@@ -60,9 +61,12 @@ function prepareReservationData(
     specialRequests: finalSpecialRequests || undefined,
     // TODO: Add table name when available from table service
     tableName: undefined,
-    // TODO: Add URLs when routes are available
-    confirmationUrl: `/reservation/${reservation.id}`,
-    cancelUrl: undefined,
+    // Generate full URLs for email links
+    confirmationUrl: reservation.id
+      ? buildAbsoluteUrl(`/reservation/${reservation.id}`)
+      : undefined,
+    cancelUrl: undefined, // TODO: Add cancel URL when route is available
+    reservationUrl: buildAbsoluteUrl("/reservation"), // URL for making new reservations
   };
 }
 

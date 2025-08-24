@@ -32,6 +32,15 @@ export const env = createEnv({
 
     // Node environment
     NODE_ENV: z.enum(["development", "test", "production"]),
+
+    // Vercel environment variables
+    VERCEL_ENV: z.enum(["production", "preview", "development"]).optional(),
+    /**
+     * Vercel Project Production URL
+     * A production domain name of the project.
+     * The value does not include the protocol scheme https://.
+     */
+    VERCEL_PROJECT_PRODUCTION_URL: z.url().optional(),
   },
 
   /**
@@ -66,6 +75,10 @@ export const env = createEnv({
 
     // Client variables
     NEXT_PUBLIC_STATSIG_CLIENT_KEY: process.env.NEXT_PUBLIC_STATSIG_CLIENT_KEY,
+
+    // Vercel environment variables
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
   },
 
   emptyStringAsUndefined: true,

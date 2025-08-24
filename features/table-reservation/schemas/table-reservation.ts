@@ -19,16 +19,23 @@ export const getTableReservationSchema = () => {
     .date({
       error: m["tableReservation.validation.datetime.required"](),
     })
-    .min(new Date(), { error: m["tableReservation.validation.datetime.mustBeFuture"]() })
+    .min(new Date(), {
+      error: m["tableReservation.validation.datetime.mustBeFuture"](),
+    })
     .refine(
       (date) => {
         // Check if minutes are in 30-minute increments using modular arithmetic
         const minutes = date.getMinutes();
         return (
-          minutes % siteConstants.tableReservation.validation.time.minuteIncrement === 0
+          minutes %
+            siteConstants.tableReservation.validation.time.minuteIncrement ===
+          0
         );
       },
-      { message: m["tableReservation.validation.datetime.thirtyMinuteIncrements"]() }
+      {
+        message:
+          m["tableReservation.validation.datetime.thirtyMinuteIncrements"](),
+      }
     )
     .refine(
       (date) => {
@@ -66,7 +73,10 @@ export const getTableReservationSchema = () => {
           currentMinutes >= openingMinutes && currentMinutes < closingMinutes
         );
       },
-      { message: m["tableReservation.validation.datetime.outsideWorkingHours"]() }
+      {
+        message:
+          m["tableReservation.validation.datetime.outsideWorkingHours"](),
+      }
     );
 
   // Guest count schema - expecting number input from form
@@ -166,11 +176,18 @@ export const getTableReservationSchema = () => {
         return isReservationWithinWorkingHours(data.datetime, data.duration);
       },
       {
-        message: m["tableReservation.validation.datetime.durationExceedsWorkingHours"](),
+        message:
+          m[
+            "tableReservation.validation.datetime.durationExceedsWorkingHours"
+          ](),
         path: ["duration"],
       }
     );
 };
 
-export type TableReservationFormUserInput = z.input<ReturnType<typeof getTableReservationSchema>>;
-export type TableReservationFormData = z.output<ReturnType<typeof getTableReservationSchema>>;
+export type TableReservationFormUserInput = z.input<
+  ReturnType<typeof getTableReservationSchema>
+>;
+export type TableReservationFormData = z.output<
+  ReturnType<typeof getTableReservationSchema>
+>;

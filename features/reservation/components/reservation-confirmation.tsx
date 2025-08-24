@@ -288,7 +288,9 @@ export function ReservationConfirmation({
               <div className="flex items-center gap-3">
                 <Calendar className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="font-medium">{m["tableReservation.dateLabel"]()}</p>
+                  <p className="font-medium">
+                    {m["tableReservation.dateLabel"]()}
+                  </p>
                   <p className="text-gray-600">{formattedDate}</p>
                 </div>
               </div>
@@ -296,7 +298,9 @@ export function ReservationConfirmation({
               <div className="flex items-center gap-3">
                 <Clock className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="font-medium">{m["tableReservation.timeLabel"]()}</p>
+                  <p className="font-medium">
+                    {m["tableReservation.timeLabel"]()}
+                  </p>
                   <p className="text-gray-600">{formattedTime}</p>
                 </div>
               </div>
@@ -339,7 +343,9 @@ export function ReservationConfirmation({
                   </span>
                 </div>
                 <div>
-                  <p className="font-medium">{m["tableReservation.nameLabel"]()}</p>
+                  <p className="font-medium">
+                    {m["tableReservation.nameLabel"]()}
+                  </p>
                   <p className="text-gray-600">{details.name}</p>
                 </div>
               </div>
@@ -347,7 +353,9 @@ export function ReservationConfirmation({
               <div className="flex items-center gap-3">
                 <Mail className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="font-medium">{m["tableReservation.emailLabel"]()}</p>
+                  <p className="font-medium">
+                    {m["tableReservation.emailLabel"]()}
+                  </p>
                   <p className="text-gray-600">{details.email}</p>
                 </div>
               </div>
@@ -355,7 +363,9 @@ export function ReservationConfirmation({
               <div className="flex items-center gap-3">
                 <Phone className="w-4 h-4 text-gray-500" />
                 <div>
-                  <p className="font-medium">{m["tableReservation.phoneLabel"]()}</p>
+                  <p className="font-medium">
+                    {m["tableReservation.phoneLabel"]()}
+                  </p>
                   <p className="text-gray-600">{details.phone}</p>
                 </div>
               </div>
@@ -375,9 +385,16 @@ export function ReservationConfirmation({
                     <p className="text-gray-600">
                       {
                         {
-                          private: m["tableReservation.tablePreferences.privateSpace"](),
-                          standard: m["tableReservation.tablePreferences.standard"](),
-                          large: m["tableReservation.tablePreferences.largerTable"](),
+                          private:
+                            m[
+                              "tableReservation.tablePreferences.privateSpace"
+                            ](),
+                          standard:
+                            m["tableReservation.tablePreferences.standard"](),
+                          large:
+                            m[
+                              "tableReservation.tablePreferences.largerTable"
+                            ](),
                         }[details.tablePreference]
                       }
                     </p>

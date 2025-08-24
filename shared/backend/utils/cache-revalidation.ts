@@ -1,6 +1,6 @@
 /**
  * Cache Revalidation Utilities
- * 
+ *
  * Helper functions for revalidating Next.js cache
  */
 
@@ -20,15 +20,15 @@ export async function revalidateReservation(
 ): Promise<void> {
   // Revalidate the specific reservation
   revalidateTag(getReservationCacheTag(reservationId));
-  
+
   // Revalidate all reservations
   revalidateTag(getAllReservationsCacheTag());
-  
+
   // Revalidate customer's reservations if customer ID is provided
   if (customerId) {
     revalidateTag(getCustomerCacheTag(customerId));
   }
-  
+
   // Also revalidate the specific reservation pages by path
   // This ensures both table and training room reservations are updated
   revalidatePath(`/reservation/${reservationId}`);
@@ -41,8 +41,8 @@ export async function revalidateReservation(
  */
 export async function revalidateAllReservations(): Promise<void> {
   revalidateTag(getAllReservationsCacheTag());
-  revalidatePath('/reservations');
-  revalidatePath('/training-room/reservations');
+  revalidatePath("/reservations");
+  revalidatePath("/training-room/reservations");
 }
 
 /**

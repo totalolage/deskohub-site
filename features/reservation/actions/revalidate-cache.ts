@@ -12,7 +12,7 @@ export async function revalidateReservationCache(
 ): Promise<{ success: boolean; message: string }> {
   try {
     await revalidateReservation(reservationId, customerId);
-    
+
     return {
       success: true,
       message: `Cache revalidated for reservation ${reservationId}`,
@@ -20,7 +20,7 @@ export async function revalidateReservationCache(
   } catch (error) {
     return {
       success: false,
-      message: `Failed to revalidate cache: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      message: `Failed to revalidate cache: ${error instanceof Error ? error.message : "Unknown error"}`,
     };
   }
 }

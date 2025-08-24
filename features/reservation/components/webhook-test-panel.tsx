@@ -11,7 +11,14 @@ import {
   XCircle,
 } from "lucide-react";
 import { useState } from "react";
-import { getLocale } from "@/i18n";
+import {
+  extractWebhookResult,
+  isWebhookError,
+  isWebhookSuccess,
+  sendTestWebhook,
+  type WebhookResponse,
+  type WebhookStatusChange,
+} from "@/features/webhook";
 import { Alert, AlertDescription } from "@/shared/components/ui/alert";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -33,13 +40,7 @@ interface WebhookTestPanelProps {
   currentStatus?: string;
 }
 
-type WebhookStatus = "created" | "confirmed" | "declined";
-
-interface WebhookResponse {
-  success: boolean;
-  data?: any;
-  error?: string;
-}
+type WebhookTestStatus = Exclude<WebhookStatusChange, "unknown">;
 
 export function WebhookTestPanel({
   reservationId,
@@ -47,9 +48,9 @@ export function WebhookTestPanel({
   currentStatus,
 }: WebhookTestPanelProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [loading, setLoading] = useState<WebhookStatus | null>(null);
+  const [loading, setLoading] = useState<WebhookTestStatus | null>(null);
   const [responses, setResponses] = useState<
-    Record<WebhookStatus, WebhookResponse | null>
+    Record<WebhookTestStatus, WebhookResponse | null>
   >({
     created: null,
     confirmed: null,
@@ -94,65 +95,20 @@ export function WebhookTestPanel({
     },
   };
 
-  const triggerWebhook = async (type: WebhookStatus) => {
+  const triggerWebhook = async (type: WebhookTestStatus) => {
     setLoading(type);
     setResponses((prev) => ({ ...prev, [type]: null }));
 
-    const config = statusConfig[type];
-
-    // Create webhook payload that mimics Dotypos format
-    const payload = [
-      {
-        branchid: 1,
-        created: Date.now(),
-        customerid: parseInt(customerId, 10),
-        employeeid: 1,
-        flags: 0,
-        deleted: 0,
-        note: `Test webhook trigger from dev panel\n---\nlocale: ${getLocale()}\nsource: dev-panel\ntimestamp: ${new Date().toISOString()}`,
-        seats: 2,
-        status: config.status,
-        tableid: 1,
-        taglist: null,
-        versiondate: Date.now(),
-        reservationid: parseInt(reservationId, 10),
-        startdate: Date.now() + 86400000, // Tomorrow
-        enddate: Date.now() + 90000000, // Tomorrow + 1 hour
-        cloudid: `dev-test-${Date.now()}`,
-      },
-    ];
-
     try {
-      const response = await fetch(webhookUrl, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
+      const response = await sendTestWebhook({
+        reservationId,
+        customerId,
+        status: type,
       });
 
-      const data = (await response.json()) as {
-        error?: string;
-        [key: string]: any;
-      };
-
       setResponses((prev) => ({
         ...prev,
-        [type]: {
-          success: response.ok,
-          data: response.ok ? data : undefined,
-          error: !response.ok
-            ? data.error || `HTTP ${response.status}`
-            : undefined,
-        },
-      }));
-    } catch (error) {
-      setResponses((prev) => ({
-        ...prev,
-        [type]: {
-          success: false,
-          error: error instanceof Error ? error.message : "Network error",
-        },
+        [type]: response,
       }));
     } finally {
       setLoading(null);
@@ -209,94 +165,100 @@ export function WebhookTestPanel({
             </div>
 
             <div className="grid gap-4">
-              {(Object.keys(statusConfig) as WebhookStatus[]).map((type) => {
-                const config = statusConfig[type];
-                const Icon = config.icon;
-                const response = responses[type];
-                const isLoading = loading === type;
+              {(Object.keys(statusConfig) as WebhookTestStatus[]).map(
+                (type) => {
+                  const config = statusConfig[type];
+                  const Icon = config.icon;
+                  const response = responses[type];
+                  const isLoading = loading === type;
 
-                return (
-                  <div
-                    key={type}
-                    className={`p-4 rounded-lg border-2 ${config.borderColor} ${config.bgColor}`}
-                  >
-                    <div className="flex items-start justify-between mb-2">
-                      <div className="flex items-center gap-2">
-                        <Icon className={`h-5 w-5 ${config.color}`} />
-                        <h3 className={`font-semibold ${config.color}`}>
-                          {config.label} (Status: {config.status})
-                        </h3>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => triggerWebhook(type)}
-                        disabled={isLoading}
-                        className="min-w-[100px]"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Sending...
-                          </>
-                        ) : (
-                          <>
-                            <Send className="mr-2 h-4 w-4" />
-                            Trigger
-                          </>
-                        )}
-                      </Button>
-                    </div>
-
-                    <p className="text-sm text-gray-600 mb-3">
-                      {config.description}
-                    </p>
-
-                    {response && (
-                      <div
-                        className={`mt-3 p-3 rounded ${
-                          response.success
-                            ? "bg-green-100 border border-green-300"
-                            : "bg-red-100 border border-red-300"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 mb-1">
-                          {response.success ? (
+                  return (
+                    <div
+                      key={type}
+                      className={`p-4 rounded-lg border-2 ${config.borderColor} ${config.bgColor}`}
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <div className="flex items-center gap-2">
+                          <Icon className={`h-5 w-5 ${config.color}`} />
+                          <h3 className={`font-semibold ${config.color}`}>
+                            {config.label} (Status: {config.status})
+                          </h3>
+                        </div>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => triggerWebhook(type)}
+                          disabled={isLoading}
+                          className="min-w-[100px]"
+                        >
+                          {isLoading ? (
                             <>
-                              <CheckCircle className="h-4 w-4 text-green-600" />
-                              <span className="text-sm font-medium text-green-800">
-                                Success
-                              </span>
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                              Sending...
                             </>
                           ) : (
                             <>
-                              <XCircle className="h-4 w-4 text-red-600" />
-                              <span className="text-sm font-medium text-red-800">
-                                Failed
-                              </span>
+                              <Send className="mr-2 h-4 w-4" />
+                              Trigger
                             </>
                           )}
-                        </div>
-                        {response.error && (
-                          <p className="text-sm text-red-700">
-                            Error: {response.error}
-                          </p>
-                        )}
-                        {response.data && (
-                          <details className="mt-2">
-                            <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-800">
-                              View Response
-                            </summary>
-                            <pre className="mt-2 text-xs bg-white p-2 rounded overflow-x-auto">
-                              {JSON.stringify(response.data, null, 2)}
-                            </pre>
-                          </details>
-                        )}
+                        </Button>
                       </div>
-                    )}
-                  </div>
-                );
-              })}
+
+                      <p className="text-sm text-gray-600 mb-3">
+                        {config.description}
+                      </p>
+
+                      {response && (
+                        <div
+                          className={`mt-3 p-3 rounded ${
+                            isWebhookSuccess(response)
+                              ? "bg-green-100 border border-green-300"
+                              : "bg-red-100 border border-red-300"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1">
+                            {isWebhookSuccess(response) ? (
+                              <>
+                                <CheckCircle className="h-4 w-4 text-green-600" />
+                                <span className="text-sm font-medium text-green-800">
+                                  Success
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <XCircle className="h-4 w-4 text-red-600" />
+                                <span className="text-sm font-medium text-red-800">
+                                  Failed
+                                </span>
+                              </>
+                            )}
+                          </div>
+                          {isWebhookError(response) && (
+                            <p className="text-sm text-red-700">
+                              Error: {response.message}
+                            </p>
+                          )}
+                          {extractWebhookResult(response) && (
+                            <details className="mt-2">
+                              <summary className="text-sm text-gray-600 cursor-pointer hover:text-gray-800">
+                                View Response
+                              </summary>
+                              <pre className="mt-2 text-xs bg-white p-2 rounded overflow-x-auto">
+                                {JSON.stringify(
+                                  extractWebhookResult(response),
+                                  null,
+                                  2
+                                )}
+                              </pre>
+                            </details>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                }
+              )}
             </div>
 
             <Alert className="border-gray-200">

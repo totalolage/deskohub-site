@@ -26,11 +26,9 @@ function DotyposCallbackContent() {
   } | null>(null);
 
   useEffect(() => {
-
     // Dotykacka returns token directly, not an authorization code
     const token = searchParams.get("token"); // This is the refresh token
     const cloudId = searchParams.get("cloudid");
-    const state = searchParams.get("state");
     const error = searchParams.get("error");
 
     // Extract OAuth callback parameters
@@ -54,48 +52,6 @@ function DotyposCallbackContent() {
       setMessage("No refresh token received");
     }
   }, [searchParams]);
-
-  const _exchangeCodeForTokens = async (code: string) => {
-    try {
-      const response = await fetch("/api/admin/dotypos/token", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`Token exchange failed: ${response.statusText}`);
-      }
-
-      const data: unknown = await response.json();
-
-      if (data && typeof data === "object" && !Array.isArray(data)) {
-        const tokenData = data as Record<string, unknown>;
-        setTokens({
-          accessToken:
-            typeof tokenData.accessToken === "string"
-              ? tokenData.accessToken
-              : undefined,
-          refreshToken:
-            typeof tokenData.refreshToken === "string"
-              ? tokenData.refreshToken
-              : undefined,
-          cloudId:
-            typeof tokenData.cloudId === "string"
-              ? tokenData.cloudId
-              : undefined,
-        });
-      }
-      setStatus("success");
-      setMessage("Authentication successful! Tokens received.");
-    } catch (error) {
-      setStatus("error");
-      setMessage(
-        error instanceof Error ? error.message : "Token exchange failed"
-      );
-    }
-  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">

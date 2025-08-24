@@ -8,9 +8,9 @@ import { toast } from "sonner";
 import { submitTableReservation } from "@/features/table-reservation/actions/table-reservation";
 import { useFormErrorScroll } from "@/features/table-reservation/hooks/use-form-error-scroll";
 import {
+  getTableReservationSchema,
   type TableReservationFormData,
   type TableReservationFormUserInput,
-  getTableReservationSchema,
 } from "@/features/table-reservation/schemas/table-reservation";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
@@ -148,7 +148,8 @@ export function TableReservationForm() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-green-500" />
-                {m["tableReservation.dateLabel"]()} & {m["tableReservation.timeLabel"]()}
+                {m["tableReservation.dateLabel"]()} &{" "}
+                {m["tableReservation.timeLabel"]()}
               </CardTitle>
               <CardDescription>{m["descriptions.dateTime"]()}</CardDescription>
             </CardHeader>
@@ -211,7 +212,9 @@ export function TableReservationForm() {
                     ref={registerErrorRef("duration")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["tableReservation.durationLabel"]()}</FormLabel>
+                    <FormLabel>
+                      {m["tableReservation.durationLabel"]()}
+                    </FormLabel>
                     <Select
                       onValueChange={(value) =>
                         field.onChange(parseFloat(value))
@@ -257,18 +260,22 @@ export function TableReservationForm() {
                     ref={registerErrorRef("guestCount")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["tableReservation.guestCountLabel"]()}</FormLabel>
+                    <FormLabel>
+                      {m["tableReservation.guestCountLabel"]()}
+                    </FormLabel>
                     <Select
                       onValueChange={(value) =>
                         field.onChange(parseInt(value, 10))
                       }
                       defaultValue={String(
                         field.value ||
-                          siteConstants.tableReservation.defaultValues.guestCount
+                          siteConstants.tableReservation.defaultValues
+                            .guestCount
                       )}
                       value={String(
                         field.value ||
-                          siteConstants.tableReservation.defaultValues.guestCount
+                          siteConstants.tableReservation.defaultValues
+                            .guestCount
                       )}
                     >
                       <FormControl>
@@ -284,10 +291,13 @@ export function TableReservationForm() {
                         {Array.from(
                           {
                             length:
-                              siteConstants.tableReservation.validation.guestCount.max,
+                              siteConstants.tableReservation.validation
+                                .guestCount.max,
                           },
                           (_, i) =>
-                            i + siteConstants.tableReservation.validation.guestCount.min
+                            i +
+                            siteConstants.tableReservation.validation.guestCount
+                              .min
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
                             {m.guestCountPlural({ count: num })}
@@ -418,7 +428,9 @@ export function TableReservationForm() {
                         {m["tableReservation.tablePreferences.largerTable"]()}
                       </FormLabel>
                       <p className="text-sm text-muted-foreground">
-                        {m["tableReservation.tablePreferences.largerTableDescription"]()}
+                        {m[
+                          "tableReservation.tablePreferences.largerTableDescription"
+                        ]()}
                       </p>
                     </div>
                   </FormItem>
@@ -458,7 +470,9 @@ export function TableReservationForm() {
                             isDisabled && "opacity-50"
                           )}
                         >
-                          {m["tableReservation.tablePreferences.privateSpace"]()}
+                          {m[
+                            "tableReservation.tablePreferences.privateSpace"
+                          ]()}
                         </FormLabel>
                         <p className="text-sm text-muted-foreground">
                           {isDisabled
@@ -499,10 +513,13 @@ export function TableReservationForm() {
                   >
                     <FormControl>
                       <Textarea
-                        placeholder={m["tableReservation.specialRequestsPlaceholder"]()}
+                        placeholder={m[
+                          "tableReservation.specialRequestsPlaceholder"
+                        ]()}
                         rows={4}
                         maxLength={
-                          siteConstants.tableReservation.validation.specialRequests.max
+                          siteConstants.tableReservation.validation
+                            .specialRequests.max
                         }
                         {...field}
                       />
@@ -547,7 +564,9 @@ export function TableReservationForm() {
               className="bg-green-500 hover:bg-green-601 text-white px-8 py-3 text-lg w-full"
               disabled={isExecuting}
             >
-              {isExecuting ? m["tableReservation.submitting"]() : m["tableReservation.submit"]()}
+              {isExecuting
+                ? m["tableReservation.submitting"]()
+                : m["tableReservation.submit"]()}
             </Button>
             <p className="text-sm text-gray-500 mt-2">
               {m["descriptions.confirmationTime"]()}

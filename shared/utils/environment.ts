@@ -13,7 +13,7 @@ import { env } from "@/env";
 export function isDev(): boolean {
   if (typeof window === "undefined") {
     // Server-side: use NODE_ENV
-    return env.NODE_ENV === "development";
+    return env.NODE_ENV === "development" || env.VERCEL_ENV === "development";
   }
 
   // Client-side: check if we're on localhost

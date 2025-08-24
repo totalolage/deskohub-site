@@ -11,12 +11,9 @@ import {
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
 } from "@/features/email/backend/send-reservation-status-email";
+import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
 import { getLocale, type Locale } from "@/i18n";
-import {
-  getAllReservationsCacheTag,
-  getCustomerCacheTag,
-  getReservationCacheTag,
-} from "@/shared/backend/utils/cache-tags";
+import { getReservationCacheTag } from "@/shared/backend/utils/cache-tags";
 import { isDev } from "@/shared/utils/environment";
 
 /**
@@ -35,14 +32,16 @@ class WebhookAuthError extends Data.TaggedError("WebhookAuthError")<{
   readonly message: string;
 }> {}
 
-class WebhookValidationError extends Data.TaggedError("WebhookValidationError")<{
+class WebhookValidationError extends Data.TaggedError(
+  "WebhookValidationError"
+)<{
   readonly message: string;
   readonly issues?: unknown;
 }> {}
 
 /**
  * Dotypos Reservation Webhook Payload Schema
- * 
+ *
  * Using Effect Schema for robust validation and type safety
  */
 const DotyposReservationPayloadItem = Schema.Struct({
@@ -65,27 +64,14 @@ const DotyposReservationPayloadItem = Schema.Struct({
 });
 
 // The webhook sends an array with a single item
-const DotyposReservationPayload = Schema.NonEmptyArray(DotyposReservationPayloadItem);
-
-/**
- * Webhook Processing Result Schema
- */
-const WebhookResult = Schema.Struct({
-  reservationId: Schema.Number,
-  customerId: Schema.Number,
-  statusChange: Schema.Literal("created", "confirmed", "declined", "unknown"),
-  emailSent: Schema.Boolean,
-  customerEmail: Schema.NullOr(Schema.String),
-});
-
-type WebhookResult = Schema.Schema.Type<typeof WebhookResult>;
+const DotyposReservationPayload = Schema.NonEmptyArray(
+  DotyposReservationPayloadItem
+);
 
 /**
  * Determine what type of update this is by comparing status
  */
-const getStatusChangeType = (
-  status: number
-): "created" | "confirmed" | "declined" | "unknown" => {
+const getStatusChangeType = (status: number): WebhookStatusChange => {
   switch (status) {
     case DotyposReservationStatus.NEW:
       return "created";
@@ -109,7 +95,7 @@ const validateWebhookSecurity = (url: URL) =>
     }
 
     const providedSecret = url.searchParams.get("secret");
-    
+
     if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
       yield* Effect.fail(
         new WebhookAuthError({ message: "Invalid webhook secret" })
@@ -123,20 +109,21 @@ const validateWebhookSecurity = (url: URL) =>
 const processWebhook = (payload: unknown) =>
   Effect.gen(function* () {
     // Validate and parse the payload
-    const validatedPayload = yield* Schema.decodeUnknown(DotyposReservationPayload)(
-      payload
-    ).pipe(
-      Effect.mapError((error) =>
-        new WebhookValidationError({
-          message: "Invalid payload format",
-          issues: error.message,
-        })
+    const validatedPayload = yield* Schema.decodeUnknown(
+      DotyposReservationPayload
+    )(payload).pipe(
+      Effect.mapError(
+        (error) =>
+          new WebhookValidationError({
+            message: "Invalid payload format",
+            issues: error.message,
+          })
       )
     );
 
     // Extract the first (and only) item
     const reservation = validatedPayload[0];
-    
+
     // Determine the type of status change
     const statusChange = getStatusChangeType(reservation.status);
 
@@ -154,9 +141,7 @@ const processWebhook = (payload: unknown) =>
     );
 
     // Parse the note to extract metadata including locale
-    const parsedNote = parseNoteWithMetadata(
-      fullReservation.reservation.note
-    );
+    const parsedNote = parseNoteWithMetadata(fullReservation.reservation.note);
 
     const locale: Locale = parsedNote.metadata.locale || getLocale();
 
@@ -206,16 +191,14 @@ const processWebhook = (payload: unknown) =>
     // Invalidate cache for this reservation
     const reservationIdStr = String(reservation.reservationid);
     const customerIdStr = String(reservation.customerid);
-    
+
     // Revalidate specific reservation page
     revalidateTag(getReservationCacheTag(reservationIdStr));
-    
+
     yield* Effect.logInfo("Cache invalidated for reservation update", {
       reservationId: reservationIdStr,
       customerId: customerIdStr,
-      tags: [
-        getReservationCacheTag(reservationIdStr),
-      ],
+      tags: [getReservationCacheTag(reservationIdStr)],
     });
 
     const result: WebhookResult = {

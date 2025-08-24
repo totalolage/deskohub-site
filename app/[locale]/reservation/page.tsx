@@ -22,8 +22,12 @@ export default async function ReservationPage({ params }: RouteProps_locale) {
 
   return (
     <div className="container py-8 px-4 xl:max-w-5xl">
-      <h1 className="text-3xl font-bold mb-6">{m["tableReservation.pageTitle"]()}</h1>
-      <p className="text-gray-600 mb-8">{m["tableReservation.pageDescription"]()}</p>
+      <h1 className="text-3xl font-bold mb-6">
+        {m["tableReservation.pageTitle"]()}
+      </h1>
+      <p className="text-gray-600 mb-8">
+        {m["tableReservation.pageDescription"]()}
+      </p>
       <TableReservationForm />
     </div>
   );

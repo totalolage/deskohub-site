@@ -1,4 +1,5 @@
 import type { Locale } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
@@ -134,7 +135,7 @@ export function renderReservationCreatedEmail(
           DeskOHub<br>
           ${isEnglish ? "Board Game Bar & Coworking Space" : "Deskové hry & Coworking"}<br>
           📍 Prague, Czech Republic<br>
-          📧 contact@deskohub.cz | 📞 +420 123 456 789
+          📧 ${siteConstants.contact.email} | 📞 ${siteConstants.contact.phone}
         </p>
       </div>
     </body>
@@ -162,7 +163,7 @@ DeskOHub Team
 
 DeskOHub - Board Game Bar & Coworking Space
 Prague, Czech Republic
-contact@deskohub.cz | +420 123 456 789`
+${siteConstants.contact.email} | ${siteConstants.contact.phone}`
     : `Žádost o rezervaci přijata
 
 Vážený/á ${data.customerName},
@@ -183,7 +184,7 @@ DeskOHub Team
 
 DeskOHub - Deskové hry & Coworking
 Praha, Česká republika
-contact@deskohub.cz | +420 123 456 789`;
+${siteConstants.contact.email} | ${siteConstants.contact.phone}`;
 
   return { subject, html, text };
 }

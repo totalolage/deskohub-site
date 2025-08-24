@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { unstable_cache } from "next/cache";
+import { unstable_cache as cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
@@ -9,7 +9,7 @@ import {
   type ReservationStatus,
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
-import { m, setLocale } from "@/i18n";
+import { getLocale, m, setLocale } from "@/i18n";
 import { getReservationPageCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { tableReservationsFlag } from "@/shared/lib/feature-flags";
@@ -41,7 +41,7 @@ export default async function ReservationConfirmationPage({
   }
 
   // Create cached version of the reservation fetch
-  const getCachedReservation = unstable_cache(
+  const getCachedReservation = cache(
     async (reservationId: string) => {
       const result = await Effect.runPromise(
         getReservation(reservationId).pipe(
@@ -59,7 +59,7 @@ export default async function ReservationConfirmationPage({
       );
       return result;
     },
-    ['reservation-detail'],
+    ["reservation-detail"],
     {
       revalidate: 3600, // Cache for 1 hour
       tags: getReservationPageCacheTags(id),
@@ -75,8 +75,6 @@ export default async function ReservationConfirmationPage({
   }
 
   const { reservation, customer } = result;
-
-  // Extract reservation and customer data
 
   // Convert API response to display format
   const displayData = getReservationDisplayData(reservation);
@@ -103,20 +101,21 @@ export default async function ReservationConfirmationPage({
     customer.companyName ||
     "Unknown";
 
-  // Customer name constructed
-
-  // Parse time from the datetime
-  const datetime = displayData.datetime || new Date();
-  const time = datetime.toLocaleTimeString(locale, {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-
   // Parse the note to extract only special requests
   const parsedNote = reservation.note
     ? parseNoteWithMetadata(reservation.note)
     : null;
   const specialRequests = parsedNote?.specialRequests || undefined;
+
+  // Parse time from the datetime
+  const datetime = displayData.datetime || new Date();
+  const time = datetime.toLocaleTimeString(
+    parsedNote?.metadata.locale ?? getLocale(),
+    {
+      hour: "2-digit",
+      minute: "2-digit",
+    }
+  );
 
   // Map to the ReservationDetails structure
   const reservationDetails = {
@@ -148,8 +147,8 @@ export default async function ReservationConfirmationPage({
       />
       <div className="container mx-auto px-4 pb-8">
         <WebhookTestPanel
-          reservationId={reservation.id || ""}
-          customerId={customer.id || ""}
+          reservationId={reservation.id}
+          customerId={customer.id}
           currentStatus={reservation.status}
         />
       </div>
