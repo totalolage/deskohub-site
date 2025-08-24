@@ -11,24 +11,24 @@ import {
 // In Zod v4, we should avoid coerce/preprocess for better type inference
 // Use transform or refine for custom parsing logic
 
-// Main booking schema using Zod v4's composable pattern
+// Main table reservation schema using Zod v4's composable pattern
 // Using a factory function ensures messages are evaluated at runtime with correct locale
-export const getBookingSchema = () => {
+export const getTableReservationSchema = () => {
   // Datetime schema - expecting Date input from form
   const datetimeSchema = z
     .date({
-      error: m["booking.validation.datetime.required"](),
+      error: m["tableReservation.validation.datetime.required"](),
     })
-    .min(new Date(), { error: m["booking.validation.datetime.mustBeFuture"]() })
+    .min(new Date(), { error: m["tableReservation.validation.datetime.mustBeFuture"]() })
     .refine(
       (date) => {
         // Check if minutes are in 30-minute increments using modular arithmetic
         const minutes = date.getMinutes();
         return (
-          minutes % siteConstants.booking.validation.time.minuteIncrement === 0
+          minutes % siteConstants.tableReservation.validation.time.minuteIncrement === 0
         );
       },
-      { message: m["booking.validation.datetime.thirtyMinuteIncrements"]() }
+      { message: m["tableReservation.validation.datetime.thirtyMinuteIncrements"]() }
     )
     .refine(
       (date) => {
@@ -66,63 +66,63 @@ export const getBookingSchema = () => {
           currentMinutes >= openingMinutes && currentMinutes < closingMinutes
         );
       },
-      { message: m["booking.validation.datetime.outsideWorkingHours"]() }
+      { message: m["tableReservation.validation.datetime.outsideWorkingHours"]() }
     );
 
   // Guest count schema - expecting number input from form
   const guestCountSchema = z
     .number({
-      error: m["booking.validation.guestCount.required"](),
+      error: m["tableReservation.validation.guestCount.required"](),
     })
-    .int({ error: m["booking.validation.guestCount.integer"]() })
-    .min(siteConstants.booking.validation.guestCount.min, {
-      error: m["booking.validation.guestCount.required"](),
+    .int({ error: m["tableReservation.validation.guestCount.integer"]() })
+    .min(siteConstants.tableReservation.validation.guestCount.min, {
+      error: m["tableReservation.validation.guestCount.required"](),
     })
-    .max(siteConstants.booking.validation.guestCount.max, {
-      error: m["booking.validation.guestCount.maximum"]({
-        max: siteConstants.booking.validation.guestCount.max,
+    .max(siteConstants.tableReservation.validation.guestCount.max, {
+      error: m["tableReservation.validation.guestCount.maximum"]({
+        max: siteConstants.tableReservation.validation.guestCount.max,
       }),
     });
 
   // Duration schema - expecting number input from form
   const durationSchema = z
     .number({
-      error: m["booking.validation.duration.minimum"](),
+      error: m["tableReservation.validation.duration.minimum"](),
     })
-    .min(siteConstants.booking.validation.duration.min, {
-      error: m["booking.validation.duration.minimum"](),
+    .min(siteConstants.tableReservation.validation.duration.min, {
+      error: m["tableReservation.validation.duration.minimum"](),
     })
-    .multipleOf(siteConstants.booking.validation.duration.increment, {
-      error: m["booking.validation.duration.increment"](),
+    .multipleOf(siteConstants.tableReservation.validation.duration.increment, {
+      error: m["tableReservation.validation.duration.increment"](),
     });
 
   // Name schema
   const nameSchema = z
     .string()
-    .min(siteConstants.booking.validation.name.min, {
-      error: m["booking.validation.name.minimum"]({
-        min: siteConstants.booking.validation.name.min,
+    .min(siteConstants.tableReservation.validation.name.min, {
+      error: m["tableReservation.validation.name.minimum"]({
+        min: siteConstants.tableReservation.validation.name.min,
       }),
     })
-    .max(siteConstants.booking.validation.name.max, {
-      error: m["booking.validation.name.maximum"]({
-        max: siteConstants.booking.validation.name.max,
+    .max(siteConstants.tableReservation.validation.name.max, {
+      error: m["tableReservation.validation.name.maximum"]({
+        max: siteConstants.tableReservation.validation.name.max,
       }),
     });
 
   // Email schema using Zod v4's improved email validation
   const emailSchema = z
-    .email({ error: m["booking.validation.email.invalid"]() })
-    .min(1, { error: m["booking.validation.email.invalid"]() });
+    .email({ error: m["tableReservation.validation.email.invalid"]() })
+    .min(1, { error: m["tableReservation.validation.email.invalid"]() });
 
   // Phone schema - basic validation only
   const phoneSchema = z
     .string()
     .min(1, {
-      error: m["booking.validation.phone.minimum"](),
+      error: m["tableReservation.validation.phone.minimum"](),
     })
     .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
-      error: m["booking.validation.phone.invalid"](),
+      error: m["tableReservation.validation.phone.invalid"](),
     });
 
   // Table preference schemas using booleans instead of enum
@@ -132,9 +132,9 @@ export const getBookingSchema = () => {
   // Special requests schema
   const specialRequestsSchema = z
     .string()
-    .max(siteConstants.booking.validation.specialRequests.max, {
-      error: m["booking.validation.specialRequests.maximum"]({
-        max: siteConstants.booking.validation.specialRequests.max,
+    .max(siteConstants.tableReservation.validation.specialRequests.max, {
+      error: m["tableReservation.validation.specialRequests.maximum"]({
+        max: siteConstants.tableReservation.validation.specialRequests.max,
       }),
     })
     .optional();
@@ -166,11 +166,11 @@ export const getBookingSchema = () => {
         return isReservationWithinWorkingHours(data.datetime, data.duration);
       },
       {
-        message: m["booking.validation.datetime.durationExceedsWorkingHours"](),
+        message: m["tableReservation.validation.datetime.durationExceedsWorkingHours"](),
         path: ["duration"],
       }
     );
 };
 
-export type BookingFormUserInput = z.input<ReturnType<typeof getBookingSchema>>;
-export type BookingFormData = z.output<ReturnType<typeof getBookingSchema>>;
+export type TableReservationFormUserInput = z.input<ReturnType<typeof getTableReservationSchema>>;
+export type TableReservationFormData = z.output<ReturnType<typeof getTableReservationSchema>>;

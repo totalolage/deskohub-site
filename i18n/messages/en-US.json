@@ -160,7 +160,7 @@
     "pageTitle": "Reservation Confirmed",
     "pageDescription": "Your table reservation at Deskohub has been successfully confirmed. Check your booking details and confirmation."
   },
-  "booking": {
+  "tableReservation": {
     "pageTitle": "Book a Table",
     "pageDescription": "Reserve your perfect spot at Deskohub. Choose your date, time, and preferences for an unforgettable board game experience.",
     "dateLabel": "Date",

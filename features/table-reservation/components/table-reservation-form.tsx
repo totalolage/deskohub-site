@@ -5,13 +5,13 @@ import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { submitBooking } from "@/features/booking/actions/booking";
-import { useFormErrorScroll } from "@/features/booking/hooks/use-form-error-scroll";
+import { submitTableReservation } from "@/features/table-reservation/actions/table-reservation";
+import { useFormErrorScroll } from "@/features/table-reservation/hooks/use-form-error-scroll";
 import {
-  type BookingFormData,
-  type BookingFormUserInput,
-  getBookingSchema,
-} from "@/features/booking/schemas/booking";
+  type TableReservationFormData,
+  type TableReservationFormUserInput,
+  getTableReservationSchema,
+} from "@/features/table-reservation/schemas/table-reservation";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
 import { Badge } from "@/shared/components/ui/badge";
@@ -49,16 +49,16 @@ import {
 } from "@/shared/utils/date-formatting";
 import { formatPrice } from "@/shared/utils/price-formatting";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
-import styles from "./booking-form.module.css";
+import styles from "./table-reservation-form.module.css";
 
-export function BookingForm() {
+export function TableReservationForm() {
   const locale = useLocale();
 
-  const bookingSchema = getBookingSchema();
+  const tableReservationSchema = getTableReservationSchema();
 
-  const form = useForm<BookingFormUserInput>({
-    resolver: zodResolver(bookingSchema),
-    defaultValues: siteConstants.booking.defaultValues,
+  const form = useForm<TableReservationFormUserInput>({
+    resolver: zodResolver(tableReservationSchema),
+    defaultValues: siteConstants.tableReservation.defaultValues,
     mode: "onTouched",
     shouldFocusError: false, // We handle focus in our custom error scroll hook
   });
@@ -73,7 +73,7 @@ export function BookingForm() {
     }
   );
 
-  const { execute, isExecuting } = useAction(submitBooking, {
+  const { execute, isExecuting } = useAction(submitTableReservation, {
     onError: ({ error }) => {
       // Show server error as toast
       toast.error(
@@ -84,18 +84,18 @@ export function BookingForm() {
     },
     onSettled: ({ result }) => {
       if (result?.validationErrors) {
-        let firstErrorField: keyof BookingFormData | null = null;
+        let firstErrorField: keyof TableReservationFormData | null = null;
 
         Object.entries(result.validationErrors).forEach(([field, errors]) => {
           if (
-            bookingSchema.keyof().safeParse(field).success &&
+            tableReservationSchema.keyof().safeParse(field).success &&
             errors &&
             Array.isArray(errors)
           ) {
             if (!firstErrorField)
-              firstErrorField = field as keyof BookingFormData;
+              firstErrorField = field as keyof TableReservationFormData;
 
-            form.setError(field as keyof BookingFormData, {
+            form.setError(field as keyof TableReservationFormData, {
               type: "server",
               message:
                 typeof errors[0] === "string" ? errors[0] : "Validation error",
@@ -148,7 +148,7 @@ export function BookingForm() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calendar className="w-5 h-5 text-green-500" />
-                {m["booking.dateLabel"]()} & {m["booking.timeLabel"]()}
+                {m["tableReservation.dateLabel"]()} & {m["tableReservation.timeLabel"]()}
               </CardTitle>
               <CardDescription>{m["descriptions.dateTime"]()}</CardDescription>
             </CardHeader>
@@ -167,8 +167,8 @@ export function BookingForm() {
                         style: "long",
                         type: "conjunction",
                       }).format([
-                        m["booking.dateLabel"](),
-                        m["booking.timeLabel"](),
+                        m["tableReservation.dateLabel"](),
+                        m["tableReservation.timeLabel"](),
                       ])}
                     </FormLabel>
                     <FormControl>
@@ -176,7 +176,7 @@ export function BookingForm() {
                         type="datetime-local"
                         min={getMinBookingDateTime()}
                         step={
-                          siteConstants.booking.validation.time
+                          siteConstants.tableReservation.validation.time
                             .minuteIncrement * 60
                         }
                         variant={fieldState.error ? "error" : "default"}
@@ -211,18 +211,18 @@ export function BookingForm() {
                     ref={registerErrorRef("duration")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["booking.durationLabel"]()}</FormLabel>
+                    <FormLabel>{m["tableReservation.durationLabel"]()}</FormLabel>
                     <Select
                       onValueChange={(value) =>
                         field.onChange(parseFloat(value))
                       }
                       defaultValue={String(
                         field.value ||
-                          siteConstants.booking.defaultValues.duration
+                          siteConstants.tableReservation.defaultValues.duration
                       )}
                       value={String(
                         field.value ||
-                          siteConstants.booking.defaultValues.duration
+                          siteConstants.tableReservation.defaultValues.duration
                       )}
                       disabled={availableDurations.length === 0}
                     >
@@ -257,18 +257,18 @@ export function BookingForm() {
                     ref={registerErrorRef("guestCount")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["booking.guestCountLabel"]()}</FormLabel>
+                    <FormLabel>{m["tableReservation.guestCountLabel"]()}</FormLabel>
                     <Select
                       onValueChange={(value) =>
                         field.onChange(parseInt(value, 10))
                       }
                       defaultValue={String(
                         field.value ||
-                          siteConstants.booking.defaultValues.guestCount
+                          siteConstants.tableReservation.defaultValues.guestCount
                       )}
                       value={String(
                         field.value ||
-                          siteConstants.booking.defaultValues.guestCount
+                          siteConstants.tableReservation.defaultValues.guestCount
                       )}
                     >
                       <FormControl>
@@ -284,10 +284,10 @@ export function BookingForm() {
                         {Array.from(
                           {
                             length:
-                              siteConstants.booking.validation.guestCount.max,
+                              siteConstants.tableReservation.validation.guestCount.max,
                           },
                           (_, i) =>
-                            i + siteConstants.booking.validation.guestCount.min
+                            i + siteConstants.tableReservation.validation.guestCount.min
                         ).map((num) => (
                           <SelectItem key={num} value={num.toString()}>
                             {m.guestCountPlural({ count: num })}
@@ -307,10 +307,10 @@ export function BookingForm() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Phone className="w-5 h-5 text-green-500" />
-                {m["booking.contactTitle"]()}
+                {m["tableReservation.contactTitle"]()}
               </CardTitle>
               <CardDescription>
-                {m["booking.contactDescription"]()}
+                {m["tableReservation.contactDescription"]()}
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -323,7 +323,7 @@ export function BookingForm() {
                     ref={registerErrorRef("name")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["booking.nameLabel"]()}</FormLabel>
+                    <FormLabel>{m["tableReservation.nameLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
                         placeholder={m["placeholders.fullName"]()}
@@ -345,7 +345,7 @@ export function BookingForm() {
                     ref={registerErrorRef("email")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["booking.emailLabel"]()}</FormLabel>
+                    <FormLabel>{m["tableReservation.emailLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
                         type="email"
@@ -368,7 +368,7 @@ export function BookingForm() {
                     ref={registerErrorRef("phone")}
                     className="scroll-mt-[calc(var(--header-height)+20px)]"
                   >
-                    <FormLabel>{m["booking.phoneLabel"]()}</FormLabel>
+                    <FormLabel>{m["tableReservation.phoneLabel"]()}</FormLabel>
                     <FormControl>
                       <Input
                         type="tel"
@@ -389,7 +389,7 @@ export function BookingForm() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Gamepad2 className="w-5 h-5 text-green-500" />
-                {m["booking.tablePreferenceLabel"]()}
+                {m["tableReservation.tablePreferenceLabel"]()}
               </CardTitle>
               <CardDescription>{m["descriptions.tableType"]()}</CardDescription>
             </CardHeader>
@@ -415,10 +415,10 @@ export function BookingForm() {
                     </FormControl>
                     <div className="space-y-1 leading-none">
                       <FormLabel className="cursor-pointer">
-                        {m["booking.tablePreferences.largerTable"]()}
+                        {m["tableReservation.tablePreferences.largerTable"]()}
                       </FormLabel>
                       <p className="text-sm text-muted-foreground">
-                        {m["booking.tablePreferences.largerTableDescription"]()}
+                        {m["tableReservation.tablePreferences.largerTableDescription"]()}
                       </p>
                     </div>
                   </FormItem>
@@ -458,15 +458,15 @@ export function BookingForm() {
                             isDisabled && "opacity-50"
                           )}
                         >
-                          {m["booking.tablePreferences.privateSpace"]()}
+                          {m["tableReservation.tablePreferences.privateSpace"]()}
                         </FormLabel>
                         <p className="text-sm text-muted-foreground">
                           {isDisabled
                             ? m[
-                                "booking.tablePreferences.privateSpaceDisabled"
+                                "tableReservation.tablePreferences.privateSpaceDisabled"
                               ]()
                             : m[
-                                "booking.tablePreferences.privateSpaceDescription"
+                                "tableReservation.tablePreferences.privateSpaceDescription"
                               ]()}
                         </p>
                       </div>
@@ -482,7 +482,7 @@ export function BookingForm() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <MessageSquare className="w-5 h-5 text-green-500" />
-                {m["booking.specialRequestsLabel"]()}
+                {m["tableReservation.specialRequestsLabel"]()}
               </CardTitle>
               <CardDescription>
                 {m["descriptions.specialRequests"]()}
@@ -499,10 +499,10 @@ export function BookingForm() {
                   >
                     <FormControl>
                       <Textarea
-                        placeholder={m["booking.specialRequestsPlaceholder"]()}
+                        placeholder={m["tableReservation.specialRequestsPlaceholder"]()}
                         rows={4}
                         maxLength={
-                          siteConstants.booking.validation.specialRequests.max
+                          siteConstants.tableReservation.validation.specialRequests.max
                         }
                         {...field}
                       />
@@ -524,7 +524,7 @@ export function BookingForm() {
             <CardContent className="pt-6">
               <div className="text-center space-y-2">
                 <h3 className="font-semibold text-green-800">
-                  {m["booking.pricingInfo"]({
+                  {m["tableReservation.pricingInfo"]({
                     priceWith: formatPrice(
                       siteConstants.pricing.entryFee.withPurchase,
                       locale
@@ -547,7 +547,7 @@ export function BookingForm() {
               className="bg-green-500 hover:bg-green-601 text-white px-8 py-3 text-lg w-full"
               disabled={isExecuting}
             >
-              {isExecuting ? m["booking.submitting"]() : m["booking.submit"]()}
+              {isExecuting ? m["tableReservation.submitting"]() : m["tableReservation.submit"]()}
             </Button>
             <p className="text-sm text-gray-500 mt-2">
               {m["descriptions.confirmationTime"]()}

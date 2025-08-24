@@ -164,7 +164,7 @@ export function ContactForm() {
               {isExecuting ? (
                 <>
                   <span className="animate-spin mr-2">⏳</span>
-                  {m["booking.submitting"]()}
+                  {m["tableReservation.submitting"]()}
                 </>
               ) : (
                 <>

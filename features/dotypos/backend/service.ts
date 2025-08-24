@@ -6,7 +6,7 @@
  */
 
 import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
-import type { BookingFormData } from "@/features/booking";
+import type { TableReservationFormData } from "@/features/table-reservation";
 import { getLocale } from "@/i18n";
 import {
   type DotyposConfig,
@@ -1183,7 +1183,7 @@ export { DotyposClient, DotyposConfigTag };
  * Build note field with special requests and metadata
  * Customer details are now stored in the customer record itself
  */
-const buildNote = (input: BookingFormData): string => {
+const buildNote = (input: TableReservationFormData): string => {
   // Include special requests and metadata in the note field
   const metadata = createStandardMetadata(getLocale(), "website");
   return createNoteWithMetadata(input.specialRequests, metadata);
@@ -1193,7 +1193,7 @@ const buildNote = (input: BookingFormData): string => {
  * Create a reservation
  */
 export const createReservation = (
-  input: BookingFormData
+  input: TableReservationFormData
 ): Effect.Effect<
   Reservation,
   ExternalAPIError | NetworkError | ValidationError,

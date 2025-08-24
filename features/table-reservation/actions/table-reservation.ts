@@ -2,16 +2,16 @@
 
 import { Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
-import { getBookingSchema } from "@/features/booking/schemas/booking";
+import { getTableReservationSchema } from "@/features/table-reservation/schemas/table-reservation";
 import { createReservation, DotyposServiceLive } from "@/features/dotypos";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // Create the action with the helper
-const _submitBooking = createEffectSafeAction(
-  getBookingSchema(),
+const _submitTableReservation = createEffectSafeAction(
+  getTableReservationSchema(),
   (input) =>
     Effect.gen(function* () {
-      yield* Effect.logInfo("Submit booking action invoked", {
+      yield* Effect.logInfo("Submit table reservation action invoked", {
         input,
         inputKeys: Object.keys(input),
       });
@@ -35,11 +35,11 @@ const _submitBooking = createEffectSafeAction(
       // Return the reservation so we can redirect outside the Effect
       return reservation;
     }).pipe(
-      Effect.withSpan("submitBooking", {
+      Effect.withSpan("submitTableReservation", {
         attributes: {
-          "booking.name": input.name,
-          "booking.email": input.email,
-          "booking.guestCount": input.guestCount,
+          "tableReservation.name": input.name,
+          "tableReservation.email": input.email,
+          "tableReservation.guestCount": input.guestCount,
         },
       })
     ),
@@ -47,11 +47,11 @@ const _submitBooking = createEffectSafeAction(
 );
 
 // Export an explicitly async wrapper that Next.js will recognize
-export const submitBooking = async (
-  ...args: Parameters<typeof _submitBooking>
+export const submitTableReservation = async (
+  ...args: Parameters<typeof _submitTableReservation>
 ) => {
   "use server";
-  const result = await _submitBooking(...args);
+  const result = await _submitTableReservation(...args);
 
   // Check if we have a successful result with an ID
   if (result?.data?.id) {

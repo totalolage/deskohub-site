@@ -164,7 +164,7 @@
     "pageTitle": "Rezervace potvrzena",
     "pageDescription": "Vaše rezervace stolu v Deskohub byla úspěšně potvrzena. Zkontrolujte detaily vaší rezervace a potvrzení."
   },
-  "booking": {
+  "tableReservation": {
     "pageTitle": "Rezervace stolu",
     "pageDescription": "Rezervujte si své ideální místo v Deskohub. Vyberte si datum, čas a preference pro nezapomenutelný zážitek s deskovými hrami.",
     "dateLabel": "Datum",

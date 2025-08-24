@@ -131,8 +131,8 @@ export function isReservationWithinWorkingHours(
  * @returns Array of available duration options in hours
  */
 export function getAvailableDurations(datetime: Date | null): number[] {
-  const increment = siteConstants.booking.validation.duration.increment;
-  const minDuration = siteConstants.booking.validation.duration.min;
+  const increment = siteConstants.tableReservation.validation.duration.increment;
+  const minDuration = siteConstants.tableReservation.validation.duration.min;
 
   // If no datetime selected, return durations up to our longest operating hours (9 hours for weekends)
   if (!datetime) {

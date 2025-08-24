@@ -84,7 +84,7 @@ export const siteConstants = {
       size: 20, // m²
     },
   },
-  booking: {
+  tableReservation: {
     validation: {
       guestCount: {
         min: 1,
