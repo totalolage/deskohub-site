@@ -55,13 +55,14 @@ export async function sendTestWebhook(
       body: JSON.stringify(webhookPayload),
     });
 
-    const data = (await response.json()) as any;
+    const data = (await response.json()) as unknown;
 
     if (!response.ok) {
+      const errorData = data as { message?: string; issues?: unknown };
       return {
         error: "Request failed",
-        message: data.message || `HTTP ${response.status}`,
-        issues: data.issues,
+        message: errorData.message || `HTTP ${response.status}`,
+        issues: errorData.issues,
       };
     }
 
