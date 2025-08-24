@@ -1,4 +1,5 @@
 import { Check } from "lucide-react";
+import Link from "next/link";
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
 import { Button } from "@/shared/components/ui/button";
@@ -76,7 +77,7 @@ export const TrainingPackages = () => {
               className={cn(
                 "relative flex flex-col",
                 pkg.popular
-                  ? "border-green-501 border-2 shadow-xl"
+                  ? "border-green-500 border-2 shadow-xl"
                   : "border-gray-200"
               )}
             >
@@ -112,17 +113,20 @@ export const TrainingPackages = () => {
                   ))}
                 </ul>
 
-                <Button
-                  className={cn(
-                    "w-full text-white",
-                    pkg.popular
-                      ? "bg-green-500 hover:bg-green-600"
-                      : "bg-gray-900 hover:bg-gray-800"
-                  )}
-                  size="lg"
-                >
-                  {m["training.packages.contactButton"]()}
-                </Button>
+                <Link href="/training-room/reservation">
+                  <Button
+                    className={cn(
+                      "w-full text-white",
+                      pkg.popular
+                        ? "bg-green-500 hover:bg-green-600"
+                        : "bg-gray-900 hover:bg-gray-800"
+                    )}
+                    size="lg"
+                    asChild
+                  >
+                    {m["training.packages.contactButton"]()}
+                  </Button>
+                </Link>
               </CardContent>
             </Card>
           ))}
