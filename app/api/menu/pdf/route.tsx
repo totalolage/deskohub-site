@@ -1,22 +1,21 @@
-"use server";
-
 import { renderToBuffer } from "@react-pdf/renderer";
 import { Effect } from "effect";
+import { NextResponse } from "next/server";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
+import { MenuPDFDocument } from "@/features/menu/components/menu-pdf-document";
 import { siteConstants } from "@/shared/utils/constants";
-import { MenuPDFDocument } from "../components/menu-pdf-document";
 
-export async function generateMenuPDF() {
-  // Fetch menu data from Dotypos
-  const program = getMenuItems().pipe(
-    Effect.provide(DotyposServiceLive),
-    Effect.tapError((error) =>
-      Effect.logError("Failed to fetch menu data for PDF", error)
-    )
-  );
-
+export async function GET() {
   try {
+    // Fetch menu data from Dotypos
+    const program = getMenuItems().pipe(
+      Effect.provide(DotyposServiceLive),
+      Effect.tapError((error) =>
+        Effect.logError("Failed to fetch menu data for PDF", error)
+      )
+    );
+
     const result = await Effect.runPromise(program);
 
     // Group items by category for PDF
@@ -27,18 +26,13 @@ export async function generateMenuPDF() {
       })
     );
 
-    // Use ID-based configuration from site constants
-    const { menu } = await import("@/shared/utils/constants").then(
-      (m) => m.siteConstants
-    );
-
     const groupedCategories = {
       drinks: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
       food: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
       other: [] as Array<{ name: string; items: MenuItemWithCategory[] }>,
     };
 
-    // Create a map of category names to IDs (similar to menu-server)
+    // Create a map of category names to IDs
     const categoryIdMap = new Map<string, string>();
     result.categories.forEach((cat) => {
       if (cat.name && cat.id) {
@@ -50,9 +44,6 @@ export async function generateMenuPDF() {
     const categoriesByName = new Map(
       categorizedItems.map((cat) => [cat.name, cat])
     );
-
-    // Process categories in the order defined in the config
-    // This ensures the display order matches the configuration
 
     // Helper function to add category by ID
     const addCategoryById = (
@@ -66,35 +57,38 @@ export async function generateMenuPDF() {
 
       if (categoryName) {
         const category = categoriesByName.get(categoryName);
-        if (category && !menu.excludedCategories.includes(categoryId)) {
+        if (
+          category &&
+          !siteConstants.menu.excludedCategories.includes(categoryId)
+        ) {
           targetGroup.push(category);
         }
       }
     };
 
     // Process food categories in config order
-    menu.categoryGroups.food.forEach((categoryId) => {
+    siteConstants.menu.categoryGroups.food.forEach((categoryId) => {
       addCategoryById(categoryId, groupedCategories.food);
     });
 
     // Process drinks categories in config order
-    menu.categoryGroups.drinks.forEach((categoryId) => {
+    siteConstants.menu.categoryGroups.drinks.forEach((categoryId) => {
       addCategoryById(categoryId, groupedCategories.drinks);
     });
 
     // Process other categories in config order
-    menu.categoryGroups.other.forEach((categoryId) => {
+    siteConstants.menu.categoryGroups.other.forEach((categoryId) => {
       addCategoryById(categoryId, groupedCategories.other);
     });
 
     // Handle uncategorized items if enabled
-    if (menu.showUncategorized) {
-      const defaultSection = menu.defaultSection;
+    if (siteConstants.menu.showUncategorized) {
+      const defaultSection = siteConstants.menu.defaultSection;
       const processedIds = new Set([
-        ...menu.categoryGroups.food,
-        ...menu.categoryGroups.drinks,
-        ...menu.categoryGroups.other,
-        ...menu.excludedCategories,
+        ...siteConstants.menu.categoryGroups.food,
+        ...siteConstants.menu.categoryGroups.drinks,
+        ...siteConstants.menu.categoryGroups.other,
+        ...siteConstants.menu.excludedCategories,
       ]);
 
       categorizedItems.forEach((category) => {
@@ -119,17 +113,19 @@ export async function generateMenuPDF() {
       <MenuPDFDocument categories={groupedCategories} />
     );
 
-    // Convert buffer to base64 for transfer to client
-    const base64Pdf = pdfBuffer.toString("base64");
-
-    // Return the PDF data
-    return {
-      success: true,
-      pdfData: base64Pdf,
-      filename: `${siteConstants.brand.name.toLowerCase()}-menu.pdf`,
-    };
+    // Return PDF as response
+    return new NextResponse(pdfBuffer, {
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `attachment; filename="${siteConstants.brand.name.toLowerCase()}-menu.pdf"`,
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+      },
+    });
   } catch (error) {
     console.error("Failed to generate menu PDF:", error);
-    return { success: false, error: "Failed to generate PDF" };
+    return NextResponse.json(
+      { error: "Failed to generate PDF" },
+      { status: 500 }
+    );
   }
 }

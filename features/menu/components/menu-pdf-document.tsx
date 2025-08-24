@@ -100,10 +100,6 @@ const styles = StyleSheet.create({
     color: "#ff0000",
     marginLeft: 5,
   },
-  emoji: {
-    fontSize: 20,
-    marginRight: 8,
-  },
 });
 
 interface MenuPDFDocumentProps {
@@ -160,9 +156,7 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
         {/* Food Section */}
         {categories.food.length > 0 && (
           <View>
-            <Text style={styles.sectionTitle}>
-              <Text style={styles.emoji}>🍔</Text> JÍDLO
-            </Text>
+            <Text style={styles.sectionTitle}>JÍDLO</Text>
             {categories.food.map((category) => (
               <View key={`food-${category.name}`} style={styles.category}>
                 <Text style={styles.categoryTitle}>{category.name}</Text>
@@ -175,9 +169,7 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
         {/* Drinks Section */}
         {categories.drinks.length > 0 && (
           <View>
-            <Text style={styles.sectionTitle}>
-              <Text style={styles.emoji}>🥤</Text> NÁPOJE
-            </Text>
+            <Text style={styles.sectionTitle}>NÁPOJE</Text>
             {categories.drinks.map((category) => (
               <View key={`drinks-${category.name}`} style={styles.category}>
                 <Text style={styles.categoryTitle}>{category.name}</Text>
@@ -190,9 +182,7 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
         {/* Other Section */}
         {categories.other.length > 0 && (
           <View>
-            <Text style={styles.sectionTitle}>
-              <Text style={styles.emoji}>🎲</Text> OSTATNÍ
-            </Text>
+            <Text style={styles.sectionTitle}>OSTATNÍ</Text>
             {categories.other.map((category) => (
               <View key={`other-${category.name}`} style={styles.category}>
                 <Text style={styles.categoryTitle}>{category.name}</Text>
