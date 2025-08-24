@@ -76,6 +76,11 @@ export const siteConstants = {
       lng: 14.479131,
     },
   },
+  social: {
+    instagram: "https://www.instagram.com/deskohub/",
+    facebook: "https://www.facebook.com/profile.php?id=61573597011510",
+    youtube: "https://www.youtube.com/@Deskohub",
+  },
   pricing: {
     entryFee: {
       withPurchase: 50,
