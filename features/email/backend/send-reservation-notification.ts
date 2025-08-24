@@ -171,11 +171,11 @@ Zdroj: Webový formulář
     const emailMessage: EmailMessage = {
       from: {
         email: siteConstants.contact.reservationEmail,
-        name: "DeskOHub Rezervace",
+        name: `${siteConstants.brand.name} Rezervace`,
       },
       to: {
-        email: "reservations@deskohub.cz", // Send to the reservations inbox
-        name: siteConstants.name,
+        email: `reservations@${siteConstants.brand.domain}`, // Send to the reservations inbox
+        name: siteConstants.brand.name,
       },
       subject,
       html,
@@ -201,13 +201,13 @@ Zdroj: Webový formulář
       Effect.tap(() => {
         return Effect.logInfo("New reservation notification sent", {
           reservationId: reservation.id,
-          to: "reservations@deskohub.cz",
+          to: `reservations@${siteConstants.brand.domain}`,
         });
       }),
       Effect.tapError((error) => {
         return Effect.logError("Failed to send reservation notification", {
           reservationId: reservation.id,
-          to: "reservations@deskohub.cz",
+          to: `reservations@${siteConstants.brand.domain}`,
           error,
         });
       }),

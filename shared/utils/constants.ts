@@ -1,7 +1,13 @@
 export const PATHNAME_HEADER = "x-pathname";
 
 export const siteConstants = {
-  name: "DeskoHub",
+  // Brand information
+  brand: {
+    name: "DeskoHub",
+    legalName: "DeskoHub s.r.o.", // Full legal entity name
+    domain: "deskohub.cz",
+    tagline: "Your coworking space", // Will be translated
+  },
   menu: {
     /**
      * Categories grouped by section
@@ -52,8 +58,12 @@ export const siteConstants = {
   contact: {
     phone: "+420777060478",
     phoneTraining: "+420608200377",
-    email: "info@deskohub.cz",
-    reservationEmail: "noreply@reservations.deskohub.cz",
+    get email() {
+      return `info@${siteConstants.brand.domain}`;
+    },
+    get reservationEmail() {
+      return `noreply@reservations.${siteConstants.brand.domain}`;
+    },
     address: {
       street: "Turnovská 10/430",
       city: "Prague", // English name, will be translated

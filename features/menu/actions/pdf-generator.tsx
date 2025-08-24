@@ -4,6 +4,7 @@ import { renderToBuffer } from "@react-pdf/renderer";
 import { Effect } from "effect";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
+import { siteConstants } from "@/shared/utils/constants";
 import { MenuPDFDocument } from "../components/menu-pdf-document";
 
 export async function generateMenuPDF() {
@@ -125,7 +126,7 @@ export async function generateMenuPDF() {
     return {
       success: true,
       pdfData: base64Pdf,
-      filename: "deskohub-menu.pdf",
+      filename: `${siteConstants.brand.name.toLowerCase()}-menu.pdf`,
     };
   } catch (error) {
     console.error("Failed to generate menu PDF:", error);

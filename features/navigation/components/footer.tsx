@@ -1,6 +1,7 @@
 import Image from "next/image";
 import logoImage from "@/assets/images/logo/for-light-bg.png";
 import { m } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 
 export function Footer() {
   return (
@@ -10,13 +11,13 @@ export function Footer() {
           <div className="flex items-center space-x-2 mb-4 md:mb-0">
             <Image
               src={logoImage}
-              alt="Deskohub"
+              alt={siteConstants.brand.name}
               width={24}
               height={24}
               className="w-6 h-6"
             />
             <div>
-              <div className="font-bold">Deskohub</div>
+              <div className="font-bold">{siteConstants.brand.name}</div>
               <div className="text-sm text-gray-600">
                 {m["footer.tagline"]()}
               </div>

@@ -4,6 +4,7 @@ import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { siteConstants } from "@/shared/utils/constants";
 import { generateMenuPDF } from "../actions/pdf-generator";
 
 export function MenuPDFDownload() {
@@ -28,7 +29,9 @@ export function MenuPDFDownload() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = result.filename || "deskohub-menu.pdf";
+        link.download =
+          result.filename ||
+          `${siteConstants.brand.name.toLowerCase()}-menu.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

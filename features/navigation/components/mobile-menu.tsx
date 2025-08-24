@@ -16,6 +16,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
+import { siteConstants } from "@/shared/utils/constants";
 
 const navigationItems = [
   { label: "nav.home", href: "/", text: () => m["nav.home"]() },
@@ -68,7 +69,7 @@ export function MobileMenu({ showReservations = true }: MobileMenuProps) {
                 priority
               />
               <SheetTitle className="text-white text-lg font-bold">
-                Deskohub
+                {siteConstants.brand.name}
               </SheetTitle>
             </div>
           </SheetHeader>

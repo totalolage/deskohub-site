@@ -449,8 +449,8 @@ export function ReservationConfirmation({
                 <p className="font-medium">{m["labels.email"]()}</p>
                 <p className={statusAccentTextVariants({ status })}>
                   {type === "training-room"
-                    ? "reservations@deskohub.cz"
-                    : "contact@deskohub.com"}
+                    ? `reservations@${siteConstants.brand.domain}`
+                    : siteConstants.contact.email}
                 </p>
               </div>
             </div>

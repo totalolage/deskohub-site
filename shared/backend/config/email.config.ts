@@ -7,6 +7,7 @@
 import { Config, Layer } from "effect";
 import type { EmailProviderConfig } from "@/features/email";
 import { EmailConfigTag } from "@/features/email";
+import { siteConstants } from "@/shared/utils/constants";
 
 /**
  * Email configuration from environment variables
@@ -24,11 +25,11 @@ const emailConfig = Config.all({
   ),
   defaultFromEmail: Config.withDefault(
     Config.string("EMAIL_FROM_ADDRESS"),
-    "noreply@reservations.deskohub.cz"
+    `noreply@reservations.${siteConstants.brand.domain}`
   ),
   defaultFromName: Config.withDefault(
     Config.string("EMAIL_FROM_NAME"),
-    "DeskoHub"
+    siteConstants.brand.name
   ),
   apiKey: Config.option(Config.string("EMAIL_API_KEY")),
   smtpHost: Config.option(Config.string("EMAIL_SMTP_HOST")),
