@@ -1,0 +1,15 @@
+{
+  "$schema": "https://unpkg.com/knip@5/schema.json",
+  "entry": ["app/**/*.{ts,tsx}", "features/**/index.ts"],
+  "project": ["**/*.{ts,tsx}"],
+  "ignore": [
+    "**/*.d.ts",
+    "**/*.test.{ts,tsx}",
+    "**/*.spec.{ts,tsx}",
+    "**/*.config.{ts,js}",
+    "node_modules/**",
+    ".next/**"
+  ],
+  "ignoreDependencies": ["autoprefixer", "postcss-load-config"],
+  "ignoreExportsUsedInFile": true
+}

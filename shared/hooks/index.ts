@@ -1,4 +1,2 @@
-export * from "./use-device-type";
-export { useIsMobile } from "./use-mobile";
-export { useScreenSize } from "./use-screen-size";
-export * from "./use-toast";
+// This file exports shared hooks
+// Currently no hooks are exported as they were all unused
