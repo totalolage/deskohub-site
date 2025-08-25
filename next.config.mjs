@@ -9,6 +9,14 @@ const nextConfig = {
       static: 180,
     },
   },
+  images: {
+    remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'res.cloudinary.com',
+      },
+    ],
+  },
 };
 
 export default withBotId(nextConfig);
