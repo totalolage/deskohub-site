@@ -9,11 +9,11 @@ import {
   getGalleryImages,
 } from "../backend/cloudinary.service";
 
-export type GallerySearchType = "tag" | "folder" | "collection" | "all";
+export type GallerySearchType = "folder" | "collection";
 
 export interface GetGalleryImagesOptions {
-  searchType?: GallerySearchType;
-  searchValue?: string;
+  search: `${GallerySearchType}:${string}`;
+  tags?: string[];
   maxResults?: number;
 }
 
@@ -21,16 +21,21 @@ export interface GetGalleryImagesOptions {
 export async function getCloudinaryImages(
   options: GetGalleryImagesOptions
 ): Promise<readonly CloudinaryAsset[]> {
-  const {
-    searchType = "folder",
-    searchValue = "Web Fotky",
-    maxResults = 50,
-  } = options;
+  const { search, tags = [], maxResults = 50 } = options;
+
+  // Parse the search string
+  const [searchType, ...searchValueParts] = search.split(":") as [GallerySearchType, ...string[]];
+  const searchValue = searchValueParts.join(":"); // In case the value contains colons
 
   const getImagesEffect = Effect.provide(
-    getGalleryImages(searchType, searchValue, {
-      maxResults,
-    }),
+    getGalleryImages(
+      searchType,
+      searchValue,
+      tags,
+      {
+        maxResults,
+      }
+    ),
     CloudinaryServiceLive
   );
 
@@ -41,8 +46,8 @@ export async function getCloudinaryImages(
     {
       tags: Object.values(
         cloudinaryImageCacheTags({
-          searchType,
-          searchValue,
+          search,
+          tags,
           maxResults,
         })
       ).filter(Boolean),

@@ -18,8 +18,7 @@ export default async function GalleryPage({ params }: RouteProps_locale) {
   return (
     <GalleryCollection
       imagesPromise={getCloudinaryImages({
-        searchType: "tag",
-        searchValue: "výběr",
+        search: "collection:Web galerie",
       })}
     />
   );

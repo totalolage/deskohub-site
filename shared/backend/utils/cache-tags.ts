@@ -39,21 +39,23 @@ export const customerCacheTags = (options: { customerId?: string }) => ({
   },
 });
 
-export const cloudinaryImageCacheTags = (options: GetGalleryImagesOptions) => ({
+export const cloudinaryImageCacheTags = (options?: GetGalleryImagesOptions) => ({
   _base: "cloudinary-images",
   get all() {
     return `all-${this._base}`;
   },
-  get searchType() {
-    if (!options.searchType) return null;
-    return `${this._base}-${options.searchType}`;
+  get search() {
+    if (!options?.search) return null;
+    return `${this._base}-${options.search}`;
   },
-  get searchValue() {
-    if (!options.searchValue) return null;
-    return `${this.searchType}-${options.searchValue}`;
+  get tags() {
+    if (!options?.tags?.length) return null;
+    // Create a consistent tag string by sorting tags
+    const tagString = [...options.tags].sort().join(",");
+    return `${this._base}-tags-${tagString}`;
   },
   get maxResults() {
-    if (!options.maxResults) return null;
+    if (!options?.maxResults) return null;
     return `${this._base}-${options.maxResults}`;
   },
 });

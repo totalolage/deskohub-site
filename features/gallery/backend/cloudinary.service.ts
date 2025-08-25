@@ -89,6 +89,12 @@ export interface CloudinaryService {
     expression: string,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
+
+  readonly searchWithTags: (
+    base: { type: "folder" | "collection"; value: string },
+    tags: readonly string[],
+    options?: SearchOptions
+  ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
 }
 
 export const CloudinaryService = Context.GenericTag<CloudinaryService>(
@@ -298,12 +304,48 @@ const makeCloudinaryService = Effect.gen(function* () {
       Effect.flatMap(() => executeSearch(expression, options))
     );
 
+  const searchWithTags: CloudinaryService["searchWithTags"] = (
+    base,
+    tags,
+    options
+  ) =>
+    pipe(
+      Effect.log(`Searching ${base.type}: ${base.value} with tags`, { tags }),
+      Effect.flatMap(() => {
+        // Build the base expression
+        let baseExpression: string;
+        
+        if (base.type === "folder") {
+          baseExpression = `folder=${base.value} AND resource_type:image`;
+        } else {
+          // For collections, we'll use tags since collections are typically implemented as tags
+          baseExpression = `tags=${base.value} AND resource_type:image`;
+        }
+
+        // If tags are provided, add them with OR logic (match any of the tags)
+        if (tags.length > 0) {
+          const tagExpression = tags
+            .map(tag => `tags=${tag}`)
+            .join(" OR ");
+          
+          // Combine base with tags using AND (must be in folder/collection AND have at least one tag)
+          const fullExpression = `(${baseExpression}) AND (${tagExpression})`;
+          
+          return executeSearch(fullExpression, options);
+        }
+
+        // No tags specified, just return base results
+        return executeSearch(baseExpression, options);
+      })
+    );
+
   return {
     searchByTag,
     searchByFolder,
     searchByCollection,
     searchAll,
     searchByExpression,
+    searchWithTags,
   } satisfies CloudinaryService;
 });
 
@@ -321,8 +363,9 @@ export const CloudinaryServiceLive = Layer.effect(
 // ============================================================================
 
 export const getGalleryImages = (
-  searchType: "tag" | "folder" | "collection" | "all",
-  searchValue?: string,
+  baseType: "folder" | "collection",
+  baseValue: string,
+  tags: readonly string[] = [],
   options?: SearchOptions
 ): Effect.Effect<
   readonly CloudinaryAsset[],
@@ -333,44 +376,23 @@ export const getGalleryImages = (
     const service = yield* CloudinaryService;
 
     yield* Effect.log(`Getting gallery images`, {
-      searchType,
-      searchValue,
+      baseType,
+      baseValue,
+      tags,
       options,
     });
 
-    switch (searchType) {
-      case "tag":
-        if (!searchValue) {
-          yield* Effect.logWarning(
-            "Tag search requested but no value provided"
-          );
-          return [];
-        }
-        return yield* service.searchByTag(searchValue, options);
-
-      case "folder":
-        if (!searchValue) {
-          yield* Effect.logWarning(
-            "Folder search requested but no value provided"
-          );
-          return [];
-        }
-        return yield* service.searchByFolder(searchValue, options);
-
-      case "collection":
-        if (!searchValue) {
-          yield* Effect.logWarning(
-            "Collection search requested but no value provided"
-          );
-          return [];
-        }
-        return yield* service.searchByCollection(searchValue, options);
-
-      case "all":
-        return yield* service.searchAll(options);
-
-      default:
-        yield* Effect.logWarning(`Unknown search type: ${searchType}`);
-        return [];
+    if (!baseValue) {
+      yield* Effect.logWarning(
+        `${baseType} search requested but no value provided`
+      );
+      return [];
     }
+
+    // Use the new searchWithTags method
+    return yield* service.searchWithTags(
+      { type: baseType, value: baseValue },
+      tags,
+      options
+    );
   });
