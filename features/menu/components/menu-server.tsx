@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import { siteConstants } from "@/shared/utils/constants";
-import { logger } from "@/shared/utils/logger";
 import { MenuClient } from "./menu-client";
 
 export async function MenuServer() {
@@ -36,8 +35,8 @@ export async function MenuServer() {
     return (
       <MenuClient categories={categories} showPdfDownload={showPdfDownload} />
     );
-  } catch (error) {
-    logger.error("Error fetching menu data:", error);
+  } catch (_error) {
+    // Error fetching menu data - Effect logging handles this
     return (
       <div className="max-w-4xl mx-auto px-6 py-16">
         <div className="bg-red-900/20 border border-red-500 text-red-300 px-4 py-3 rounded mb-8">

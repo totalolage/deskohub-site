@@ -10,7 +10,6 @@ import type {
   EmailSendResult,
 } from "@/features/email/types/email.types";
 import { NetworkError } from "@/shared/backend/errors";
-import { logger } from "@/shared/utils/logger";
 
 interface ResendConfig {
   apiKey: string;
@@ -53,33 +52,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
             { message }
           );
 
-          // Fallback to console output in development
-          logger.log("=".repeat(80));
-          logger.log("📧 EMAIL (Resend not configured - console fallback)");
-          logger.log("=".repeat(80));
-          logger.log(
-            `To: ${typeof message.to === "string" ? message.to : Array.isArray(message.to) ? message.to.map((r) => r.email).join(", ") : message.to.email}`
-          );
-          logger.log(
-            `From: ${typeof message.from === "string" ? message.from : message.from.email}`
-          );
-          logger.log(`Subject: ${message.subject}`);
-          logger.log("-".repeat(80));
-
-          if (message.html) {
-            logger.log("HTML Content (preview):");
-            const textPreview = message.html
-              .replace(/<[^>]*>/g, "")
-              .replace(/\s+/g, " ")
-              .trim()
-              .substring(0, 500);
-            logger.log(textPreview);
-          } else if (message.text) {
-            logger.log("Text Content:");
-            logger.log(message.text);
-          }
-
-          logger.log("=".repeat(80));
+          // In development, the console provider will handle logging
 
           return {
             id: `console-${Date.now()}`,

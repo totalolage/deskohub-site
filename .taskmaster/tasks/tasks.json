@@ -2454,7 +2454,7 @@
         "description": "Remove all console.log and debug statements from production code or wrap them in development environment checks to prevent debug information from appearing in the production environment.",
         "details": "## Objective\nClean up the codebase by removing or properly handling debug statements to ensure they don't appear in production environments.\n\n## Implementation Steps\n\n1. **Identify Files with Debug Statements**:\n   - Confirmed files with debug statements:\n     - `effect-safe-action.ts`\n     - `safe-action-client.ts`\n   - Use grep or search functionality to find additional instances:\n   ```bash\n   grep -r \"console.log\" --include=\"*.ts\" --include=\"*.tsx\" ./src\n   grep -r \"console.debug\" --include=\"*.ts\" --include=\"*.tsx\" ./src\n   grep -r \"console.info\" --include=\"*.ts\" --include=\"*.tsx\" ./src\n   ```\n\n2. **Determine Appropriate Strategy for Each Instance**:\n   - For each debug statement, determine if it should be:\n     - Completely removed (most cases)\n     - Wrapped in a development environment check\n     - Replaced with proper logging mechanism\n\n3. **Implement Environment-Based Conditional Logging**:\n   ```typescript\n   // Create a utility function in lib/utils/logger.ts\n   export const logger = {\n     debug: (...args: any[]) => {\n       if (process.env.NODE_ENV !== 'production') {\n         console.debug(...args);\n       }\n     },\n     log: (...args: any[]) => {\n       if (process.env.NODE_ENV !== 'production') {\n         console.log(...args);\n       }\n     },\n     // Add other methods as needed\n   };\n   ```\n\n4. **Replace or Remove Debug Statements**:\n   - For statements that should be preserved in development:\n   ```typescript\n   // Before\n   console.log('Debug info:', data);\n   \n   // After\n   import { logger } from '@/lib/utils/logger';\n   logger.log('Debug info:', data);\n   ```\n   \n   - For statements that should be removed entirely, delete the lines\n\n5. **Update ESLint Configuration**:\n   ```javascript\n   // .eslintrc.js\n   module.exports = {\n     // ... existing config\n     rules: {\n       // ... existing rules\n       'no-console': ['error', { allow: ['warn', 'error'] }],\n     },\n   };\n   ```\n\n6. **Create Pre-Commit Hook**:\n   - Add a pre-commit hook to prevent future console statements from being committed:\n   ```bash\n   # Install husky and lint-staged if not already installed\n   npm install --save-dev husky lint-staged\n   ```\n   \n   - Update package.json:\n   ```json\n   {\n     \"husky\": {\n       \"hooks\": {\n         \"pre-commit\": \"lint-staged\"\n       }\n     },\n     \"lint-staged\": {\n       \"*.{ts,tsx}\": [\n         \"eslint --fix\",\n         \"git add\"\n       ]\n     }\n   }\n   ```",
         "testStrategy": "## Test Strategy\n\n1. **Static Code Analysis**:\n   - Run ESLint with the updated configuration to verify no console statements remain:\n   ```bash\n   npx eslint --ext .ts,.tsx src/\n   ```\n   - Review any warnings or errors and address them\n\n2. **Development Environment Testing**:\n   - Start the application in development mode\n   - Verify that wrapped debug statements still appear in the browser console\n   - Check that the logger utility functions work as expected\n\n3. **Production Build Testing**:\n   - Create a production build:\n   ```bash\n   npm run build\n   ```\n   - Serve the production build locally:\n   ```bash\n   npm run start\n   ```\n   - Open browser developer tools and verify no debug statements appear in the console\n   - Navigate through different parts of the application to ensure no debug logs appear\n\n4. **Code Review**:\n   - Have another developer review the changes to ensure all debug statements have been properly handled\n   - Verify that the logger utility is implemented correctly\n\n5. **Regression Testing**:\n   - Verify that removing debug statements hasn't affected application functionality\n   - Test key user flows to ensure everything still works as expected\n\n6. **Documentation**:\n   - Update the project documentation to include guidelines for logging in the application\n   - Document the new logger utility and how it should be used for future development",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           28
         ],
@@ -2466,7 +2466,7 @@
             "description": "Create a utility logger function that conditionally logs based on the environment to replace direct console calls.",
             "dependencies": [],
             "details": "Create a new file at lib/utils/logger.ts that exports a logger object with methods that only log in non-production environments:\n\n```typescript\nexport const logger = {\n  debug: (...args: any[]) => {\n    if (process.env.NODE_ENV !== 'production') {\n      console.debug(...args);\n    }\n  },\n  log: (...args: any[]) => {\n    if (process.env.NODE_ENV !== 'production') {\n      console.log(...args);\n    }\n  },\n  info: (...args: any[]) => {\n    if (process.env.NODE_ENV !== 'production') {\n      console.info(...args);\n    }\n  },\n  warn: (...args: any[]) => {\n    console.warn(...args);\n  },\n  error: (...args: any[]) => {\n    console.error(...args);\n  }\n};\n```",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Write unit tests for the logger utility to verify it only logs in non-production environments. Test each method with both development and production NODE_ENV values."
           },
           {
@@ -2475,7 +2475,7 @@
             "description": "Use grep or search functionality to identify all console.log, console.debug, and console.info statements throughout the codebase.",
             "dependencies": [],
             "details": "Run the following commands to identify all debug statements in the codebase:\n\n```bash\ngrep -r \"console.log\" --include=\"*.ts\" --include=\"*.tsx\" ./src > debug-statements.txt\ngrep -r \"console.debug\" --include=\"*.ts\" --include=\"*.tsx\" ./src >> debug-statements.txt\ngrep -r \"console.info\" --include=\"*.ts\" --include=\"*.tsx\" ./src >> debug-statements.txt\n```\n\nReview the output file (debug-statements.txt) and categorize each statement as:\n1. Safe to remove completely\n2. Should be replaced with logger utility\n3. Critical and should remain (typically only error logging)\n\nCreate a spreadsheet or document listing each file, line number, and the appropriate action to take.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Manually verify the completeness of the search by checking a sample of files, especially the confirmed files with debug statements (effect-safe-action.ts and safe-action-client.ts)."
           },
           {
@@ -2486,7 +2486,7 @@
               "55.1"
             ],
             "details": "For each debug statement in the confirmed files:\n\n1. Import the logger utility:\n```typescript\nimport { logger } from '@/lib/utils/logger';\n```\n\n2. Replace console statements with the appropriate logger method:\n```typescript\n// Before\nconsole.log('Debug info:', data);\n\n// After\nlogger.log('Debug info:', data);\n```\n\n3. For statements that provide no value or are purely for development debugging, remove them entirely.\n\nFocus specifically on effect-safe-action.ts and safe-action-client.ts first as they are confirmed to contain debug statements.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the functionality of both files after modifications to ensure they still work as expected. Verify logs appear in development but not when NODE_ENV is set to 'production'."
           },
           {
@@ -2498,7 +2498,7 @@
               "55.2"
             ],
             "details": "Based on the categorization from subtask 2:\n\n1. For statements categorized as 'Safe to remove', delete the lines completely.\n\n2. For statements categorized as 'Should be replaced with logger utility':\n   - Import the logger utility\n   - Replace console.log/debug/info with logger.log/debug/info\n\n3. For statements categorized as 'Critical':\n   - For error logging (console.error), either keep as is or replace with logger.error\n   - For warning logging (console.warn), either keep as is or replace with logger.warn\n\nWork through the files systematically, committing changes in logical groups (e.g., by directory or functionality).",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "After processing each logical group of files, run the application in development mode and test the affected functionality to ensure no regressions. Verify logs appear correctly in development but not in a production build."
           },
           {
@@ -2510,7 +2510,7 @@
               "55.4"
             ],
             "details": "1. Update ESLint configuration to disallow console statements except for warn and error:\n```javascript\n// .eslintrc.js\nmodule.exports = {\n  // ... existing config\n  rules: {\n    // ... existing rules\n    'no-console': ['error', { allow: ['warn', 'error'] }],\n  },\n};\n```\n\n2. Install husky and lint-staged for pre-commit hooks:\n```bash\nnpm install --save-dev husky lint-staged\n```\n\n3. Update package.json to configure the pre-commit hook:\n```json\n{\n  \"husky\": {\n    \"hooks\": {\n      \"pre-commit\": \"lint-staged\"\n    }\n  },\n  \"lint-staged\": {\n    \"*.{ts,tsx}\": [\n      \"eslint --fix\",\n      \"git add\"\n    ]\n  }\n}\n```\n\n4. Run ESLint across the entire codebase to ensure no console statements remain:\n```bash\nnpx eslint --ext .ts,.tsx src/ --fix\n```",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test the pre-commit hook by intentionally adding a console.log statement to a file and attempting to commit it. The commit should fail. Also run a full ESLint check to verify no disallowed console statements remain in the codebase."
           }
         ]
@@ -3641,7 +3641,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-08-25T00:14:08.552Z"
+      "updated": "2025-08-25T00:30:05.216Z"
     }
   }
 }
