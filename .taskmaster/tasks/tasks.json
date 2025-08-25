@@ -819,7 +819,7 @@
         "id": 27,
         "title": "Create Comprehensive Training Rooms Page with Booking Integration",
         "description": "Develop a detailed training rooms page that showcases multiple available rooms with filtering options, detailed specifications, interactive availability calendar, and integration with the existing reservation system.",
-        "status": "pending",
+        "status": "done",
         "dependencies": [
           1,
           4,
@@ -3561,6 +3561,78 @@
             "testStrategy": "Have a developer unfamiliar with the webhook system attempt to implement a new webhook type using only the integration guide. Use their feedback to improve the documentation. Review security documentation with the security team to ensure all considerations are addressed."
           }
         ]
+      },
+      {
+        "id": 70,
+        "title": "Implement Vercel Bot Protection for All Forms",
+        "description": "Integrate Vercel's bot detection system (botid) across all user-facing forms in the application to prevent spam and automated submissions, enhancing security for contact forms, reservation forms, and other data submission interfaces.",
+        "details": "## Objective\nImplement Vercel's bot protection system across all forms in the application to prevent spam and automated bot submissions while maintaining a seamless user experience.\n\n## Implementation Steps\n\n1. **Install Required Dependencies**:\n```bash\nnpm install @vercel/protection\n```\n\n2. **Create Bot Protection Provider**:\n```tsx\n// components/providers/bot-protection-provider.tsx\nimport { createContext, useContext, ReactNode } from 'react';\nimport { useVercelBotId } from '@vercel/protection';\n\ninterface BotProtectionContextType {\n  getBotIdProps: () => { 'data-botid': string };\n  isBot: boolean;\n}\n\nconst BotProtectionContext = createContext<BotProtectionContextType | null>(null);\n\nexport function BotProtectionProvider({ children }: { children: ReactNode }) {\n  const { botId, isBot } = useVercelBotId();\n  \n  const getBotIdProps = () => ({ 'data-botid': botId });\n  \n  return (\n    <BotProtectionContext.Provider value={{ getBotIdProps, isBot }}>\n      {children}\n    </BotProtectionContext.Provider>\n  );\n}\n\nexport const useBotProtection = () => {\n  const context = useContext(BotProtectionContext);\n  if (!context) {\n    throw new Error('useBotProtection must be used within a BotProtectionProvider');\n  }\n  return context;\n};\n```\n\n3. **Add Provider to Root Layout**:\n```tsx\n// app/[locale]/layout.tsx\nimport { BotProtectionProvider } from '@/components/providers/bot-protection-provider';\n\nexport default function RootLayout({ children }) {\n  return (\n    <html lang=\"en\">\n      <body>\n        <BotProtectionProvider>\n          {/* Other providers */}\n          {children}\n        </BotProtectionProvider>\n      </body>\n    </html>\n  );\n}\n```\n\n4. **Create Form Protection Hook**:\n```tsx\n// hooks/use-form-protection.ts\nimport { useBotProtection } from '@/components/providers/bot-protection-provider';\nimport { useEffect, useState } from 'react';\n\nexport function useFormProtection() {\n  const { getBotIdProps, isBot } = useBotProtection();\n  const [isSubmitting, setIsSubmitting] = useState(false);\n  const [isProtected, setIsProtected] = useState(false);\n  \n  useEffect(() => {\n    // Set protection status after initial render\n    setIsProtected(true);\n  }, []);\n  \n  const handleSubmit = async (callback: () => Promise<any>) => {\n    if (isBot) {\n      console.log('Bot submission prevented');\n      return;\n    }\n    \n    setIsSubmitting(true);\n    try {\n      await callback();\n    } catch (error) {\n      console.error('Form submission error:', error);\n    } finally {\n      setIsSubmitting(false);\n    }\n  };\n  \n  return {\n    botIdProps: getBotIdProps(),\n    isBot,\n    isSubmitting,\n    isProtected,\n    handleSubmit\n  };\n}\n```\n\n5. **Update Form Components to Use Bot Protection**:\n```tsx\n// components/ui/form.tsx\nimport { useFormProtection } from '@/hooks/use-form-protection';\n\nexport function Form({ onSubmit, children, ...props }) {\n  const { botIdProps, handleSubmit, isSubmitting } = useFormProtection();\n  \n  const handleFormSubmit = async (e) => {\n    e.preventDefault();\n    await handleSubmit(() => onSubmit(e));\n  };\n  \n  return (\n    <form onSubmit={handleFormSubmit} {...botIdProps} {...props}>\n      {children}\n      {isSubmitting && <div className=\"form-loading-indicator\">Submitting...</div>}\n    </form>\n  );\n}\n```\n\n6. **Update Contact Form Implementation**:\n```tsx\n// components/contact-form.tsx\nimport { Form } from '@/components/ui/form';\nimport { useFormProtection } from '@/hooks/use-form-protection';\n\nexport function ContactForm() {\n  const { botIdProps, isBot, isSubmitting } = useFormProtection();\n  \n  const handleSubmit = async (formData) => {\n    // Only process if not a bot\n    if (!isBot) {\n      // Existing form submission logic\n    }\n  };\n  \n  return (\n    <Form onSubmit={handleSubmit} {...botIdProps}>\n      {/* Form fields */}\n      <button type=\"submit\" disabled={isSubmitting}>\n        Submit\n      </button>\n    </Form>\n  );\n}\n```\n\n7. **Update Reservation Form Implementation**:\n```tsx\n// components/reservation-form.tsx\nimport { useFormProtection } from '@/hooks/use-form-protection';\n\nexport function ReservationForm() {\n  const { botIdProps, handleSubmit, isSubmitting } = useFormProtection();\n  \n  const onSubmit = async (e) => {\n    e.preventDefault();\n    // Form submission logic\n  };\n  \n  return (\n    <form onSubmit={(e) => handleSubmit(() => onSubmit(e))} {...botIdProps}>\n      {/* Form fields */}\n      <button type=\"submit\" disabled={isSubmitting}>\n        Reserve Now\n      </button>\n    </form>\n  );\n}\n```\n\n8. **Server-Side Validation**:\n```typescript\n// app/api/contact/route.ts\nimport { verifyBotId } from '@vercel/protection';\nimport { NextRequest, NextResponse } from 'next/server';\n\nexport async function POST(request: NextRequest) {\n  const formData = await request.formData();\n  const botId = formData.get('botId')?.toString();\n  \n  // Verify the botId\n  const { isBot } = await verifyBotId(botId);\n  \n  if (isBot) {\n    return NextResponse.json(\n      { error: 'Bot submission detected' },\n      { status: 403 }\n    );\n  }\n  \n  // Process the form submission\n  // ...\n  \n  return NextResponse.json({ success: true });\n}\n```\n\n9. **Add Bot Protection to Newsletter Signup**:\n```tsx\n// components/newsletter-signup.tsx\nimport { useFormProtection } from '@/hooks/use-form-protection';\n\nexport function NewsletterSignup() {\n  const { botIdProps, handleSubmit, isSubmitting } = useFormProtection();\n  \n  const onSubmit = async (e) => {\n    e.preventDefault();\n    // Newsletter signup logic\n  };\n  \n  return (\n    <form onSubmit={(e) => handleSubmit(() => onSubmit(e))} {...botIdProps}>\n      <input type=\"email\" name=\"email\" required />\n      <button type=\"submit\" disabled={isSubmitting}>\n        Subscribe\n      </button>\n    </form>\n  );\n}\n```\n\n10. **Configure Vercel Bot Protection in Project Settings**:\n   - Go to the Vercel dashboard for your project\n   - Navigate to Settings > Security > Bot Protection\n   - Enable Bot Protection and configure the sensitivity level\n   - Save the settings\n\n## Considerations\n\n1. **Performance Impact**: The bot protection adds minimal overhead to form submissions but provides significant security benefits.\n\n2. **Accessibility**: Ensure that the bot protection doesn't interfere with accessibility tools or screen readers.\n\n3. **Error Handling**: Implement proper error messages for users when bot detection triggers false positives.\n\n4. **Analytics**: Consider tracking bot detection events to monitor the effectiveness of the protection.\n\n5. **Testing Mode**: Vercel Bot Protection offers a testing mode that can be enabled during development to avoid blocking legitimate submissions during testing.\n\n6. **Internationalization**: Ensure error messages related to bot protection are properly translated for both Czech and English interfaces.",
+        "testStrategy": "## Test Strategy\n\n1. **Unit Testing Bot Protection Components**:\n   - Create test file `components/providers/__tests__/bot-protection-provider.test.tsx`\n   - Test the `BotProtectionProvider` component renders correctly\n   - Test the `useBotProtection` hook returns expected values\n   - Verify the `useFormProtection` hook correctly handles form submissions\n\n2. **Integration Testing with Forms**:\n   - Create test file `__tests__/integration/form-protection.test.tsx`\n   - Test that forms render with the correct `data-botid` attribute\n   - Verify form submissions are processed correctly for legitimate users\n   - Test that bot submissions are properly blocked\n\n3. **Server-Side Validation Testing**:\n   - Create test file `app/api/__tests__/form-validation.test.ts`\n   - Test API routes correctly validate the botId parameter\n   - Verify that bot submissions are rejected with appropriate status codes\n   - Test that legitimate submissions are processed correctly\n\n4. **Manual Testing Checklist**:\n   - Test all forms with the Vercel Bot Protection testing mode enabled\n   - Verify forms submit successfully in normal user scenarios\n   - Test form submission with JavaScript disabled to ensure graceful degradation\n   - Test forms on various devices (desktop, tablet, mobile) and browsers\n   - Verify form accessibility with screen readers and keyboard navigation\n\n5. **Bot Simulation Testing**:\n   - Use automated tools to simulate bot behavior and verify protection\n   - Test rapid form submissions to ensure rate limiting works\n   - Test with common bot signatures to verify detection effectiveness\n\n6. **Error Handling Testing**:\n   - Verify appropriate error messages are displayed when bot detection is triggered\n   - Test error message localization in both Czech and English\n   - Ensure error states are accessible and clearly communicated to users\n\n7. **Performance Testing**:\n   - Measure form submission time with and without bot protection\n   - Verify that bot protection doesn't significantly impact page load times\n   - Test form submission under various network conditions\n\n8. **Cross-Browser Testing**:\n   - Test bot protection functionality in Chrome, Firefox, Safari, and Edge\n   - Verify consistent behavior across different browser versions\n   - Test on iOS and Android mobile browsers\n\n9. **Monitoring Setup**:\n   - Implement logging for bot detection events\n   - Create dashboard to monitor bot protection effectiveness\n   - Set up alerts for unusual bot activity patterns",
+        "status": "pending",
+        "dependencies": [
+          1,
+          6,
+          31,
+          32
+        ],
+        "priority": "medium",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up Vercel Bot Protection infrastructure",
+            "description": "Install required dependencies and create the bot protection provider component to establish the foundation for bot protection across the application.",
+            "dependencies": [],
+            "details": "1. Install the @vercel/protection package using npm\n2. Create the bot-protection-provider.tsx component with context and hook implementation\n3. Add the BotProtectionProvider to the root layout component\n4. Configure Vercel Bot Protection in the project settings via Vercel dashboard\n5. Document the implementation approach for the team",
+            "status": "pending",
+            "testStrategy": "1. Verify successful installation of @vercel/protection\n2. Test that the BotProtectionProvider renders without errors\n3. Confirm the useBotProtection hook returns expected values\n4. Check that the provider is properly integrated in the application root"
+          },
+          {
+            "id": 2,
+            "title": "Implement form protection hook and utilities",
+            "description": "Create a reusable form protection hook that can be applied to any form component to provide bot protection functionality.",
+            "dependencies": [
+              "70.1"
+            ],
+            "details": "1. Develop the useFormProtection hook that leverages the bot protection context\n2. Implement form submission handling with bot detection logic\n3. Add loading state management during form submission\n4. Create utility functions for bot detection verification\n5. Add proper error handling for bot detection events",
+            "status": "pending",
+            "testStrategy": "1. Unit test the useFormProtection hook functionality\n2. Verify the hook correctly prevents submissions from detected bots\n3. Test loading state management during form submission\n4. Ensure proper error handling when bot detection triggers"
+          },
+          {
+            "id": 3,
+            "title": "Update core form components with bot protection",
+            "description": "Modify the base form components to incorporate bot protection attributes and handling logic.",
+            "dependencies": [
+              "70.2"
+            ],
+            "details": "1. Update the Form component in components/ui/form.tsx to use the protection hook\n2. Add botId attributes to form elements\n3. Implement submission handling that respects bot detection\n4. Add loading indicators during form submission\n5. Ensure form components maintain accessibility during the protection process",
+            "status": "pending",
+            "testStrategy": "1. Test that forms render with the correct bot protection attributes\n2. Verify forms handle submissions correctly based on bot detection status\n3. Check that loading states display properly during submission\n4. Run accessibility tests to ensure protection doesn't interfere with assistive technologies"
+          },
+          {
+            "id": 4,
+            "title": "Implement server-side bot verification",
+            "description": "Create server-side API route handlers that verify bot protection tokens and reject submissions from detected bots.",
+            "dependencies": [
+              "70.1",
+              "70.2"
+            ],
+            "details": "1. Implement verifyBotId functionality in API route handlers\n2. Add bot verification to all form submission endpoints\n3. Create standardized error responses for bot detection events\n4. Implement logging for bot detection incidents\n5. Ensure proper HTTP status codes are returned for bot submissions (403 Forbidden)",
+            "status": "pending",
+            "testStrategy": "1. Test API routes correctly verify botId tokens\n2. Verify bot submissions are properly rejected with 403 status\n3. Test legitimate submissions pass through verification\n4. Check that error responses contain appropriate information\n5. Verify logging captures bot detection events"
+          },
+          {
+            "id": 5,
+            "title": "Apply bot protection to all application forms",
+            "description": "Integrate bot protection into all user-facing forms including contact forms, reservation forms, newsletter signups, and other data submission interfaces.",
+            "dependencies": [
+              "70.3",
+              "70.4"
+            ],
+            "details": "1. Update the ContactForm component with bot protection\n2. Integrate protection into ReservationForm component\n3. Add bot protection to NewsletterSignup component\n4. Apply protection to any remaining form components\n5. Test all forms to ensure they maintain functionality while being protected",
+            "status": "pending",
+            "testStrategy": "1. Verify each form component correctly implements bot protection\n2. Test form submissions in both bot-detected and legitimate user scenarios\n3. Check that all forms maintain their original functionality\n4. Test internationalization of error messages related to bot protection\n5. Perform end-to-end testing of the complete form submission flow with protection enabled"
+          }
+        ]
       }
     ],
     "metadata": {
@@ -3569,7 +3641,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-08-24T23:39:18.843Z"
+      "updated": "2025-08-25T00:02:13.972Z"
     }
   }
 }
