@@ -35,21 +35,33 @@ const ConsoleEmailProvider: EmailProvider = {
 
       // Log the actual content in development
       if (process.env.NODE_ENV === "development") {
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
         console.log(`\n${"=".repeat(60)}`);
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
         console.log("EMAIL CONTENT:");
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
         console.log("=".repeat(60));
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
         console.log("Subject:", message.subject);
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
         console.log("To:", recipients.join(", "));
         if (message.text) {
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
           console.log("\nText Version:");
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
           console.log("-".repeat(40));
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
           console.log(message.text);
         }
         if (message.html) {
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
           console.log("\nHTML Version (first 500 chars):");
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
           console.log("-".repeat(40));
+          // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
           console.log(`${message.html.substring(0, 500)}...`);
         }
+        // biome-ignore lint/suspicious/noConsole: Console provider intentionally logs to console for development
         console.log(`${"=".repeat(60)}\n`);
       }
 

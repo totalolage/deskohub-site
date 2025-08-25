@@ -2,6 +2,7 @@ import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/i18n";
 import { formatEffectError } from "@/shared/utils/error-formatting";
+import { logger } from "@/shared/utils/logger";
 import { actionClient } from "@/shared/utils/safe-action-client";
 
 export function createEffectSafeAction<I, O, E, R>(
@@ -51,15 +52,15 @@ export function createEffectSafeAction<I, O, E, R>(
       try {
         // Run the Effect with a timeout
         const result = await Effect.runPromise(programWithLogging);
-        console.log("Effect action succeeded:", result);
+        logger.log("Effect action succeeded:", result);
         return result;
       } catch (error: unknown) {
         // Log the full error for debugging
-        console.error("Effect action failed with error:", error);
+        logger.error("Effect action failed with error:", error);
 
         // Format the error for the user
         const formatted = formatEffectError(error);
-        console.error("Formatted error:", formatted);
+        logger.error("Formatted error:", formatted);
 
         // Throw an error that next-safe-action will catch
         throw new Error(formatted.message || "An unexpected error occurred");

@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
+import { logger } from "@/shared/utils/logger";
 
 /**
  * OAuth callback endpoint for Dotypos
@@ -27,8 +28,8 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Log for debugging (remove in production)
-    console.log("Dotypos callback received:", {
+    // Log for debugging
+    logger.log("Dotypos callback received:", {
       hasToken: !!token,
       cloudId,
       state,
@@ -46,7 +47,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    console.error("Dotypos callback error:", error);
+    logger.error("Dotypos callback error:", error);
 
     // Redirect to setup page with error
     const errorUrl = new URL("/en-US/admin/dotypos-setup", request.url);

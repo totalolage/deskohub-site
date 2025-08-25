@@ -5,6 +5,7 @@ import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
 import { MenuPDFDocument } from "@/features/menu/components/menu-pdf-document";
 import { siteConstants } from "@/shared/utils/constants";
+import { logger } from "@/shared/utils/logger";
 
 export async function GET() {
   try {
@@ -122,7 +123,7 @@ export async function GET() {
       },
     });
   } catch (error) {
-    console.error("Failed to generate menu PDF:", error);
+    logger.error("Failed to generate menu PDF:", error);
     return NextResponse.json(
       { error: "Failed to generate PDF" },
       { status: 500 }

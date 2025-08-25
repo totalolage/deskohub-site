@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
+import { logger } from "@/shared/utils/logger";
 
 function isTokenRequest(body: unknown): body is { code: string } {
   return (
@@ -32,11 +33,11 @@ export async function POST(request: NextRequest) {
 
     const { code } = body;
 
-    console.log("Token exchange API called");
-    console.log("Received code:", code);
+    logger.log("Token exchange API called");
+    logger.log("Received code:", code);
 
     if (!code) {
-      console.error("No authorization code provided");
+      logger.error("No authorization code provided");
       return NextResponse.json(
         { error: "Authorization code is required" },
         { status: 400 }
@@ -47,9 +48,9 @@ export async function POST(request: NextRequest) {
     const clientSecret = env.DOTYPOS_CLIENT_SECRET;
     const redirectUrl = "http://localhost:3000/cs-CZ/admin/dotypos/callback";
 
-    console.log("Using credentials:");
-    console.log("Client ID:", clientId);
-    console.log("Redirect URL:", redirectUrl);
+    logger.log("Using credentials:");
+    logger.log("Client ID:", clientId);
+    logger.log("Redirect URL:", redirectUrl);
 
     if (!clientId || !clientSecret) {
       return NextResponse.json(
@@ -68,8 +69,8 @@ export async function POST(request: NextRequest) {
       redirect_uri: redirectUrl,
     });
 
-    console.log("Sending token request to:", tokenUrl);
-    console.log("Token request params:", tokenParams.toString());
+    logger.log("Sending token request to:", tokenUrl);
+    logger.log("Token request params:", tokenParams.toString());
 
     const tokenResponse = await fetch(tokenUrl, {
       method: "POST",
@@ -79,11 +80,11 @@ export async function POST(request: NextRequest) {
       body: tokenParams,
     });
 
-    console.log("Token response status:", tokenResponse.status);
+    logger.log("Token response status:", tokenResponse.status);
 
     if (!tokenResponse.ok) {
       const errorData = await tokenResponse.text();
-      console.error("Token exchange failed:", errorData);
+      logger.error("Token exchange failed:", errorData);
       return NextResponse.json(
         { error: "Token exchange failed", details: errorData },
         { status: tokenResponse.status }
@@ -99,7 +100,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log("Token exchange successful, received tokens");
+    logger.log("Token exchange successful, received tokens");
 
     // In production, you would save these tokens securely
     // For now, we'll return them to display in the UI
@@ -110,7 +111,7 @@ export async function POST(request: NextRequest) {
       tokenType: tokenData.token_type,
     });
   } catch (error) {
-    console.error("Token exchange error:", error);
+    logger.error("Token exchange error:", error);
     return NextResponse.json(
       { error: "Internal server error" },
       { status: 500 }

@@ -920,7 +920,7 @@
         "description": "Systematically audit all components in the codebase and delete any that are not being used anywhere, including unused imports, unreferenced components, and dead code to improve maintainability and performance.",
         "details": "## Implementation Steps\n\n1. **Set Up Static Analysis Tools**:\n   ```bash\n   # Install ESLint plugins for detecting unused code\n   npm install --save-dev eslint-plugin-unused-imports eslint-plugin-no-unused-components\n   ```\n\n   Update ESLint configuration:\n   ```javascript\n   // .eslintrc.js\n   module.exports = {\n     // ... existing config\n     plugins: [\n       // ... existing plugins\n       'unused-imports',\n       'no-unused-components'\n     ],\n     rules: {\n       // ... existing rules\n       'unused-imports/no-unused-imports': 'error',\n       'unused-imports/no-unused-vars': 'warn',\n       'no-unused-components/no-unused-components': 'warn'\n     }\n   }\n   ```\n\n2. **Create an Inventory of All Components**:\n   ```bash\n   # Find all component files in the project\n   find ./components -type f -name \"*.tsx\" > component-inventory.txt\n   find ./app -type f -name \"*.tsx\" >> component-inventory.txt\n   ```\n\n3. **Run Static Analysis**:\n   ```bash\n   # Run ESLint to identify unused imports and components\n   npx eslint --ext .ts,.tsx . --report-unused-disable-directives\n   \n   # Use next-unused to find unused files and exports\n   npx next-unused\n   ```\n\n4. **Create a Tracking Spreadsheet**:\n   - Component name\n   - File path\n   - Current usage status (Used/Unused/Uncertain)\n   - Verification method\n   - Notes\n   - Action (Keep/Remove)\n\n5. **Manual Verification Process**:\n   - For each component flagged as potentially unused:\n     - Search codebase for direct imports: `grep -r \"import.*ComponentName\" --include=\"*.tsx\" --include=\"*.ts\" .`\n     - Search for dynamic imports: `grep -r \"dynamic.*ComponentName\" --include=\"*.tsx\" --include=\"*.ts\" .`\n     - Search for string references (for dynamically loaded components): `grep -r \"['|\\\"]ComponentName['|\\\"]\" --include=\"*.tsx\" --include=\"*.ts\" .`\n     - Check for components used only in specific environments (dev/prod)\n\n6. **Create a Backup Branch**:\n   ```bash\n   git checkout -b component-cleanup-backup\n   git add .\n   git commit -m \"Backup before component cleanup\"\n   git checkout -b component-cleanup\n   ```\n\n7. **Removal Process**:\n   - Start with clearly unused components first\n   - Remove one component at a time\n   - Run the application and tests after each removal\n   - Document each removal in the tracking spreadsheet\n\n8. **Handle Edge Cases**:\n   - Components used only in specific environments\n   - Components imported but not directly referenced\n   - Components used via dynamic imports\n   - Components referenced by string name\n\n9. **Update Import Statements**:\n   - Remove unused imports from files\n   - Clean up any import statements that reference removed components\n\n10. **Final Verification**:\n    - Run full test suite\n    - Manually test key application flows\n    - Verify build process completes without errors\n    - Check bundle size before and after to quantify improvements\n\n11. **Documentation Update**:\n    - Update component documentation to remove references to deleted components\n    - Document the cleanup process and results\n    - Create a summary report of removed components and impact on bundle size",
         "testStrategy": "## Test Strategy\n\n1. **Pre-Cleanup Baseline**:\n   - Create a full test suite run report before starting\n   - Measure and document current bundle size\n   - Document current build time\n   - Create a visual snapshot of key pages for comparison\n\n2. **Incremental Testing**:\n   ```bash\n   # After each component removal\n   npm run test\n   npm run build\n   npm run lint\n   ```\n\n3. **Regression Testing**:\n   - Create a checklist of key application features\n   - Manually verify each feature after component removal\n   - Test all routes to ensure pages load correctly\n   - Test all interactive elements to ensure functionality is preserved\n\n4. **Visual Regression Testing**:\n   - Compare before/after screenshots of key pages\n   - Verify no unexpected visual changes occurred\n   - Test on multiple screen sizes (mobile, tablet, desktop)\n\n5. **Performance Testing**:\n   - Measure bundle size before and after cleanup\n   - Compare application load times\n   - Check for any improvements in Lighthouse scores\n\n6. **Cross-Browser Testing**:\n   - Test in Chrome, Firefox, Safari, and Edge\n   - Verify no browser-specific issues were introduced\n\n7. **Error Monitoring**:\n   - Deploy to a staging environment\n   - Monitor error logs for any new errors\n   - Check for any increase in error rates\n\n8. **Validation Process**:\n   - For each removed component, document:\n     - Component name and location\n     - Verification method used to confirm it was unused\n     - Any dependencies that were also removed\n     - Impact on bundle size (if measurable)\n\n9. **Final Verification Checklist**:\n   - All tests pass\n   - Build process completes successfully\n   - All application features work as expected\n   - No new errors in console\n   - No visual regressions\n   - Bundle size has decreased or remained the same\n   - Application performance is the same or better",
-        "status": "in-progress",
+        "status": "done",
         "dependencies": [
           1,
           13
@@ -933,7 +933,7 @@
             "description": "Install and configure ESLint plugins for detecting unused code and create a comprehensive inventory of all components in the codebase.",
             "dependencies": [],
             "details": "Install ESLint plugins (eslint-plugin-unused-imports, eslint-plugin-no-unused-components). Update ESLint configuration to detect unused imports and components. Create a complete inventory of all component files using find commands to locate all .tsx files in the components and app directories.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify ESLint configuration by running a test analysis on a sample component with known unused imports. Confirm the component inventory is complete by cross-checking with directory structure."
           },
           {
@@ -944,7 +944,7 @@
               1
             ],
             "details": "Run ESLint and next-unused to identify unused imports, components, and files. Create a tracking spreadsheet with columns for component name, file path, usage status, verification method, notes, and recommended action (keep/remove).",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Validate analysis results by manually checking a sample of flagged components to confirm they are correctly identified as unused."
           },
           {
@@ -955,7 +955,7 @@
               2
             ],
             "details": "For each component flagged as potentially unused, search the codebase for direct imports, dynamic imports, and string references. Check for environment-specific usage (dev/prod). Update the tracking spreadsheet with verification results and final determination (used/unused).",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Cross-verify results using multiple search methods to ensure no false positives. Document verification process for each component."
           },
           {
@@ -966,7 +966,7 @@
               3
             ],
             "details": "Create a backup branch with git checkout -b component-cleanup-backup. Create a working branch for component removal. Remove confirmed unused components one at a time, starting with the most clearly unused ones. Run the application and tests after each removal to verify no regressions.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "After each component removal, run relevant test suites and manually test affected areas of the application to ensure functionality remains intact."
           },
           {
@@ -977,7 +977,7 @@
               4
             ],
             "details": "Handle components with special usage patterns (environment-specific, dynamic imports, string references). Remove unused imports from files throughout the codebase. Update any import statements that reference removed components. Run static analysis again to verify all unused imports are removed.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Run the application in different environments to ensure environment-specific components are handled correctly. Verify build process completes without errors after import cleanup."
           },
           {
@@ -986,7 +986,7 @@
             "description": "Conduct comprehensive testing to ensure application stability and update documentation to reflect the changes made.",
             "dependencies": [],
             "details": "Run the full test suite. Manually test key application flows. Verify the build process completes without errors. Compare bundle size before and after to quantify improvements. Update component documentation to remove references to deleted components. Create a summary report of removed components and the impact on bundle size and maintainability.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Perform end-to-end testing of critical user flows. Compare performance metrics before and after cleanup to quantify improvements."
           }
         ]
@@ -2454,7 +2454,7 @@
         "description": "Remove all console.log and debug statements from production code or wrap them in development environment checks to prevent debug information from appearing in the production environment.",
         "details": "## Objective\nClean up the codebase by removing or properly handling debug statements to ensure they don't appear in production environments.\n\n## Implementation Steps\n\n1. **Identify Files with Debug Statements**:\n   - Confirmed files with debug statements:\n     - `effect-safe-action.ts`\n     - `safe-action-client.ts`\n   - Use grep or search functionality to find additional instances:\n   ```bash\n   grep -r \"console.log\" --include=\"*.ts\" --include=\"*.tsx\" ./src\n   grep -r \"console.debug\" --include=\"*.ts\" --include=\"*.tsx\" ./src\n   grep -r \"console.info\" --include=\"*.ts\" --include=\"*.tsx\" ./src\n   ```\n\n2. **Determine Appropriate Strategy for Each Instance**:\n   - For each debug statement, determine if it should be:\n     - Completely removed (most cases)\n     - Wrapped in a development environment check\n     - Replaced with proper logging mechanism\n\n3. **Implement Environment-Based Conditional Logging**:\n   ```typescript\n   // Create a utility function in lib/utils/logger.ts\n   export const logger = {\n     debug: (...args: any[]) => {\n       if (process.env.NODE_ENV !== 'production') {\n         console.debug(...args);\n       }\n     },\n     log: (...args: any[]) => {\n       if (process.env.NODE_ENV !== 'production') {\n         console.log(...args);\n       }\n     },\n     // Add other methods as needed\n   };\n   ```\n\n4. **Replace or Remove Debug Statements**:\n   - For statements that should be preserved in development:\n   ```typescript\n   // Before\n   console.log('Debug info:', data);\n   \n   // After\n   import { logger } from '@/lib/utils/logger';\n   logger.log('Debug info:', data);\n   ```\n   \n   - For statements that should be removed entirely, delete the lines\n\n5. **Update ESLint Configuration**:\n   ```javascript\n   // .eslintrc.js\n   module.exports = {\n     // ... existing config\n     rules: {\n       // ... existing rules\n       'no-console': ['error', { allow: ['warn', 'error'] }],\n     },\n   };\n   ```\n\n6. **Create Pre-Commit Hook**:\n   - Add a pre-commit hook to prevent future console statements from being committed:\n   ```bash\n   # Install husky and lint-staged if not already installed\n   npm install --save-dev husky lint-staged\n   ```\n   \n   - Update package.json:\n   ```json\n   {\n     \"husky\": {\n       \"hooks\": {\n         \"pre-commit\": \"lint-staged\"\n       }\n     },\n     \"lint-staged\": {\n       \"*.{ts,tsx}\": [\n         \"eslint --fix\",\n         \"git add\"\n       ]\n     }\n   }\n   ```",
         "testStrategy": "## Test Strategy\n\n1. **Static Code Analysis**:\n   - Run ESLint with the updated configuration to verify no console statements remain:\n   ```bash\n   npx eslint --ext .ts,.tsx src/\n   ```\n   - Review any warnings or errors and address them\n\n2. **Development Environment Testing**:\n   - Start the application in development mode\n   - Verify that wrapped debug statements still appear in the browser console\n   - Check that the logger utility functions work as expected\n\n3. **Production Build Testing**:\n   - Create a production build:\n   ```bash\n   npm run build\n   ```\n   - Serve the production build locally:\n   ```bash\n   npm run start\n   ```\n   - Open browser developer tools and verify no debug statements appear in the console\n   - Navigate through different parts of the application to ensure no debug logs appear\n\n4. **Code Review**:\n   - Have another developer review the changes to ensure all debug statements have been properly handled\n   - Verify that the logger utility is implemented correctly\n\n5. **Regression Testing**:\n   - Verify that removing debug statements hasn't affected application functionality\n   - Test key user flows to ensure everything still works as expected\n\n6. **Documentation**:\n   - Update the project documentation to include guidelines for logging in the application\n   - Document the new logger utility and how it should be used for future development",
-        "status": "pending",
+        "status": "in-progress",
         "dependencies": [
           28
         ],
@@ -3641,7 +3641,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-08-25T00:04:06.511Z"
+      "updated": "2025-08-25T00:14:08.552Z"
     }
   }
 }

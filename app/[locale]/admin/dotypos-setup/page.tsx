@@ -38,7 +38,6 @@ export default function DotyposSetupPage() {
     }
 
     if (error) {
-      console.error("OAuth callback error:", error, errorMessage);
       alert(`OAuth failed: ${errorMessage || error}`);
     }
 
@@ -70,8 +69,8 @@ export default function DotyposSetupPage() {
       await navigator.clipboard.writeText(text);
       setCopied(field);
       setTimeout(() => setCopied(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy:", err);
+    } catch {
+      // Failed to copy to clipboard
     }
   };
 

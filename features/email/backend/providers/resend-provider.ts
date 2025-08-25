@@ -10,6 +10,7 @@ import type {
   EmailSendResult,
 } from "@/features/email/types/email.types";
 import { NetworkError } from "@/shared/backend/errors";
+import { logger } from "@/shared/utils/logger";
 
 interface ResendConfig {
   apiKey: string;
@@ -53,32 +54,32 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           );
 
           // Fallback to console output in development
-          console.log("=".repeat(80));
-          console.log("📧 EMAIL (Resend not configured - console fallback)");
-          console.log("=".repeat(80));
-          console.log(
+          logger.log("=".repeat(80));
+          logger.log("📧 EMAIL (Resend not configured - console fallback)");
+          logger.log("=".repeat(80));
+          logger.log(
             `To: ${typeof message.to === "string" ? message.to : Array.isArray(message.to) ? message.to.map((r) => r.email).join(", ") : message.to.email}`
           );
-          console.log(
+          logger.log(
             `From: ${typeof message.from === "string" ? message.from : message.from.email}`
           );
-          console.log(`Subject: ${message.subject}`);
-          console.log("-".repeat(80));
+          logger.log(`Subject: ${message.subject}`);
+          logger.log("-".repeat(80));
 
           if (message.html) {
-            console.log("HTML Content (preview):");
+            logger.log("HTML Content (preview):");
             const textPreview = message.html
               .replace(/<[^>]*>/g, "")
               .replace(/\s+/g, " ")
               .trim()
               .substring(0, 500);
-            console.log(textPreview);
+            logger.log(textPreview);
           } else if (message.text) {
-            console.log("Text Content:");
-            console.log(message.text);
+            logger.log("Text Content:");
+            logger.log(message.text);
           }
 
-          console.log("=".repeat(80));
+          logger.log("=".repeat(80));
 
           return {
             id: `console-${Date.now()}`,

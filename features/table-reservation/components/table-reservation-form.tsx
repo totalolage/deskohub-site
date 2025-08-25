@@ -137,7 +137,6 @@ export function TableReservationForm() {
       });
 
       // Client-side validation errors are handled by useFormErrorScroll hook
-      console.error("Form validation errors:", errors);
     }
   );
 

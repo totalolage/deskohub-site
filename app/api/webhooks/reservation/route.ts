@@ -15,6 +15,7 @@ import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
 import { getLocale, type Locale } from "@/i18n";
 import { getReservationCacheTag } from "@/shared/backend/utils/cache-tags";
 import { isDev } from "@/shared/utils/environment";
+import { logger } from "@/shared/utils/logger";
 
 /**
  * Dotypos Reservation Status Codes
@@ -289,7 +290,7 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     // This should rarely happen as we catch all errors in the Effect pipeline
-    console.error("Unexpected error in webhook handler:", error);
+    logger.error("Unexpected error in webhook handler:", error);
     return NextResponse.json(
       { success: true, error: "Internal processing error (logged)" },
       { status: 200 }
