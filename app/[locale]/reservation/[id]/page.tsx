@@ -10,7 +10,7 @@ import {
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
 import { getLocale, m, setLocale } from "@/i18n";
-import { getReservationPageCacheTags } from "@/shared/backend/utils/cache-tags";
+import { reservationCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
@@ -51,8 +51,9 @@ export default async function ReservationConfirmationPage({
     },
     ["reservation-detail"],
     {
-      revalidate: 3600, // Cache for 1 hour
-      tags: getReservationPageCacheTags(id),
+      tags: Object.values(reservationCacheTags({ reservationId: id })).filter(
+        Boolean
+      ),
     }
   );
 

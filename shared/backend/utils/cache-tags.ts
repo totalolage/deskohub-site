@@ -5,42 +5,55 @@
  * and other cacheable resources.
  */
 
-/**
- * Generate a cache tag for a specific reservation
- */
-export function getReservationCacheTag(reservationId: string): string {
-  return `reservation-${reservationId}`;
-}
+import type { GetGalleryImagesOptions } from "@/features/gallery/actions/get-cloudinary-images";
 
 /**
- * Generate a cache tag for all reservations
+ * Generate cache tags for reservation-related caching
  */
-export function getAllReservationsCacheTag(): string {
-  return "all-reservations";
-}
+export const reservationCacheTags = (options: {
+  reservationId?: string;
+  customerId?: string;
+}) => ({
+  _base: "reservations",
+  get all() {
+    return `all-${this._base}`;
+  },
+  get reservation() {
+    if (!options.reservationId) return null;
+    return `reservation-${options.reservationId}`;
+  },
+  get customer() {
+    if (!options.customerId) return null;
+    return `customer-${options.customerId}`;
+  },
+});
 
-/**
- * Generate a cache tag for a specific customer's reservations
- */
-export function getCustomerCacheTag(customerId: string): string {
-  return `customer-${customerId}`;
-}
+export const customerCacheTags = (options: { customerId?: string }) => ({
+  _base: "customers",
+  get all() {
+    return `all-${this._base}`;
+  },
+  get customer() {
+    if (!options.customerId) return null;
+    return `customer-${options.customerId}`;
+  },
+});
 
-/**
- * Generate cache tags for a reservation page
- */
-export function getReservationPageCacheTags(
-  reservationId: string,
-  customerId?: string
-): string[] {
-  const tags = [
-    getReservationCacheTag(reservationId),
-    getAllReservationsCacheTag(),
-  ];
-
-  if (customerId) {
-    tags.push(getCustomerCacheTag(customerId));
-  }
-
-  return tags;
-}
+export const cloudinaryImageCacheTags = (options: GetGalleryImagesOptions) => ({
+  _base: "cloudinary-images",
+  get all() {
+    return `all-${this._base}`;
+  },
+  get searchType() {
+    if (!options.searchType) return null;
+    return `${this._base}-${options.searchType}`;
+  },
+  get searchValue() {
+    if (!options.searchValue) return null;
+    return `${this.searchType}-${options.searchValue}`;
+  },
+  get maxResults() {
+    if (!options.maxResults) return null;
+    return `${this._base}-${options.maxResults}`;
+  },
+});

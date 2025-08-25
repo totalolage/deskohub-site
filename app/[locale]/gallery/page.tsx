@@ -1,9 +1,5 @@
-import {
-  GalleryEvents,
-  GalleryHero,
-  GallerySpaces,
-  MinimalGallery,
-} from "@/features/gallery";
+import { GalleryCollection, MinimalGallery } from "@/features/gallery";
+import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { m, setLocale } from "@/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
@@ -17,15 +13,14 @@ export const generateMetadata = metadata({
 export default async function GalleryPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
 
-  if (siteConstants.featureFlags.gallery) {
-    return (
-      <>
-        <GalleryHero />
-        <GallerySpaces />
-        <GalleryEvents />
-      </>
-    );
-  }
+  if (!siteConstants.featureFlags.gallery) return <MinimalGallery />;
 
-  return <MinimalGallery />;
+  return (
+    <GalleryCollection
+      imagesPromise={getCloudinaryImages({
+        searchType: "tag",
+        searchValue: "výběr",
+      })}
+    />
+  );
 }

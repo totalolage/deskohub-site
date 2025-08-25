@@ -162,7 +162,7 @@ export const siteConstants = {
     boardroomReservations: false,
     contactForm: false,
     tableReservations: true,
-    gallery: false,
+    gallery: true,
     menuPdfDownload: true,
   },
 };
