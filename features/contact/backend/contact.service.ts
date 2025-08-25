@@ -29,8 +29,6 @@ export const ContactServiceLive = Layer.succeed(
           submittedAt: new Date().toISOString(),
         };
 
-        // Contact form submission (can be monitored via Effect logging if needed)
-
         // Simulate processing time
         yield* Effect.sleep("1 second");
 

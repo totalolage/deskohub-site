@@ -3,6 +3,7 @@ import { localizationMiddleware } from "./localization";
 import { pathHeaderMiddleware } from "./path-header";
 
 export default createMiddlewareChain([
+  // botProtectionMiddleware,
   localizationMiddleware,
   pathHeaderMiddleware,
 ]);

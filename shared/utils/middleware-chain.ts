@@ -12,8 +12,7 @@ export type NextMiddleware = (
   | Response
   | null
   | undefined
-  | undefined
-  | Promise<NextResponse | Response | null | undefined | undefined>;
+  | Promise<NextResponse | Response | null | undefined>;
 export type MiddlewareFactory = (next: NextMiddleware) => NextMiddleware;
 
 export function createMiddlewareChain(
