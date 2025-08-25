@@ -1,5 +1,6 @@
 import { Contact } from "@/features/contact";
 import { Gallery, GamesGallery } from "@/features/gallery";
+import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { HomeHero, Stats } from "@/features/home";
 import { Location } from "@/features/location";
 import { m, setLocale } from "@/i18n";
@@ -18,7 +19,11 @@ export default async function LandingPage({ params }: RouteProps_locale) {
   return (
     <>
       <HomeHero />
-      <Gallery />
+      <Gallery
+        imagesPromise={getCloudinaryImages({
+          search: "collection:Domovská stránka",
+        })}
+      />
       <Stats />
       <GamesGallery />
       <Location />

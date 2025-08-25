@@ -3,7 +3,7 @@ import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import { cloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
+import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
 
 /**
  * Webhook Errors
@@ -72,7 +72,7 @@ const processWebhook = (bodyText: string) =>
     // Invalidate all cloudinary image caches
     // In the future when we parse the data from the webhook,
     // we can invalidate only the affected images
-    const tagsToRevalidate = cloudinaryImageCacheTags().all;
+    const tagsToRevalidate = new CloudinaryImageCacheTags().all;
     revalidateTag(tagsToRevalidate);
 
     yield* Effect.log("Cloudinary webhook received, cache invalidated", {

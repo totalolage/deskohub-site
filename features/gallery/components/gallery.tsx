@@ -1,46 +1,40 @@
-import Image from "next/image";
-import barFrontImage from "@/assets/images/photos/bar_front_1.jpeg";
-import boardGameShelvesImage from "@/assets/images/photos/boardgame_shelves_1.jpeg";
-import customersPlayingImage from "@/assets/images/photos/customers_playing_1.jpeg";
+"use client";
+
+import { CldImage } from "next-cloudinary";
+import { use } from "react";
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
+import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
-export function Gallery() {
+export function Gallery({
+  imagesPromise,
+}: {
+  imagesPromise: Promise<readonly CloudinaryAsset[]>;
+}) {
+  const images = use(imagesPromise);
+
   return (
     <section className="py-16 bg-amber-50">
       <div className="max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-          <div className="rounded-full overflow-hidden aspect-square">
-            <Image
-              src={boardGameShelvesImage}
-              alt={m["altText.boardGames"]()}
-              width={300}
-              height={300}
-              className="w-full h-full object-cover"
-              priority
-            />
-          </div>
-          <div className="rounded-full overflow-hidden aspect-square">
-            <Image
-              src={customersPlayingImage}
-              alt={m["altText.gamingArea"]()}
-              width={300}
-              height={300}
-              className="w-full h-full object-cover"
-              priority
-            />
-          </div>
-          <div className="rounded-full overflow-hidden aspect-square">
-            <Image
-              src={barFrontImage}
-              alt={m["altText.barAtmosphere"]()}
-              width={300}
-              height={300}
-              className="w-full h-full object-cover"
-              priority
-            />
-          </div>
+          {images.map((image) => (
+            <div
+              key={image.public_id}
+              className="rounded-full overflow-hidden aspect-square"
+            >
+              <CldImage
+                src={image.public_id}
+                alt={image.context?.custom?.alt || image.public_id}
+                width={600}
+                height={600}
+                crop="fill"
+                gravity="auto"
+                className="w-full h-full object-cover"
+                priority
+              />
+            </div>
+          ))}
         </div>
 
         <div className="text-center max-w-4xl mx-auto">

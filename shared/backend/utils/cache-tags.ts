@@ -7,55 +7,83 @@
 
 import type { GetGalleryImagesOptions } from "@/features/gallery/actions/get-cloudinary-images";
 
-/**
- * Generate cache tags for reservation-related caching
- */
-export const reservationCacheTags = (options: {
-  reservationId?: string;
-  customerId?: string;
-}) => ({
-  _base: "reservations",
+abstract class CaheTags {
+  abstract get _tags(): Record<string, unknown>;
+
+  constructor(private _base: string) {}
+
   get all() {
     return `all-${this._base}`;
-  },
+  }
+
+  get cacheTags(): string[] {
+    return [
+      this.all,
+      ...Object.keys(this._tags)
+        .map((tag) => this._constructTag(tag))
+        .filter(Boolean),
+    ];
+  }
+
+  _constructTag(name: keyof typeof this._tags) {
+    if (!name) return null;
+    return `${this._base}-${this._tags[name]}`;
+  }
+}
+
+export class ReservationCacheTags extends CaheTags {
+  _tags: Partial<{
+    reservationId: string;
+  }> = {};
+
+  constructor(options: { reservationId?: string; customerId?: string }) {
+    super("reservations");
+    this._tags.reservationId = options.reservationId;
+  }
+
   get reservation() {
-    if (!options.reservationId) return null;
-    return `reservation-${options.reservationId}`;
-  },
-  get customer() {
-    if (!options.customerId) return null;
-    return `customer-${options.customerId}`;
-  },
-});
+    return this._constructTag("reservationId");
+  }
+}
 
-export const customerCacheTags = (options: { customerId?: string }) => ({
-  _base: "customers",
-  get all() {
-    return `all-${this._base}`;
-  },
-  get customer() {
-    if (!options.customerId) return null;
-    return `customer-${options.customerId}`;
-  },
-});
+export class CustomerCacheTags extends CaheTags {
+  _tags: Partial<{
+    customerId: string;
+  }> = {};
 
-export const cloudinaryImageCacheTags = (options?: GetGalleryImagesOptions) => ({
-  _base: "cloudinary-images",
-  get all() {
-    return `all-${this._base}`;
-  },
+  constructor(options: { customerId?: string }) {
+    super("customers");
+    this._tags.customerId = options.customerId;
+  }
+
+  get customer() {
+    return this._constructTag("customerId");
+  }
+}
+
+export class CloudinaryImageCacheTags extends CaheTags {
+  _tags: Partial<{
+    search: string;
+    tags: string;
+    maxResults: number;
+  }> = {};
+
+  constructor(options?: GetGalleryImagesOptions) {
+    super("cloudinary-images");
+    if (options?.search) this._tags.search = options.search;
+    if (options?.tags?.length) this._tags.tags = options.tags.sort().join(",");
+    if (options?.maxResults) this._tags.maxResults = options.maxResults;
+  }
+
   get search() {
-    if (!options?.search) return null;
-    return `${this._base}-${options.search}`;
-  },
+    return this._constructTag("search");
+  }
+
   get tags() {
-    if (!options?.tags?.length) return null;
-    // Create a consistent tag string by sorting tags
-    const tagString = [...options.tags].sort().join(",");
-    return `${this._base}-tags-${tagString}`;
-  },
+    return this._constructTag("tags");
+  }
+
   get maxResults() {
-    if (!options?.maxResults) return null;
-    return `${this._base}-${options.maxResults}`;
-  },
-});
+    return this._constructTag("maxResults");
+  }
+}

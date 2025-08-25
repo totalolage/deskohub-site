@@ -13,7 +13,7 @@ import {
 } from "@/features/email/backend/send-reservation-status-email";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
 import { getLocale, type Locale } from "@/i18n";
-import { reservationCacheTags } from "@/shared/backend/utils/cache-tags";
+import { ReservationCacheTags } from "@/shared/backend/utils/cache-tags";
 import { isDev } from "@/shared/utils/environment";
 
 /**
@@ -193,18 +193,15 @@ const processWebhook = (payload: unknown) =>
     const customerIdStr = String(reservation.customerid);
 
     // Revalidate specific reservation page
-    const tagsToRevalidate = Object.values(
-      reservationCacheTags({
-        reservationId: reservationIdStr,
-        customerId: customerIdStr,
-      })
-    ).filter(Boolean);
-    tagsToRevalidate.forEach(revalidateTag);
+    const cacheTag = new ReservationCacheTags({
+      reservationId: reservationIdStr,
+    }).reservation;
+    if (cacheTag) revalidateTag(cacheTag);
 
     yield* Effect.logInfo("Cache invalidated for reservation update", {
       reservationId: reservationIdStr,
       customerId: customerIdStr,
-      tags: tagsToRevalidate,
+      cacheTag,
     });
 
     const result: WebhookResult = {

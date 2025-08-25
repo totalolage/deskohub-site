@@ -314,7 +314,7 @@ const makeCloudinaryService = Effect.gen(function* () {
       Effect.flatMap(() => {
         // Build the base expression
         let baseExpression: string;
-        
+
         if (base.type === "folder") {
           baseExpression = `folder=${base.value} AND resource_type:image`;
         } else {
@@ -324,13 +324,11 @@ const makeCloudinaryService = Effect.gen(function* () {
 
         // If tags are provided, add them with OR logic (match any of the tags)
         if (tags.length > 0) {
-          const tagExpression = tags
-            .map(tag => `tags=${tag}`)
-            .join(" OR ");
-          
+          const tagExpression = tags.map((tag) => `tags=${tag}`).join(" OR ");
+
           // Combine base with tags using AND (must be in folder/collection AND have at least one tag)
           const fullExpression = `(${baseExpression}) AND (${tagExpression})`;
-          
+
           return executeSearch(fullExpression, options);
         }
 

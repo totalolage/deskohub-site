@@ -10,7 +10,7 @@ import {
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
 import { getLocale, m, setLocale } from "@/i18n";
-import { reservationCacheTags } from "@/shared/backend/utils/cache-tags";
+import { ReservationCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
@@ -31,31 +31,30 @@ export default async function ReservationConfirmationPage({
   if (!siteConstants.featureFlags.tableReservations) {
     notFound();
   }
-  const getCachedReservation = cache(
-    async (reservationId: string) => {
-      const result = await Effect.runPromise(
-        getReservation(reservationId).pipe(
-          Effect.provide(DotyposServiceLive),
-          Effect.match({
-            onFailure: (_error) => {
-              // Return null to trigger 404
-              return null;
-            },
-            onSuccess: (data) => {
-              return data;
-            },
-          })
-        )
-      );
-      return result;
-    },
-    ["reservation-detail"],
-    {
-      tags: Object.values(reservationCacheTags({ reservationId: id })).filter(
-        Boolean
-      ),
-    }
-  );
+  const getCachedReservation = (reservationId: string) =>
+    cache(
+      async () => {
+        const result = await Effect.runPromise(
+          getReservation(reservationId).pipe(
+            Effect.provide(DotyposServiceLive),
+            Effect.match({
+              onFailure: (_error) => {
+                // Return null to trigger 404
+                return null;
+              },
+              onSuccess: (data) => {
+                return data;
+              },
+            })
+          )
+        );
+        return result;
+      },
+      ["reservation-detail"],
+      {
+        tags: new ReservationCacheTags({ reservationId }).cacheTags,
+      }
+    )();
 
   // Fetch reservation from cache or Dotypos
   const result = await getCachedReservation(id);
