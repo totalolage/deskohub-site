@@ -80,7 +80,7 @@ export const validateWebhookSignature = (
     }
 
     // Generate expected signature
-    const expectedSignature = createHmac("sha256", secret)
+    const expectedSignature = createHmac("sha1", secret)
       .update(`${bodyText}${timestamp}`)
       .digest("hex");
 
