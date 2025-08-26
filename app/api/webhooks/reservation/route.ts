@@ -15,7 +15,6 @@ import { getLocale, type Locale } from "@/i18n";
 import { ReservationCacheTags } from "@/shared/backend/utils/cache-tags";
 import {
   validateWebhookUUID,
-  WebhookAuthError,
   WebhookValidationError,
 } from "@/shared/backend/utils/webhook";
 

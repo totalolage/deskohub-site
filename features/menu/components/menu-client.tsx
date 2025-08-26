@@ -13,6 +13,7 @@ interface MenuClientProps {
   categories: Array<{
     id: string;
     name: string;
+    translatedName?: Record<string, unknown> | null;
     items: MenuItemWithCategory[];
   }>;
   showPdfDownload: boolean;
@@ -24,16 +25,19 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
     drinks: [] as Array<{
       id: string;
       name: string;
+      translatedName?: Record<string, unknown> | null;
       items: MenuItemWithCategory[];
     }>,
     food: [] as Array<{
       id: string;
       name: string;
+      translatedName?: Record<string, unknown> | null;
       items: MenuItemWithCategory[];
     }>,
     other: [] as Array<{
       id: string;
       name: string;
+      translatedName?: Record<string, unknown> | null;
       items: MenuItemWithCategory[];
     }>,
   };
@@ -49,7 +53,8 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
     const category = categoryMap.get(categoryId);
     if (
       category &&
-      !siteConstants.menu.excludedCategories.includes(categoryId)
+      !siteConstants.menu.excludedCategories.includes(categoryId) &&
+      category.items.length > 0
     ) {
       groupedCategories.food.push(category);
     }
@@ -60,7 +65,8 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
     const category = categoryMap.get(categoryId);
     if (
       category &&
-      !siteConstants.menu.excludedCategories.includes(categoryId)
+      !siteConstants.menu.excludedCategories.includes(categoryId) &&
+      category.items.length > 0
     ) {
       groupedCategories.drinks.push(category);
     }
@@ -71,7 +77,8 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
     const category = categoryMap.get(categoryId);
     if (
       category &&
-      !siteConstants.menu.excludedCategories.includes(categoryId)
+      !siteConstants.menu.excludedCategories.includes(categoryId) &&
+      category.items.length > 0
     ) {
       groupedCategories.other.push(category);
     }
@@ -118,6 +125,7 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
               <MenuSection
                 key={category.id}
                 categoryName={category.name}
+                categoryTranslatedName={category.translatedName}
                 items={category.items}
               />
             ))}
@@ -134,6 +142,7 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
               <MenuSection
                 key={category.id}
                 categoryName={category.name}
+                categoryTranslatedName={category.translatedName}
                 items={category.items}
               />
             ))}
@@ -150,6 +159,7 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
               <MenuSection
                 key={category.id}
                 categoryName={category.name}
+                categoryTranslatedName={category.translatedName}
                 items={category.items}
               />
             ))}

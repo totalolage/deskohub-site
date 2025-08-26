@@ -17,17 +17,27 @@ export async function MenuServer() {
     const result = await Effect.runPromise(program);
 
     const categoryIdMap = new Map<string, string>();
+    const categoryTranslationMap = new Map<
+      string,
+      Record<string, unknown> | null | undefined
+    >();
+
     result.categories.forEach((cat) => {
       if (cat.name && cat.id) {
         categoryIdMap.set(cat.name, cat.id);
+        categoryTranslationMap.set(cat.name, cat.translatedName);
       }
     });
 
     const categories = Array.from(result.itemsByCategory.entries()).map(
       ([categoryName, items]) => ({
         id:
-          categoryIdMap.get(categoryName) || items[0]?.categoryId || "unknown",
+          categoryIdMap.get(categoryName) ||
+          items[0]?.category?.id ||
+          items[0]?._categoryId ||
+          "unknown",
         name: categoryName,
+        translatedName: categoryTranslationMap.get(categoryName) || null,
         items: items,
       })
     );

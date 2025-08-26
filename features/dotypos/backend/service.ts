@@ -1536,21 +1536,10 @@ export const getReservation = (
   });
 
 /**
- * Menu item type for UI with category info
+ * Menu item type - Product with its associated Category
  */
-export interface MenuItemWithCategory {
-  id: string;
-  name: string;
-  description: string | null;
-  priceWithVat: number;
-  priceWithoutVat: number;
-  vat: number;
-  categoryId: string;
-  categoryName: string;
-  categoryDisplayIndex: number;
-  unit: string;
-  imageUrl: string | null;
-  available: boolean;
+export interface MenuItemWithCategory extends Product {
+  category: Category | undefined;
 }
 
 /**
@@ -1582,7 +1571,7 @@ export const getMenuItems = (): Effect.Effect<
       }
     }
 
-    // Transform products to menu items with proper category names
+    // Transform products to menu items with proper category
     const items: MenuItemWithCategory[] = products
       .filter((p) => p.display && !p.deleted)
       .map((product) => {
@@ -1591,43 +1580,22 @@ export const getMenuItems = (): Effect.Effect<
           : undefined;
 
         return {
-          id: product.id || "",
-          name: product.name,
-          description: product.description || product.subtitle || null,
-          priceWithVat:
-            typeof product.priceWithVat === "string"
-              ? parseFloat(product.priceWithVat)
-              : product.priceWithVat || 0,
-          priceWithoutVat:
-            typeof product.priceWithoutVat === "string"
-              ? parseFloat(product.priceWithoutVat)
-              : product.priceWithoutVat || 0,
-          vat:
-            typeof product.vat === "string"
-              ? parseFloat(product.vat)
-              : product.vat || 0,
-          categoryId: product._categoryId || "uncategorized",
-          categoryName: category?.name || "Uncategorized",
-          categoryDisplayIndex: 999, // Categories don't have display index in API
-          unit: product.unit || "pcs",
-          imageUrl: product.imageUrl || null,
-          available: product.stockDeduct === false || true, // If stock not tracked, always available
+          ...product,
+          category,
         };
       })
       .sort((a, b) => {
-        // Sort by category display index first, then by name
-        if (a.categoryDisplayIndex !== b.categoryDisplayIndex) {
-          return a.categoryDisplayIndex - b.categoryDisplayIndex;
-        }
+        // Sort by name since categories don't have display index in API
         return a.name.localeCompare(b.name);
       });
 
     // Group items by category name (not ID) for better display
     const itemsByCategory = new Map<string, MenuItemWithCategory[]>();
     for (const item of items) {
-      const categoryItems = itemsByCategory.get(item.categoryName) || [];
+      const categoryName = item.category?.name || "Uncategorized";
+      const categoryItems = itemsByCategory.get(categoryName) || [];
       categoryItems.push(item);
-      itemsByCategory.set(item.categoryName, categoryItems);
+      itemsByCategory.set(categoryName, categoryItems);
     }
 
     yield* Effect.logInfo("Menu items fetched with categories", {

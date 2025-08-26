@@ -1290,6 +1290,18 @@ components:
             - type: string
               nullable: true
           description: Product tags (can be array or string)
+        translatedDescription:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: 'Translated descriptions by locale (e.g., {"en": "English description", "cs": "Czech description"})'
+        translatedName:
+          type: object
+          nullable: true
+          additionalProperties:
+            type: string
+          description: 'Translated names by locale (e.g., {"en": "English name", "cs": "Czech name"})'
         unit:
           type: string
           description: Unit of measurement (actual values vary from documented enum)
