@@ -2,12 +2,8 @@ import { v2 as cloudinary } from "cloudinary";
 import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
-import { env } from "@/env";
 import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
-import {
-  validateWebhookSignature,
-  WebhookAuthError,
-} from "@/shared/backend/utils/webhook";
+import { WebhookAuthError } from "@/shared/backend/utils/webhook";
 
 class JsonParseError extends Data.TaggedError("JsonParseError")<{
   message: string;
@@ -72,23 +68,6 @@ export async function POST(request: Request) {
           })
         );
       }
-
-      yield* Effect.tapErrorTag(
-        validateWebhookSignature(
-          request,
-          bodyText,
-          env.CLOUDINARY_API_SECRET,
-          "sha1"
-        ),
-        "WebhookAuthError",
-        (error) =>
-          Effect.succeed(
-            NextResponse.json(
-              { error: "Unauthorized", message: error.message },
-              { status: 401 }
-            )
-          )
-      );
 
       return yield* processWebhook(bodyText);
     })

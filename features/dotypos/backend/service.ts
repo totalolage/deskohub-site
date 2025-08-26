@@ -19,6 +19,7 @@ import {
   NetworkError,
   ValidationError,
 } from "@/shared/backend/errors";
+import { normalizePhoneNumber } from "@/shared/utils/phone-formatting";
 import type { WithId } from "@/types/with-id";
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
@@ -949,6 +950,22 @@ const DotyposClientLive = Layer.effect(
         Effect.gen(function* () {
           yield* Effect.logInfo("Finding or creating customer", customerData);
 
+          // Normalize phone number to E.164 format for consistent storage and searching
+          const normalizedPhone = customerData.phone
+            ? normalizePhoneNumber(customerData.phone)
+            : null;
+
+          // Use normalized phone for all operations
+          const normalizedCustomerData = {
+            ...customerData,
+            phone: normalizedPhone || undefined,
+          };
+
+          yield* Effect.logDebug("Phone normalization", {
+            original: customerData.phone,
+            normalized: normalizedPhone,
+          });
+
           // Helper function to search customers by a specific field
           const searchByField = (fieldName: "email" | "phone", value: string) =>
             Effect.gen(function* () {
@@ -999,13 +1016,13 @@ const DotyposClientLive = Layer.effect(
           const matchingCustomers: Customer[] = [];
 
           // Search by email if provided
-          if (customerData.email) {
+          if (normalizedCustomerData.email) {
             const customersByEmail = yield* searchByField(
               "email",
-              customerData.email
+              normalizedCustomerData.email
             );
             const emailMatch = customersByEmail.find(
-              (c) => c.email === customerData.email
+              (c) => c.email === normalizedCustomerData.email
             );
             if (emailMatch) {
               matchingCustomers.push(emailMatch);
@@ -1013,13 +1030,13 @@ const DotyposClientLive = Layer.effect(
           }
 
           // Search by phone if provided (independent of email search)
-          if (customerData.phone) {
+          if (normalizedCustomerData.phone) {
             const customersByPhone = yield* searchByField(
               "phone",
-              customerData.phone
+              normalizedCustomerData.phone
             );
             const phoneMatch = customersByPhone.find(
-              (c) => c.phone === customerData.phone
+              (c) => c.phone === normalizedCustomerData.phone
             );
             if (phoneMatch) {
               // Only add if not already found by email (avoid duplicates)
@@ -1034,9 +1051,9 @@ const DotyposClientLive = Layer.effect(
             existingCustomer = matchingCustomers[0]!;
 
             const matchedBy: string[] = [];
-            if (existingCustomer.email === customerData.email)
+            if (existingCustomer.email === normalizedCustomerData.email)
               matchedBy.push("email");
-            if (existingCustomer.phone === customerData.phone)
+            if (existingCustomer.phone === normalizedCustomerData.phone)
               matchedBy.push("phone");
 
             yield* Effect.logInfo("Found existing customer", {
@@ -1060,10 +1077,11 @@ const DotyposClientLive = Layer.effect(
           if (existingCustomer) {
             // Check if any fields are missing that we now have
             const needsUpdate =
-              (customerData.email && !existingCustomer.email) ||
-              (customerData.phone && !existingCustomer.phone) ||
-              (customerData.firstName && !existingCustomer.firstName) ||
-              (customerData.lastName && !existingCustomer.lastName);
+              (normalizedCustomerData.email && !existingCustomer.email) ||
+              (normalizedCustomerData.phone && !existingCustomer.phone) ||
+              (normalizedCustomerData.firstName &&
+                !existingCustomer.firstName) ||
+              (normalizedCustomerData.lastName && !existingCustomer.lastName);
 
             if (needsUpdate) {
               yield* Effect.logInfo(
@@ -1071,26 +1089,32 @@ const DotyposClientLive = Layer.effect(
                 {
                   customerId: existingCustomer.id,
                   existingEmail: existingCustomer.email,
-                  newEmail: customerData.email,
+                  newEmail: normalizedCustomerData.email,
                   existingPhone: existingCustomer.phone,
-                  newPhone: customerData.phone,
+                  newPhone: normalizedCustomerData.phone,
                 }
               );
 
               // Build update request with only new/missing fields
               const updateRequest: UpdateCustomerRequest = {};
 
-              if (customerData.email && !existingCustomer.email) {
-                updateRequest.email = customerData.email;
+              if (normalizedCustomerData.email && !existingCustomer.email) {
+                updateRequest.email = normalizedCustomerData.email;
               }
-              if (customerData.phone && !existingCustomer.phone) {
-                updateRequest.phone = customerData.phone;
+              if (normalizedCustomerData.phone && !existingCustomer.phone) {
+                updateRequest.phone = normalizedCustomerData.phone;
               }
-              if (customerData.firstName && !existingCustomer.firstName) {
-                updateRequest.firstName = customerData.firstName;
+              if (
+                normalizedCustomerData.firstName &&
+                !existingCustomer.firstName
+              ) {
+                updateRequest.firstName = normalizedCustomerData.firstName;
               }
-              if (customerData.lastName && !existingCustomer.lastName) {
-                updateRequest.lastName = customerData.lastName;
+              if (
+                normalizedCustomerData.lastName &&
+                !existingCustomer.lastName
+              ) {
+                updateRequest.lastName = normalizedCustomerData.lastName;
               }
 
               const updatedCustomer = yield* api
@@ -1130,17 +1154,20 @@ const DotyposClientLive = Layer.effect(
           }
 
           // Create new customer
-          yield* Effect.logInfo("Creating new customer", customerData);
+          yield* Effect.logInfo(
+            "Creating new customer",
+            normalizedCustomerData
+          );
 
           const newCustomer = yield* api
             .createCustomer({
               path: { cloudId: config.cloudId },
               body: {
                 _cloudId: config.cloudId,
-                firstName: customerData.firstName,
-                lastName: customerData.lastName,
-                email: customerData.email || null,
-                phone: customerData.phone || null,
+                firstName: normalizedCustomerData.firstName,
+                lastName: normalizedCustomerData.lastName,
+                email: normalizedCustomerData.email || null,
+                phone: normalizedCustomerData.phone || null,
                 addressLine1: "",
                 addressLine2: null,
                 city: null,
