@@ -55,7 +55,7 @@ export async function sendTestWebhook(
       body: JSON.stringify(webhookPayload),
     });
 
-    const data = (await response.json()) as unknown;
+    const data = await response.json();
 
     if (!response.ok) {
       const errorData = data as { message?: string; issues?: unknown };

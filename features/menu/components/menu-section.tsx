@@ -35,8 +35,11 @@ export function MenuSection({ products, category, emoji }: MenuSectionProps) {
           const localizedName =
             getLocalizedText(item.translatedName, locale, item.name) ??
             item.name;
-          const localizedDescription =
-            getLocalizedText(item.translatedDescription, locale, item.description || item.subtitle);
+          const localizedDescription = getLocalizedText(
+            item.translatedDescription,
+            locale,
+            item.description || item.subtitle
+          );
 
           // Determine availability - items are always available for now
           // since we don't have stock quantity data from the API

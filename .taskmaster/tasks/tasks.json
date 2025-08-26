@@ -1735,8 +1735,8 @@
             "title": "Create Phone Number Utility Module",
             "description": "Implement core utility functions for phone number normalization, validation, and formatting using libphonenumber-js library",
             "dependencies": [],
-            "details": "Develop a utility module (lib/utils/phone-number.ts) with three main functions: normalizePhoneNumber (converts to E.164 format), validatePhoneNumber (checks if number is valid), and formatPhoneNumberForDisplay (formats for UI presentation). Ensure proper error handling, default country code support (CZ), and compliance with E.164 standard.",
-            "status": "pending",
+            "details": "Develop a utility module (lib/utils/phone-number.ts) with three main functions: normalizePhoneNumber (converts to E.164 format), validatePhoneNumber (checks if number is valid), and formatPhoneNumberForDisplay (formats for UI presentation). Ensure proper error handling, default country code support (CZ), and compliance with E.164 standard.\n<info added on 2025-08-26T17:48:59.559Z>\nCompleted the normalizePhoneNumber utility function in /shared/utils/phone-formatting.ts. The function successfully converts phone numbers to E.164 format, handling both Czech and international numbers. Implementation uses libphonenumber-js for validation and formatting. The function returns null for invalid inputs, ensuring robust error handling. All unit tests for this function are now passing. This completes the first part of the phone number utility module as specified in the requirements.\n</info added on 2025-08-26T17:48:59.559Z>",
+            "status": "done",
             "testStrategy": "Test with various phone number formats (local Czech numbers, international numbers with/without country code). Verify E.164 normalization works correctly. Test edge cases including empty strings, invalid numbers, and numbers with special characters."
           },
           {
@@ -1746,8 +1746,8 @@
             "dependencies": [
               "43.1"
             ],
-            "details": "Build a PhoneInput React component that handles user input, validation feedback, and formatting. The component should display formatted numbers for readability but store normalized E.164 format. Include features like automatic formatting on blur, validation indicators, and proper accessibility attributes.",
-            "status": "pending",
+            "details": "Build a PhoneInput React component that handles user input, validation feedback, and formatting. The component should display formatted numbers for readability but store normalized E.164 format. Include features like automatic formatting on blur, validation indicators, and proper accessibility attributes.\n<info added on 2025-08-26T18:20:04.198Z>\nSuccessfully implemented custom phone input component with real-time validation using libphonenumber-js. The component provides visual feedback with check/X icons indicating validity status and automatically formats numbers on blur for improved readability. A phone icon indicator enhances the UI. \n\nThe component integrates with react-hook-form's error handling system and has been successfully applied across all forms including table reservation, training reservation, and contact forms. Implementation includes proper TypeScript typing with CountryCode from libphonenumber-js and preserves all necessary accessibility attributes.\n\nThe component maintains dual representation of phone numbers - displaying formatted numbers for user readability while passing E.164 normalized format to parent components through an onNormalizedChange callback.\n</info added on 2025-08-26T18:20:04.198Z>",
+            "status": "done",
             "testStrategy": "Test component rendering with various props configurations. Verify validation feedback appears correctly for invalid numbers. Test formatting behavior on focus/blur events. Ensure the component correctly normalizes input and passes E.164 format to parent components."
           },
           {
@@ -3641,7 +3641,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-08-25T10:09:15.635Z"
+      "updated": "2025-08-26T18:20:10.799Z"
     }
   }
 }
