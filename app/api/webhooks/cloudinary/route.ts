@@ -1,9 +1,13 @@
+import { v2 as cloudinary } from "cloudinary";
 import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
-import { validateWebhookSignature } from "@/shared/backend/utils/webhook";
+import {
+  validateWebhookSignature,
+  WebhookAuthError,
+} from "@/shared/backend/utils/webhook";
 
 class JsonParseError extends Data.TaggedError("JsonParseError")<{
   message: string;
@@ -48,8 +52,34 @@ export async function POST(request: Request) {
     Effect.gen(function* () {
       const bodyText = yield* Effect.promise(() => request.text());
 
+      const signature = request.headers.get("x-cld-signature");
+      const timestamp = Number(request.headers.get("x-cld-timestamp"));
+
+      if (!signature || Number.isNaN(timestamp)) {
+        throw new Error("Missing signature or timestamp headers");
+      }
+
+      if (
+        !cloudinary.utils.verifyNotificationSignature(
+          bodyText,
+          timestamp,
+          signature
+        )
+      ) {
+        return yield* Effect.fail(
+          new WebhookAuthError({
+            message: "Invalid signature",
+          })
+        );
+      }
+
       yield* Effect.tapErrorTag(
-        validateWebhookSignature(request, bodyText, env.CLOUDINARY_API_SECRET),
+        validateWebhookSignature(
+          request,
+          bodyText,
+          env.CLOUDINARY_API_SECRET,
+          "sha1"
+        ),
         "WebhookAuthError",
         (error) =>
           Effect.succeed(
