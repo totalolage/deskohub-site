@@ -4,16 +4,18 @@ import { Effect } from "effect";
 import { unstable_cache as cache } from "next/cache";
 import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
 import {
+  normalizeExpression,
+  type UnnormalizedLogicalExpression,
+} from "@/shared/utils/normalize-tag-expression";
+import {
   type CloudinaryAsset,
   CloudinaryServiceLive,
   getGalleryImages,
 } from "../backend/cloudinary.service";
-
-export type GallerySearchType = "folder" | "collection";
+import type { CloudinaryTag } from "../types/cloudinary-tag";
 
 export interface GetGalleryImagesOptions {
-  search: `${GallerySearchType}:${string}`;
-  tags?: string[];
+  tags?: UnnormalizedLogicalExpression<CloudinaryTag>;
   maxResults?: number;
 }
 
@@ -21,17 +23,13 @@ export interface GetGalleryImagesOptions {
 export async function getCloudinaryImages(
   options: GetGalleryImagesOptions
 ): Promise<readonly CloudinaryAsset[]> {
-  const { search, tags = [], maxResults = 50 } = options;
+  const { tags, maxResults = 50 } = options;
 
-  // Parse the search string
-  const [searchType, ...searchValueParts] = search.split(":") as [
-    GallerySearchType,
-    ...string[],
-  ];
-  const searchValue = searchValueParts.join(":"); // In case the value contains colons
+  // Normalize the tag expression to CNF format
+  const normalizedTags = tags ? normalizeExpression(tags) : [];
 
   const getImagesEffect = Effect.provide(
-    getGalleryImages(searchType, searchValue, tags, {
+    getGalleryImages(normalizedTags, {
       maxResults,
     }),
     CloudinaryServiceLive
@@ -42,7 +40,6 @@ export async function getCloudinaryImages(
     ["getCloudinaryImages"],
     {
       tags: new CloudinaryImageCacheTags({
-        search,
         tags,
         maxResults,
       }).cacheTags,

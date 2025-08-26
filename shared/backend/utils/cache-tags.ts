@@ -63,20 +63,14 @@ export class CustomerCacheTags extends CaheTags {
 
 export class CloudinaryImageCacheTags extends CaheTags {
   _tags: Partial<{
-    search: string;
     tags: string;
     maxResults: number;
   }> = {};
 
   constructor(options?: GetGalleryImagesOptions) {
     super("cloudinary-images");
-    if (options?.search) this._tags.search = options.search;
-    if (options?.tags?.length) this._tags.tags = options.tags.sort().join(",");
+    if (options?.tags) this._tags.tags = JSON.stringify(options.tags);
     if (options?.maxResults) this._tags.maxResults = options.maxResults;
-  }
-
-  get search() {
-    return this._constructTag("search");
   }
 
   get tags() {

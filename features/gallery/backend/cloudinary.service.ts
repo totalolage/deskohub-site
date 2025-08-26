@@ -2,6 +2,9 @@ import * as Schema from "@effect/schema/Schema";
 import { v2 as cloudinary } from "cloudinary";
 import { Context, Effect, Layer, pipe } from "effect";
 import { env } from "@/env";
+import type { CnfExpression } from "@/shared/utils/normalize-tag-expression";
+import type { CloudinaryTag } from "../types/cloudinary-tag";
+import { cnfToCloudinaryExpression } from "../utils/cnf-to-cloudinary-tag";
 
 // ============================================================================
 // Schemas
@@ -76,11 +79,6 @@ export interface CloudinaryService {
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
 
-  readonly searchByCollection: (
-    collection: string,
-    options?: SearchOptions
-  ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
-
   readonly searchAll: (
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
@@ -91,8 +89,7 @@ export interface CloudinaryService {
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
 
   readonly searchWithTags: (
-    base: { type: "folder" | "collection"; value: string },
-    tags: readonly string[],
+    tags: CnfExpression<CloudinaryTag>,
     options?: SearchOptions
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
 }
@@ -191,30 +188,12 @@ const makeCloudinaryService = Effect.gen(function* () {
     pipe(
       Effect.log(`Searching by tag: ${tag}`),
       Effect.flatMap(() => {
-        // Try different tag formats
-        const expressions = [
-          `tags=${tag}`, // Without quotes (standard format)
-          `tags=${tag.toLowerCase()}`, // Lowercase
-          `tags=${tag.replace(/\s+/g, "_")}`, // Underscores
-          `tags=${tag.replace(/\s+/g, "-")}`, // Hyphens
-        ];
-
-        // Try each expression until we find results
-        return Effect.gen(function* () {
-          for (const expr of expressions) {
-            yield* Effect.log(`Trying tag expression: ${expr}`);
-            const results = yield* executeSearch(expr, options);
-            if (results.length > 0) {
-              yield* Effect.log(
-                `Found ${results.length} images with tag expression: ${expr}`
-              );
-              return results;
-            }
-          }
-          yield* Effect.log(`No images found for any variation of tag: ${tag}`);
-          return [];
-        });
-      })
+        const expression = `tags=${tag} AND resource_type:image`;
+        return executeSearch(expression, options);
+      }),
+      Effect.tap((results) =>
+        Effect.log(`Found ${results.length} images with tag: ${tag}`)
+      )
     );
 
   const searchByFolder: CloudinaryService["searchByFolder"] = (
@@ -252,40 +231,6 @@ const makeCloudinaryService = Effect.gen(function* () {
       })
     );
 
-  const searchByCollection: CloudinaryService["searchByCollection"] = (
-    collection,
-    options
-  ) =>
-    pipe(
-      Effect.log(`Searching by collection: ${collection}`),
-      Effect.flatMap(() => {
-        // Collections are typically implemented as tags in Cloudinary
-        // Try both tag and folder approaches
-        return Effect.gen(function* () {
-          // First try as a tag
-          const tagResults = yield* searchByTag(collection, options);
-          if (tagResults.length > 0) {
-            yield* Effect.log(
-              `Found ${tagResults.length} images in collection as tag`
-            );
-            return tagResults;
-          }
-
-          // Then try as a folder
-          const folderResults = yield* searchByFolder(collection, options);
-          if (folderResults.length > 0) {
-            yield* Effect.log(
-              `Found ${folderResults.length} images in collection as folder`
-            );
-            return folderResults;
-          }
-
-          yield* Effect.log(`No images found in collection: ${collection}`);
-          return [];
-        });
-      })
-    );
-
   const searchAll: CloudinaryService["searchAll"] = (options) =>
     pipe(
       Effect.log("Searching all images"),
@@ -304,43 +249,26 @@ const makeCloudinaryService = Effect.gen(function* () {
       Effect.flatMap(() => executeSearch(expression, options))
     );
 
-  const searchWithTags: CloudinaryService["searchWithTags"] = (
-    base,
-    tags,
-    options
-  ) =>
-    pipe(
-      Effect.log(`Searching ${base.type}: ${base.value} with tags`, { tags }),
-      Effect.flatMap(() => {
-        // Build the base expression
-        let baseExpression: string;
+  const searchWithTags: CloudinaryService["searchWithTags"] = (tags, options) =>
+    Effect.gen(function* () {
+      yield* Effect.log(`Searching with tags`, { tags, options });
 
-        if (base.type === "folder") {
-          baseExpression = `folder=${base.value} AND resource_type:image`;
-        } else {
-          // For collections, we'll use tags since collections are typically implemented as tags
-          baseExpression = `tags=${base.value} AND resource_type:image`;
-        }
+      // If no tags specified, return all images
+      if (tags.length === 0) {
+        return yield* searchAll(options);
+      }
 
-        // If tags are provided, add them with OR logic (match any of the tags)
-        if (tags.length > 0) {
-          const tagExpression = tags.map((tag) => `tags=${tag}`).join(" OR ");
+      // Use the normalized CNF expression builder
+      const expression = cnfToCloudinaryExpression(tags);
 
-          // Combine base with tags using AND (must be in folder/collection AND have at least one tag)
-          const fullExpression = `(${baseExpression}) AND (${tagExpression})`;
+      yield* Effect.log(`CNF search expression: ${expression}`);
 
-          return executeSearch(fullExpression, options);
-        }
-
-        // No tags specified, just return base results
-        return executeSearch(baseExpression, options);
-      })
-    );
+      return yield* executeSearch(expression, options);
+    });
 
   return {
     searchByTag,
     searchByFolder,
-    searchByCollection,
     searchAll,
     searchByExpression,
     searchWithTags,
@@ -361,9 +289,7 @@ export const CloudinaryServiceLive = Layer.effect(
 // ============================================================================
 
 export const getGalleryImages = (
-  baseType: "folder" | "collection",
-  baseValue: string,
-  tags: readonly string[] = [],
+  tags: CnfExpression<CloudinaryTag>,
   options?: SearchOptions
 ): Effect.Effect<
   readonly CloudinaryAsset[],
@@ -374,23 +300,10 @@ export const getGalleryImages = (
     const service = yield* CloudinaryService;
 
     yield* Effect.log(`Getting gallery images`, {
-      baseType,
-      baseValue,
       tags,
       options,
     });
 
-    if (!baseValue) {
-      yield* Effect.logWarning(
-        `${baseType} search requested but no value provided`
-      );
-      return [];
-    }
-
-    // Use the new searchWithTags method
-    return yield* service.searchWithTags(
-      { type: baseType, value: baseValue },
-      tags,
-      options
-    );
+    // Use the searchWithTags method
+    return yield* service.searchWithTags(tags, options);
   });

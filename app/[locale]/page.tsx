@@ -21,7 +21,7 @@ export default async function LandingPage({ params }: RouteProps_locale) {
       <HomeHero />
       <Gallery
         imagesPromise={getCloudinaryImages({
-          search: "collection:Domovská stránka",
+          tags: ["Domovská stránka"],
         })}
       />
       <Stats />
