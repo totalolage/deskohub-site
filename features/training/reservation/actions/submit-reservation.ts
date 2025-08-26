@@ -28,6 +28,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
         year: "numeric",
         month: "long",
         day: "numeric",
+        timeZone: siteConstants.workingHours.timezone,
       });
 
       const formattedTime = input.time;

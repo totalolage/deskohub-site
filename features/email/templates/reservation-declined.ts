@@ -17,6 +17,7 @@ export function renderReservationDeclinedEmail(
       year: "numeric",
       month: "long",
       day: "numeric",
+      timeZone: siteConstants.workingHours.timezone,
     });
   };
 
@@ -24,6 +25,7 @@ export function renderReservationDeclinedEmail(
     return date.toLocaleTimeString(locale, {
       hour: "2-digit",
       minute: "2-digit",
+      timeZone: siteConstants.workingHours.timezone,
     });
   };
 
