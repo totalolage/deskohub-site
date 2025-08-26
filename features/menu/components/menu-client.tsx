@@ -1,7 +1,6 @@
 "use client";
 
-import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
-import { m } from "@/i18n";
+import type { Category, Product } from "@/features/dotypos/generated";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
 import { MenuHero } from "./menu-hero";
@@ -10,98 +9,54 @@ import { MenuPDFDownload } from "./menu-pdf-download";
 import { MenuSection } from "./menu-section";
 
 interface MenuClientProps {
-  categories: Array<{
-    id: string;
-    name: string;
-    translatedName?: Record<string, unknown> | null;
-    items: MenuItemWithCategory[];
-  }>;
+  products: Product[];
+  categories: Category[];
   showPdfDownload: boolean;
 }
 
-export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
-  // Group categories by type using ID-based configuration
-  const groupedCategories = {
-    drinks: [] as Array<{
-      id: string;
-      name: string;
-      translatedName?: Record<string, unknown> | null;
-      items: MenuItemWithCategory[];
-    }>,
-    food: [] as Array<{
-      id: string;
-      name: string;
-      translatedName?: Record<string, unknown> | null;
-      items: MenuItemWithCategory[];
-    }>,
-    other: [] as Array<{
-      id: string;
-      name: string;
-      translatedName?: Record<string, unknown> | null;
-      items: MenuItemWithCategory[];
-    }>,
-  };
+export function MenuClient({
+  products,
+  categories,
+  showPdfDownload,
+}: MenuClientProps) {
+  // Get display order for categories from config
+  const categoryOrder = [
+    ...siteConstants.menu.categoryGroups.food,
+    ...siteConstants.menu.categoryGroups.drinks,
+    ...siteConstants.menu.categoryGroups.other,
+  ];
 
-  // Create a map for quick category lookup by ID
+  // Filter and order categories
+  const displayCategories: Category[] = [];
   const categoryMap = new Map(categories.map((cat) => [cat.id, cat]));
 
-  // Process categories in the order defined in the config
-  // This ensures the display order matches the configuration
-
-  // Process food categories in config order
-  siteConstants.menu.categoryGroups.food.forEach((categoryId) => {
-    const category = categoryMap.get(categoryId);
-    if (
-      category &&
-      !siteConstants.menu.excludedCategories.includes(categoryId) &&
-      category.items.length > 0
-    ) {
-      groupedCategories.food.push(category);
-    }
-  });
-
-  // Process drinks categories in config order
-  siteConstants.menu.categoryGroups.drinks.forEach((categoryId) => {
-    const category = categoryMap.get(categoryId);
-    if (
-      category &&
-      !siteConstants.menu.excludedCategories.includes(categoryId) &&
-      category.items.length > 0
-    ) {
-      groupedCategories.drinks.push(category);
-    }
-  });
-
-  // Process other categories in config order
-  siteConstants.menu.categoryGroups.other.forEach((categoryId) => {
-    const category = categoryMap.get(categoryId);
-    if (
-      category &&
-      !siteConstants.menu.excludedCategories.includes(categoryId) &&
-      category.items.length > 0
-    ) {
-      groupedCategories.other.push(category);
+  // Add categories in configured order
+  categoryOrder.forEach((categoryId) => {
+    if (!siteConstants.menu.excludedCategories.includes(categoryId)) {
+      const category = categoryMap.get(categoryId);
+      if (category) {
+        // Check if there are products for this category
+        const hasProducts = products.some((p) => p._categoryId === categoryId);
+        if (hasProducts) {
+          displayCategories.push(category);
+        }
+      }
     }
   });
 
   // Handle uncategorized items if enabled
   if (siteConstants.menu.showUncategorized) {
-    const defaultSection = siteConstants.menu.defaultSection;
     const processedIds = new Set([
-      ...siteConstants.menu.categoryGroups.food,
-      ...siteConstants.menu.categoryGroups.drinks,
-      ...siteConstants.menu.categoryGroups.other,
+      ...categoryOrder,
       ...siteConstants.menu.excludedCategories,
     ]);
 
     categories.forEach((category) => {
-      if (!processedIds.has(category.id) && category.items.length > 0) {
-        if (defaultSection === "drinks") {
-          groupedCategories.drinks.push(category);
-        } else if (defaultSection === "food") {
-          groupedCategories.food.push(category);
-        } else if (defaultSection === "other") {
-          groupedCategories.other.push(category);
+      if (category.id && !processedIds.has(category.id)) {
+        // Check if there are products for this category
+        const hasProducts = products.some((p) => p._categoryId === category.id);
+        if (hasProducts) {
+          displayCategories.push(category);
         }
       }
     });
@@ -115,56 +70,19 @@ export function MenuClient({ categories, showPdfDownload }: MenuClientProps) {
         {showPdfDownload && <MenuPDFDownload />}
         <MenuOpeningHours />
 
-        {/* Food Section */}
-        {groupedCategories.food.length > 0 && (
-          <div className="mb-16">
-            <h1 className="text-4xl font-bold text-center text-white mb-12">
-              🍔 {m["menu.sections.food"]()}
-            </h1>
-            {groupedCategories.food.map((category) => (
-              <MenuSection
-                key={category.id}
-                categoryName={category.name}
-                categoryTranslatedName={category.translatedName}
-                items={category.items}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Drinks Section */}
-        {groupedCategories.drinks.length > 0 && (
-          <div className="mb-16">
-            <h1 className="text-4xl font-bold text-center text-white mb-12">
-              🥤 {m["menu.sections.drinks"]()}
-            </h1>
-            {groupedCategories.drinks.map((category) => (
-              <MenuSection
-                key={category.id}
-                categoryName={category.name}
-                categoryTranslatedName={category.translatedName}
-                items={category.items}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Other Section */}
-        {groupedCategories.other.length > 0 && (
-          <div className="mb-16">
-            <h1 className="text-4xl font-bold text-center text-white mb-12">
-              🎲 {m["menu.sections.other"]()}
-            </h1>
-            {groupedCategories.other.map((category) => (
-              <MenuSection
-                key={category.id}
-                categoryName={category.name}
-                categoryTranslatedName={category.translatedName}
-                items={category.items}
-              />
-            ))}
-          </div>
-        )}
+        {/* Display all categories in order */}
+        {displayCategories.map((category) => (
+          <MenuSection
+            key={category.id}
+            category={category}
+            products={products}
+            emoji={
+              category.id
+                ? siteConstants.menu.categoryEmojis[category.id]
+                : undefined
+            }
+          />
+        ))}
 
         <MenuFooterNote />
       </div>

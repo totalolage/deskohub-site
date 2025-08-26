@@ -608,6 +608,15 @@ components:
       bearerFormat: JWT
 
   schemas:
+    TranslatedStrings:
+      type: object
+      additionalProperties:
+        type: string
+      description: 'Map of locale codes to translated strings (e.g., {"en": "English text", "cs": "Czech text"})'
+      example:
+        en: "English text"
+        cs: "Český text"
+        de: "Deutscher Text"
     TokenRequest:
       type: object
       properties:
@@ -1291,17 +1300,15 @@ components:
               nullable: true
           description: Product tags (can be array or string)
         translatedDescription:
-          type: object
           nullable: true
-          additionalProperties:
-            type: string
-          description: 'Translated descriptions by locale (e.g., {"en": "English description", "cs": "Czech description"})'
+          allOf:
+            - $ref: '#/components/schemas/TranslatedStrings'
+          description: Translated descriptions by locale
         translatedName:
-          type: object
           nullable: true
-          additionalProperties:
-            type: string
-          description: 'Translated names by locale (e.g., {"en": "English name", "cs": "Czech name"})'
+          allOf:
+            - $ref: '#/components/schemas/TranslatedStrings'
+          description: Translated names by locale
         unit:
           type: string
           description: Unit of measurement (actual values vary from documented enum)
@@ -1358,8 +1365,9 @@ components:
           nullable: true
           description: Sort order (string representation)
         translatedName:
-          type: object
           nullable: true
+          allOf:
+            - $ref: '#/components/schemas/TranslatedStrings'
           description: Translated names by locale
         versionDate:
           type: string

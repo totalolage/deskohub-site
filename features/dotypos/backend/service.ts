@@ -1536,19 +1536,11 @@ export const getReservation = (
   });
 
 /**
- * Menu item type - Product with its associated Category
- */
-export interface MenuItemWithCategory extends Product {
-  category: Category | undefined;
-}
-
-/**
  * Get menu items with categories properly grouped
  */
 export const getMenuItems = (): Effect.Effect<
   {
-    items: MenuItemWithCategory[];
-    itemsByCategory: Map<string, MenuItemWithCategory[]>;
+    products: Product[];
     categories: Category[];
   },
   ExternalAPIError | NetworkError | ValidationError,
@@ -1563,50 +1555,16 @@ export const getMenuItems = (): Effect.Effect<
       { concurrency: 2 }
     );
 
-    // Create a map of category ID to category data for quick lookup
-    const categoryMap = new Map<string, Category>();
-    for (const category of categories) {
-      if (category.id) {
-        categoryMap.set(category.id, category);
-      }
-    }
+    // Filter to only display products that aren't deleted
+    const displayProducts = products.filter((p) => p.display && !p.deleted);
 
-    // Transform products to menu items with proper category
-    const items: MenuItemWithCategory[] = products
-      .filter((p) => p.display && !p.deleted)
-      .map((product) => {
-        const category = product._categoryId
-          ? categoryMap.get(product._categoryId)
-          : undefined;
-
-        return {
-          ...product,
-          category,
-        };
-      })
-      .sort((a, b) => {
-        // Sort by name since categories don't have display index in API
-        return a.name.localeCompare(b.name);
-      });
-
-    // Group items by category name (not ID) for better display
-    const itemsByCategory = new Map<string, MenuItemWithCategory[]>();
-    for (const item of items) {
-      const categoryName = item.category?.name || "Uncategorized";
-      const categoryItems = itemsByCategory.get(categoryName) || [];
-      categoryItems.push(item);
-      itemsByCategory.set(categoryName, categoryItems);
-    }
-
-    yield* Effect.logInfo("Menu items fetched with categories", {
-      itemsCount: items.length,
+    yield* Effect.logInfo("Menu items fetched", {
+      productsCount: displayProducts.length,
       categoriesCount: categories.length,
-      categoriesWithItems: itemsByCategory.size,
     });
 
     return {
-      items,
-      itemsByCategory,
+      products: displayProducts,
       categories,
     };
   }).pipe(Effect.withSpan("getMenuItems"));

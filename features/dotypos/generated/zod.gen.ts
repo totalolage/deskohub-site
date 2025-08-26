@@ -2,6 +2,13 @@
 
 import { z } from 'zod';
 
+/**
+ * Map of locale codes to translated strings (e.g., {"en": "English text", "cs": "Czech text"})
+ */
+export const zTranslatedStrings = z.record(z.string(), z.string()).register(z.globalRegistry, {
+    description: 'Map of locale codes to translated strings (e.g., {"en": "English text", "cs": "Czech text"})'
+});
+
 export const zTokenRequest = z.object({
     _cloudId: z.optional(z.string().register(z.globalRegistry, {
         description: 'Cloud ID for cloud-specific token (optional)'
@@ -590,11 +597,11 @@ export const zProduct = z.object({
         z.null()
     ])),
     translatedDescription: z.optional(z.union([
-        z.record(z.string(), z.string()),
+        zTranslatedStrings,
         z.null()
     ])),
     translatedName: z.optional(z.union([
-        z.record(z.string(), z.string()),
+        zTranslatedStrings,
         z.null()
     ])),
     unit: z.optional(z.string().register(z.globalRegistry, {
@@ -658,7 +665,7 @@ export const zCategory = z.object({
         z.null()
     ])),
     translatedName: z.optional(z.union([
-        z.record(z.string(), z.unknown()),
+        zTranslatedStrings,
         z.null()
     ])),
     versionDate: z.optional(z.string().register(z.globalRegistry, {

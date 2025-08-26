@@ -7,14 +7,16 @@ import type { Locale } from "@/i18n";
  * @returns Localized string or fallback
  */
 export const getLocalizedText = (
-  translations: Record<string, string>,
+  translations: Record<string, string> | null | undefined,
   locale: Locale,
   defaultValue?: string
 ): string | undefined => {
+  if (!translations) return defaultValue;
+
   const localeTranslation = translations[locale];
   if (localeTranslation) return localeTranslation;
 
-  const languageTranslation = translations[locale.split("-")[0]];
+  const languageTranslation = translations[locale.split("-")[0]!];
   if (languageTranslation) return languageTranslation;
 
   return defaultValue;

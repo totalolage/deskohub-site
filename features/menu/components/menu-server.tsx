@@ -14,36 +14,14 @@ export async function MenuServer() {
   );
 
   try {
-    const result = await Effect.runPromise(program);
-
-    const categoryIdMap = new Map<string, string>();
-    const categoryTranslationMap = new Map<
-      string,
-      Record<string, unknown> | null | undefined
-    >();
-
-    result.categories.forEach((cat) => {
-      if (cat.name && cat.id) {
-        categoryIdMap.set(cat.name, cat.id);
-        categoryTranslationMap.set(cat.name, cat.translatedName);
-      }
-    });
-
-    const categories = Array.from(result.itemsByCategory.entries()).map(
-      ([categoryName, items]) => ({
-        id:
-          categoryIdMap.get(categoryName) ||
-          items[0]?.category?.id ||
-          items[0]?._categoryId ||
-          "unknown",
-        name: categoryName,
-        translatedName: categoryTranslationMap.get(categoryName) || null,
-        items: items,
-      })
-    );
+    const { products, categories } = await Effect.runPromise(program);
 
     return (
-      <MenuClient categories={categories} showPdfDownload={showPdfDownload} />
+      <MenuClient
+        products={products}
+        categories={categories}
+        showPdfDownload={showPdfDownload}
+      />
     );
   } catch (_error) {
     // Error fetching menu data - Effect logging handles this

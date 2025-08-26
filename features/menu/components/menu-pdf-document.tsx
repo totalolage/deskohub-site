@@ -7,7 +7,7 @@ import {
   View,
 } from "@react-pdf/renderer";
 import type React from "react";
-import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
+import type { Category, Product } from "@/features/dotypos/generated";
 
 // Register fonts if needed
 Font.register({
@@ -103,47 +103,54 @@ const styles = StyleSheet.create({
 });
 
 interface MenuPDFDocumentProps {
-  categories: {
-    food: Array<{ name: string; items: MenuItemWithCategory[] }>;
-    drinks: Array<{ name: string; items: MenuItemWithCategory[] }>;
-    other: Array<{ name: string; items: MenuItemWithCategory[] }>;
-  };
+  categories: Category[];
+  products: Product[];
 }
 
 export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
   categories,
+  products,
 }) => {
-  const renderItems = (items: MenuItemWithCategory[]) => {
-    return items.map((item) => (
-      <View
-        key={item.id}
-        style={
-          !item.available ? [styles.item, styles.unavailable] : styles.item
-        }
-      >
-        <View style={styles.itemLeft}>
-          <View style={{ flexDirection: "row", alignItems: "center" }}>
-            <Text style={styles.itemName}>{item.name}</Text>
-            {item.unit && ["g", "l"].some((u) => item.unit?.includes(u)) && (
-              <Text style={styles.itemUnit}>({item.unit})</Text>
-            )}
-            {!item.available && (
-              <Text style={styles.unavailableText}>
-                (momentálně nedostupné)
+  const renderItems = (categoryId: string) => {
+    const categoryProducts = products.filter(
+      (p) => p._categoryId === categoryId
+    );
+
+    return categoryProducts.map((item) => {
+      // Items are always available for now since we don't have stock quantity data
+      const isAvailable = true;
+
+      return (
+        <View
+          key={item.id}
+          style={!isAvailable ? [styles.item, styles.unavailable] : styles.item}
+        >
+          <View style={styles.itemLeft}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
+              <Text style={styles.itemName}>{item.name}</Text>
+              {item.unit && ["g", "l"].some((u) => item.unit?.includes(u)) && (
+                <Text style={styles.itemUnit}>({item.unit})</Text>
+              )}
+              {!isAvailable && (
+                <Text style={styles.unavailableText}>
+                  (momentálně nedostupné)
+                </Text>
+              )}
+            </View>
+            {(item.description || item.subtitle) && (
+              <Text style={styles.itemDescription}>
+                {item.description || item.subtitle}
               </Text>
             )}
           </View>
-          {item.description && (
-            <Text style={styles.itemDescription}>{item.description}</Text>
-          )}
+          <Text style={styles.itemPrice}>
+            {item.priceWithVat && Number(item.priceWithVat) > 0
+              ? `${Math.round(Number(item.priceWithVat))} Kč`
+              : "Na dotaz"}
+          </Text>
         </View>
-        <Text style={styles.itemPrice}>
-          {item.priceWithVat && Number(item.priceWithVat) > 0
-            ? `${Math.round(Number(item.priceWithVat))} Kč`
-            : "Na dotaz"}
-        </Text>
-      </View>
-    ));
+      );
+    });
   };
 
   return (
@@ -153,44 +160,22 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
           <Text style={styles.title}>DESKOHUB MENU</Text>
         </View>
 
-        {/* Food Section */}
-        {categories.food.length > 0 && (
-          <View>
-            <Text style={styles.sectionTitle}>JÍDLO</Text>
-            {categories.food.map((category) => (
-              <View key={`food-${category.name}`} style={styles.category}>
-                <Text style={styles.categoryTitle}>{category.name}</Text>
-                {renderItems(category.items)}
-              </View>
-            ))}
-          </View>
-        )}
+        {/* Render all categories */}
+        {categories.map((category) => {
+          const categoryProducts = products.filter(
+            (p) => p._categoryId === category.id
+          );
 
-        {/* Drinks Section */}
-        {categories.drinks.length > 0 && (
-          <View>
-            <Text style={styles.sectionTitle}>NÁPOJE</Text>
-            {categories.drinks.map((category) => (
-              <View key={`drinks-${category.name}`} style={styles.category}>
-                <Text style={styles.categoryTitle}>{category.name}</Text>
-                {renderItems(category.items)}
-              </View>
-            ))}
-          </View>
-        )}
+          // Skip empty categories
+          if (categoryProducts.length === 0) return null;
 
-        {/* Other Section */}
-        {categories.other.length > 0 && (
-          <View>
-            <Text style={styles.sectionTitle}>OSTATNÍ</Text>
-            {categories.other.map((category) => (
-              <View key={`other-${category.name}`} style={styles.category}>
-                <Text style={styles.categoryTitle}>{category.name}</Text>
-                {renderItems(category.items)}
-              </View>
-            ))}
-          </View>
-        )}
+          return (
+            <View key={category.id} style={styles.category}>
+              <Text style={styles.categoryTitle}>{category.name}</Text>
+              {renderItems(category.id!)}
+            </View>
+          );
+        })}
       </Page>
     </Document>
   );

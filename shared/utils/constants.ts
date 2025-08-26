@@ -10,6 +10,28 @@ export const siteConstants = {
   },
   menu: {
     /**
+     * Category emoji mappings
+     * Maps category IDs to their display emojis
+     */
+    categoryEmojis: {
+      // Food categories
+      "1736938605506919": "🍿", // Něco na zub (Snacks)
+      "1736942001880703": "🥪", // Mám malý hlad (Light hunger)
+      "541197685103289": "🍔", // Pořádné jídlo (Proper meal)
+      "1737014973909307": "🍰", // Něco sladkého (Something sweet)
+
+      // Drinks categories
+      "3901129125927636": "🥤", // Nealkoholické nápoje (Non-alcoholic)
+      "1507817247924883": "☕", // Teplé nápoje (Hot drinks)
+      "1507864793544647": "🍺", // Alkoholické nápoje (Alcoholic)
+      "1507824601258015": "🍹", // Koktejly (Cocktails)
+
+      // Other categories
+      "1736813943053711": "🥫", // Omáčky (Sauces)
+      "3188160266476616": "🎲", // Hry (Games)
+    } as Record<string, string>,
+
+    /**
      * Categories grouped by section
      * The keys are section identifiers, values are arrays of category IDs
      * Use scripts/fetch-categories.ts to get the category IDs and names

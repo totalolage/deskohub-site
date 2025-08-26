@@ -1,47 +1,48 @@
-import type { MenuItemWithCategory } from "@/features/dotypos/backend/service";
-import { getLocale } from "@/i18n";
+import type { Category, Product } from "@/features/dotypos/generated";
+import { useLocale } from "@/i18n/utils/use-locale";
 import { getLocalizedText } from "@/shared/utils/localization";
 
 interface MenuSectionProps {
-  categoryName: string;
-  items: MenuItemWithCategory[];
-  categoryTranslatedName?: Record<string, unknown> | null;
+  products: Product[];
+  category: Category;
+  emoji?: string;
 }
 
-export function MenuSection({
-  categoryName,
-  items,
-  categoryTranslatedName,
-}: MenuSectionProps) {
-  // Skip empty categories
-  if (items.length === 0) return null;
+export function MenuSection({ products, category, emoji }: MenuSectionProps) {
+  const locale = useLocale();
 
-  const locale = getLocale();
+  const categoryProducts = products.filter(
+    (p) => p._categoryId === category.id
+  );
+
+  // Skip empty categories
+  if (categoryProducts.length === 0) return null;
 
   // Get localized category name if available
   const localizedCategoryName =
-    getLocalizedText(categoryTranslatedName as Record<string, string> | undefined, locale, categoryName) ?? categoryName;
+    getLocalizedText(category.translatedName, locale, category.name) ??
+    category.name;
 
   return (
     <div className="mb-12">
       <h2 className="text-3xl font-bold text-green-400 mb-6 text-center">
+        {emoji && <span className="mr-2">{emoji}</span>}
         {localizedCategoryName}
       </h2>
       <div className="grid gap-4 md:gap-6">
-        {items.map((item) => {
+        {categoryProducts.map((item) => {
           // Get localized name and description if available
           const localizedName =
-            getLocalizedText(item.translatedName as Record<string, string> | undefined, locale, item.name) ?? item.name;
+            getLocalizedText(item.translatedName, locale, item.name) ??
+            item.name;
           const localizedDescription =
-            getLocalizedText(item.translatedDescription as Record<string, string> | undefined, locale) ||
+            getLocalizedText(item.translatedDescription, locale) ||
             item.description ||
             item.subtitle;
 
-          // Determine availability - if stock tracking is disabled, item is always available
-          const isAvailable =
-            item.stockDeduct === false ||
-            item.stockQuantity == null ||
-            Number(item.stockQuantity) > 0;
+          // Determine availability - items are always available for now
+          // since we don't have stock quantity data from the API
+          const isAvailable = true;
 
           return (
             <div
@@ -52,7 +53,7 @@ export function MenuSection({
                 <h3 className="text-xl font-semibold text-white mb-1">
                   {localizedName}
                   {item.unit &&
-                    ["g", "l"].some((unit) => item.unit.includes(unit)) && (
+                    ["g", "l"].some((unit) => item.unit!.includes(unit)) && (
                       <span className="text-sm text-gray-300 ml-2">
                         ({item.unit})
                       </span>
