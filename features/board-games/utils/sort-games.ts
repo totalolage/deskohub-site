@@ -1,15 +1,7 @@
-import type { TranslatableString } from "@/types/translatable-string";
+import type { Locale } from "@/i18n";
+import { getLocalizedText } from "@/shared/utils/localization";
 import { SORT_OPTIONS, type SortOption } from "../constants/sort-options";
 import type { BoardGame } from "../types/board-games.types";
-
-const getLocalizedText = (
-  text: TranslatableString | undefined,
-  locale: string
-): string => {
-  if (!text) return "";
-  if (typeof text === "string") return text;
-  return text[locale] || "";
-};
 
 const getMinPlayers = (players: string | undefined): number => {
   if (!players || typeof players !== "string") return 0;
@@ -39,21 +31,25 @@ const getMaxDuration = (
 export const sortGames = (
   games: BoardGame[],
   sortOption: SortOption,
-  locale: string
+  locale: Locale
 ): BoardGame[] => {
   return games.toSorted((a, b) => {
     switch (sortOption) {
-      case SORT_OPTIONS.NAME_ASC:
-        return getLocalizedText(a.name, locale).localeCompare(
-          getLocalizedText(b.name, locale),
-          locale
-        );
+      case SORT_OPTIONS.NAME_ASC: {
+        const aName = getLocalizedText(a.name, locale);
+        if (!aName) return 1;
+        const bName = getLocalizedText(b.name, locale);
+        if (!bName) return -1;
+        return aName.localeCompare(bName, locale);
+      }
 
-      case SORT_OPTIONS.NAME_DESC:
-        return getLocalizedText(b.name, locale).localeCompare(
-          getLocalizedText(a.name, locale),
-          locale
-        );
+      case SORT_OPTIONS.NAME_DESC: {
+        const aName = getLocalizedText(a.name, locale);
+        if (!aName) return 1;
+        const bName = getLocalizedText(b.name, locale);
+        if (!bName) return -1;
+        return bName.localeCompare(aName, locale);
+      }
 
       case SORT_OPTIONS.RATING_ASC:
         return a.rating - b.rating;

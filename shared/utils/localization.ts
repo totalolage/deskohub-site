@@ -1,23 +1,44 @@
 import type { Locale } from "@/i18n";
+import type { TranslatableString } from "@/types/translatable-string";
 
 /**
- * Get localized text from a translatable object
- * @param text - Object with locale keys and translated values, or plain string
+ * Get localized text from a TranslatableString (plain string or translation record)
+ * @param text - Plain string, translation record with locale keys, null or undefined
  * @param locale - Target locale
- * @returns Localized string or fallback
+ * @param defaultValue - Optional fallback value
+ * @returns The text string, localized text, or fallback
  */
-export const getLocalizedText = (
-  translations: Record<string, string> | null | undefined,
+export function getLocalizedText(
+  text: TranslatableString | null | undefined,
+  locale: Locale
+): string | undefined;
+export function getLocalizedText<D extends string | null | undefined>(
+  text: TranslatableString | null | undefined,
   locale: Locale,
-  defaultValue?: string
-): string | undefined => {
-  if (!translations) return defaultValue;
+  defaultValue: D
+): string | D;
+export function getLocalizedText<D extends string | null | undefined>(
+  text: TranslatableString | null | undefined,
+  locale: Locale,
+  defaultValue?: D
+): string | D | undefined {
+  if (!text) return defaultValue;
 
-  const localeTranslation = translations[locale];
+  // If it's already a plain string, return it directly
+  if (typeof text === "string") return text;
+
+  // Otherwise, it's a translation record
+  const localeTranslation = text[locale];
   if (localeTranslation) return localeTranslation;
 
-  const languageTranslation = translations[locale.split("-")[0]!];
+  // Try fallback to language without region (e.g., "en" from "en-US")
+  const languageTranslation = text[locale.split("-")[0]!];
   if (languageTranslation) return languageTranslation;
 
   return defaultValue;
-};
+}
+
+/**
+ * @deprecated Use getLocalizedText instead
+ */
+export const getTranslatableText = getLocalizedText;

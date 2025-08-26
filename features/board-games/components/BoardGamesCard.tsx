@@ -9,7 +9,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
-import type { TranslatableString } from "@/types/translatable-string";
+import { getLocalizedText } from "@/shared/utils/localization";
 import type { BoardGame } from "../types/board-games.types";
 
 interface BoardGamesCardProps {
@@ -18,12 +18,6 @@ interface BoardGamesCardProps {
 
 export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
   const locale = getLocale();
-
-  // Helper to get localized text
-  const getLocalizedText = (text: TranslatableString): string => {
-    if (typeof text === "string") return text;
-    return text[locale]!;
-  };
 
   // Helper to format duration
   const formatDuration = (
@@ -48,13 +42,15 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
     }
   };
 
+  const gameName = getLocalizedText(game.name, locale, "");
+
   return (
     <Card className="bg-gray-800 border-gray-700 hover:border-green-500 transition-colors">
       <CardHeader className="pb-4">
         <div className="relative">
           <Image
             src={game.image || "/placeholder.svg"}
-            alt={getLocalizedText(game.name)}
+            alt={gameName}
             width={200}
             height={200}
             className="w-full h-48 object-cover rounded-lg"
@@ -63,9 +59,7 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
       </CardHeader>
       <CardContent>
         <div className="flex items-start justify-between mb-2">
-          <CardTitle className="text-white text-lg">
-            {getLocalizedText(game.name)}
-          </CardTitle>
+          <CardTitle className="text-white text-lg">{gameName}</CardTitle>
           <div className="flex items-center">
             <Star className="w-4 h-4 text-yellow-400 fill-current" />
             <span className="text-sm text-gray-300 ml-1">{game.rating}</span>
@@ -74,7 +68,7 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
 
         {game.description && (
           <p className="text-gray-400 text-sm mb-4 line-clamp-2">
-            {getLocalizedText(game.description)}
+            {getLocalizedText(game.description, locale)}
           </p>
         )}
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { getLocale, m } from "@/i18n";
-import type { TranslatableString } from "@/types/translatable-string";
+import { getLocalizedText } from "@/shared/utils/localization";
 import {
   DEFAULT_SORT_OPTION,
   type SortOption,
@@ -18,15 +18,6 @@ interface FilterState {
   selectedDifficulty: string;
   sortOption: SortOption;
 }
-
-const getLocalizedText = (
-  text: TranslatableString | undefined,
-  locale: string
-): string => {
-  if (!text) return "";
-  if (typeof text === "string") return text;
-  return text[locale] || "";
-};
 
 export const useBoardGamesFilters = ({ games }: UseFiltersOptions) => {
   const locale = getLocale();
@@ -58,7 +49,7 @@ export const useBoardGamesFilters = ({ games }: UseFiltersOptions) => {
     const filtered = games.filter((game) => {
       const gameName = getLocalizedText(game.name, locale);
       const matchesSearch = gameName
-        .toLowerCase()
+        ?.toLowerCase()
         .includes(filters.searchTerm.toLowerCase());
 
       const matchesCategory =
