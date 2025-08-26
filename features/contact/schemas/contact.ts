@@ -1,3 +1,4 @@
+import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import { m } from "@/i18n";
 
@@ -48,20 +49,10 @@ export const getContactSchema = () => {
   // Phone schema - optional but validated if provided
   const phoneSchema = z
     .string()
-    .min(CONTACT_VALIDATION.phone.min, {
-      error: m["tableReservation.validation.phone.minimum"]({
-        min: CONTACT_VALIDATION.phone.min,
-      }),
-    })
-    .max(CONTACT_VALIDATION.phone.max, {
-      error: m["tableReservation.validation.phone.maximum"]({
-        max: CONTACT_VALIDATION.phone.max,
-      }),
-    })
-    .regex(/^[+]?[0-9\s\-()]+$/, {
+    .optional()
+    .refine((phone) => !phone?.trim() || isValidPhoneNumber(phone, "CZ"), {
       error: m["tableReservation.validation.phone.invalid"](),
-    })
-    .optional();
+    });
 
   // Message schema
   const messageSchema = z
