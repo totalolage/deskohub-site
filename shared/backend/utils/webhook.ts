@@ -53,49 +53,6 @@ export const validateWebhookUUID = (url: URL) =>
   });
 
 /**
- * Validate webhook security using SHA256 signature (Cloudinary webhooks)
- * Based on: https://cloudinary.com/documentation/notification_signatures
- *
- * @param request - The incoming request
- * @param bodyText - The raw request body text
- * @param secret - The API secret for signature generation
- * @returns Effect that fails with WebhookAuthError if validation fails
- */
-export const validateWebhookSignature = (
-  request: Request,
-  bodyText: string,
-  secret: string
-) =>
-  Effect.gen(function* () {
-    // Get signature headers
-    const signature = request.headers.get("x-cld-signature");
-    const timestamp = request.headers.get("x-cld-timestamp");
-
-    if (!signature || !timestamp) {
-      return yield* Effect.fail(
-        new WebhookAuthError({
-          message: "Missing signature or timestamp headers",
-        })
-      );
-    }
-
-    // Generate expected signature
-    const expectedSignature = createHmac("sha1", secret)
-      .update(`${bodyText}${timestamp}`)
-      .digest("hex");
-
-    if (expectedSignature !== signature) {
-      return yield* Effect.fail(
-        new WebhookAuthError({
-          message: "Invalid signature",
-        })
-      );
-    }
-
-    yield* Effect.logDebug("Webhook signature validation successful");
-  });
-
-/**
  * Standard webhook error handler
  *
  * Handles WebhookAuthError and other errors with appropriate logging
