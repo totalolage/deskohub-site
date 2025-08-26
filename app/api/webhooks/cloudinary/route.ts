@@ -2,6 +2,7 @@ import { v2 as cloudinary } from "cloudinary";
 import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
+import { env } from "@/env";
 import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
 import { WebhookAuthError } from "@/shared/backend/utils/webhook";
 
@@ -46,6 +47,15 @@ const processWebhook = (bodyText: string) =>
 export async function POST(request: Request) {
   return Effect.runPromise(
     Effect.gen(function* () {
+      // Configure Cloudinary with credentials
+      yield* Effect.sync(() => {
+        cloudinary.config({
+          cloud_name: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+          api_key: env.CLOUDINARY_API_KEY,
+          api_secret: env.CLOUDINARY_API_SECRET,
+        });
+      });
+
       const bodyText = yield* Effect.promise(() => request.text());
 
       const signature = request.headers.get("x-cld-signature");

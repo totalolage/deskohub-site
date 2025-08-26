@@ -15,6 +15,7 @@ import {
 } from "@/features/table-reservation/schemas/table-reservation";
 import { m } from "@/i18n";
 import { useLocale } from "@/i18n/utils/use-locale";
+import { PhoneInput } from "@/shared/components/phone-input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -403,10 +404,11 @@ export function TableReservationForm() {
                   >
                     <FormLabel>{m["tableReservation.phoneLabel"]()}</FormLabel>
                     <FormControl>
-                      <Input
-                        type="tel"
+                      <PhoneInput
                         placeholder={m["placeholders.phone"]()}
                         variant={fieldState.error ? "error" : "default"}
+                        showValidation={true}
+                        formatOnBlur={true}
                         {...field}
                       />
                     </FormControl>

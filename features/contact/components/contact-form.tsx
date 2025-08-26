@@ -14,6 +14,7 @@ import {
   getContactSchema,
 } from "@/features/contact/schemas/contact";
 import { m } from "@/i18n";
+import { PhoneInput } from "@/shared/components/phone-input";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -103,12 +104,13 @@ export function ContactForm() {
                       {m["contact.phoneFormLabel"]()}
                     </FormLabel>
                     <FormControl>
-                      <Input
+                      <PhoneInput
                         {...field}
-                        type="tel"
                         variant={fieldState.error ? "error" : "default"}
                         className="bg-gray-800 border-gray-600 text-white placeholder-gray-400 focus:border-green-400"
                         placeholder={m["contact.phonePlaceholder"]()}
+                        showValidation={true}
+                        formatOnBlur={true}
                       />
                     </FormControl>
                     <FormMessage className="text-red-400" />

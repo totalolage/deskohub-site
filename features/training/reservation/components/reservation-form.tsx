@@ -7,6 +7,7 @@ import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
 import { m } from "@/i18n";
+import { PhoneInput } from "@/shared/components/phone-input";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import {
@@ -153,9 +154,8 @@ export function ReservationForm() {
                       {m["trainingReservation.form.phone"]()}
                     </FormLabel>
                     <FormControl>
-                      <Input
+                      <PhoneInput
                         id="phone"
-                        type="tel"
                         variant={fieldState.error ? "error" : "default"}
                         placeholder={m[
                           "trainingReservation.form.phonePlaceholder"
@@ -165,6 +165,8 @@ export function ReservationForm() {
                         aria-required="true"
                         aria-invalid={!!fieldState.error}
                         autoComplete="tel"
+                        showValidation={true}
+                        formatOnBlur={true}
                         {...field}
                       />
                     </FormControl>
