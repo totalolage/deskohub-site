@@ -6,6 +6,7 @@
  */
 
 import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
+import { unstable_cache as cache } from "next/cache";
 import type { TableReservationFormData } from "@/features/table-reservation";
 import { getLocale } from "@/i18n";
 import {
@@ -31,6 +32,12 @@ import type {
   Table,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
+import {
+  DotyposCustomerCacheTags,
+  DotyposMenuCacheTags,
+  DotyposReservationCacheTags,
+  DotyposTablesCacheTags,
+} from "../utils/cache-tags";
 import {
   createNoteWithMetadata,
   createStandardMetadata,
@@ -846,53 +853,97 @@ const DotyposClientLive = Layer.effect(
             Effect.withSpan("dotyposClient.createReservation")
           ),
 
-      getReservation: (id: string) =>
-        api
-          .getReservation({
-            path: {
-              cloudId: config.cloudId,
-              reservationId: id,
-            },
-          })
-          .pipe(
-            Effect.retry(retryPolicy),
-            Effect.mapError((error) => {
-              // Add special handling for 404
-              if (
-                error instanceof ExternalAPIError &&
-                error.statusCode === 404
-              ) {
-                return new ValidationError({
-                  message: `Reservation ${id} not found`,
-                });
-              }
-              return error;
-            })
-          ),
+      getReservation: (id: string) => {
+        const cacheTags = new DotyposReservationCacheTags({
+          reservationId: id,
+        });
+        const cacheKey = ["dotypos-reservation", id];
 
-      getCustomer: (id: string) =>
-        api
-          .getCustomer({
-            path: {
-              cloudId: config.cloudId,
-              customerId: id,
-            },
-          })
-          .pipe(
-            Effect.retry(retryPolicy),
-            Effect.mapError((error) => {
-              // Add special handling for 404
-              if (
-                error instanceof ExternalAPIError &&
-                error.statusCode === 404
-              ) {
-                return new ValidationError({
-                  message: `Customer ${id} not found`,
-                });
+        return Effect.tryPromise({
+          try: () =>
+            cache(
+              () =>
+                Effect.runPromise(
+                  api
+                    .getReservation({
+                      path: {
+                        cloudId: config.cloudId,
+                        reservationId: id,
+                      },
+                    })
+                    .pipe(Effect.retry(retryPolicy))
+                ),
+              cacheKey,
+              {
+                tags: cacheTags.cacheTags,
               }
+            )(),
+          catch: (error) => {
+            // Add special handling for 404
+            if (error instanceof ExternalAPIError && error.statusCode === 404) {
+              return new ValidationError({
+                message: `Reservation ${id} not found`,
+              });
+            }
+            if (
+              error instanceof ExternalAPIError ||
+              error instanceof NetworkError
+            ) {
               return error;
-            })
-          ),
+            }
+            return new ExternalAPIError({
+              service: "Dotypos",
+              message: `Failed to get reservation: ${error}`,
+            });
+          },
+        });
+      },
+
+      getCustomer: (id: string) => {
+        const cacheTags = new DotyposCustomerCacheTags({
+          customerId: id,
+        });
+        const cacheKey = ["dotypos-customer", id];
+
+        return Effect.tryPromise({
+          try: () =>
+            cache(
+              () =>
+                Effect.runPromise(
+                  api
+                    .getCustomer({
+                      path: {
+                        cloudId: config.cloudId,
+                        customerId: id,
+                      },
+                    })
+                    .pipe(Effect.retry(retryPolicy))
+                ),
+              cacheKey,
+              {
+                tags: cacheTags.cacheTags,
+              }
+            )(),
+          catch: (error) => {
+            // Add special handling for 404
+            if (error instanceof ExternalAPIError && error.statusCode === 404) {
+              return new ValidationError({
+                message: `Customer ${id} not found`,
+              });
+            }
+            if (
+              error instanceof ExternalAPIError ||
+              error instanceof NetworkError
+            ) {
+              return error;
+            }
+            return new ExternalAPIError({
+              service: "Dotypos",
+              message: `Failed to get customer: ${error}`,
+            });
+          },
+        });
+      },
 
       findOrCreateCustomer: (customerData) =>
         Effect.gen(function* () {
@@ -1123,36 +1174,99 @@ const DotyposClientLive = Layer.effect(
           return newCustomer;
         }).pipe(Effect.withSpan("dotyposClient.findOrCreateCustomer")),
 
-      getTables: () =>
-        api
-          .getTables({
-            path: { cloudId: config.cloudId },
-          })
-          .pipe(Effect.retry(retryPolicy)),
+      getTables: () => {
+        const cacheTags = new DotyposTablesCacheTags();
+        const cacheKey = ["dotypos-tables"];
 
-      getProducts: (options) =>
-        api
-          .getProducts({
-            path: { cloudId: config.cloudId },
-            query: {
-              limit: 100,
-              ...(options?.categoryId && {
-                filter: `_categoryId|eq|${options.categoryId}`,
-              }),
-              ...(options?.includeDeleted === false && {
-                filter: "deleted|eq|false",
-              }),
-            },
-          })
-          .pipe(
-            Effect.map((products) =>
-              // Filter out deleted products by default unless explicitly requested
-              options?.includeDeleted === true
-                ? products
-                : products.filter((p) => !p.deleted && p.display)
-            ),
-            Effect.retry(retryPolicy)
-          ),
+        return Effect.tryPromise({
+          try: () =>
+            cache(
+              () =>
+                Effect.runPromise(
+                  api
+                    .getTables({
+                      path: { cloudId: config.cloudId },
+                    })
+                    .pipe(Effect.retry(retryPolicy))
+                ),
+              cacheKey,
+              {
+                tags: cacheTags.cacheTags,
+              }
+            )(),
+          catch: (error) => {
+            if (
+              error instanceof ExternalAPIError ||
+              error instanceof NetworkError
+            ) {
+              return error;
+            }
+            return new ExternalAPIError({
+              service: "Dotypos",
+              message: `Failed to get tables: ${error}`,
+            });
+          },
+        });
+      },
+
+      getProducts: (options) => {
+        const cacheTags = new DotyposMenuCacheTags({
+          categoryId: options?.categoryId,
+          includeDeleted: options?.includeDeleted,
+        });
+        const cacheKey = [
+          "dotypos-menu-items",
+          options?.categoryId || "all",
+          String(options?.includeDeleted || false),
+        ];
+
+        return Effect.tryPromise({
+          try: () =>
+            cache(
+              () =>
+                Effect.runPromise(
+                  api
+                    .getProducts({
+                      path: { cloudId: config.cloudId },
+                      query: {
+                        limit: 100,
+                        ...(options?.categoryId && {
+                          filter: `_categoryId|eq|${options.categoryId}`,
+                        }),
+                        ...(options?.includeDeleted === false && {
+                          filter: "deleted|eq|false",
+                        }),
+                      },
+                    })
+                    .pipe(
+                      Effect.map((products) =>
+                        // Filter out deleted products by default unless explicitly requested
+                        options?.includeDeleted === true
+                          ? products
+                          : products.filter((p) => !p.deleted && p.display)
+                      ),
+                      Effect.retry(retryPolicy)
+                    )
+                ),
+              cacheKey,
+              {
+                tags: cacheTags.cacheTags,
+              }
+            )(),
+          catch: (error) => {
+            if (
+              error instanceof ExternalAPIError ||
+              error instanceof NetworkError
+            ) {
+              return error;
+            }
+            return new ExternalAPIError({
+              service: "Dotypos",
+              message: `Failed to get products: ${error}`,
+            });
+          },
+        });
+      },
 
       getCategories: () =>
         api

@@ -35,14 +35,12 @@ export async function getCloudinaryImages(
     CloudinaryServiceLive
   );
 
-  return cache(
-    () => Effect.runPromise(getImagesEffect),
-    ["getCloudinaryImages"],
-    {
-      tags: new CloudinaryImageCacheTags({
-        tags,
-        maxResults,
-      }).cacheTags,
-    }
-  )();
+  const cacheTags = new CloudinaryImageCacheTags({
+    tags,
+    maxResults,
+  });
+
+  return cache(() => Effect.runPromise(getImagesEffect), cacheTags.cacheTags, {
+    tags: cacheTags.cacheTags,
+  })();
 }

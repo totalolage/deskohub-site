@@ -38,7 +38,7 @@ function flattenToStrings<T extends string>(
  */
 export function normalizeExpression<T extends string>(
   expression: UnnormalizedLogicalExpression<T>
-): T[][] {
+): CnfExpression<T> {
   // Handle single string
   if (typeof expression === "string") {
     return [[expression]];
