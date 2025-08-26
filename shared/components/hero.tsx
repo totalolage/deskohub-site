@@ -1,8 +1,10 @@
 import { cva, type VariantProps } from "class-variance-authority";
-import Image, { type StaticImageData } from "next/image";
 import type { ReactNode } from "react";
-import { m } from "@/i18n";
+import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
 import { cn } from "@/shared/utils";
+import type { UnnormalizedLogicalExpression } from "@/shared/utils/normalize-tag-expression";
+import { HeroImage } from "./hero-image";
 
 const heroVariants = cva(null, {
   variants: {
@@ -21,19 +23,24 @@ const heroVariants = cva(null, {
   },
 });
 
-interface HeroProps extends VariantProps<typeof heroVariants> {
-  imageSrc: string | StaticImageData;
+export interface HeroProps extends VariantProps<typeof heroVariants> {
+  tags: UnnormalizedLogicalExpression<CloudinaryTag>;
   children: ReactNode;
   className?: string;
 }
 
-export function Hero({
-  imageSrc,
+export async function Hero({
+  tags,
   fullHeight,
   alignment,
   children,
   className,
 }: HeroProps) {
+  const [image] = await getCloudinaryImages({
+    tags: [["hero", tags]],
+    maxResults: 1,
+  });
+
   return (
     <section
       className={cn(
@@ -42,13 +49,7 @@ export function Hero({
         className
       )}
     >
-      <Image
-        src={imageSrc}
-        alt={m["altText.heroImage"]()}
-        fill
-        className="object-cover brightness-50 absolute inset-0 z-0"
-        priority
-      />
+      <HeroImage image={image} />
       <div
         className={cn(
           "relative z-10 w-full h-full flex",

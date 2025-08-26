@@ -260,7 +260,6 @@ const makeCloudinaryService = Effect.gen(function* () {
 
       // Use the normalized CNF expression builder
       const expression = cnfToCloudinaryExpression(tags);
-
       yield* Effect.log(`CNF search expression: ${expression}`);
 
       return yield* executeSearch(expression, options);

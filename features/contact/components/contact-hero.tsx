@@ -1,10 +1,9 @@
-import barFrontImage from "@/assets/images/photos/bar_with_staff_1.jpeg";
 import { m } from "@/i18n";
-import { Hero } from "@/shared/components/hero";
+import { Hero } from "@/shared/components";
 
 export function ContactHero() {
   return (
-    <Hero imageSrc={barFrontImage.src} alignment="left">
+    <Hero tags="Kontakt" alignment="left">
       <div>
         <h1 className="text-5xl md:text-6xl font-bold text-green-400 mb-4">
           {m["contact.heroTitle"]()}

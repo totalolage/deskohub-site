@@ -1,10 +1,9 @@
-import boardGamesImage from "@/assets/images/photos/boardgame_shelves_1.jpeg";
 import { m } from "@/i18n";
-import { Hero } from "@/shared/components/hero";
+import { Hero } from "@/shared/components";
 
 export const BoardGamesHero = () => {
   return (
-    <Hero imageSrc={boardGamesImage.src} alignment="left">
+    <Hero tags="Deskové hry" alignment="left">
       <div>
         <h1 className="text-4xl md:text-6xl font-bold text-green-400 mb-4">
           {m["boardGames.hero.title"]()}

@@ -1,4 +1,8 @@
 export type CloudinaryTag =
   | "Domovská stránka"
   | "Školící místnost"
-  | "Web galerie";
+  | "Web galerie"
+  | "hero"
+  | "Menu"
+  | "Kontakt"
+  | "Deskové hry";

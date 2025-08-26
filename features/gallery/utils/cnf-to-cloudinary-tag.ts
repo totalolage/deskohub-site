@@ -20,10 +20,17 @@ export function cnfToCloudinaryExpression(
   const expressions = cnf
     .map((andGroup) => {
       if (andGroup.length === 0) return null;
-      if (andGroup.length === 1) return `tags=${andGroup[0]}`;
-      // Multiple items in inner array = AND them together
-      const andExpression = andGroup.map((tag) => `tags=${tag}`).join(" AND ");
-      return `(${andExpression})`;
+      
+      // For multiple tags in AND group, use proper AND syntax
+      if (andGroup.length > 1) {
+        // Use AND syntax: (tags=tag1 AND tags=tag2)
+        const andExpression = andGroup.map((tag) => `tags=${tag}`).join(" AND ");
+        return `(${andExpression})`;
+      }
+      
+      // Single tag
+      const tag = andGroup[0];
+      return `tags=${tag}`;
     })
     .filter(Boolean);
 
