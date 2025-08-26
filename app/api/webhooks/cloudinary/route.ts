@@ -1,56 +1,9 @@
-import { createHmac } from "node:crypto";
 import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
-
-/**
- * Webhook Errors
- */
-class CloudinaryWebhookAuthError extends Data.TaggedError(
-  "CloudinaryWebhookAuthError"
-)<{
-  readonly message: string;
-}> {}
-
-/**
- * Generate new Cloudinary webhook signature
- * Based on: https://cloudinary.com/documentation/notification_signatures
- */
-const getSignature = (body: string, timestamp: string) =>
-  createHmac("sha256", env.CLOUDINARY_API_SECRET)
-    .update(`${body}${timestamp}`)
-    .digest("hex");
-
-/**
- * Validate webhook signature
- */
-const validateWebhookSignature = (
-  request: Request,
-  bodyText: string
-): Effect.Effect<void, CloudinaryWebhookAuthError> =>
-  Effect.gen(function* () {
-    // Get signature headers
-    const signature = request.headers.get("x-cld-signature");
-    const timestamp = request.headers.get("x-cld-timestamp");
-
-    if (!signature || !timestamp) {
-      return yield* Effect.fail(
-        new CloudinaryWebhookAuthError({
-          message: "Missing signature or timestamp headers",
-        })
-      );
-    }
-
-    if (getSignature(bodyText, timestamp) !== signature) {
-      return yield* Effect.fail(
-        new CloudinaryWebhookAuthError({
-          message: "Invalid signature",
-        })
-      );
-    }
-  });
+import { validateWebhookSignature } from "@/shared/backend/utils/webhook";
 
 class JsonParseError extends Data.TaggedError("JsonParseError")<{
   message: string;
@@ -96,14 +49,14 @@ export async function POST(request: Request) {
       const bodyText = yield* Effect.promise(() => request.text());
 
       yield* Effect.tapErrorTag(
-        validateWebhookSignature(request, bodyText),
-        "CloudinaryWebhookAuthError",
+        validateWebhookSignature(request, bodyText, env.CLOUDINARY_API_SECRET),
+        "WebhookAuthError",
         (error) =>
           Effect.succeed(
-            NextResponse.json({
-              status: 401,
-              body: { error: "Unauthorized", message: error.message },
-            })
+            NextResponse.json(
+              { error: "Unauthorized", message: error.message },
+              { status: 401 }
+            )
           )
       );
 

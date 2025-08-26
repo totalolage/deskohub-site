@@ -1,7 +1,6 @@
-import { Data, Effect, Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
-import { env } from "@/env";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import { StandaloneEmailServiceLive } from "@/features/email";
@@ -14,7 +13,11 @@ import {
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
 import { getLocale, type Locale } from "@/i18n";
 import { ReservationCacheTags } from "@/shared/backend/utils/cache-tags";
-import { isDev } from "@/shared/utils/environment";
+import {
+  validateWebhookUUID,
+  WebhookAuthError,
+  WebhookValidationError,
+} from "@/shared/backend/utils/webhook";
 
 /**
  * Dotypos Reservation Status Codes
@@ -24,20 +27,6 @@ enum DotyposReservationStatus {
   CONFIRMED = 5,
   DECLINED = 10,
 }
-
-/**
- * Webhook Errors
- */
-class WebhookAuthError extends Data.TaggedError("WebhookAuthError")<{
-  readonly message: string;
-}> {}
-
-class WebhookValidationError extends Data.TaggedError(
-  "WebhookValidationError"
-)<{
-  readonly message: string;
-  readonly issues?: unknown;
-}> {}
 
 /**
  * Dotypos Reservation Webhook Payload Schema
@@ -83,25 +72,6 @@ const getStatusChangeType = (status: number): WebhookStatusChange => {
       return "unknown";
   }
 };
-
-/**
- * Validate webhook security
- */
-const validateWebhookSecurity = (url: URL) =>
-  Effect.gen(function* () {
-    // Skip validation in development
-    if (isDev()) {
-      return;
-    }
-
-    const providedSecret = url.searchParams.get("secret");
-
-    if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
-      yield* Effect.fail(
-        new WebhookAuthError({ message: "Invalid webhook secret" })
-      );
-    }
-  });
 
 /**
  * Process the webhook payload
@@ -219,12 +189,15 @@ const processWebhook = (payload: unknown) =>
  * POST /api/webhooks/reservation
  *
  * Receives reservation update webhooks from Dotypos
+ *
+ * NOTE: This webhook has special error handling - it returns 200 status
+ * even for some errors to prevent Dotypos from retrying the webhook.
  */
 export async function POST(request: Request) {
   const program = Effect.gen(function* () {
-    // Validate webhook security
+    // Validate webhook security using UUID
     const url = new URL(request.url);
-    yield* validateWebhookSecurity(url);
+    yield* validateWebhookUUID(url);
 
     // Parse request body
     const payload = yield* Effect.tryPromise({
@@ -259,7 +232,8 @@ export async function POST(request: Request) {
         }),
     }),
     Effect.catchAll((error) => {
-      // Log the error but return success to prevent Dotypos from retrying
+      // IMPORTANT: Log the error but return 200 to prevent Dotypos from retrying
+      // This is intentionally different from standard webhook error handling
       Effect.logError("Webhook processing error", error);
       return Effect.succeed({
         status: 200,
@@ -292,7 +266,7 @@ export async function POST(request: Request) {
     });
   } catch (_error) {
     // This should rarely happen as we catch all errors in the Effect pipeline
-    // Unexpected error - details logged by monitoring
+    // IMPORTANT: Return 200 to prevent Dotypos from retrying
     return NextResponse.json(
       { success: true, error: "Internal processing error (logged)" },
       { status: 200 }

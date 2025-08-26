@@ -1,5 +1,4 @@
 import { Effect } from "effect";
-import { unstable_cache as cache } from "next/cache";
 import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
@@ -10,7 +9,6 @@ import {
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
 import { getLocale, m, setLocale } from "@/i18n";
-import { ReservationCacheTags } from "@/shared/backend/utils/cache-tags";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
@@ -31,33 +29,22 @@ export default async function ReservationConfirmationPage({
   if (!siteConstants.featureFlags.tableReservations) {
     notFound();
   }
-  const getCachedReservation = (reservationId: string) =>
-    cache(
-      async () => {
-        const result = await Effect.runPromise(
-          getReservation(reservationId).pipe(
-            Effect.provide(DotyposServiceLive),
-            Effect.match({
-              onFailure: (_error) => {
-                // Return null to trigger 404
-                return null;
-              },
-              onSuccess: (data) => {
-                return data;
-              },
-            })
-          )
-        );
-        return result;
-      },
-      ["reservation-detail"],
-      {
-        tags: new ReservationCacheTags({ reservationId }).cacheTags,
-      }
-    )();
 
   // Fetch reservation from cache or Dotypos
-  const result = await getCachedReservation(id);
+  const result = await Effect.runPromise(
+    getReservation(id).pipe(
+      Effect.provide(DotyposServiceLive),
+      Effect.match({
+        onFailure: (_error) => {
+          // Return null to trigger 404
+          return null;
+        },
+        onSuccess: (data) => {
+          return data;
+        },
+      })
+    )
+  );
 
   // If reservation not found or error, show 404
   if (!result) {
@@ -95,7 +82,6 @@ export default async function ReservationConfirmationPage({
   const parsedNote = reservation.note
     ? parseNoteWithMetadata(reservation.note)
     : null;
-  const specialRequests = parsedNote?.specialRequests || undefined;
 
   // Parse time from the datetime
   const datetime = displayData.datetime || new Date();
@@ -111,13 +97,13 @@ export default async function ReservationConfirmationPage({
   const reservationDetails = {
     id: displayData.id,
     name: customerName,
-    email: customer.email || "",
-    phone: customer.phone || "",
+    email: customer.email ?? undefined,
+    phone: customer.phone ?? undefined,
     date: datetime,
     time,
     duration: displayData.duration,
     guestCount: displayData.guestCount,
-    specialRequests,
+    specialRequests: parsedNote?.specialRequests,
     tablePreference: displayData.needsLargerTable
       ? ("large" as const)
       : displayData.needsPrivateSpace

@@ -183,8 +183,8 @@ function StatusIcon({ status }: StatusIconProps) {
 export interface ReservationDetails {
   id?: string;
   name: string;
-  email: string;
-  phone: string;
+  email: string | undefined;
+  phone: string | undefined;
   date: Date;
   time: string;
   duration?: number;
@@ -351,25 +351,29 @@ export function ReservationConfirmation({
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <Mail className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">
-                    {m["tableReservation.emailLabel"]()}
-                  </p>
-                  <p className="text-gray-600">{details.email}</p>
+              {details.email && (
+                <div className="flex items-center gap-3">
+                  <Mail className="w-4 h-4 text-gray-500" />
+                  <div>
+                    <p className="font-medium">
+                      {m["tableReservation.emailLabel"]()}
+                    </p>
+                    <p className="text-gray-600">{details.email}</p>
+                  </div>
                 </div>
-              </div>
+              )}
 
-              <div className="flex items-center gap-3">
-                <Phone className="w-4 h-4 text-gray-500" />
-                <div>
-                  <p className="font-medium">
-                    {m["tableReservation.phoneLabel"]()}
-                  </p>
-                  <p className="text-gray-600">{details.phone}</p>
+              {details.phone && (
+                <div className="flex items-center gap-3">
+                  <Phone className="w-4 h-4 text-gray-500" />
+                  <div>
+                    <p className="font-medium">
+                      {m["tableReservation.phoneLabel"]()}
+                    </p>
+                    <p className="text-gray-600">{details.phone}</p>
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
