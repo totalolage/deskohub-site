@@ -1,18 +1,17 @@
 "use client";
 
 import { track } from "@vercel/analytics";
-import Image from "next/image";
 import { use, useState } from "react";
 import Lightbox from "yet-another-react-lightbox";
 import { Card } from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
-import { getCldImageUrl } from "next-cloudinary";
+import type { CloudinaryAsset } from "../backend/cloudinary.service";
 import { CloudinaryImage } from "./cloudinary-image";
-import type { CloudinaryAssetWithBlur } from "./gallery";
 
 interface ClientGalleryProps {
-  imagesPromise: Promise<readonly CloudinaryAssetWithBlur[]>;
+  imagesPromise: Promise<readonly CloudinaryAsset[]>;
+  blurUrlsPromise?: Promise<Record<CloudinaryAsset["public_id"], string>>;
   variant?: "grid" | "minimal";
   columns?: {
     sm?: number;
@@ -30,12 +29,15 @@ interface ClientGalleryProps {
  */
 export function ClientGallery({
   imagesPromise,
+  blurUrlsPromise,
   variant = "grid",
   columns = { sm: 2, md: 3, lg: 4 },
   enableLightbox = true,
   className = "",
 }: ClientGalleryProps) {
   const images = use(imagesPromise);
+  const blurUrls = blurUrlsPromise && use(blurUrlsPromise);
+
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(0);
 
@@ -48,7 +50,11 @@ export function ClientGallery({
             key={image.public_id}
             className="rounded-full overflow-hidden aspect-square"
           >
-            <CloudinaryImage asset={image} variant="gallery" />
+            <CloudinaryImage
+              asset={image}
+              blurDataURL={blurUrls?.[image.public_id]}
+              variant="gallery"
+            />
           </div>
         ))}
       </div>
@@ -95,7 +101,11 @@ export function ClientGallery({
             }}
           >
             <div className="relative aspect-square overflow-hidden">
-              <CloudinaryImage asset={image} variant="thumbnail" />
+              <CloudinaryImage
+                asset={image}
+                blurDataURL={blurUrls?.[image.public_id]}
+                variant="thumbnail"
+              />
             </div>
             {image.context?.custom?.caption && (
               <div className="p-3">
@@ -119,38 +129,14 @@ export function ClientGallery({
             title: image.context?.custom?.caption,
           }))}
           render={{
-            slide: ({ slide, rect }) => {
+            slide: ({ slide }) => {
               const image = images[Number(slide.src)];
               if (!image) return null;
 
-              // Generate optimized URL for the lightbox
-              const imageUrl = getCldImageUrl({
-                src: image.public_id,
-                width: rect.width,
-                height: rect.height,
-                crop: "limit",
-                quality: "auto",
-                format: "auto",
-              });
-
-              // Check if image has a blur data URL
-              const hasBlur = image.blurDataUrl !== undefined;
+              const blurDataURL = blurUrls?.[image.public_id];
 
               return (
-                <Image
-                  src={imageUrl}
-                  alt={slide.alt || image.public_id}
-                  width={rect.width}
-                  height={rect.height}
-                  placeholder={hasBlur ? "blur" : "empty"}
-                  blurDataURL={hasBlur ? image.blurDataUrl : undefined}
-                  style={{
-                    width: rect.width,
-                    height: rect.height,
-                    objectFit: "contain",
-                  }}
-                  unoptimized // Since Cloudinary already optimizes
-                />
+                <CloudinaryImage asset={image} blurDataURL={blurDataURL} />
               );
             },
           }}

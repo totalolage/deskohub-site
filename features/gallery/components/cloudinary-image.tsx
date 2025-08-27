@@ -23,6 +23,7 @@ export function CloudinaryImage({
   asset,
   variant = "gallery",
   size,
+  blurDataURL,
   ...props
 }: CloudinaryImageProps) {
   const variantConfig = {
@@ -94,6 +95,8 @@ export function CloudinaryImage({
     <CldImage
       src={asset.public_id}
       alt={asset.context?.custom?.alt || asset.public_id}
+      blurDataURL={blurDataURL}
+      placeholder={blurDataURL ? "blur" : "empty"}
       {...finalProps}
       {...props}
     />
