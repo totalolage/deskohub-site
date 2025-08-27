@@ -1,65 +1,28 @@
-import type { UnnormalizedLogicalExpression } from "@/shared/utils/normalize-tag-expression";
-import { getCloudinaryImages } from "../actions/get-cloudinary-images";
-import type { CloudinaryTag } from "../types/cloudinary-tag";
-import { CloudinaryImage } from "./cloudinary-image";
-import { GalleryGrid } from "./gallery-grid";
+import type { ComponentProps } from "react";
+import type { CloudinaryAsset } from "../backend/cloudinary.service";
+import { generateBlurDataUrl } from "../utils/generate-blur-data-url";
+import { ClientGallery } from "./client-gallery";
 
-interface GalleryProps {
-  tags?: UnnormalizedLogicalExpression<CloudinaryTag>;
-  variant?: "grid" | "minimal";
-  columns?: {
-    sm?: number;
-    md?: number;
-    lg?: number;
-    xl?: number;
-  };
-  maxImages?: number;
-  enableLightbox?: boolean;
-  className?: string;
+export interface CloudinaryAssetWithBlur extends CloudinaryAsset {
+  blurDataUrl?: string;
+}
+
+interface GalleryProps extends ComponentProps<typeof ClientGallery> {
+  imagesPromise: Promise<readonly CloudinaryAsset[]>;
 }
 
 /**
- * Gallery component for displaying Cloudinary images
- * Fetches images by tags and renders them in different layouts
+ * Server component that enriches images with blur data URLs
  */
-export async function Gallery({
-  tags,
-  variant = "grid",
-  columns = { sm: 2, md: 3, lg: 4 },
-  maxImages = 50,
-  enableLightbox = true,
-  className = "",
-}: GalleryProps) {
-  const images = await getCloudinaryImages({
-    tags,
-    maxResults: maxImages,
-  });
-
-  if (variant === "minimal") {
-    // Simple 3-column circle layout without lightbox
-    return (
-      <div className={`grid grid-cols-1 md:grid-cols-3 gap-8 ${className}`}>
-        {images.slice(0, 3).map((image) => (
-          <div
-            key={image.public_id}
-            className="rounded-full overflow-hidden aspect-square"
-          >
-            <CloudinaryImage asset={image} variant="gallery" />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  // Full grid layout with optional lightbox
-  return (
-    <GalleryGrid
-      images={images}
-      columns={columns}
-      enableLightbox={enableLightbox}
-    />
+export async function Gallery({ imagesPromise, ...props }: GalleryProps) {
+  const imagesWithBlurPromise = imagesPromise.then((images) =>
+    Promise.all(
+      images.map(async (image) => ({
+        ...image,
+        blurDataUrl: await generateBlurDataUrl(image),
+      }))
+    )
   );
-}
 
-// Re-export CloudinaryImage for convenience
-export { CloudinaryImage } from "./cloudinary-image";
+  return <ClientGallery imagesPromise={imagesWithBlurPromise} {...props} />;
+}

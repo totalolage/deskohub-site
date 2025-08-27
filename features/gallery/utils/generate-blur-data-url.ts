@@ -1,0 +1,45 @@
+import { getCldImageUrl } from "next-cloudinary";
+import type { CloudinaryAsset } from "../backend/cloudinary.service";
+
+/**
+ * Generates a base64-encoded blur data URL for a Cloudinary image
+ * @param publicId - The Cloudinary public ID of the image
+ * @returns Base64-encoded data URL for use as a blur placeholder
+ */
+export async function generateBlurDataUrl(
+  asset: CloudinaryAsset
+): Promise<string> {
+  // Generate a very low-res URL (10x10 pixels, heavily compressed)
+  const lowResUrl = getCldImageUrl({
+    src: asset.public_id,
+    width: 10,
+    height: 10,
+    crop: "fill",
+    quality: 1,
+    format: "webp",
+    blur: true,
+  });
+
+  try {
+    // Fetch the low-res image
+    const response = await fetch(lowResUrl);
+    if (!response.ok) {
+      throw new Error(`Failed to fetch blur image: ${response.statusText}`);
+    }
+
+    // Convert to base64
+    const arrayBuffer = await response.arrayBuffer();
+    const buffer = Buffer.from(arrayBuffer);
+    const base64 = buffer.toString("base64");
+
+    // Determine content type
+    const contentType = response.headers.get("content-type") || "image/webp";
+
+    // Return as data URL
+    return `data:${contentType};base64,${base64}`;
+  } catch (error) {
+    console.error("Error generating blur data URL:", error);
+    // Return a fallback transparent pixel if generation fails
+    return "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+  }
+}

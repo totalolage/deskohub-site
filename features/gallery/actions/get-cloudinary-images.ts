@@ -15,7 +15,7 @@ import {
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
 export interface GetGalleryImagesOptions {
-  tags?: UnnormalizedLogicalExpression<CloudinaryTag>;
+  tags: UnnormalizedLogicalExpression<CloudinaryTag>;
   maxResults?: number;
 }
 
@@ -26,7 +26,7 @@ export async function getCloudinaryImages(
   const { tags, maxResults = 50 } = options;
 
   // Normalize the tag expression to CNF format
-  const normalizedTags = tags ? normalizeExpression(tags) : [];
+  const normalizedTags = normalizeExpression(tags);
 
   const getImagesEffect = Effect.provide(
     getGalleryImages(normalizedTags, {
