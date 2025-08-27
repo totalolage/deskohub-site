@@ -81,7 +81,7 @@ export function ContactInfo() {
                 </h3>
                 <p className="text-gray-300">
                   {m["contact.emailAddress"]({
-                    email: siteConstants.contact.email,
+                    email: siteConstants.contact.infoEmail,
                   })}
                 </p>
               </div>

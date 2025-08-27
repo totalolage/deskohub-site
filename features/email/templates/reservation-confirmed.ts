@@ -68,8 +68,8 @@ export function renderReservationConfirmedEmail(
         <p style="font-size: 16px; margin-bottom: 20px;">
           ${
             isEnglish
-              ? "We look forward to seeing you at DeskOHub. Please find your reservation details below."
-              : "Těšíme se na vás v DeskOHub. Níže najdete detaily vaší rezervace."
+              ? "We look forward to seeing you at DeskoHub. Please find your reservation details below."
+              : "Těšíme se na vás v DeskoHub. Níže najdete detaily vaší rezervace."
           }
         </p>
 
@@ -180,24 +180,24 @@ export function renderReservationConfirmedEmail(
           <p style="font-size: 14px; color: #666;">
             ${
               isEnglish
-                ? `Contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}`
-                : `Kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}`
+                ? `Contact us at ${siteConstants.contact.infoEmail} or call ${siteConstants.contact.phone}`
+                : `Kontaktujte nás na ${siteConstants.contact.infoEmail} nebo volejte ${siteConstants.contact.phone}`
             }
           </p>
         </div>
 
         <p style="font-size: 16px; margin-top: 30px;">
           ${isEnglish ? "See you soon!" : "Brzy na viděnou!"}<br>
-          <strong>DeskOHub Team</strong>
+          <strong>DeskoHub Team</strong>
         </p>
       </div>
 
       <div style="text-align: center; padding: 20px; color: #999; font-size: 14px;">
         <p>
-          DeskOHub<br>
+          DeskoHub<br>
           ${isEnglish ? "Board Game Bar & Coworking Space" : "Deskové hry & Coworking"}<br>
           📍 Prague, Czech Republic<br>
-          📧 ${siteConstants.contact.email} | 📞 ${siteConstants.contact.phone}
+          📧 ${siteConstants.contact.infoEmail} | 📞 ${siteConstants.contact.phone}
         </p>
       </div>
     </body>
@@ -211,7 +211,7 @@ Dear ${data.customerName},
 
 Great news! Your reservation has been confirmed.
 
-We look forward to seeing you at DeskOHub. Please find your reservation details below.
+We look forward to seeing you at DeskoHub. Please find your reservation details below.
 
 Confirmed Reservation Details:
 - Reservation ID: #${data.reservationId}
@@ -228,21 +228,21 @@ Important Information:
 • We'll hold your table for 15 minutes after the reservation time
 
 Need to make changes?
-Contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}
+Contact us at ${siteConstants.contact.infoEmail} or call ${siteConstants.contact.phone}
 
 See you soon!
-DeskOHub Team
+DeskoHub Team
 
-DeskOHub - Board Game Bar & Coworking Space
+DeskoHub - Board Game Bar & Coworking Space
 Prague, Czech Republic
-${siteConstants.contact.email} | ${siteConstants.contact.phone}`
+${siteConstants.contact.infoEmail} | ${siteConstants.contact.phone}`
     : `✅ Rezervace potvrzena!
 
 Vážený/á ${data.customerName},
 
 Skvělé zprávy! Vaše rezervace byla potvrzena.
 
-Těšíme se na vás v DeskOHub. Níže najdete detaily vaší rezervace.
+Těšíme se na vás v DeskoHub. Níže najdete detaily vaší rezervace.
 
 Potvrzené detaily rezervace:
 - ID rezervace: #${data.reservationId}
@@ -259,14 +259,14 @@ Důležité informace:
 • Váš stůl budeme držet 15 minut po času rezervace
 
 Potřebujete provést změny?
-Kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}
+Kontaktujte nás na ${siteConstants.contact.infoEmail} nebo volejte ${siteConstants.contact.phone}
 
 Brzy na viděnou!
-DeskOHub Team
+DeskoHub Team
 
-DeskOHub - Deskové hry & Coworking
+DeskoHub - Deskové hry & Coworking
 Praha, Česká republika
-${siteConstants.contact.email} | ${siteConstants.contact.phone}`;
+${siteConstants.contact.infoEmail} | ${siteConstants.contact.phone}`;
 
   return { subject, html, text };
 }

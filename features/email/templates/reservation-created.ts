@@ -128,16 +128,16 @@ export function renderReservationCreatedEmail(
 
         <p style="font-size: 16px; margin-top: 30px;">
           ${isEnglish ? "Best regards," : "S pozdravem,"}<br>
-          <strong>DeskOHub Team</strong>
+          <strong>DeskoHub Team</strong>
         </p>
       </div>
 
       <div style="text-align: center; padding: 20px; color: #999; font-size: 14px;">
         <p>
-          DeskOHub<br>
+          DeskoHub<br>
           ${isEnglish ? "Board Game Bar & Coworking Space" : "Deskové hry & Coworking"}<br>
           📍 Prague, Czech Republic<br>
-          📧 ${siteConstants.contact.email} | 📞 ${siteConstants.contact.phone}
+          📧 ${siteConstants.contact.infoEmail} | 📞 ${siteConstants.contact.phone}
         </p>
       </div>
     </body>
@@ -161,11 +161,11 @@ ${data.specialRequests ? `- Special Requests: ${data.specialRequests}` : ""}
 Please Note: This reservation is not yet confirmed. We will send you a confirmation email once your reservation is approved.
 
 Best regards,
-DeskOHub Team
+DeskoHub Team
 
-DeskOHub - Board Game Bar & Coworking Space
+DeskoHub - Board Game Bar & Coworking Space
 Prague, Czech Republic
-${siteConstants.contact.email} | ${siteConstants.contact.phone}`
+${siteConstants.contact.infoEmail} | ${siteConstants.contact.phone}`
     : `Žádost o rezervaci přijata
 
 Vážený/á ${data.customerName},
@@ -182,11 +182,11 @@ ${data.specialRequests ? `- Speciální požadavky: ${data.specialRequests}` : "
 Upozornění: Tato rezervace ještě není potvrzena. Jakmile bude vaše rezervace schválena, zašleme vám potvrzující e-mail.
 
 S pozdravem,
-DeskOHub Team
+DeskoHub Team
 
-DeskOHub - Deskové hry & Coworking
+DeskoHub - Deskové hry & Coworking
 Praha, Česká republika
-${siteConstants.contact.email} | ${siteConstants.contact.phone}`;
+${siteConstants.contact.infoEmail} | ${siteConstants.contact.phone}`;
 
   return { subject, html, text };
 }

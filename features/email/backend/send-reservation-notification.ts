@@ -170,11 +170,11 @@ Zdroj: Webový formulář
 
     const emailMessage: EmailMessage = {
       from: {
-        email: siteConstants.contact.reservationEmail,
+        email: siteConstants.contact.fromEmail,
         name: `${siteConstants.brand.name} Rezervace`,
       },
       to: {
-        email: `reservations@${siteConstants.brand.domain}`, // Send to the reservations inbox
+        email: siteConstants.contact.reservationEmail,
         name: siteConstants.brand.name,
       },
       subject,
@@ -199,13 +199,13 @@ Zdroj: Webový formulář
       Effect.tap(() => {
         return Effect.logInfo("New reservation notification sent", {
           reservationId: reservation.id,
-          to: `reservations@${siteConstants.brand.domain}`,
+          to: siteConstants.contact.reservationEmail,
         });
       }),
       Effect.tapError((error) => {
         return Effect.logError("Failed to send reservation notification", {
           reservationId: reservation.id,
-          to: `reservations@${siteConstants.brand.domain}`,
+          to: siteConstants.contact.reservationEmail,
           error,
         });
       }),

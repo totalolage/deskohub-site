@@ -453,9 +453,7 @@ export function ReservationConfirmation({
               <div>
                 <p className="font-medium">{m["labels.email"]()}</p>
                 <p className={statusAccentTextVariants({ status })}>
-                  {type === "training-room"
-                    ? `reservations@${siteConstants.brand.domain}`
-                    : siteConstants.contact.email}
+                  {siteConstants.contact.reservationEmail}
                 </p>
               </div>
             </div>

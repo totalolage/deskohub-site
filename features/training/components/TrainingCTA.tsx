@@ -23,7 +23,7 @@ export const TrainingCTA = async () => {
           </h2>
           <p className="text-xl text-green-100 mb-12">
             {m["training.cta.description"]({
-              email: siteConstants.contact.email,
+              email: siteConstants.contact.infoEmail,
               phone: formatPhoneNumber(
                 siteConstants.contact.phoneTraining,
                 locale
@@ -49,7 +49,10 @@ export const TrainingCTA = async () => {
               </Card>
             </a>
 
-            <a href={`mailto:${siteConstants.contact.email}`} className="block">
+            <a
+              href={`mailto:${siteConstants.contact.infoEmail}`}
+              className="block"
+            >
               <Card className="bg-white/10 border-white/20 backdrop-blur-sm hover:bg-white/20 transition-colors">
                 <CardContent className="p-6 text-center">
                   <Mail className="w-8 h-8 text-white mx-auto mb-4" />
@@ -57,7 +60,7 @@ export const TrainingCTA = async () => {
                     {m["training.cta.write"]()}
                   </h3>
                   <p className="text-green-100">
-                    {siteConstants.contact.email}
+                    {siteConstants.contact.infoEmail}
                   </p>
                 </CardContent>
               </Card>

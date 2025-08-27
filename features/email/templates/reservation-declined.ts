@@ -137,24 +137,24 @@ export function renderReservationDeclinedEmail(
           <p style="font-size: 14px; color: #666;">
             ${
               isEnglish
-                ? `If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}`
-                : `Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}`
+                ? `If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at ${siteConstants.contact.infoEmail} or call ${siteConstants.contact.phone}`
+                : `Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na ${siteConstants.contact.infoEmail} nebo volejte ${siteConstants.contact.phone}`
             }
           </p>
         </div>
 
         <p style="font-size: 16px; margin-top: 30px;">
           ${isEnglish ? "We hope to see you soon!" : "Doufáme, že se brzy uvidíme!"}<br>
-          <strong>DeskOHub Team</strong>
+          <strong>DeskoHub Team</strong>
         </p>
       </div>
 
       <div style="text-align: center; padding: 20px; color: #999; font-size: 14px;">
         <p>
-          DeskOHub<br>
+          DeskoHub<br>
           ${isEnglish ? "Board Game Bar & Coworking Space" : "Deskové hry & Coworking"}<br>
           📍 Prague, Czech Republic<br>
-          📧 ${siteConstants.contact.email} | 📞 ${siteConstants.contact.phone}
+          📧 ${siteConstants.contact.infoEmail} | 📞 ${siteConstants.contact.phone}
         </p>
       </div>
     </body>
@@ -180,14 +180,14 @@ What's Next?
 • We apologize for any inconvenience
 
 Need Help?
-If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at ${siteConstants.contact.email} or call ${siteConstants.contact.phone}
+If you have any questions about this cancellation or would like to discuss alternative dates, please contact us at ${siteConstants.contact.infoEmail} or call ${siteConstants.contact.phone}
 
 We hope to see you soon!
-DeskOHub Team
+DeskoHub Team
 
-DeskOHub - Board Game Bar & Coworking Space
+DeskoHub - Board Game Bar & Coworking Space
 Prague, Czech Republic
-${siteConstants.contact.email} | ${siteConstants.contact.phone}`
+${siteConstants.contact.infoEmail} | ${siteConstants.contact.phone}`
     : `Rezervace zrušena
 
 Vážený/á ${data.customerName},
@@ -206,14 +206,14 @@ Co dál?
 • Omlouváme se za případné nepříjemnosti
 
 Potřebujete pomoc?
-Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na ${siteConstants.contact.email} nebo volejte ${siteConstants.contact.phone}
+Pokud máte jakékoliv dotazy ohledně tohoto zrušení nebo byste chtěli projednat alternativní termíny, kontaktujte nás na ${siteConstants.contact.infoEmail} nebo volejte ${siteConstants.contact.phone}
 
 Doufáme, že se brzy uvidíme!
-DeskOHub Team
+DeskoHub Team
 
-DeskOHub - Deskové hry & Coworking
+DeskoHub - Deskové hry & Coworking
 Praha, Česká republika
-${siteConstants.contact.email} | ${siteConstants.contact.phone}`;
+${siteConstants.contact.infoEmail} | ${siteConstants.contact.phone}`;
 
   return { subject, html, text };
 }
