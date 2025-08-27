@@ -507,6 +507,13 @@
       "online": "Online",
       "onlineReservation": "Rezervační systém"
     },
+    "gallery": {
+      "pageTitle": "Galerie školící místnosti",
+      "pageDescription": "Prohlédněte si naši moderní školící místnost a zasedačku v Deskohub",
+      "title": "Galerie školící místnosti",
+      "description": "Prohlédněte si naši plně vybavenou školící místnost s kapacitou až 20 osob. Ideální pro školení, workshopy, obchodní setkání a týmové brainstormingy.",
+      "backToTraining": "Zpět na školící místnost"
+    },
     "reservation": {
       "pageTitle": "Rezervace školící místnosti",
       "pageDescription": "Rezervujte si naši školící místnost pro vaši firemní akci, workshop nebo teambuilding aktivitu v Deskohub"

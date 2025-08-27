@@ -495,6 +495,13 @@
       "online": "Online",
       "onlineReservation": "Reservation System"
     },
+    "gallery": {
+      "pageTitle": "Training Room Gallery",
+      "pageDescription": "Explore our modern training room and meeting space at Deskohub",
+      "title": "Training Room Gallery",
+      "description": "Explore our fully equipped training room with capacity for up to 20 people. Ideal for training sessions, workshops, business meetings, and team brainstorming.",
+      "backToTraining": "Back to Training Room"
+    },
     "reservation": {
       "pageTitle": "Reserve Training Room",
       "pageDescription": "Book our training room for your corporate event, workshop, or team building activity at Deskohub"
