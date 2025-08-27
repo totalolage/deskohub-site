@@ -8,7 +8,7 @@ This document describes the simplified Dotypos integration for DeskoHub, focusin
 
 ### Simplified Approach
 
-The DeskOHub-Dotypos integration follows a minimalist approach:
+The DeskoHub-Dotypos integration follows a minimalist approach:
 - **Reservations Only**: We only create, read, update, and cancel reservations
 - **No Table Management**: Tables are handled by Dotypos staff manually
 - **No Customer Database**: Customer info is embedded in reservation notes
@@ -236,7 +236,7 @@ This simplified integration has the following limitations:
 1. **Reduced Complexity**: Fewer moving parts, easier to maintain
 2. **Faster Implementation**: Can be deployed quickly
 3. **Lower Error Surface**: Fewer features mean fewer potential issues
-4. **Clear Separation**: DeskOHub handles bookings, Dotypos handles operations
+4. **Clear Separation**: DeskoHub handles bookings, Dotypos handles operations
 5. **Flexibility**: Restaurant staff maintain control over table assignments
 
 ## Migration Path
@@ -272,4 +272,4 @@ curl http://localhost:3000/api/dotypos/reservations?limit=5
 
 ## Conclusion
 
-This simplified Dotypos integration provides all essential reservation functionality while maintaining a clean, maintainable codebase. By focusing solely on reservations, we avoid complexity while still delivering a complete booking solution for DeskOHub.
+This simplified Dotypos integration provides all essential reservation functionality while maintaining a clean, maintainable codebase. By focusing solely on reservations, we avoid complexity while still delivering a complete booking solution for DeskoHub.

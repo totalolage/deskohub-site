@@ -54,7 +54,11 @@ export function MobileMenu() {
             <span className="sr-only">{m["nav.openMenu"]()}</span>
           </Button>
         </SheetTrigger>
-        <SheetContent side="right" className="w-80 bg-gray-900 border-gray-800" xClassName="text-white">
+        <SheetContent
+          side="right"
+          className="w-80 bg-gray-900 border-gray-800"
+          xClassName="text-white"
+        >
           <SheetHeader className="border-b border-gray-800 pb-4">
             <div className="flex items-center gap-3">
               <Image
