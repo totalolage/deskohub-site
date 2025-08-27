@@ -1,11 +1,12 @@
 "use server";
 
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import {
   ContactService,
   ContactServiceLive,
 } from "@/features/contact/backend/contact.service";
 import { getContactSchema } from "@/features/contact/schemas/contact";
+import { StandaloneEmailServiceLive } from "@/features/email";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // Single server action that handles contact form submission
@@ -14,7 +15,7 @@ const _submitContactForm = createEffectSafeAction(
   (input, { locale }) =>
     Effect.gen(function* () {
       const service = yield* ContactService;
-      const submission = yield* service.submit(input);
+      const submission = yield* service.submit(input, locale);
 
       yield* Effect.logInfo(
         `Contact form submitted: ${submission.submittedAt} for locale: ${locale}`
@@ -32,7 +33,11 @@ const _submitContactForm = createEffectSafeAction(
         },
       })
     ),
-  ContactServiceLive
+  // Provide ContactServiceLive with its email service dependency
+  ContactServiceLive.pipe(
+    Layer.provide(StandaloneEmailServiceLive),
+    Layer.orDie
+  )
 );
 
 // Export an explicitly async wrapper that Next.js will recognize

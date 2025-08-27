@@ -89,6 +89,9 @@ export const siteConstants = {
     get reservationEmail() {
       return `reservations@${siteConstants.brand.domain}`;
     },
+    get contactEmail() {
+      return `contact@${siteConstants.brand.domain}`;
+    },
     address: {
       street: "Turnovská 10/430",
       city: "Prague", // English name, will be translated
@@ -185,7 +188,7 @@ export const siteConstants = {
   featureFlags: {
     boardGamesList: false,
     boardroomReservations: false,
-    contactForm: false,
+    contactForm: true,
     tableReservations: true,
     gallery: true,
     menuPdfDownload: true,
