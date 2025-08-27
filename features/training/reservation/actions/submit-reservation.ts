@@ -86,7 +86,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
             
             <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
             <p style="color: #999; font-size: 12px;">
-              Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
+              Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
             </p>
           </div>
         `,
@@ -106,19 +106,19 @@ Detaily rezervace:
 ${input.specialRequirements ? `Speciální požadavky:\n${input.specialRequirements}` : ""}
 
 ---
-Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
+Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
         `.trim(),
       };
 
       // Create the email message
       const emailMessage: EmailMessage = {
         from: {
-          email: "noreply@deskohub.cz",
-          name: "DeskOHub Rezervace",
+          email: siteConstants.contact.fromEmail,
+          name: "Web Rezervace",
         },
         to: {
           email: siteConstants.contact.reservationEmail,
-          name: "DeskOHub Reservations",
+          name: "DeskoHub Rezervace",
         },
         subject: emailContent.subject,
         html: emailContent.html,
@@ -156,8 +156,8 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
       // Also send a confirmation email to the customer
       const confirmationMessage: EmailMessage = {
         from: {
-          email: "noreply@deskohub.cz",
-          name: "DeskOHub",
+          email: siteConstants.contact.fromEmail,
+          name: siteConstants.brand.name,
         },
         to: {
           email: input.email,
@@ -165,8 +165,8 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
         },
         subject:
           locale === "cs-CZ"
-            ? "Potvrzení rezervace školící místnosti - DeskOHub"
-            : "Training Room Reservation Confirmation - DeskOHub",
+            ? "Potvrzení rezervace školící místnosti - DeskoHub"
+            : "Training Room Reservation Confirmation - DeskoHub",
         html: `
           <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #333;">${locale === "cs-CZ" ? "Potvrzení rezervace" : "Reservation Confirmation"}</h2>
@@ -212,7 +212,7 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskOHub.
             
             <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
             <p style="color: #999; font-size: 12px;">
-              DeskOHub<br>
+              DeskoHub<br>
               ${locale === "cs-CZ" ? "Váš prostor pro práci a kreativitu" : "Your space for work and creativity"}
             </p>
           </div>
@@ -232,7 +232,7 @@ Detaily rezervace:
 Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.
 
 ---
-DeskOHub
+DeskoHub
 Váš prostor pro práci a kreativitu
         `.trim()
             : `
@@ -248,7 +248,7 @@ Reservation Details:
 If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.
 
 ---
-DeskOHub
+DeskoHub
 Your space for work and creativity
         `.trim(),
         tags: ["training-room-confirmation"],

@@ -80,11 +80,14 @@ export const siteConstants = {
   contact: {
     phone: "+420777060478",
     phoneTraining: "+420608200377",
-    get email() {
+    get fromEmail() {
+      return `noreply@mail.${siteConstants.brand.domain}`;
+    },
+    get infoEmail() {
       return `info@${siteConstants.brand.domain}`;
     },
     get reservationEmail() {
-      return `noreply@reservations.${siteConstants.brand.domain}`;
+      return `reservations@${siteConstants.brand.domain}`;
     },
     address: {
       street: "Turnovská 10/430",

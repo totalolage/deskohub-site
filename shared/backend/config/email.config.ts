@@ -25,7 +25,7 @@ const emailConfig = Config.all({
   ),
   defaultFromEmail: Config.withDefault(
     Config.string("EMAIL_FROM_ADDRESS"),
-    `noreply@reservations.${siteConstants.brand.domain}`
+    siteConstants.contact.fromEmail
   ),
   defaultFromName: Config.withDefault(
     Config.string("EMAIL_FROM_NAME"),
