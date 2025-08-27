@@ -21,8 +21,14 @@ export default async function TrainingRoomGalleryPage({
   return (
     <>
       {/* Hero Section */}
-      <Hero tags='Školící místnost' alignment="center">
-        <div className="container mx-auto px-4 py-16">
+      <Hero tags="Školící místnost" alignment="left">
+        <div className="space-y-4">
+          <h1 className="text-4xl md:text-5xl font-bold text-green-400 drop-shadow-lg">
+            {m["training.gallery.title"]()}
+          </h1>
+          <p className="text-lg md:text-xl text-white/90 max-w-[60ch] drop-shadow-lg">
+            {m["training.gallery.description"]()}
+          </p>
           <Link href="/training-room" className="inline-flex mb-8">
             <Button
               variant="outline"
@@ -32,12 +38,6 @@ export default async function TrainingRoomGalleryPage({
               {m["training.gallery.backToTraining"]()}
             </Button>
           </Link>
-          <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 drop-shadow-lg">
-            {m["training.gallery.title"]()}
-          </h1>
-          <p className="text-lg md:text-xl text-white/90 max-w-3xl mx-auto drop-shadow-lg">
-            {m["training.gallery.description"]()}
-          </p>
         </div>
       </Hero>
 
