@@ -58,7 +58,7 @@ export const TrainingHero = () => {
             </Button>
           </Link>
           {siteConstants.featureFlags.gallery && (
-            <Link href="/gallery">
+            <Link href="/training-room/gallery">
               <Button
                 size="lg"
                 variant="outline"
