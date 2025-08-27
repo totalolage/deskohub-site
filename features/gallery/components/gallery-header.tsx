@@ -110,7 +110,7 @@ export function GalleryHeader({
             <div
               className={cn(
                 "flex justify-start",
-                haveText ? "items-start" : "items-center"
+                haveText ? "self-start" : "self-center"
               )}
             >
               <button
@@ -137,7 +137,7 @@ export function GalleryHeader({
             </div>
 
             {/* Middle: Dot Indicators */}
-            <div className="flex items-end gap-2">
+            <div className="flex self-end gap-2">
               {images.map((image, index) => (
                 <button
                   type="button"
@@ -158,7 +158,7 @@ export function GalleryHeader({
             <div
               className={cn(
                 "flex justify-end",
-                haveText ? "items-start" : "items-center"
+                haveText ? "self-start" : "self-center"
               )}
             >
               <button
