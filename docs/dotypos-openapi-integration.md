@@ -2,7 +2,7 @@
 
 ## Overview
 
-DeskOHub integrates with Dotypos POS system using a clean, layered architecture:
+DeskoHub integrates with Dotypos POS system using a clean, layered architecture:
 
 1. **OpenAPI Schema** - Defines the Dotypos API contract
 2. **Generated Client** - Type-safe HTTP client generated from OpenAPI

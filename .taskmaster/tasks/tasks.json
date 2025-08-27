@@ -1757,8 +1757,8 @@
             "dependencies": [
               "43.1"
             ],
-            "details": "Update Zod validation schemas across the application to use the new phone number validation utility. Modify the bookingFormSchema and other relevant schemas to include proper phone validation rules. Ensure validation messages are clear and helpful to users.",
-            "status": "pending",
+            "details": "Update Zod validation schemas across the application to use the new phone number validation utility. Modify the bookingFormSchema and other relevant schemas to include proper phone validation rules. Ensure validation messages are clear and helpful to users.\n<info added on 2025-08-26T22:31:08.657Z>\nCompleted implementation of phone number validation across all form schemas. The contact form schema now uses the isValidPhoneNumber utility for proper validation. Verified that the training reservation form already had proper validation with E.164 transformation in place. The table reservation form was also confirmed to have correct phone number validation. All forms now properly validate Czech phone numbers with appropriate error messages for users.\n</info added on 2025-08-26T22:31:08.657Z>",
+            "status": "done",
             "testStrategy": "Test form validation with valid and invalid phone numbers. Verify custom error messages display correctly. Test form submission with normalized phone numbers to ensure data integrity."
           },
           {
@@ -1770,7 +1770,7 @@
               "43.3"
             ],
             "details": "Modify API service functions to normalize phone numbers before sending to Dotypos API. Update booking service, user profile service, and any other services that handle phone numbers. Ensure consistent E.164 format is used in all API requests.",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test API calls with various phone number formats. Verify that normalized E.164 format is sent to the API regardless of input format. Test error handling for cases where normalization fails."
           },
           {
@@ -1781,8 +1781,8 @@
               "43.1",
               "43.4"
             ],
-            "details": "Create a migration script that fetches all user records with phone numbers, normalizes them to E.164 format, and updates the database. Include proper logging, error handling, and progress tracking. The script should handle edge cases gracefully and provide a summary of changes made.",
-            "status": "pending",
+            "details": "Create a migration script that fetches all user records with phone numbers, normalizes them to E.164 format, and updates the database. Include proper logging, error handling, and progress tracking. The script should handle edge cases gracefully and provide a summary of changes made.\n<info added on 2025-08-26T22:25:27.638Z>\nAfter reviewing the current implementation plan for the migration script, this update is no longer necessary. Since there is only one customer in the system (the owner) and no historical data requires normalization, we can skip creating a migration script altogether. The phone number normalization utility will be applied only to new data going forward.\n</info added on 2025-08-26T22:25:27.638Z>",
+            "status": "done",
             "testStrategy": "Test the migration script on a staging database first. Verify that phone numbers are correctly normalized. Check edge cases like null values, already normalized numbers, and invalid numbers. Ensure the script provides accurate reporting of changes made."
           }
         ]
@@ -3633,6 +3633,76 @@
             "testStrategy": "1. Verify each form component correctly implements bot protection\n2. Test form submissions in both bot-detected and legitimate user scenarios\n3. Check that all forms maintain their original functionality\n4. Test internationalization of error messages related to bot protection\n5. Perform end-to-end testing of the complete form submission flow with protection enabled"
           }
         ]
+      },
+      {
+        "id": 71,
+        "title": "Integrate Cloudinary for Hero Section Images",
+        "description": "Migrate all hero section images from local assets to Cloudinary for improved performance, dynamic resizing, and easier content management across the site's hero components.",
+        "details": "## Objective\nReplace locally imported hero images with Cloudinary-hosted versions across all site sections while updating the shared Hero component to support Cloudinary URLs.\n\n## Implementation Steps\n\n1. **Set Up Cloudinary Integration**:\n   ```bash\n   # Install Cloudinary SDK\n   npm install next-cloudinary cloudinary\n   ```\n\n2. **Configure Cloudinary Environment Variables**:\n   ```\n   # .env\n   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME=your_cloud_name\n   CLOUDINARY_API_KEY=your_api_key\n   CLOUDINARY_API_SECRET=your_api_secret\n   ```\n\n3. **Create Cloudinary Utility Module**:\n   ```typescript\n   // lib/cloudinary.ts\n   import { v2 as cloudinary } from 'cloudinary';\n   \n   cloudinary.config({\n     cloud_name: process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,\n     api_key: process.env.CLOUDINARY_API_KEY,\n     api_secret: process.env.CLOUDINARY_API_SECRET,\n     secure: true\n   });\n   \n   export const getCloudinaryUrl = (publicId: string, options = {}) => {\n     const defaultOptions = {\n       width: 1920,\n       crop: 'fill',\n       quality: 'auto',\n       format: 'auto',\n       fetchFormat: 'auto'\n     };\n     \n     const mergedOptions = { ...defaultOptions, ...options };\n     return cloudinary.url(publicId, mergedOptions);\n   };\n   \n   export default cloudinary;\n   ```\n\n4. **Upload Existing Hero Images to Cloudinary**:\n   ```typescript\n   // scripts/upload-hero-images.ts\n   import cloudinary from '../lib/cloudinary';\n   import fs from 'fs';\n   import path from 'path';\n   \n   const HERO_IMAGES_DIR = path.join(process.cwd(), 'public/images/hero');\n   \n   async function uploadHeroImages() {\n     const files = fs.readdirSync(HERO_IMAGES_DIR);\n     \n     for (const file of files) {\n       const filePath = path.join(HERO_IMAGES_DIR, file);\n       const publicId = `hero/${path.basename(file, path.extname(file))}`;\n       \n       try {\n         const result = await cloudinary.uploader.upload(filePath, {\n           public_id: publicId,\n           folder: 'deskohub',\n           tags: ['hero', 'section'],\n           resource_type: 'image'\n         });\n         \n         console.log(`Uploaded ${file} to Cloudinary: ${result.secure_url}`);\n       } catch (error) {\n         console.error(`Failed to upload ${file}:`, error);\n       }\n     }\n   }\n   \n   uploadHeroImages().catch(console.error);\n   ```\n\n5. **Update Hero Component to Support Cloudinary URLs**:\n   ```tsx\n   // components/ui/hero.tsx\n   import Image from 'next/image';\n   import { getCloudinaryUrl } from '@/lib/cloudinary';\n   \n   interface HeroProps {\n     title: string;\n     subtitle?: string;\n     imageUrl: string;\n     isCloudinary?: boolean;\n     cloudinaryId?: string;\n     height?: string;\n     overlay?: boolean;\n     children?: React.ReactNode;\n   }\n   \n   export function Hero({\n     title,\n     subtitle,\n     imageUrl,\n     isCloudinary = false,\n     cloudinaryId,\n     height = 'h-[500px]',\n     overlay = true,\n     children\n   }: HeroProps) {\n     // Determine the image source\n     const imageSrc = isCloudinary && cloudinaryId \n       ? getCloudinaryUrl(`deskohub/${cloudinaryId}`, {\n           width: 1920,\n           height: 1080,\n           crop: 'fill',\n           quality: 'auto'\n         })\n       : imageUrl;\n     \n     return (\n       <div className={`relative w-full ${height} overflow-hidden`}>\n         <Image\n           src={imageSrc}\n           alt={title}\n           fill\n           priority\n           className=\"object-cover\"\n           sizes=\"100vw\"\n         />\n         {overlay && (\n           <div className=\"absolute inset-0 bg-black/40\" />\n         )}\n         <div className=\"absolute inset-0 flex flex-col items-center justify-center text-center px-4\">\n           <h1 className=\"text-4xl md:text-5xl font-bold text-white mb-4\">{title}</h1>\n           {subtitle && (\n             <p className=\"text-xl md:text-2xl text-white max-w-3xl\">{subtitle}</p>\n           )}\n           {children}\n         </div>\n       </div>\n     );\n   }\n   ```\n\n6. **Create a Configuration File for Hero Images**:\n   ```typescript\n   // lib/config/hero-images.ts\n   export const heroImages = {\n     home: {\n       cloudinaryId: 'hero/home',\n       alt: 'DeskoHub workspace'\n     },\n     menu: {\n       cloudinaryId: 'hero/menu',\n       alt: 'DeskoHub cafe menu'\n     },\n     contact: {\n       cloudinaryId: 'hero/contact',\n       alt: 'DeskoHub contact'\n     },\n     boardGames: {\n       cloudinaryId: 'hero/board-games',\n       alt: 'DeskoHub board games area'\n     },\n     trainingRoom: {\n       cloudinaryId: 'hero/training-room',\n       alt: 'DeskoHub training room'\n     }\n   };\n   ```\n\n7. **Update Each Page to Use Cloudinary Hero Images**:\n   ```tsx\n   // Example for home page\n   // app/[locale]/page.tsx\n   import { Hero } from '@/components/ui/hero';\n   import { heroImages } from '@/lib/config/hero-images';\n   \n   export default function HomePage() {\n     return (\n       <main>\n         <Hero\n           title=\"Welcome to DeskoHub\"\n           subtitle=\"Your space for work and play\"\n           isCloudinary={true}\n           cloudinaryId={heroImages.home.cloudinaryId}\n           height=\"h-[600px]\"\n         />\n         {/* Rest of the page content */}\n       </main>\n     );\n   }\n   ```\n\n8. **Implement Responsive Image Handling**:\n   ```tsx\n   // Enhanced getCloudinaryUrl function in lib/cloudinary.ts\n   export const getResponsiveCloudinaryUrl = (publicId: string, breakpoints = [640, 768, 1024, 1280, 1536]) => {\n     return breakpoints.map(width => ({\n       src: getCloudinaryUrl(publicId, { width }),\n       width\n     }));\n   };\n   ```\n\n9. **Add Image Placeholder Support**:\n   ```tsx\n   // Enhanced Hero component with blur placeholder\n   <Image\n     src={imageSrc}\n     alt={title}\n     fill\n     priority\n     className=\"object-cover\"\n     sizes=\"100vw\"\n     placeholder=\"blur\"\n     blurDataURL={`${imageSrc}?w=20&q=10`}\n   />\n   ```\n\n10. **Update All Pages with Hero Sections**:\n    - Home page (`app/[locale]/page.tsx`)\n    - Menu page (`app/[locale]/menu/page.tsx`)\n    - Contact page (`app/[locale]/contact/page.tsx`)\n    - Board Games page (`app/[locale]/board-games/page.tsx`)\n    - Training Room page (`app/[locale]/training-room/page.tsx`)\n\n11. **Remove Local Hero Images**:\n    After confirming all Cloudinary images are working correctly, remove the local hero images from the project to reduce repository size.",
+        "testStrategy": "## Test Strategy\n\n1. **Verify Cloudinary Setup**:\n   - Create a simple test script to confirm Cloudinary credentials are working:\n   ```typescript\n   // tests/cloudinary-setup.test.ts\n   import { describe, it, expect } from 'vitest';\n   import cloudinary, { getCloudinaryUrl } from '@/lib/cloudinary';\n   \n   describe('Cloudinary Setup', () => {\n     it('should generate correct Cloudinary URLs', () => {\n       const url = getCloudinaryUrl('deskohub/hero/home');\n       expect(url).toContain(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);\n       expect(url).toContain('deskohub/hero/home');\n     });\n   });\n   ```\n\n2. **Unit Test Hero Component with Cloudinary**:\n   ```typescript\n   // tests/components/ui/hero.test.tsx\n   import { render, screen } from '@testing-library/react';\n   import { Hero } from '@/components/ui/hero';\n   \n   describe('Hero Component', () => {\n     it('renders with local image URL', () => {\n       render(\n         <Hero \n           title=\"Test Title\" \n           imageUrl=\"/images/test.jpg\"\n         />\n       );\n       \n       expect(screen.getByAlt('Test Title')).toBeInTheDocument();\n       expect(screen.getByAlt('Test Title')).toHaveAttribute('src');\n     });\n     \n     it('renders with Cloudinary image URL', () => {\n       render(\n         <Hero \n           title=\"Test Title\" \n           isCloudinary={true}\n           cloudinaryId=\"hero/test\"\n         />\n       );\n       \n       const image = screen.getByAlt('Test Title');\n       expect(image).toBeInTheDocument();\n       expect(image.getAttribute('src')).toContain(process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME);\n     });\n   });\n   ```\n\n3. **Visual Regression Testing**:\n   - Implement visual regression tests using Playwright or Cypress to compare before/after screenshots:\n   ```typescript\n   // tests/visual/hero-images.spec.ts\n   import { test, expect } from '@playwright/test';\n   \n   const pages = [\n     '/',\n     '/menu',\n     '/contact',\n     '/board-games',\n     '/training-room'\n   ];\n   \n   test.describe('Hero Images Visual Regression', () => {\n     for (const page of pages) {\n       test(`${page} hero section looks correct`, async ({ page: browserPage }) => {\n         await browserPage.goto(page);\n         await browserPage.waitForLoadState('networkidle');\n         \n         // Take screenshot of hero section\n         const heroSection = await browserPage.locator('.hero-section').first();\n         await expect(heroSection).toBeVisible();\n         \n         const screenshot = await heroSection.screenshot();\n         expect(screenshot).toMatchSnapshot(`${page.replace('/', '')}-hero.png`);\n       });\n     }\n   });\n   ```\n\n4. **Performance Testing**:\n   - Compare page load metrics before and after Cloudinary integration:\n   ```bash\n   # Install Lighthouse CI\n   npm install -g @lhci/cli\n   \n   # Run Lighthouse tests\n   lhci autorun --collect.url=http://localhost:3000\n   ```\n\n5. **Responsive Image Testing**:\n   - Test hero images at different viewport sizes to ensure proper responsive behavior:\n   ```typescript\n   // tests/visual/responsive-hero.spec.ts\n   import { test, expect } from '@playwright/test';\n   \n   const viewports = [\n     { width: 375, height: 667 },  // Mobile\n     { width: 768, height: 1024 }, // Tablet\n     { width: 1440, height: 900 }  // Desktop\n   ];\n   \n   test.describe('Responsive Hero Images', () => {\n     for (const viewport of viewports) {\n       test(`Hero image looks correct at ${viewport.width}x${viewport.height}`, async ({ page }) => {\n         page.setViewportSize(viewport);\n         await page.goto('/');\n         await page.waitForLoadState('networkidle');\n         \n         const screenshot = await page.screenshot();\n         expect(screenshot).toMatchSnapshot(`home-hero-${viewport.width}x${viewport.height}.png`);\n       });\n     }\n   });\n   ```\n\n6. **Manual Testing Checklist**:\n   - Verify all hero images load correctly on each page\n   - Check image quality and cropping across different screen sizes\n   - Confirm proper fallback behavior if Cloudinary is temporarily unavailable\n   - Test image loading performance on slow connections\n   - Verify proper alt text is displayed for accessibility\n   - Check that image placeholders appear correctly during loading\n\n7. **Cloudinary Dashboard Verification**:\n   - Confirm all images are properly uploaded with correct:\n     - Folder structure\n     - Tags\n     - Public IDs\n     - Transformations",
+        "status": "pending",
+        "dependencies": [
+          1,
+          6,
+          22
+        ],
+        "priority": "high",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Set up Cloudinary integration and configuration",
+            "description": "Install Cloudinary SDK, configure environment variables, and create a utility module for Cloudinary operations",
+            "dependencies": [],
+            "details": "1. Install Cloudinary SDK using npm: `npm install next-cloudinary cloudinary`\n2. Set up environment variables in .env file for Cloudinary credentials\n3. Create a cloudinary.ts utility module with configuration and helper functions\n4. Implement getCloudinaryUrl function for image URL generation\n5. Add responsive image handling with getResponsiveCloudinaryUrl function",
+            "status": "pending",
+            "testStrategy": "Create a simple test script to verify Cloudinary credentials are working correctly and that URLs are being generated with the expected parameters"
+          },
+          {
+            "id": 2,
+            "title": "Upload existing hero images to Cloudinary",
+            "description": "Create and run a script to upload all local hero images to Cloudinary with appropriate tags and folder structure",
+            "dependencies": [
+              "71.1"
+            ],
+            "details": "1. Create an upload script (scripts/upload-hero-images.ts) to scan local hero images\n2. Configure appropriate public IDs, folders, and tags for each image\n3. Upload images with proper quality settings and metadata\n4. Log results and handle any upload errors\n5. Create a configuration file (hero-images.ts) mapping page names to Cloudinary IDs",
+            "status": "pending",
+            "testStrategy": "Verify all images are uploaded correctly by checking the Cloudinary dashboard and confirming all expected images are present with correct metadata"
+          },
+          {
+            "id": 3,
+            "title": "Update Hero component to support Cloudinary URLs",
+            "description": "Modify the existing Hero component to support both local and Cloudinary-hosted images with appropriate props",
+            "dependencies": [
+              "71.1"
+            ],
+            "details": "1. Update the Hero component interface to add new props: isCloudinary, cloudinaryId\n2. Implement conditional logic to determine image source based on props\n3. Add support for Cloudinary optimization parameters\n4. Implement blur placeholder support for improved loading experience\n5. Ensure backward compatibility with existing local image implementations",
+            "status": "done",
+            "testStrategy": "Create component tests to verify the Hero component renders correctly with both local and Cloudinary image sources, and that all props are handled appropriately"
+          },
+          {
+            "id": 4,
+            "title": "Migrate all page hero sections to use Cloudinary images",
+            "description": "Update all pages with hero sections to use the enhanced Hero component with Cloudinary images",
+            "dependencies": [
+              "71.2",
+              "71.3"
+            ],
+            "details": "1. Update Home page hero section to use Cloudinary image\n2. Update Menu page hero section to use Cloudinary image\n3. Update Contact page hero section to use Cloudinary image\n4. Update Board Games page hero section to use Cloudinary image\n5. Update Training Room page hero section to use Cloudinary image\n6. Ensure all pages use the heroImages configuration for consistent image references",
+            "status": "done",
+            "testStrategy": "Manually test each page to verify hero images load correctly, are responsive, and maintain visual quality across different screen sizes"
+          },
+          {
+            "id": 5,
+            "title": "Clean up and finalize implementation",
+            "description": "Remove local hero images, update documentation, and verify all Cloudinary integrations are working correctly",
+            "dependencies": [
+              "71.4"
+            ],
+            "details": "1. Verify all Cloudinary images are loading correctly across the site\n2. Remove local hero images from the project to reduce repository size\n3. Update project documentation to reflect the Cloudinary integration\n4. Add Cloudinary credentials to the project's deployment environment\n5. Create a backup of local images before final removal",
+            "status": "pending",
+            "testStrategy": "Perform end-to-end testing of the site to ensure all hero images load correctly from Cloudinary, with appropriate fallbacks if needed. Test site performance before and after migration to verify improvements."
+          }
+        ]
       }
     ],
     "metadata": {
@@ -3641,7 +3711,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-08-26T18:20:10.799Z"
+      "updated": "2025-08-26T23:40:54.483Z"
     }
   }
 }

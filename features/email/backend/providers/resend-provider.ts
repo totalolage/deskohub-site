@@ -39,28 +39,13 @@ const ResendConfigLayer = Layer.effect(
 );
 
 const createResendProvider = (config: ResendConfig): EmailProvider => {
-  const resend = config.apiKey ? new Resend(config.apiKey) : null;
+  const resend = new Resend(config.apiKey);
 
   return {
     name: "resend",
 
     send: (message: EmailMessage) =>
       Effect.gen(function* () {
-        if (!resend) {
-          yield* Effect.logWarning(
-            "Resend provider not configured, falling back to console output",
-            { message }
-          );
-
-          // In development, the console provider will handle logging
-
-          return {
-            id: `console-${Date.now()}`,
-            provider: "resend",
-            timestamp: new Date(),
-          } as EmailSendResult;
-        }
-
         try {
           yield* Effect.logInfo("Sending email via Resend", {
             to: message.to,
@@ -70,7 +55,6 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 
           const result = yield* Effect.tryPromise({
             try: async () => {
-              console.log("Resend API call starting");
               // Attempting to send via Resend API
               const fromAddress =
                 typeof message.from === "string"
@@ -101,26 +85,21 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                   : undefined,
               });
 
-              // Resend API response received
-              console.log("Resend API response", {
-                success: !response.error,
-                id: response.data?.id,
-                error: response.error,
-              });
-
               if (response.error) {
-                const errorMessage = response.error.message || "Unknown error";
-                const errorName = response.error.name || "ResendError";
+                const { error: errorMessage, statusCode } =
+                  response.error as unknown as {
+                    statusCode: number;
+                    error: string;
+                  }; // Resend sdk lies about the error type
 
                 // Check if it's a client error (4xx) that shouldn't be retried
                 if (
-                  errorName === "validation_error" ||
-                  errorName === "missing_required_field" ||
-                  errorName === "invalid_access" ||
+                  (statusCode >= 400 && statusCode < 500) ||
                   errorMessage.toLowerCase().includes("invalid") ||
                   errorMessage.toLowerCase().includes("bad request") ||
                   errorMessage.toLowerCase().includes("unauthorized") ||
-                  errorMessage.toLowerCase().includes("forbidden")
+                  errorMessage.toLowerCase().includes("forbidden") ||
+                  errorMessage.toLowerCase().includes("not verified")
                 ) {
                   throw new Error(`CLIENT_ERROR: ${errorMessage}`);
                 } else {
@@ -213,11 +192,6 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 
     verify: () =>
       Effect.gen(function* () {
-        if (!resend) {
-          yield* Effect.logWarning("Resend not configured for verification");
-          return false;
-        }
-
         return yield* Effect.tryPromise({
           try: async () => {
             // Resend doesn't have a specific verify endpoint,

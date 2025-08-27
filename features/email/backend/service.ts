@@ -5,7 +5,7 @@
  * for sending emails. Uses Effect for error handling and composition.
  */
 
-import { Context, Effect, Layer, Schedule } from "effect";
+import { Context, Duration, Effect, Layer, Schedule } from "effect";
 import type { NetworkError } from "@/shared/backend/errors";
 import type {
   EmailMessage,
@@ -138,6 +138,16 @@ const emailRetryPolicy = Schedule.exponential("1 second").pipe(
     // Only retry on network errors
     return error._tag === "NetworkError";
   }),
+  Schedule.tapOutput(([duration, attempt]) =>
+    Effect.logInfo(
+      `Email retry attempt #${attempt + 1} starting after ${Duration.toMillis(duration)}ms delay`,
+      {
+        attemptNumber: attempt + 1,
+        delayMs: Duration.toMillis(duration),
+        maxRetries: 3,
+      }
+    )
+  ),
   Schedule.map(() => void 0)
 );
 
@@ -215,7 +225,7 @@ const EmailServiceLive = Layer.effect(
           );
 
           return result;
-        }).pipe(Effect.withSpan("emailService.send")),
+        }),
 
       sendTemplate: (recipient, template) =>
         Effect.gen(function* () {
@@ -280,7 +290,7 @@ const EmailServiceLive = Layer.effect(
               })
             )
           );
-        }).pipe(Effect.withSpan("emailService.sendTemplate")),
+        }),
 
       verify: () =>
         Effect.gen(function* () {
@@ -299,7 +309,7 @@ const EmailServiceLive = Layer.effect(
           );
 
           return isValid;
-        }).pipe(Effect.withSpan("emailService.verify")),
+        }),
     };
   })
 );

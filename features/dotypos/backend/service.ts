@@ -191,7 +191,7 @@ class DotyposClient extends Context.Tag("DotyposClient")<
  */
 const retryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
-  Schedule.intersect(Schedule.recurs(3)),  // Use intersect for AND condition, not either
+  Schedule.intersect(Schedule.recurs(3)), // Use intersect for AND condition, not either
   Schedule.whileInput<ExternalAPIError | NetworkError>((error) => {
     // Only retry on server errors (500+) or network errors
     if (error._tag === "NetworkError") {
@@ -999,7 +999,7 @@ const DotyposClientLive = Layer.effect(
                   Effect.retry(
                     Schedule.exponential("100 millis").pipe(
                       Schedule.jittered,
-                      Schedule.intersect(Schedule.recurs(2)),  // Use intersect for AND condition
+                      Schedule.intersect(Schedule.recurs(2)), // Use intersect for AND condition
                       Schedule.whileInput(
                         (error) =>
                           !(
