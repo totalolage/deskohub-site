@@ -65,10 +65,12 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           yield* Effect.logInfo("Sending email via Resend", {
             to: message.to,
             subject: message.subject,
+            from: message.from,
           });
 
           const result = yield* Effect.tryPromise({
             try: async () => {
+              console.log("Resend API call starting");
               // Attempting to send via Resend API
               const fromAddress =
                 typeof message.from === "string"
@@ -100,20 +102,94 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
               });
 
               // Resend API response received
+              console.log("Resend API response", {
+                success: !response.error,
+                id: response.data?.id,
+                error: response.error,
+              });
 
               if (response.error) {
-                throw new Error(`Resend API error: ${response.error.message}`);
+                const errorMessage = response.error.message || "Unknown error";
+                const errorName = response.error.name || "ResendError";
+
+                // Check if it's a client error (4xx) that shouldn't be retried
+                if (
+                  errorName === "validation_error" ||
+                  errorName === "missing_required_field" ||
+                  errorName === "invalid_access" ||
+                  errorMessage.toLowerCase().includes("invalid") ||
+                  errorMessage.toLowerCase().includes("bad request") ||
+                  errorMessage.toLowerCase().includes("unauthorized") ||
+                  errorMessage.toLowerCase().includes("forbidden")
+                ) {
+                  throw new Error(`CLIENT_ERROR: ${errorMessage}`);
+                } else {
+                  throw new Error(`API_ERROR: ${errorMessage}`);
+                }
               }
 
               return response;
             },
             catch: (error) => {
-              // Resend API call failed
-              return new NetworkError({
-                message: `Failed to send email via Resend: ${error instanceof Error ? error.message : String(error)}`,
+              const errorMessage =
+                error instanceof Error ? error.message : String(error);
+
+              // Log the raw error for debugging
+              console.error("Resend API error caught", {
+                errorMessage,
+                errorType:
+                  error instanceof Error
+                    ? error.constructor.name
+                    : typeof error,
               });
+
+              // Check if it's a client error that shouldn't be retried
+              if (errorMessage.includes("CLIENT_ERROR:")) {
+                return new EmailServiceError(
+                  errorMessage.replace("CLIENT_ERROR: ", ""),
+                  undefined,
+                  "resend"
+                );
+              }
+
+              // Only treat actual network/connection errors as NetworkError
+              if (
+                errorMessage.includes("ECONNREFUSED") ||
+                errorMessage.includes("ETIMEDOUT") ||
+                errorMessage.includes("ENOTFOUND") ||
+                errorMessage.includes("network") ||
+                errorMessage.includes("API_ERROR:")
+              ) {
+                return new NetworkError({
+                  message: `Resend network error: ${errorMessage.replace("API_ERROR: ", "")}`,
+                });
+              }
+
+              // Default to EmailServiceError for unknown errors (won't retry)
+              return new EmailServiceError(
+                `Resend error: ${errorMessage}`,
+                undefined,
+                "resend"
+              );
             },
-          });
+          }).pipe(
+            Effect.tap((response) =>
+              Effect.logInfo("Resend tryPromise succeeded", {
+                hasData: !!response.data,
+                id: response.data?.id,
+              })
+            ),
+            Effect.tapError((error) =>
+              Effect.logWarning(
+                "Resend tryPromise failed - will retry if NetworkError",
+                {
+                  errorTag: error._tag,
+                  errorMessage: error.message,
+                  willRetry: error._tag === "NetworkError",
+                }
+              )
+            )
+          );
 
           yield* Effect.logInfo("Email sent successfully via Resend", {
             id: result.data?.id,

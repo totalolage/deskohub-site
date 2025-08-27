@@ -127,12 +127,13 @@ export class EmailConfigTag extends Context.Tag("EmailConfig")<
 /**
  * Retry policy for email sending
  * - Exponential backoff starting at 1 second
- * - Maximum 3 retries
+ * - Maximum 3 retries (hard limit)
  * - Only retry on network errors
  */
 const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   Schedule.jittered,
-  Schedule.either(Schedule.recurs(3)),
+  // Use intersect to ensure BOTH conditions must be met (not either/or)
+  Schedule.intersect(Schedule.recurs(3)), // Maximum 3 retries AND exponential backoff
   Schedule.whileInput<EmailServiceError | NetworkError>((error) => {
     // Only retry on network errors
     return error._tag === "NetworkError";
@@ -168,17 +169,47 @@ const EmailServiceLive = Layer.effect(
           });
 
           const result = yield* provider.send(finalMessage).pipe(
+            // Log before retry
+            Effect.tapError((error) =>
+              Effect.logWarning(
+                "Email send failed, will retry if NetworkError",
+                {
+                  errorType: error._tag,
+                  errorMessage: error.message,
+                  willRetry: error._tag === "NetworkError",
+                  recipient: Array.isArray(finalMessage.to)
+                    ? finalMessage.to.map((r) => r.email || r)
+                    : finalMessage.to.email || finalMessage.to,
+                  subject: finalMessage.subject,
+                  retryPolicy:
+                    error._tag === "NetworkError"
+                      ? "exponential backoff (1s base, jittered, max 3 attempts)"
+                      : "no retry - not a network error",
+                }
+              )
+            ),
+            // Apply retry policy
             Effect.retry(emailRetryPolicy),
             Effect.tap((result) =>
               Effect.logInfo("Email sent successfully", {
                 id: result.id,
                 provider: result.provider,
+                recipient: Array.isArray(finalMessage.to)
+                  ? finalMessage.to.map((r) => r.email || r)
+                  : finalMessage.to.email || finalMessage.to,
+                subject: finalMessage.subject,
               })
             ),
             Effect.tapError((error) =>
-              Effect.logError("Failed to send email", {
-                error: error.message,
+              Effect.logError("Email send failed - all retries exhausted", {
+                errorType: error._tag,
+                errorMessage: error.message,
                 provider: provider.name,
+                recipient: Array.isArray(finalMessage.to)
+                  ? finalMessage.to.map((r) => r.email || r)
+                  : finalMessage.to.email || finalMessage.to,
+                subject: finalMessage.subject,
+                maxRetriesReached: true,
               })
             )
           );
@@ -210,12 +241,42 @@ const EmailServiceLive = Layer.effect(
 
           // Send the email
           return yield* provider.send(message).pipe(
+            // Log before retry
+            Effect.tapError((error) =>
+              Effect.logWarning(
+                "Template email failed, will retry if NetworkError",
+                {
+                  errorType: error._tag,
+                  errorMessage: error.message,
+                  willRetry: error._tag === "NetworkError",
+                  template: template.type,
+                  recipient: to.email,
+                  subject: message.subject,
+                  retryPolicy:
+                    error._tag === "NetworkError"
+                      ? "exponential backoff (1s base, jittered, max 3 attempts)"
+                      : "no retry - not a network error",
+                }
+              )
+            ),
+            // Apply retry policy
             Effect.retry(emailRetryPolicy),
             Effect.tap((result) =>
               Effect.logInfo("Template email sent successfully", {
                 id: result.id,
                 template: template.type,
                 recipient: to.email,
+                subject: message.subject,
+              })
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("Template email failed - all retries exhausted", {
+                errorType: error._tag,
+                errorMessage: error.message,
+                template: template.type,
+                recipient: to.email,
+                subject: message.subject,
+                maxRetriesReached: true,
               })
             )
           );
