@@ -7,7 +7,7 @@
 
 import type { GetGalleryImagesOptions } from "@/features/gallery/actions/get-cloudinary-images";
 
-abstract class CaheTags {
+abstract class CacheTags {
   abstract get _tags(): Record<string, unknown>;
 
   constructor(private _base: string) {}
@@ -31,7 +31,7 @@ abstract class CaheTags {
   }
 }
 
-export class ReservationCacheTags extends CaheTags {
+export class ReservationCacheTags extends CacheTags {
   _tags: Partial<{
     reservationId: string;
   }> = {};
@@ -46,7 +46,7 @@ export class ReservationCacheTags extends CaheTags {
   }
 }
 
-export class CustomerCacheTags extends CaheTags {
+export class CustomerCacheTags extends CacheTags {
   _tags: Partial<{
     customerId: string;
   }> = {};
@@ -61,7 +61,24 @@ export class CustomerCacheTags extends CaheTags {
   }
 }
 
-export class CloudinaryImageCacheTags extends CaheTags {
+// Cache tags for an individual Cloudinary image
+export class CloudinaryImageCacheTags extends CacheTags {
+  _tags: Partial<{
+    publicId: string;
+  }> = {};
+
+  constructor(options: { publicId: string }) {
+    super("cloudinary-image");
+    this._tags.publicId = options.publicId;
+  }
+
+  get publicId() {
+    return this._constructTag("publicId");
+  }
+}
+
+// Cache tags for a cloudinary image search
+export class CloudinarySearchTags extends CacheTags {
   _tags: Partial<{
     tags: string;
     maxResults: number;

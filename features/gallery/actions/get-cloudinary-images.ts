@@ -2,7 +2,7 @@
 
 import { Effect } from "effect";
 import { unstable_cache as cache } from "next/cache";
-import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
+import { CloudinarySearchTags } from "@/shared/backend/utils/cache-tags";
 import {
   normalizeExpression,
   type UnnormalizedLogicalExpression,
@@ -35,7 +35,7 @@ export async function getCloudinaryImages(
     CloudinaryServiceLive
   );
 
-  const cacheTags = new CloudinaryImageCacheTags({
+  const cacheTags = new CloudinarySearchTags({
     tags,
     maxResults,
   });
