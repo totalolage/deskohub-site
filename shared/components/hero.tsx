@@ -1,10 +1,10 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ReactNode } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import { CloudinaryImage } from "@/features/gallery/components/cloudinary-image";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
 import { cn } from "@/shared/utils";
 import type { UnnormalizedLogicalExpression } from "@/shared/utils/normalize-tag-expression";
-import { HeroImage } from "./hero-image";
 
 const heroVariants = cva(null, {
   variants: {
@@ -49,7 +49,7 @@ export async function Hero({
         className
       )}
     >
-      <HeroImage image={image} />
+      {image && <CloudinaryImage asset={image} variant="hero" />}
       <div
         className={cn(
           "relative z-10 w-full h-full flex",

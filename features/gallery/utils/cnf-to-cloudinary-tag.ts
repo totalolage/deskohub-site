@@ -20,16 +20,29 @@ export function cnfToCloudinaryExpression(
   const expressions = cnf
     .map((andGroup) => {
       if (andGroup.length === 0) return null;
-      
+
       // For multiple tags in AND group, use proper AND syntax
       if (andGroup.length > 1) {
         // Use AND syntax: (tags=tag1 AND tags=tag2)
-        const andExpression = andGroup.map((tag) => `tags=${tag}`).join(" AND ");
+        const andExpression = andGroup
+          .map((tag) => {
+            // If tag contains spaces, wrap in quotes
+            if (tag.includes(" ")) {
+              return `tags="${tag}"`;
+            }
+            return `tags=${tag}`;
+          })
+          .join(" AND ");
         return `(${andExpression})`;
       }
-      
-      // Single tag
+
+      // Single tag - need to handle spaces properly
       const tag = andGroup[0];
+      if (!tag) return null;
+      // If tag contains spaces, wrap in quotes
+      if (tag.includes(" ")) {
+        return `tags="${tag}"`;
+      }
       return `tags=${tag}`;
     })
     .filter(Boolean);

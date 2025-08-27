@@ -1,7 +1,5 @@
-import { GalleryCollection, MinimalGallery } from "@/features/gallery";
-import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
+import { Gallery } from "@/features/gallery";
 import { m, setLocale } from "@/i18n";
-import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
@@ -13,13 +11,19 @@ export const generateMetadata = metadata({
 export default async function GalleryPage({ params }: RouteProps_locale) {
   setLocale((await params).locale);
 
-  if (!siteConstants.featureFlags.gallery) return <MinimalGallery />;
-
   return (
-    <GalleryCollection
-      imagesPromise={getCloudinaryImages({
-        tags: ["Web galerie"],
-      })}
-    />
+    <section className="py-16 px-4">
+      <div className="max-w-7xl mx-auto">
+        <div className="text-center mb-12">
+          <h1 className="text-4xl font-bold mb-4">
+            {m["gallery.hero.title"]()}
+          </h1>
+          <p className="text-gray-600 max-w-2xl mx-auto">
+            {m["gallery.pageDescription"]()}
+          </p>
+        </div>
+        <Gallery tags={["Web galerie"]} variant="grid" enableLightbox={true} />
+      </div>
+    </section>
   );
 }
