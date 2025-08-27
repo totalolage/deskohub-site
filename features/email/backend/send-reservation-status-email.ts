@@ -102,7 +102,7 @@ export const sendReservationCreatedEmail = (
 
     const emailMessage: EmailMessage = {
       from: {
-        email: siteConstants.contact.reservationEmail,
+        email: siteConstants.contact.fromEmail,
         name: siteConstants.brand.name,
       },
       to: {
@@ -171,7 +171,7 @@ export const sendReservationConfirmedEmail = (
 
     const emailMessage: EmailMessage = {
       from: {
-        email: siteConstants.contact.reservationEmail,
+        email: siteConstants.contact.fromEmail,
         name: siteConstants.brand.name,
       },
       to: {
@@ -240,7 +240,7 @@ export const sendReservationDeclinedEmail = (
 
     const emailMessage: EmailMessage = {
       from: {
-        email: siteConstants.contact.reservationEmail,
+        email: siteConstants.contact.fromEmail,
         name: siteConstants.brand.name,
       },
       to: {

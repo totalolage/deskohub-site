@@ -34,7 +34,7 @@ const ResendConfigLayer = Layer.effect(
       yield* Effect.logWarning("Resend API key not configured");
     }
 
-    return { apiKey } as ResendConfig;
+    return { apiKey } satisfies ResendConfig;
   })
 );
 
