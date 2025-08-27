@@ -3,7 +3,7 @@ import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import { CloudinaryImageCacheTags } from "@/shared/backend/utils/cache-tags";
+import { CloudinarySearchTags } from "@/shared/backend/utils/cache-tags";
 import { WebhookAuthError } from "@/shared/backend/utils/webhook";
 
 class JsonParseError extends Data.TaggedError("JsonParseError")<{
@@ -26,7 +26,7 @@ const processWebhook = (bodyText: string) =>
     // Invalidate all cloudinary image caches
     // In the future when we parse the data from the webhook,
     // we can invalidate only the affected images
-    const tagsToRevalidate = new CloudinaryImageCacheTags().all;
+    const tagsToRevalidate = new CloudinarySearchTags().all;
     revalidateTag(tagsToRevalidate);
 
     yield* Effect.log("Cloudinary webhook received, cache invalidated", {
