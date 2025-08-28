@@ -58,12 +58,12 @@ export const getContactSchema = () => {
   const messageSchema = z
     .string()
     .min(CONTACT_VALIDATION.message.min, {
-      error: m["tableReservation.validation.specialRequests.maximum"]({
-        max: CONTACT_VALIDATION.message.min,
+      error: m["contact.validation.message.minimum"]({
+        min: CONTACT_VALIDATION.message.min,
       }),
     })
     .max(CONTACT_VALIDATION.message.max, {
-      error: m["tableReservation.validation.specialRequests.maximum"]({
+      error: m["contact.validation.message.maximum"]({
         max: CONTACT_VALIDATION.message.max,
       }),
     });

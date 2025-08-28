@@ -629,7 +629,31 @@
         "parking": "There are blue and purple zones here, but free spots in the area are sometimes available."
       }
     },
-    "successMessage": "Your message has been sent successfully! We'll get back to you soon."
+    "successMessage": "Your message has been sent successfully! We'll get back to you soon.",
+    "validation": {
+      "message": {
+        "minimum": [
+          {
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
+            "match": {
+              "minPlural=one": "Message must be at least {min} character",
+              "minPlural=other": "Message must be at least {min} characters"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Message must be less than {max} character",
+              "maxPlural=other": "Message must be less than {max} characters"
+            }
+          }
+        ]
+      }
+    }
   },
   "menu": {
     "pageTitle": "Menu - Food & Drinks",

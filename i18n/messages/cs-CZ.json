@@ -638,7 +638,33 @@
         "parking": "Jsou tu modré a fialové zóny, ale volná místa v okolí občas jsou."
       }
     },
-    "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme."
+    "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme.",
+    "validation": {
+      "message": {
+        "minimum": [
+          {
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
+            "match": {
+              "minPlural=one": "Zpráva musí mít alespoň {min} znak",
+              "minPlural=few": "Zpráva musí mít alespoň {min} znaky",
+              "minPlural=other": "Zpráva musí mít alespoň {min} znaků"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Zpráva musí mít méně než {max} znak",
+              "maxPlural=few": "Zpráva musí mít méně než {max} znaky",
+              "maxPlural=other": "Zpráva musí mít méně než {max} znaků"
+            }
+          }
+        ]
+      }
+    }
   },
   "menu": {
     "pageTitle": "Menu - Jídlo a nápoje",
