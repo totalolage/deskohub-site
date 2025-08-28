@@ -428,7 +428,7 @@
       "title": "Pronajměte si místnost až pro 20 osob",
       "subtitle": "Školící místnost či zasedačka",
       "description": "V Deskohubu nabízíme k pronájmu školící místnost, která lze využít i pro obchodní setkání jako zasedací místnost. Vhodná je i pro workshopy nebo týmové brainstormingy. Nachází se jen kousek od stanice metra Palmovka, což zajišťuje snadný přístup pro všechny účastníky.",
-      "reserveButton": "Rezervovat místnost",
+      "reserveButton": "Požádat o rezervaci",
       "galleryButton": "Zobrazit galerii"
     },
     "features": {
@@ -501,11 +501,11 @@
     "cta": {
       "title": "Pro rezervaci nebo více informací",
       "description": "Nás neváhejte kontaktovat na email: {email} či telefonní číslo {phone}. Těšíme se na vaši návštěvu a zajištění perfektního zážitku pro vás a vaše hosty.",
-      "button": "Rezervovat nyní",
+      "button": "Požádat o rezervaci",
       "call": "Zavolejte",
       "write": "Napište",
       "online": "Online",
-      "onlineReservation": "Rezervační systém"
+      "onlineReservation": "Žádost o rezervaci"
     },
     "gallery": {
       "pageTitle": "Galerie školící místnosti",
@@ -540,7 +540,7 @@
       "selectDuration": "Vyberte dobu trvání",
       "specialRequirements": "Speciální požadavky",
       "specialRequirementsPlaceholder": "Jakékoliv speciální požadavky nebo poznámky k vaší rezervaci...",
-      "submit": "Dokončit rezervaci",
+      "submit": "Odeslat žádost o rezervaci",
       "submitting": "Odesílání..."
     },
     "success": {

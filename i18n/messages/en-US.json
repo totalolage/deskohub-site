@@ -416,7 +416,7 @@
       "title": "Rent a room for up to 20 people",
       "subtitle": "Training room or meeting room",
       "description": "At Deskohub we offer a training room for rent that can also be used for business meetings as a conference room. It is also suitable for workshops or team brainstorming. Located just a short walk from Palmovka metro station, ensuring easy access for all participants.",
-      "reserveButton": "Reserve Room",
+      "reserveButton": "Request Reservation",
       "galleryButton": "View Gallery"
     },
     "features": {
@@ -489,11 +489,11 @@
     "cta": {
       "title": "For reservations or more information",
       "description": "Feel free to contact us at email: {email} or phone number {phone}. We look forward to your visit and ensuring a perfect experience for you and your guests.",
-      "button": "Reserve Now",
+      "button": "Request Reservation",
       "call": "Call",
       "write": "Write",
       "online": "Online",
-      "onlineReservation": "Reservation System"
+      "onlineReservation": "Request Reservation"
     },
     "gallery": {
       "pageTitle": "Training Room Gallery",
@@ -531,7 +531,7 @@
       "trainingRoomCapacity": "Capacity: 20 people",
       "specialRequirements": "Special Requirements",
       "specialRequirementsPlaceholder": "Any special requirements or notes for your reservation...",
-      "submit": "Complete Reservation",
+      "submit": "Submit Reservation Request",
       "submitting": "Submitting..."
     },
     "success": {

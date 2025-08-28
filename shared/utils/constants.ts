@@ -6,7 +6,6 @@ export const siteConstants = {
     name: "DeskoHub",
     legalName: "DeskoHub s.r.o.", // Full legal entity name
     domain: "deskohub.cz",
-    tagline: "Your coworking space", // Will be translated
   },
   menu: {
     /**
@@ -187,7 +186,7 @@ export const siteConstants = {
   // Feature flags - simple constants for prerendered site
   featureFlags: {
     boardGamesList: false,
-    boardroomReservations: false,
+    boardroomReservations: true,
     contactForm: true,
     tableReservations: true,
     gallery: true,
