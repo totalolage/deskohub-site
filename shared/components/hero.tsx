@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { CloudinaryImage } from "@/features/gallery/components/cloudinary-image";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
+import { generateBlurDataUrl } from "@/features/gallery/utils/generate-blur-data-url";
 import { cn } from "@/shared/utils";
 import type { UnnormalizedLogicalExpression } from "@/shared/utils/normalize-tag-expression";
 
@@ -41,6 +42,9 @@ export async function Hero({
     maxResults: 1,
   });
 
+  // Generate blur data URL if we have an image
+  const blurDataURL = image ? await generateBlurDataUrl(image) : undefined;
+
   return (
     <section
       className={cn(
@@ -49,7 +53,13 @@ export async function Hero({
         className
       )}
     >
-      {image && <CloudinaryImage asset={image} variant="hero" />}
+      {image && (
+        <CloudinaryImage
+          asset={image}
+          variant="hero"
+          blurDataURL={blurDataURL}
+        />
+      )}
       <div
         className={cn(
           "relative z-10 w-full h-full flex",
