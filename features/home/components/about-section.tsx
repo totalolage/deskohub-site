@@ -1,5 +1,5 @@
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
-import { CloudinaryImage } from "@/features/gallery/components/cloudinary-image";
+import { Gallery } from "@/features/gallery/components/gallery";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
 import { m } from "@/i18n";
 import { Price } from "@/shared/components/price";
@@ -10,24 +10,18 @@ import { siteConstants } from "@/shared/utils/constants";
  * Used on the homepage to showcase the venue and entry fees
  */
 export async function AboutSection({ tags }: { tags: CloudinaryTag }) {
-  // Fetch images with combined galerie + page tag
-  const images = await getCloudinaryImages({
+  const imagesPromise = getCloudinaryImages({
     tags: [["galerie", tags]],
   });
 
   return (
     <section className="py-16 bg-amber-50">
       <div className="max-w-7xl mx-auto px-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-16">
-          {images.slice(0, 3).map((image) => (
-            <div
-              key={image.public_id}
-              className="rounded-full overflow-hidden aspect-square"
-            >
-              <CloudinaryImage asset={image} variant="gallery" />
-            </div>
-          ))}
-        </div>
+        <Gallery
+          imagesPromise={imagesPromise}
+          variant="minimal"
+          className="mb-16"
+        />
 
         <div className="text-center max-w-4xl mx-auto">
           <p className="text-lg text-gray-700 leading-relaxed">
