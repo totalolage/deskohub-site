@@ -1,6 +1,7 @@
 "use client";
 
 import { CldImage, type CldImageProps } from "next-cloudinary";
+import type { CSSProperties } from "react";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
 type ImageSize = number | "fill";
@@ -33,13 +34,14 @@ export function CloudinaryImage({
       sizes: "100vw",
       format: "auto",
       quality: "auto",
-      className: "object-cover brightness-50 absolute inset-0 z-0",
+      crop: "fill" as const,
+      className: "brightness-50 absolute inset-0 z-0",
     },
     gallery: {
       size: { width: 600, height: 600 },
       crop: "fill" as const,
       gravity: "auto" as const,
-      className: "w-full h-full object-cover",
+      className: "w-full h-full",
       priority: true,
     },
     thumbnail: {
@@ -47,23 +49,31 @@ export function CloudinaryImage({
       crop: "fill" as const,
       gravity: "auto" as const,
       className:
-        "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300",
+        "w-full h-full group-hover:scale-105 transition-transform duration-300",
     },
     full: {
-      size: { width: "fill" as const, height: "fill" as const },
+      size: { width: 1920, height: 1080 }, // Default size, will be overridden by provided size
       crop: "limit" as const,
       quality: "auto",
       format: "auto",
+      className: "w-full h-full",
     },
   };
 
   const config = variantConfig[variant] || variantConfig.gallery;
 
+  // Determine object-fit based on crop type
+  // 'fill' crop means we want to cover the container, 'limit' means we want to contain
+  const objectFit = config.crop === "fill" ? "object-cover" : "object-contain";
+
+  // Build the final className with the appropriate object-fit
+  const finalClassName = `${config.className} ${objectFit}`.trim();
+
   // Use provided size or fall back to variant's default size
   const imageSize = size || config.size;
 
   // Extract size config and prepare props for CldImage
-  const { size: _, ...restConfig } = config;
+  const { size: _, className: __, ...restConfig } = config;
 
   // Determine if we should use fill mode
   const useFill = imageSize.width === "fill" || imageSize.height === "fill";
@@ -91,12 +101,19 @@ export function CloudinaryImage({
     finalProps = { ...restConfig, fill: true };
   }
 
+  const positioningStyle: CSSProperties = {
+    backgroundSize: config.crop === "fill" ? "cover" : "contain",
+    objectFit: config.crop === "fill" ? "cover" : "contain",
+  };
+
   return (
     <CldImage
       src={asset.public_id}
       alt={asset.context?.custom?.alt || asset.public_id}
       blurDataURL={blurDataURL}
       placeholder={blurDataURL ? "blur" : "empty"}
+      className={finalClassName}
+      style={positioningStyle}
       {...finalProps}
       {...props}
     />

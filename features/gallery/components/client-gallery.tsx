@@ -123,24 +123,40 @@ export function ClientGallery({
           open={lightboxOpen}
           close={() => setLightboxOpen(false)}
           index={lightboxIndex}
-          slides={images.map((image, index) => ({
-            src: String(index), // We use index to reference back to the image
-            width: image.width,
-            height: image.height,
-            alt: image.context?.custom?.alt || image.public_id,
-            title: image.context?.custom?.caption,
+          slides={images.map((_, index) => ({
+            src: String(index),
           }))}
           render={{
-            slide: ({ slide, rect }) => {
+            slide: ({ slide, rect: containerSize }) => {
               const image = images[Number(slide.src)]!;
 
+              // Calculate the dimensions of the image to fit within the container
+              const imageAspectRatio = image.width / image.height;
+              const containerAspectRatio =
+                containerSize.width / containerSize.height;
+
+              let displayWidth: number;
+              let displayHeight: number;
+
+              if (imageAspectRatio > containerAspectRatio) {
+                // Image is wider than container - fit to width
+                displayWidth = containerSize.width;
+                displayHeight = containerSize.width / imageAspectRatio;
+              } else {
+                // Image is taller than container - fit to height
+                displayHeight = containerSize.height;
+                displayWidth = containerSize.height * imageAspectRatio;
+              }
+
               return (
-                <CloudinaryImage
-                  asset={image}
-                  blurDataURL={blurUrls?.[image.public_id]}
-                  variant="full"
-                  size={rect}
-                />
+                <div className="relative w-full h-full flex items-center justify-center">
+                  <CloudinaryImage
+                    asset={image}
+                    blurDataURL={blurUrls?.[image.public_id]}
+                    variant="full"
+                    size={{ width: displayWidth, height: displayHeight }}
+                  />
+                </div>
               );
             },
           }}
