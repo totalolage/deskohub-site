@@ -1,7 +1,9 @@
+import { notFound } from "next/navigation";
 import { ReservationConfirmation } from "@/features/reservation/components/reservation-confirmation";
 import { type Locale, setLocale } from "@/i18n";
 import { m } from "@/i18n/paraglide/messages";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 
 // Route type definitions
@@ -25,6 +27,11 @@ export const generateMetadata = metadata({
 export default async function TrainingRoomConfirmationPage({
   params,
 }: Readonly<RouteProps_locale>) {
+  // Return 404 if training room reservations are disabled
+  if (!siteConstants.featureFlags.boardroomReservations) {
+    notFound();
+  }
+
   const { locale } = await params;
   setLocale(locale, { reload: false });
 

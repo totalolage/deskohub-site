@@ -49,14 +49,25 @@ export const TrainingHero = () => {
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
-          <Link href="/training-room/reservation">
-            <Button
-              size="lg"
-              className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 text-lg"
-            >
-              {m["training.hero.reserveButton"]()}
-            </Button>
-          </Link>
+          {siteConstants.featureFlags.boardroomReservations ? (
+            <Link href="/training-room/reservation">
+              <Button
+                size="lg"
+                className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 text-lg"
+              >
+                {m["training.hero.reserveButton"]()}
+              </Button>
+            </Link>
+          ) : (
+            <Link href="/contact">
+              <Button
+                size="lg"
+                className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 text-lg"
+              >
+                {m["buttons.contact"]()}
+              </Button>
+            </Link>
+          )}
           {siteConstants.featureFlags.gallery && (
             <Link href="/training-room/gallery">
               <Button

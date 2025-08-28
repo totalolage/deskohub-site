@@ -1,5 +1,7 @@
+import { notFound } from "next/navigation";
 import { ReservationForm } from "@/features/training/reservation";
 import { m, setLocale } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../../route";
 
@@ -11,6 +13,11 @@ export const generateMetadata = metadata({
 export default async function TrainingRoomReservationPage({
   params,
 }: RouteProps_locale) {
+  // Return 404 if training room reservations are disabled
+  if (!siteConstants.featureFlags.boardroomReservations) {
+    notFound();
+  }
+
   setLocale((await params).locale, { reload: false });
 
   return (

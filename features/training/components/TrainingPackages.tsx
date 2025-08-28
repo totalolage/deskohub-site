@@ -113,7 +113,13 @@ export const TrainingPackages = () => {
                   ))}
                 </ul>
 
-                <Link href="/training-room/reservation">
+                <Link
+                  href={
+                    siteConstants.featureFlags.boardroomReservations
+                      ? "/training-room/reservation"
+                      : "/contact"
+                  }
+                >
                   <Button
                     className={cn(
                       "w-full text-white",
