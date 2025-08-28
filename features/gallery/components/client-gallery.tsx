@@ -125,18 +125,22 @@ export function ClientGallery({
           index={lightboxIndex}
           slides={images.map((image, index) => ({
             src: String(index), // We use index to reference back to the image
+            width: image.width,
+            height: image.height,
             alt: image.context?.custom?.alt || image.public_id,
             title: image.context?.custom?.caption,
           }))}
           render={{
-            slide: ({ slide }) => {
-              const image = images[Number(slide.src)];
-              if (!image) return null;
-
-              const blurDataURL = blurUrls?.[image.public_id];
+            slide: ({ slide, rect }) => {
+              const image = images[Number(slide.src)]!;
 
               return (
-                <CloudinaryImage asset={image} blurDataURL={blurDataURL} />
+                <CloudinaryImage
+                  asset={image}
+                  blurDataURL={blurUrls?.[image.public_id]}
+                  variant="full"
+                  size={rect}
+                />
               );
             },
           }}
