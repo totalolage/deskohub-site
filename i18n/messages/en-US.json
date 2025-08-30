@@ -513,8 +513,17 @@
     "form": {
       "title": "Reserve Training Room",
       "yourInformation": "Your Information",
-      "fullName": "Full Name",
-      "fullNamePlaceholder": "John Doe",
+      "firstName": "First Name",
+      "firstNamePlaceholder": "John",
+      "lastName": "Last Name",
+      "lastNamePlaceholder": "Doe",
+      "company": "Company",
+      "companyPlaceholder": "Company Name Ltd.",
+      "role": "Role",
+      "rolePlaceholder": "Project Manager",
+      "conditionalRequired": "(if no company)",
+      "conditionalRole": "(if both name and company)",
+      "validationHelpText": "Please provide either company name OR first and last name. If you provide both, role is required.",
       "email": "Email",
       "emailPlaceholder": "your@email.com",
       "phone": "Phone Number",
@@ -543,9 +552,88 @@
       "description": "Please try again later or contact us directly."
     },
     "validation": {
-      "nameRequired": "Name is required",
-      "nameMin": "Name must be at least {min} characters",
-      "nameMax": "Name must be at most {max} characters",
+      "firstNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "First name must be at least {min} character",
+            "minPlural=other": "First name must be at least {min} characters"
+          }
+        }
+      ],
+      "firstNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "First name must be at most {max} character",
+            "maxPlural=other": "First name must be at most {max} characters"
+          }
+        }
+      ],
+      "lastNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Last name must be at least {min} character",
+            "minPlural=other": "Last name must be at least {min} characters"
+          }
+        }
+      ],
+      "lastNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Last name must be at most {max} character",
+            "maxPlural=other": "Last name must be at most {max} characters"
+          }
+        }
+      ],
+      "companyMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Company name must be at least {min} character",
+            "minPlural=other": "Company name must be at least {min} characters"
+          }
+        }
+      ],
+      "companyMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Company name must be at most {max} character",
+            "maxPlural=other": "Company name must be at most {max} characters"
+          }
+        }
+      ],
+      "roleMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Role must be at least {min} character",
+            "minPlural=other": "Role must be at least {min} characters"
+          }
+        }
+      ],
+      "roleMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Role must be at most {max} character",
+            "maxPlural=other": "Role must be at most {max} characters"
+          }
+        }
+      ],
+      "companyOrNameRequired": "Please provide either company name or first and last name",
+      "roleRequiredWhenBothFilled": "Role is required when both name and company are provided",
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address",
       "emailMax": "Email must be at most {max} characters",

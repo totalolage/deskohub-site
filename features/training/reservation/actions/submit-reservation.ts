@@ -8,7 +8,7 @@ import {
   TrainingReservationServiceLive,
 } from "@/features/training/reservation/backend/training-reservation.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
-import { reservationSchema } from "../schemas/reservation";
+import { type ReservationFormData, reservationSchema } from "../schemas/reservation";
 
 // Create the internal action using the service layer
 const _submitTrainingRoomReservation = createEffectSafeAction(
@@ -29,6 +29,8 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
             ? "Rezervace byla úspěšně odeslána"
             : "Reservation submitted successfully",
         submissionId: submission.submittedAt,
+        // Include the input data for the redirect
+        formData: input,
       };
     }).pipe(
       Effect.withSpan("submitTrainingRoomReservation", {
@@ -52,10 +54,40 @@ export const submitTrainingRoomReservation = async (
   "use server";
   const result = await _submitTrainingRoomReservation(...args);
 
-  // If successful, redirect to confirmation page
-  if (result?.data?.success) {
-    // Redirect to static confirmation page (no ID needed)
-    redirect(`/training-room/reservation/confirmation`);
+  // If successful, redirect to confirmation page with query parameters
+  if (result?.data?.success && result.data.formData) {
+    const input = result.data.formData;
+    
+    // Build query parameters from the form data
+    const params = new URLSearchParams();
+
+    // Add name fields (prefer company for display, fallback to full name)
+    if (input.company) {
+      params.append("company", input.company);
+    }
+    if (input.firstName) {
+      params.append("firstName", input.firstName);
+    }
+    if (input.lastName) {
+      params.append("lastName", input.lastName);
+    }
+    if (input.role) {
+      params.append("role", input.role);
+    }
+
+    // Add contact and reservation details
+    params.append("email", input.email);
+    params.append("phone", input.phone);
+    params.append("date", input.date.toISOString());
+    params.append("time", input.time);
+    params.append("duration", input.duration.toString());
+
+    if (input.specialRequirements) {
+      params.append("specialRequirements", input.specialRequirements);
+    }
+
+    // Redirect to confirmation page with query parameters
+    redirect(`/training-room/reservation/confirmation?${params.toString()}`);
   }
 
   return result;

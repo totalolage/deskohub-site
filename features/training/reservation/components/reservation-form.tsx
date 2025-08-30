@@ -89,32 +89,125 @@ export function ReservationForm() {
               {m["trainingReservation.form.yourInformation"]()}
             </legend>
 
-            <FormField
-              control={form.control}
-              name="name"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel htmlFor="name">
-                    {m["trainingReservation.form.fullName"]()}
-                  </FormLabel>
-                  <FormControl>
-                    <Input
-                      id="name"
-                      variant={fieldState.error ? "error" : "default"}
-                      placeholder={m[
-                        "trainingReservation.form.fullNamePlaceholder"
-                      ]()}
-                      aria-label="Full Name"
-                      aria-describedby="name-error"
-                      aria-required="true"
-                      {...field}
-                    />
-                  </FormControl>
-                  <FormMessage id="name-error" />
-                </FormItem>
-              )}
-            />
+            {/* Name Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="firstName"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="firstName">
+                      {m["trainingReservation.form.firstName"]()}
+                      <span className="text-muted-foreground text-sm ml-1">
+                        {m["trainingReservation.form.conditionalRequired"]()}
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        id="firstName"
+                        variant={fieldState.error ? "error" : "default"}
+                        placeholder={m[
+                          "trainingReservation.form.firstNamePlaceholder"
+                        ]()}
+                        aria-label="First Name"
+                        aria-describedby="firstName-error"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage id="firstName-error" />
+                  </FormItem>
+                )}
+              />
 
+              <FormField
+                control={form.control}
+                name="lastName"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="lastName">
+                      {m["trainingReservation.form.lastName"]()}
+                      <span className="text-muted-foreground text-sm ml-1">
+                        {m["trainingReservation.form.conditionalRequired"]()}
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        id="lastName"
+                        variant={fieldState.error ? "error" : "default"}
+                        placeholder={m[
+                          "trainingReservation.form.lastNamePlaceholder"
+                        ]()}
+                        aria-label="Last Name"
+                        aria-describedby="lastName-error"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage id="lastName-error" />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Company and Role Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <FormField
+                control={form.control}
+                name="company"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="company">
+                      {m["trainingReservation.form.company"]()}
+                      <span className="text-muted-foreground text-sm ml-1">
+                        {m["trainingReservation.form.conditionalRequired"]()}
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        id="company"
+                        variant={fieldState.error ? "error" : "default"}
+                        placeholder={m[
+                          "trainingReservation.form.companyPlaceholder"
+                        ]()}
+                        aria-label="Company"
+                        aria-describedby="company-error"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage id="company-error" />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="role"
+                render={({ field, fieldState }) => (
+                  <FormItem>
+                    <FormLabel htmlFor="role">
+                      {m["trainingReservation.form.role"]()}
+                      <span className="text-muted-foreground text-sm ml-1">
+                        {m["trainingReservation.form.conditionalRole"]()}
+                      </span>
+                    </FormLabel>
+                    <FormControl>
+                      <Input
+                        id="role"
+                        variant={fieldState.error ? "error" : "default"}
+                        placeholder={m[
+                          "trainingReservation.form.rolePlaceholder"
+                        ]()}
+                        aria-label="Role"
+                        aria-describedby="role-error"
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage id="role-error" />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            {/* Contact Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
                 control={form.control}
@@ -175,6 +268,11 @@ export function ReservationForm() {
                 )}
               />
             </div>
+
+            {/* Help text for validation requirements */}
+            <p className="text-sm text-muted-foreground">
+              {m["trainingReservation.form.validationHelpText"]()}
+            </p>
           </fieldset>
 
           {/* Reservation Details Section */}

@@ -5,7 +5,10 @@ import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";
 
 export interface TrainingRoomReservation {
-  name: string;
+  firstName: string;
+  lastName: string;
+  company: string;
+  role: string;
   email: string;
   phone: string;
   date: Date;
@@ -23,9 +26,8 @@ export interface TrainingReservationService {
   ) => Effect.Effect<TrainingRoomReservation, StorageError>;
 }
 
-export const TrainingReservationService = Context.GenericTag<TrainingReservationService>(
-  "TrainingReservationService"
-);
+export const TrainingReservationService =
+  Context.GenericTag<TrainingReservationService>("TrainingReservationService");
 
 export const TrainingReservationServiceLive = Layer.effect(
   TrainingReservationService,
@@ -41,13 +43,18 @@ export const TrainingReservationServiceLive = Layer.effect(
             locale,
           };
 
-          yield* Effect.logInfo("Processing training room reservation submission", {
-            email: data.email,
-            name: data.name,
-            date: data.date.toISOString(),
-            time: data.time,
-            locale,
-          });
+          yield* Effect.logInfo(
+            "Processing training room reservation submission",
+            {
+              email: data.email,
+              firstName: data.firstName,
+              lastName: data.lastName,
+              company: data.company,
+              date: data.date.toISOString(),
+              time: data.time,
+              locale,
+            }
+          );
 
           // Format the date and time for display
           const formattedDate = data.date.toLocaleDateString(locale, {
@@ -62,18 +69,48 @@ export const TrainingReservationServiceLive = Layer.effect(
           const duration = data.duration;
 
           // Create email content for the business
+          const displayName =
+            data.company || `${data.firstName} ${data.lastName}`.trim();
+          const fullName = `${data.firstName} ${data.lastName}`.trim();
+
           const businessEmailContent = {
-            subject: `Nová rezervace školící místnosti - ${data.name}`,
+            subject: `Nová rezervace školící místnosti - ${displayName}`,
             html: `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2 style="color: #333;">Nová rezervace školící místnosti</h2>
                 
                 <h3 style="color: #666;">Kontaktní údaje:</h3>
                 <table style="width: 100%; border-collapse: collapse;">
+                  ${
+                    data.firstName || data.lastName
+                      ? `
                   <tr>
                     <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Jméno:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.name}</td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${fullName}</td>
                   </tr>
+                  `
+                      : ""
+                  }
+                  ${
+                    data.company
+                      ? `
+                  <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Společnost:</strong></td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.company}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
+                  ${
+                    data.role
+                      ? `
+                  <tr>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Pozice:</strong></td>
+                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.role}</td>
+                  </tr>
+                  `
+                      : ""
+                  }
                   <tr>
                     <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Email:</strong></td>
                     <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.email}</td>
@@ -97,7 +134,11 @@ export const TrainingReservationServiceLive = Layer.effect(
                   <tr>
                     <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Doba trvání:</strong></td>
                     <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${
-                      duration === 1 ? "hodina" : duration < 5 ? "hodiny" : "hodin"
+                      duration === 1
+                        ? "hodina"
+                        : duration < 5
+                          ? "hodiny"
+                          : "hodin"
                     }</td>
                   </tr>
                 </table>
@@ -131,8 +172,7 @@ export const TrainingReservationServiceLive = Layer.effect(
 Nová rezervace školící místnosti
 
 Kontaktní údaje:
-- Jméno: ${data.name}
-- Email: ${data.email}
+${fullName ? `- Jméno: ${fullName}\n` : ""}${data.company ? `- Společnost: ${data.company}\n` : ""}${data.role ? `- Pozice: ${data.role}\n` : ""}- Email: ${data.email}
 - Telefon: ${data.phone}
 
 Detaily rezervace:
@@ -166,12 +206,12 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
             text: businessEmailContent.text,
             replyTo: {
               email: data.email,
-              name: data.name,
+              name: displayName,
             },
             tags: ["training-room-reservation"],
             metadata: {
               source: "training-room-form",
-              customerName: data.name,
+              customerName: displayName,
               customerEmail: data.email,
               date: data.date.toISOString(),
               time: data.time,
@@ -182,16 +222,22 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
           // Send the email to business - this must succeed
           yield* emailService.send(businessEmailMessage).pipe(
             Effect.tap(() =>
-              Effect.logInfo("Training room reservation email sent to business", {
-                to: siteConstants.contact.reservationEmail,
-                customerEmail: data.email,
-              })
+              Effect.logInfo(
+                "Training room reservation email sent to business",
+                {
+                  to: siteConstants.contact.reservationEmail,
+                  customerEmail: data.email,
+                }
+              )
             ),
             Effect.tapError((error) =>
-              Effect.logError("Failed to send training room reservation email to business", {
-                error,
-                customerEmail: data.email,
-              })
+              Effect.logError(
+                "Failed to send training room reservation email to business",
+                {
+                  error,
+                  customerEmail: data.email,
+                }
+              )
             ),
             Effect.mapError(
               (_error) =>
@@ -213,7 +259,7 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
             },
             to: {
               email: data.email,
-              name: data.name,
+              name: displayName,
             },
             subject:
               locale === "cs-CZ"
@@ -222,7 +268,9 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
             html: `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
                 <h2 style="color: #333;">${
-                  locale === "cs-CZ" ? "Potvrzení přijetí rezervace" : "Reservation Received"
+                  locale === "cs-CZ"
+                    ? "Potvrzení přijetí rezervace"
+                    : "Reservation Received"
                 }</h2>
                 <p>${
                   locale === "cs-CZ"
@@ -242,7 +290,9 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
                 </div>
                 
                 <h3 style="color: #666;">${
-                  locale === "cs-CZ" ? "Detaily rezervace:" : "Reservation Details:"
+                  locale === "cs-CZ"
+                    ? "Detaily rezervace:"
+                    : "Reservation Details:"
                 }</h3>
                 <table style="width: 100%; border-collapse: collapse;">
                   <tr>
@@ -337,7 +387,7 @@ Your space for work and creativity
             tags: ["training-room-confirmation"],
             metadata: {
               source: "training-room-form",
-              customerName: data.name,
+              customerName: displayName,
               customerEmail: data.email,
               submittedAt: reservation.submittedAt,
             },
@@ -351,10 +401,13 @@ Your space for work and creativity
               })
             ),
             Effect.tapError((error) =>
-              Effect.logWarning("Failed to send confirmation email to customer", {
-                error,
-                customerEmail: data.email,
-              })
+              Effect.logWarning(
+                "Failed to send confirmation email to customer",
+                {
+                  error,
+                  customerEmail: data.email,
+                }
+              )
             ),
             Effect.catchAll(() => Effect.void)
           );
@@ -363,7 +416,10 @@ Your space for work and creativity
         }).pipe(
           Effect.withSpan("submitTrainingRoomReservation", {
             attributes: {
-              "reservation.name": data.name,
+              "reservation.firstName": data.firstName,
+              "reservation.lastName": data.lastName,
+              "reservation.company": data.company,
+              "reservation.role": data.role,
               "reservation.email": data.email,
               "reservation.date": data.date.toISOString(),
               "reservation.time": data.time,

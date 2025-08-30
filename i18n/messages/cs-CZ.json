@@ -525,8 +525,17 @@
     "form": {
       "title": "Rezervace školící místnosti",
       "yourInformation": "Vaše údaje",
-      "fullName": "Celé jméno",
-      "fullNamePlaceholder": "Jan Novák",
+      "firstName": "Jméno",
+      "firstNamePlaceholder": "Jan",
+      "lastName": "Příjmení",
+      "lastNamePlaceholder": "Novák",
+      "company": "Společnost",
+      "companyPlaceholder": "Název společnosti s.r.o.",
+      "role": "Pozice",
+      "rolePlaceholder": "Projektový manažer",
+      "conditionalRequired": "(pokud není společnost)",
+      "conditionalRole": "(pokud je jméno i společnost)",
+      "validationHelpText": "Zadejte buď název společnosti NEBO jméno a příjmení. Pokud zadáte obojí, pozice je povinná.",
       "email": "Email",
       "emailPlaceholder": "vas@email.cz",
       "phone": "Telefonní číslo",
@@ -552,9 +561,96 @@
       "description": "Zkuste to prosím později nebo nás kontaktujte přímo."
     },
     "validation": {
-      "nameRequired": "Jméno je povinné",
-      "nameMin": "Jméno musí mít alespoň {min} znaky",
-      "nameMax": "Jméno může mít maximálně {max} znaků",
+      "firstNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Jméno musí mít alespoň {min} znak",
+            "minPlural=few": "Jméno musí mít alespoň {min} znaky",
+            "minPlural=other": "Jméno musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "firstNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Jméno může mít maximálně {max} znak",
+            "maxPlural=few": "Jméno může mít maximálně {max} znaky",
+            "maxPlural=other": "Jméno může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "lastNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Příjmení musí mít alespoň {min} znak",
+            "minPlural=few": "Příjmení musí mít alespoň {min} znaky",
+            "minPlural=other": "Příjmení musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "lastNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Příjmení může mít maximálně {max} znak",
+            "maxPlural=few": "Příjmení může mít maximálně {max} znaky",
+            "maxPlural=other": "Příjmení může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "companyMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Název společnosti musí mít alespoň {min} znak",
+            "minPlural=few": "Název společnosti musí mít alespoň {min} znaky",
+            "minPlural=other": "Název společnosti musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "companyMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Název společnosti může mít maximálně {max} znak",
+            "maxPlural=few": "Název společnosti může mít maximálně {max} znaky",
+            "maxPlural=other": "Název společnosti může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "roleMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Pozice musí mít alespoň {min} znak",
+            "minPlural=few": "Pozice musí mít alespoň {min} znaky",
+            "minPlural=other": "Pozice musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "roleMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Pozice může mít maximálně {max} znak",
+            "maxPlural=few": "Pozice může mít maximálně {max} znaky",
+            "maxPlural=other": "Pozice může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "companyOrNameRequired": "Zadejte prosím název společnosti nebo jméno a příjmení",
+      "roleRequiredWhenBothFilled": "Pozice je povinná, pokud je zadané jméno i společnost",
       "emailRequired": "Email je povinný",
       "emailInvalid": "Zadejte prosím platnou emailovou adresu",
       "emailMax": "Email může mít maximálně {max} znaků",
