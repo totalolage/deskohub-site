@@ -98,9 +98,6 @@ export function ReservationForm() {
                   <FormItem>
                     <FormLabel htmlFor="firstName">
                       {m["trainingReservation.form.firstName"]()}
-                      <span className="text-muted-foreground text-sm ml-1">
-                        {m["trainingReservation.form.conditionalRequired"]()}
-                      </span>
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -126,9 +123,6 @@ export function ReservationForm() {
                   <FormItem>
                     <FormLabel htmlFor="lastName">
                       {m["trainingReservation.form.lastName"]()}
-                      <span className="text-muted-foreground text-sm ml-1">
-                        {m["trainingReservation.form.conditionalRequired"]()}
-                      </span>
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -157,9 +151,6 @@ export function ReservationForm() {
                   <FormItem>
                     <FormLabel htmlFor="company">
                       {m["trainingReservation.form.company"]()}
-                      <span className="text-muted-foreground text-sm ml-1">
-                        {m["trainingReservation.form.conditionalRequired"]()}
-                      </span>
                     </FormLabel>
                     <FormControl>
                       <Input
@@ -185,9 +176,6 @@ export function ReservationForm() {
                   <FormItem>
                     <FormLabel htmlFor="role">
                       {m["trainingReservation.form.role"]()}
-                      <span className="text-muted-foreground text-sm ml-1">
-                        {m["trainingReservation.form.conditionalRole"]()}
-                      </span>
                     </FormLabel>
                     <FormControl>
                       <Input
