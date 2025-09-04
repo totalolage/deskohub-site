@@ -26,7 +26,12 @@ const InteractiveMap = dynamic(
   }
 );
 
-export function ContactMap() {
+interface ContactMapProps {
+  showTitle?: boolean;
+  showCard?: boolean;
+}
+
+export function ContactMap({ showTitle = true, showCard = true }: ContactMapProps = {}) {
   const locale = getLocale();
   const { address } = siteConstants.contact;
 
@@ -35,16 +40,28 @@ export function ContactMap() {
   const countryName = getLocalizedCountryName(address.countryCode, locale);
   const fullAddress = `${address.street}, ${address.postalCode} ${cityName} ${address.cityDistrict}, ${countryName}`;
 
+  const mapContent = <InteractiveMap locale={locale} address={fullAddress} />;
+
+  if (!showTitle && !showCard) {
+    return mapContent;
+  }
+
   return (
-    <div className="mt-16">
-      <h2 className="text-3xl font-bold text-white mb-8 text-center">
-        {m["contact.mapTitle"]()}
-      </h2>
-      <Card className="bg-gray-900 border-gray-700">
-        <CardContent className="p-0">
-          <InteractiveMap locale={locale} address={fullAddress} />
-        </CardContent>
-      </Card>
+    <div id="map-section" className={showTitle ? "mt-16" : ""}>
+      {showTitle && (
+        <h2 className="text-3xl font-bold text-white mb-8 text-center">
+          {m["contact.mapTitle"]()}
+        </h2>
+      )}
+      {showCard ? (
+        <Card className="bg-gray-900 border-gray-700">
+          <CardContent className="p-0">
+            {mapContent}
+          </CardContent>
+        </Card>
+      ) : (
+        mapContent
+      )}
     </div>
   );
 }
