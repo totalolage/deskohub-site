@@ -3,6 +3,7 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { CalendarIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -41,25 +42,47 @@ import {
 } from "../schemas/reservation";
 
 export function ReservationForm() {
+  const router = useRouter();
   const form = useForm<ReservationFormData>({
     resolver: zodResolver(reservationSchema),
     defaultValues: workspaceConstants.defaultValues,
-    mode: "onBlur", // Better accessibility - validate on blur
+    mode: "onSubmit", // Validate on submit
+    reValidateMode: "onChange", // Re-validate on every change after first submission
   });
 
   const { execute, isExecuting } = useAction(submitTrainingRoomReservation, {
     onSuccess: (result) => {
-      if (result.data?.success) {
-        // Server action will handle the redirect
+      // Check if result has the expected structure
+      if (result?.data?.success) {
         toast.success(m["trainingReservation.success.title"](), {
           description: m["trainingReservation.success.description"](),
         });
+
+        // Handle redirect on client side with query parameters
+        if (result?.data?.redirectUrl) {
+          router.push(result.data.redirectUrl);
+        }
       }
     },
-    onError: (_error) => {
-      toast.error(m["trainingReservation.error.title"](), {
-        description: m["trainingReservation.error.description"](),
-      });
+    onError: (error) => {
+      // Display validation errors if available
+      if (error?.validationErrors) {
+        // Handle field-specific validation errors
+        Object.entries(error.validationErrors).forEach(([field, errors]) => {
+          if (Array.isArray(errors) && errors.length > 0) {
+            form.setError(field as any, {
+              type: "manual",
+              message: errors[0],
+            });
+          }
+        });
+      } else {
+        // Show general error toast if no specific validation errors
+        toast.error(m["trainingReservation.error.title"](), {
+          description:
+            error?.message || m["trainingReservation.error.description"](),
+        });
+      }
     },
   });
 
@@ -89,6 +112,16 @@ export function ReservationForm() {
               {m["trainingReservation.form.yourInformation"]()}
             </legend>
 
+            {/* Display validation error for the name/company field group */}
+            {form.formState.errors.root?.nameAndCompany && (
+              <div
+                className="text-sm font-medium text-destructive"
+                role="alert"
+              >
+                {form.formState.errors.root.nameAndCompany.message}
+              </div>
+            )}
+
             {/* Name Fields */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <FormField
@@ -108,6 +141,7 @@ export function ReservationForm() {
                         ]()}
                         aria-label="First Name"
                         aria-describedby="firstName-error"
+                        autoComplete="given-name"
                         {...field}
                       />
                     </FormControl>
@@ -133,6 +167,7 @@ export function ReservationForm() {
                         ]()}
                         aria-label="Last Name"
                         aria-describedby="lastName-error"
+                        autoComplete="family-name"
                         {...field}
                       />
                     </FormControl>
@@ -161,6 +196,7 @@ export function ReservationForm() {
                         ]()}
                         aria-label="Company"
                         aria-describedby="company-error"
+                        autoComplete="organization"
                         {...field}
                       />
                     </FormControl>
@@ -186,6 +222,7 @@ export function ReservationForm() {
                         ]()}
                         aria-label="Role"
                         aria-describedby="role-error"
+                        autoComplete="organization-title"
                         {...field}
                       />
                     </FormControl>
@@ -256,11 +293,6 @@ export function ReservationForm() {
                 )}
               />
             </div>
-
-            {/* Help text for validation requirements */}
-            <p className="text-sm text-muted-foreground">
-              {m["trainingReservation.form.validationHelpText"]()}
-            </p>
           </fieldset>
 
           {/* Reservation Details Section */}
@@ -332,10 +364,7 @@ export function ReservationForm() {
                     <FormLabel htmlFor="time-select">
                       {m["trainingReservation.form.time"]()}
                     </FormLabel>
-                    <Select
-                      onValueChange={field.onChange}
-                      defaultValue={field.value}
-                    >
+                    <Select onValueChange={field.onChange} value={field.value}>
                       <FormControl>
                         <SelectTrigger
                           id="time-select"

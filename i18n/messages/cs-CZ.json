@@ -650,6 +650,8 @@
         }
       ],
       "companyOrNameRequired": "Zadejte prosím název společnosti nebo jméno a příjmení",
+      "firstNameRequired": "Jméno je povinné",
+      "lastNameRequired": "Příjmení je povinné",
       "roleRequiredWhenBothFilled": "Pozice je povinná, pokud je zadané jméno i společnost",
       "emailRequired": "Email je povinný",
       "emailInvalid": "Zadejte prosím platnou emailovou adresu",

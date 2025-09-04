@@ -1,14 +1,13 @@
 "use server";
 
 import { Effect, Layer } from "effect";
-import { redirect } from "next/navigation";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import {
   TrainingReservationService,
   TrainingReservationServiceLive,
 } from "@/features/training/reservation/backend/training-reservation.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
-import { type ReservationFormData, reservationSchema } from "../schemas/reservation";
+import { reservationSchema } from "../schemas/reservation";
 
 // Create the internal action using the service layer
 const _submitTrainingRoomReservation = createEffectSafeAction(
@@ -22,6 +21,38 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
         `Training room reservation submitted: ${submission.submittedAt} for locale: ${locale}`
       );
 
+      // Build query parameters from the form data
+      const params = new URLSearchParams();
+
+      // Add name fields (prefer company for display, fallback to full name)
+      if (input.company) {
+        params.set("company", input.company);
+      }
+      if (input.firstName) {
+        params.set("firstName", input.firstName);
+      }
+      if (input.lastName) {
+        params.set("lastName", input.lastName);
+      }
+      if (input.role) {
+        params.set("role", input.role);
+      }
+
+      // Add contact and reservation details
+      params.set("email", input.email);
+      params.set("phone", input.phone);
+      params.set("date", input.date.toISOString());
+      params.set("time", input.time);
+      params.set("duration", input.duration.toString());
+
+      if (input.specialRequirements) {
+        params.set("specialRequirements", input.specialRequirements);
+      }
+
+      // Build the full URL with query parameters
+      const queryString = params.toString();
+      const redirectUrl = `/training-room/reservation/confirmation?${queryString}`;
+
       return {
         success: true,
         message:
@@ -29,8 +60,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
             ? "Rezervace byla úspěšně odeslána"
             : "Reservation submitted successfully",
         submissionId: submission.submittedAt,
-        // Include the input data for the redirect
-        formData: input,
+        redirectUrl,
       };
     }).pipe(
       Effect.withSpan("submitTrainingRoomReservation", {
@@ -54,41 +84,6 @@ export const submitTrainingRoomReservation = async (
   "use server";
   const result = await _submitTrainingRoomReservation(...args);
 
-  // If successful, redirect to confirmation page with query parameters
-  if (result?.data?.success && result.data.formData) {
-    const input = result.data.formData;
-    
-    // Build query parameters from the form data
-    const params = new URLSearchParams();
-
-    // Add name fields (prefer company for display, fallback to full name)
-    if (input.company) {
-      params.append("company", input.company);
-    }
-    if (input.firstName) {
-      params.append("firstName", input.firstName);
-    }
-    if (input.lastName) {
-      params.append("lastName", input.lastName);
-    }
-    if (input.role) {
-      params.append("role", input.role);
-    }
-
-    // Add contact and reservation details
-    params.append("email", input.email);
-    params.append("phone", input.phone);
-    params.append("date", input.date.toISOString());
-    params.append("time", input.time);
-    params.append("duration", input.duration.toString());
-
-    if (input.specialRequirements) {
-      params.append("specialRequirements", input.specialRequirements);
-    }
-
-    // Redirect to confirmation page with query parameters
-    redirect(`/training-room/reservation/confirmation?${params.toString()}`);
-  }
-
+  // Just return the result - client will handle the redirect
   return result;
 };

@@ -633,6 +633,8 @@
         }
       ],
       "companyOrNameRequired": "Please provide either company name or first and last name",
+      "firstNameRequired": "First name is required",
+      "lastNameRequired": "Last name is required",
       "roleRequiredWhenBothFilled": "Role is required when both name and company are provided",
       "emailRequired": "Email is required",
       "emailInvalid": "Please enter a valid email address",

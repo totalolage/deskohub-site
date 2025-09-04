@@ -115,9 +115,13 @@ const dateSchema = z.date({
   error: m["trainingReservation.validation.dateRequired"](),
 });
 
-const timeSchema = z.string({
-  error: m["trainingReservation.validation.timeRequired"](),
-});
+const timeSchema = z
+  .string({
+    error: m["trainingReservation.validation.timeRequired"](),
+  })
+  .min(1, {
+    error: m["trainingReservation.validation.timeRequired"](),
+  });
 
 const durationSchema = z
   .number({
@@ -167,15 +171,63 @@ export const reservationSchema = z
   })
   .refine(
     (data) => {
-      // Either company is filled OR (firstName AND lastName) are filled
       const hasCompany = data.company.trim().length > 0;
-      const hasFullName =
-        data.firstName.trim().length > 0 && data.lastName.trim().length > 0;
-      return hasCompany || hasFullName;
+      const hasFirstName = data.firstName.trim().length > 0;
+      const hasLastName = data.lastName.trim().length > 0;
+
+      // If company is filled, we don't need to check name fields
+      if (hasCompany) {
+        return true;
+      }
+
+      // At least some identification is required
+      if (!hasFirstName && !hasLastName && !hasCompany) {
+        return false;
+      }
+
+      return true;
     },
     {
       message: m["trainingReservation.validation.companyOrNameRequired"](),
-      path: ["firstName"], // Show error on firstName field
+      path: ["root"],
+    }
+  )
+  .refine(
+    (data) => {
+      const _hasCompany = data.company.trim().length > 0;
+      const hasFirstName = data.firstName.trim().length > 0;
+      const hasLastName = data.lastName.trim().length > 0;
+
+      // If firstName is filled, lastName must also be filled
+      // This applies regardless of whether company is filled
+      if (hasFirstName && !hasLastName) {
+        return false;
+      }
+
+      return true;
+    },
+    {
+      message: m["trainingReservation.validation.lastNameRequired"](),
+      path: ["lastName"],
+    }
+  )
+  .refine(
+    (data) => {
+      const _hasCompany = data.company.trim().length > 0;
+      const hasFirstName = data.firstName.trim().length > 0;
+      const hasLastName = data.lastName.trim().length > 0;
+
+      // If lastName is filled, firstName must also be filled
+      // This applies regardless of whether company is filled
+      if (hasLastName && !hasFirstName) {
+        return false;
+      }
+
+      return true;
+    },
+    {
+      message: m["trainingReservation.validation.firstNameRequired"](),
+      path: ["firstName"],
     }
   )
   .refine(
