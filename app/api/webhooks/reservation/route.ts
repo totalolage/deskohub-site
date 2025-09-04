@@ -12,11 +12,11 @@ import {
 } from "@/features/email/backend/send-reservation-status-email";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
 import { getLocale, type Locale } from "@/i18n";
-import { ReservationCacheTags } from "@/shared/backend/utils/cache-tags";
 import {
   validateWebhookUUID,
   WebhookValidationError,
 } from "@/shared/backend/utils/webhook";
+import { dotyposTags } from "@/shared/utils/cache-tags";
 
 /**
  * Dotypos Reservation Status Codes
@@ -161,16 +161,21 @@ const processWebhook = (payload: unknown) =>
     const reservationIdStr = String(reservation.reservationid);
     const customerIdStr = String(reservation.customerid);
 
-    // Revalidate specific reservation page
-    const cacheTag = new ReservationCacheTags({
-      reservationId: reservationIdStr,
-    }).reservation;
-    if (cacheTag) revalidateTag(cacheTag);
+    // Revalidate all related cache tags
+    const tagsToInvalidate = [
+      dotyposTags.reservation.all(),
+      dotyposTags.reservation.byId(reservationIdStr),
+      dotyposTags.reservation.byCustomer(customerIdStr),
+    ];
+
+    for (const tag of tagsToInvalidate) {
+      revalidateTag(tag);
+    }
 
     yield* Effect.logInfo("Cache invalidated for reservation update", {
       reservationId: reservationIdStr,
       customerId: customerIdStr,
-      cacheTag,
+      cacheTags: tagsToInvalidate,
     });
 
     const result: WebhookResult = {

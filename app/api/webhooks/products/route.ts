@@ -1,11 +1,11 @@
 import { Effect, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
-import { DotyposMenuCacheTags } from "@/features/dotypos/utils/cache-tags";
 import {
   validateWebhookUUID,
   WebhookValidationError,
 } from "@/shared/backend/utils/webhook";
+import { dotyposTags } from "@/shared/utils/cache-tags";
 
 /**
  * Dotypos Product Webhook Payload Schema
@@ -174,16 +174,28 @@ const processWebhook = (payload: unknown) =>
       })),
     });
 
-    // Create cache tags for invalidation
-    const cacheTags = new DotyposMenuCacheTags();
+    // Collect unique category IDs from affected products
+    const categoryIds = new Set(
+      operations.map((op) => String(op.categoryId)).filter(Boolean)
+    );
 
-    // Invalidate all product caches
-    yield* Effect.sync(() => {
-      revalidateTag(cacheTags.all);
-    });
+    // Invalidate all relevant caches
+    const tagsToInvalidate = [
+      dotyposTags.menu.all(),
+      ...Array.from(categoryIds).map((id) => dotyposTags.menu.byCategory(id)),
+      ...operations.map((op) =>
+        dotyposTags.menu.byProduct(String(op.productId))
+      ),
+    ];
+
+    // Invalidate cache tags
+    for (const tag of tagsToInvalidate) {
+      revalidateTag(tag);
+    }
 
     yield* Effect.logInfo("Product caches invalidated", {
-      tag: cacheTags.all,
+      tags: tagsToInvalidate,
+      categoryCount: categoryIds.size,
     });
 
     return {
@@ -192,7 +204,7 @@ const processWebhook = (payload: unknown) =>
       data: {
         productCount: operations.length,
         operations,
-        invalidatedTag: cacheTags.all,
+        invalidatedTags: tagsToInvalidate,
       },
     };
   });

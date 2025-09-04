@@ -39,23 +39,19 @@ export function cnfToCloudinaryExpression(
 
         const parts: string[] = [];
 
-        // Add positive tags - each needs its own tags: clause for AND
+        // Add positive tags - use parentheses with AND for exact matching
         if (positiveTags.length > 0) {
-          // For multiple positive tags, we need AND between them
-          // Each tag gets its own tags: clause
-          const positiveExprs = positiveTags.map((tag) => {
+          // Build separate tags= expressions and join with AND
+          const tagExpressions = positiveTags.map((tag) => {
+            // Quote tags with spaces
             if (tag.includes(" ")) {
-              return `tags:"${tag}"`;
+              return `tags="${tag}"`;
             }
-            return `tags:${tag}`;
+            return `tags=${tag}`;
           });
 
-          // If we have multiple positive tags, join with AND
-          if (positiveExprs.length > 1) {
-            parts.push(positiveExprs.join(" AND "));
-          } else {
-            parts.push(positiveExprs[0]!);
-          }
+          // Join all tag expressions with AND
+          parts.push(`(${tagExpressions.join(" AND ")})`);
         }
 
         // Add negative tags - these can use comma syntax
@@ -90,8 +86,8 @@ export function cnfToCloudinaryExpression(
         tagValue = actualTag;
       }
 
-      // Use -tags: for negation
-      return isNegative ? `-tags:${tagValue}` : `tags:${tagValue}`;
+      // Use -tags: for negation, tags= for positive (Cloudinary uses = for exact match)
+      return isNegative ? `-tags:${tagValue}` : `tags=${tagValue}`;
     })
     .filter(Boolean);
 

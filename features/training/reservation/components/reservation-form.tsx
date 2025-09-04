@@ -66,21 +66,29 @@ export function ReservationForm() {
     },
     onError: (error) => {
       // Display validation errors if available
-      if (error?.validationErrors) {
+      if (error?.error?.validationErrors) {
+        const validationErrors = error.error.validationErrors;
         // Handle field-specific validation errors
-        Object.entries(error.validationErrors).forEach(([field, errors]) => {
-          if (Array.isArray(errors) && errors.length > 0) {
-            form.setError(field as any, {
-              type: "manual",
-              message: errors[0],
-            });
-          }
-        });
+        if (validationErrors.fieldErrors) {
+          Object.entries(validationErrors.fieldErrors).forEach(
+            ([field, errors]) => {
+              if (Array.isArray(errors) && errors.length > 0) {
+                // Type the field properly for form.setError
+                const fieldName = field as keyof ReservationFormData;
+                form.setError(fieldName, {
+                  type: "manual",
+                  message: errors[0],
+                });
+              }
+            }
+          );
+        }
       } else {
         // Show general error toast if no specific validation errors
         toast.error(m["trainingReservation.error.title"](), {
           description:
-            error?.message || m["trainingReservation.error.description"](),
+            error?.error?.serverError ||
+            m["trainingReservation.error.description"](),
         });
       }
     },

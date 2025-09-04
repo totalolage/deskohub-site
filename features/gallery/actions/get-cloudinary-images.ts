@@ -1,8 +1,7 @@
 "use server";
 
 import { Effect } from "effect";
-import { unstable_cache as cache } from "next/cache";
-import { CloudinarySearchTags } from "@/shared/backend/utils/cache-tags";
+import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   normalizeExpression,
   type UnnormalizedLogicalExpression,
@@ -19,11 +18,17 @@ export interface GetGalleryImagesOptions {
   maxResults?: number;
 }
 
-// Internal cached function
+// Cached function using 'use cache' directive
 export async function getCloudinaryImages(
   options: GetGalleryImagesOptions
 ): Promise<readonly CloudinaryAsset[]> {
+  "use cache";
+
   const { tags, maxResults = 50 } = options;
+
+  // Apply cache tags for selective invalidation
+  // Tag both general cloudinary cache and specific search
+  applyCacheTags(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults));
 
   // Normalize the tag expression to CNF format
   const normalizedTags = normalizeExpression(tags);
@@ -35,12 +40,5 @@ export async function getCloudinaryImages(
     CloudinaryServiceLive
   );
 
-  const cacheTags = new CloudinarySearchTags({
-    tags,
-    maxResults,
-  });
-
-  return cache(() => Effect.runPromise(getImagesEffect), cacheTags.cacheTags, {
-    tags: cacheTags.cacheTags,
-  })();
+  return Effect.runPromise(getImagesEffect);
 }

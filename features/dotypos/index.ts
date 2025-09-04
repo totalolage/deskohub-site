@@ -5,6 +5,14 @@
  * and other POS-related operations.
  */
 
+// Export cached versions for use in server components
+export {
+  getCachedCategories,
+  getCachedCustomer,
+  getCachedProducts,
+  getCachedReservation,
+  getCachedTables,
+} from "./actions/cached-dotypos";
 // Export the Effect service and functions that are actually being used
 export {
   createReservation,

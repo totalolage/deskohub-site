@@ -6,7 +6,6 @@
  */
 
 import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
-import { unstable_cache as cache } from "next/cache";
 import type { TableReservationFormData } from "@/features/table-reservation";
 import { getLocale } from "@/i18n";
 import {
@@ -33,12 +32,6 @@ import type {
   Table,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
-import {
-  DotyposCustomerCacheTags,
-  DotyposMenuCacheTags,
-  DotyposReservationCacheTags,
-  DotyposTablesCacheTags,
-} from "../utils/cache-tags";
 import {
   createNoteWithMetadata,
   createStandardMetadata,
@@ -855,30 +848,18 @@ const DotyposClientLive = Layer.effect(
           ),
 
       getReservation: (id: string) => {
-        const cacheTags = new DotyposReservationCacheTags({
-          reservationId: id,
-        });
-        const cacheKey = ["dotypos-reservation", id];
-
         return Effect.tryPromise({
           try: () =>
-            cache(
-              () =>
-                Effect.runPromise(
-                  api
-                    .getReservation({
-                      path: {
-                        cloudId: config.cloudId,
-                        reservationId: id,
-                      },
-                    })
-                    .pipe(Effect.retry(retryPolicy))
-                ),
-              cacheKey,
-              {
-                tags: cacheTags.cacheTags,
-              }
-            )(),
+            Effect.runPromise(
+              api
+                .getReservation({
+                  path: {
+                    cloudId: config.cloudId,
+                    reservationId: id,
+                  },
+                })
+                .pipe(Effect.retry(retryPolicy))
+            ),
           catch: (error) => {
             // Add special handling for 404
             if (error instanceof ExternalAPIError && error.statusCode === 404) {
@@ -901,30 +882,18 @@ const DotyposClientLive = Layer.effect(
       },
 
       getCustomer: (id: string) => {
-        const cacheTags = new DotyposCustomerCacheTags({
-          customerId: id,
-        });
-        const cacheKey = ["dotypos-customer", id];
-
         return Effect.tryPromise({
           try: () =>
-            cache(
-              () =>
-                Effect.runPromise(
-                  api
-                    .getCustomer({
-                      path: {
-                        cloudId: config.cloudId,
-                        customerId: id,
-                      },
-                    })
-                    .pipe(Effect.retry(retryPolicy))
-                ),
-              cacheKey,
-              {
-                tags: cacheTags.cacheTags,
-              }
-            )(),
+            Effect.runPromise(
+              api
+                .getCustomer({
+                  path: {
+                    cloudId: config.cloudId,
+                    customerId: id,
+                  },
+                })
+                .pipe(Effect.retry(retryPolicy))
+            ),
           catch: (error) => {
             // Add special handling for 404
             if (error instanceof ExternalAPIError && error.statusCode === 404) {
@@ -1202,25 +1171,15 @@ const DotyposClientLive = Layer.effect(
         }).pipe(Effect.withSpan("dotyposClient.findOrCreateCustomer")),
 
       getTables: () => {
-        const cacheTags = new DotyposTablesCacheTags();
-        const cacheKey = ["dotypos-tables"];
-
         return Effect.tryPromise({
           try: () =>
-            cache(
-              () =>
-                Effect.runPromise(
-                  api
-                    .getTables({
-                      path: { cloudId: config.cloudId },
-                    })
-                    .pipe(Effect.retry(retryPolicy))
-                ),
-              cacheKey,
-              {
-                tags: cacheTags.cacheTags,
-              }
-            )(),
+            Effect.runPromise(
+              api
+                .getTables({
+                  path: { cloudId: config.cloudId },
+                })
+                .pipe(Effect.retry(retryPolicy))
+            ),
           catch: (error) => {
             if (
               error instanceof ExternalAPIError ||
@@ -1237,49 +1196,32 @@ const DotyposClientLive = Layer.effect(
       },
 
       getProducts: (options) => {
-        const cacheTags = new DotyposMenuCacheTags({
-          categoryId: options?.categoryId,
-          includeDeleted: options?.includeDeleted,
-        });
-        const cacheKey = [
-          "dotypos-menu-items",
-          options?.categoryId || "all",
-          String(options?.includeDeleted || false),
-        ];
-
         return Effect.tryPromise({
           try: () =>
-            cache(
-              () =>
-                Effect.runPromise(
-                  api
-                    .getProducts({
-                      path: { cloudId: config.cloudId },
-                      query: {
-                        limit: 100,
-                        ...(options?.categoryId && {
-                          filter: `_categoryId|eq|${options.categoryId}`,
-                        }),
-                        ...(options?.includeDeleted === false && {
-                          filter: "deleted|eq|false",
-                        }),
-                      },
-                    })
-                    .pipe(
-                      Effect.map((products) =>
-                        // Filter out deleted products by default unless explicitly requested
-                        options?.includeDeleted === true
-                          ? products
-                          : products.filter((p) => !p.deleted && p.display)
-                      ),
-                      Effect.retry(retryPolicy)
-                    )
-                ),
-              cacheKey,
-              {
-                tags: cacheTags.cacheTags,
-              }
-            )(),
+            Effect.runPromise(
+              api
+                .getProducts({
+                  path: { cloudId: config.cloudId },
+                  query: {
+                    limit: 100,
+                    ...(options?.categoryId && {
+                      filter: `_categoryId|eq|${options.categoryId}`,
+                    }),
+                    ...(options?.includeDeleted === false && {
+                      filter: "deleted|eq|false",
+                    }),
+                  },
+                })
+                .pipe(
+                  Effect.map((products) =>
+                    // Filter out deleted products by default unless explicitly requested
+                    options?.includeDeleted === true
+                      ? products
+                      : products.filter((p) => !p.deleted && p.display)
+                  ),
+                  Effect.retry(retryPolicy)
+                )
+            ),
           catch: (error) => {
             if (
               error instanceof ExternalAPIError ||

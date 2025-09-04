@@ -28,12 +28,15 @@ export function CloudinaryImage({
   blurDataURL,
   ...props
 }: CloudinaryImageProps) {
-  const variantConfig: Record<typeof variant, {
-    size: Record<'width' | 'height', ImageSize>;
-    priority?: boolean;
-    crop: "fill" | "limit";
-    className?: string;
-  } > = {
+  const variantConfig: Record<
+    typeof variant,
+    {
+      size: Record<"width" | "height", ImageSize>;
+      priority?: boolean;
+      crop: "fill" | "limit";
+      className?: string;
+    }
+  > = {
     hero: {
       size: { width: "fill" as const, height: "fill" as const },
       priority: true,
