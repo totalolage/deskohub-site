@@ -2,6 +2,7 @@
 
 import { CldImage, type CldImageProps } from "next-cloudinary";
 import type { CSSProperties } from "react";
+import { cn } from "@/shared/utils";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
 type ImageSize = number | "fill";
@@ -27,36 +28,33 @@ export function CloudinaryImage({
   blurDataURL,
   ...props
 }: CloudinaryImageProps) {
-  const variantConfig = {
+  const variantConfig: Record<typeof variant, {
+    size: Record<'width' | 'height', ImageSize>;
+    priority?: boolean;
+    crop: "fill" | "limit";
+    className?: string;
+  } > = {
     hero: {
       size: { width: "fill" as const, height: "fill" as const },
       priority: true,
-      sizes: "100vw",
-      format: "auto",
-      quality: "auto",
       crop: "fill" as const,
       className: "brightness-50 absolute inset-0 z-0",
     },
     gallery: {
       size: { width: 600, height: 600 },
       crop: "fill" as const,
-      gravity: "auto" as const,
       className: "w-full h-full",
       priority: true,
     },
     thumbnail: {
       size: { width: 400, height: 400 },
       crop: "fill" as const,
-      gravity: "auto" as const,
       className:
         "w-full h-full group-hover:scale-105 transition-transform duration-300",
     },
     full: {
       size: { width: 1920, height: 1080 }, // Default size, will be overridden by provided size
       crop: "limit" as const,
-      quality: "auto",
-      format: "auto",
-      className: "w-full h-full",
     },
   };
 
@@ -67,7 +65,7 @@ export function CloudinaryImage({
   const objectFit = config.crop === "fill" ? "object-cover" : "object-contain";
 
   // Build the final className with the appropriate object-fit
-  const finalClassName = `${config.className} ${objectFit}`.trim();
+  const finalClassName = cn(config.className, objectFit);
 
   // Use provided size or fall back to variant's default size
   const imageSize = size || config.size;

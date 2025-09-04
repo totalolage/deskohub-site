@@ -72,9 +72,7 @@ export function GalleryHeader({
           <div key={image.public_id} className="relative min-w-full h-full">
             <CloudinaryImage
               asset={image}
-              variant="full"
-              size={{ width: "fill", height: "fill" }}
-              className="object-cover"
+              variant="hero"
               priority={images.indexOf(image) === 0}
             />
             {/* Gradient overlay for better text visibility */}
