@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuClient } from "./menu-client";
+import { MenuHero } from "./menu-hero";
 
 export async function MenuServer() {
   const showPdfDownload = siteConstants.featureFlags.menuPdfDownload;
@@ -13,24 +14,16 @@ export async function MenuServer() {
     )
   );
 
-  try {
-    const { products, categories } = await Effect.runPromise(program);
+  const { products, categories } = await Effect.runPromise(program);
 
-    return (
+  return (
+    <div className="bg-black">
+      <MenuHero />
       <MenuClient
         products={products}
         categories={categories}
         showPdfDownload={showPdfDownload}
       />
-    );
-  } catch (_error) {
-    // Error fetching menu data - Effect logging handles this
-    return (
-      <div className="max-w-4xl mx-auto px-6 py-16">
-        <div className="bg-red-900/20 border border-red-500 text-red-300 px-4 py-3 rounded mb-8">
-          Failed to load menu data
-        </div>
-      </div>
-    );
-  }
+    </div>
+  );
 }

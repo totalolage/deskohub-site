@@ -3,7 +3,6 @@
 import type { Category, Product } from "@/features/dotypos/generated";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
-import { MenuHero } from "./menu-hero";
 import { MenuOpeningHours } from "./menu-opening-hours";
 import { MenuPDFDownload } from "./menu-pdf-download";
 import { MenuSection } from "./menu-section";
@@ -63,29 +62,25 @@ export function MenuClient({
   }
 
   return (
-    <div className="bg-black">
-      <MenuHero />
+    <div className="max-w-4xl mx-auto px-6 py-16">
+      {showPdfDownload && <MenuPDFDownload />}
+      <MenuOpeningHours />
 
-      <div className="max-w-4xl mx-auto px-6 py-16">
-        {showPdfDownload && <MenuPDFDownload />}
-        <MenuOpeningHours />
+      {/* Display all categories in order */}
+      {displayCategories.map((category) => (
+        <MenuSection
+          key={category.id}
+          category={category}
+          products={products}
+          emoji={
+            category.id
+              ? siteConstants.menu.categoryEmojis[category.id]
+              : undefined
+          }
+        />
+      ))}
 
-        {/* Display all categories in order */}
-        {displayCategories.map((category) => (
-          <MenuSection
-            key={category.id}
-            category={category}
-            products={products}
-            emoji={
-              category.id
-                ? siteConstants.menu.categoryEmojis[category.id]
-                : undefined
-            }
-          />
-        ))}
-
-        <MenuFooterNote />
-      </div>
+      <MenuFooterNote />
     </div>
   );
 }
