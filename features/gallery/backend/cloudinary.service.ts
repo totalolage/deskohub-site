@@ -1,6 +1,6 @@
 import * as Schema from "@effect/schema/Schema";
 import { v2 as cloudinary } from "cloudinary";
-import { Context, Effect, Layer, pipe } from "effect";
+import { Context, Effect, Layer, pipe, Schedule } from "effect";
 import { env } from "@/env";
 import type { CnfExpression } from "@/shared/utils/normalize-tag-expression";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
@@ -61,6 +61,7 @@ export class CloudinarySearchError extends Schema.TaggedError<CloudinarySearchEr
   {
     message: Schema.String,
     expression: Schema.String,
+    httpCode: Schema.optional(Schema.Number),
   }
 ) {}
 
@@ -96,6 +97,31 @@ export interface CloudinaryService {
 
 export const CloudinaryService = Context.GenericTag<CloudinaryService>(
   "@app/CloudinaryService"
+);
+
+// ============================================================================
+// Retry Policy
+// ============================================================================
+
+/**
+ * Retry policy for Cloudinary API calls.
+ * - Maximum 3 attempts total (initial + 2 retries)
+ * - Exponential backoff: ~100ms, ~200ms
+ * - Only retries on server errors (500+)
+ * - Does NOT retry on rate limits (420) or other client errors
+ */
+const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
+  Schedule.jittered,
+  Schedule.intersect(Schedule.recurs(2)), // Use intersect for AND condition
+  Schedule.whileInput<CloudinarySearchError>((error) => {
+    // Only retry on server errors (500+)
+    if (error.httpCode !== undefined && error.httpCode >= 500) {
+      return true;
+    }
+    // Don't retry on rate limits (420) or other errors
+    return false;
+  }),
+  Schedule.map(() => void 0)
 );
 
 // ============================================================================
@@ -152,7 +178,7 @@ const makeCloudinaryService = Effect.gen(function* () {
         try: async () => {
           const search = buildSearchExpression(expression, options);
           const result = await search.execute();
-          return result.resources as CloudinaryAsset[];
+          return Array.isArray(result.resources) ? result.resources : [];
         },
         catch: (error) => {
           const errorMessage =
@@ -162,9 +188,24 @@ const makeCloudinaryService = Effect.gen(function* () {
                 ? JSON.stringify(error)
                 : String(error);
 
+          // Extract HTTP code if available from Cloudinary error structure
+          let httpCode: number | undefined;
+          if (
+            error &&
+            typeof error === "object" &&
+            "error" in error &&
+            typeof error.error === "object" &&
+            error.error !== null &&
+            "http_code" in error.error &&
+            typeof error.error.http_code === "number"
+          ) {
+            httpCode = error.error.http_code;
+          }
+
           return new CloudinarySearchError({
             message: errorMessage,
             expression,
+            httpCode,
           });
         },
       }),
@@ -179,9 +220,12 @@ const makeCloudinaryService = Effect.gen(function* () {
         Effect.logError("Search failed", {
           expression,
           errorMessage: error.message,
+          httpCode: error.httpCode,
           errorDetails: JSON.stringify(error, null, 2),
         })
-      )
+      ),
+      // Apply retry policy
+      Effect.retry(cloudinaryRetryPolicy)
     );
 
   const searchByTag: CloudinaryService["searchByTag"] = (tag, options) =>

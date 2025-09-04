@@ -38,6 +38,13 @@ export async function getCloudinaryImages(
       maxResults,
     }),
     CloudinaryServiceLive
+  ).pipe(
+    // Catch any errors and return empty array instead of failing
+    Effect.catchAll((error) => {
+      // Log the error for monitoring but don't fail the page
+      console.error("Cloudinary search failed:", error);
+      return Effect.succeed([]);
+    })
   );
 
   return Effect.runPromise(getImagesEffect);
