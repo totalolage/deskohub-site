@@ -19,8 +19,6 @@ export const generateMetadata = metadata({
   description: m["reservationConfirmation.pageDescription"](),
 });
 
-export const revalidate = 3600;
-
 export default async function ReservationConfirmationPage({
   params,
 }: Readonly<RouteProps_locale_id>) {

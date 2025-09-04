@@ -1,15 +1,19 @@
 import { getCldImageUrl } from "next-cloudinary";
+import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
 /**
- * Generates a base64-encoded blur data URL for a Cloudinary image
- * This is a client-compatible utility version
- * @param publicId - The Cloudinary public ID of the image
- * @returns Base64-encoded data URL for use as a blur placeholder
+ * Server-side cached version of generateBlurDataUrl
+ * Cached function to avoid regenerating the same blur data
  */
-export const generateBlurDataUrl = async (
+export const generateBlurDataUrlCached = async (
   asset: CloudinaryAsset
 ): Promise<string> => {
+  "use cache";
+
+  // Apply cache tags for selective invalidation
+  applyCacheTags(...cloudinaryTags.getTags(asset.public_id));
+
   // Generate a very low-res URL (10x10 pixels, heavily compressed)
   const lowResUrl = getCldImageUrl({
     src: asset.public_id,

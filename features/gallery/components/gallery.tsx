@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import { generateBlurDataUrl } from "../utils/generate-blur-data-url";
+import { generateBlurDataUrlCached } from "../actions/generate-blur-data-url";
 import { ClientGallery } from "./client-gallery";
 
 /**
@@ -13,7 +13,7 @@ export async function Gallery({
     Promise.all(
       images.map(async (image) => [
         image.public_id,
-        await generateBlurDataUrl(image),
+        await generateBlurDataUrlCached(image),
       ])
     ).then((imagesWithBlur) => Object.fromEntries(imagesWithBlur))
   );
