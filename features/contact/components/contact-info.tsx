@@ -7,6 +7,10 @@ import {
   getTranslatedCityName,
 } from "@/shared/utils/geo-formatting";
 import { formatPhoneNumber } from "@/shared/utils/phone-formatting";
+import {
+  getWeekdayHours,
+  getWeekendHours,
+} from "@/shared/utils/working-hours-helpers";
 
 export function ContactInfo() {
   const locale = getLocale();
@@ -102,7 +106,7 @@ export function ContactInfo() {
                     <span>{m["contact.weekdays"]()}</span>
                     <span>
                       {m["contact.weekdayHours"]({
-                        hours: siteConstants.workingHours.weekdays.formatted,
+                        hours: getWeekdayHours().formatted,
                       })}
                     </span>
                   </div>
@@ -110,7 +114,7 @@ export function ContactInfo() {
                     <span>{m["contact.weekend"]()}</span>
                     <span>
                       {m["contact.weekendHours"]({
-                        hours: siteConstants.workingHours.weekends.formatted,
+                        hours: getWeekendHours().formatted,
                       })}
                     </span>
                   </div>

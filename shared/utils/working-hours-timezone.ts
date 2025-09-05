@@ -67,28 +67,16 @@ export function isReservationWithinWorkingHours(
   const endTime = getLocalTimeInRestaurantTimezone(endDateTime);
 
   // Get working hours for the day
-  const workingHours =
-    startTime.dayOfWeek === 0 || startTime.dayOfWeek === 6
-      ? siteConstants.workingHours.weekends
-      : siteConstants.workingHours.weekdays;
+  const dayHours =
+    siteConstants.workingHours.hours[
+      startTime.dayOfWeek as 0 | 1 | 2 | 3 | 4 | 5 | 6
+    ];
 
-  // Check if the day is open
-  if (!workingHours.days.includes(startTime.dayOfWeek)) {
-    return false;
-  }
-
-  // Parse opening and closing times
-  const openTimeParts = workingHours.open.split(":").map(Number);
-  const closeTimeParts = workingHours.close.split(":").map(Number);
-
-  const openHours = openTimeParts[0] ?? 0;
-  const openMinutes = openTimeParts[1] ?? 0;
-  const closeHours = closeTimeParts[0] ?? 0;
-  const closeMinutes = closeTimeParts[1] ?? 0;
-
-  const openTimeInMinutes = openHours * 60 + openMinutes;
+  const openTimeInMinutes = dayHours.open.hrs * 60 + dayHours.open.mins;
   const closeTimeInMinutes =
-    closeHours === 24 ? 24 * 60 : closeHours * 60 + closeMinutes;
+    dayHours.close.hrs === 24
+      ? 24 * 60
+      : dayHours.close.hrs * 60 + dayHours.close.mins;
 
   // Check start time
   const startTimeInMinutes = startTime.hours * 60 + startTime.minutes;
@@ -150,29 +138,15 @@ export function getAvailableDurations(datetime: Date | null): number[] {
     getLocalTimeInRestaurantTimezone(datetime);
 
   // Get working hours for the selected day
-  const workingHours =
-    dayOfWeek === 0 || dayOfWeek === 6
-      ? siteConstants.workingHours.weekends
-      : siteConstants.workingHours.weekdays;
-
-  // Check if the day is open
-  if (!workingHours.days.includes(dayOfWeek)) {
-    return []; // No durations available on closed days
-  }
-
-  // Parse opening and closing times
-  const openTimeParts = workingHours.open.split(":").map(Number);
-  const closeTimeParts = workingHours.close.split(":").map(Number);
-
-  const openHours = openTimeParts[0] ?? 0;
-  const openMinutes = openTimeParts[1] ?? 0;
-  const closeHours = closeTimeParts[0] ?? 0;
-  const closeMinutes = closeTimeParts[1] ?? 0;
+  const dayHours =
+    siteConstants.workingHours.hours[dayOfWeek as 0 | 1 | 2 | 3 | 4 | 5 | 6];
 
   const currentMinutes = hours * 60 + minutes;
-  const openingMinutes = openHours * 60 + openMinutes;
+  const openingMinutes = dayHours.open.hrs * 60 + dayHours.open.mins;
   const closingMinutes =
-    closeHours === 24 ? 24 * 60 : closeHours * 60 + closeMinutes;
+    dayHours.close.hrs === 24
+      ? 24 * 60
+      : dayHours.close.hrs * 60 + dayHours.close.mins;
 
   // Check if selected time is before opening hours
   if (currentMinutes < openingMinutes) {

@@ -166,22 +166,21 @@ export const siteConstants = {
   workingHours: {
     // All times are in Europe/Prague timezone (CET/CEST)
     timezone: "Europe/Prague",
-    weekdays: {
-      // Monday to Friday
-      days: [1, 2, 3, 4, 5],
-      open: "17:00",
-      close: "23:00",
-      formatted: "17:00 - 23:00",
-      formattedNoSpaces: "17:00-23:00",
-    },
-    weekends: {
-      // Saturday and Sunday
-      days: [0, 6],
-      open: "12:00",
-      close: "23:00",
-      formatted: "12:00 - 23:00",
-      formattedNoSpaces: "12:00-23:00",
-    },
+    hours: {
+      0: { open: { hrs: 12, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Sunday
+      1: { open: { hrs: 17, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Monday
+      2: { open: { hrs: 17, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Tuesday
+      3: { open: { hrs: 17, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Wednesday
+      4: { open: { hrs: 17, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Thursday
+      5: { open: { hrs: 17, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Friday
+      6: { open: { hrs: 12, mins: 0 }, close: { hrs: 23, mins: 0 } }, // Saturday
+    } satisfies Record<
+      0 | 1 | 2 | 3 | 4 | 5 | 6,
+      {
+        open: { hrs: number; mins: number };
+        close: { hrs: number; mins: number };
+      }
+    >,
   },
   // Feature flags - simple constants for prerendered site
   featureFlags: {

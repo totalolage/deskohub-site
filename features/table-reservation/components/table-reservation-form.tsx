@@ -50,6 +50,10 @@ import {
   getMinBookingDateTime,
 } from "@/shared/utils/date-formatting";
 import { formatPrice } from "@/shared/utils/price-formatting";
+import {
+  getWeekdayHours,
+  getWeekendHours,
+} from "@/shared/utils/working-hours-helpers";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
 import styles from "./table-reservation-form.module.css";
 
@@ -151,15 +155,15 @@ export function TableReservationForm() {
       <div className="flex justify-center gap-4 mb-6">
         <Badge variant="outline" className="px-4 py-2">
           <Clock className="w-4 h-4 mr-2" />
-          {m["hours.weekdays"]()} {siteConstants.workingHours.weekdays.open}-
-          {siteConstants.workingHours.weekdays.close}
+          {m["hours.weekdays"]()} {getWeekdayHours().open}-
+          {getWeekdayHours().close}
         </Badge>
         <Badge variant="outline" className="px-4 py-2">
           <Clock className="w-4 h-4 mr-2" />
-          {m["hours.weekends"]()} {siteConstants.workingHours.weekends.open}-
-          {siteConstants.workingHours.weekends.close === "24:00"
+          {m["hours.weekends"]()} {getWeekendHours().open}-
+          {getWeekendHours().close === "24:00"
             ? "00:00"
-            : siteConstants.workingHours.weekends.close}
+            : getWeekendHours().close}
         </Badge>
       </div>
 

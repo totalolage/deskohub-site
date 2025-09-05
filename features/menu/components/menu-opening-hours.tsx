@@ -1,5 +1,8 @@
 import { m } from "@/i18n";
-import { siteConstants } from "@/shared/utils/constants";
+import {
+  getWeekdayHours,
+  getWeekendHours,
+} from "@/shared/utils/working-hours-helpers";
 
 export function MenuOpeningHours() {
   return (
@@ -11,7 +14,7 @@ export function MenuOpeningHours() {
           </div>
           <div className="text-white text-xl">
             {m["menu.openingHours.weekdaysTime"]({
-              hours: siteConstants.workingHours.weekdays.formattedNoSpaces,
+              hours: getWeekdayHours().formattedNoSpaces,
             })}
           </div>
         </div>
@@ -21,7 +24,7 @@ export function MenuOpeningHours() {
           </div>
           <div className="text-white text-xl">
             {m["menu.openingHours.weekendTime"]({
-              hours: siteConstants.workingHours.weekends.formattedNoSpaces,
+              hours: getWeekendHours().formattedNoSpaces,
             })}
           </div>
         </div>

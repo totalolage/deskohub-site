@@ -2,6 +2,10 @@ import { m } from "@/i18n";
 import { Hero } from "@/shared/components";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
+import {
+  getWeekdayHours,
+  getWeekendHours,
+} from "@/shared/utils/working-hours-helpers";
 
 export function HomeHero() {
   return (
@@ -20,8 +24,7 @@ export function HomeHero() {
               {m["hours.weekdays"]()}
             </div>
             <div className="text-lg font-semibold">
-              {siteConstants.workingHours.weekdays.open}-
-              {siteConstants.workingHours.weekdays.close}
+              {getWeekdayHours().open}-{getWeekdayHours().close}
             </div>
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
@@ -29,10 +32,10 @@ export function HomeHero() {
               {m["hours.weekends"]()}
             </div>
             <div className="text-lg font-semibold">
-              {siteConstants.workingHours.weekends.open}-
-              {siteConstants.workingHours.weekends.close === "24:00"
+              {getWeekendHours().open}-
+              {getWeekendHours().close === "24:00"
                 ? "00:00"
-                : siteConstants.workingHours.weekends.close}
+                : getWeekendHours().close}
             </div>
           </div>
         </div>

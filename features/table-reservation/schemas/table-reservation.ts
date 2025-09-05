@@ -44,29 +44,18 @@ export const getTableReservationSchema = () => {
           getLocalTimeInRestaurantTimezone(date);
 
         // Get working hours for the selected day
-        const workingHours =
-          dayOfWeek === 0 || dayOfWeek === 6
-            ? siteConstants.workingHours.weekends
-            : siteConstants.workingHours.weekdays;
+        const dayHours =
+          siteConstants.workingHours.hours[
+            dayOfWeek as 0 | 1 | 2 | 3 | 4 | 5 | 6
+          ];
 
-        // Check if the day is open
-        if (!workingHours.days.includes(dayOfWeek)) {
-          return false;
-        }
-
-        // Parse opening and closing times
-        const openTimeParts = workingHours.open.split(":").map(Number);
-        const closeTimeParts = workingHours.close.split(":").map(Number);
-
-        const openHours = openTimeParts[0] ?? 0;
-        const openMinutes = openTimeParts[1] ?? 0;
-        const closeHours = closeTimeParts[0] ?? 0;
-        const closeMinutes = closeTimeParts[1] ?? 0;
-
+        // Convert to minutes for comparison
         const currentMinutes = hours * 60 + minutes;
-        const openingMinutes = openHours * 60 + openMinutes;
+        const openingMinutes = dayHours.open.hrs * 60 + dayHours.open.mins;
         const closingMinutes =
-          closeHours === 24 ? 24 * 60 : closeHours * 60 + closeMinutes;
+          dayHours.close.hrs === 24
+            ? 24 * 60
+            : dayHours.close.hrs * 60 + dayHours.close.mins;
 
         // Check if selected time is within opening hours
         return (

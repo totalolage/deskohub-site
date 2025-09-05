@@ -1,0 +1,137 @@
+import { getLocale } from "@/i18n";
+import { siteConstants } from "@/shared/utils/constants";
+
+type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
+type TimeObject = { hrs: number; mins: number };
+type DayHours = { open: TimeObject; close: TimeObject };
+
+/**
+ * Create a date object from time components for formatting
+ */
+function createDateFromTime(time: TimeObject): Date {
+  const date = new Date();
+  date.setHours(time.hrs, time.mins, 0, 0);
+  return date;
+}
+
+/**
+ * Format time object using Intl.DateTimeFormat
+ */
+export function formatTime(time: TimeObject, withSpaces = false): string {
+  const date = createDateFromTime(time);
+  const formatter = new Intl.DateTimeFormat(getLocale(), {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: siteConstants.workingHours.timezone,
+  });
+
+  const formatted = formatter.format(date);
+  return withSpaces ? formatted.replace(":", " : ") : formatted;
+}
+
+/**
+ * Format day hours to string representation using Intl API
+ */
+export function formatDayHours(dayHours: DayHours, withSpaces = true): string {
+  const open = formatTime(dayHours.open, false);
+  const close = formatTime(dayHours.close, false);
+  const separator = withSpaces ? " - " : "-";
+  return `${open}${separator}${close}`;
+}
+
+/**
+ * Get working hours for a specific day
+ */
+export function getWorkingHoursForDay(day: DayOfWeek): DayHours {
+  return siteConstants.workingHours.hours[day];
+}
+
+/**
+ * Get formatted working hours for weekdays (Monday-Friday)
+ */
+export function getWeekdayHours(): {
+  open: string;
+  close: string;
+  formatted: string;
+  formattedNoSpaces: string;
+} {
+  // Assuming all weekdays have the same hours (which they do in the current setup)
+  const mondayHours = siteConstants.workingHours.hours[1];
+  return {
+    open: formatTime(mondayHours.open),
+    close: formatTime(mondayHours.close),
+    formatted: formatDayHours(mondayHours, true),
+    formattedNoSpaces: formatDayHours(mondayHours, false),
+  };
+}
+
+/**
+ * Get formatted working hours for weekends (Saturday-Sunday)
+ */
+export function getWeekendHours(): {
+  open: string;
+  close: string;
+  formatted: string;
+  formattedNoSpaces: string;
+} {
+  // Assuming both weekend days have the same hours (which they do in the current setup)
+  const saturdayHours = siteConstants.workingHours.hours[6];
+  return {
+    open: formatTime(saturdayHours.open),
+    close: formatTime(saturdayHours.close),
+    formatted: formatDayHours(saturdayHours, true),
+    formattedNoSpaces: formatDayHours(saturdayHours, false),
+  };
+}
+
+/**
+ * Check if a day is a weekend day
+ */
+export function isWeekend(day: DayOfWeek): boolean {
+  return day === 0 || day === 6;
+}
+
+/**
+ * Get list of days for weekdays
+ */
+export function getWeekdaysList(): DayOfWeek[] {
+  return [1, 2, 3, 4, 5];
+}
+
+/**
+ * Get list of days for weekends
+ */
+export function getWeekendsList(): DayOfWeek[] {
+  return [0, 6];
+}
+
+/**
+ * Convert time string to TimeObject
+ */
+export function parseTimeString(timeStr: string): TimeObject {
+  const [hrs, mins] = timeStr.split(":").map(Number);
+  return { hrs: hrs ?? 0, mins: mins ?? 0 };
+}
+
+/**
+ * Convert TimeObject to minutes since midnight
+ */
+export function timeToMinutes(time: TimeObject): number {
+  return time.hrs * 60 + time.mins;
+}
+
+/**
+ * Check if a specific time is within working hours for a day
+ */
+export function isTimeWithinWorkingHours(
+  day: DayOfWeek,
+  time: TimeObject
+): boolean {
+  const dayHours = getWorkingHoursForDay(day);
+  const timeInMinutes = timeToMinutes(time);
+  const openInMinutes = timeToMinutes(dayHours.open);
+  const closeInMinutes = timeToMinutes(dayHours.close);
+
+  return timeInMinutes >= openInMinutes && timeInMinutes < closeInMinutes;
+}
