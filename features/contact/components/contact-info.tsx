@@ -102,7 +102,7 @@ export function ContactInfo() {
                   {m["contact.hoursLabel"]()}
                 </h3>
                 <div className="text-gray-300 space-y-1">
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span>{m["contact.weekdays"]()}</span>
                     <span>
                       {m["contact.weekdayHours"]({
@@ -110,7 +110,7 @@ export function ContactInfo() {
                       })}
                     </span>
                   </div>
-                  <div className="flex justify-between">
+                  <div className="flex justify-between gap-2">
                     <span>{m["contact.weekend"]()}</span>
                     <span>
                       {m["contact.weekendHours"]({
