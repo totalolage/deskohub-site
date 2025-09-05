@@ -31,7 +31,10 @@ interface ContactMapProps {
   showCard?: boolean;
 }
 
-export function ContactMap({ showTitle = true, showCard = true }: ContactMapProps = {}) {
+export function ContactMap({
+  showTitle = true,
+  showCard = true,
+}: ContactMapProps = {}) {
   const locale = getLocale();
   const { address } = siteConstants.contact;
 
@@ -55,9 +58,7 @@ export function ContactMap({ showTitle = true, showCard = true }: ContactMapProp
       )}
       {showCard ? (
         <Card className="bg-gray-900 border-gray-700">
-          <CardContent className="p-0">
-            {mapContent}
-          </CardContent>
+          <CardContent className="p-0">{mapContent}</CardContent>
         </Card>
       ) : (
         mapContent

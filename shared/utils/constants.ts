@@ -177,10 +177,10 @@ export const siteConstants = {
     weekends: {
       // Saturday and Sunday
       days: [0, 6],
-      open: "15:00",
+      open: "12:00",
       close: "23:00",
-      formatted: "15:00 - 23:00",
-      formattedNoSpaces: "11:00-23:00",
+      formatted: "12:00 - 23:00",
+      formattedNoSpaces: "12:00-23:00",
     },
   },
   // Feature flags - simple constants for prerendered site

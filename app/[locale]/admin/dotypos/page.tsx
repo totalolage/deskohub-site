@@ -21,7 +21,7 @@ export default function DotyposAuthPage() {
   useEffect(() => {
     // Generate a random state for CSRF protection on client side
     const state = Math.random().toString(36).substring(7);
-    
+
     // Correct Dotykacka OAuth URL with /client/connect endpoint
     const url = new URL("https://admin.dotypos.com/client/connect");
     url.searchParams.append("client_id", clientId);
@@ -29,7 +29,7 @@ export default function DotyposAuthPage() {
     url.searchParams.append("scope", "*");
     url.searchParams.append("redirect_uri", redirectUrl);
     url.searchParams.append("state", state);
-    
+
     setAuthUrl(url.toString());
   }, [clientId, clientSecret, redirectUrl]);
 

@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { ContactMap } from "@/features/contact";
-import { m, getLocale } from "@/i18n";
+import { getLocale, m } from "@/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 export function Location() {
   const locale = getLocale();
-  
+
   return (
     <section className="py-16 bg-gray-900">
       <div className="max-w-7xl mx-auto px-6">
