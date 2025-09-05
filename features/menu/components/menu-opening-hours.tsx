@@ -14,7 +14,7 @@ export function MenuOpeningHours() {
           </div>
           <div className="text-white text-xl">
             {m["menu.openingHours.weekdaysTime"]({
-              hours: getWeekdayHours().formattedNoSpaces,
+              hours: getWeekdayHours().formatted,
             })}
           </div>
         </div>
@@ -24,7 +24,7 @@ export function MenuOpeningHours() {
           </div>
           <div className="text-white text-xl">
             {m["menu.openingHours.weekendTime"]({
-              hours: getWeekendHours().formattedNoSpaces,
+              hours: getWeekendHours().formatted,
             })}
           </div>
         </div>

@@ -6,38 +6,34 @@ type TimeObject = { hrs: number; mins: number };
 type DayHours = { open: TimeObject; close: TimeObject };
 
 /**
- * Create a date object from time components for formatting
+ * Format time object to string representation using Intl API
+ * The TimeObject values represent the actual display time (already in Prague timezone)
+ * We need to create a fixed reference date to avoid timezone conversion issues
  */
-function createDateFromTime(time: TimeObject): Date {
-  const date = new Date();
-  date.setHours(time.hrs, time.mins, 0, 0);
-  return date;
-}
+export function formatTime(time: TimeObject): string {
+  // Create a fixed UTC date with our time values
+  // Using UTC ensures no local timezone conversion happens
+  // The year/month/day don't matter since we only format hours/minutes
+  const fixedDate = new Date(Date.UTC(2024, 0, 1, time.hrs, time.mins, 0));
 
-/**
- * Format time object using Intl.DateTimeFormat
- */
-export function formatTime(time: TimeObject, withSpaces = false): string {
-  const date = createDateFromTime(time);
+  // Format using Intl API with UTC timezone to prevent conversion
+  // This gives us locale-aware formatting while preserving the exact hours
   const formatter = new Intl.DateTimeFormat(getLocale(), {
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false,
-    timeZone: siteConstants.workingHours.timezone,
+    timeZone: "UTC", // Use UTC to prevent any timezone conversion
   });
 
-  const formatted = formatter.format(date);
-  return withSpaces ? formatted.replace(":", " : ") : formatted;
+  return formatter.format(fixedDate);
 }
 
 /**
  * Format day hours to string representation using Intl API
  */
-export function formatDayHours(dayHours: DayHours, withSpaces = true): string {
-  const open = formatTime(dayHours.open, false);
-  const close = formatTime(dayHours.close, false);
-  const separator = withSpaces ? " - " : "-";
-  return `${open}${separator}${close}`;
+export function formatDayHours(dayHours: DayHours): string {
+  const open = formatTime(dayHours.open);
+  const close = formatTime(dayHours.close);
+  return `${open} - ${close}`;
 }
 
 /**
@@ -54,15 +50,13 @@ export function getWeekdayHours(): {
   open: string;
   close: string;
   formatted: string;
-  formattedNoSpaces: string;
 } {
   // Assuming all weekdays have the same hours (which they do in the current setup)
   const mondayHours = siteConstants.workingHours.hours[1];
   return {
     open: formatTime(mondayHours.open),
     close: formatTime(mondayHours.close),
-    formatted: formatDayHours(mondayHours, true),
-    formattedNoSpaces: formatDayHours(mondayHours, false),
+    formatted: formatDayHours(mondayHours),
   };
 }
 
@@ -73,15 +67,13 @@ export function getWeekendHours(): {
   open: string;
   close: string;
   formatted: string;
-  formattedNoSpaces: string;
 } {
   // Assuming both weekend days have the same hours (which they do in the current setup)
   const saturdayHours = siteConstants.workingHours.hours[6];
   return {
     open: formatTime(saturdayHours.open),
     close: formatTime(saturdayHours.close),
-    formatted: formatDayHours(saturdayHours, true),
-    formattedNoSpaces: formatDayHours(saturdayHours, false),
+    formatted: formatDayHours(saturdayHours),
   };
 }
 
