@@ -1,11 +1,11 @@
 {
-  "name": "my-v0-project",
+  "name": "deskohub-site",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
     "build": "run-s i18n:compile next:build",
-    "next:build": "bunx next build",
+    "next:build": "bun next build --turbo",
     "dev": "run-p dev:next dev:i18n",
     "dev:next": "bunx next dev --turbo",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
