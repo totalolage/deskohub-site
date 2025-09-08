@@ -3,11 +3,11 @@ type BaseCloudinaryTag =
   | "Domovská stránka"
   | "Školící místnost"
   | "Web galerie"
-  | "hero"
-  | "galerie"
   | "Menu"
   | "Kontakt"
-  | "Deskové hry";
+  | "Deskové hry"
+  | "hero"
+  | "galerie";
 
 // CloudinaryTag can be either positive or negative (prefixed with !)
 export type CloudinaryTag = BaseCloudinaryTag | `!${BaseCloudinaryTag}`;

@@ -4,6 +4,7 @@
     "": {
       "name": "my-v0-project",
       "dependencies": {
+        "@doist/react-interpolate": "^2.2.1",
         "@effect/platform-node": "^0.94.0",
         "@effect/schema": "^0.75.5",
         "@hey-api/client-fetch": "^0.13.1",
@@ -105,6 +106,8 @@
     "@cloudinary/transformation-builder-sdk": ["@cloudinary/transformation-builder-sdk@1.21.2", "", { "dependencies": { "@cloudinary/url-gen": "^1.7.0" } }, "sha512-ehOgKUaP+Nvuf7B0TosmB8iilL0kdiVjzjl8tIK06cjvsNnwSJI3xP9nEJmKkvqNxwwFwvYXT+mxUTqnSv9JOA=="],
 
     "@cloudinary/url-gen": ["@cloudinary/url-gen@1.15.0", "", { "dependencies": { "@cloudinary/transformation-builder-sdk": "^1.10.0" } }, "sha512-bjU67eZxLUgoRy/Plli4TQio7q6P31OYqnEgXxeN9TKXrzr6h0DeEdIUhKI9gy3HkEBWXWWJIPh7j7gkOJPnyA=="],
+
+    "@doist/react-interpolate": ["@doist/react-interpolate@2.2.1", "", { "peerDependencies": { "prop-types": "15.8.1", "react": ">=17.0.2", "react-dom": ">=17.0.2" } }, "sha512-3qUQhXzAPL1YxYsNtZdBsrSyhFL1AyDHNQN8XZo2IiGZAibxCBT5QW+Ymfyf8hOKaSxb9v1fYiv3uWJfY0pwZw=="],
 
     "@effect/cluster": ["@effect/cluster@0.46.0", "", { "peerDependencies": { "@effect/platform": "^0.90.0", "@effect/rpc": "^0.68.0", "@effect/sql": "^0.44.0", "@effect/workflow": "^0.8.0", "effect": "^3.17.1" } }, "sha512-R5B0hLsSkdkxnvor2ZRMirrbaeWtsihaJSNJmlzJfsydAnHXFk+yT5cttr85rgUOLyicEQxUrLZ3WyRYWajpHQ=="],
 

@@ -1,14 +1,16 @@
+import * as Slot from "@radix-ui/react-slot";
 import type * as React from "react";
-
 import { cn } from "@/shared/utils/index";
 
 export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   ref?: React.Ref<HTMLDivElement>;
+  asChild?: boolean;
 }
 
-function Card({ className, ref, ...props }: CardProps) {
+function Card({ className, ref, asChild = false, ...props }: CardProps) {
+  const As = asChild ? Slot.Root : "div";
   return (
-    <div
+    <As
       ref={ref}
       className={cn(
         "rounded-lg border bg-card text-card-foreground shadow-sm",

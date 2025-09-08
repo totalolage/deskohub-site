@@ -62,7 +62,7 @@ export function ContactForm() {
   });
 
   return (
-    <Card className="bg-gray-900 border-gray-700">
+    <Card id="contact-form" className="bg-gray-900 border-gray-700">
       <CardHeader>
         <CardTitle className="text-2xl font-bold text-white">
           {m["contact.formTitle"]()}

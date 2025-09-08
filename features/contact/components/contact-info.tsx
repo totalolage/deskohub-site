@@ -1,4 +1,5 @@
 import { Clock, Mail, MapPin, Phone } from "lucide-react";
+import Link from "next/link";
 import { getLocale, m } from "@/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { siteConstants } from "@/shared/utils/constants";
@@ -22,9 +23,9 @@ export function ContactInfo() {
       </h2>
 
       <div className="space-y-6">
-        <Card className="bg-gray-900 border-gray-700">
-          <CardContent className="p-6">
-            <div className="flex items-start space-x-4">
+        <Card className="bg-gray-900 border-gray-700" asChild>
+          <Link href="#map-section" className="block">
+            <CardContent className="p-6 flex items-start space-x-4">
               <MapPin className="w-6 h-6 text-green-400 mt-1" />
               <div>
                 <h3 className="text-lg font-semibold text-white mb-2">
@@ -50,13 +51,13 @@ export function ContactInfo() {
                   )}
                 </p>
               </div>
-            </div>
-          </CardContent>
+            </CardContent>
+          </Link>
         </Card>
 
-        <Card className="bg-gray-900 border-gray-700">
-          <CardContent className="p-6">
-            <div className="flex items-start space-x-4">
+        <Card className="bg-gray-900 border-gray-700" asChild>
+          <Link href={`tel:${siteConstants.contact.phone}`} className="block">
+            <CardContent className="p-6 flex items-start space-x-4">
               <Phone className="w-6 h-6 text-green-400 mt-1" />
               <div>
                 <h3 className="text-lg font-semibold text-white mb-2">
@@ -71,13 +72,16 @@ export function ContactInfo() {
                   })}
                 </p>
               </div>
-            </div>
-          </CardContent>
+            </CardContent>
+          </Link>
         </Card>
 
-        <Card className="bg-gray-900 border-gray-700">
-          <CardContent className="p-6">
-            <div className="flex items-start space-x-4">
+        <Card className="bg-gray-900 border-gray-700" asChild>
+          <Link
+            href={`mailto:${siteConstants.contact.infoEmail}`}
+            className="block"
+          >
+            <CardContent className="p-6 flex items-start space-x-4">
               <Mail className="w-6 h-6 text-green-400 mt-1" />
               <div>
                 <h3 className="text-lg font-semibold text-white mb-2">
@@ -89,35 +93,33 @@ export function ContactInfo() {
                   })}
                 </p>
               </div>
-            </div>
-          </CardContent>
+            </CardContent>
+          </Link>
         </Card>
 
         <Card className="bg-gray-900 border-gray-700">
-          <CardContent className="p-6">
-            <div className="flex items-start space-x-4">
-              <Clock className="w-6 h-6 text-green-400 mt-1" />
-              <div>
-                <h3 className="text-lg font-semibold text-white mb-2">
-                  {m["contact.hoursLabel"]()}
-                </h3>
-                <div className="text-gray-300 space-y-1">
-                  <div className="flex justify-between gap-2">
-                    <span>{m["contact.weekdays"]()}</span>
-                    <span>
-                      {m["contact.weekdayHours"]({
-                        hours: getWeekdayHours().formatted,
-                      })}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span>{m["contact.weekend"]()}</span>
-                    <span>
-                      {m["contact.weekendHours"]({
-                        hours: getWeekendHours().formatted,
-                      })}
-                    </span>
-                  </div>
+          <CardContent className="p-6 flex items-start space-x-4">
+            <Clock className="w-6 h-6 text-green-400 mt-1" />
+            <div>
+              <h3 className="text-lg font-semibold text-white mb-2">
+                {m["contact.hoursLabel"]()}
+              </h3>
+              <div className="text-gray-300 space-y-1">
+                <div className="flex justify-between gap-2">
+                  <span>{m["contact.weekdays"]()}</span>
+                  <span>
+                    {m["contact.weekdayHours"]({
+                      hours: getWeekdayHours().formatted,
+                    })}
+                  </span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span>{m["contact.weekend"]()}</span>
+                  <span>
+                    {m["contact.weekendHours"]({
+                      hours: getWeekendHours().formatted,
+                    })}
+                  </span>
                 </div>
               </div>
             </div>
