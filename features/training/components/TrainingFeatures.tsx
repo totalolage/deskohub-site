@@ -1,5 +1,5 @@
 import { Edit, Layout, Thermometer, Wifi } from "lucide-react";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
 
 export const TrainingFeatures = () => {

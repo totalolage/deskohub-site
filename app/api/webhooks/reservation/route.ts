@@ -10,8 +10,8 @@ import {
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
 } from "@/features/email/backend/send-reservation-status-email";
+import { getLocale, type Locale } from "@/features/i18n";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
-import { getLocale, type Locale } from "@/i18n";
 import {
   validateWebhookUUID,
   WebhookValidationError,

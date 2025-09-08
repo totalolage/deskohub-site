@@ -10,7 +10,7 @@ import type {
   Reservation,
 } from "@/features/dotypos/generated/types.gen";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
-import type { Locale } from "@/i18n";
+import type { Locale } from "@/features/i18n";
 import { buildAbsoluteUrl } from "@/shared/backend/utils/site-url";
 import { siteConstants } from "@/shared/utils/constants";
 import { renderReservationConfirmedEmail } from "../templates/reservation-confirmed";

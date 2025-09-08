@@ -2,8 +2,8 @@ import "./globals.css";
 
 import { Analytics } from "@vercel/analytics/next";
 import type { PropsWithChildren } from "react";
+import { getLocale } from "@/features/i18n";
 import { Footer, Header } from "@/features/navigation";
-import { getLocale } from "@/i18n";
 import { Toaster } from "@/shared/components/ui/sonner";
 import { isDev } from "@/shared/utils/environment";
 

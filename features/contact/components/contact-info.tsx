@@ -1,6 +1,6 @@
 import { Clock, Mail, MapPin, Phone } from "lucide-react";
 import Link from "next/link";
-import { getLocale, m } from "@/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { siteConstants } from "@/shared/utils/constants";
 import {

@@ -4,8 +4,8 @@ import { cva } from "class-variance-authority";
 import { Calendar, Clock, Mail, Phone, Users } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { m } from "@/i18n/paraglide/messages";
-import { useLocale } from "@/i18n/utils/use-locale";
+import { m } from "@/features/i18n/paraglide/messages";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {

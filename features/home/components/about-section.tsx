@@ -1,7 +1,7 @@
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { Gallery } from "@/features/gallery/components/gallery";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Price } from "@/shared/components/price";
 import { siteConstants } from "@/shared/utils/constants";
 

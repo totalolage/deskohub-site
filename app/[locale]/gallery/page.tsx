@@ -1,7 +1,7 @@
 import { Gallery } from "@/features/gallery";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { GalleryHeader } from "@/features/gallery/components/gallery-header";
-import { m, setLocale } from "@/i18n";
+import { m, setLocale } from "@/features/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 

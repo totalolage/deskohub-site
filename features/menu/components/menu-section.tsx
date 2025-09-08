@@ -1,5 +1,5 @@
 import type { Category, Product } from "@/features/dotypos/generated";
-import { useLocale } from "@/i18n/utils/use-locale";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { getLocalizedText } from "@/shared/utils/localization";
 
 interface MenuSectionProps {

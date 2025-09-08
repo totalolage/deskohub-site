@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { extractLocaleFromRequest } from "@/i18n";
+import { extractLocaleFromRequest } from "@/features/i18n";
 import {
   pathnameHasLocale,
   setLocaleInPathname,
-} from "@/i18n/utils/locale-url";
+} from "@/features/i18n/utils/locale-url";
 import type { MiddlewareFactory } from "@/shared/utils/middleware-chain";
 
 export const localizationMiddleware: MiddlewareFactory =

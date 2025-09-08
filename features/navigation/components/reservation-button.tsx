@@ -3,7 +3,7 @@
 import { Calendar } from "lucide-react";
 import Link from "next/link";
 import type { ComponentProps } from "react";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 

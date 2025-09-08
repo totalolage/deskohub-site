@@ -1,6 +1,6 @@
 import { isValidPhoneNumber, parsePhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 
 // Constants for workspace reservation validation
 export const workspaceConstants = {

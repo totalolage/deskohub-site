@@ -1,4 +1,4 @@
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 export function Contact() {

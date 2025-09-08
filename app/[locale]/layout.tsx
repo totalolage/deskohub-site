@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import type { PropsWithChildren } from "react";
-import { locales, setLocale } from "@/i18n";
-import { localeAsyncLocalStorage } from "@/i18n/utils/setup-server";
+import { locales, setLocale } from "@/features/i18n";
+import { localeAsyncLocalStorage } from "@/features/i18n/utils/setup-server";
 import RootLayout from "../rootLayout";
 import type { RouteProps_locale } from "./route";
 

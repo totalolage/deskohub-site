@@ -1,7 +1,7 @@
 import { ExternalLink } from "lucide-react";
 import Link from "next/link";
 import { BoardGamesHero, BoardGamesList } from "@/features/board-games";
-import { m, setLocale } from "@/i18n";
+import { m, setLocale } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";

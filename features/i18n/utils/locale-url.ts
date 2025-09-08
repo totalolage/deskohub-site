@@ -1,5 +1,5 @@
-import type { Locale } from "@/i18n";
-import { locales } from "@/i18n";
+import type { Locale } from "@/features/i18n";
+import { locales } from "@/features/i18n";
 
 /**
  * Parses a pathname to extract locale and path information

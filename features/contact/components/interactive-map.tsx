@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import { Navigation } from "lucide-react";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 

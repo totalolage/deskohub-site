@@ -3,7 +3,7 @@
 import { track } from "@vercel/analytics";
 import { Download, Loader2 } from "lucide-react";
 import { useState } from "react";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 export function MenuPDFDownload() {

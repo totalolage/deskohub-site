@@ -1,6 +1,6 @@
 import { Clock, Star, Users } from "lucide-react";
 import Image from "next/image";
-import { getLocale, m } from "@/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { Badge } from "@/shared/components/ui/badge";
 import {
   Card,

@@ -1,7 +1,7 @@
 import type { Metadata, ResolvingMetadata } from "next";
 import { headers } from "next/headers";
 import type { RouteProps_locale } from "@/app/[locale]/route";
-import { getAllLocalizedPaths } from "@/i18n/utils/locale-url";
+import { getAllLocalizedPaths } from "@/features/i18n/utils/locale-url";
 import { PATHNAME_HEADER } from "@/shared/utils/constants";
 
 export function metadata({

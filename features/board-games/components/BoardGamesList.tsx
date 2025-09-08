@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { boardGamesData } from "../data/board-games-data";
 import { useBoardGamesFilters } from "../hooks/use-board-games-filters";
 import { BoardGamesCard } from "./BoardGamesCard";

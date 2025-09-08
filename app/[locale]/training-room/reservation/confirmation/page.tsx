@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
+import { type Locale, setLocale } from "@/features/i18n";
+import { m } from "@/features/i18n/paraglide/messages";
 import { ReservationConfirmation } from "@/features/reservation/components/reservation-confirmation";
-import { type Locale, setLocale } from "@/i18n";
-import { m } from "@/i18n/paraglide/messages";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";

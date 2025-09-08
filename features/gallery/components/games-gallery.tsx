@@ -1,7 +1,7 @@
 import Image, { type ImageProps } from "next/image";
 import Link from "next/link";
 import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 

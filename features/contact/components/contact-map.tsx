@@ -2,7 +2,7 @@
 
 import { MapPin } from "lucide-react";
 import dynamic from "next/dynamic";
-import { getLocale, m } from "@/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { siteConstants } from "@/shared/utils/constants";
 import {

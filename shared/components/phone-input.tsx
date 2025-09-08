@@ -3,7 +3,7 @@
 import { type CountryCode, isValidPhoneNumber } from "libphonenumber-js";
 import { Check, Phone, X } from "lucide-react";
 import * as React from "react";
-import { useLocale } from "@/i18n/utils/use-locale";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { Input } from "@/shared/components/ui/input";
 import { cn } from "@/shared/utils";
 import {

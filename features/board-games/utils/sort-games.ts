@@ -1,4 +1,4 @@
-import type { Locale } from "@/i18n";
+import type { Locale } from "@/features/i18n";
 import { getLocalizedText } from "@/shared/utils/localization";
 import { SORT_OPTIONS, type SortOption } from "../constants/sort-options";
 import type { BoardGame } from "../types/board-games.types";

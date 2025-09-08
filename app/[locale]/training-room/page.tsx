@@ -1,10 +1,10 @@
+import { m, setLocale } from "@/features/i18n";
 import {
   TrainingCTA,
   TrainingFeatures,
   TrainingHero,
   TrainingPackages,
 } from "@/features/training";
-import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 

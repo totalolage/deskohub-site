@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ContactMap } from "@/features/contact";
-import { getLocale, m } from "@/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 
 export function Location() {

@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
+import { m, setLocale } from "@/features/i18n";
 import { TableReservationForm } from "@/features/table-reservation/components/table-reservation-form";
-import { m, setLocale } from "@/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";

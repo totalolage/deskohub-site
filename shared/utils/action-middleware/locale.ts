@@ -1,6 +1,6 @@
 import { createMiddleware } from "next-safe-action";
-import { baseLocale, setLocale } from "@/i18n";
-import { getLocaleFromServer } from "@/i18n/utils/get-locale.server";
+import { baseLocale, setLocale } from "@/features/i18n";
+import { getLocaleFromServer } from "@/features/i18n/utils/get-locale.server";
 
 /**
  * Middleware to automatically set the locale for all server actions

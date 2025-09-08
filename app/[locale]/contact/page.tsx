@@ -4,7 +4,7 @@ import {
   ContactInfo,
   ContactMap,
 } from "@/features/contact";
-import { m, setLocale } from "@/i18n";
+import { m, setLocale } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";

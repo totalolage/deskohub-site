@@ -1,6 +1,6 @@
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 
 // Constants for contact form validation
 const CONTACT_VALIDATION = {

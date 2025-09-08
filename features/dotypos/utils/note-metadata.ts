@@ -15,7 +15,7 @@
  * ----------------------------------------
  */
 
-import { isLocale, type Locale } from "@/i18n";
+import { isLocale, type Locale } from "@/features/i18n";
 
 export interface NoteMetadata {
   locale?: Locale;

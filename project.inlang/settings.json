@@ -9,6 +9,6 @@
     "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-missing-translation@1/dist/index.js"
   ],
   "plugin.inlang.messageFormat": {
-    "pathPattern": "./i18n/messages/{languageTag}.json"
+    "pathPattern": "./features/i18n/messages/{languageTag}.json"
   }
 }

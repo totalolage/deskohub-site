@@ -1,5 +1,5 @@
+import { m, setLocale } from "@/features/i18n";
 import { MenuPage } from "@/features/menu";
-import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 

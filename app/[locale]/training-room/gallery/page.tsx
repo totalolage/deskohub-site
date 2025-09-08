@@ -2,7 +2,7 @@ import { ChevronLeft } from "lucide-react";
 import Link from "next/link";
 import { Gallery } from "@/features/gallery";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
-import { m, setLocale } from "@/i18n";
+import { m, setLocale } from "@/features/i18n";
 import { Hero } from "@/shared/components/hero";
 import { Button } from "@/shared/components/ui/button";
 import { metadata } from "@/shared/utils/metadata";

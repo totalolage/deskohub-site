@@ -1,6 +1,6 @@
 import { track } from "@vercel/analytics";
 import { Search } from "lucide-react";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Input } from "@/shared/components/ui/input";
 import { Label } from "@/shared/components/ui/label";
 import {

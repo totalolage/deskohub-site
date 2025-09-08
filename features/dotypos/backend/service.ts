@@ -6,8 +6,8 @@
  */
 
 import { Context, Effect, Layer, Ref, Schedule, Schema } from "effect";
+import { getLocale } from "@/features/i18n";
 import type { TableReservationFormData } from "@/features/table-reservation";
-import { getLocale } from "@/i18n";
 import {
   type DotyposConfig,
   DotyposConfigLayer,

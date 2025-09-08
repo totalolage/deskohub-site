@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { PhoneInput } from "@/shared/components/phone-input";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";

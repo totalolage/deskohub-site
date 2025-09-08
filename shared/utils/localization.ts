@@ -1,4 +1,4 @@
-import type { Locale } from "@/i18n";
+import type { Locale } from "@/features/i18n";
 import type { TranslatableString } from "@/types/translatable-string";
 
 /**

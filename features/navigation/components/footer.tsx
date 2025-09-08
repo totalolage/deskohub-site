@@ -1,6 +1,6 @@
 import Image from "next/image";
 import logoImage from "@/assets/images/logo/for-light-bg.png";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 
 export function Footer() {

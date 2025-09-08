@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,

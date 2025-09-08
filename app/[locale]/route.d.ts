@@ -1,4 +1,4 @@
-import type { Locale } from "@/i18n";
+import type { Locale } from "@/features/i18n";
 
 export type RouteParams_locale = {
   locale: Locale;

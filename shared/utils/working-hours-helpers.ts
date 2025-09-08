@@ -1,4 +1,4 @@
-import { getLocale } from "@/i18n";
+import { getLocale } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;

@@ -1,4 +1,4 @@
-import type { Locale } from "@/i18n";
+import type { Locale } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import type { ReservationConfirmationData } from "../types/email.types";
 

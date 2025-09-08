@@ -1,6 +1,6 @@
 "use client";
 
-import { useLocale } from "@/i18n/utils/use-locale";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { cn } from "@/shared/utils";
 import { formatPrice } from "@/shared/utils/price-formatting";
 

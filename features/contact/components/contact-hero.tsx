@@ -1,6 +1,6 @@
 import Interpolate from "@doist/react-interpolate";
 import Link from "next/link";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Hero } from "@/shared/components";
 
 export function ContactHero() {

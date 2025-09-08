@@ -1,4 +1,4 @@
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { SORT_OPTIONS, type SortOption } from "../constants/sort-options";
 
 export interface SortOptionItem {

@@ -5,9 +5,8 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import logoImage from "@/assets/images/logo/for-dark-bg.png";
-import { LanguageSwitcher } from "@/features/i18n";
-import { m, setLocale } from "@/i18n";
-import { useLocale } from "@/i18n/utils/use-locale";
+import { LanguageSwitcher, m, setLocale } from "@/features/i18n";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   Sheet,

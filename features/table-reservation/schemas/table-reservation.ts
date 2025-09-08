@@ -1,6 +1,6 @@
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import {
   getAvailableDurations,

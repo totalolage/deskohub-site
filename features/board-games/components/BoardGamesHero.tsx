@@ -1,4 +1,4 @@
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Hero } from "@/shared/components";
 
 export const BoardGamesHero = () => {

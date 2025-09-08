@@ -1,6 +1,6 @@
 import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
 import type { z } from "zod";
-import type { Locale } from "@/i18n";
+import type { Locale } from "@/features/i18n";
 import { formatEffectError } from "@/shared/utils/error-formatting";
 import { actionClient } from "@/shared/utils/safe-action-client";
 

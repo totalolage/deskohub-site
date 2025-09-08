@@ -1,4 +1,4 @@
-import { getLocale, m } from "@/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 import { formatPrice } from "@/shared/utils/price-formatting";
 

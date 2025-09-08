@@ -13,7 +13,7 @@ import {
   contactDefaultValues,
   getContactSchema,
 } from "@/features/contact/schemas/contact";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { PhoneInput } from "@/shared/components/phone-input";
 import { Button } from "@/shared/components/ui/button";
 import {

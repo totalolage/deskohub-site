@@ -1,8 +1,8 @@
 import { Contact } from "@/features/contact";
 import { GamesGallery } from "@/features/gallery";
 import { AboutSection, HomeHero, Stats } from "@/features/home";
+import { m, setLocale } from "@/features/i18n";
 import { Location } from "@/features/location";
-import { m, setLocale } from "@/i18n";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "./route";
 

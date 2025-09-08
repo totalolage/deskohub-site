@@ -3,9 +3,9 @@
 import { track } from "@vercel/analytics";
 import { Languages } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
-import { type Locale, locales, m, setLocale } from "@/i18n";
-import { setLocaleInPathname } from "@/i18n/utils/locale-url";
-import { useLocale } from "@/i18n/utils/use-locale";
+import { type Locale, locales, m, setLocale } from "@/features/i18n";
+import { setLocaleInPathname } from "@/features/i18n/utils/locale-url";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
   DropdownMenu,

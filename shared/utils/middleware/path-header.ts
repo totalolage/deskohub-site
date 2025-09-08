@@ -1,4 +1,4 @@
-import { removeLocaleFromPathname } from "@/i18n/utils/locale-url";
+import { removeLocaleFromPathname } from "@/features/i18n/utils/locale-url";
 import { PATHNAME_HEADER } from "@/shared/utils/constants";
 import type { MiddlewareFactory } from "@/shared/utils/middleware-chain";
 

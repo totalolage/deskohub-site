@@ -3,12 +3,12 @@ import { notFound } from "next/navigation";
 import { DotyposServiceLive, getReservation } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
+import { getLocale, m, setLocale } from "@/features/i18n";
 import {
   ReservationConfirmation,
   type ReservationStatus,
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
-import { getLocale, m, setLocale } from "@/i18n";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";

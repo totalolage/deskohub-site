@@ -1,6 +1,6 @@
 import { Check } from "lucide-react";
 import Link from "next/link";
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 import { Price } from "@/shared/components/price";
 import { Button } from "@/shared/components/ui/button";
 import {

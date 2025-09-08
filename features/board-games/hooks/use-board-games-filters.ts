@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { getLocale, m } from "@/i18n";
+import { getLocale, m } from "@/features/i18n";
 import { getLocalizedText } from "@/shared/utils/localization";
 import {
   DEFAULT_SORT_OPTION,

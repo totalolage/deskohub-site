@@ -6,6 +6,8 @@ import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
+import { m } from "@/features/i18n";
+import { useLocale } from "@/features/i18n/utils/use-locale";
 import { submitTableReservation } from "@/features/table-reservation/actions/table-reservation";
 import { useFormErrorScroll } from "@/features/table-reservation/hooks/use-form-error-scroll";
 import {
@@ -13,8 +15,6 @@ import {
   type TableReservationFormData,
   type TableReservationFormUserInput,
 } from "@/features/table-reservation/schemas/table-reservation";
-import { m } from "@/i18n";
-import { useLocale } from "@/i18n/utils/use-locale";
 import { PhoneInput } from "@/shared/components/phone-input";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
