@@ -690,6 +690,7 @@
     "weekdayHours": "{hours}",
     "weekend": "SAT - SUN",
     "weekendHours": "{hours}",
+    "hoursTooltip": "Reservations outside official opening hours are possible by arrangement.",
     "formTitle": "Write to Us",
     "formDescription": "Have a question or want to book a table? Send us a message and we'll get back to you as soon as possible.",
     "nameLabel": "Name",

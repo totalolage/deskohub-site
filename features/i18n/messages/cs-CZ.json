@@ -707,6 +707,7 @@
     "weekdayHours": "{hours}",
     "weekend": "SO - NE",
     "weekendHours": "{hours}",
+    "hoursTooltip": "Rezervace mimo oficiální otevírací dobu je možná po domluvě.",
     "formTitle": "Napište nám",
     "formDescription": "Máte dotaz nebo chcete rezervovat stůl? Napište nám zprávu a my se vám ozveme co nejdříve.",
     "nameLabel": "Jméno",
