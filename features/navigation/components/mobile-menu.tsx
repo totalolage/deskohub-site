@@ -55,7 +55,7 @@ export function MobileMenu() {
         </SheetTrigger>
         <SheetContent
           side="right"
-          className="w-80 bg-gray-900 border-gray-800"
+          className="w-80 bg-gray-900 border-gray-800 safe-padding-vertical"
           xClassName="text-white"
         >
           <SheetHeader className="border-b border-gray-800 pb-4">

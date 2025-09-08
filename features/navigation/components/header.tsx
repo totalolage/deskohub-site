@@ -13,8 +13,8 @@ export function Header() {
   setLocale(locale, { reload: false });
 
   return (
-    <header className="bg-gray-900 text-white px-6 sticky top-0 z-20 h-[var(--header-height)] flex items-center justify-center">
-      <div className="flex items-center justify-between max-w-7xl w-full gap-x-8">
+    <header className="bg-gray-900 text-white px-6 sticky top-0 z-20 safe-padding-top flex items-center justify-center">
+      <div className="flex items-center justify-between max-w-7xl w-full gap-x-8 min-h-[var(--header-height)]">
         <Link href="/">
           <Image
             src={logoImage}
