@@ -11,12 +11,10 @@ export function HomeHero() {
   return (
     <Hero tags="Domovská stránka" fullHeight>
       <div className="max-w-4xl text-white px-6 mx-auto">
-        <h1 className="font-bold mb-8 leading-tight flex flex-col gap-y-2">
+        <h1 className="font-bold mb-8 leading-tight">
           <span className="text-6xl md:text-8xl text-green-500">
             {m["hero.title"]()}
           </span>
-          <br />
-          <span className="text-4xl md:text-6xl">{m["hero.subtitle"]()}</span>
         </h1>
         <div className="flex flex-col md:flex-row items-center justify-center space-y-4 md:space-y-0 md:space-x-8 mt-12">
           <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4">
