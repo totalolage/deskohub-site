@@ -1,7 +1,7 @@
 import "./globals.css";
 
 import { Analytics } from "@vercel/analytics/next";
-import type { Metadata, Viewport } from "next";
+import type { Viewport } from "next";
 import type { PropsWithChildren } from "react";
 import { getLocale } from "@/features/i18n";
 import { Footer, Header } from "@/features/navigation";
