@@ -100,6 +100,10 @@
     --safe-area-inset-right: 0px;
     --safe-area-inset-bottom: 0px;
     --safe-area-inset-left: 0px;
+    
+    /* Scroll background colors - default to background color */
+    --bg-top: hsl(var(--background));
+    --bg-bottom: hsl(var(--background));
   }
 
   /* Apply environment safe area insets when supported */
@@ -152,6 +156,31 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply text-foreground;
+    /* Start with --bg-top variable */
+    background: var(--bg-top);
+    /* Scroll-driven animation for background color */
+    animation: body-background-scroll linear;
+    animation-timeline: scroll(root block);
+    animation-fill-mode: both;
+  }
+  
+  /* Fallback for browsers without scroll-timeline support */
+  @supports not (animation-timeline: scroll()) {
+    body {
+      @apply bg-background;
+    }
+  }
+}
+
+/* Keyframes for scroll-driven background animation */
+@keyframes body-background-scroll {
+  from {
+    /* Use --bg-top variable at top of page */
+    background: var(--bg-top);
+  }
+  to {
+    /* Use --bg-bottom variable at bottom of page */
+    background: var(--bg-bottom);
   }
 }

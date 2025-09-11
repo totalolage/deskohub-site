@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import logoImage from "@/assets/images/logo/for-dark-bg.png";
@@ -11,6 +12,16 @@ import { ReservationButton } from "./reservation-button";
 export function Header() {
   const locale = useLocale();
   setLocale(locale, { reload: false });
+
+  useEffect(() => {
+    // Set --bg-top globally to match the navbar background (gray-900)
+    document.documentElement.style.setProperty('--bg-top', 'rgb(17, 24, 39)');
+    
+    // Cleanup function to reset on unmount
+    return () => {
+      document.documentElement.style.setProperty('--bg-top', '');
+    };
+  }, []);
 
   return (
     <header className="bg-gray-900 text-white px-6 sticky top-0 z-20 safe-padding-top flex items-center justify-center">
