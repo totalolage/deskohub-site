@@ -16,19 +16,22 @@ export function useSafeAreaClasses() {
     horizontal: (className?: string) =>
       cn(
         insets.left > 0 || insets.right > 0 ? "safe-padding-horizontal" : "",
-        className,
+        className
       ),
     vertical: (className?: string) =>
       cn(
         insets.top > 0 || insets.bottom > 0 ? "safe-padding-vertical" : "",
-        className,
+        className
       ),
     all: (className?: string) =>
       cn(
-        insets.top > 0 || insets.right > 0 || insets.bottom > 0 || insets.left > 0
+        insets.top > 0 ||
+          insets.right > 0 ||
+          insets.bottom > 0 ||
+          insets.left > 0
           ? "safe-padding"
           : "",
-        className,
+        className
       ),
   };
 }

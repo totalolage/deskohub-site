@@ -101,7 +101,8 @@ export function SafeAreaProvider({ children }: { children: ReactNode }) {
             style={{ width: `${insets.right}px` }}
           />
           <div className="fixed top-2 left-2 bg-black text-white text-xs px-2 py-1 rounded z-[10000] pointer-events-none">
-            Safe Area Debug: T:{insets.top} R:{insets.right} B:{insets.bottom} L:{insets.left}
+            Safe Area Debug: T:{insets.top} R:{insets.right} B:{insets.bottom}{" "}
+            L:{insets.left}
           </div>
         </>
       )}

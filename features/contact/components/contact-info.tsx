@@ -136,7 +136,10 @@ export function ContactInfo() {
                 </CardContent>
               </Card>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-xs bg-gray-800 border-gray-700 text-gray-100">
+            <TooltipContent
+              side="top"
+              className="max-w-xs bg-gray-800 border-gray-700 text-gray-100"
+            >
               <p>{m["contact.hoursTooltip"]()}</p>
             </TooltipContent>
           </Tooltip>

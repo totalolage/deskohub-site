@@ -1,6 +1,6 @@
 import { Contact } from "@/features/contact";
 import { GamesGallery } from "@/features/gallery";
-import { AboutSection, HomeHero, Stats } from "@/features/home";
+import { AboutSection, HomeHero, PartnersBanner, Stats } from "@/features/home";
 import { m, setLocale } from "@/features/i18n";
 import { Location } from "@/features/location";
 import { metadata } from "@/shared/utils/metadata";
@@ -23,6 +23,7 @@ export default async function LandingPage({ params }: RouteProps_locale) {
       <GamesGallery />
       <Location />
       <Contact />
+      <PartnersBanner />
     </>
   );
 }
