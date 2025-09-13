@@ -1,5 +1,5 @@
 import { Clock, Star, Users } from "lucide-react";
-import Image from "next/image";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getLocale, m } from "@/features/i18n";
 import { Badge } from "@/shared/components/ui/badge";
 import {
@@ -48,8 +48,9 @@ export const BoardGamesCard = ({ game }: BoardGamesCardProps) => {
     <Card className="bg-gray-800 border-gray-700 hover:border-green-500 transition-colors">
       <CardHeader className="pb-4">
         <div className="relative">
-          <Image
-            src={game.image || "/placeholder.svg"}
+          <ImageWithFallback
+            src={game.image || `/images/games/board-games/${game.name}.jpg`}
+            fallbackSrc="/assets/images/placeholder/placeholder.svg"
             alt={gameName}
             width={200}
             height={200}

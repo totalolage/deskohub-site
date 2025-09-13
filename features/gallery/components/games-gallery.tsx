@@ -1,6 +1,6 @@
-import Image, { type ImageProps } from "next/image";
+import type { ImageProps } from "next/image";
 import Link from "next/link";
-import placeholderImage from "@/assets/images/placeholder/placeholder.svg";
+import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
@@ -11,39 +11,39 @@ export async function GamesGallery() {
   const games = [
     {
       nameKey: "gameCategories.strategic",
-      image: placeholderImage,
+      image: "/images/games/categories/strategic.jpg",
     },
     {
       nameKey: "gameCategories.party",
-      image: placeholderImage,
+      image: "/images/games/categories/party.jpg",
     },
     {
       nameKey: "gameCategories.cooperative",
-      image: placeholderImage,
+      image: "/images/games/categories/cooperative.jpg",
     },
     {
       nameKey: "gameCategories.family",
-      image: placeholderImage,
+      image: "/images/games/categories/family.jpg",
     },
     {
       nameKey: "gameCategories.logic",
-      image: placeholderImage,
+      image: "/images/games/categories/logic.jpg",
     },
     {
       nameKey: "gameCategories.card",
-      image: placeholderImage,
+      image: "/images/games/categories/card.jpg",
     },
     {
       nameKey: "gameCategories.economic",
-      image: placeholderImage,
+      image: "/images/games/categories/economic.jpg",
     },
     {
       nameKey: "gameCategories.adventure",
-      image: placeholderImage,
+      image: "/images/games/categories/adventure.jpg",
     },
     {
       nameKey: "gameCategories.abstract",
-      image: placeholderImage,
+      image: "/images/games/categories/abstract.jpg",
     },
   ] satisfies {
     nameKey: keyof typeof m;
@@ -66,8 +66,9 @@ export async function GamesGallery() {
               {games.map((game) => (
                 <div key={game.nameKey} className="text-center">
                   <div className="rounded-full overflow-hidden aspect-square mb-4 mx-auto w-48 h-48">
-                    <Image
+                    <ImageWithFallback
                       src={game.image}
+                      fallbackSrc="/assets/images/placeholder/placeholder.svg"
                       alt={m[game.nameKey]()}
                       width={200}
                       height={200}

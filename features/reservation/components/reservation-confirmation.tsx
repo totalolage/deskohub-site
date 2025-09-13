@@ -19,6 +19,7 @@ import { Separator } from "@/shared/components/ui/separator";
 import { cn } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 import { formatDate } from "@/shared/utils/date-formatting";
+import { ReservationStatusBadge } from "./status-badge";
 
 // CVA variants for status-based styling
 const statusIconWrapperVariants = cva(
@@ -224,11 +225,11 @@ export function ReservationConfirmation({
 
     switch (status) {
       case "confirmed":
-        return m["thankYou.title"]();
+        return m["thankYou.title"](); // "Reservation Confirmed!"
       case "rejected":
-        return m["reservationRejected.title"]();
+        return m["reservationRejected.title"](); // "Reservation Could Not Be Confirmed"
       default:
-        return m["reservationSubmitted.title"]();
+        return m["reservationSubmitted.title"](); // "Reservation Received"
     }
   };
 
@@ -243,11 +244,11 @@ export function ReservationConfirmation({
 
     switch (status) {
       case "confirmed":
-        return m["thankYou.confirmation"]();
+        return m["thankYou.confirmation"](); // "Great news! Your reservation has been confirmed."
       case "rejected":
-        return m["reservationRejected.message"]();
+        return m["reservationRejected.message"](); // "Unfortunately, we're unable to accommodate..."
       default:
-        return m["reservationSubmitted.message"]();
+        return m["reservationSubmitted.message"](); // "We've received your reservation request..."
     }
   };
 
@@ -255,6 +256,9 @@ export function ReservationConfirmation({
     <div className="container max-w-4xl mx-auto py-12 px-4">
       {/* Status Header */}
       <div className="text-center mb-8">
+        <div className="mb-4">
+          <ReservationStatusBadge status={status} />
+        </div>
         <div className={statusIconWrapperVariants({ status })}>
           <StatusIcon status={status} />
         </div>
@@ -433,7 +437,9 @@ export function ReservationConfirmation({
               <p className={statusTextVariants({ status })}>
                 {type === "training-room" && status === "submitted"
                   ? m["trainingReservation.nextSteps"]()
-                  : m["thankYou.nextStepsDescription"]()}
+                  : status === "confirmed"
+                    ? m["thankYou.nextStepsConfirmed"]()
+                    : m["thankYou.nextStepsPending"]()}
               </p>
             </div>
           </CardContent>

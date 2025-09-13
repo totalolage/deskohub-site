@@ -327,11 +327,13 @@
     }
   },
   "thankYou": {
-    "title": "Děkujeme za Vaši rezervaci!",
-    "confirmation": "Vaše rezervace byla přijata a zpracovává se.",
+    "title": "Rezervace potvrzena!",
+    "confirmation": "Skvělá zpráva! Vaše rezervace byla potvrzena.",
     "bookingDetails": "Detaily rezervace",
     "nextSteps": "Co dále?",
-    "nextStepsDescription": "Obdržíte potvrzovací e-mail do 24 hodin. Prosím zkontrolujte svou e-mailovou schránku včetně složky spam. Pokud potřebujete provést změny, kontaktujte nás okamžitě.",
+    "nextStepsDescription": "Poslali jsme vám potvrzovací e-mail. Prosím uschovejte si tyto informace pro své záznamy.",
+    "nextStepsConfirmed": "Váš stůl je rezervován! Prosím přijďte včas. Pokud potřebujete provést změny, kontaktujte nás co nejdříve.",
+    "nextStepsPending": "Vaši rezervaci právě kontrolujeme. Potvrzovací e-mail obdržíte do 24 hodin. Prosím zkontrolujte svou e-mailovou schránku včetně složky spam.",
     "questions": "Potřebujete provést změny?",
     "contactInfo": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci",
     "backToHome": "Zpět domů",
@@ -930,11 +932,16 @@
     }
   },
   "reservationSubmitted": {
-    "title": "Rezervace odeslána",
-    "message": "Vaše rezervace byla úspěšně odeslána. Brzy vás budeme kontaktovat s potvrzením."
+    "title": "Rezervace přijata",
+    "message": "Přijali jsme vaši žádost o rezervaci a kontrolujeme dostupnost. Ozveme se vám do 24 hodin."
   },
   "reservationRejected": {
-    "title": "Rezervace není dostupná",
-    "message": "Bohužel nemůžeme zpracovat vaši rezervaci v tento moment. Prosím zkuste to znovu nebo nás kontaktujte pro pomoc."
+    "title": "Rezervaci nelze potvrdit",
+    "message": "Bohužel nemůžeme vyhovět vaší rezervaci v požadovaném čase. Prosím zkuste rezervovat jiný termín nebo nás kontaktujte pro pomoc s nalezením alternativy."
+  },
+  "status": {
+    "pending": "Čeká na kontrolu",
+    "confirmed": "Potvrzeno",
+    "rejected": "Není dostupné"
   }
 }

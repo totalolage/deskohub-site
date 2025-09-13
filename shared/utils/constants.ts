@@ -184,7 +184,7 @@ export const siteConstants = {
   },
   // Feature flags - simple constants for prerendered site
   featureFlags: {
-    boardGamesList: false,
+    boardGamesList: true,
     boardroomReservations: false,
     contactForm: true,
     tableReservations: true,

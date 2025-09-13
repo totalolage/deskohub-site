@@ -316,11 +316,13 @@
     }
   },
   "thankYou": {
-    "title": "Thank You for Your Reservation!",
-    "confirmation": "Your booking has been received and is being processed.",
+    "title": "Reservation Confirmed!",
+    "confirmation": "Great news! Your reservation has been confirmed.",
     "bookingDetails": "Reservation Details",
     "nextSteps": "What's Next?",
-    "nextStepsDescription": "You will receive a confirmation email within 24 hours. Please check your inbox and spam folder. If you need to make changes, please contact us immediately.",
+    "nextStepsDescription": "We've sent a confirmation email to your address. Please save this information for your records.",
+    "nextStepsConfirmed": "Your table is reserved! Please arrive on time. If you need to make changes, contact us as soon as possible.",
+    "nextStepsPending": "We're reviewing your reservation. You'll receive a confirmation email within 24 hours. Please check your inbox and spam folder.",
     "questions": "Need to Make Changes?",
     "contactInfo": "Feel free to contact us if you need to modify your reservation",
     "backToHome": "Back to Home",
@@ -910,11 +912,16 @@
     }
   },
   "reservationSubmitted": {
-    "title": "Reservation Submitted",
-    "message": "Your reservation request has been submitted successfully. We will contact you soon to confirm."
+    "title": "Reservation Received",
+    "message": "We've received your reservation request and are reviewing availability. You'll hear from us within 24 hours."
   },
   "reservationRejected": {
-    "title": "Reservation Unavailable",
-    "message": "Unfortunately, we are unable to process your reservation at this time. Please try again or contact us for assistance."
+    "title": "Reservation Could Not Be Confirmed",
+    "message": "Unfortunately, we're unable to accommodate your reservation at the requested time. Please try booking a different time slot or contact us for assistance finding an alternative."
+  },
+  "status": {
+    "pending": "Pending Review",
+    "confirmed": "Confirmed",
+    "rejected": "Not Available"
   }
 }
