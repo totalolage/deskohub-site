@@ -3725,7 +3725,7 @@
         "description": "Add Google Tag Manager with GDPR-compliant cookie consent banner using vanilla-cookieconsent and Google Consent Mode v2, optionally with Partytown for performance.",
         "details": "Implementation requirements:\n- Use @next/third-parties for GTM\n- vanilla-cookieconsent for consent banner\n- Google Consent Mode v2 support\n- Optional Partytown integration\n- Bilingual support (cs/en)\n- Cookie settings page\n- Conditional script loading based on consent",
         "testStrategy": "",
-        "status": "pending",
+        "status": "done",
         "dependencies": [],
         "priority": "high",
         "subtasks": [
@@ -3769,7 +3769,7 @@
               "73.3"
             ],
             "details": "Create cookie settings page at app/[locale]/cookie-settings/page.tsx with:\n- Detailed explanation of each cookie category\n- Toggle switches for each consent category\n- Save and reject all buttons\n- Current consent status display\n- Link back to privacy policy\n\nAdd translations to i18n messages:\n- Page title and description\n- Category names and descriptions\n- Button labels\n- Success/error messages\n\nIntegrate with navigation:\n- Add footer link to cookie settings\n- Include in privacy policy page if exists\n- Ensure proper routing with locale support",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": "Test page renders correctly in both languages. Verify consent changes are saved and reflected immediately. Check that GTM responds to consent updates. Validate accessibility with screen readers."
           }
         ]
@@ -3781,7 +3781,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-10-02T09:54:23.826Z"
+      "updated": "2025-10-02T10:20:39.495Z"
     }
   }
 }
