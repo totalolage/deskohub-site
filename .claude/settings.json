@@ -10,10 +10,28 @@
             "command": "claude-hooks run package-manager-enforcement"
           }
         ]
+      },
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-hooks run taskmaster-integration 'pnpm run validate'"
+          }
+        ]
       }
     ],
     "PostToolUse": [],
-    "Stop": [],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-hooks run taskmaster-integration 'pnpm run validate'"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": []
   }
 }

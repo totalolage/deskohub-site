@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect } from "react";
 import logoImage from "@/assets/images/logo/for-dark-bg.png";
 import { LanguageSwitcher, m, setLocale } from "@/features/i18n";
 import { useLocale } from "@/features/i18n/utils/use-locale";
@@ -15,11 +15,11 @@ export function Header() {
 
   useEffect(() => {
     // Set --bg-top globally to match the navbar background (gray-900)
-    document.documentElement.style.setProperty('--bg-top', 'rgb(17, 24, 39)');
-    
+    document.documentElement.style.setProperty("--bg-top", "rgb(17, 24, 39)");
+
     // Cleanup function to reset on unmount
     return () => {
-      document.documentElement.style.setProperty('--bg-top', '');
+      document.documentElement.style.setProperty("--bg-top", "");
     };
   }, []);
 
