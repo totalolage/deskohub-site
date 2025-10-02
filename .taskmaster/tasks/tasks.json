@@ -3735,7 +3735,7 @@
             "description": "Install @next/third-parties, vanilla-cookieconsent packages and configure Google Tag Manager ID in environment variables",
             "dependencies": [],
             "details": "Install required packages using bun:\n- @next/third-parties for Next.js GTM integration\n- vanilla-cookieconsent for cookie consent management\n- @types/gtag.js for TypeScript support (if needed)\n\nAdd GTM configuration to .env files:\n- NEXT_PUBLIC_GTM_ID for Google Tag Manager container ID\n- Optional: NEXT_PUBLIC_GTM_AUTH for environment-specific setup\n- Optional: NEXT_PUBLIC_GTM_PREVIEW for preview mode\n\nUpdate .env.example with new variables for documentation",
-            "status": "in-progress",
+            "status": "done",
             "testStrategy": "Verify packages are installed correctly by checking package.json and bun.lock files. Ensure environment variables are properly configured and accessible in the application."
           },
           {
@@ -3746,7 +3746,7 @@
               "73.1"
             ],
             "details": "Create feature module structure:\n- features/cookie-consent/\n- features/cookie-consent/components/cookie-consent-provider.tsx\n- features/cookie-consent/hooks/use-cookie-consent.ts\n- features/cookie-consent/utils/consent-mode.ts\n- features/cookie-consent/config/consent-config.ts\n\nImplement cookie consent configuration with:\n- Google Consent Mode v2 default states (denied by default)\n- Categories: necessary, analytics, marketing, preferences\n- Language detection from locale (cs/en)\n- Translations for consent banner text\n- Custom styling matching site design\n- Accessibility compliance (ARIA labels, keyboard navigation)",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Test consent banner appears on first visit. Verify language switching works correctly. Check that consent choices are persisted in cookies. Validate Google Consent Mode signals are sent correctly."
           },
           {
@@ -3757,7 +3757,7 @@
               "73.2"
             ],
             "details": "Modify app/rootLayout.tsx to:\n- Import GoogleTagManager from @next/third-parties/google\n- Add GTM component with conditional rendering based on consent\n- Implement consent state listener to update GTM consent signals\n- Optional: Configure Partytown for web worker execution\n\nCreate GTM helper utilities:\n- features/analytics/utils/gtm-events.ts for custom event tracking\n- features/analytics/hooks/use-gtm.ts for component-level tracking\n\nEnsure GTM only loads when:\n- User has given consent for analytics/marketing\n- Environment variable is configured\n- Not in development mode (unless explicitly enabled)",
-            "status": "pending",
+            "status": "done",
             "testStrategy": "Verify GTM script loads only after consent is given. Check dataLayer is populated correctly. Test that consent mode updates are sent to GTM. Validate Partytown worker execution if enabled."
           },
           {
@@ -3769,7 +3769,7 @@
               "73.3"
             ],
             "details": "Create cookie settings page at app/[locale]/cookie-settings/page.tsx with:\n- Detailed explanation of each cookie category\n- Toggle switches for each consent category\n- Save and reject all buttons\n- Current consent status display\n- Link back to privacy policy\n\nAdd translations to i18n messages:\n- Page title and description\n- Category names and descriptions\n- Button labels\n- Success/error messages\n\nIntegrate with navigation:\n- Add footer link to cookie settings\n- Include in privacy policy page if exists\n- Ensure proper routing with locale support",
-            "status": "pending",
+            "status": "in-progress",
             "testStrategy": "Test page renders correctly in both languages. Verify consent changes are saved and reflected immediately. Check that GTM responds to consent updates. Validate accessibility with screen readers."
           }
         ]
@@ -3781,7 +3781,7 @@
       "created": "2025-07-08",
       "lastModified": "2025-07-08",
       "description": "Tasks for master context",
-      "updated": "2025-10-02T09:49:14.689Z"
+      "updated": "2025-10-02T09:54:23.826Z"
     }
   }
 }

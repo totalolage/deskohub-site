@@ -943,5 +943,38 @@
     "pending": "Čeká na kontrolu",
     "confirmed": "Potvrzeno",
     "rejected": "Není dostupné"
+  },
+  "cookieSettings": {
+    "title": "Nastavení cookies",
+    "description": "Spravujte své předvolby cookies a kontrolujte, jak používáme cookies na našem webu.",
+    "backToHome": "Zpět na hlavní stránku",
+    "categories": {
+      "necessary": {
+        "title": "Nezbytné cookies",
+        "description": "Tyto cookies jsou nezbytné pro správné fungování webu. Nelze je vypnout."
+      },
+      "analytics": {
+        "title": "Analytické cookies",
+        "description": "Tyto cookies nám pomáhají pochopit, jak návštěvníci interagují s naším webem, shromažďováním a hlášením informací anonymně."
+      },
+      "marketing": {
+        "title": "Marketingové cookies",
+        "description": "Tyto cookies se používají ke sledování návštěvníků napříč weby za účelem zobrazení relevantních a zajímavých reklam."
+      },
+      "preferences": {
+        "title": "Preferenční cookies",
+        "description": "Tyto cookies umožňují webu zapamatovat si vaše volby (jako je jazykové nastavení) pro poskytnutí personalizovanějšího zážitku."
+      }
+    },
+    "buttons": {
+      "acceptAll": "Přijmout vše",
+      "rejectAll": "Odmítnout vše",
+      "savePreferences": "Uložit předvolby",
+      "managePreferences": "Spravovat předvolby cookies"
+    },
+    "messages": {
+      "saved": "Vaše předvolby cookies byly uloženy.",
+      "error": "Nepodařilo se uložit předvolby. Zkuste to prosím znovu."
+    }
   }
 }
