@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import "vanilla-cookieconsent/dist/cookieconsent.css";
+import type { Locale } from "@/features/i18n";
 import { createConsentConfig } from "../config/consent-config";
 import {
   denyAnalyticsConsent,
@@ -15,7 +16,14 @@ import {
 } from "../utils/consent-mode";
 
 interface CookieConsentProviderProps {
-  locale: "cs" | "en";
+  locale: Locale;
+}
+
+/**
+ * Convert Paraglide Locale to vanilla-cookieconsent language code
+ */
+function localeToLanguageCode(locale: Locale): "cs" | "en" {
+  return locale.startsWith("cs") ? "cs" : "en";
 }
 
 /**
@@ -28,7 +36,8 @@ export function CookieConsentProvider({ locale }: CookieConsentProviderProps) {
     initializeConsentMode();
 
     // Initialize cookie consent banner
-    const config = createConsentConfig(locale);
+    const languageCode = localeToLanguageCode(locale);
+    const config = createConsentConfig(languageCode);
 
     CookieConsent.run({
       ...config,

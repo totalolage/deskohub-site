@@ -107,15 +107,3 @@ export function denyPreferencesConsent(): void {
     personalization_storage: "denied",
   });
 }
-
-// Extend Window interface for gtag and dataLayer
-declare global {
-  interface Window {
-    dataLayer: unknown[];
-    gtag?: (
-      command: string,
-      action: string,
-      params: Partial<ConsentState>
-    ) => void;
-  }
-}

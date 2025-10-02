@@ -29,7 +29,7 @@ export default async function RootLayout({
       {GTM_ID && <GoogleTagManager gtmId={GTM_ID} />}
       <body>
         <SafeAreaProvider>
-          <CookieConsentProvider locale={locale as "cs" | "en"} />
+          <CookieConsentProvider locale={locale} />
           <div className="min-h-screen bg-white [--header-height:80px]">
             <Header />
             <main className="min-h-[calc(100dvh-var(--header-height))] isolate">
