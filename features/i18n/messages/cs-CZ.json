@@ -944,6 +944,44 @@
     "confirmed": "Potvrzeno",
     "rejected": "Není dostupné"
   },
+  "cookieConsent": {
+    "consentModal": {
+      "title": "Používáme cookies",
+      "description": "Používáme cookies ke zlepšení vašeho prohlížení, poskytování personalizovaného obsahu a analýze návštěvnosti. Kliknutím na 'Přijmout vše' souhlasíte s použitím cookies.",
+      "acceptAllBtn": "Přijmout vše",
+      "acceptNecessaryBtn": "Odmítnout vše",
+      "showPreferencesBtn": "Spravovat předvolby"
+    },
+    "preferencesModal": {
+      "title": "Nastavení cookies",
+      "acceptAllBtn": "Přijmout vše",
+      "acceptNecessaryBtn": "Odmítnout vše",
+      "savePreferencesBtn": "Uložit nastavení",
+      "closeIconLabel": "Zavřít",
+      "sections": {
+        "usage": {
+          "title": "Používání cookies",
+          "description": "Používáme cookies k zajištění základních funkcí webu a ke zlepšení vašeho online zážitku. Pro každou kategorii si můžete zvolit, zda ji chcete povolit nebo zakázat."
+        },
+        "necessary": {
+          "title": "Nezbytné cookies",
+          "description": "Tyto cookies jsou nezbytné pro správné fungování webu. Bez těchto cookies by web nefungoval správně."
+        },
+        "analytics": {
+          "title": "Analytické cookies",
+          "description": "Tyto cookies sbírají informace o tom, jak používáte náš web, například které stránky jste navštívili a na které odkazy jste klikli. Všechna data jsou anonymizována a nelze je použít k vaší identifikaci."
+        },
+        "marketing": {
+          "title": "Marketingové cookies",
+          "description": "Tyto cookies se používají ke sledování návštěvníků napříč weby. Záměrem je zobrazovat reklamy, které jsou relevantní a zajímavé pro jednotlivé uživatele."
+        },
+        "preferences": {
+          "title": "Preferenční cookies",
+          "description": "Tyto cookies umožňují webu zapamatovat si volby, které jste v minulosti provedli, například jaký jazyk preferujete nebo jaké jsou vaše přihlašovací údaje, abyste se mohli automaticky přihlásit."
+        }
+      }
+    }
+  },
   "cookieSettings": {
     "title": "Nastavení cookies",
     "description": "Spravujte své předvolby cookies a kontrolujte, jak používáme cookies na našem webu.",

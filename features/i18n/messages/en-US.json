@@ -924,6 +924,44 @@
     "confirmed": "Confirmed",
     "rejected": "Not Available"
   },
+  "cookieConsent": {
+    "consentModal": {
+      "title": "We use cookies",
+      "description": "We use cookies to improve your browsing experience, serve personalized content, and analyze our traffic. By clicking 'Accept all', you consent to our use of cookies.",
+      "acceptAllBtn": "Accept all",
+      "acceptNecessaryBtn": "Reject all",
+      "showPreferencesBtn": "Manage preferences"
+    },
+    "preferencesModal": {
+      "title": "Cookie Preferences",
+      "acceptAllBtn": "Accept all",
+      "acceptNecessaryBtn": "Reject all",
+      "savePreferencesBtn": "Save preferences",
+      "closeIconLabel": "Close",
+      "sections": {
+        "usage": {
+          "title": "Cookie Usage",
+          "description": "We use cookies to ensure the basic functionalities of the website and to enhance your online experience. You can choose for each category to opt-in/out whenever you want."
+        },
+        "necessary": {
+          "title": "Strictly Necessary Cookies",
+          "description": "These cookies are essential for the proper functioning of the website. Without these cookies, the website would not work properly."
+        },
+        "analytics": {
+          "title": "Analytics Cookies",
+          "description": "These cookies collect information about how you use our website, such as which pages you visited and which links you clicked on. All of the data is anonymized and cannot be used to identify you."
+        },
+        "marketing": {
+          "title": "Marketing Cookies",
+          "description": "These cookies are used to track visitors across websites. The intention is to display ads that are relevant and engaging for the individual user."
+        },
+        "preferences": {
+          "title": "Preference Cookies",
+          "description": "These cookies allow the website to remember choices you have made in the past, like what language you prefer, or what your user name and password are so you can automatically log in."
+        }
+      }
+    }
+  },
   "cookieSettings": {
     "title": "Cookie Settings",
     "description": "Manage your cookie preferences and control how we use cookies on our website.",

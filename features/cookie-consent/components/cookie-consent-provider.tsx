@@ -20,13 +20,6 @@ interface CookieConsentProviderProps {
 }
 
 /**
- * Convert Paraglide Locale to vanilla-cookieconsent language code
- */
-function localeToLanguageCode(locale: Locale): "cs" | "en" {
-  return locale.startsWith("cs") ? "cs" : "en";
-}
-
-/**
  * Cookie Consent Provider Component
  * Initializes and manages cookie consent banner with Google Consent Mode v2
  */
@@ -35,26 +28,18 @@ export function CookieConsentProvider({ locale }: CookieConsentProviderProps) {
     // Initialize Google Consent Mode with default denied state
     initializeConsentMode();
 
-    // Initialize cookie consent banner
-    const languageCode = localeToLanguageCode(locale);
-    const config = createConsentConfig(languageCode);
+    const config = createConsentConfig(locale);
 
+    // Initialize cookie consent banner
     CookieConsent.run({
       ...config,
-      onConsent: () => {
-        handleConsentChange();
-      },
-      onChange: () => {
-        handleConsentChange();
-      },
+      onFirstConsent: handleConsentChange,
+      onConsent: handleConsentChange,
+      onChange: handleConsentChange,
     });
 
     // Handle initial consent state if already set
     handleConsentChange();
-
-    return () => {
-      // Cleanup is handled by vanilla-cookieconsent
-    };
   }, [locale]);
 
   return null;
