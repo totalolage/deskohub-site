@@ -35,10 +35,9 @@ const DotyposProductPayloadItem = Schema.Struct({
   translatedname: Schema.NullOr(
     Schema.Record({ key: Schema.String, value: Schema.String })
   ),
-  translateddescription: Schema.Record({
-    key: Schema.String,
-    value: Schema.String,
-  }),
+  translateddescription: Schema.NullOr(
+    Schema.Record({ key: Schema.String, value: Schema.String })
+  ),
 
   // Pricing Information
   pricewithvat: Schema.Number,
