@@ -232,6 +232,11 @@ export async function POST(request: Request) {
         }),
     });
 
+    // Log raw payload for debugging schema mismatches
+    yield* Effect.logInfo("Received product webhook payload", {
+      payload: JSON.stringify(payload, null, 2),
+    });
+
     // Process the webhook
     const result = yield* processWebhook(payload);
 
