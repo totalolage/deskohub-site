@@ -24,3 +24,11 @@ export {
 
 // Re-export only the types that are actually being used
 export type { Reservation } from "./generated/types.gen";
+
+// Export utility functions
+export {
+  CATEGORY_TAGS,
+  categoryHasTag,
+  isCategoryDisplayable,
+  type CategoryTagValue,
+} from "./utils/category-utils";

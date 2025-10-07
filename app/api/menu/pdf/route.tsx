@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import type { Category } from "@/features/dotypos/generated";
+import { isCategoryDisplayable } from "@/features/dotypos/utils/category-utils";
 import { MenuPDFDocument } from "@/features/menu/components/menu-pdf-document";
 import { siteConstants } from "@/shared/utils/constants";
 
@@ -32,8 +33,8 @@ export async function GET() {
     // Add categories in configured order
     categoryOrder.forEach((categoryId) => {
       const category = categoryMap.get(categoryId);
-      // Respect the category's display attribute
-      if (category && category.display !== false && !category.deleted) {
+      // Respect the category's display attribute and tags
+      if (category && isCategoryDisplayable(category)) {
         // Check if there are products for this category
         const hasProducts = products.some((p) => p._categoryId === categoryId);
         if (hasProducts) {
@@ -47,12 +48,11 @@ export async function GET() {
       const processedIds = new Set(categoryOrder);
 
       categories.forEach((category) => {
-        // Respect the category's display attribute
+        // Respect the category's display attribute and tags
         if (
           category.id &&
           !processedIds.has(category.id) &&
-          category.display !== false &&
-          !category.deleted
+          isCategoryDisplayable(category)
         ) {
           // Check if there are products for this category
           const hasProducts = products.some(

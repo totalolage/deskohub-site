@@ -1,6 +1,7 @@
 "use client";
 
 import type { Category, Product } from "@/features/dotypos/generated";
+import { isCategoryDisplayable } from "@/features/dotypos/utils/category-utils";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
 import { MenuOpeningHours } from "./menu-opening-hours";
@@ -32,8 +33,8 @@ export function MenuClient({
   // Add categories in configured order
   categoryOrder.forEach((categoryId) => {
     const category = categoryMap.get(categoryId);
-    // Respect the category's display attribute
-    if (category && category.display !== false && !category.deleted) {
+    // Respect the category's display attribute and tags
+    if (category && isCategoryDisplayable(category)) {
       // Check if there are products for this category
       const hasProducts = products.some((p) => p._categoryId === categoryId);
       if (hasProducts) {
@@ -47,12 +48,11 @@ export function MenuClient({
     const processedIds = new Set(categoryOrder);
 
     categories.forEach((category) => {
-      // Respect the category's display attribute
+      // Respect the category's display attribute and tags
       if (
         category.id &&
         !processedIds.has(category.id) &&
-        category.display !== false &&
-        !category.deleted
+        isCategoryDisplayable(category)
       ) {
         // Check if there are products for this category
         const hasProducts = products.some((p) => p._categoryId === category.id);

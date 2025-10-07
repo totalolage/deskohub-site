@@ -32,6 +32,7 @@ import type {
   Table,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
+import { isCategoryDisplayable } from "../utils/category-utils";
 import {
   createNoteWithMetadata,
   createStandardMetadata,
@@ -1527,10 +1528,8 @@ export const getMenuItems = (): Effect.Effect<
     // Filter to only display products that aren't deleted
     const displayProducts = products.filter((p) => p.display && !p.deleted);
 
-    // Filter to only display categories that aren't deleted or hidden
-    const displayCategories = categories.filter(
-      (c) => c.display !== false && !c.deleted
-    );
+    // Filter to only display categories that aren't deleted, hidden, or tagged as non-menu
+    const displayCategories = categories.filter(isCategoryDisplayable);
 
     yield* Effect.logInfo("Menu items fetched", {
       productsCount: displayProducts.length,
