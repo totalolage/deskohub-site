@@ -31,27 +31,29 @@ export function MenuClient({
 
   // Add categories in configured order
   categoryOrder.forEach((categoryId) => {
-    if (!siteConstants.menu.excludedCategories.includes(categoryId)) {
-      const category = categoryMap.get(categoryId);
-      if (category) {
-        // Check if there are products for this category
-        const hasProducts = products.some((p) => p._categoryId === categoryId);
-        if (hasProducts) {
-          displayCategories.push(category);
-        }
+    const category = categoryMap.get(categoryId);
+    // Respect the category's display attribute
+    if (category && category.display !== false && !category.deleted) {
+      // Check if there are products for this category
+      const hasProducts = products.some((p) => p._categoryId === categoryId);
+      if (hasProducts) {
+        displayCategories.push(category);
       }
     }
   });
 
   // Handle uncategorized items if enabled
   if (siteConstants.menu.showUncategorized) {
-    const processedIds = new Set([
-      ...categoryOrder,
-      ...siteConstants.menu.excludedCategories,
-    ]);
+    const processedIds = new Set(categoryOrder);
 
     categories.forEach((category) => {
-      if (category.id && !processedIds.has(category.id)) {
+      // Respect the category's display attribute
+      if (
+        category.id &&
+        !processedIds.has(category.id) &&
+        category.display !== false &&
+        !category.deleted
+      ) {
         // Check if there are products for this category
         const hasProducts = products.some((p) => p._categoryId === category.id);
         if (hasProducts) {

@@ -54,19 +54,6 @@ export const siteConstants = {
       ],
     },
     /**
-     * Categories to exclude from the menu entirely
-     * These categories won't be displayed even if they have items
-     */
-    excludedCategories: [
-      "1736748527670423", // Qerko - slevy
-      "1736937582354307", // Qerko - slevy (duplicate)
-      "1736748527631391", // Qerko - slevy (duplicate)
-      "1736937582251583", // Qerko - slevy (duplicate)
-      "2103754035291144", // Suroviny
-      "624137811421239", // Pronájem
-      "3057623321549468", // Vstup
-    ],
-    /**
      * Whether to show uncategorized items in the "other" section
      */
     showUncategorized: true,

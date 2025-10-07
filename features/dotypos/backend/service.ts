@@ -1527,13 +1527,18 @@ export const getMenuItems = (): Effect.Effect<
     // Filter to only display products that aren't deleted
     const displayProducts = products.filter((p) => p.display && !p.deleted);
 
+    // Filter to only display categories that aren't deleted or hidden
+    const displayCategories = categories.filter(
+      (c) => c.display !== false && !c.deleted
+    );
+
     yield* Effect.logInfo("Menu items fetched", {
       productsCount: displayProducts.length,
-      categoriesCount: categories.length,
+      categoriesCount: displayCategories.length,
     });
 
     return {
       products: displayProducts,
-      categories,
+      categories: displayCategories,
     };
   }).pipe(Effect.withSpan("getMenuItems"));
