@@ -63,7 +63,7 @@ const DotyposProductPayloadItem = Schema.Struct({
   // Packaging Information
   packaging: Schema.Number,
   packagingmeasurement: Schema.Number,
-  packagingpricewithvat: Schema.Number,
+  packagingpricewithvat: Schema.NullOr(Schema.Number),
 
   // Units & Measurements
   units: Schema.String,
