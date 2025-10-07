@@ -238,25 +238,36 @@ export async function POST(request: Request) {
 
     return result;
   }).pipe(
-    Effect.catchTag("WebhookAuthError", (error) =>
-      Effect.succeed({
+    Effect.catchTag("WebhookAuthError", (error) => {
+      Effect.runSync(
+        Effect.logError("Product webhook authentication error", {
+          message: error.message,
+        })
+      );
+      return Effect.succeed({
         status: 401,
         body: {
           error: "Unauthorized",
           message: error.message,
         },
-      })
-    ),
-    Effect.catchTag("WebhookValidationError", (error) =>
-      Effect.succeed({
+      });
+    }),
+    Effect.catchTag("WebhookValidationError", (error) => {
+      Effect.runSync(
+        Effect.logError("Product webhook validation error", {
+          message: error.message,
+          issues: error.issues,
+        })
+      );
+      return Effect.succeed({
         status: 400,
         body: {
           error: "Invalid payload",
           message: error.message,
           issues: error.issues,
         },
-      })
-    ),
+      });
+    }),
     Effect.catchAll((error) => {
       // IMPORTANT: Log the error but return 200 to prevent Dotypos from retrying
       // This matches the reservation webhook behavior
