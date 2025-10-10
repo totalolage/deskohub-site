@@ -690,6 +690,20 @@ export const zErrorResponse = z.object({
 });
 
 /**
+ * Page number (starts at 1)
+ */
+export const zPageParam = z.int().positive().register(z.globalRegistry, {
+    description: 'Page number (starts at 1)'
+}).default(1);
+
+/**
+ * Items per page (max 100)
+ */
+export const zLimitParam = z.int().positive().lte(100).register(z.globalRegistry, {
+    description: 'Items per page (max 100)'
+}).default(100);
+
+/**
  * Successful authentication
  */
 export const zGetAccessTokenResponse = zTokenResponse;

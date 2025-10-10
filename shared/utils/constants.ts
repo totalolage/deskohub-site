@@ -24,11 +24,7 @@ export const siteConstants = {
       "1507817247924883": "☕", // Teplé nápoje (Hot drinks)
       "1507864793544647": "🍺", // Alkoholické nápoje (Alcoholic)
       "1507824601258015": "🍹", // Koktejly (Cocktails)
-
-      // Other categories
-      "1736813943053711": "🥫", // Omáčky (Sauces)
-      "3188160266476616": "🎲", // Hry (Games)
-    } as Record<string, string>,
+    } satisfies Record<string, string>,
 
     /**
      * Categories grouped by section
@@ -47,11 +43,7 @@ export const siteConstants = {
         "1507817247924883", // Teplé nápoje
         "1507864793544647", // Alkoholické nápoje
         "1507824601258015", // Koktejly
-      ],
-      other: [
-        "1736813943053711", // Omáčky
-        "3188160266476616", // Hry
-      ],
+      ]
     },
     /**
      * Whether to show uncategorized items in the "other" section

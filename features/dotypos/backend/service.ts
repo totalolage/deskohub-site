@@ -113,7 +113,7 @@ interface DotyposApi {
 
   readonly getCategories: (params: {
     path: { cloudId: string };
-    query?: { page?: string; limit?: string; filter?: string; sort?: string };
+    query?: { page?: number; limit?: number; filter?: string; sort?: string };
   }) => Effect.Effect<Category[], ExternalAPIError | NetworkError>;
 }
 
@@ -723,7 +723,7 @@ const DotyposApiLayer = Layer.scoped(
           const token = yield* getToken();
 
           const result = yield* Effect.tryPromise({
-            try: async () => {
+            try: async (): Promise<Product[]> => {
               const response = await generatedApi.getProducts(
                 createApiOptions(token, config, client, {
                   path: params.path,
@@ -741,17 +741,7 @@ const DotyposApiLayer = Layer.scoped(
                 };
               }
 
-              // Extract products from paginated response
-              if (
-                response.data &&
-                typeof response.data === "object" &&
-                "data" in response.data
-              ) {
-                const products = response.data.data || [];
-                // Extracted products from paginated response
-                return products as Product[];
-              }
-              return [] as Product[];
+              return response.data?.data || [];
             },
             catch: (error) =>
               transformHttpError(error, "Get products", config.apiUrl),
@@ -778,7 +768,7 @@ const DotyposApiLayer = Layer.scoped(
               const response = await generatedApi.getCategories(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  query: params.query || { limit: "100" },
+                  query: params.query || { limit: 100 },
                 })
               );
 
@@ -1208,17 +1198,11 @@ const DotyposClientLive = Layer.effect(
                     ...(options?.categoryId && {
                       filter: `_categoryId|eq|${options.categoryId}`,
                     }),
-                    ...(options?.includeDeleted === false && {
-                      filter: "deleted|eq|false",
-                    }),
                   },
                 })
                 .pipe(
                   Effect.map((products) =>
-                    // Filter out deleted products by default unless explicitly requested
-                    options?.includeDeleted === true
-                      ? products
-                      : products.filter((p) => !p.deleted && p.display)
+                    products.filter((p) => !p.deleted && p.display)
                   ),
                   Effect.retry(retryPolicy)
                 )
@@ -1242,7 +1226,7 @@ const DotyposClientLive = Layer.effect(
         api
           .getCategories({
             path: { cloudId: config.cloudId },
-            query: { limit: "100" },
+            query: { limit: 100 },
           })
           .pipe(Effect.retry(retryPolicy)),
     };
@@ -1507,6 +1491,7 @@ export const getReservation = (
 
 /**
  * Get menu items with categories properly grouped
+ * Fetches products per category to bypass the 100-product global limit
  */
 export const getMenuItems = (): Effect.Effect<
   {
@@ -1519,25 +1504,43 @@ export const getMenuItems = (): Effect.Effect<
   Effect.gen(function* () {
     const client = yield* DotyposClient;
 
-    // Fetch both products and categories in parallel
-    const [products, categories] = yield* Effect.all(
-      [client.getProducts({ includeDeleted: false }), client.getCategories()],
-      { concurrency: 2 }
+    // First, fetch all categories (both displayable and non-displayable)
+    const allCategories = yield* client.getCategories();
+
+    // Fetch products for ALL categories (not just displayable ones) to ensure we get everything
+    const productsByCategory = yield* Effect.all(
+      allCategories
+        .filter((cat) => cat.id) // Only categories with IDs
+        .map((category) =>
+          client.getProducts({
+            categoryId: category.id,
+            includeDeleted: false,
+          })
+        ),
+      { concurrency: 5 } // Fetch up to 5 categories at once
     );
 
-    // Filter to only display products that aren't deleted
-    const displayProducts = products.filter((p) => p.display && !p.deleted);
+    // Flatten products from all categories and deduplicate by ID
+    const productMap = new Map<string, Product>();
+    for (const categoryProducts of productsByCategory) {
+      for (const product of categoryProducts) {
+        if (product.id && product.display && !product.deleted) {
+          productMap.set(product.id, product);
+        }
+      }
+    }
+    const products = Array.from(productMap.values());
 
     // Filter to only display categories that aren't deleted, hidden, or tagged as non-menu
-    const displayCategories = categories.filter(isCategoryDisplayable);
+    const displayCategories = allCategories.filter(isCategoryDisplayable);
 
     yield* Effect.logInfo("Menu items fetched", {
-      productsCount: displayProducts.length,
       categoriesCount: displayCategories.length,
+      productsCount: products.length,
     });
 
     return {
-      products: displayProducts,
+      products,
       categories: displayCategories,
     };
   }).pipe(Effect.withSpan("getMenuItems"));

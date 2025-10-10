@@ -23,7 +23,6 @@ export async function GET() {
     const categoryOrder = [
       ...siteConstants.menu.categoryGroups.food,
       ...siteConstants.menu.categoryGroups.drinks,
-      ...siteConstants.menu.categoryGroups.other,
     ];
 
     // Filter and order categories for PDF

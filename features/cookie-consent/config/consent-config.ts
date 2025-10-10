@@ -72,38 +72,71 @@ export function createConsentConfig(
             title: m["cookieConsent.consentModal.title"](),
             description: m["cookieConsent.consentModal.description"](),
             acceptAllBtn: m["cookieConsent.consentModal.acceptAllBtn"](),
-            acceptNecessaryBtn: m["cookieConsent.consentModal.acceptNecessaryBtn"](),
-            showPreferencesBtn: m["cookieConsent.consentModal.showPreferencesBtn"](),
+            acceptNecessaryBtn:
+              m["cookieConsent.consentModal.acceptNecessaryBtn"](),
+            showPreferencesBtn:
+              m["cookieConsent.consentModal.showPreferencesBtn"](),
           },
           preferencesModal: {
             title: m["cookieConsent.preferencesModal.title"](),
             acceptAllBtn: m["cookieConsent.preferencesModal.acceptAllBtn"](),
-            acceptNecessaryBtn: m["cookieConsent.preferencesModal.acceptNecessaryBtn"](),
-            savePreferencesBtn: m["cookieConsent.preferencesModal.savePreferencesBtn"](),
-            closeIconLabel: m["cookieConsent.preferencesModal.closeIconLabel"](),
+            acceptNecessaryBtn:
+              m["cookieConsent.preferencesModal.acceptNecessaryBtn"](),
+            savePreferencesBtn:
+              m["cookieConsent.preferencesModal.savePreferencesBtn"](),
+            closeIconLabel:
+              m["cookieConsent.preferencesModal.closeIconLabel"](),
             sections: [
               {
-                title: m["cookieConsent.preferencesModal.sections.usage.title"](),
-                description: m["cookieConsent.preferencesModal.sections.usage.description"](),
+                title:
+                  m["cookieConsent.preferencesModal.sections.usage.title"](),
+                description:
+                  m[
+                    "cookieConsent.preferencesModal.sections.usage.description"
+                  ](),
               },
               {
-                title: m["cookieConsent.preferencesModal.sections.necessary.title"](),
-                description: m["cookieConsent.preferencesModal.sections.necessary.description"](),
+                title:
+                  m[
+                    "cookieConsent.preferencesModal.sections.necessary.title"
+                  ](),
+                description:
+                  m[
+                    "cookieConsent.preferencesModal.sections.necessary.description"
+                  ](),
                 linkedCategory: "necessary",
               },
               {
-                title: m["cookieConsent.preferencesModal.sections.analytics.title"](),
-                description: m["cookieConsent.preferencesModal.sections.analytics.description"](),
+                title:
+                  m[
+                    "cookieConsent.preferencesModal.sections.analytics.title"
+                  ](),
+                description:
+                  m[
+                    "cookieConsent.preferencesModal.sections.analytics.description"
+                  ](),
                 linkedCategory: "analytics",
               },
               {
-                title: m["cookieConsent.preferencesModal.sections.marketing.title"](),
-                description: m["cookieConsent.preferencesModal.sections.marketing.description"](),
+                title:
+                  m[
+                    "cookieConsent.preferencesModal.sections.marketing.title"
+                  ](),
+                description:
+                  m[
+                    "cookieConsent.preferencesModal.sections.marketing.description"
+                  ](),
                 linkedCategory: "marketing",
               },
               {
-                title: m["cookieConsent.preferencesModal.sections.preferences.title"](),
-                description: m["cookieConsent.preferencesModal.sections.preferences.description"](),
+                title:
+                  m[
+                    "cookieConsent.preferencesModal.sections.preferences.title"
+                  ](),
+                description:
+                  m[
+                    "cookieConsent.preferencesModal.sections.preferences.description"
+                  ](),
                 linkedCategory: "preferences",
               },
             ],

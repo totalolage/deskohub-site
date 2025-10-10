@@ -108,16 +108,8 @@ paths:
           schema:
             type: string
           description: Cloud ID
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 100
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: List of reservations
@@ -268,16 +260,8 @@ paths:
           description: Filter customers (e.g., by email or phone)
           schema:
             type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 100
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: Paginated list of customers
@@ -344,16 +328,8 @@ paths:
           required: true
           schema:
             type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 100
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
       responses:
         '200':
           description: Paginated list of tables
@@ -391,17 +367,8 @@ paths:
           description: Sort products (e.g., "name", "-priceWithVat")
           schema:
             type: string
-        - name: limit
-          in: query
-          schema:
-            type: integer
-            default: 100
-            maximum: 100
-        - name: offset
-          in: query
-          schema:
-            type: integer
-            default: 0
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
         - name: include
           in: query
           description: Include related entities (comma-separated, e.g., "customizations,ingredients")
@@ -479,16 +446,8 @@ paths:
           schema:
             type: string
           description: Cloud ID
-        - name: page
-          in: query
-          schema:
-            type: string
-          description: Page number
-        - name: limit
-          in: query
-          schema:
-            type: string
-          description: Items per page
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
         - name: filter
           in: query
           schema:
@@ -606,6 +565,24 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+      description: Page number (starts at 1)
+
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 100
+        maximum: 100
+      description: Items per page (max 100)
 
   schemas:
     TranslatedStrings:

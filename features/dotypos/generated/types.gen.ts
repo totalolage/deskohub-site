@@ -774,6 +774,16 @@ export type ErrorResponse = {
     code?: number;
 };
 
+/**
+ * Page number (starts at 1)
+ */
+export type PageParam = number;
+
+/**
+ * Items per page (max 100)
+ */
+export type LimitParam = number;
+
 export type GetAccessTokenData = {
     body: TokenRequest;
     headers: {
@@ -818,8 +828,14 @@ export type ListReservationsData = {
         cloudId: string;
     };
     query?: {
+        /**
+         * Page number (starts at 1)
+         */
+        page?: number;
+        /**
+         * Items per page (max 100)
+         */
         limit?: number;
-        offset?: number;
     };
     url: '/clouds/{cloudId}/reservations';
 };
@@ -1003,8 +1019,14 @@ export type GetCustomersData = {
          * Filter customers (e.g., by email or phone)
          */
         filter?: string;
+        /**
+         * Page number (starts at 1)
+         */
+        page?: number;
+        /**
+         * Items per page (max 100)
+         */
         limit?: number;
-        offset?: number;
     };
     url: '/clouds/{cloudId}/customers';
 };
@@ -1064,8 +1086,14 @@ export type GetTablesData = {
         cloudId: string;
     };
     query?: {
+        /**
+         * Page number (starts at 1)
+         */
+        page?: number;
+        /**
+         * Items per page (max 100)
+         */
         limit?: number;
-        offset?: number;
     };
     url: '/clouds/{cloudId}/tables';
 };
@@ -1105,8 +1133,14 @@ export type GetProductsData = {
          * Sort products (e.g., "name", "-priceWithVat")
          */
         sort?: string;
+        /**
+         * Page number (starts at 1)
+         */
+        page?: number;
+        /**
+         * Items per page (max 100)
+         */
         limit?: number;
-        offset?: number;
         /**
          * Include related entities (comma-separated, e.g., "customizations,ingredients")
          */
@@ -1186,13 +1220,13 @@ export type GetCategoriesData = {
     };
     query?: {
         /**
-         * Page number
+         * Page number (starts at 1)
          */
-        page?: string;
+        page?: number;
         /**
-         * Items per page
+         * Items per page (max 100)
          */
-        limit?: string;
+        limit?: number;
         /**
          * Filter expression
          */
