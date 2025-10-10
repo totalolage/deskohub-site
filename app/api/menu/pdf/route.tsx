@@ -4,11 +4,15 @@ import { NextResponse } from "next/server";
 import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
 import type { Category } from "@/features/dotypos/generated";
 import { isCategoryDisplayable } from "@/features/dotypos/utils/category-utils";
+import { extractLocaleFromRequest } from "@/features/i18n";
 import { MenuPDFDocument } from "@/features/menu/components/menu-pdf-document";
 import { siteConstants } from "@/shared/utils/constants";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    // Get locale from request using existing i18n utilities
+    const locale = extractLocaleFromRequest(request);
+
     // Fetch menu data from Dotypos
     const program = getMenuItems().pipe(
       Effect.provide(DotyposServiceLive),
@@ -66,7 +70,11 @@ export async function GET() {
 
     // Generate PDF
     const pdfBuffer = await renderToBuffer(
-      <MenuPDFDocument categories={displayCategories} products={products} />
+      <MenuPDFDocument
+        categories={displayCategories}
+        products={products}
+        locale={locale}
+      />
     );
 
     // Return PDF response

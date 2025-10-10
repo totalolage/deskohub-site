@@ -8,6 +8,9 @@ import {
 } from "@react-pdf/renderer";
 import type React from "react";
 import type { Category, Product } from "@/features/dotypos/generated";
+import type { Locale } from "@/features/i18n";
+import { formatPrice } from "@/shared/utils/currency";
+import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
 // Register fonts if needed
 Font.register({
@@ -105,25 +108,29 @@ const styles = StyleSheet.create({
 interface MenuPDFDocumentProps {
   categories: Category[];
   products: Product[];
+  locale: Locale;
 }
 
 export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
   categories,
   products,
+  locale,
 }) => {
   const renderItems = (categoryId: string) => {
     const categoryProducts = products.filter(
       (p) => p._categoryId === categoryId
     );
 
-    return categoryProducts.map((item) => {
-      // Items are always available for now since we don't have stock quantity data
-      const isAvailable = true;
+    return categoryProducts.map((product) => {
+      // Format product with localized text
+      const item = formatMenuItem(product, locale);
 
       return (
         <View
           key={item.id}
-          style={!isAvailable ? [styles.item, styles.unavailable] : styles.item}
+          style={
+            !item.isAvailable ? [styles.item, styles.unavailable] : styles.item
+          }
         >
           <View style={styles.itemLeft}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -131,22 +138,18 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
               {item.unit && ["g", "l"].some((u) => item.unit?.includes(u)) && (
                 <Text style={styles.itemUnit}>({item.unit})</Text>
               )}
-              {!isAvailable && (
+              {!item.isAvailable && (
                 <Text style={styles.unavailableText}>
                   (momentálně nedostupné)
                 </Text>
               )}
             </View>
-            {(item.description || item.subtitle) && (
-              <Text style={styles.itemDescription}>
-                {item.description || item.subtitle}
-              </Text>
+            {item.description && (
+              <Text style={styles.itemDescription}>{item.description}</Text>
             )}
           </View>
           <Text style={styles.itemPrice}>
-            {item.priceWithVat && Number(item.priceWithVat) > 0
-              ? `${Math.round(Number(item.priceWithVat))} Kč`
-              : "Na dotaz"}
+            {formatPrice(item.priceWithVat, locale)}
           </Text>
         </View>
       );
@@ -169,9 +172,12 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
           // Skip empty categories
           if (categoryProducts.length === 0) return null;
 
+          // Format category with localized text
+          const formattedCategory = formatCategory(category, locale);
+
           return (
             <View key={category.id} style={styles.category}>
-              <Text style={styles.categoryTitle}>{category.name}</Text>
+              <Text style={styles.categoryTitle}>{formattedCategory.name}</Text>
               {renderItems(category.id!)}
             </View>
           );

@@ -1,6 +1,7 @@
 import type { Category, Product } from "@/features/dotypos/generated";
 import { useLocale } from "@/features/i18n/utils/use-locale";
-import { getLocalizedText } from "@/shared/utils/localization";
+import { formatPrice } from "@/shared/utils/currency";
+import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
 interface MenuSectionProps {
   products: Product[];
@@ -18,32 +19,19 @@ export function MenuSection({ products, category, emoji }: MenuSectionProps) {
   // Skip empty categories
   if (categoryProducts.length === 0) return null;
 
-  // Get localized category name if available
-  const localizedCategoryName =
-    getLocalizedText(category.translatedName, locale, category.name) ??
-    category.name;
+  // Format category with localized text
+  const formattedCategory = formatCategory(category, locale);
 
   return (
     <div className="mb-12">
       <h2 className="text-3xl font-bold text-green-400 mb-6 text-center">
         {emoji && <span className="mr-2">{emoji}</span>}
-        {localizedCategoryName}
+        {formattedCategory.name}
       </h2>
       <div className="grid gap-4 md:gap-6">
-        {categoryProducts.map((item) => {
-          // Get localized name and description if available
-          const localizedName =
-            getLocalizedText(item.translatedName, locale, item.name) ??
-            item.name;
-          const localizedDescription = getLocalizedText(
-            item.translatedDescription,
-            locale,
-            item.description || item.subtitle
-          );
-
-          // Determine availability - items are always available for now
-          // since we don't have stock quantity data from the API
-          const isAvailable = true;
+        {categoryProducts.map((product) => {
+          // Format product with localized text
+          const item = formatMenuItem(product, locale);
 
           return (
             <div
@@ -52,7 +40,7 @@ export function MenuSection({ products, category, emoji }: MenuSectionProps) {
             >
               <div className="flex-1">
                 <h3 className="text-xl font-semibold text-white mb-1">
-                  {localizedName}
+                  {item.name}
                   {item.unit &&
                     ["g", "l"].some((unit) => item.unit!.includes(unit)) && (
                       <span className="text-sm text-gray-300 ml-2">
@@ -60,21 +48,17 @@ export function MenuSection({ products, category, emoji }: MenuSectionProps) {
                       </span>
                     )}
                 </h3>
-                {localizedDescription && (
-                  <p className="text-gray-300 text-sm">
-                    {localizedDescription}
-                  </p>
+                {item.description && (
+                  <p className="text-gray-300 text-sm">{item.description}</p>
                 )}
-                {!isAvailable && (
+                {!item.isAvailable && (
                   <span className="inline-block mt-2 px-2 py-1 text-xs bg-red-900/50 text-red-300 rounded">
                     Momentálně nedostupné
                   </span>
                 )}
               </div>
               <div className="text-2xl font-bold text-green-400 ml-4">
-                {item.priceWithVat && Number(item.priceWithVat) > 0
-                  ? `${Math.round(Number(item.priceWithVat))} Kč`
-                  : "Na dotaz"}
+                {formatPrice(item.priceWithVat, locale)}
               </div>
             </div>
           );
