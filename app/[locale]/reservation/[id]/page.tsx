@@ -94,7 +94,7 @@ export default async function ReservationConfirmationPage({
     phone: customer.phone ?? undefined,
     date: datetime,
     time,
-    duration: displayData.duration,
+    durationMinutes: displayData.durationMinutes,
     guestCount: displayData.guestCount,
     specialRequests: parsedNote?.specialRequests,
     tablePreference: displayData.needsLargerTable

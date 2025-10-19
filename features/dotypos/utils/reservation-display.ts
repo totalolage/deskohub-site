@@ -93,13 +93,13 @@ export function parseReservationNote(note?: string) {
  * The note field only contains special requests
  */
 export function getReservationDisplayData(reservation: Reservation) {
-  // Calculate duration from timestamps
-  let duration: number | undefined;
+  // Calculate duration from timestamps in minutes
+  let durationMinutes: number | undefined;
   if (reservation.startDate && reservation.endDate) {
     const startMs = new Date(reservation.startDate).getTime();
     const endMs = new Date(reservation.endDate).getTime();
     const durationMs = endMs - startMs;
-    duration = Math.round(durationMs / (1000 * 60 * 60)); // Convert to hours
+    durationMinutes = Math.round(durationMs / (1000 * 60)); // Convert to minutes
   }
 
   return {
@@ -114,7 +114,7 @@ export function getReservationDisplayData(reservation: Reservation) {
       typeof reservation.seats === "string"
         ? parseInt(reservation.seats, 10) || 1
         : reservation.seats || 1,
-    duration,
+    durationMinutes,
     // Customer details are now fetched separately
     // Table preferences could be stored in reservation metadata or deduced from table selection
     needsLargerTable: false,

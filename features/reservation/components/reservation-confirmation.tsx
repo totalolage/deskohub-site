@@ -18,7 +18,10 @@ import {
 import { Separator } from "@/shared/components/ui/separator";
 import { cn } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
-import { formatDate } from "@/shared/utils/date-formatting";
+import {
+  formatDate,
+  formatDurationMinutes,
+} from "@/shared/utils/date-formatting";
 import { ReservationStatusBadge } from "./status-badge";
 
 // CVA variants for status-based styling
@@ -188,7 +191,7 @@ export interface ReservationDetails {
   phone: string | undefined;
   date: Date;
   time: string;
-  duration?: number;
+  durationMinutes?: number;
   guestCount?: number;
   specialRequests?: string;
   tablePreference?: "standard" | "large" | "private";
@@ -310,7 +313,7 @@ export function ReservationConfirmation({
                 </div>
               </div>
 
-              {details.duration && (
+              {details.durationMinutes && (
                 <div className="flex items-center gap-3">
                   <Clock className="w-4 h-4 text-gray-500" />
                   <div>
@@ -318,7 +321,7 @@ export function ReservationConfirmation({
                       {m["tableReservation.durationLabel"]()}
                     </p>
                     <p className="text-gray-600">
-                      {m.durationFormat({ hours: details.duration })}
+                      {formatDurationMinutes(details.durationMinutes, locale)}
                     </p>
                   </div>
                 </div>

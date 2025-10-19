@@ -375,32 +375,39 @@
       }
     }
   ],
-  "durationFormat": [
-    {
-      "declarations": ["input hours"],
-      "selectors": [],
-      "match": {
-        "hours=0.5": "30 minut",
-        "hours=1": "1 hodina",
-        "hours=1.5": "1,5 hodiny",
-        "hours=2": "2 hodiny",
-        "hours=2.5": "2,5 hodiny",
-        "hours=3": "3 hodiny",
-        "hours=3.5": "3,5 hodiny",
-        "hours=4": "4 hodiny",
-        "hours=4.5": "4,5 hodiny",
-        "hours=5": "5 hodin",
-        "hours=5.5": "5,5 hodiny",
-        "hours=6": "6 hodin",
-        "hours=6.5": "6,5 hodiny",
-        "hours=7": "7 hodin",
-        "hours=7.5": "7,5 hodiny",
-        "hours=8": "8 hodin",
-        "hours=8.5": "8,5 hodiny",
-        "hours=9": "9 hodin"
+  "timeUnits": {
+    "hour": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "hodina",
+          "count=2": "hodiny",
+          "count=3": "hodiny",
+          "count=4": "hodiny",
+          "*": "hodin"
+        }
       }
-    }
-  ],
+    ],
+    "minute": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "minuta",
+          "count=2": "minuty",
+          "count=3": "minuty",
+          "count=4": "minuty",
+          "*": "minut"
+        }
+      }
+    ]
+  },
+  "duration": {
+    "hoursOnly": "{hours} {hourLabel}",
+    "minutesOnly": "{minutes} {minuteLabel}",
+    "hoursAndMinutes": "{hours} {hourLabel}, {minutes} {minuteLabel}"
+  },
   "descriptions": {
     "dateTime": "Vyberte si preferované datum a čas",
     "tableType": "Vyberte typ stolu, který vám vyhovuje",

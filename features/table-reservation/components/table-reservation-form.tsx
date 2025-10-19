@@ -26,6 +26,7 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
+import { formatDurationMinutes } from "@/shared/utils/date-formatting";
 import {
   Form,
   FormControl,
@@ -269,7 +270,7 @@ export function TableReservationForm() {
                       <SelectContent>
                         {availableDurations.map((hours) => (
                           <SelectItem key={hours} value={hours.toString()}>
-                            {m.durationFormat({ hours })}
+                            {formatDurationMinutes(hours * 60, locale)}
                           </SelectItem>
                         ))}
                       </SelectContent>

@@ -363,32 +363,33 @@
       }
     }
   ],
-  "durationFormat": [
-    {
-      "declarations": ["input hours"],
-      "selectors": [],
-      "match": {
-        "hours=0.5": "30 minutes",
-        "hours=1": "1 hour",
-        "hours=1.5": "1.5 hours",
-        "hours=2": "2 hours",
-        "hours=2.5": "2.5 hours",
-        "hours=3": "3 hours",
-        "hours=3.5": "3.5 hours",
-        "hours=4": "4 hours",
-        "hours=4.5": "4.5 hours",
-        "hours=5": "5 hours",
-        "hours=5.5": "5.5 hours",
-        "hours=6": "6 hours",
-        "hours=6.5": "6.5 hours",
-        "hours=7": "7 hours",
-        "hours=7.5": "7.5 hours",
-        "hours=8": "8 hours",
-        "hours=8.5": "8.5 hours",
-        "hours=9": "9 hours"
+  "timeUnits": {
+    "hour": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "hour",
+          "*": "hours"
+        }
       }
-    }
-  ],
+    ],
+    "minute": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "minute",
+          "*": "minutes"
+        }
+      }
+    ]
+  },
+  "duration": {
+    "hoursOnly": "{hours} {hourLabel}",
+    "minutesOnly": "{minutes} {minuteLabel}",
+    "hoursAndMinutes": "{hours} {hourLabel}, {minutes} {minuteLabel}"
+  },
   "descriptions": {
     "dateTime": "Choose your preferred date and time",
     "tableType": "Choose the type of table that suits your needs",
