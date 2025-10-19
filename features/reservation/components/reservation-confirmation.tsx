@@ -22,6 +22,7 @@ import {
   formatDate,
   formatDurationMinutes,
 } from "@/shared/utils/date-formatting";
+import { formatPhoneNumber } from "@/shared/utils/phone-formatting";
 import { ReservationStatusBadge } from "./status-badge";
 
 // CVA variants for status-based styling
@@ -471,7 +472,7 @@ export function ReservationConfirmation({
               <div>
                 <p className="font-medium">{m["labels.phone"]()}</p>
                 <p className={statusAccentTextVariants({ status })}>
-                  +420 123 456 789
+                  {formatPhoneNumber(siteConstants.contact.phone, locale)}
                 </p>
               </div>
             </div>
