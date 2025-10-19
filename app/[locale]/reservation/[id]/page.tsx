@@ -11,6 +11,7 @@ import {
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
 import { ScrollToTop } from "@/shared/components/scroll-to-top";
 import { siteConstants } from "@/shared/utils/constants";
+import { formatTime } from "@/shared/utils/date-formatting";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale_id } from "./route";
 
@@ -81,15 +82,9 @@ export default async function ReservationConfirmationPage({
     ? parseNoteWithMetadata(reservation.note)
     : null;
 
-  // Parse time from the datetime
+  // Parse time from the datetime using timezone-aware formatting
   const datetime = displayData.datetime || new Date();
-  const time = datetime.toLocaleTimeString(
-    parsedNote?.metadata.locale ?? getLocale(),
-    {
-      hour: "2-digit",
-      minute: "2-digit",
-    }
-  );
+  const time = formatTime(datetime, parsedNote?.metadata.locale ?? getLocale());
 
   // Map to the ReservationDetails structure
   const reservationDetails = {
