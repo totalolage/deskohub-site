@@ -20,11 +20,11 @@ export async function generateMetadata(): Promise<Metadata> {
     metadataBase: origin ? new URL(origin) : undefined,
     icons: {
       icon: [
-        { url: "/favicon.ico", sizes: "any" },
-        { url: "/favicon.ico", sizes: "32x32", type: "image/x-icon" },
+        { url: "/favicon.png", sizes: "any", type: "image/png" },
+        { url: "/favicon.png", sizes: "32x32", type: "image/png" },
       ],
-      shortcut: "/favicon.ico",
-      apple: "/favicon.ico",
+      shortcut: "/favicon.png",
+      apple: "/apple-touch-icon.png",
     },
   };
 }
