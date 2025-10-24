@@ -18,6 +18,14 @@ export async function generateMetadata(): Promise<Metadata> {
 
   return {
     metadataBase: origin ? new URL(origin) : undefined,
+    icons: {
+      icon: [
+        { url: "/favicon.ico", sizes: "any" },
+        { url: "/favicon.ico", sizes: "32x32", type: "image/x-icon" },
+      ],
+      shortcut: "/favicon.ico",
+      apple: "/favicon.ico",
+    },
   };
 }
 
