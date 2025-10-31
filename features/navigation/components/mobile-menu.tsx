@@ -16,6 +16,10 @@ import {
   SheetTrigger,
 } from "@/shared/components/ui/sheet";
 import { siteConstants } from "@/shared/utils/constants";
+import {
+  getWeekdayHours,
+  getWeekendHours,
+} from "@/shared/utils/working-hours-helpers";
 import { ReservationButton } from "./reservation-button";
 
 const navigationItems = [
@@ -95,11 +99,19 @@ export function MobileMenu() {
               <div className="text-sm text-gray-300 space-y-1">
                 <div className="flex justify-between">
                   <span>{m["menu.openingHours.weekdays"]()}</span>
-                  <span className="text-green-400">15:00-23:00</span>
+                  <span className="text-green-400">
+                    {m["menu.openingHours.weekdaysTime"]({
+                      hours: getWeekdayHours().formatted,
+                    })}
+                  </span>
                 </div>
                 <div className="flex justify-between">
                   <span>{m["menu.openingHours.weekend"]()}</span>
-                  <span className="text-green-400">11:00-23:00</span>
+                  <span className="text-green-400">
+                    {m["menu.openingHours.weekendTime"]({
+                      hours: getWeekendHours().formatted,
+                    })}
+                  </span>
                 </div>
               </div>
             </div>

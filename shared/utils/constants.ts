@@ -14,10 +14,6 @@ export const siteConstants = {
      */
     currency: "CZK" as const,
     /**
-     * Default locale for price formatting
-     */
-    defaultLocale: "cs-CZ" as const,
-    /**
      * Category emoji mappings
      * Maps category IDs to their display emojis
      */
