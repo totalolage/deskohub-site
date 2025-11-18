@@ -35,7 +35,7 @@ export function HomeHero() {
             </div>
           </div>
         </div>
-        <p className="mt-8 text-md max-w-3xl mx-auto text-gray-200">
+        <p className="mt-8 text-md max-w-3xl mx-auto text-gray-200 text-balance">
           {m["hero.description"]()}
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
