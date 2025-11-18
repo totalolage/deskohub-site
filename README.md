@@ -95,7 +95,7 @@ Create a `.env.local` file in the root directory:
 - `bun run build` - Build for production
 - `bun run start` - Start production server
 - `bun run lint` - Run type checking and linting
-- `bun run lint:fix` - Fix linting issues
+- `bun run format` - Fix linting issues
 
 ## 🤝 Contributing
 
@@ -106,7 +106,3 @@ Please read our [Best Practices Guide](./docs/BEST_PRACTICES.md) before contribu
 3. Add translations for new text
 4. Test on multiple screen sizes
 5. Ensure accessibility standards
-
-## 📄 License
-
-This project is proprietary and confidential.

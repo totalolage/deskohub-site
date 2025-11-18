@@ -1,3 +1,4 @@
+import Interpolate from "@doist/react-interpolate";
 import { m } from "@/features/i18n";
 import { Hero } from "@/shared/components";
 import { Price } from "@/shared/components/price";
@@ -30,10 +31,7 @@ export function HomeHero() {
               {m["hours.weekends"]()}
             </div>
             <div className="text-lg font-semibold">
-              {getWeekendHours().open}-
-              {getWeekendHours().close === "24:00"
-                ? "00:00"
-                : getWeekendHours().close}
+              {getWeekendHours().open}-{getWeekendHours().close}
             </div>
           </div>
         </div>
@@ -42,19 +40,16 @@ export function HomeHero() {
         </p>
         <div className="mt-4 flex flex-wrap justify-center gap-4 text-sm">
           <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
-            {m["hero.priceInfo.withPurchase"]()}
-            &nbsp;
-            <Price
-              amount={siteConstants.pricing.entryFee.withPurchase}
-              className="text-green-400"
-            />
-          </span>
-          <span className="bg-white/10 backdrop-blur-sm rounded-lg px-4 py-2">
-            {m["hero.priceInfo.withoutPurchase"]()}
-            &nbsp;
-            <Price
-              amount={siteConstants.pricing.entryFee.withoutPurchase}
-              className="text-green-400"
+            <Interpolate
+              string={m["hero.priceInfo.forPlayers"]()}
+              mapping={{
+                price: () => (
+                  <Price
+                    amount={siteConstants.pricing.entryFee}
+                    className="text-green-400"
+                  />
+                ),
+              }}
             />
           </span>
         </div>

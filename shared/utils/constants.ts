@@ -93,11 +93,7 @@ export const siteConstants = {
     youtube: "https://www.youtube.com/@Deskohub",
   },
   pricing: {
-    entryFee: {
-      withPurchase: 50,
-      withoutPurchase: 100,
-      childrenUnder15: 0,
-    },
+    entryFee: 50,
     training: {
       hourly: 900,
       daily: 5500,

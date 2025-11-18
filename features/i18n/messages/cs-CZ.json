@@ -26,8 +26,7 @@
     "title": "Deskoherní bar",
     "description": "Místo pro všechny, kdo milují deskové hry. Klidné zákoutí pro vaši oblíbenou společenskou hru i možnost naučit se nové hry.",
     "priceInfo": {
-      "withPurchase": "Vstupné s objednávkou:",
-      "withoutPurchase": "Vstupné bez objednávky:"
+      "forPlayers": "Vstup <price /> pro deskové hráče"
     }
   },
   "hours": {
@@ -37,8 +36,7 @@
   "about": {
     "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
     "priceInfo": {
-      "withPurchase": "S objednávkou:",
-      "withoutPurchase": "Bez objednávky:",
+      "forPlayers": "Vstup <price /> pro deskové hráče",
       "childrenFree": "Děti do 15 let: Zdarma",
       "mondayFree": "Pondělí: Bez vstupného"
     }
@@ -198,7 +196,7 @@
     "preOrderDrinks": "Nápoje",
     "preOrderDetails": "Detaily předobjednávky",
     "preOrderDetailsPlaceholder": "Prosím uveďte své preference pro jídlo a nápoje...",
-    "pricingInfo": "Vstupné: {priceWith} s objednávkou, {priceWithout} bez objednávky",
+    "pricingInfo": "Vstupné: {priceForPlayers} za deskového hráče",
     "submit": "Rezervovat stůl",
     "submitting": "Odesílání...",
     "successTitle": "Rezervace úspěšná!",
@@ -800,7 +798,7 @@
       "drinks": "NÁPOJE",
       "other": "OSTATNÍ"
     },
-    "footerNote": "Vstupné pro hráče deskových her: Cena je {priceWith} pro deskohráče, kteří si u nás něco objednají a {priceWithout} pro zákazníky s nulovou útratou."
+    "footerNote": "Vstupné pro hráče deskových her: {priceForPlayers}"
   },
   "boardGames": {
     "pageTitle": "Deskové hry - Deskohub",

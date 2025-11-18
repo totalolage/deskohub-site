@@ -199,7 +199,7 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
       return true;
     }
     return false;
-  }),
+  })
 );
 
 /**

@@ -26,8 +26,7 @@
     "title": "Board Game Bar",
     "description": "A place for everyone who loves board games. Quiet corners for your favorite social game and the opportunity to learn new games.",
     "priceInfo": {
-      "withPurchase": "Entry fee with purchase:",
-      "withoutPurchase": "Entry fee without purchase:"
+      "forPlayers": "Entry <price /> for board game players"
     }
   },
   "hours": {
@@ -37,8 +36,7 @@
   "about": {
     "description": "A place for everyone who loves board games, whether strategic, campaign or party games. An ideal space for meeting friends and getting to know new kindred spirits.",
     "priceInfo": {
-      "withPurchase": "With purchase:",
-      "withoutPurchase": "Without purchase:",
+      "forPlayers": "Entry <price /> for board game players",
       "childrenFree": "Children under 15: Free",
       "mondayFree": "Monday: No entry fee"
     }
@@ -194,7 +192,7 @@
     "preOrderDrinks": "Drinks",
     "preOrderDetails": "Pre-order Details",
     "preOrderDetailsPlaceholder": "Please specify your food and drink preferences...",
-    "pricingInfo": "Entry fee: {priceWith} with order, {priceWithout} without order",
+    "pricingInfo": "Entry fee: {priceForPlayers} per board game player",
     "submit": "Book Table",
     "submitting": "Submitting...",
     "successTitle": "Booking Successful!",
@@ -771,11 +769,11 @@
       "weekendTime": "{hours}"
     },
     "sections": {
-      "food": "Food",
-      "drinks": "Drinks",
-      "other": "Other"
+      "food": "FOOD",
+      "drinks": "DRINKS",
+      "other": "OTHER"
     },
-    "footerNote": "Entry fee for board game players: {priceWith} for customers who order from us and {priceWithout} for customers with zero spending."
+    "footerNote": "Entry fee for board game players: {priceForPlayers}"
   },
   "boardGames": {
     "pageTitle": "Board Games - Deskohub",

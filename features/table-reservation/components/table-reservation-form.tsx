@@ -572,12 +572,8 @@ export function TableReservationForm() {
               <div className="text-center space-y-2">
                 <h3 className="font-semibold text-green-800">
                   {m["tableReservation.pricingInfo"]({
-                    priceWith: formatPrice(
-                      siteConstants.pricing.entryFee.withPurchase,
-                      locale
-                    ),
-                    priceWithout: formatPrice(
-                      siteConstants.pricing.entryFee.withoutPurchase,
+                    priceForPlayers: formatPrice(
+                      siteConstants.pricing.entryFee,
                       locale
                     ),
                   })}
