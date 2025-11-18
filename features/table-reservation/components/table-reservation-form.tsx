@@ -26,7 +26,6 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
-import { formatDurationMinutes } from "@/shared/utils/date-formatting";
 import {
   Form,
   FormControl,
@@ -48,6 +47,7 @@ import { cn } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 import {
   formatDateTimeForInput,
+  formatDurationMinutes,
   getMinBookingDateTime,
 } from "@/shared/utils/date-formatting";
 import { formatPrice } from "@/shared/utils/price-formatting";

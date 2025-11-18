@@ -49,12 +49,23 @@ export function selectBestTable(
     return null;
   }
 
+  const [privateTables, publicTables] = tables.reduce<
+    [typeof tables, typeof tables]
+  >(
+    ([privateTables, publicTables], t) => {
+      if (/dnd|private|vip|soukrom/i.test(t.name)) {
+        privateTables.push(t);
+      } else {
+        publicTables.push(t);
+      }
+      return [privateTables, publicTables];
+    },
+    [[], []]
+  );
+
   // Priority 1: Private space (only if ≤5 people)
   if (needsPrivateSpace && guestCount <= 5) {
-    const privateTable = tables.find((t) =>
-      /dnd|private|vip|soukrom/i.test(t.name)
-    );
-
+    const privateTable = privateTables[0];
     if (privateTable) {
       return {
         selectedTableId: privateTable.id!,
@@ -67,7 +78,7 @@ export function selectBestTable(
 
   // Priority 2: Larger table for board games
   if (needsLargerTable) {
-    const largeTable = tables
+    const largeTable = publicTables
       .filter((t) => t.seatsNum >= Math.max(7, guestCount))
       .shift(); // Get first (smallest) that fits
 
@@ -81,48 +92,24 @@ export function selectBestTable(
     }
   }
 
-  // Default: Smallest table that fits group + 1 extra seat for game space
-  const targetSize = guestCount + 1;
+  // Default: Smallest table that fits group
   const selectedTable =
-    tables.find((t) => t.seatsNum >= targetSize) ||
-    tables.find((t) => t.seatsNum >= guestCount) ||
-    tables[tables.length - 1]; // Largest available
+    publicTables.find((t) => t.seatsNum >= guestCount) ||
+    publicTables[tables.length - 1]; // Largest available
 
   if (!selectedTable || !selectedTable.id) {
     return null;
   }
 
-  const reason =
-    selectedTable.seatsNum >= targetSize
-      ? `Selected table with ${selectedTable.seatsNum} seats (group + game space)`
-      : selectedTable.seatsNum >= guestCount
-        ? `Selected table with ${selectedTable.seatsNum} seats`
-        : "Selected largest available table";
-
   return {
     selectedTableId: selectedTable.id,
     selectedTableName: selectedTable.name,
     seats: selectedTable.seatsNum,
-    reason,
+    reason:
+      selectedTable.seatsNum >= guestCount
+        ? `Selected table with ${selectedTable.seatsNum} seats`
+        : "Selected largest available table",
   };
-}
-
-/**
- * Check if multiple tables are needed for a group
- */
-export function needsMultipleTables(
-  guestCount: number,
-  availableTables: Table[]
-): boolean {
-  const maxSeats = Math.max(
-    ...availableTables
-      .filter((t) => t.seats)
-      .map((t) =>
-        typeof t.seats === "number" ? t.seats : parseInt(String(t.seats || "0"))
-      )
-  );
-
-  return guestCount > maxSeats;
 }
 
 /**
@@ -136,7 +123,7 @@ export function suggestTableCombination(
     .filter((t) => t.enabled && t.display && t.seats)
     .map((t) => ({
       ...t,
-      seatsNum: parseInt(String(t.seats || "0")),
+      seatsNum: parseInt(String(t.seats || "0"), 10),
     }))
     .filter((t) => t.seatsNum > 0)
     .sort((a, b) => b.seatsNum - a.seatsNum);

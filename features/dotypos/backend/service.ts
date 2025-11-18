@@ -200,7 +200,6 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
     }
     return false;
   }),
-  Schedule.map(() => void 0)
 );
 
 /**
@@ -1379,7 +1378,7 @@ export const getAvailableTables = (): Effect.Effect<
       const seats =
         typeof table.seats === "number"
           ? table.seats
-          : parseInt(String(table.seats));
+          : parseInt(String(table.seats), 10);
       const tablesSet = tablesBySeats.get(seats) ?? new Set<Table>();
       tablesSet.add(table);
       tablesBySeats.set(seats, tablesSet);
@@ -1398,8 +1397,8 @@ export const getAvailableTables = (): Effect.Effect<
       if (regularTables.length > 0) {
         // Sort tables by name for consistent ordering
         regularTables.sort((a, b) => {
-          const aNum = parseInt(a.name) || 999;
-          const bNum = parseInt(b.name) || 999;
+          const aNum = parseInt(a.name, 10) || 999;
+          const bNum = parseInt(b.name, 10) || 999;
           return aNum - bNum;
         });
 
@@ -1420,7 +1419,7 @@ export const getAvailableTables = (): Effect.Effect<
       const dndSeats =
         typeof dndTable.seats === "number"
           ? dndTable.seats
-          : parseInt(String(dndTable.seats));
+          : parseInt(String(dndTable.seats), 10);
       options.push({
         label: `DnD (${dndSeats} players)`,
         value: dndTable.id,

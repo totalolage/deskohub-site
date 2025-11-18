@@ -8,15 +8,10 @@
           {
             "type": "command",
             "command": "claude-hooks run package-manager-enforcement"
-          }
-        ]
-      },
-      {
-        "matcher": "^Bash$",
-        "hooks": [
+          },
           {
             "type": "command",
-            "command": "claude-hooks run taskmaster-integration 'pnpm run validate'"
+            "command": "claude-hooks run taskmaster"
           }
         ]
       }
@@ -27,7 +22,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "claude-hooks run taskmaster-integration 'pnpm run validate'"
+            "command": "claude-hooks run taskmaster"
           }
         ]
       }

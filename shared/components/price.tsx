@@ -8,7 +8,10 @@ import { formatPrice } from "@/shared/utils/price-formatting";
  * Reusable component for displaying formatted prices
  * Uses the Intl API to ensure proper localization
  */
-export const Price = ({ amount, className }: {
+export const Price = ({
+  amount,
+  className,
+}: {
   amount: number;
   className?: string;
 }) => {

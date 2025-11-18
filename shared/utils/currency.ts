@@ -1,4 +1,4 @@
-import { m, type Locale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { siteConstants } from "./constants";
 
 /**
