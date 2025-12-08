@@ -169,7 +169,7 @@ const processWebhook = (payload: unknown) =>
     ];
 
     for (const tag of tagsToInvalidate) {
-      revalidateTag(tag);
+      revalidateTag(tag, "max");
     }
 
     yield* Effect.logInfo("Cache invalidated for reservation update", {

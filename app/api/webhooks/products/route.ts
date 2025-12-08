@@ -189,7 +189,7 @@ const processWebhook = (payload: unknown) =>
 
     // Invalidate cache tags
     for (const tag of tagsToInvalidate) {
-      revalidateTag(tag);
+      revalidateTag(tag, "max");
     }
 
     yield* Effect.logInfo("Product caches invalidated", {

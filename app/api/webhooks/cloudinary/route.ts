@@ -27,7 +27,7 @@ const processWebhook = (bodyText: string) =>
     // In the future when we parse the data from the webhook,
     // we can invalidate only the affected images
     const tagToRevalidate = cloudinaryTags.all();
-    revalidateTag(tagToRevalidate);
+    revalidateTag(tagToRevalidate, "max");
 
     yield* Effect.logInfo("Cloudinary webhook received, cache invalidated", {
       invalidatedTag: tagToRevalidate,
