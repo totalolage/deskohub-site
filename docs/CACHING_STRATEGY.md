@@ -1,9 +1,3 @@
-# Caching Strategy with Next.js 15 'use cache' Directive
-
-## Overview
-
-This application uses Next.js 15's new `use cache` directive for efficient server-side caching. This approach replaces the older `unstable_cache` API with a cleaner, more ergonomic solution.
-
 ## Architecture
 
 ### Cache Tags System (`/shared/utils/cache-tags.ts`)

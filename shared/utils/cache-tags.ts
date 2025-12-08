@@ -8,7 +8,7 @@
  * - Easy to use with cacheTag() API
  */
 
-import { unstable_cacheTag as cacheTag } from "next/cache";
+import { cacheTag } from "next/cache";
 
 /**
  * Creates a stable, short hash for complex objects to use in cache tags
