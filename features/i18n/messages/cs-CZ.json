@@ -211,7 +211,7 @@
         "required": "Datum a čas jsou povinné",
         "mustBeFuture": "Datum a čas musí být v budoucnu",
         "outsideWorkingHours": "Prosím vyberte čas během naší otevírací doby",
-        "thirtyMinuteIncrements": "Prosím vyberte čas na :00 nebo :30 minut",
+        "selectTimeSlot": "Vyberte prosím platný časový slot:",
         "durationExceedsWorkingHours": "Vaše rezervace přesahuje naši zavírací dobu. Prosím vyberte kratší dobu trvání nebo dřívější čas."
       },
       "guestCount": {

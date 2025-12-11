@@ -56,6 +56,7 @@ import {
   getWeekendHours,
 } from "@/shared/utils/working-hours-helpers";
 import { getAvailableDurations } from "@/shared/utils/working-hours-timezone";
+import { SuggestedTimeSlots } from "./suggested-time-slots";
 import styles from "./table-reservation-form.module.css";
 
 export function TableReservationForm() {
@@ -187,49 +188,59 @@ export function TableReservationForm() {
               <FormField
                 control={form.control}
                 name="datetime"
-                render={({ field, fieldState }) => (
-                  <FormItem
-                    ref={registerErrorRef("datetime")}
-                    className="scroll-mt-[calc(var(--header-height)+20px)]"
-                  >
-                    <FormLabel>
-                      {new Intl.ListFormat(locale, {
-                        style: "long",
-                        type: "conjunction",
-                      }).format([
-                        m["tableReservation.dateLabel"](),
-                        m["tableReservation.timeLabel"](),
-                      ])}
-                    </FormLabel>
-                    <FormControl>
-                      <Input
-                        type="datetime-local"
-                        min={getMinBookingDateTime()}
-                        step={
-                          siteConstants.tableReservation.validation.time
-                            .minuteIncrement * 60
-                        }
-                        variant={fieldState.error ? "error" : "default"}
-                        {...field}
-                        value={
-                          field.value &&
-                          !Number.isNaN(new Date(field.value).getTime())
-                            ? formatDateTimeForInput(field.value)
-                            : ""
-                        }
-                        onChange={(e) => {
-                          const value = e.target.value;
-                          if (value) {
-                            field.onChange(new Date(value));
-                          } else {
-                            field.onChange(null);
+                render={({ field, fieldState }) => {
+                  const minBookingDateTime = getMinBookingDateTime();
+                  return (
+                    <FormItem
+                      ref={registerErrorRef("datetime")}
+                      className="scroll-mt-[calc(var(--header-height)+20px)]"
+                    >
+                      <FormLabel>
+                        {new Intl.ListFormat(locale, {
+                          style: "long",
+                          type: "conjunction",
+                        }).format([
+                          m["tableReservation.dateLabel"](),
+                          m["tableReservation.timeLabel"](),
+                        ])}
+                      </FormLabel>
+                      <FormControl>
+                        <Input
+                          type="datetime-local"
+                          min={minBookingDateTime.input}
+                          step={
+                            siteConstants.tableReservation.validation.time
+                              .minuteIncrement * 60
                           }
-                        }}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
+                          variant={fieldState.error ? "error" : "default"}
+                          {...field}
+                          value={
+                            field.value &&
+                            !Number.isNaN(new Date(field.value).getTime())
+                              ? formatDateTimeForInput(field.value)
+                              : ""
+                          }
+                          onChange={(e) => {
+                            const value = e.target.value;
+                            if (value) {
+                              field.onChange(new Date(value));
+                            } else {
+                              field.onChange(null);
+                            }
+                          }}
+                        />
+                      </FormControl>
+                      <FormMessage />
+                      {fieldState.error?.type === "not_multiple_of" && (
+                        <SuggestedTimeSlots
+                          min={minBookingDateTime.date}
+                          value={field.value}
+                          setTimeSlot={(slot) => field.onChange(slot)}
+                        />
+                      )}
+                    </FormItem>
+                  );
+                }}
               />
 
               {/* Duration */}

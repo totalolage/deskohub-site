@@ -1,6 +1,7 @@
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod";
 import { m } from "@/features/i18n";
+import { getMinBookingDateTime } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 import {
   getAvailableDurations,
@@ -14,29 +15,13 @@ import {
 // Main table reservation schema using Zod v4's composable pattern
 // Using a factory function ensures messages are evaluated at runtime with correct locale
 export const getTableReservationSchema = () => {
-  // Datetime schema - expecting Date input from form
   const datetimeSchema = z
     .date({
       error: m["tableReservation.validation.datetime.required"](),
     })
-    .min(new Date(), {
+    .min(getMinBookingDateTime().date, {
       error: m["tableReservation.validation.datetime.mustBeFuture"](),
     })
-    .refine(
-      (date) => {
-        // Check if minutes are in 30-minute increments using modular arithmetic
-        const minutes = date.getMinutes();
-        return (
-          minutes %
-            siteConstants.tableReservation.validation.time.minuteIncrement ===
-          0
-        );
-      },
-      {
-        message:
-          m["tableReservation.validation.datetime.thirtyMinuteIncrements"](),
-      }
-    )
     .refine(
       (date) => {
         // Check if the booking time is within business hours
@@ -66,7 +51,21 @@ export const getTableReservationSchema = () => {
         message:
           m["tableReservation.validation.datetime.outsideWorkingHours"](),
       }
-    );
+    )
+    .superRefine((date, ctx) => {
+      const min = getMinBookingDateTime().date;
+      const minutesSinceMin = (date.getTime() - min.getTime()) / (1000 * 60);
+      if (
+        minutesSinceMin %
+        siteConstants.tableReservation.validation.time.minuteIncrement
+      )
+        ctx.addIssue({
+          code: "not_multiple_of",
+          divisor:
+            siteConstants.tableReservation.validation.time.minuteIncrement,
+          message: m["tableReservation.validation.datetime.selectTimeSlot"](),
+        });
+    });
 
   // Guest count schema - expecting number input from form
   const guestCountSchema = z

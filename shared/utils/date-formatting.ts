@@ -1,12 +1,5 @@
-import { cache } from "react";
 import { m } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
-
-/**
- * Get current timestamp - cached for the duration of the request
- * This ensures consistent timestamps across server and client during SSR
- */
-export const getNow = cache(() => new Date().toISOString());
 
 /**
  * Format a date consistently between server and client
@@ -88,14 +81,15 @@ export function formatDateTimeForInput(date: Date | string): string {
 }
 
 /**
- * Get the minimum datetime for booking (current time)
- * Formatted for datetime-local input
- * Rounds up to the nearest 30-minute increment to match the step attribute
+ * @returns {MinBookingDateTime}
  */
-export function getMinBookingDateTime(): string {
+export function getMinBookingDateTime() {
   const now = new Date();
   const minutes = now.getMinutes();
-  const roundedMinutes = Math.ceil(minutes / 30) * 30;
+  const roundedMinutes =
+    Math.ceil(
+      minutes / siteConstants.tableReservation.validation.time.minuteIncrement
+    ) * siteConstants.tableReservation.validation.time.minuteIncrement;
 
   // If we need to round up to the next hour
   if (roundedMinutes === 60) {
@@ -109,7 +103,7 @@ export function getMinBookingDateTime(): string {
   now.setSeconds(0);
   now.setMilliseconds(0);
 
-  return formatDateTimeForInput(now);
+  return { input: formatDateTimeForInput(now), date: now };
 }
 
 /**
