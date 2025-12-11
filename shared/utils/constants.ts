@@ -128,7 +128,7 @@ export const siteConstants = {
         increment: 0.5, // 30 minute increments in hours
       },
       time: {
-        minuteIncrement: 30, // Time selection must be in 30-minute increments
+        minuteIncrement: 15,
       },
     },
     defaultValues: {
