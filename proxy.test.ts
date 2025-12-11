@@ -1,8 +1,5 @@
-import assert from "node:assert/strict";
-import test from "node:test";
+import { expect, test } from "bun:test";
 import { config } from "./proxy";
-
-const msg = (path: string) => `Path: "${path}"`;
 
 const regexpSrcObj = Array.isArray(config.matcher)
   ? config.matcher[0]
@@ -14,7 +11,7 @@ const regexpSrc =
 if (!regexpSrc) process.exit(1);
 
 test("regexp source starts with /", () => {
-  assert.equal(regexpSrc.startsWith("/"), true);
+  expect(regexpSrc.startsWith("/")).toBeTrue();
 });
 
 test("regexp source does not hardcode icon paths", () => {
@@ -24,7 +21,7 @@ test("regexp source does not hardcode icon paths", () => {
     "app-icon\\.png",
     "favicon\\.ico",
   ].forEach((path) => {
-    assert.equal(regexpSrc.includes(path), false);
+    expect(regexpSrc.includes(path)).toBeFalse();
   });
 });
 
@@ -59,7 +56,7 @@ test("regexp matches normal application routes", () => {
   ];
 
   for (const path of shouldMatch) {
-    assert.match(path, regexp, `Expected to MATCH: ${msg(path)}`);
+    expect(path).toMatch(regexp);
   }
 
   const shouldMatchWithDomain = shouldMatch.map(
@@ -67,7 +64,7 @@ test("regexp matches normal application routes", () => {
   );
 
   for (const path of shouldMatchWithDomain) {
-    assert.match(path, regexp, `Expected to MATCH: ${msg(path)}`);
+    expect(path).toMatch(regexp);
   }
 });
 
@@ -88,11 +85,7 @@ test("regexp does NOT match icon asset routes", () => {
   ];
 
   for (const path of shouldNotMatch) {
-    assert.doesNotMatch(
-      path,
-      regexp,
-      `Expected to NOT MATCH (icon asset): ${msg(path)}`
-    );
+    expect(path).not.toMatch(regexp);
   }
 });
 
@@ -113,10 +106,6 @@ test("regexp does NOT match framework/special routes", () => {
   ];
 
   for (const path of shouldNotMatch) {
-    assert.doesNotMatch(
-      path,
-      regexp,
-      `Expected to NOT MATCH (special route): ${msg(path)}`
-    );
+    expect(path).not.toMatch(regexp);
   }
 });
