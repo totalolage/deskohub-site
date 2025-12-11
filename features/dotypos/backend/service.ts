@@ -18,6 +18,7 @@ import {
   NetworkError,
   ValidationError,
 } from "@/shared/backend/errors";
+import { siteConstants } from "@/shared/utils/constants";
 import { normalizePhoneNumber } from "@/shared/utils/phone-formatting";
 import type { WithId } from "@/types/with-id";
 import { createClient } from "../generated/client";
@@ -1297,22 +1298,25 @@ export const createReservation = (
     // Build note once
     const note = buildNote(input);
 
-    // Auto-select table based on preferences
-    const tables = yield* client.getTables();
-    const selection = selectBestTable({
-      guestCount: input.guestCount,
-      needsLargerTable: input.needsLargerTable,
-      needsPrivateSpace: input.needsPrivateSpace,
-      availableTables: tables,
-    });
-
-    const tableId = selection?.selectedTableId;
-    if (selection) {
-      yield* Effect.logInfo("Table selected", {
-        tableId,
-        tableName: selection.selectedTableName,
-        seats: selection.seats,
+    let tableId: string | undefined;
+    if (siteConstants.featureFlags.autoTableSelection) {
+      // Auto-select table based on preferences
+      const tables = yield* client.getTables();
+      const selection = selectBestTable({
+        guestCount: input.guestCount,
+        needsLargerTable: input.needsLargerTable,
+        needsPrivateSpace: input.needsPrivateSpace,
+        availableTables: tables,
       });
+
+      tableId = selection?.selectedTableId;
+      if (selection) {
+        yield* Effect.logInfo("Table selected", {
+          tableId,
+          tableName: selection.selectedTableName,
+          seats: selection.seats,
+        });
+      }
     }
 
     // Build request with required customer ID

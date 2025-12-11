@@ -63,52 +63,42 @@ export function selectBestTable(
     [[], []]
   );
 
-  // Priority 1: Private space (only if ≤5 people)
-  if (needsPrivateSpace && guestCount <= 5) {
-    const privateTable = privateTables[0];
-    if (privateTable) {
-      return {
-        selectedTableId: privateTable.id!,
-        selectedTableName: privateTable.name,
-        seats: privateTable.seatsNum,
-        reason: "Selected private/DnD room",
-      };
-    }
+  // Priority 1: Private space
+  if (needsPrivateSpace) {
+    const privateTable = privateTables.find((t) => t.seatsNum >= guestCount);
+    if (!privateTable) return null;
+    return {
+      selectedTableId: privateTable.id!,
+      selectedTableName: privateTable.name,
+      seats: privateTable.seatsNum,
+      reason: "Selected private/DnD room",
+    };
   }
 
   // Priority 2: Larger table for board games
   if (needsLargerTable) {
-    const largeTable = publicTables
-      .filter((t) => t.seatsNum >= Math.max(7, guestCount))
-      .shift(); // Get first (smallest) that fits
-
-    if (largeTable) {
-      return {
-        selectedTableId: largeTable.id!,
-        selectedTableName: largeTable.name,
-        seats: largeTable.seatsNum,
-        reason: `Selected large table (${largeTable.seatsNum} seats)`,
-      };
-    }
+    const [largeTable] = publicTables.filter(
+      (t) => t.seatsNum >= Math.max(7, guestCount)
+    );
+    if (!largeTable) return null;
+    return {
+      selectedTableId: largeTable.id!,
+      selectedTableName: largeTable.name,
+      seats: largeTable.seatsNum,
+      reason: `Selected large table (${largeTable.seatsNum} seats)`,
+    };
   }
 
-  // Default: Smallest table that fits group
-  const selectedTable =
-    publicTables.find((t) => t.seatsNum >= guestCount) ||
-    publicTables[tables.length - 1]; // Largest available
-
-  if (!selectedTable || !selectedTable.id) {
-    return null;
-  }
-
+  // Smallest public table that fits group
+  const bestFittingPublicTable = publicTables.find(
+    (t) => t.seatsNum >= guestCount
+  );
+  if (!bestFittingPublicTable) return null;
   return {
-    selectedTableId: selectedTable.id,
-    selectedTableName: selectedTable.name,
-    seats: selectedTable.seatsNum,
-    reason:
-      selectedTable.seatsNum >= guestCount
-        ? `Selected table with ${selectedTable.seatsNum} seats`
-        : "Selected largest available table",
+    selectedTableId: bestFittingPublicTable.id!,
+    selectedTableName: bestFittingPublicTable.name,
+    seats: bestFittingPublicTable.seatsNum,
+    reason: "Best fitting public table",
   };
 }
 

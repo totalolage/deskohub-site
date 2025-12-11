@@ -170,5 +170,6 @@ export const siteConstants = {
     tableReservations: true,
     gallery: true,
     menuPdfDownload: true,
+    autoTableSelection: false,
   },
 };
