@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { config } from "./middleware";
+import { config } from "./proxy";
 
 const msg = (path: string) => `Path: "${path}"`;
 
@@ -27,7 +27,6 @@ test("regexp source does not hardcode icon paths", () => {
     assert.equal(regexpSrc.includes(path), false);
   });
 });
-
 
 const regexp = new RegExp(regexpSrc);
 
