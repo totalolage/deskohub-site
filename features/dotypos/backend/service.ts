@@ -1317,6 +1317,9 @@ export const createReservation = (
           seats: selection.seats,
         });
       }
+    } else {
+      const tables = yield* client.getTables();
+      tableId = tables[0]?.id;
     }
 
     // Build request with required customer ID
