@@ -3,11 +3,13 @@ import { Data } from "effect";
 export class BackendError extends Data.TaggedError("BackendError")<{
   readonly code: string;
   readonly message: string;
+  readonly cause: unknown;
   readonly details?: unknown;
 }> {}
 
 export class StorageError extends Data.TaggedError("StorageError")<{
   readonly message: string;
+  readonly cause: unknown;
   readonly operation?: string;
 }> {
   get code() {
@@ -27,6 +29,7 @@ export class ValidationError extends Data.TaggedError("ValidationError")<{
 export class ExternalAPIError extends Data.TaggedError("ExternalAPIError")<{
   readonly service: string;
   readonly message: string;
+  readonly cause: unknown;
   readonly statusCode?: number;
 }> {
   get code() {
@@ -36,6 +39,7 @@ export class ExternalAPIError extends Data.TaggedError("ExternalAPIError")<{
 
 export class NetworkError extends Data.TaggedError("NetworkError")<{
   readonly message: string;
+  readonly cause: unknown;
   readonly url?: string;
 }> {
   get code() {
@@ -45,6 +49,7 @@ export class NetworkError extends Data.TaggedError("NetworkError")<{
 
 export class ParseError extends Data.TaggedError("ParseError")<{
   readonly message: string;
+  readonly cause: unknown;
   readonly data?: unknown;
 }> {
   get code() {

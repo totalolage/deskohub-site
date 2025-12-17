@@ -240,13 +240,14 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
               )
             ),
             Effect.mapError(
-              (_error) =>
+              (error) =>
                 new StorageError({
                   message:
                     locale === "cs-CZ"
                       ? "Nepodařilo se odeslat rezervaci. Zkuste to prosím později."
                       : "Failed to send reservation. Please try again later.",
                   operation: "trainingReservation.submit",
+                  cause: error,
                 })
             )
           );

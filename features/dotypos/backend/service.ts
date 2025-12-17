@@ -226,7 +226,8 @@ const transformHttpError = (
       error.message.includes("ECONNREFUSED")
     ) {
       return new NetworkError({
-        message: `Failed to connect to Dotypos: ${error.message}`,
+        message: 'Failed to connect to Dotypos',
+        cause: error,
         url: apiUrl,
       });
     }
@@ -242,6 +243,7 @@ const transformHttpError = (
     return new ExternalAPIError({
       service: "Dotypos",
       message: message || `${operation}: Request failed`,
+      cause: error,
       statusCode,
     });
   }
@@ -250,6 +252,7 @@ const transformHttpError = (
   return new ExternalAPIError({
     service: "Dotypos",
     message: `${operation} failed: ${String(error)}`,
+    cause: error,
     statusCode: 500,
   });
 };
@@ -465,10 +468,9 @@ const DotyposApiLayer = Layer.scoped(
               if (response.error) {
                 // Create structured error object
                 throw {
-                  statusCode: response.response?.status || 400,
+                  statusCode: response.response?.status,
+                  error: response.error,
                   message:
-                    response.error.error_description ||
-                    response.error.error ||
                     "Failed to get reservation",
                 };
               }
@@ -605,12 +607,10 @@ const DotyposApiLayer = Layer.scoped(
 
               if (!response.data || response.error) {
                 throw {
-                  status: response.response?.status || 500,
+                  status: response.response?.status,
+                  error: response.error,
                   message:
-                    response.error?.error_description ||
-                    response.error?.error ||
                     "Failed to get customer",
-                  error: response.error?.error || "Failed to get customer",
                 };
               }
 
@@ -682,10 +682,9 @@ const DotyposApiLayer = Layer.scoped(
 
               if (response.error) {
                 throw {
-                  statusCode: response.response?.status || 400,
+                  statusCode: response.response?.status,
+                  error: response.error,
                   message:
-                    response.error.error_description ||
-                    response.error.error ||
                     "Failed to get tables",
                 };
               }
@@ -733,11 +732,9 @@ const DotyposApiLayer = Layer.scoped(
 
               if (response.error) {
                 throw {
-                  statusCode: response.response?.status || 400,
-                  message:
-                    response.error.error_description ||
-                    response.error.error ||
-                    "Failed to get products",
+                  statusCode: response.response?.status,
+                  error: response.error,
+                  message: "Failed to get products",
                 };
               }
 
@@ -774,10 +771,9 @@ const DotyposApiLayer = Layer.scoped(
 
               if (response.error) {
                 throw {
-                  statusCode: response.response?.status || 400,
+                  statusCode: response.response?.status,
+                  error: response.error,
                   message:
-                    response.error.error_description ||
-                    response.error.error ||
                     "Failed to get categories",
                 };
               }
@@ -866,6 +862,7 @@ const DotyposClientLive = Layer.effect(
             }
             return new ExternalAPIError({
               service: "Dotypos",
+              cause: error,
               message: `Failed to get reservation: ${error}`,
             });
           },
@@ -900,7 +897,8 @@ const DotyposClientLive = Layer.effect(
             }
             return new ExternalAPIError({
               service: "Dotypos",
-              message: `Failed to get customer: ${error}`,
+              message: "Failed to get customer",
+              cause: error,
             });
           },
         });
@@ -1180,7 +1178,8 @@ const DotyposClientLive = Layer.effect(
             }
             return new ExternalAPIError({
               service: "Dotypos",
-              message: `Failed to get tables: ${error}`,
+              message: 'Failed to get tables',
+              cause: error,
             });
           },
         });
@@ -1216,7 +1215,8 @@ const DotyposClientLive = Layer.effect(
             }
             return new ExternalAPIError({
               service: "Dotypos",
-              message: `Failed to get products: ${error}`,
+              message: 'Failed to get products',
+              cause: error,
             });
           },
         });

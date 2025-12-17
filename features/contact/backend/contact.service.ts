@@ -153,13 +153,14 @@ Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu D
               })
             ),
             Effect.mapError(
-              (_error) =>
+              (error) =>
                 new StorageError({
                   message:
                     locale === "cs-CZ"
                       ? "Nepodařilo se odeslat zprávu. Zkuste to prosím později."
                       : "Failed to send message. Please try again later.",
                   operation: "contact.submit",
+                  cause: error,
                 })
             )
           );
