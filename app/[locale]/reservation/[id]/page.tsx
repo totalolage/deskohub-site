@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
-import { DotyposServiceLive, getReservation } from "@/features/dotypos";
+import { DotyposService } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
 import { getLocale, m, setLocale } from "@/features/i18n";
@@ -29,10 +29,13 @@ export default async function ReservationConfirmationPage({
     notFound();
   }
 
+  const dotypos = await Effect.runPromise(
+    Effect.provide(DotyposService, DotyposService.Default)
+  );
+
   // Fetch reservation from cache or Dotypos
   const result = await Effect.runPromise(
-    getReservation(id).pipe(
-      Effect.provide(DotyposServiceLive),
+    dotypos.getReservation(id).pipe(
       Effect.match({
         onFailure: (_error) => {
           // Return null to trigger 404
