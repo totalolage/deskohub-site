@@ -28,9 +28,10 @@ export class ValidationError extends Data.TaggedError("ValidationError")<{
 
 export class ExternalAPIError extends Data.TaggedError("ExternalAPIError")<{
   readonly service: string;
-  readonly message: string;
-  readonly cause: unknown;
+  readonly operation: string;
   readonly statusCode?: number;
+  readonly message?: string;
+  readonly cause: unknown;
 }> {
   get code() {
     return "EXTERNAL_API_ERROR";

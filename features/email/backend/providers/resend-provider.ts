@@ -140,7 +140,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                 errorMessage.includes("API_ERROR:")
               ) {
                 return new NetworkError({
-                  message: 'Resend network error',
+                  message: "Resend network error",
                   cause: error,
                 });
               }
@@ -185,7 +185,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           yield* Effect.logError("Resend send error", { error });
           return yield* Effect.fail(
             new NetworkError({
-              message: 'Resend API error',
+              message: "Resend API error",
               cause: error,
             })
           );

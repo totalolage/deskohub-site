@@ -20,7 +20,11 @@ import { EmailTemplateServiceLive } from "./template-service";
  * - Falls back to Console provider otherwise
  */
 export const StandaloneEmailServiceLive = EmailServiceLive.pipe(
-  Layer.provide(EmailTemplateServiceLive),
-  Layer.provide(EmailProviderLive),
-  Layer.provide(EmailConfigLayer)
+  Layer.provide(
+    Layer.mergeAll(
+      EmailTemplateServiceLive,
+      EmailProviderLive,
+      EmailConfigLayer
+    )
+  )
 );

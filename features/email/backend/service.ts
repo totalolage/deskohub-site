@@ -147,8 +147,7 @@ const emailRetryPolicy = Schedule.exponential("1 second").pipe(
         maxRetries: 3,
       }
     )
-  ),
-  Schedule.map(() => void 0)
+  )
 );
 
 /**
