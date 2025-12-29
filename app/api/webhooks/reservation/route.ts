@@ -1,7 +1,7 @@
-import { Effect, Schema } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
-import { DotyposServiceLive, getReservation } from "@/features/dotypos";
+import { DotyposService } from "@/features/dotypos";
 import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
@@ -104,8 +104,10 @@ const processWebhook = (payload: unknown) =>
       };
     }
 
+    const dotypos = yield* DotyposService;
+
     // Fetch full reservation and customer details from Dotypos
-    const fullReservation = yield* getReservation(
+    const fullReservation = yield* dotypos.getReservation(
       String(reservation.reservationid)
     );
 
@@ -217,8 +219,9 @@ export async function POST(request: Request) {
 
     return result;
   }).pipe(
-    Effect.provide(DotyposServiceLive),
-    Effect.provide(StandaloneEmailServiceLive),
+    Effect.provide(
+      Layer.merge(DotyposService.Default, StandaloneEmailServiceLive)
+    ),
     Effect.catchTags({
       WebhookAuthError: (error) =>
         Effect.succeed({
@@ -235,18 +238,20 @@ export async function POST(request: Request) {
           },
         }),
     }),
-    Effect.catchAll((error) => {
-      // IMPORTANT: Log the error but return 200 to prevent Dotypos from retrying
-      // This is intentionally different from standard webhook error handling
-      Effect.logError("Webhook processing error", error);
-      return Effect.succeed({
-        status: 200,
-        body: {
-          success: true,
-          error: "Internal processing error (logged)",
-        },
-      });
-    })
+    Effect.catchAll(
+      Effect.fn(function* (error) {
+        // IMPORTANT: Log the error but return 200 to prevent Dotypos from retrying
+        // This is intentionally different from standard webhook error handling
+        yield* Effect.logError("Webhook processing error", error);
+        return {
+          status: 200,
+          body: {
+            success: true,
+            error: "Internal processing error (logged)",
+          },
+        };
+      })
+    )
   );
 
   try {

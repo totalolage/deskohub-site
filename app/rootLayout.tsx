@@ -2,10 +2,10 @@ import "./globals.css";
 
 import { GoogleTagManager } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/next";
-import type { Viewport } from "next";
+import type { Metadata, Viewport } from "next";
 import type { PropsWithChildren } from "react";
 import { CookieConsentProvider } from "@/features/cookie-consent";
-import { getLocale } from "@/features/i18n";
+import { baseLocale, type Locale } from "@/features/i18n";
 import { Footer, Header } from "@/features/navigation";
 import { Toaster } from "@/shared/components/ui/sonner";
 import { SafeAreaProvider } from "@/shared/providers/safe-area-provider";
@@ -19,11 +19,26 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
-export default async function RootLayout({
-  children,
-}: Readonly<PropsWithChildren>) {
-  const locale = getLocale();
+export async function generateMetadata(): Promise<Metadata> {
+  const origin =
+    process.env.NEXT_PUBLIC_BASE_URL ||
+    (process.env.NODE_ENV !== "production"
+      ? `http://localhost:${process.env.PORT || 3000}`
+      : undefined);
 
+  return {
+    metadataBase: origin ? new URL(origin) : undefined,
+  };
+}
+
+export default async function RootLayout({
+  locale = baseLocale,
+  children,
+}: Readonly<
+  PropsWithChildren<{
+    locale?: Locale;
+  }>
+>) {
   return (
     <html lang={locale}>
       {GTM_ID && <GoogleTagManager gtmId={GTM_ID} />}
