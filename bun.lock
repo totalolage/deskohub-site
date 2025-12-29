@@ -5,11 +5,13 @@
       "name": "my-v0-project",
       "dependencies": {
         "@doist/react-interpolate": "^2.2.1",
+        "@effect/opentelemetry": "^0.60.0",
         "@effect/platform-node": "^0.94.0",
         "@effect/schema": "^0.75.5",
         "@hey-api/client-fetch": "^0.13.1",
         "@hookform/resolvers": "^5.1.1",
         "@inlang/paraglide-js": "^2.2.0",
+        "@mcrovero/effect-nextjs": "^0.31.0",
         "@next/third-parties": "^15.5.4",
         "@radix-ui/react-checkbox": "1.1.3",
         "@radix-ui/react-collapsible": "1.1.2",
@@ -57,6 +59,7 @@
       },
       "devDependencies": {
         "@biomejs/biome": "^2.1.0",
+        "@effect/language-service": "^0.62.5",
         "@hey-api/openapi-ts": "^0.80.11",
         "@total-typescript/ts-reset": "^0.6.1",
         "@types/bun": "^1.3.4",
@@ -116,6 +119,10 @@
     "@effect/cluster": ["@effect/cluster@0.46.0", "", { "peerDependencies": { "@effect/platform": "^0.90.0", "@effect/rpc": "^0.68.0", "@effect/sql": "^0.44.0", "@effect/workflow": "^0.8.0", "effect": "^3.17.1" } }, "sha512-R5B0hLsSkdkxnvor2ZRMirrbaeWtsihaJSNJmlzJfsydAnHXFk+yT5cttr85rgUOLyicEQxUrLZ3WyRYWajpHQ=="],
 
     "@effect/experimental": ["@effect/experimental@0.54.0", "", { "dependencies": { "uuid": "^11.0.3" }, "peerDependencies": { "@effect/platform": "^0.90.0", "effect": "^3.17.0", "ioredis": "^5", "lmdb": "^3" }, "optionalPeers": ["ioredis", "lmdb"] }, "sha512-9XkKzfHpcGSLCVKGqC6lHNG/O1seBHNWtOW6bssJbYw8slvZ7giPNyW+iQHL2GhWsSDPFANvIu9K32iBdE7AGA=="],
+
+    "@effect/language-service": ["@effect/language-service@0.62.5", "", { "bin": { "effect-language-service": "cli.js" } }, "sha512-vCMZkqbE8bQ4cmksrj2HLVhYXL6B0bs7uulALgVh6Hh46/V2WrcExgx6DTr0BE6nwBuecqbd4xWjEoPSwI8bPw=="],
+
+    "@effect/opentelemetry": ["@effect/opentelemetry@0.60.0", "", { "peerDependencies": { "@effect/platform": "^0.94.0", "@opentelemetry/api": "^1.9", "@opentelemetry/resources": "^2.0.0", "@opentelemetry/sdk-logs": ">=0.203.0 <0.300.0", "@opentelemetry/sdk-metrics": "^2.0.0", "@opentelemetry/sdk-trace-base": "^2.0.0", "@opentelemetry/sdk-trace-node": "^2.0.0", "@opentelemetry/sdk-trace-web": "^2.0.0", "@opentelemetry/semantic-conventions": "^1.33.0", "effect": "^3.19.13" }, "optionalPeers": ["@opentelemetry/api", "@opentelemetry/resources", "@opentelemetry/sdk-logs", "@opentelemetry/sdk-metrics", "@opentelemetry/sdk-trace-base", "@opentelemetry/sdk-trace-node", "@opentelemetry/sdk-trace-web"] }, "sha512-YaKCKdtvzQ+efMCSg7f9583zxQU1TSyPSiTn4D8tnd/+okxuYrz2/RKbb+7qAUT1cajV6UIcdX/1lSLJi8uIew=="],
 
     "@effect/platform": ["@effect/platform@0.90.0", "", { "dependencies": { "@opentelemetry/semantic-conventions": "^1.33.0", "find-my-way-ts": "^0.1.6", "msgpackr": "^1.11.4", "multipasta": "^0.2.7" }, "peerDependencies": { "effect": "^3.17.0" } }, "sha512-F26RZO8qVyCLH43EF9BvJwrhtFsZL2Xv66Jxxjj/sBIes8TOVpyebaysQ7Tz33xALobwU1eNgm8vh18VkJiWnQ=="],
 
@@ -220,6 +227,8 @@
     "@lix-js/sdk": ["@lix-js/sdk@0.4.7", "", { "dependencies": { "@lix-js/server-protocol-schema": "0.1.1", "dedent": "1.5.1", "human-id": "^4.1.1", "js-sha256": "^0.11.0", "kysely": "^0.27.4", "sqlite-wasm-kysely": "0.3.0", "uuid": "^10.0.0" } }, "sha512-pRbW+joG12L0ULfMiWYosIW0plmW4AsUdiPCp+Z8rAsElJ+wJ6in58zhD3UwUcd4BNcpldEGjg6PdA7e0RgsDQ=="],
 
     "@lix-js/server-protocol-schema": ["@lix-js/server-protocol-schema@0.1.1", "", {}, "sha512-jBeALB6prAbtr5q4vTuxnRZZv1M2rKe8iNqRQhFJ4Tv7150unEa0vKyz0hs8Gl3fUGsWaNJBh3J8++fpbrpRBQ=="],
+
+    "@mcrovero/effect-nextjs": ["@mcrovero/effect-nextjs@0.31.0", "", { "peerDependencies": { "effect": "^3", "next": "^15 || ^16" } }, "sha512-WPF6JVsU6a6smRRpaA63mVZCP25rUt0XMZvS2nq9+uAMt9L2efpBEXlQOr984YirwufZspf1fiYqQs6uRZfLNw=="],
 
     "@msgpackr-extract/msgpackr-extract-darwin-arm64": ["@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.3", "", { "os": "darwin", "cpu": "arm64" }, "sha512-QZHtlVgbAdy2zAqNA9Gu1UpIuI8Xvsd1v8ic6B2pZmeFnFcMWiPLfWXh7TVw4eGEZ/C9TH281KwhVoeQUKbyjw=="],
 
