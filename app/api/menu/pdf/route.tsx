@@ -1,92 +1,9 @@
-import { renderToBuffer } from "@react-pdf/renderer";
 import { Effect } from "effect";
-import { NextResponse } from "next/server";
-import { DotyposServiceLive, getMenuItems } from "@/features/dotypos";
-import type { Category } from "@/features/dotypos/generated";
-import { isCategoryDisplayable } from "@/features/dotypos/utils/category-utils";
-import { extractLocaleFromRequest } from "@/features/i18n";
-import { MenuPDFDocument } from "@/features/menu/components/menu-pdf-document";
-import { siteConstants } from "@/shared/utils/constants";
+import type { NextResponse } from "next/server";
+import { DotyposService } from "@/features/dotypos";
+import { generateMenuPDF } from "@/features/menu/utils/generate-menu-pdf";
 
-export async function GET(request: Request) {
-  try {
-    // Get locale from request using existing i18n utilities
-    const locale = extractLocaleFromRequest(request);
-
-    // Fetch menu data from Dotypos
-    const program = getMenuItems().pipe(
-      Effect.provide(DotyposServiceLive),
-      Effect.tapError((error) =>
-        Effect.logError("Failed to fetch menu data for PDF", error)
-      )
-    );
-
-    const { products, categories } = await Effect.runPromise(program);
-
-    // Get display order for categories from config
-    const categoryOrder = [
-      ...siteConstants.menu.categoryGroups.food,
-      ...siteConstants.menu.categoryGroups.drinks,
-    ];
-
-    // Filter and order categories for PDF
-    const displayCategories: Category[] = [];
-    const categoryMap = new Map(categories.map((cat) => [cat.id, cat]));
-
-    // Add categories in configured order
-    categoryOrder.forEach((categoryId) => {
-      const category = categoryMap.get(categoryId);
-      // Respect the category's display attribute and tags
-      if (category && isCategoryDisplayable(category)) {
-        // Check if there are products for this category
-        const hasProducts = products.some((p) => p._categoryId === categoryId);
-        if (hasProducts) {
-          displayCategories.push(category);
-        }
-      }
-    });
-
-    // Handle uncategorized items if enabled
-    if (siteConstants.menu.showUncategorized) {
-      const processedIds = new Set(categoryOrder);
-
-      categories.forEach((category) => {
-        // Respect the category's display attribute and tags
-        if (
-          category.id &&
-          !processedIds.has(category.id) &&
-          isCategoryDisplayable(category)
-        ) {
-          // Check if there are products for this category
-          const hasProducts = products.some(
-            (p) => p._categoryId === category.id
-          );
-          if (hasProducts) {
-            displayCategories.push(category);
-          }
-        }
-      });
-    }
-
-    // Generate PDF
-    const pdfBuffer = await renderToBuffer(
-      <MenuPDFDocument
-        categories={displayCategories}
-        products={products}
-        locale={locale}
-      />
-    );
-
-    // Return PDF response
-    return new NextResponse(pdfBuffer, {
-      status: 200,
-      headers: {
-        "Content-Type": "application/pdf",
-        "Content-Disposition": 'attachment; filename="deskohub-menu.pdf"',
-      },
-    });
-  } catch (error) {
-    console.error("Failed to generate menu PDF:", error);
-    return new NextResponse("Failed to generate menu PDF", { status: 500 });
-  }
-}
+export const GET = (request: Request): Promise<NextResponse> =>
+  Effect.runPromise(
+    generateMenuPDF(request).pipe(Effect.provide(DotyposService.Default))
+  );
