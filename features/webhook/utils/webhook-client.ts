@@ -35,10 +35,10 @@ export async function sendTestWebhook(
     {
       branchid: 128665136,
       created: Date.now(),
-      customerid: parseInt(customerId),
+      customerid: parseInt(customerId, 10),
       employeeid: 123,
       enddate: Date.now() + 7200000,
-      reservationid: parseInt(reservationId),
+      reservationid: parseInt(reservationId, 10),
       startdate: Date.now(),
       status: statusCode,
       updated: Date.now(),

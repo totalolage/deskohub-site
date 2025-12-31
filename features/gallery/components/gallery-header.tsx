@@ -36,7 +36,7 @@ export function GalleryHeader({
         clearInterval(intervalRef.current);
       }
     };
-  }, [currentIndex, isPaused, images.length, autoPlayInterval]);
+  }, [isPaused, images.length, autoPlayInterval]);
 
   const goToSlide = (index: number) => {
     setCurrentIndex(index);

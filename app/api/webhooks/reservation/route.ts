@@ -75,8 +75,10 @@ const getStatusChangeType = (status: number): WebhookStatusChange => {
 /**
  * Process the webhook payload
  */
-const processWebhook = (payload: unknown) =>
-  Effect.gen(function* () {
+const processWebhook = Effect.fn("processWebhook")(
+  function* (payload: unknown) {
+    yield* Effect.log("Processing webhook");
+
     // Validate and parse the payload
     const validatedPayload = yield* Schema.decodeUnknown(
       DotyposReservationPayload
@@ -189,7 +191,15 @@ const processWebhook = (payload: unknown) =>
     };
 
     return { skipped: false, data: result };
-  });
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        operation: "processWebhook",
+        input,
+      })
+    )
+);
 
 /**
  * POST /api/webhooks/reservation
@@ -199,8 +209,10 @@ const processWebhook = (payload: unknown) =>
  * NOTE: This webhook has special error handling - it returns 200 status
  * even for some errors to prevent Dotypos from retrying the webhook.
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const program = Effect.gen(function* () {
+    yield* Effect.log("Webhook invoked");
+
     // Validate webhook security using UUID
     const url = new URL(request.url);
     yield* validateWebhookUUID(url);
@@ -219,38 +231,47 @@ export async function POST(request: Request) {
 
     return result;
   }).pipe(
-    Effect.provide(
-      Layer.merge(DotyposService.Default, StandaloneEmailServiceLive)
+    Effect.tapError(
+      Effect.fn(function* (error) {
+        yield* Effect.logError(error);
+      })
     ),
+    Effect.annotateLogs({
+      method: "POST",
+      operation: "webhook",
+      request,
+    }),
     Effect.catchTags({
       WebhookAuthError: (error) =>
-        Effect.succeed({
-          status: 401,
-          body: { error: "Unauthorized", message: error.message },
-        }),
+        Effect.succeed(
+          NextResponse.json(
+            { error: "Unauthorized", message: error.message },
+            { status: 401 }
+          )
+        ),
       WebhookValidationError: (error) =>
-        Effect.succeed({
-          status: 400,
-          body: {
-            error: "Invalid payload",
-            message: error.message,
-            issues: error.issues,
-          },
-        }),
+        Effect.succeed(
+          NextResponse.json(
+            {
+              error: "Invalid payload",
+              message: error.message,
+              issues: error.issues,
+              payload: error.payload,
+            },
+            { status: 400 }
+          )
+        ),
     }),
-    Effect.catchAll(
-      Effect.fn(function* (error) {
-        // IMPORTANT: Log the error but return 200 to prevent Dotypos from retrying
-        // This is intentionally different from standard webhook error handling
-        yield* Effect.logError("Webhook processing error", error);
-        return {
-          status: 200,
-          body: {
-            success: true,
-            error: "Internal processing error (logged)",
-          },
-        };
+    // return 200 to prevent Dotypos from retrying
+    // This is intentionally different from standard webhook error handling
+    Effect.orElseSucceed(() =>
+      NextResponse.json({
+        success: true,
+        error: "Internal processing error (logged)",
       })
+    ),
+    Effect.provide(
+      Layer.merge(DotyposService.Default, StandaloneEmailServiceLive)
     )
   );
 

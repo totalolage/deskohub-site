@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useState } from "react";
 import logoImage from "@/assets/images/logo/for-light-bg.png";
 import { m, setLocale } from "@/features/i18n";
 import { useLocale } from "@/features/i18n/utils/use-locale";
@@ -29,7 +29,7 @@ export function NotFound() {
   const diceIcons = [Dice1, Dice2, Dice3, Dice4, Dice5, Dice6];
   const DiceIcon = diceIcons[diceRoll - 1] ?? Dice4;
 
-  const rollDice = () => {
+  const rollDice = useEffectEvent(() => {
     setIsRolling(true);
     const rollAnimation = setInterval(() => {
       setDiceRoll(Math.floor(Math.random() * 6) + 1);
@@ -40,7 +40,7 @@ export function NotFound() {
       setDiceRoll(Math.floor(Math.random() * 6) + 1);
       setIsRolling(false);
     }, 1000);
-  };
+  });
 
   useEffect(() => {
     // Auto-roll dice on page load

@@ -5,5 +5,17 @@ import { generateMenuPDF } from "@/features/menu/utils/generate-menu-pdf";
 
 export const GET = (request: Request): Promise<NextResponse> =>
   Effect.runPromise(
-    generateMenuPDF(request).pipe(Effect.provide(DotyposService.Default))
+    generateMenuPDF(request).pipe(
+      Effect.tapError(
+        Effect.fn(function* (error) {
+          yield* Effect.logError(error);
+        })
+      ),
+      Effect.annotateLogs({
+        method: "GET",
+        operation: "pdf",
+        request,
+      }),
+      Effect.provide(DotyposService.Default)
+    )
   );

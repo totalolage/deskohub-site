@@ -22,6 +22,7 @@ import type {
   Table,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
+import { injectReqResLogger } from "../utils/req-res-logger";
 
 /**
  * Extended error response type that includes validation violations
@@ -46,7 +47,7 @@ interface TokenCache {
 }
 
 /**
- * Authenticated Dotypos API using Effect patterns
+ * Authenticated Dotypos API
  */
 export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
   effect: Effect.gen(function* () {
@@ -56,6 +57,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
     const client = createClient({
       baseUrl: config.apiUrl,
     });
+    yield* injectReqResLogger(client);
 
     // Thread-safe token cache using Ref
     const tokenCacheRef = yield* Ref.make<TokenCache | null>(null);

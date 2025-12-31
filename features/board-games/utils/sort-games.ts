@@ -5,13 +5,13 @@ import type { BoardGame } from "../types/board-games.types";
 
 const getMinPlayers = (players: string | undefined): number => {
   if (!players || typeof players !== "string") return 0;
-  return parseInt(players.split("-")[0] || "0");
+  return parseInt(players.split("-")[0] || "0", 10);
 };
 
 const getMaxPlayers = (players: string | undefined): number => {
   if (!players || typeof players !== "string") return 0;
   const parts = players.split("-");
-  return parseInt(parts[1] || parts[0] || "0");
+  return parseInt(parts[1] || parts[0] || "0", 10);
 };
 
 const getMinDuration = (

@@ -420,7 +420,9 @@ export function ReservationForm() {
                   </FormLabel>
                   <Select
                     value={field.value?.toString()}
-                    onValueChange={(value) => field.onChange(parseInt(value))}
+                    onValueChange={(value) =>
+                      field.onChange(parseInt(value, 10))
+                    }
                   >
                     <FormControl>
                       <SelectTrigger

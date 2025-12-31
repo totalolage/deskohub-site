@@ -4,774 +4,785 @@
  * Map of locale codes to translated strings (e.g., {"en": "English text", "cs": "Czech text"})
  */
 export type TranslatedStrings = {
-    [key: string]: string;
+  [key: string]: string;
 };
 
 export type TokenRequest = {
-    /**
-     * Cloud ID for cloud-specific token (optional)
-     */
-    _cloudId?: string;
+  /**
+   * Cloud ID for cloud-specific token (optional)
+   */
+  _cloudId?: string;
 };
 
 export type TokenResponse = {
-    /**
-     * JWT access token for API authentication
-     */
-    accessToken: string;
+  /**
+   * JWT access token for API authentication
+   */
+  accessToken: string;
 };
 
 export type CreateReservationRequest = {
-    /**
-     * Branch ID (long as string)
-     */
-    _branchId: string;
-    /**
-     * Cloud ID (long as string)
-     */
-    _cloudId: string;
-    /**
-     * Customer ID (long as string)
-     */
-    _customerId: string;
-    /**
-     * Employee ID (long as string)
-     */
-    _employeeId?: string;
-    /**
-     * Table ID (long as string)
-     */
-    _tableId?: string;
-    /**
-     * Reservation flags (bitwise flags)
-     */
-    flags?: number;
-    /**
-     * Start date/time as Unix timestamp in milliseconds
-     */
-    startDate: number;
-    /**
-     * End date/time as Unix timestamp in milliseconds
-     */
-    endDate: number;
-    /**
-     * Number of seats/guests
-     */
-    seats: number;
-    status: 'NEW' | 'CONFIRMED' | 'CANCELLED';
-    /**
-     * Additional notes (used for customer info)
-     */
-    note?: string;
+  /**
+   * Branch ID (long as string)
+   */
+  _branchId: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId: string;
+  /**
+   * Customer ID (long as string)
+   */
+  _customerId: string;
+  /**
+   * Employee ID (long as string)
+   */
+  _employeeId?: string;
+  /**
+   * Table ID (long as string)
+   */
+  _tableId?: string;
+  /**
+   * Reservation flags (bitwise flags)
+   */
+  flags?: number;
+  /**
+   * Start date/time as Unix timestamp in milliseconds
+   */
+  startDate: number;
+  /**
+   * End date/time as Unix timestamp in milliseconds
+   */
+  endDate: number;
+  /**
+   * Number of seats/guests
+   */
+  seats: number;
+  status: "NEW" | "CONFIRMED" | "CANCELLED";
+  /**
+   * Additional notes (used for customer info)
+   */
+  note?: string;
 };
 
 export type UpdateReservationRequest = {
-    /**
-     * Start date/time as Unix timestamp in milliseconds
-     */
-    startDate?: number;
-    /**
-     * End date/time as Unix timestamp in milliseconds
-     */
-    endDate?: number;
-    /**
-     * Number of seats/guests
-     */
-    seats?: number;
-    status?: 'NEW' | 'CONFIRMED' | 'CANCELLED';
-    /**
-     * Additional notes
-     */
-    note?: string;
+  /**
+   * Start date/time as Unix timestamp in milliseconds
+   */
+  startDate?: number;
+  /**
+   * End date/time as Unix timestamp in milliseconds
+   */
+  endDate?: number;
+  /**
+   * Number of seats/guests
+   */
+  seats?: number;
+  status?: "NEW" | "CONFIRMED" | "CANCELLED";
+  /**
+   * Additional notes
+   */
+  note?: string;
 };
 
 export type Reservation = {
-    /**
-     * Reservation ID (long as string)
-     */
-    id?: string;
-    /**
-     * Branch ID (long as string)
-     */
-    _branchId: string;
-    /**
-     * Cloud ID (long as string)
-     */
-    _cloudId: string;
-    /**
-     * Customer ID (long)
-     */
-    _customerId?: string;
-    /**
-     * Employee ID (long)
-     */
-    _employeeId?: string;
-    /**
-     * Table ID (long)
-     */
-    _tableId?: string;
-    /**
-     * Creation timestamp (ISO 8601 format)
-     */
-    created?: string;
-    /**
-     * Reservation flags (string representation)
-     */
-    flags?: string;
-    /**
-     * Start date/time (ISO 8601 format)
-     */
-    startDate: string;
-    /**
-     * End date/time (ISO 8601 format)
-     */
-    endDate: string;
-    /**
-     * Number of seats (string representation)
-     */
-    seats: string;
-    /**
-     * Reservation status
-     */
-    status: 'NEW' | 'CONFIRMED' | 'CANCELLED';
-    /**
-     * Additional notes
-     */
-    note?: string;
-    /**
-     * Last update timestamp (ISO 8601 format)
-     */
-    versionDate?: string;
+  /**
+   * Reservation ID (long as string)
+   */
+  id?: string;
+  /**
+   * Branch ID (long as string)
+   */
+  _branchId: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId: string;
+  /**
+   * Customer ID (long)
+   */
+  _customerId?: string;
+  /**
+   * Employee ID (long)
+   */
+  _employeeId?: string;
+  /**
+   * Table ID (long)
+   */
+  _tableId?: string;
+  /**
+   * Creation timestamp (ISO 8601 format)
+   */
+  created?: string;
+  /**
+   * Reservation flags (string representation)
+   */
+  flags?: string;
+  /**
+   * Start date/time (ISO 8601 format)
+   */
+  startDate: string;
+  /**
+   * End date/time (ISO 8601 format)
+   */
+  endDate: string;
+  /**
+   * Number of seats (string representation)
+   */
+  seats: string;
+  /**
+   * Reservation status
+   */
+  status: "NEW" | "CONFIRMED" | "CANCELLED";
+  /**
+   * Additional notes
+   */
+  note?: string;
+  /**
+   * Last update timestamp (ISO 8601 format)
+   */
+  versionDate?: string;
 };
 
 /**
  * Base pagination properties shared by all paginated responses
  */
 export type PaginationBase = {
-    /**
-     * Current page number
-     */
-    currentPage?: string;
-    /**
-     * Items per page
-     */
-    perPage?: string;
-    /**
-     * Number of items on current page
-     */
-    totalItemsOnPage?: string;
-    /**
-     * Total number of items
-     */
-    totalItemsCount?: string;
-    /**
-     * First page number
-     */
-    firstPage?: string;
-    /**
-     * Last page number
-     */
-    lastPage?: string;
-    /**
-     * Next page number
-     */
-    nextPage?: string | null;
-    /**
-     * Previous page number
-     */
-    prevPage?: string | null;
+  /**
+   * Current page number
+   */
+  currentPage?: string;
+  /**
+   * Items per page
+   */
+  perPage?: string;
+  /**
+   * Number of items on current page
+   */
+  totalItemsOnPage?: string;
+  /**
+   * Total number of items
+   */
+  totalItemsCount?: string;
+  /**
+   * First page number
+   */
+  firstPage?: string;
+  /**
+   * Last page number
+   */
+  lastPage?: string;
+  /**
+   * Next page number
+   */
+  nextPage?: string | null;
+  /**
+   * Previous page number
+   */
+  prevPage?: string | null;
 };
 
 export type PaginatedCustomers = PaginationBase & {
-    /**
-     * Array of customers
-     */
-    data?: Array<Customer>;
+  /**
+   * Array of customers
+   */
+  data?: Array<Customer>;
 };
 
 export type Customer = {
-    /**
-     * Customer ID
-     */
-    id?: string;
-    /**
-     * Cloud ID
-     */
-    _cloudId: string;
-    /**
-     * Discount group ID
-     */
-    _discountGroupId?: string | null;
-    /**
-     * Seller ID
-     */
-    _sellerId?: string | null;
-    /**
-     * First name (at least one of firstName, lastName, or companyName must be non-blank)
-     */
-    firstName?: string | null;
-    /**
-     * Last name (at least one of firstName, lastName, or companyName must be non-blank)
-     */
-    lastName?: string | null;
-    /**
-     * Company name (at least one of firstName, lastName, or companyName must be non-blank)
-     */
-    companyName?: string;
-    /**
-     * Company ID
-     */
-    companyId?: string;
-    /**
-     * Email address
-     */
-    email?: string | null;
-    /**
-     * Phone number
-     */
-    phone?: string | null;
-    /**
-     * Address line 1
-     */
-    addressLine1?: string;
-    /**
-     * Address line 2
-     */
-    addressLine2?: string | null;
-    /**
-     * City
-     */
-    city?: string | null;
-    /**
-     * ZIP code
-     */
-    zip?: string;
-    /**
-     * Country code
-     */
-    country?: string | null;
-    /**
-     * VAT ID
-     */
-    vatId?: string;
-    /**
-     * Customer barcode
-     */
-    barcode?: string | null;
-    /**
-     * Birthday timestamp
-     */
-    birthday?: string | null;
-    /**
-     * Creation timestamp (ISO 8601)
-     */
-    created?: string | null;
-    /**
-     * Expiration date timestamp
-     */
-    expireDate?: string | null;
-    /**
-     * External ID
-     */
-    externalId?: string | null;
-    /**
-     * Header print text
-     */
-    headerPrint?: string;
-    /**
-     * Hex color code
-     */
-    hexColor?: string | null;
-    /**
-     * Internal note
-     */
-    internalNote?: string | null;
-    /**
-     * Modified by user ID (string representation)
-     */
-    modifiedBy?: string | null;
-    /**
-     * Customer note
-     */
-    note?: string | null;
-    /**
-     * Customer tags
-     */
-    tags?: Array<string> | null;
-    /**
-     * Customer points (string representation of number)
-     */
-    points: string | null;
-    /**
-     * Customer flags (string representation of long)
-     */
-    flags: string;
-    /**
-     * Is displayed
-     */
-    display: boolean;
-    /**
-     * Is deleted
-     */
-    deleted: boolean;
-    /**
-     * Last modification timestamp (ISO 8601)
-     */
-    versionDate?: string;
+  /**
+   * Customer ID
+   */
+  id?: string;
+  /**
+   * Cloud ID
+   */
+  _cloudId: string;
+  /**
+   * Discount group ID
+   */
+  _discountGroupId?: string | null;
+  /**
+   * Seller ID
+   */
+  _sellerId?: string | null;
+  /**
+   * First name (at least one of firstName, lastName, or companyName must be non-blank)
+   */
+  firstName?: string | null;
+  /**
+   * Last name (at least one of firstName, lastName, or companyName must be non-blank)
+   */
+  lastName?: string | null;
+  /**
+   * Company name (at least one of firstName, lastName, or companyName must be non-blank)
+   */
+  companyName?: string;
+  /**
+   * Company ID
+   */
+  companyId?: string;
+  /**
+   * Email address
+   */
+  email?: string | null;
+  /**
+   * Phone number
+   */
+  phone?: string | null;
+  /**
+   * Address line 1
+   */
+  addressLine1?: string;
+  /**
+   * Address line 2
+   */
+  addressLine2?: string | null;
+  /**
+   * City
+   */
+  city?: string | null;
+  /**
+   * ZIP code
+   */
+  zip?: string;
+  /**
+   * Country code
+   */
+  country?: string | null;
+  /**
+   * VAT ID
+   */
+  vatId?: string;
+  /**
+   * Customer barcode
+   */
+  barcode?: string | null;
+  /**
+   * Birthday timestamp
+   */
+  birthday?: string | null;
+  /**
+   * Creation timestamp (ISO 8601)
+   */
+  created?: string | null;
+  /**
+   * Expiration date timestamp
+   */
+  expireDate?: string | null;
+  /**
+   * External ID
+   */
+  externalId?: string | null;
+  /**
+   * Header print text
+   */
+  headerPrint?: string;
+  /**
+   * Hex color code
+   */
+  hexColor?: string | null;
+  /**
+   * Internal note
+   */
+  internalNote?: string | null;
+  /**
+   * Modified by user ID (string representation)
+   */
+  modifiedBy?: string | null;
+  /**
+   * Customer note
+   */
+  note?: string | null;
+  /**
+   * Customer tags
+   */
+  tags?: Array<string> | null;
+  /**
+   * Customer points (string representation of number)
+   */
+  points: string | null;
+  /**
+   * Customer flags (string representation of long)
+   */
+  flags: string;
+  /**
+   * Is displayed
+   */
+  display: boolean;
+  /**
+   * Is deleted
+   */
+  deleted: boolean;
+  /**
+   * Last modification timestamp (ISO 8601)
+   */
+  versionDate?: string;
 };
 
 export type CreateCustomerRequest = {
-    /**
-     * Cloud ID
-     */
-    _cloudId: string;
-    /**
-     * First name
-     */
-    firstName: string;
-    /**
-     * Last name
-     */
-    lastName: string;
-    /**
-     * Customer flags (bitwise flags)
-     */
-    flags: number;
-    /**
-     * Email address
-     */
-    email: string | null;
-    /**
-     * Phone number
-     */
-    phone: string | null;
-    /**
-     * Address line 1
-     */
-    addressLine1: string | null;
-    /**
-     * Address line 2
-     */
-    addressLine2: string | null;
-    /**
-     * City
-     */
-    city: string | null;
-    /**
-     * ZIP code
-     */
-    zip: string | null;
-    /**
-     * Country code
-     */
-    country: string | null;
-    /**
-     * Company name
-     */
-    companyName: string | null;
-    /**
-     * VAT ID
-     */
-    vatId: string | null;
-    /**
-     * Customer note
-     */
-    note: string | null;
-    /**
-     * Is displayed
-     */
-    display: boolean;
-    /**
-     * Is deleted
-     */
-    deleted: boolean;
-    /**
-     * Customer points
-     */
-    points: number | null;
-    /**
-     * Internal note
-     */
-    internalNote: string | null;
-    /**
-     * Company ID
-     */
-    companyId: string | null;
-    /**
-     * Hex color for customer
-     */
-    hexColor: string;
-    /**
-     * Header print text
-     */
-    headerPrint: string;
-    /**
-     * Customer tags
-     */
-    tags: Array<string>;
-    /**
-     * Customer barcode
-     */
-    barcode: string;
+  /**
+   * Cloud ID
+   */
+  _cloudId: string;
+  /**
+   * First name
+   */
+  firstName: string;
+  /**
+   * Last name
+   */
+  lastName: string;
+  /**
+   * Customer flags (bitwise flags)
+   */
+  flags: number;
+  /**
+   * Email address
+   */
+  email: string | null;
+  /**
+   * Phone number
+   */
+  phone: string | null;
+  /**
+   * Address line 1
+   */
+  addressLine1: string | null;
+  /**
+   * Address line 2
+   */
+  addressLine2: string | null;
+  /**
+   * City
+   */
+  city: string | null;
+  /**
+   * ZIP code
+   */
+  zip: string | null;
+  /**
+   * Country code
+   */
+  country: string | null;
+  /**
+   * Company name
+   */
+  companyName: string | null;
+  /**
+   * VAT ID
+   */
+  vatId: string | null;
+  /**
+   * Customer note
+   */
+  note: string | null;
+  /**
+   * Is displayed
+   */
+  display: boolean;
+  /**
+   * Is deleted
+   */
+  deleted: boolean;
+  /**
+   * Customer points
+   */
+  points: number | null;
+  /**
+   * Internal note
+   */
+  internalNote: string | null;
+  /**
+   * Company ID
+   */
+  companyId: string | null;
+  /**
+   * Hex color for customer
+   */
+  hexColor: string;
+  /**
+   * Header print text
+   */
+  headerPrint: string;
+  /**
+   * Customer tags
+   */
+  tags: Array<string>;
+  /**
+   * Customer barcode
+   */
+  barcode: string;
 };
 
 export type UpdateCustomerRequest = {
-    /**
-     * First name
-     */
-    firstName?: string;
-    /**
-     * Last name
-     */
-    lastName?: string;
-    /**
-     * Email address
-     */
-    email?: string;
-    /**
-     * Phone number
-     */
-    phone?: string;
-    /**
-     * Address line 1
-     */
-    addressLine1?: string;
-    /**
-     * Address line 2
-     */
-    addressLine2?: string;
-    /**
-     * City
-     */
-    city?: string;
-    /**
-     * ZIP code
-     */
-    zip?: string;
-    /**
-     * Country code
-     */
-    country?: string;
-    /**
-     * Company name
-     */
-    companyName?: string;
-    /**
-     * VAT ID
-     */
-    vatId?: string;
-    /**
-     * Customer note
-     */
-    note?: string;
-    /**
-     * Is displayed
-     */
-    display?: boolean;
-    /**
-     * Is deleted
-     */
-    deleted?: boolean;
-    /**
-     * Customer points
-     */
-    points?: string;
-    /**
-     * Internal note
-     */
-    internalNote?: string;
-    /**
-     * Hex color for customer
-     */
-    hexColor?: string;
-    /**
-     * Header print text
-     */
-    headerPrint?: string;
-    /**
-     * Customer tags
-     */
-    tags?: Array<string>;
-    /**
-     * Customer barcode
-     */
-    barcode?: string;
-    /**
-     * Company ID
-     */
-    companyId?: string;
-    /**
-     * Customer flags (bitwise flags)
-     */
-    flags?: number;
+  /**
+   * First name
+   */
+  firstName?: string;
+  /**
+   * Last name
+   */
+  lastName?: string;
+  /**
+   * Email address
+   */
+  email?: string;
+  /**
+   * Phone number
+   */
+  phone?: string;
+  /**
+   * Address line 1
+   */
+  addressLine1?: string;
+  /**
+   * Address line 2
+   */
+  addressLine2?: string;
+  /**
+   * City
+   */
+  city?: string;
+  /**
+   * ZIP code
+   */
+  zip?: string;
+  /**
+   * Country code
+   */
+  country?: string;
+  /**
+   * Company name
+   */
+  companyName?: string;
+  /**
+   * VAT ID
+   */
+  vatId?: string;
+  /**
+   * Customer note
+   */
+  note?: string;
+  /**
+   * Is displayed
+   */
+  display?: boolean;
+  /**
+   * Is deleted
+   */
+  deleted?: boolean;
+  /**
+   * Customer points
+   */
+  points?: string;
+  /**
+   * Internal note
+   */
+  internalNote?: string;
+  /**
+   * Hex color for customer
+   */
+  hexColor?: string;
+  /**
+   * Header print text
+   */
+  headerPrint?: string;
+  /**
+   * Customer tags
+   */
+  tags?: Array<string>;
+  /**
+   * Customer barcode
+   */
+  barcode?: string;
+  /**
+   * Company ID
+   */
+  companyId?: string;
+  /**
+   * Customer flags (bitwise flags)
+   */
+  flags?: number;
 };
 
 export type PaginatedTables = PaginationBase & {
-    /**
-     * Array of tables
-     */
-    data?: Array<Table>;
+  /**
+   * Array of tables
+   */
+  data?: Array<Table>;
 };
 
 export type Table = {
-    /**
-     * Table ID (long as string)
-     */
-    id?: string;
-    /**
-     * Branch ID (long as string)
-     */
-    _branchId?: string;
-    /**
-     * Cloud ID (long as string)
-     */
-    _cloudId: string;
-    /**
-     * Seller ID (long as string)
-     */
-    _sellerId?: string | null;
-    /**
-     * Table group ID (long as string)
-     */
-    _tableGroupId?: string;
-    /**
-     * Table name/number
-     */
-    name: string;
-    /**
-     * Number of seats (string representation)
-     */
-    seats?: string;
-    /**
-     * Is displayed
-     */
-    display?: boolean;
-    /**
-     * Is enabled
-     */
-    enabled?: boolean;
-    /**
-     * Location name
-     */
-    locationName?: string;
-    /**
-     * X position (string representation)
-     */
-    positionX?: string;
-    /**
-     * Y position (string representation)
-     */
-    positionY?: string;
-    /**
-     * Rotation angle (string representation)
-     */
-    rotation?: string;
-    /**
-     * Table type
-     */
-    type?: 'SQUARE' | 'SQUARE6' | 'CIRCLE2' | 'CIRCLE4' | 'DELIVERY' | 'CHAIR_SINGLE' | 'ROUND' | 'DOOR' | 'GENERIC' | 'CAR1' | 'CAR2';
-    /**
-     * Table tags
-     */
-    tags?: Array<string>;
-    /**
-     * Last modification timestamp (ISO 8601)
-     */
-    versionDate?: string;
+  /**
+   * Table ID (long as string)
+   */
+  id?: string;
+  /**
+   * Branch ID (long as string)
+   */
+  _branchId?: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId: string;
+  /**
+   * Seller ID (long as string)
+   */
+  _sellerId?: string | null;
+  /**
+   * Table group ID (long as string)
+   */
+  _tableGroupId?: string;
+  /**
+   * Table name/number
+   */
+  name: string;
+  /**
+   * Number of seats (string representation)
+   */
+  seats?: string;
+  /**
+   * Is displayed
+   */
+  display?: boolean;
+  /**
+   * Is enabled
+   */
+  enabled?: boolean;
+  /**
+   * Location name
+   */
+  locationName?: string;
+  /**
+   * X position (string representation)
+   */
+  positionX?: string;
+  /**
+   * Y position (string representation)
+   */
+  positionY?: string;
+  /**
+   * Rotation angle (string representation)
+   */
+  rotation?: string;
+  /**
+   * Table type
+   */
+  type?:
+    | "SQUARE"
+    | "SQUARE6"
+    | "CIRCLE2"
+    | "CIRCLE4"
+    | "DELIVERY"
+    | "CHAIR_SINGLE"
+    | "ROUND"
+    | "DOOR"
+    | "GENERIC"
+    | "CAR1"
+    | "CAR2";
+  /**
+   * Table tags
+   */
+  tags?: Array<string>;
+  /**
+   * Last modification timestamp (ISO 8601)
+   */
+  versionDate?: string;
 };
 
 export type PaginatedProducts = PaginationBase & {
-    /**
-     * Array of products
-     */
-    data?: Array<Product>;
+  /**
+   * Array of products
+   */
+  data?: Array<Product>;
 };
 
 export type Product = {
-    /**
-     * Product ID (long as string)
-     */
-    id?: string;
-    /**
-     * Category ID (long as string)
-     */
-    _categoryId: string;
-    /**
-     * Cloud ID (long as string)
-     */
-    _cloudId?: string;
-    /**
-     * Product name
-     */
-    name: string;
-    /**
-     * Alternative product name
-     */
-    alternativeName?: string | null;
-    /**
-     * Product description
-     */
-    description?: string | null;
-    /**
-     * EAN codes (can be array or string)
-     */
-    ean?: Array<string> | string | null;
-    /**
-     * External ID
-     */
-    externalId?: string | null;
-    /**
-     * Product flags (string representation)
-     */
-    flags?: string;
-    /**
-     * Hex color code
-     */
-    hexColor?: string | null;
-    /**
-     * Product image URL
-     */
-    imageUrl?: string | null;
-    /**
-     * Minimum margin (string representation)
-     */
-    minMargin?: string | null;
-    /**
-     * Modified by user ID
-     */
-    modifiedBy?: string | null;
-    /**
-     * Packaging information
-     */
-    packaging?: string | null;
-    /**
-     * Package size (string representation)
-     */
-    packageSize?: string | null;
-    /**
-     * Points value (string representation)
-     */
-    points?: string | null;
-    /**
-     * Price with VAT (string representation)
-     */
-    priceWithVat?: string | null;
-    /**
-     * Price without VAT (string representation)
-     */
-    priceWithoutVat: string;
-    /**
-     * Print ticket flag
-     */
-    printTicket?: boolean | null;
-    /**
-     * Stock deduction flag
-     */
-    stockDeduct?: boolean | null;
-    /**
-     * Product subtitle
-     */
-    subtitle?: string | null;
-    /**
-     * Product tags (can be array or string)
-     */
-    tags?: Array<string> | string | null;
-    /**
-     * Translated descriptions by locale
-     */
-    translatedDescription?: TranslatedStrings | null;
-    /**
-     * Translated names by locale
-     */
-    translatedName?: TranslatedStrings | null;
-    /**
-     * Unit of measurement (actual values vary from documented enum)
-     */
-    unit?: string;
-    /**
-     * VAT rate (string representation)
-     */
-    vat: string;
-    /**
-     * Last modification timestamp (ISO 8601)
-     */
-    versionDate?: string;
-    /**
-     * Is deleted
-     */
-    deleted?: boolean | null;
-    /**
-     * Is displayed
-     */
-    display?: boolean | null;
+  /**
+   * Product ID (long as string)
+   */
+  id?: string;
+  /**
+   * Category ID (long as string)
+   */
+  _categoryId: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId?: string;
+  /**
+   * Product name
+   */
+  name: string;
+  /**
+   * Alternative product name
+   */
+  alternativeName?: string | null;
+  /**
+   * Product description
+   */
+  description?: string | null;
+  /**
+   * EAN codes (can be array or string)
+   */
+  ean?: Array<string> | string | null;
+  /**
+   * External ID
+   */
+  externalId?: string | null;
+  /**
+   * Product flags (string representation)
+   */
+  flags?: string;
+  /**
+   * Hex color code
+   */
+  hexColor?: string | null;
+  /**
+   * Product image URL
+   */
+  imageUrl?: string | null;
+  /**
+   * Minimum margin (string representation)
+   */
+  minMargin?: string | null;
+  /**
+   * Modified by user ID
+   */
+  modifiedBy?: string | null;
+  /**
+   * Packaging information
+   */
+  packaging?: string | null;
+  /**
+   * Package size (string representation)
+   */
+  packageSize?: string | null;
+  /**
+   * Points value (string representation)
+   */
+  points?: string | null;
+  /**
+   * Price with VAT (string representation)
+   */
+  priceWithVat?: string | null;
+  /**
+   * Price without VAT (string representation)
+   */
+  priceWithoutVat: string;
+  /**
+   * Print ticket flag
+   */
+  printTicket?: boolean | null;
+  /**
+   * Stock deduction flag
+   */
+  stockDeduct?: boolean | null;
+  /**
+   * Product subtitle
+   */
+  subtitle?: string | null;
+  /**
+   * Product tags (can be array or string)
+   */
+  tags?: Array<string> | string | null;
+  /**
+   * Translated descriptions by locale
+   */
+  translatedDescription?: TranslatedStrings | null;
+  /**
+   * Translated names by locale
+   */
+  translatedName?: TranslatedStrings | null;
+  /**
+   * Unit of measurement (actual values vary from documented enum)
+   */
+  unit?: string;
+  /**
+   * VAT rate (string representation)
+   */
+  vat: string;
+  /**
+   * Last modification timestamp (ISO 8601)
+   */
+  versionDate?: string;
+  /**
+   * Is deleted
+   */
+  deleted?: boolean | null;
+  /**
+   * Is displayed
+   */
+  display?: boolean | null;
 };
 
 export type Category = {
-    /**
-     * Category ID (long as string)
-     */
-    id?: string;
-    /**
-     * Cloud ID (long as string)
-     */
-    _cloudId?: string;
-    /**
-     * Category name
-     */
-    name?: string;
-    /**
-     * Hex color for the category
-     */
-    hexColor?: string | null;
-    /**
-     * Is deleted
-     */
-    deleted?: boolean;
-    /**
-     * Is displayed
-     */
-    display?: boolean;
-    /**
-     * External ID
-     */
-    externalId?: string | null;
-    /**
-     * Category flags (string representation of long)
-     */
-    flags?: string;
-    /**
-     * Fiscal name for the category
-     */
-    fiscalName?: string | null;
-    /**
-     * Sort order (string representation)
-     */
-    ordering?: string | null;
-    /**
-     * Translated names by locale
-     */
-    translatedName?: TranslatedStrings | null;
-    /**
-     * Last modification timestamp (ISO 8601)
-     */
-    versionDate?: string;
-    /**
-     * Category tags
-     */
-    tags?: Array<string> | null;
+  /**
+   * Category ID (long as string)
+   */
+  id?: string;
+  /**
+   * Cloud ID (long as string)
+   */
+  _cloudId?: string;
+  /**
+   * Category name
+   */
+  name?: string;
+  /**
+   * Hex color for the category
+   */
+  hexColor?: string | null;
+  /**
+   * Is deleted
+   */
+  deleted?: boolean;
+  /**
+   * Is displayed
+   */
+  display?: boolean;
+  /**
+   * External ID
+   */
+  externalId?: string | null;
+  /**
+   * Category flags (string representation of long)
+   */
+  flags?: string;
+  /**
+   * Fiscal name for the category
+   */
+  fiscalName?: string | null;
+  /**
+   * Sort order (string representation)
+   */
+  ordering?: string | null;
+  /**
+   * Translated names by locale
+   */
+  translatedName?: TranslatedStrings | null;
+  /**
+   * Last modification timestamp (ISO 8601)
+   */
+  versionDate?: string;
+  /**
+   * Category tags
+   */
+  tags?: Array<string> | null;
 };
 
 export type PaginatedCategories = PaginationBase & {
-    /**
-     * Array of categories
-     */
-    data?: Array<Category>;
+  /**
+   * Array of categories
+   */
+  data?: Array<Category>;
 };
 
 export type ErrorResponse = {
-    error?: string;
-    error_description?: string;
-    code?: number;
+  error?: string;
+  error_description?: string;
+  code?: number;
 };
 
 /**
@@ -785,546 +796,566 @@ export type PageParam = number;
 export type LimitParam = number;
 
 export type GetAccessTokenData = {
-    body: TokenRequest;
-    headers: {
-        /**
-         * User {refresh_token}
-         */
-        Authorization: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/signin/token';
+  body: TokenRequest;
+  headers: {
+    /**
+     * User {refresh_token}
+     */
+    Authorization: string;
+  };
+  path?: never;
+  query?: never;
+  url: "/signin/token";
 };
 
 export type GetAccessTokenErrors = {
-    /**
-     * Bad request
-     */
-    400: ErrorResponse;
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Bad request
+   */
+  400: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
-export type GetAccessTokenError = GetAccessTokenErrors[keyof GetAccessTokenErrors];
+export type GetAccessTokenError =
+  GetAccessTokenErrors[keyof GetAccessTokenErrors];
 
 export type GetAccessTokenResponses = {
-    /**
-     * Successful authentication
-     */
-    201: TokenResponse;
+  /**
+   * Successful authentication
+   */
+  201: TokenResponse;
 };
 
-export type GetAccessTokenResponse = GetAccessTokenResponses[keyof GetAccessTokenResponses];
+export type GetAccessTokenResponse =
+  GetAccessTokenResponses[keyof GetAccessTokenResponses];
 
 export type ListReservationsData = {
-    body?: never;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-    };
-    query?: {
-        /**
-         * Page number (starts at 1)
-         */
-        page?: number;
-        /**
-         * Items per page (max 100)
-         */
-        limit?: number;
-    };
-    url: '/clouds/{cloudId}/reservations';
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Page number (starts at 1)
+     */
+    page?: number;
+    /**
+     * Items per page (max 100)
+     */
+    limit?: number;
+  };
+  url: "/clouds/{cloudId}/reservations";
 };
 
 export type ListReservationsErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
-export type ListReservationsError = ListReservationsErrors[keyof ListReservationsErrors];
+export type ListReservationsError =
+  ListReservationsErrors[keyof ListReservationsErrors];
 
 export type ListReservationsResponses = {
-    /**
-     * List of reservations
-     */
-    200: Array<Reservation>;
+  /**
+   * List of reservations
+   */
+  200: Array<Reservation>;
 };
 
-export type ListReservationsResponse = ListReservationsResponses[keyof ListReservationsResponses];
+export type ListReservationsResponse =
+  ListReservationsResponses[keyof ListReservationsResponses];
 
 export type CreateReservationData = {
+  /**
+   * Array of reservations to create (max 100)
+   */
+  body: Array<CreateReservationRequest>;
+  path: {
     /**
-     * Array of reservations to create (max 100)
+     * Cloud ID
      */
-    body: Array<CreateReservationRequest>;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/reservations';
+    cloudId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/reservations";
 };
 
 export type CreateReservationErrors = {
-    /**
-     * Bad request
-     */
-    400: ErrorResponse;
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Bad request
+   */
+  400: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
-export type CreateReservationError = CreateReservationErrors[keyof CreateReservationErrors];
+export type CreateReservationError =
+  CreateReservationErrors[keyof CreateReservationErrors];
 
 export type CreateReservationResponses = {
-    /**
-     * Reservations created successfully
-     */
-    200: Array<Reservation>;
+  /**
+   * Reservations created successfully
+   */
+  200: Array<Reservation>;
 };
 
-export type CreateReservationResponse = CreateReservationResponses[keyof CreateReservationResponses];
+export type CreateReservationResponse =
+  CreateReservationResponses[keyof CreateReservationResponses];
 
 export type CancelReservationData = {
-    body?: never;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-        /**
-         * Reservation ID
-         */
-        reservationId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/reservations/{reservationId}';
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+    /**
+     * Reservation ID
+     */
+    reservationId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/reservations/{reservationId}";
 };
 
 export type CancelReservationErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Reservation not found
-     */
-    404: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Reservation not found
+   */
+  404: ErrorResponse;
 };
 
-export type CancelReservationError = CancelReservationErrors[keyof CancelReservationErrors];
+export type CancelReservationError =
+  CancelReservationErrors[keyof CancelReservationErrors];
 
 export type CancelReservationResponses = {
-    /**
-     * Reservation cancelled successfully
-     */
-    204: void;
+  /**
+   * Reservation cancelled successfully
+   */
+  204: undefined;
 };
 
-export type CancelReservationResponse = CancelReservationResponses[keyof CancelReservationResponses];
+export type CancelReservationResponse =
+  CancelReservationResponses[keyof CancelReservationResponses];
 
 export type GetReservationData = {
-    body?: never;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-        /**
-         * Reservation ID
-         */
-        reservationId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/reservations/{reservationId}';
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+    /**
+     * Reservation ID
+     */
+    reservationId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/reservations/{reservationId}";
 };
 
 export type GetReservationErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Reservation not found
-     */
-    404: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Reservation not found
+   */
+  404: ErrorResponse;
 };
 
-export type GetReservationError = GetReservationErrors[keyof GetReservationErrors];
+export type GetReservationError =
+  GetReservationErrors[keyof GetReservationErrors];
 
 export type GetReservationResponses = {
-    /**
-     * Reservation details
-     */
-    200: Reservation;
+  /**
+   * Reservation details
+   */
+  200: Reservation;
 };
 
-export type GetReservationResponse = GetReservationResponses[keyof GetReservationResponses];
+export type GetReservationResponse =
+  GetReservationResponses[keyof GetReservationResponses];
 
 export type UpdateReservationData = {
-    body: UpdateReservationRequest;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-        /**
-         * Reservation ID
-         */
-        reservationId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/reservations/{reservationId}';
+  body: UpdateReservationRequest;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+    /**
+     * Reservation ID
+     */
+    reservationId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/reservations/{reservationId}";
 };
 
 export type UpdateReservationErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Reservation not found
-     */
-    404: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Reservation not found
+   */
+  404: ErrorResponse;
 };
 
-export type UpdateReservationError = UpdateReservationErrors[keyof UpdateReservationErrors];
+export type UpdateReservationError =
+  UpdateReservationErrors[keyof UpdateReservationErrors];
 
 export type UpdateReservationResponses = {
-    /**
-     * Reservation updated successfully
-     */
-    200: Reservation;
+  /**
+   * Reservation updated successfully
+   */
+  200: Reservation;
 };
 
-export type UpdateReservationResponse = UpdateReservationResponses[keyof UpdateReservationResponses];
+export type UpdateReservationResponse =
+  UpdateReservationResponses[keyof UpdateReservationResponses];
 
 export type GetCustomersData = {
-    body?: never;
-    path: {
-        cloudId: string;
-    };
-    query?: {
-        /**
-         * Filter customers (e.g., by email or phone)
-         */
-        filter?: string;
-        /**
-         * Page number (starts at 1)
-         */
-        page?: number;
-        /**
-         * Items per page (max 100)
-         */
-        limit?: number;
-    };
-    url: '/clouds/{cloudId}/customers';
+  body?: never;
+  path: {
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Filter customers (e.g., by email or phone)
+     */
+    filter?: string;
+    /**
+     * Page number (starts at 1)
+     */
+    page?: number;
+    /**
+     * Items per page (max 100)
+     */
+    limit?: number;
+  };
+  url: "/clouds/{cloudId}/customers";
 };
 
 export type GetCustomersErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
 export type GetCustomersError = GetCustomersErrors[keyof GetCustomersErrors];
 
 export type GetCustomersResponses = {
-    /**
-     * Paginated list of customers
-     */
-    200: PaginatedCustomers;
+  /**
+   * Paginated list of customers
+   */
+  200: PaginatedCustomers;
 };
 
-export type GetCustomersResponse = GetCustomersResponses[keyof GetCustomersResponses];
+export type GetCustomersResponse =
+  GetCustomersResponses[keyof GetCustomersResponses];
 
 export type CreateCustomersData = {
-    body: Array<CreateCustomerRequest>;
-    path: {
-        cloudId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/customers';
+  body: Array<CreateCustomerRequest>;
+  path: {
+    cloudId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/customers";
 };
 
 export type CreateCustomersErrors = {
-    /**
-     * Bad Request
-     */
-    400: ErrorResponse;
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Bad Request
+   */
+  400: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
-export type CreateCustomersError = CreateCustomersErrors[keyof CreateCustomersErrors];
+export type CreateCustomersError =
+  CreateCustomersErrors[keyof CreateCustomersErrors];
 
 export type CreateCustomersResponses = {
-    /**
-     * Customers created successfully
-     */
-    200: Array<Customer>;
+  /**
+   * Customers created successfully
+   */
+  200: Array<Customer>;
 };
 
-export type CreateCustomersResponse = CreateCustomersResponses[keyof CreateCustomersResponses];
+export type CreateCustomersResponse =
+  CreateCustomersResponses[keyof CreateCustomersResponses];
 
 export type GetTablesData = {
-    body?: never;
-    path: {
-        cloudId: string;
-    };
-    query?: {
-        /**
-         * Page number (starts at 1)
-         */
-        page?: number;
-        /**
-         * Items per page (max 100)
-         */
-        limit?: number;
-    };
-    url: '/clouds/{cloudId}/tables';
+  body?: never;
+  path: {
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Page number (starts at 1)
+     */
+    page?: number;
+    /**
+     * Items per page (max 100)
+     */
+    limit?: number;
+  };
+  url: "/clouds/{cloudId}/tables";
 };
 
 export type GetTablesErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
 export type GetTablesError = GetTablesErrors[keyof GetTablesErrors];
 
 export type GetTablesResponses = {
-    /**
-     * Paginated list of tables
-     */
-    200: PaginatedTables;
+  /**
+   * Paginated list of tables
+   */
+  200: PaginatedTables;
 };
 
 export type GetTablesResponse = GetTablesResponses[keyof GetTablesResponses];
 
 export type GetProductsData = {
-    body?: never;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-    };
-    query?: {
-        /**
-         * Filter products (e.g., "_categoryId|eq|123")
-         */
-        filter?: string;
-        /**
-         * Sort products (e.g., "name", "-priceWithVat")
-         */
-        sort?: string;
-        /**
-         * Page number (starts at 1)
-         */
-        page?: number;
-        /**
-         * Items per page (max 100)
-         */
-        limit?: number;
-        /**
-         * Include related entities (comma-separated, e.g., "customizations,ingredients")
-         */
-        include?: string;
-    };
-    url: '/clouds/{cloudId}/products';
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Filter products (e.g., "_categoryId|eq|123")
+     */
+    filter?: string;
+    /**
+     * Sort products (e.g., "name", "-priceWithVat")
+     */
+    sort?: string;
+    /**
+     * Page number (starts at 1)
+     */
+    page?: number;
+    /**
+     * Items per page (max 100)
+     */
+    limit?: number;
+    /**
+     * Include related entities (comma-separated, e.g., "customizations,ingredients")
+     */
+    include?: string;
+  };
+  url: "/clouds/{cloudId}/products";
 };
 
 export type GetProductsErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
 export type GetProductsError = GetProductsErrors[keyof GetProductsErrors];
 
 export type GetProductsResponses = {
-    /**
-     * Paginated list of products
-     */
-    200: PaginatedProducts;
+  /**
+   * Paginated list of products
+   */
+  200: PaginatedProducts;
 };
 
-export type GetProductsResponse = GetProductsResponses[keyof GetProductsResponses];
+export type GetProductsResponse =
+  GetProductsResponses[keyof GetProductsResponses];
 
 export type GetProductData = {
-    body?: never;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-        /**
-         * Product ID
-         */
-        productId: string;
-    };
-    query?: {
-        /**
-         * Include related entities (comma-separated, e.g., "customizations,ingredients")
-         */
-        include?: string;
-    };
-    url: '/clouds/{cloudId}/products/{productId}';
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+    /**
+     * Product ID
+     */
+    productId: string;
+  };
+  query?: {
+    /**
+     * Include related entities (comma-separated, e.g., "customizations,ingredients")
+     */
+    include?: string;
+  };
+  url: "/clouds/{cloudId}/products/{productId}";
 };
 
 export type GetProductErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Product not found
-     */
-    404: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Product not found
+   */
+  404: ErrorResponse;
 };
 
 export type GetProductError = GetProductErrors[keyof GetProductErrors];
 
 export type GetProductResponses = {
-    /**
-     * Product details
-     */
-    200: Product;
+  /**
+   * Product details
+   */
+  200: Product;
 };
 
 export type GetProductResponse = GetProductResponses[keyof GetProductResponses];
 
 export type GetCategoriesData = {
-    body?: never;
-    path: {
-        /**
-         * Cloud ID
-         */
-        cloudId: string;
-    };
-    query?: {
-        /**
-         * Page number (starts at 1)
-         */
-        page?: number;
-        /**
-         * Items per page (max 100)
-         */
-        limit?: number;
-        /**
-         * Filter expression
-         */
-        filter?: string;
-        /**
-         * Sort expression
-         */
-        sort?: string;
-    };
-    url: '/clouds/{cloudId}/categories';
+  body?: never;
+  path: {
+    /**
+     * Cloud ID
+     */
+    cloudId: string;
+  };
+  query?: {
+    /**
+     * Page number (starts at 1)
+     */
+    page?: number;
+    /**
+     * Items per page (max 100)
+     */
+    limit?: number;
+    /**
+     * Filter expression
+     */
+    filter?: string;
+    /**
+     * Sort expression
+     */
+    sort?: string;
+  };
+  url: "/clouds/{cloudId}/categories";
 };
 
 export type GetCategoriesErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
 };
 
 export type GetCategoriesError = GetCategoriesErrors[keyof GetCategoriesErrors];
 
 export type GetCategoriesResponses = {
-    /**
-     * Paginated list of categories
-     */
-    200: PaginatedCategories;
+  /**
+   * Paginated list of categories
+   */
+  200: PaginatedCategories;
 };
 
-export type GetCategoriesResponse = GetCategoriesResponses[keyof GetCategoriesResponses];
+export type GetCategoriesResponse =
+  GetCategoriesResponses[keyof GetCategoriesResponses];
 
 export type GetCustomerData = {
-    body?: never;
-    path: {
-        cloudId: string;
-        customerId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/customers/{customerId}';
+  body?: never;
+  path: {
+    cloudId: string;
+    customerId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/customers/{customerId}";
 };
 
 export type GetCustomerErrors = {
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Customer not found
-     */
-    404: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Customer not found
+   */
+  404: ErrorResponse;
 };
 
 export type GetCustomerError = GetCustomerErrors[keyof GetCustomerErrors];
 
 export type GetCustomerResponses = {
-    /**
-     * Customer details
-     */
-    200: Customer;
+  /**
+   * Customer details
+   */
+  200: Customer;
 };
 
-export type GetCustomerResponse = GetCustomerResponses[keyof GetCustomerResponses];
+export type GetCustomerResponse =
+  GetCustomerResponses[keyof GetCustomerResponses];
 
 export type UpdateCustomerData = {
-    body: UpdateCustomerRequest;
-    path: {
-        cloudId: string;
-        customerId: string;
-    };
-    query?: never;
-    url: '/clouds/{cloudId}/customers/{customerId}';
+  body: UpdateCustomerRequest;
+  path: {
+    cloudId: string;
+    customerId: string;
+  };
+  query?: never;
+  url: "/clouds/{cloudId}/customers/{customerId}";
 };
 
 export type UpdateCustomerErrors = {
-    /**
-     * Bad Request
-     */
-    400: ErrorResponse;
-    /**
-     * Unauthorized
-     */
-    401: ErrorResponse;
-    /**
-     * Customer not found
-     */
-    404: ErrorResponse;
+  /**
+   * Bad Request
+   */
+  400: ErrorResponse;
+  /**
+   * Unauthorized
+   */
+  401: ErrorResponse;
+  /**
+   * Customer not found
+   */
+  404: ErrorResponse;
 };
 
-export type UpdateCustomerError = UpdateCustomerErrors[keyof UpdateCustomerErrors];
+export type UpdateCustomerError =
+  UpdateCustomerErrors[keyof UpdateCustomerErrors];
 
 export type UpdateCustomerResponses = {
-    /**
-     * Customer updated successfully
-     */
-    200: Customer;
+  /**
+   * Customer updated successfully
+   */
+  200: Customer;
 };
 
-export type UpdateCustomerResponse = UpdateCustomerResponses[keyof UpdateCustomerResponses];
+export type UpdateCustomerResponse =
+  UpdateCustomerResponses[keyof UpdateCustomerResponses];
 
 export type ClientOptions = {
-    baseUrl: 'https://api.dotykacka.cz/v2' | (string & {});
+  baseUrl: "https://api.dotykacka.cz/v2" | (string & {});
 };

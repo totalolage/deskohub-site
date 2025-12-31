@@ -41,8 +41,7 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.intersect(Schedule.recurs(3)), // Use intersect for AND condition, not either
   Schedule.whileInput<ExternalAPIError | NetworkError>((error) => {
     // Only retry on server errors (500+) or network errors
-    if (error._tag === "NetworkError") 
-      return true;
+    if (error._tag === "NetworkError") return true;
 
     if (
       error._tag === "ExternalAPIError" &&
@@ -62,161 +61,192 @@ export class DotyposService extends Effect.Service<DotyposService>()(
       const config = yield* DotyposConfig;
       const api = yield* DotyposApi;
 
-      const createReservation = Effect.fn("createReservation")(function* (
-        input: TableReservationFormData
-      ) {
-        yield* Effect.logInfo("Creating reservation", input);
+      const createReservation = Effect.fn("createReservation")(
+        function* (input: TableReservationFormData) {
+          yield* Effect.logInfo("Creating reservation", input);
 
-        // Simple name splitting - just first and rest
-        const [firstName = "", ...lastNameParts] = input.name
-          .trim()
-          .split(/\s+/);
-        const lastName = lastNameParts.join(" ") || firstName;
+          // Simple name splitting - just first and rest
+          const [firstName = "", ...lastNameParts] = input.name
+            .trim()
+            .split(/\s+/);
+          const lastName = lastNameParts.join(" ") || firstName;
 
-        // Find or create customer (required for reservation)
-        const customer = yield* findOrCreateCustomer({
-          firstName,
-          lastName,
-          email: input.email,
-          phone: input.phone,
-        });
-
-        if (!customer.id) {
-          return yield* Effect.fail(
-            new ValidationError({
-              message: "Failed to create or find customer",
-            })
-          );
-        }
-
-        yield* Effect.logInfo("Customer resolved", {
-          customerId: customer.id,
-        });
-
-        // Build note once
-        const note = buildNote(input);
-
-        let tableId: string | undefined;
-        if (siteConstants.featureFlags.autoTableSelection) {
-          // Auto-select table based on preferences
-          const tables = yield* getTables();
-          const selection = selectBestTable({
-            guestCount: input.guestCount,
-            needsLargerTable: input.needsLargerTable,
-            needsPrivateSpace: input.needsPrivateSpace,
-            availableTables: tables,
+          // Find or create customer (required for reservation)
+          const customer = yield* findOrCreateCustomer({
+            firstName,
+            lastName,
+            email: input.email,
+            phone: input.phone,
           });
 
-          tableId = selection?.selectedTableId;
-          if (selection) {
-            yield* Effect.logInfo("Table selected", {
-              tableId,
-              tableName: selection.selectedTableName,
-              seats: selection.seats,
-            });
+          if (!customer.id) {
+            return yield* Effect.fail(
+              new ValidationError({
+                message: "Failed to create or find customer",
+              })
+            );
           }
-        } else {
-          const tables = yield* getTables();
-          tableId = tables[0]?.id;
-        }
 
-        // Build request with required customer ID
-        const request: CreateReservationRequest = {
-          _branchId: config.branchId,
-          _cloudId: config.cloudId,
-          _customerId: customer.id,
-          startDate: input.datetime.getTime(),
-          endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
-          seats: input.guestCount,
-          status: "NEW",
-          note,
-          flags: 0,
-          ...(tableId && { _tableId: tableId }),
-          ...(config.employeeId && { _employeeId: config.employeeId }),
-        };
+          yield* Effect.logInfo("Customer resolved", {
+            customerId: customer.id,
+          });
 
-        const reservation = yield* api
-          .createReservation({
-            path: { cloudId: config.cloudId },
-            body: request,
-          })
-          .pipe(
-            Effect.withSpan("dotyposService.createReservation"),
-            Effect.tap((res) => Effect.logDebug("API call successful", res)),
-            Effect.tapError((error) =>
-              Effect.logError("API call failed", error)
-            ),
-            Effect.retry(retryPolicy)
-          );
+          // Build note once
+          const note = buildNote(input);
 
-        yield* Effect.logInfo("Reservation created", { id: reservation.id });
+          let tableId: string | undefined;
+          if (siteConstants.featureFlags.autoTableSelection) {
+            // Auto-select table based on preferences
+            const tables = yield* getTables();
+            const selection = selectBestTable({
+              guestCount: input.guestCount,
+              needsLargerTable: input.needsLargerTable,
+              needsPrivateSpace: input.needsPrivateSpace,
+              availableTables: tables,
+            });
 
-        // Email is sent at the action layer (booking.ts) where the email service is available
+            tableId = selection?.selectedTableId;
+            if (selection) {
+              yield* Effect.logInfo("Table selected", {
+                tableId,
+                tableName: selection.selectedTableName,
+                seats: selection.seats,
+              });
+            }
+          } else {
+            const tables = yield* getTables();
+            tableId = tables[0]?.id;
+          }
 
-        return reservation;
-      });
+          // Build request with required customer ID
+          const request: CreateReservationRequest = {
+            _branchId: config.branchId,
+            _cloudId: config.cloudId,
+            _customerId: customer.id,
+            startDate: input.datetime.getTime(),
+            endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
+            seats: input.guestCount,
+            status: "NEW",
+            note,
+            flags: 0,
+            ...(tableId && { _tableId: tableId }),
+            ...(config.employeeId && { _employeeId: config.employeeId }),
+          };
 
-      const getReservation = Effect.fn("getReservation")(function* (
-        id: string
-      ) {
-        const reservationResult = yield* api
-          .getReservation({
-            path: { cloudId: config.cloudId, reservationId: id },
-          })
-          .pipe(
-            Effect.retry(retryPolicy),
-            Effect.catchIf(
-              (error) => !(error instanceof Data.TaggedError),
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "getReservation",
-                  cause: error,
-                })
-            )
-          );
-        const reservation = {
-          ...reservationResult,
-          id,
-        };
-
-        // Get customer details if available
-        if (!reservation._customerId) {
-          return yield* Effect.fail(
-            new ValidationError({
-              message: `Reservation ${id} has no customer ID`,
+          const reservation = yield* api
+            .createReservation({
+              path: { cloudId: config.cloudId },
+              body: request,
             })
-          );
-        }
+            .pipe(
+              Effect.withSpan("dotyposService.createReservation"),
+              Effect.tap((res) => Effect.logDebug("API call successful", res)),
+              Effect.tapError((error) =>
+                Effect.logError("API call failed", error)
+              ),
+              Effect.retry(retryPolicy)
+            );
 
-        const customerResult = yield* getCustomer(reservation._customerId);
-        const customer = {
-          ...customerResult,
-          id: reservation._customerId,
-        };
+          yield* Effect.logInfo("Reservation created", { id: reservation.id });
 
-        // Return both reservation and customer
-        return { reservation, customer };
-      });
+          // Email is sent at the action layer (booking.ts) where the email service is available
+          return reservation;
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              operation: "createReservation",
+              input,
+            })
+          )
+      );
 
-      const getCustomer = Effect.fn("getCustomer")(function* (id: string) {
-        return yield* api
-          .getCustomer({
-            path: { cloudId: config.cloudId, customerId: id },
-          })
-          .pipe(
-            Effect.retry(retryPolicy),
-            Effect.catchIf(
-              (error) => !(error instanceof Data.TaggedError),
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "getCustomer",
-                  cause: error,
-                })
-            )
-          );
-      });
+      const getReservation = Effect.fn("getReservation")(
+        function* (id: string) {
+          const reservationResult = yield* api
+            .getReservation({
+              path: { cloudId: config.cloudId, reservationId: id },
+            })
+            .pipe(
+              Effect.retry(retryPolicy),
+              Effect.catchIf(
+                (error) => !(error instanceof Data.TaggedError),
+                (error) =>
+                  new ExternalAPIError({
+                    service: "Dotypos",
+                    operation: "getReservation",
+                    cause: error,
+                  })
+              )
+            );
+          const reservation = {
+            ...reservationResult,
+            id,
+          };
+
+          // Get customer details if available
+          if (!reservation._customerId) {
+            return yield* Effect.fail(
+              new ValidationError({
+                message: `Reservation ${id} has no customer ID`,
+              })
+            );
+          }
+
+          const customerResult = yield* getCustomer(reservation._customerId);
+          const customer = {
+            ...customerResult,
+            id: reservation._customerId,
+          };
+
+          // Return both reservation and customer
+          return { reservation, customer };
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              operation: "getReservation",
+              input,
+            })
+          )
+      );
+
+      const getCustomer = Effect.fn("getCustomer")(
+        function* (id: string) {
+          return yield* api
+            .getCustomer({
+              path: { cloudId: config.cloudId, customerId: id },
+            })
+            .pipe(
+              Effect.retry(retryPolicy),
+              Effect.catchIf(
+                (error) => !error,
+                (error) =>
+                  new ExternalAPIError({
+                    service: "Dotypos",
+                    operation: "getCustomer",
+                    cause: `\`${error}' value thrown`,
+                  })
+              ),
+              Effect.catchIf(
+                (error) => !(error instanceof Data.TaggedError),
+                (error) =>
+                  new ExternalAPIError({
+                    service: "Dotypos",
+                    operation: "getCustomer",
+                    cause: error,
+                  })
+              )
+            );
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              operation: "getCustomer",
+              input,
+            })
+          )
+      );
 
       const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
         function* (customerData: {
@@ -225,7 +255,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           email?: string;
           phone?: string;
         }) {
-          yield* Effect.logInfo("Finding or creating customer", customerData);
+          yield* Effect.logInfo("Finding or creating customer");
 
           // Normalize phone number to E.164 format for consistent storage and searching
           const normalizedPhone = customerData.phone
@@ -476,7 +506,14 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             );
 
           return newCustomer;
-        }
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              operation: "findOrCreateCustomer",
+              input,
+            })
+          )
       );
 
       const getTables = Effect.fn("getTables")(function* () {
@@ -537,19 +574,28 @@ export class DotyposService extends Effect.Service<DotyposService>()(
 
       const getMenuItems = Effect.fn("getMenuItems")(function* () {
         // First, fetch all categories (both displayable and non-displayable)
-        const allCategories = yield* getCategories();
+        const categories = yield* getCategories();
 
         // Fetch products for ALL categories (not just displayable ones) to ensure we get everything
         const productsByCategory = yield* Effect.all(
-          allCategories
+          categories
             .filter((cat) => cat.id) // Only categories with IDs
+            .filter(isCategoryDisplayable) // Only displayable categories
             .map((category) =>
               getProducts({
                 categoryId: category.id,
                 includeDeleted: false,
-              })
+              }).pipe(
+                Effect.tapError((error) =>
+                  Effect.logError(
+                    "Failed to fetch products for category",
+                    error
+                  )
+                ),
+                Effect.orElseSucceed(() => [])
+              )
             ),
-          { concurrency: 5 } // Fetch up to 5 categories at once
+          { concurrency: "inherit" }
         );
 
         // Flatten products from all categories and deduplicate by ID
@@ -563,17 +609,14 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         }
         const products = Array.from(productMap.values());
 
-        // Filter to only display categories that aren't deleted, hidden, or tagged as non-menu
-        const displayCategories = allCategories.filter(isCategoryDisplayable);
-
         yield* Effect.logInfo("Menu items fetched", {
-          categoriesCount: displayCategories.length,
+          categoriesCount: categories.length,
           productsCount: products.length,
         });
 
         return {
           products,
-          categories: displayCategories,
+          categories,
         };
       });
 
@@ -594,7 +637,10 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         getMenuItems,
         buildNote,
       };
-    }),
+    }).pipe(
+      Effect.annotateLogs("service", "DotyposService"),
+      Effect.withConcurrency(5)
+    ),
     dependencies: [
       Layer.provideMerge(DotyposApi.Default, DotyposConfig.Default),
     ],

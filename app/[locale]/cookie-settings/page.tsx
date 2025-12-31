@@ -19,14 +19,8 @@ const msg = (key: string): (() => string) => {
 
 export default function CookieSettingsPage() {
   const locale = getLocale();
-  const {
-    acceptedCategories,
-    acceptAll,
-    rejectAll,
-    acceptCategory,
-    rejectCategory,
-    isAccepted,
-  } = useCookieConsent();
+  const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
+    useCookieConsent();
 
   const [preferences, setPreferences] = useState<
     Record<ConsentCategory, boolean>
@@ -45,7 +39,7 @@ export default function CookieSettingsPage() {
       marketing: isAccepted("marketing"),
       preferences: isAccepted("preferences"),
     });
-  }, [acceptedCategories, isAccepted]);
+  }, [isAccepted]);
 
   const handleToggle = (category: ConsentCategory) => {
     if (category === "necessary") return; // Cannot toggle necessary cookies

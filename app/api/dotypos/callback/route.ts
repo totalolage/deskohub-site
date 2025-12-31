@@ -6,7 +6,7 @@ import { type NextRequest, NextResponse } from "next/server";
  *
  * Handles the OAuth redirect from Dotypos and extracts the tokens
  */
-export async function GET(request: NextRequest) {
+export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
     const searchParams = request.nextUrl.searchParams;
 

@@ -18,6 +18,8 @@ export class WebhookValidationError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly issues?: unknown;
+  readonly payload?: string;
+  readonly cause?: unknown;
 }> {}
 
 /**

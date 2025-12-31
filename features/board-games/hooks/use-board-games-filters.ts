@@ -29,20 +29,26 @@ export const useBoardGamesFilters = ({ games }: UseFiltersOptions) => {
     sortOption: DEFAULT_SORT_OPTION,
   });
 
-  const categories = {
-    all: m["boardGames.filters.categories.all"](),
-    strategic: m["boardGames.filters.categories.strategic"](),
-    family: m["boardGames.filters.categories.family"](),
-    dungeonCrawler: m["boardGames.filters.categories.dungeonCrawler"](),
-    party: m["boardGames.filters.categories.party"](),
-  };
+  const categories = useMemo(
+    () => ({
+      all: m["boardGames.filters.categories.all"](),
+      strategic: m["boardGames.filters.categories.strategic"](),
+      family: m["boardGames.filters.categories.family"](),
+      dungeonCrawler: m["boardGames.filters.categories.dungeonCrawler"](),
+      party: m["boardGames.filters.categories.party"](),
+    }),
+    []
+  );
 
-  const difficulties = {
-    all: m["boardGames.filters.difficulties.all"](),
-    easy: m["boardGames.filters.difficulties.easy"](),
-    medium: m["boardGames.filters.difficulties.medium"](),
-    hard: m["boardGames.filters.difficulties.hard"](),
-  };
+  const difficulties = useMemo(
+    () => ({
+      all: m["boardGames.filters.difficulties.all"](),
+      easy: m["boardGames.filters.difficulties.easy"](),
+      medium: m["boardGames.filters.difficulties.medium"](),
+      hard: m["boardGames.filters.difficulties.hard"](),
+    }),
+    []
+  );
 
   const filteredAndSortedGames = useMemo(() => {
     // Filter games

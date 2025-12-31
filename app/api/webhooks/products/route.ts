@@ -139,8 +139,10 @@ const getProductOperation = (
 /**
  * Process the products webhook payload
  */
-const processWebhook = (payload: unknown) =>
-  Effect.gen(function* () {
+const processWebhook = Effect.fn("processWebhook")(
+  function* (payload: unknown) {
+    yield* Effect.log("Processing webhook");
+
     // Validate and parse the payload
     const validatedPayload = yield* Schema.decodeUnknown(DotyposProductPayload)(
       payload
@@ -206,7 +208,15 @@ const processWebhook = (payload: unknown) =>
         invalidatedTags: tagsToInvalidate,
       },
     };
-  });
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        operation: "processWebhook",
+        input,
+      })
+    )
+);
 
 /**
  * POST /api/webhooks/products
@@ -217,8 +227,10 @@ const processWebhook = (payload: unknown) =>
  * Security: Uses the same UUID secret as the reservation webhook
  * NOTE: Returns 200 status even for some errors to prevent Dotypos from retrying
  */
-export async function POST(request: Request) {
+export async function POST(request: Request): Promise<NextResponse> {
   const program = Effect.gen(function* () {
+    yield* Effect.log("Webhook invoked");
+
     // Validate webhook security using UUID
     const url = new URL(request.url);
     yield* validateWebhookUUID(url);
@@ -242,50 +254,47 @@ export async function POST(request: Request) {
 
     return result;
   }).pipe(
-    Effect.catchTag("WebhookAuthError", (error) => {
-      Effect.runSync(
-        Effect.logError("Product webhook authentication error", {
-          message: error.message,
-        })
-      );
-      return Effect.succeed({
-        status: 401,
-        body: {
-          error: "Unauthorized",
-          message: error.message,
-        },
-      });
+    Effect.tapError(
+      Effect.fn(function* (error) {
+        yield* Effect.logError(error);
+      })
+    ),
+    Effect.annotateLogs({
+      method: "POST",
+      operation: "webhook",
+      request,
     }),
-    Effect.catchTag("WebhookValidationError", (error) => {
-      Effect.runSync(
-        Effect.logError("Product webhook validation error", {
-          message: error.message,
-          issues: error.issues,
-        })
-      );
-      return Effect.succeed({
-        status: 400,
-        body: {
-          error: "Invalid payload",
-          message: error.message,
-          issues: error.issues,
-        },
-      });
+    Effect.catchTags({
+      WebhookAuthError: (error) =>
+        Effect.succeed(
+          NextResponse.json(
+            { error: "Unauthorized", message: error.message },
+            { status: 401 }
+          )
+        ),
+      WebhookValidationError: (error) =>
+        Effect.succeed(
+          NextResponse.json(
+            {
+              error: "Invalid payload",
+              message: error.message,
+              issues: error.issues,
+              payload: error.payload,
+            },
+            { status: 400 }
+          )
+        ),
     }),
-    Effect.catchAll((error) => {
-      // IMPORTANT: Log the error but return 200 to prevent Dotypos from retrying
-      // This matches the reservation webhook behavior
-      Effect.runSync(
-        Effect.logError("Product webhook processing error", error)
-      );
-      return Effect.succeed({
+    Effect.orElseSucceed(() =>
+      // return 200 to prevent Dotypos from retrying
+      Effect.succeed({
         status: 200,
         body: {
           success: true,
           error: "Internal processing error (logged)",
         },
-      });
-    })
+      })
+    )
   );
 
   try {

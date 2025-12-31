@@ -47,10 +47,10 @@ export function SafeAreaProvider({ children }: { children: ReactNode }) {
 
         const computedStyle = window.getComputedStyle(tempEl);
         setInsets({
-          top: parseInt(computedStyle.paddingTop) || 0,
-          right: parseInt(computedStyle.paddingRight) || 0,
-          bottom: parseInt(computedStyle.paddingBottom) || 0,
-          left: parseInt(computedStyle.paddingLeft) || 0,
+          top: parseInt(computedStyle.paddingTop, 10) || 0,
+          right: parseInt(computedStyle.paddingRight, 10) || 0,
+          bottom: parseInt(computedStyle.paddingBottom, 10) || 0,
+          left: parseInt(computedStyle.paddingLeft, 10) || 0,
         });
 
         document.body.removeChild(tempEl);

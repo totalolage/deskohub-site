@@ -120,8 +120,7 @@ const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
     }
     // Don't retry on rate limits (420) or other errors
     return false;
-  }),
-  Schedule.map(() => void 0)
+  })
 );
 
 // ============================================================================
@@ -138,7 +137,7 @@ const makeCloudinaryService = Effect.gen(function* () {
     });
   });
 
-  yield* Effect.log("Cloudinary service initialized", {
+  yield* Effect.logDebug("Cloudinary service initialized", {
     url: `cloudinary://${env.CLOUDINARY_API_KEY}:${"*".repeat(env.CLOUDINARY_API_SECRET.length)}@${env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}`,
   });
 
@@ -236,7 +235,7 @@ const makeCloudinaryService = Effect.gen(function* () {
         return executeSearch(expression, options);
       }),
       Effect.tap((results) =>
-        Effect.log(`Found ${results.length} images with tag: ${tag}`)
+        Effect.logDebug(`Found ${results.length} images with tag: ${tag}`)
       )
     );
 
@@ -255,19 +254,19 @@ const makeCloudinaryService = Effect.gen(function* () {
 
         return Effect.gen(function* () {
           for (const expr of expressions) {
-            yield* Effect.log(`Trying folder expression: ${expr}`);
+            yield* Effect.logDebug(`Trying folder expression: ${expr}`);
             const results = yield* executeSearch(
               `${expr} AND resource_type:image`,
               options
             );
             if (results.length > 0) {
-              yield* Effect.log(
+              yield* Effect.logDebug(
                 `Found ${results.length} images in folder with expression: ${expr}`
               );
               return results;
             }
           }
-          yield* Effect.log(
+          yield* Effect.logError(
             `No images found for any variation of folder: ${folder}`
           );
           return [];
@@ -280,7 +279,7 @@ const makeCloudinaryService = Effect.gen(function* () {
       Effect.log("Searching all images"),
       Effect.flatMap(() => executeSearch("resource_type:image", options)),
       Effect.tap((results) =>
-        Effect.log(`Found ${results.length} total images`)
+        Effect.logDebug(`Found ${results.length} total images`)
       )
     );
 
@@ -304,7 +303,7 @@ const makeCloudinaryService = Effect.gen(function* () {
 
       // Use the normalized CNF expression builder
       const expression = cnfToCloudinaryExpression(tags);
-      yield* Effect.log(`CNF search expression: ${expression}`);
+      yield* Effect.logDebug(`CNF search expression: ${expression}`);
 
       return yield* executeSearch(expression, options);
     });

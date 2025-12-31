@@ -31,7 +31,7 @@ export default function DotyposAuthPage() {
     url.searchParams.append("state", state);
 
     setAuthUrl(url.toString());
-  }, [clientId, clientSecret, redirectUrl]);
+  }, [clientId, clientSecret]);
 
   const handleAuthenticate = () => {
     if (authUrl) {
