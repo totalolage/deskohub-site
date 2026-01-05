@@ -1,14 +1,9 @@
-import { headers } from "next/headers";
-import { use } from "react";
 export function isDev(): boolean {
   if (process.env.NODE_ENV === "development") return true;
   if (process.env.VERCEL_ENV === "development") return true;
 
   let hostname: string | undefined;
-
-  if (typeof window === "undefined")
-    hostname = use(headers()).get("host")?.split(":")[0];
-  else hostname = window.location.hostname;
+  if (typeof window !== "undefined") hostname = window.location.hostname;
 
   const isLocalhost =
     hostname === "localhost" ||
