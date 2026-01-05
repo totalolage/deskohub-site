@@ -4,5 +4,5 @@ export { default as proxy } from "@/shared/utils/middleware";
 
 export const config: MiddlewareConfig = {
   matcher:
-    "/((?<!.[^/]/)(?!(?:_next|api|images|\\.well-known)(?:/|$))(?![^/]*icon(?=[.-])[^/]*(?:/.*)?$|.*/[^/]*icon(?=[.-])[^/]*$).*)",
+    "/((?<!.[^/]/)(?!(?:_next|_debug|api|images|\\.well-known)(?:/|$))(?![^/]*icon(?=[.-])[^/]*(?:/.*)?$|.*/[^/]*icon(?=[.-])[^/]*$).*)",
 };
