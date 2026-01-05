@@ -1,18 +1,21 @@
-import { env } from "@/env";
+import { headers } from "next/headers";
+import { use } from "react";
 export function isDev(): boolean {
-  if (typeof window === "undefined") {
-    return env.NODE_ENV === "development" || env.VERCEL_ENV === "development";
-  }
+  if (process.env.NODE_ENV === "development") return true;
+  if (process.env.VERCEL_ENV === "development") return true;
+
+  let hostname: string | undefined;
+
+  if (typeof window === "undefined")
+    hostname = use(headers()).get("host")?.split(":")[0];
+  else hostname = window.location.hostname;
+
   const isLocalhost =
-    window.location.hostname === "localhost" ||
-    window.location.hostname === "127.0.0.1" ||
-    window.location.hostname.startsWith("192.168.") ||
-    window.location.hostname.startsWith("10.");
-
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname?.startsWith("192.168.") ||
+    hostname?.startsWith("10.");
   if (isLocalhost) return true;
-
-  const haveDevCookie = document.cookie.includes("developet=true");
-  if (haveDevCookie) return true;
 
   return false;
 }
