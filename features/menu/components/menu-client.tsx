@@ -1,7 +1,6 @@
 "use client";
 
 import type { Category, Product } from "@/features/dotypos/generated";
-import { isCategoryDisplayable } from "@/features/dotypos/utils/category-utils";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
 import { MenuOpeningHours } from "./menu-opening-hours";
@@ -19,56 +18,13 @@ export function MenuClient({
   categories,
   showPdfDownload,
 }: MenuClientProps) {
-  // Get display order for categories from config
-  const categoryOrder = [
-    ...siteConstants.menu.categoryGroups.food,
-    ...siteConstants.menu.categoryGroups.drinks,
-  ];
-
-  // Filter and order categories
-  const displayCategories: Category[] = [];
-  const categoryMap = new Map(categories.map((cat) => [cat.id, cat]));
-
-  // Add categories in configured order
-  categoryOrder.forEach((categoryId) => {
-    const category = categoryMap.get(categoryId);
-    // Respect the category's display attribute and tags
-    if (category && isCategoryDisplayable(category)) {
-      // Check if there are products for this category
-      const hasProducts = products.some((p) => p._categoryId === categoryId);
-      if (hasProducts) {
-        displayCategories.push(category);
-      }
-    }
-  });
-
-  // Handle uncategorized items if enabled
-  if (siteConstants.menu.showUncategorized) {
-    const processedIds = new Set(categoryOrder);
-
-    categories.forEach((category) => {
-      // Respect the category's display attribute and tags
-      if (
-        category.id &&
-        !processedIds.has(category.id) &&
-        isCategoryDisplayable(category)
-      ) {
-        // Check if there are products for this category
-        const hasProducts = products.some((p) => p._categoryId === category.id);
-        if (hasProducts) {
-          displayCategories.push(category);
-        }
-      }
-    });
-  }
-
   return (
     <div className="max-w-4xl mx-auto px-6 py-16">
       {showPdfDownload && <MenuPDFDownload />}
       <MenuOpeningHours />
 
       {/* Display all categories in order */}
-      {displayCategories.map((category) => (
+      {categories.map((category) => (
         <MenuSection
           key={category.id}
           category={category}

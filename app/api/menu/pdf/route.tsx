@@ -1,11 +1,11 @@
 import { Effect } from "effect";
 import type { NextResponse } from "next/server";
-import { DotyposService } from "@/features/dotypos";
-import { generateMenuPDF } from "@/features/menu/utils/generate-menu-pdf";
+import { MenuService } from "@/features/menu/utils/generate-menu-pdf-document";
+import { generateMenuPdfResponse } from "@/features/menu/utils/menu-pdf-response";
 
 export const GET = (request: Request): Promise<NextResponse> =>
   Effect.runPromise(
-    generateMenuPDF(request).pipe(
+    generateMenuPdfResponse(request).pipe(
       Effect.tapError(
         Effect.fn(function* (error) {
           yield* Effect.logError(error);
@@ -16,6 +16,6 @@ export const GET = (request: Request): Promise<NextResponse> =>
         operation: "pdf",
         request,
       }),
-      Effect.provide(DotyposService.Default)
+      Effect.provide(MenuService.Default)
     )
   );

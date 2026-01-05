@@ -1,14 +1,18 @@
 import {
   Document,
   Font,
+  Image,
   Page,
   StyleSheet,
   Text,
   View,
 } from "@react-pdf/renderer";
+import { getImageProps } from "next/image";
 import type React from "react";
+import logo from "@/assets/images/logo/for-light-bg.png";
 import type { Category, Product } from "@/features/dotypos/generated";
 import type { Locale } from "@/features/i18n";
+import { siteConstants } from "@/shared/utils/constants";
 import { formatPrice } from "@/shared/utils/currency";
 import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
@@ -156,13 +160,23 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
     });
   };
 
+  const logoSrc = getImageProps({ src: logo, alt: "logo" }).props.src;
+
   return (
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Text style={styles.title}>DESKOHUB MENU</Text>
+          <Image
+            src={new URL(
+              logoSrc,
+              `https://${siteConstants.brand.domain}`
+            ).toString()}
+          />
+          <Text style={styles.title}>MENU</Text>
         </View>
+      </Page>
 
+      <Page size="A4" style={styles.page}>
         {/* Render all categories */}
         {categories.map((category) => {
           const categoryProducts = products.filter(
