@@ -39,12 +39,12 @@ export async function getCloudinaryImages(
     }),
     CloudinaryServiceLive
   ).pipe(
-    // Catch any errors and return empty array instead of failing
-    Effect.catchAll((error) => {
-      // Log the error for monitoring but don't fail the page
-      console.error("Cloudinary search failed:", error);
-      return Effect.succeed([]);
-    })
+    Effect.tapError(
+      Effect.fn(function* (error) {
+        yield* Effect.logError("Cloudinary search failed", error);
+      })
+    ),
+    Effect.orElseSucceed(() => [])
   );
 
   return Effect.runPromise(getImagesEffect);

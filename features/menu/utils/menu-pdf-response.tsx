@@ -3,21 +3,21 @@ import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { extractLocaleFromRequest } from "@/features/i18n";
 import { MenuPDFDocument } from "../components/menu-pdf-document";
-import { MenuService } from "./generate-menu-pdf-document";
+import { MenuService } from "../service";
 
 export const generateMenuPdfResponse = Effect.fn("GenerateMenuPdfResponse")(
   function* (request: Request) {
     yield* Effect.log("Generating menu PDF response");
 
-    const menuService = yield* MenuService;
-    const props = yield* menuService.getMenuProps();
+    const { categories, products } = yield* MenuService;
 
     // Generate PDF
     const pdfStream = yield* Effect.promise(() =>
       renderToStream(
         <MenuPDFDocument
           locale={extractLocaleFromRequest(request)}
-          {...props}
+          products={products}
+          categories={categories}
         />
       )
     );

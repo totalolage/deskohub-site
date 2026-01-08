@@ -1,10 +1,8 @@
-"use client";
-
 import { PDFViewer } from "@react-pdf/renderer";
 import type { ComponentProps } from "react";
-import { MenuPDFDocument } from "./menu-pdf-document";
+import { MenuPDFDocument } from "../menu-pdf-document";
 
-export const MenuPdfDebugView = (
+export const MenuPdfDebugViewClientOnly = (
   pdfDocumentProps: ComponentProps<typeof MenuPDFDocument>
 ) => (
   <PDFViewer

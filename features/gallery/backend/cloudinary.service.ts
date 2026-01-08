@@ -330,22 +330,20 @@ export const CloudinaryServiceLive = Layer.effect(
 // Convenience Functions for Gallery
 // ============================================================================
 
-export const getGalleryImages = (
-  tags: CnfExpression<CloudinaryTag>,
-  options?: SearchOptions
-): Effect.Effect<
-  readonly CloudinaryAsset[],
-  CloudinarySearchError,
-  CloudinaryService
-> =>
-  Effect.gen(function* () {
-    const service = yield* CloudinaryService;
+export const getGalleryImages = Effect.fn("getGalleryImages")(
+  function* (tags: CnfExpression<CloudinaryTag>, options?: SearchOptions) {
+    yield* Effect.log("Getting gallery images");
 
-    yield* Effect.log(`Getting gallery images`, {
-      tags,
-      options,
-    });
+    const service = yield* CloudinaryService;
 
     // Use the searchWithTags method
     return yield* service.searchWithTags(tags, options);
-  });
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        operation: "getGalleryImages",
+        input,
+      })
+    )
+);

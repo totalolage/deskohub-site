@@ -1,4 +1,3 @@
-// lib/runtime.ts
 import { Next } from "@mcrovero/effect-nextjs";
 import { Layer } from "effect";
 

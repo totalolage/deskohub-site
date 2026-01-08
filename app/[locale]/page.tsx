@@ -12,6 +12,7 @@ export const generateMetadata = metadata({
 });
 
 export default async function LandingPage({ params }: RouteProps_locale) {
+  // Locale needs to be set here to properly refresh component tree when locale changes
   const { locale } = await params;
   setLocale(locale, { reload: false });
 

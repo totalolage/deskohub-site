@@ -1,21 +1,21 @@
 import { NotFound } from "@mcrovero/effect-nextjs/Navigation";
 import { Effect } from "effect";
-import type { LocalizedPage } from "@/shared/pages/localized";
+import type { LocalizedNextComponent } from "@/features/localization/localized-next-component";
 import { siteConstants } from "@/shared/utils/constants";
-import { MenuService } from "../utils/generate-menu-pdf-document";
+import { MenuService } from "../service";
 import { MenuClient } from "./menu-client";
 import { MenuHero } from "./menu-hero";
 
-export const MenuPage: LocalizedPage = Effect.fn("MenuPage")(
+export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
   function* MenuPage() {
-    const menuService = yield* MenuService;
-    const props = yield* menuService.getMenuProps();
+    const { products, categories } = yield* MenuService;
 
     return (
       <div className="bg-black">
         <MenuHero />
         <MenuClient
-          {...props}
+          products={products}
+          categories={categories}
           showPdfDownload={siteConstants.featureFlags.menuPdfDownload}
         />
       </div>

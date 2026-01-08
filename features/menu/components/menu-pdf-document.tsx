@@ -10,9 +10,9 @@ import {
 import { getImageProps } from "next/image";
 import type React from "react";
 import logo from "@/assets/images/logo/for-light-bg.png";
+import { env } from "@/env";
 import type { Category, Product } from "@/features/dotypos/generated";
 import type { Locale } from "@/features/i18n";
-import { siteConstants } from "@/shared/utils/constants";
 import { formatPrice } from "@/shared/utils/currency";
 import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
@@ -166,12 +166,7 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
     <Document>
       <Page size="A4" style={styles.page}>
         <View style={styles.header}>
-          <Image
-            src={new URL(
-              logoSrc,
-              `https://${siteConstants.brand.domain}`
-            ).toString()}
-          />
+          <Image src={new URL(logoSrc, env.NEXT_PUBLIC_DOMAIN).toString()} />
           <Text style={styles.title}>MENU</Text>
         </View>
       </Page>

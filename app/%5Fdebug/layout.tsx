@@ -1,24 +1,16 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { PropsWithChildren } from "react";
-import { isDev } from "@/shared/utils/environment";
+import { env } from "@/env";
 import RootLayout from "../rootLayout";
 
-export async function generateMetadata(): Promise<Metadata> {
-  const origin =
-    process.env.NEXT_PUBLIC_BASE_URL ||
-    (process.env.NODE_ENV !== "production"
-      ? `http://localhost:${process.env.PORT || 3000}`
-      : undefined);
+export const metadata: Metadata = {
+  metadataBase: env.NEXT_PUBLIC_DOMAIN,
+};
 
-  return {
-    metadataBase: origin ? new URL(origin) : undefined,
-  };
-}
-
-export default async function LocaleLayout({
+export default async function DebugLayout({
   children,
 }: Readonly<PropsWithChildren>) {
-  if (!isDev()) return notFound();
+  if (env.NEXT_PUBLIC_VERCEL_ENV === "production") return notFound();
   return <RootLayout>{children}</RootLayout>;
 }

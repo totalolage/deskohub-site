@@ -1,6 +1,8 @@
+import { env } from "@/env";
+
 export function isDev(): boolean {
-  if (process.env.NODE_ENV === "development") return true;
-  if (process.env.VERCEL_ENV === "development") return true;
+  if (env.NODE_ENV === "development") return true;
+  if (env.NEXT_PUBLIC_VERCEL_ENV === "development") return true;
 
   let hostname: string | undefined;
   if (typeof window !== "undefined") hostname = window.location.hostname;

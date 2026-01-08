@@ -1,16 +1,14 @@
 import { NotFound } from "@mcrovero/effect-nextjs/Navigation";
 import { Effect } from "effect";
 import { baseLocale } from "@/features/i18n";
+import { MenuService } from "@/features/menu";
 import { MenuPdfDebugView } from "@/features/menu/components/menu-debug";
-import { MenuService } from "@/features/menu/utils/generate-menu-pdf-document";
-import { BasePage } from "@/shared/pages/base";
+import { BasePage } from "@/shared/base-page";
 
 export default BasePage.build(
   Effect.fn("MenuPdfDebugPage")(
     function* MenuPage() {
-      const menuService = yield* MenuService;
-
-      const { categories, products } = yield* menuService.getMenuProps();
+      const { categories, products } = yield* MenuService;
 
       return (
         <MenuPdfDebugView

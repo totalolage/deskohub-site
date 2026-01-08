@@ -32,7 +32,7 @@ export type DotyposConfigObj = Schema.Schema.Type<typeof DotyposConfigSchema>;
 export class DotyposConfig extends Effect.Service<DotyposConfig>()(
   "DotyposConfig",
   {
-    effect: Effect.succeed({
+    succeed: {
       clientId: env.DOTYPOS_CLIENT_ID,
       clientSecret: env.DOTYPOS_CLIENT_SECRET,
       refreshToken: env.DOTYPOS_REFRESH_TOKEN,
@@ -41,6 +41,6 @@ export class DotyposConfig extends Effect.Service<DotyposConfig>()(
       employeeId: env.DOTYPOS_EMPLOYEE_ID,
       apiUrl: env.DOTYPOS_API_URL,
       apiTimeout: env.DOTYPOS_API_TIMEOUT,
-    }),
+    },
   }
 ) {}

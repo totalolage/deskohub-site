@@ -1,7 +1,6 @@
 import { Effect } from "effect";
 import type { NextResponse } from "next/server";
-import { MenuService } from "@/features/menu/utils/generate-menu-pdf-document";
-import { generateMenuPdfResponse } from "@/features/menu/utils/menu-pdf-response";
+import { generateMenuPdfResponse, MenuService } from "@/features/menu";
 
 export const GET = (request: Request): Promise<NextResponse> =>
   Effect.runPromise(
