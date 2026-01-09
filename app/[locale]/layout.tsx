@@ -10,7 +10,7 @@ export async function generateStaticParams() {
 // LocalizedLayout provides middleware that allows getLocale to resolve locale
 export default LocalizedNextComponent.build(
   Effect.fn("LocalizedLayout")(
-    function* (props: LayoutProps<"/[locale]">) {
+    function* (props) {
       yield* Effect.log("Building");
       return <RootLayout {...props} locale={getLocale()} />;
     },
