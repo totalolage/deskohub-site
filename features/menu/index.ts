@@ -1,3 +1,3 @@
 export { MenuPage } from "./components/menu-server";
-export { MenuService } from "./service";
+export { MenuData } from "./data";
 export { generateMenuPdfResponse } from "./utils/menu-pdf-response";

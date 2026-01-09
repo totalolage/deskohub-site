@@ -1,4 +1,4 @@
-import { generateMenuPdfResponse, MenuService } from "@/features/menu";
+import { generateMenuPdfResponse, MenuData } from "@/features/menu";
 import { Effect } from "effect";
 import type { NextResponse } from "next/server";
 
@@ -15,6 +15,6 @@ export const GET = (request: Request): Promise<NextResponse> =>
         operation: "pdf",
         request,
       }),
-      Effect.provide(MenuService.Default)
+      Effect.provide(MenuData.Default)
     )
   );

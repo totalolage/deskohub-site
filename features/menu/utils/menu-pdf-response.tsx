@@ -3,14 +3,13 @@ import { Effect } from "effect";
 import { NextResponse } from "next/server";
 import { extractLocaleFromRequest } from "@/features/i18n";
 import { MenuPDFDocument } from "../components/menu-pdf-document";
-import { MenuService } from "../service";
+import { MenuData } from "../data";
 
 export const generateMenuPdfResponse = Effect.fn("GenerateMenuPdfResponse")(
   function* (request: Request) {
     yield* Effect.log("Generating menu PDF response");
 
-    const { productsAndCategories } = yield* MenuService;
-    const { categories, products } = yield* productsAndCategories;
+    const { categories, products } = yield* MenuData;
 
     // Generate PDF
     const pdfStream = yield* Effect.promise(() =>

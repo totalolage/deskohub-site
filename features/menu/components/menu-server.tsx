@@ -2,14 +2,13 @@ import { NotFound } from "@mcrovero/effect-nextjs/Navigation";
 import { Effect } from "effect";
 import type { LocalizedNextComponent } from "@/features/localization/localized-next-component";
 import { siteConstants } from "@/shared/utils/constants";
-import { MenuService } from "../service";
+import { MenuData } from "../data";
 import { MenuClient } from "./menu-client";
 import { MenuHero } from "./menu-hero";
 
 export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
   function* MenuPage() {
-    const { productsAndCategories } = yield* MenuService;
-    const { products, categories } = yield* productsAndCategories;
+    const { products, categories } = yield* MenuData;
 
     return (
       <div className="bg-black">
@@ -32,7 +31,7 @@ export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
       Effect.annotateLogs({
         page: "MenuPage",
       }),
-      Effect.provide(MenuService.Default),
+      Effect.provide(MenuData.Default),
       Effect.orElse(() => NotFound)
     )
 );
