@@ -9,7 +9,8 @@ export const generateMenuPdfResponse = Effect.fn("GenerateMenuPdfResponse")(
   function* (request: Request) {
     yield* Effect.log("Generating menu PDF response");
 
-    const { categories, products } = yield* MenuService;
+    const { productsAndCategories } = yield* MenuService;
+    const { categories, products } = yield* productsAndCategories;
 
     // Generate PDF
     const pdfStream = yield* Effect.promise(() =>

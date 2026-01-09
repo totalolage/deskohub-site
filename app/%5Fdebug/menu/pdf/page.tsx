@@ -8,8 +8,8 @@ import { BasePage } from "@/shared/base-page";
 export default BasePage.build(
   Effect.fn("MenuPdfDebugPage")(
     function* MenuPage() {
-      const { categories, products } = yield* MenuService;
-
+      const { productsAndCategories } = yield* MenuService;
+      const { categories, products } = yield* productsAndCategories;
       return (
         <MenuPdfDebugView
           locale={baseLocale}

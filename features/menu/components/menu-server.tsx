@@ -8,7 +8,8 @@ import { MenuHero } from "./menu-hero";
 
 export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
   function* MenuPage() {
-    const { products, categories } = yield* MenuService;
+    const { productsAndCategories } = yield* MenuService;
+    const { products, categories } = yield* productsAndCategories;
 
     return (
       <div className="bg-black">
