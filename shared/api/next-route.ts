@@ -1,7 +1,7 @@
 import type { MaybePromise } from "bun";
 import { Context, Effect } from "effect";
 import { type HTTP_METHOD, isHTTPMethod } from "next/dist/server/web/http";
-import { NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { extractLocaleFromRequest } from "@/features/i18n";
 import { LocaleValue } from "@/features/localization/effect-locale";
 
@@ -10,7 +10,7 @@ export class RequestValue extends Context.Tag("Request")<
   Request
 >() {}
 
-type NextRouteHandler = (request: Request) => Promise<NextResponse>;
+type NextRouteHandler = (request: NextRequest) => Promise<NextResponse>;
 
 type RouteEffect<A extends NextResponse, E> = Effect.Effect<
   A,
@@ -46,8 +46,12 @@ const createHandler =
       ),
       Effect.annotateLogs({
         method,
-        path: request.url,
-        headers: request.headers.toJSON(),
+        url: request.url,
+        headers: {
+          host: request.headers.get("host"),
+          referer: request.headers.get("referer"),
+          "user-agent": request.headers.get("user-agent"),
+        },
       }),
       Effect.tapError(Effect.logError),
       Effect.provideService(RequestValue, request),
