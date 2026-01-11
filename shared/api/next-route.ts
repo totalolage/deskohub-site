@@ -35,15 +35,16 @@ const createHandler =
   }) =>
   (request) => {
     const effectLive = effect.pipe(
-      Effect.mapError((error) =>
-        Promise.resolve(fallback(error, { signal: request.signal }))
+      Effect.catchAll((error) =>
+        Effect.promise(() =>
+          Promise.resolve(
+            fallback(error, {
+              signal: request.signal,
+            })
+          )
+        )
       ),
-      Effect.merge,
-      Effect.andThen(
-        Effect.fn(function* (responsePromise) {
-          return yield* Effect.promise(() => Promise.resolve(responsePromise));
-        })
-      ),
+      Effect.andThen((responsePromise) => Promise.resolve(responsePromise)),
       Effect.annotateLogs({
         method,
         url: request.url,
