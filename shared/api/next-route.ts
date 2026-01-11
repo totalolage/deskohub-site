@@ -44,7 +44,6 @@ const createHandler =
           )
         )
       ),
-      Effect.andThen((responsePromise) => Promise.resolve(responsePromise)),
       Effect.annotateLogs({
         method,
         url: request.url,
