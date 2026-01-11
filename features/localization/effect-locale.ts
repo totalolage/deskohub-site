@@ -1,9 +1,7 @@
 import { NextMiddleware } from "@mcrovero/effect-nextjs";
-import { NotFound } from "@mcrovero/effect-nextjs/Navigation";
 import { Context, Data, Effect, Layer, Schema } from "effect";
-import { env } from "@/env";
-import { type Locale, locales, setLocale } from "@/features/i18n";
-import { localeAsyncLocalStorage } from "../i18n/utils/setup-server";
+import { baseLocale, type Locale, locales, setLocale } from "@/features/i18n";
+import { runAppWithLocale } from "../i18n/utils/setup-server";
 
 export class LocaleValue extends Context.Tag("Locale")<LocaleValue, Locale>() {}
 
@@ -43,7 +41,9 @@ const ParseMiddlewareProps = Effect.fn("ParseMiddlewareProps")(
 
     const [{ params: paramsPromise }] =
       yield* Schema.decodeUnknown(ArgsSchema)(props);
-    const paramsUnknown = yield* Effect.promise(() => paramsPromise);
+    const paramsUnknown = yield* Effect.promise(() =>
+      Promise.resolve(paramsPromise)
+    );
     const params = yield* Schema.decodeUnknown(schema)(paramsUnknown);
     return params;
   },
@@ -80,34 +80,25 @@ export const LocaleMiddlewareLive = Layer.succeed(
         yield* Effect.log("LocaleMiddlewareLive");
 
         const { locale } = yield* ParseMiddlewareProps(props, ParamsSchema);
+
         setLocale(locale, { reload: false });
-
-        const nextWithLocale = next.pipe(
+        return yield* runAppWithLocale(next).pipe(
           Effect.provideService(LocaleValue, locale)
-        );
-
-        return yield* Effect.promise(
-          localeAsyncLocalStorage.run(
-            {
-              locale,
-              origin: env.NEXT_PUBLIC_DOMAIN,
-            },
-            () => () => Effect.runPromise(nextWithLocale)
-          )
         );
       },
       (effect, input) =>
         effect.pipe(
-          Effect.tapError(
-            Effect.fn(function* (error) {
-              yield* Effect.logError(error);
-            })
-          ),
+          Effect.orElse(() => {
+            setLocale(baseLocale, { reload: false });
+            return runAppWithLocale(input.next).pipe(
+              Effect.provideService(LocaleValue, baseLocale)
+            );
+          }),
+          Effect.tapError(Effect.logError),
           Effect.annotateLogs({
             operation: "LocaleMiddlewareLive",
             input,
-          }),
-          Effect.orElse(() => NotFound)
+          })
         )
     )
   )

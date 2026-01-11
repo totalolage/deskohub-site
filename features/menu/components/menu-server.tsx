@@ -1,5 +1,5 @@
-import { NotFound } from "@mcrovero/effect-nextjs/Navigation";
 import { Effect } from "effect";
+import { notFound } from "next/navigation";
 import type { LocalizedNextComponent } from "@/features/localization/localized-next-component";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuData } from "../data";
@@ -23,15 +23,11 @@ export const MenuPage: LocalizedNextComponent = Effect.fn("MenuPage")(
   },
   (effect) =>
     effect.pipe(
-      Effect.tapError(
-        Effect.fn(function* (error) {
-          yield* Effect.logError(error);
-        })
-      ),
+      Effect.tapError(Effect.logError),
       Effect.annotateLogs({
         page: "MenuPage",
       }),
       Effect.provide(MenuData.Default),
-      Effect.orElse(() => NotFound)
+      Effect.orElseSucceed(notFound)
     )
 );

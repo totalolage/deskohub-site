@@ -1,15 +1,14 @@
-import { NotFound } from "@mcrovero/effect-nextjs/Navigation";
 import { Effect } from "effect";
+import { notFound } from "next/navigation";
 import { baseLocale } from "@/features/i18n";
-import { MenuService } from "@/features/menu";
+import { MenuData } from "@/features/menu";
 import { MenuPdfDebugView } from "@/features/menu/components/menu-debug";
 import { BasePage } from "@/shared/base-page";
 
 export default BasePage.build(
   Effect.fn("MenuPdfDebugPage")(
     function* MenuPage() {
-      const { productsAndCategories } = yield* MenuService;
-      const { categories, products } = yield* productsAndCategories;
+      const { categories, products } = yield* MenuData;
       return (
         <MenuPdfDebugView
           locale={baseLocale}
@@ -23,8 +22,8 @@ export default BasePage.build(
         Effect.annotateLogs({
           page: "MenuPdfDebugPage",
         }),
-        Effect.provide(MenuService.Default),
-        Effect.orElse(() => NotFound)
+        Effect.provide(MenuData.Default),
+        Effect.orElseSucceed(notFound)
       )
   )
 );
