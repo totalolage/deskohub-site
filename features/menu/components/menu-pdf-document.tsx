@@ -16,7 +16,6 @@ import type { Locale } from "@/features/i18n";
 import { formatPrice } from "@/shared/utils/currency";
 import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
-// Register fonts if needed
 Font.register({
   family: "Roboto",
   fonts: [
@@ -28,6 +27,12 @@ Font.register({
       fontWeight: "bold",
     },
   ],
+});
+
+Font.registerEmojiSource({
+  format: 'png',
+  url: 'https://cdn.jsdelivr.net/npm/emoji-datasource-google@16.0.0/img/google/64/',
+  withVariationSelectors: true,
 });
 
 // Create styles
@@ -126,7 +131,6 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
     );
 
     return categoryProducts.map((product) => {
-      // Format product with localized text
       const item = formatMenuItem(product, locale);
 
       return (
