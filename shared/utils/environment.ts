@@ -1,7 +1,7 @@
 import { env } from "@/env";
 
 export function isDev(): boolean {
-  if (env.NODE_ENV === "development") return true;
+  if (env.NEXT_PUBLIC_NODE_ENV === "development") return true;
   if (env.NEXT_PUBLIC_VERCEL_ENV === "development") return true;
 
   let hostname: string | undefined;

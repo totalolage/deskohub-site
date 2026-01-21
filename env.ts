@@ -18,7 +18,6 @@ export const env = createEnv({
     DOTYPOS_API_TIMEOUT: z.coerce.number().int().positive().default(30000),
     DOTYPOS_WEBHOOK_SECRET: z.uuid(),
     RESEND_API_KEY: z.string().optional(),
-    NODE_ENV: z.enum(["development", "test", "production"]),
     /**
      * Vercel Project Production URL
      * A production domain name of the project.
@@ -36,12 +35,13 @@ export const env = createEnv({
     NEXT_PUBLIC_VERCEL_ENV: z
       .enum(["production", "preview", "development"])
       .optional(),
+    NEXT_PUBLIC_NODE_ENV: z.enum(["development", "test", "production"]),
     NEXT_PUBLIC_VERCEL_URL: z.url().optional(),
     NEXT_PUBLIC_GTM_ID: z.string().optional(),
   },
 
   runtimeEnv: {
-    NODE_ENV: process.env.NODE_ENV,
+    NEXT_PUBLIC_NODE_ENV: process.env.NODE_ENV,
     DOTYPOS_CLIENT_ID: process.env.DOTYPOS_CLIENT_ID,
     DOTYPOS_CLIENT_SECRET: process.env.DOTYPOS_CLIENT_SECRET,
     DOTYPOS_REFRESH_TOKEN: process.env.DOTYPOS_REFRESH_TOKEN,
@@ -70,7 +70,7 @@ export const env = createEnv({
       if (this.NEXT_PUBLIC_VERCEL_URL) return this.NEXT_PUBLIC_VERCEL_URL;
       if (this.VERCEL_PROJECT_PRODUCTION_URL)
         return this.VERCEL_PROJECT_PRODUCTION_URL;
-      if (this.NODE_ENV === "development")
+      if (this.NEXT_PUBLIC_NODE_ENV === "development")
         return `http://localhost:${process.env.PORT || 3000}`;
       return `https://${siteConstants.brand.domain}`;
     },
