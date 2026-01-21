@@ -13,7 +13,6 @@ import {
   type NetworkError,
   ValidationError,
 } from "@/shared/backend/errors";
-import { siteConstants } from "@/shared/utils/constants";
 import { normalizePhoneNumber } from "@/shared/utils/phone-formatting";
 import type {
   CreateReservationRequest,
@@ -26,7 +25,6 @@ import {
   createNoteWithMetadata,
   createStandardMetadata,
 } from "../utils/note-metadata";
-import { selectBestTable } from "../utils/table-selection";
 import { DotyposApi } from "./api";
 
 /**
@@ -94,29 +92,48 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           // Build note once
           const note = buildNote(input);
 
-          let tableId: string | undefined;
-          if (siteConstants.featureFlags.autoTableSelection) {
-            // Auto-select table based on preferences
-            const tables = yield* getTables();
-            const selection = selectBestTable({
-              guestCount: input.guestCount,
-              needsLargerTable: input.needsLargerTable,
-              needsPrivateSpace: input.needsPrivateSpace,
-              availableTables: tables,
-            });
+          const tableId = yield* getTables().pipe(
+            Effect.map(
+              (tables) =>
+                tables.find((t) => ["virtualni", "VIRTUÁL 2"].includes(t.name))
+                  ?.id
+            ),
+            Effect.filterOrFail((table) => table != null)
+          );
 
-            tableId = selection?.selectedTableId;
-            if (selection) {
-              yield* Effect.logInfo("Table selected", {
-                tableId,
-                tableName: selection.selectedTableName,
-                seats: selection.seats,
-              });
-            }
-          } else {
-            const tables = yield* getTables();
-            tableId = tables[0]?.id;
-          }
+          // let tableId: string | undefined;
+          // if (siteConstants.featureFlags.autoTableSelection) {
+          //   // Auto-select table based on preferences
+          //   const tables = yield* getTables();
+          //   const selection = selectBestTable({
+          //     guestCount: input.guestCount,
+          //     needsLargerTable: input.needsLargerTable,
+          //     needsPrivateSpace: input.needsPrivateSpace,
+          //     availableTables: tables,
+          //   });
+          //
+          //   tableId = selection?.selectedTableId;
+          //   if (selection) {
+          //     yield* Effect.logInfo("Table selected", {
+          //       tableId,
+          //       tableName: selection.selectedTableName,
+          //       seats: selection.seats,
+          //     });
+          //   }
+          // } else {
+          //   const tables = yield* getTables();
+          //   tableId = tables[0]?.id;
+          // }
+
+          // const mockReservation: Reservation = {
+          //   _branchId: config.branchId,
+          //   _cloudId: config.cloudId,
+          //   startDate: input.datetime.toISOString(),
+          //   endDate: new Date( input.datetime.getTime() + input.duration * 60 * 60 * 1000 ).toISOString(),
+          //   seats: input.guestCount.toString(),
+          //   status: "NEW",
+          // };
+          // return mockReservation;
 
           // Build request with required customer ID
           const request: CreateReservationRequest = {

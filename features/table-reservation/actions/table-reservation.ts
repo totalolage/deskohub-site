@@ -8,7 +8,7 @@ import { getTableReservationSchema } from "@/features/table-reservation/schemas/
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // Create the action with the helper
-const _submitTableReservation = createEffectSafeAction(
+const submitTableReservationAction = createEffectSafeAction(
   getTableReservationSchema(),
   Effect.fn(function* (input) {
     yield* Effect.logInfo("Submit table reservation action invoked", {
@@ -47,15 +47,15 @@ const _submitTableReservation = createEffectSafeAction(
 
 // Export an explicitly async wrapper that Next.js will recognize
 export const submitTableReservation = async (
-  ...args: Parameters<typeof _submitTableReservation>
+  ...args: Parameters<typeof submitTableReservationAction>
 ) => {
   "use server";
-  const result = await _submitTableReservation(...args);
+  const result = await submitTableReservationAction(...args);
 
   // Check if we have a successful result with an ID
   if (result?.data?.id) {
     // Redirect happens here, outside of the Effect context
-    redirect(`/reservation/${result.data.id}`);
+    return redirect(`/reservation/${result.data.id}`);
   }
 
   return result;
