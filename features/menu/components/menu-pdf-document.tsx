@@ -18,20 +18,68 @@ import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
 
 Font.register({
   family: "Roboto",
-  fonts: [
+  fonts: 
+  [
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-thin-webfont.ttf",
+      fontWeight: "thin",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf",
+      fontWeight: "light",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf",
+      fontWeight: "medium",
+    },
     {
       src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf",
+      fontWeight: "normal"
     },
     {
       src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf",
       fontWeight: "bold",
     },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-black-webfont.ttf",
+      fontWeight: "heavy",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-thin-italic-webfont.ttf",
+      fontWeight: "thin",
+      fontStyle: "italic",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-italic-webfont.ttf",
+      fontWeight: "light",
+      fontStyle: "italic",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-italic-webfont.ttf",
+      fontWeight: "medium",
+      fontStyle: "italic",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-italic-webfont.ttf",
+      fontWeight: "normal",
+      fontStyle: "italic",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-italic-webfont.ttf",
+      fontWeight: "bold",
+      fontStyle: "italic",
+    },
+    {
+      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-black-italic-webfont.ttf",
+      fontWeight: "heavy",
+      fontStyle: "italic",
+    },
   ],
 });
 
 Font.registerEmojiSource({
-  format: 'png',
-  url: 'https://cdn.jsdelivr.net/npm/emoji-datasource-google@16.0.0/img/google/64/',
+  format: "png",
+  url: "https://cdn.jsdelivr.net/npm/emoji-datasource-google@16.0.0/img/google/64/",
   withVariationSelectors: true,
 });
 
