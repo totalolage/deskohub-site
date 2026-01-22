@@ -230,9 +230,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         const token = yield* getToken();
 
         const result = yield* Effect.tryPromise({
-          try: async () => {
-            // Search for customers
-
+          try: async (): Promise<Customer[]> => {
             const response = await generatedApi.getCustomers(
               createApiOptions(token, config, client, {
                 path: params.path,
@@ -240,19 +238,13 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               })
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
-
-            // Extract customers from paginated response
-            if (
-              response.data &&
-              typeof response.data === "object" &&
-              "data" in response.data
-            ) {
-              const customers = response.data.data || [];
-              // Extracted customers from paginated response
-              return customers as Customer[];
+            if (response.error) {
+              // Dotypos return 404 if no customers found, instead of empty array
+              if (response.response.status === 404) return [];
+              throw response.error satisfies ErrorResponse;
             }
-            return [] as Customer[];
+
+            return response.data.data || [];
           },
           catch: (error) =>
             transformErrorResponse(error, "Search customers", config.apiUrl),
