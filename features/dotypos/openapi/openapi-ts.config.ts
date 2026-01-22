@@ -4,8 +4,7 @@ export default defineConfig({
   input: "./dotypos-api.yaml",
   output: {
     path: "../generated",
-    format: "prettier",
-    lint: "biome",
+    postProcess: ["biome:lint", "biome:format"],
   },
   plugins: [
     // Generate Zod schemas for API validation
