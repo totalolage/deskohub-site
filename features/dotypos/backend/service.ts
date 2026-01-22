@@ -13,6 +13,7 @@ import {
   type NetworkError,
   ValidationError,
 } from "@/shared/backend/errors";
+import { siteConstants } from "@/shared/utils/constants";
 import { normalizePhoneNumber } from "@/shared/utils/phone-formatting";
 import type {
   CreateReservationRequest,
@@ -21,10 +22,7 @@ import type {
   UpdateCustomerRequest,
 } from "../generated/types.gen";
 import { isCategoryDisplayable } from "../utils/category-utils";
-import {
-  createNoteWithMetadata,
-  createStandardMetadata,
-} from "../utils/note-metadata";
+import { createNoteWithMetadata } from "../utils/note-metadata";
 import { DotyposApi } from "./api";
 
 /**
@@ -95,8 +93,15 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           const tableId = yield* getTables().pipe(
             Effect.map(
               (tables) =>
-                tables.find((t) => ["virtualni", "VIRTUÁL 2"].includes(t.name))
-                  ?.id
+                tables.find(
+                  (t) =>
+                    t.display &&
+                    t.enabled &&
+                    t.id &&
+                    siteConstants.tableReservation.tablesToAssignReservationsTo.includes(
+                      t.id
+                    )
+                )?.id
             ),
             Effect.filterOrFail((table) => table != null)
           );
@@ -639,8 +644,18 @@ export class DotyposService extends Effect.Service<DotyposService>()(
 
       const buildNote = (input: TableReservationFormData): string => {
         // Include special requests and metadata in the note field
-        const metadata = createStandardMetadata(getLocale(), "website");
-        return createNoteWithMetadata(input.specialRequests, metadata);
+        return createNoteWithMetadata(
+          [
+            input.specialRequests,
+            `Preference stolu: ${input.needsLargerTable ? "Velký" : input.needsPrivateSpace ? "Soukromý" : "bez preference"}`,
+          ].join("\n"),
+          {
+            ...input,
+            locale: getLocale(),
+            source: "website",
+            timestamp: new Date(),
+          }
+        );
       };
 
       return {

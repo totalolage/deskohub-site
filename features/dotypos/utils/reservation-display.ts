@@ -115,10 +115,6 @@ export function getReservationDisplayData(reservation: Reservation) {
         ? parseInt(reservation.seats, 10) || 1
         : reservation.seats || 1,
     durationMinutes,
-    // Customer details are now fetched separately
-    // Table preferences could be stored in reservation metadata or deduced from table selection
-    needsLargerTable: false,
-    needsPrivateSpace: false,
     specialRequests: reservation.note || "",
   };
 }

@@ -116,7 +116,7 @@ const processWebhook = Effect.fn("processWebhook")(
     // Parse the note to extract metadata including locale
     const parsedNote = parseNoteWithMetadata(fullReservation.reservation.note);
 
-    const locale: Locale = parsedNote.metadata.locale || getLocale();
+    const locale: Locale = parsedNote?.locale || getLocale();
 
     // Send appropriate emails based on status change
     let emailSent = false;

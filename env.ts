@@ -27,6 +27,9 @@ export const env = createEnv({
     // Cloudinary configuration
     CLOUDINARY_API_KEY: z.string(),
     CLOUDINARY_API_SECRET: z.string(),
+    // Encryption secret for form data
+    // Base64 of 32-byte raw key is 44 chars including '=' padding
+    FORM_DATA_ENC_SECRET: z.base64().length(44),
   },
 
   client: {
@@ -52,6 +55,7 @@ export const env = createEnv({
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_WEBHOOK_SECRET: process.env.DOTYPOS_WEBHOOK_SECRET,
     RESEND_API_KEY: process.env.RESEND_API_KEY,
+    FORM_DATA_ENC_SECRET: process.env.FORM_DATA_ENC_SECRET,
     VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
       : undefined,

@@ -15,7 +15,9 @@
  * ----------------------------------------
  */
 
-import { isLocale, type Locale } from "@/features/i18n";
+import superjson from "superjson";
+import type { Locale } from "@/features/i18n";
+import type { TableReservationFormData } from "@/features/table-reservation";
 
 export interface NoteMetadata {
   locale?: Locale;
@@ -24,55 +26,33 @@ export interface NoteMetadata {
   [key: string]: string | undefined; // Allow additional metadata fields
 }
 
-export interface ParsedNote {
-  specialRequests: string;
-  metadata: NoteMetadata;
-}
+const FORMDATA_HEADER = "---------- FORM DATA START ----------";
+const FORMDATA_END = "----------- FORM DATA END -----------";
 
-const METADATA_SEPARATOR = "\n\n----------------------------------------";
-const METADATA_HEADER = "METADATA";
-const METADATA_END = "----------------------------------------";
+export interface NoteData extends TableReservationFormData {
+  timestamp: Date;
+  locale: Locale;
+  source: "website";
+}
 
 /**
  * Create a note with embedded metadata
  *
- * @param specialRequests - User's special requests (can be empty)
+ * @param input - Table reservation form data
  * @param metadata - Metadata to embed in the note
  * @returns Formatted note string with metadata
  */
 export function createNoteWithMetadata(
-  specialRequests: string | undefined,
-  metadata: NoteMetadata
+  textContents: string | null | undefined,
+  data: NoteData
 ): string {
-  const metadataLines: string[] = [];
-
-  // Add metadata header
-  metadataLines.push(METADATA_HEADER);
-
-  // Add each metadata field
-  for (const [key, value] of Object.entries(metadata)) {
-    if (value !== undefined && value !== null && value !== "") {
-      metadataLines.push(`${key}: ${value}`);
-    }
-  }
-
-  // If no metadata, just return the special requests
-  if (metadataLines.length === 1) {
-    return specialRequests || "";
-  }
-
-  // Combine special requests with metadata
-  const parts: string[] = [];
-
-  if (specialRequests?.trim()) {
-    parts.push(specialRequests.trim());
-  }
-
-  parts.push(METADATA_SEPARATOR);
-  parts.push(...metadataLines);
-  parts.push(METADATA_END);
-
-  return parts.join("\n");
+  return [
+    ...(textContents ? [textContents, "", ""] : []),
+    FORMDATA_HEADER,
+    // encryptAES256GCM(superjson.stringify(data), env.FORM_DATA_ENC_SECRET),
+    superjson.stringify(data),
+    FORMDATA_END,
+  ].join("\n");
 }
 
 /**
@@ -83,104 +63,32 @@ export function createNoteWithMetadata(
  */
 export function parseNoteWithMetadata(
   note: string | null | undefined
-): ParsedNote {
-  const parsedNote: ParsedNote = {
-    specialRequests: "",
-    metadata: {},
-  };
-  if (!note) return parsedNote;
+): NoteData | null {
+  if (!note) return null;
 
-  parsedNote.specialRequests = note.trim();
-
-  // Check if the note contains metadata separator
-  const separatorIndex = note.indexOf(METADATA_SEPARATOR);
-
-  if (separatorIndex === -1) return parsedNote;
-
-  // Extract special requests (everything before the separator)
-  parsedNote.specialRequests = note.substring(0, separatorIndex).trim();
-
-  // Extract metadata section
-  const metadataSection = note.substring(
-    separatorIndex + METADATA_SEPARATOR.length
-  );
-
-  // Parse metadata
-  const lines = metadataSection.split("\n");
-
-  let inMetadata = false;
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-
-    // Start of metadata
-    if (trimmedLine === METADATA_HEADER) {
-      inMetadata = true;
-      continue;
+  const formDataText: string[] = [];
+  let inFormData = false;
+  for (const line of note.split("\n")) {
+    switch (line) {
+      case FORMDATA_HEADER:
+        inFormData = true;
+        continue;
+      case FORMDATA_END:
+        inFormData = false;
+        continue;
     }
 
-    // End of metadata
-    if (trimmedLine === METADATA_END) {
-      break;
-    }
-
-    // Parse metadata line
-    if (inMetadata && trimmedLine) {
-      const colonIndex = trimmedLine.indexOf(":");
-      if (colonIndex > 0) {
-        const key = trimmedLine.substring(0, colonIndex).trim();
-        const value = trimmedLine.substring(colonIndex + 1).trim();
-        if (key && value) {
-          // Special handling for locale to ensure it's a valid Locale type
-          if (key === "locale") {
-            if (isLocale(value)) parsedNote.metadata.locale = value;
-            // Skip invalid locales silently
-          } else {
-            parsedNote.metadata[key] = value;
-          }
-        }
-      }
-    }
+    // Parsing form data lines
+    if (inFormData) formDataText.push(line);
   }
 
-  return parsedNote;
-}
-
-/**
- * Update metadata in an existing note while preserving special requests
- *
- * @param existingNote - The existing note from Dotypos
- * @param newMetadata - New metadata to merge with existing
- * @returns Updated note string
- */
-export function updateNoteMetadata(
-  existingNote: string | null | undefined,
-  newMetadata: NoteMetadata
-): string {
-  const parsed = parseNoteWithMetadata(existingNote);
-
-  // Merge metadata
-  const mergedMetadata = {
-    ...parsed.metadata,
-    ...newMetadata,
-  };
-
-  return createNoteWithMetadata(parsed.specialRequests, mergedMetadata);
-}
-
-/**
- * Helper function to create standard metadata for a new reservation
- *
- * @param locale - User's locale
- * @param source - Source of the reservation (e.g., "website", "app", "admin")
- * @returns Standard metadata object
- */
-export function createStandardMetadata(
-  locale: Locale,
-  source: "website"
-): NoteMetadata {
-  return {
-    locale,
-    source,
-    timestamp: new Date().toISOString(),
-  };
+  // const encryptedFormData = formDataText.join("\n");
+  // const decryptedFormData = decryptAES256GCM(
+  //   encryptedFormData,
+  //   env.FORM_DATA_ENC_SECRET
+  // )
+  //
+  // const formData = superjson.parse(decryptedFormData) as NoteData;
+  const formData = superjson.parse(formDataText.join("\n")) as NoteData;
+  return formData;
 }

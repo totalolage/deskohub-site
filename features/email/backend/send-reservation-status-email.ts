@@ -40,7 +40,7 @@ function prepareReservationData(
   let finalSpecialRequests = specialRequests;
   if (!finalSpecialRequests && reservation.note) {
     const parsedNote = parseNoteWithMetadata(reservation.note);
-    finalSpecialRequests = parsedNote.specialRequests;
+    finalSpecialRequests = parsedNote?.specialRequests;
   }
 
   return {

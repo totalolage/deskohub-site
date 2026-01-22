@@ -28,7 +28,7 @@ export const sendNewReservationNotification = (
 
     // Parse the note to extract special requests
     const parsedNote = parseNoteWithMetadata(reservation.note);
-    const specialRequests = parsedNote.specialRequests;
+    const specialRequests = parsedNote?.specialRequests;
 
     // Format dates and times
     const startDate = new Date(reservation.startDate);

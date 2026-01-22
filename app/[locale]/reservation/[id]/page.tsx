@@ -6,6 +6,7 @@ import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-
 import { getLocale, m, setLocale } from "@/features/i18n";
 import {
   ReservationConfirmation,
+  type ReservationDetails,
   type ReservationStatus,
 } from "@/features/reservation/components/reservation-confirmation";
 import { WebhookTestPanel } from "@/features/reservation/components/webhook-test-panel";
@@ -81,16 +82,13 @@ export default async function ReservationConfirmationPage({
     "Unknown";
 
   // Parse the note to extract only special requests
-  const parsedNote = reservation.note
-    ? parseNoteWithMetadata(reservation.note)
-    : null;
+  const parsedNote = parseNoteWithMetadata(reservation.note);
 
   // Parse time from the datetime using timezone-aware formatting
   const datetime = displayData.datetime || new Date();
-  const time = formatTime(datetime, parsedNote?.metadata.locale ?? getLocale());
+  const time = formatTime(datetime, parsedNote?.locale ?? getLocale());
 
-  // Map to the ReservationDetails structure
-  const reservationDetails = {
+  const reservationDetails: ReservationDetails = {
     id: displayData.id,
     name: customerName,
     email: customer.email ?? undefined,
@@ -100,14 +98,12 @@ export default async function ReservationConfirmationPage({
     durationMinutes: displayData.durationMinutes,
     guestCount: displayData.guestCount,
     specialRequests: parsedNote?.specialRequests,
-    tablePreference: displayData.needsLargerTable
-      ? ("large" as const)
-      : displayData.needsPrivateSpace
-        ? ("private" as const)
-        : ("standard" as const),
+    tablePreference: parsedNote?.needsLargerTable
+      ? "large"
+      : parsedNote?.needsPrivateSpace
+        ? "private"
+        : "standard",
   };
-
-  // Reservation details prepared for display
 
   return (
     <>

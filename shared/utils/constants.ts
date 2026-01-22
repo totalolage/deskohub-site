@@ -142,6 +142,7 @@ export const siteConstants = {
       phone: "",
       duration: 2, // 2 hours default
     },
+    tablesToAssignReservationsTo: ["4480056382382710", "4290682684367411"],
   },
   workingHours: {
     // All times are in Europe/Prague timezone (CET/CEST)
