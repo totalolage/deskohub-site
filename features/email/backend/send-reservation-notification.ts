@@ -9,8 +9,9 @@ import type {
   Customer,
   Reservation,
 } from "@/features/dotypos/generated/types.gen";
-import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/features/i18n";
+import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import { siteConstants } from "@/shared/utils/constants";
 import type { EmailMessage } from "../types/email.types";
 import { EmailServiceTag } from "./service";
@@ -25,9 +26,10 @@ export const sendNewReservationNotification = (
 ) =>
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
+    const dotyposConfig = yield* DotyposConfig;
 
     // Parse the note to extract special requests
-    const parsedNote = parseNoteWithMetadata(reservation.note);
+    const parsedNote = parseNoteData(reservation.note);
     const specialRequests = parsedNote?.specialRequests;
 
     // Format dates and times
@@ -127,7 +129,7 @@ export const sendNewReservationNotification = (
 
         <div style="margin-top: 30px; padding: 15px; background-color: #e8f5e9; border-radius: 5px;">
           <p style="margin: 5px 0; color: #2e7d32;"><strong>Akce potřebná:</strong></p>
-          <p style="margin: 5px 0;">Tato rezervace čeká na potvrzení v systému Dotypos.</p>
+          <p style="margin: 5px 0;">Tato rezervace čeká na potvrzení <a href="https://admin.dotypos.com/cloud/${dotyposConfig.cloudId}/reservation/${reservation.id}" rel="noopener noreferrer" target="_blank">v systému Dotypos</a>.</p>
           <p style="margin: 5px 0;">Zákazník obdržel email s informací, že rezervace byla přijata a čeká na potvrzení.</p>
         </div>
 

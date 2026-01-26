@@ -1,97 +1,52 @@
-/**
- * Note Metadata Utilities
- *
- * Functions to encode and decode metadata in Dotypos reservation notes.
- * The note field contains the user's special requests followed by metadata.
- *
- * Format:
- * [User's special requests]
- *
- * ----------------------------------------
- * METADATA
- * locale: en-US
- * source: website
- * timestamp: 2024-01-27T10:30:00Z
- * ----------------------------------------
- */
+import type { NoteTransformer } from "./transformers/shared";
+import { noteTransformerV1 } from "./transformers/v1";
+import { noteTransformerV2 } from "./transformers/v2";
 
-import is from "invisible-strings";
-import superjson from "superjson";
-import type { Locale } from "@/features/i18n";
-import type { TableReservationFormData } from "@/features/table-reservation";
+const transformers = [noteTransformerV1, noteTransformerV2] as const satisfies [
+  NoteTransformer,
+  ...Array<NoteTransformer>,
+];
 
-export interface NoteMetadata {
-  locale?: Locale;
-  source?: string;
-  timestamp?: string;
-  [key: string]: string | undefined; // Allow additional metadata fields
-}
+// There is always at least one transformer, so it is safe to assert non-null
+const currentTransformer = transformers.at(-1)!;
+export const createNoteData: (typeof currentTransformer)["encode"] = (
+  ...args
+) =>
+  [
+    currentTransformer.header,
+    currentTransformer.encode(...args),
+    currentTransformer.footer,
+  ].join("\n");
 
-const FORMDATA_HEADER = "---------- FORM DATA START ----------";
-const FORMDATA_END = "----------- FORM DATA END -----------";
-
-export interface NoteData extends TableReservationFormData {
-  timestamp: Date;
-  locale: Locale;
-  source: "website";
-}
-
-/**
- * Create a note with embedded metadata
- *
- * @param input - Table reservation form data
- * @param metadata - Metadata to embed in the note
- * @returns Formatted note string with metadata
- */
-export function createNoteWithMetadata(
-  textContents: string | null | undefined,
-  data: NoteData
-): string {
-  const formDataInvisText = [
-    FORMDATA_HEADER,
-    superjson.stringify(data),
-    FORMDATA_END,
-  ].map(is.fromInvisible);
-
-  return [textContents, ...formDataInvisText].join("\n");
-}
-
-/**
- * Parse a note to extract special requests and metadata
- *
- * @param note - The note string from Dotypos
- * @returns Parsed note with special requests and metadata
- */
-export function parseNoteWithMetadata(
-  note: string | null | undefined
-): NoteData | null {
+export const parseNoteData = (note: string | null | undefined) => {
   if (!note) return null;
 
-  const textContentLines: string[] = [];
   const formDataText: string[] = [];
+
+  let transformer: NoteTransformer | undefined;
   let inFormData = false;
-  for (const line of note.split("\n")) {
-    switch (line) {
-      case is.toInvisible(FORMDATA_HEADER):
-        inFormData = true;
-        continue;
-      case is.toInvisible(FORMDATA_END):
-        inFormData = false;
-        continue;
+  for (const line of note.split("\n"))
+    if (
+      // Check that no transformer causes a transition on this line (if so, do nothing else)
+      transformers.every((t) => {
+        if (!inFormData) {
+          if (line === t.header) {
+            transformer = t;
+            inFormData = true;
+            return false;
+          }
+        } else if (transformer === t && line === t.footer) {
+          inFormData = false;
+          return false;
+        }
+        return true;
+      })
+    ) {
+      if (inFormData) formDataText.push(line);
     }
 
-    // Parsing form data lines
-    if (inFormData) formDataText.push(is.fromInvisible(line));
-    else textContentLines.push(line);
-  }
+  if (!transformer) return null;
 
-  // const encryptedFormData = formDataText.join("\n");
-  // const decryptedFormData = decryptAES256GCM(
-  //   encryptedFormData,
-  //   env.FORM_DATA_ENC_SECRET
-  // )
-  //
-  // const formData = superjson.parse(decryptedFormData) as NoteData;
-  const formData = superjson.parse(formDataText.join("\n")) as NoteData;
+  const formData = transformer.decode(formDataText.join("\n"));
   return formData;
-}
+};

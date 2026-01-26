@@ -2,7 +2,7 @@ import { Effect, Layer, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { DotyposService } from "@/features/dotypos";
-import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
 import {
@@ -12,6 +12,7 @@ import {
 } from "@/features/email/backend/send-reservation-status-email";
 import { getLocale, type Locale } from "@/features/i18n";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
+import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import {
   validateWebhookUUID,
   WebhookValidationError,
@@ -114,7 +115,7 @@ const processWebhook = Effect.fn("processWebhook")(
     );
 
     // Parse the note to extract metadata including locale
-    const parsedNote = parseNoteWithMetadata(fullReservation.reservation.note);
+    const parsedNote = parseNoteData(fullReservation.reservation.note);
 
     const locale: Locale = parsedNote?.locale || getLocale();
 
@@ -271,7 +272,11 @@ export async function POST(request: Request): Promise<NextResponse> {
       })
     ),
     Effect.provide(
-      Layer.merge(DotyposService.Default, StandaloneEmailServiceLive)
+      Layer.mergeAll(
+        DotyposConfig.Default,
+        DotyposService.Default,
+        StandaloneEmailServiceLive
+      )
     )
   );
 

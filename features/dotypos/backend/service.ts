@@ -22,7 +22,7 @@ import type {
   UpdateCustomerRequest,
 } from "../generated/types.gen";
 import { isCategoryDisplayable } from "../utils/category-utils";
-import { createNoteWithMetadata } from "../utils/note-metadata";
+import { createNoteData } from "../utils/note-metadata";
 import { DotyposApi } from "./api";
 
 /**
@@ -642,21 +642,17 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         };
       });
 
-      const buildNote = (input: TableReservationFormData): string => {
-        // Include special requests and metadata in the note field
-        return createNoteWithMetadata(
-          [
-            input.specialRequests,
-            `Preference stolu: ${input.needsLargerTable ? "Velký" : input.needsPrivateSpace ? "Soukromý" : "bez preference"}`,
-          ].join("\n"),
-          {
+      const buildNote = (input: TableReservationFormData) =>
+        [
+          input.specialRequests,
+          `Preference stolu: ${input.needsLargerTable ? "Velký" : input.needsPrivateSpace ? "Soukromý" : "bez preference"}`,
+          createNoteData({
             ...input,
             locale: getLocale(),
             source: "website",
             timestamp: new Date(),
-          }
-        );
-      };
+          }),
+        ].join("\n");
 
       return {
         createReservation,

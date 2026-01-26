@@ -9,7 +9,7 @@ import type {
   Customer,
   Reservation,
 } from "@/features/dotypos/generated/types.gen";
-import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/features/i18n";
 import { buildAbsoluteUrl } from "@/shared/backend/utils/site-url";
 import { siteConstants } from "@/shared/utils/constants";
@@ -27,21 +27,13 @@ import { EmailServiceTag } from "./service";
  */
 function prepareReservationData(
   reservation: Reservation,
-  customer: Customer,
-  specialRequests?: string
+  customer: Customer
 ): ReservationConfirmationData {
   const startDate = new Date(reservation.startDate);
   const endDate = new Date(reservation.endDate);
   const duration = Math.round(
     (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60)
   );
-
-  // Parse the note to extract only special requests if not provided
-  let finalSpecialRequests = specialRequests;
-  if (!finalSpecialRequests && reservation.note) {
-    const parsedNote = parseNoteWithMetadata(reservation.note);
-    finalSpecialRequests = parsedNote?.specialRequests;
-  }
 
   return {
     customerName:
@@ -58,7 +50,7 @@ function prepareReservationData(
       typeof reservation.seats === "string"
         ? parseInt(reservation.seats, 10)
         : reservation.seats || 1,
-    specialRequests: finalSpecialRequests || undefined,
+    specialRequests: parseNoteData(reservation.note)?.specialRequests,
     // TODO: Add table name when available from table service
     tableName: undefined,
     // Generate full URLs for email links

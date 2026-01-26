@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { DotyposService } from "@/features/dotypos";
-import { parseNoteWithMetadata } from "@/features/dotypos/utils/note-metadata";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
 import { getLocale, m, setLocale } from "@/features/i18n";
 import {
@@ -82,7 +82,7 @@ export default async function ReservationConfirmationPage({
     "Unknown";
 
   // Parse the note to extract only special requests
-  const parsedNote = parseNoteWithMetadata(reservation.note);
+  const parsedNote = parseNoteData(reservation.note);
 
   // Parse time from the datetime using timezone-aware formatting
   const datetime = displayData.datetime || new Date();

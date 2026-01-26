@@ -1,4 +1,2 @@
-export {
-  createNoteWithMetadata,
-  parseNoteWithMetadata,
-} from "./note-metadata";
+export { createNoteData, parseNoteData } from "./note-metadata";
+export type { NoteData } from "./types";
