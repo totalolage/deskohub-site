@@ -15,6 +15,7 @@
  * ----------------------------------------
  */
 
+import is from "invisible-strings";
 import superjson from "superjson";
 import type { Locale } from "@/features/i18n";
 import type { TableReservationFormData } from "@/features/table-reservation";
@@ -46,13 +47,13 @@ export function createNoteWithMetadata(
   textContents: string | null | undefined,
   data: NoteData
 ): string {
-  return [
-    ...(textContents ? [textContents, "", ""] : []),
+  const formDataInvisText = [
     FORMDATA_HEADER,
-    // encryptAES256GCM(superjson.stringify(data), env.FORM_DATA_ENC_SECRET),
     superjson.stringify(data),
     FORMDATA_END,
-  ].join("\n");
+  ].map(is.fromInvisible);
+
+  return [textContents, ...formDataInvisText].join("\n");
 }
 
 /**
@@ -66,20 +67,22 @@ export function parseNoteWithMetadata(
 ): NoteData | null {
   if (!note) return null;
 
+  const textContentLines: string[] = [];
   const formDataText: string[] = [];
   let inFormData = false;
   for (const line of note.split("\n")) {
     switch (line) {
-      case FORMDATA_HEADER:
+      case is.toInvisible(FORMDATA_HEADER):
         inFormData = true;
         continue;
-      case FORMDATA_END:
+      case is.toInvisible(FORMDATA_END):
         inFormData = false;
         continue;
     }
 
     // Parsing form data lines
-    if (inFormData) formDataText.push(line);
+    if (inFormData) formDataText.push(is.fromInvisible(line));
+    else textContentLines.push(line);
   }
 
   // const encryptedFormData = formDataText.join("\n");
