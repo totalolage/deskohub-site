@@ -35,18 +35,16 @@ export default async function RootLayout({
       {env.NEXT_PUBLIC_GTM_ID && (
         <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />
       )}
-      <body>
+      <body className="min-h-screen bg-white [--header-height:80px]">
         <SafeAreaProvider>
           <CookieConsentProvider locale={locale} />
-          <div className="min-h-screen bg-white [--header-height:80px]">
-            <Header />
-            <main className="min-h-[calc(100dvh-var(--header-height))] isolate">
-              {children}
-            </main>
-            <Footer />
-            <Toaster />
-            <Analytics mode={isDev() ? "development" : "production"} />
-          </div>
+          <Header />
+          <main className="min-h-[calc(100dvh-var(--header-height))] isolate">
+            {children}
+          </main>
+          <Footer />
+          <Toaster />
+          <Analytics mode={isDev() ? "development" : "production"} />
         </SafeAreaProvider>
       </body>
     </html>
