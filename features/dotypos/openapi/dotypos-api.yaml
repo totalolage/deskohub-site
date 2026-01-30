@@ -639,14 +639,14 @@ components:
           default: "0"
         flags:
           type: integer
-          format: int64
+          minimum: 0
           description: Reservation flags (bitwise flags)
           default: 0
         startDate:
-          type: number
+          type: integer
           description: Start date/time as Unix timestamp in milliseconds
         endDate:
-          type: number
+          type: integer
           description: End date/time as Unix timestamp in milliseconds
         seats:
           type: integer
@@ -662,10 +662,10 @@ components:
       type: object
       properties:
         startDate:
-          type: number
+          type: integer
           description: Start date/time as Unix timestamp in milliseconds
         endDate:
-          type: number
+          type: integer
           description: End date/time as Unix timestamp in milliseconds
         seats:
           type: integer
@@ -919,7 +919,7 @@ components:
           default: ""
         flags:
           type: integer
-          format: int64
+          minimum: 0
           description: Customer flags (bitwise flags)
           default: 0
         email:
@@ -977,7 +977,7 @@ components:
           description: Is deleted
           default: false
         points:
-          type: number
+          type: integer
           description: Customer points
           nullable: true
           default: 0
@@ -988,7 +988,7 @@ components:
         companyId:
           type: string
           description: Company ID
-          default: 
+          default: ""
         hexColor:
           type: string
           description: Hex color for customer
@@ -1010,7 +1010,7 @@ components:
         expireDate:
           description: Expiration date as either a Unix timestamp (seconds or milliseconds) or an ISO 8601 datetime string.
           oneOf:
-            - type: number
+            - type: integer
               description: Unix timestamp (seconds or milliseconds since epoch)
               example: 1735689600
             - type: string
@@ -1089,7 +1089,7 @@ components:
           description: Company ID
         flags:
           type: integer
-          format: int64
+          minimum: 0
           description: Customer flags (bitwise flags)
 
     PaginatedTables:

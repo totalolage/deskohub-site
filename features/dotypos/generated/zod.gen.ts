@@ -37,13 +37,13 @@ export const zCreateReservationRequest = z.object({
     _tableId: z.optional(z.string().register(z.globalRegistry, {
         description: 'Table ID (long as string)'
     })).default('0'),
-    flags: z.optional(z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).register(z.globalRegistry, {
+    flags: z.optional(z.int().gte(0).register(z.globalRegistry, {
         description: 'Reservation flags (bitwise flags)'
-    })).default(BigInt(0)),
-    startDate: z.number().register(z.globalRegistry, {
+    })).default(0),
+    startDate: z.int().register(z.globalRegistry, {
         description: 'Start date/time as Unix timestamp in milliseconds'
     }),
-    endDate: z.number().register(z.globalRegistry, {
+    endDate: z.int().register(z.globalRegistry, {
         description: 'End date/time as Unix timestamp in milliseconds'
     }),
     seats: z.int().register(z.globalRegistry, {
@@ -60,10 +60,10 @@ export const zCreateReservationRequest = z.object({
 });
 
 export const zUpdateReservationRequest = z.object({
-    startDate: z.optional(z.number().register(z.globalRegistry, {
+    startDate: z.optional(z.int().register(z.globalRegistry, {
         description: 'Start date/time as Unix timestamp in milliseconds'
     })),
-    endDate: z.optional(z.number().register(z.globalRegistry, {
+    endDate: z.optional(z.int().register(z.globalRegistry, {
         description: 'End date/time as Unix timestamp in milliseconds'
     })),
     seats: z.optional(z.int().register(z.globalRegistry, {
@@ -297,9 +297,9 @@ export const zCreateCustomerRequest = z.object({
     lastName: z.optional(z.string().register(z.globalRegistry, {
         description: 'Last name'
     })).default(''),
-    flags: z.optional(z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).register(z.globalRegistry, {
+    flags: z.optional(z.int().gte(0).register(z.globalRegistry, {
         description: 'Customer flags (bitwise flags)'
-    })).default(BigInt(0)),
+    })).default(0),
     email: z.optional(z.union([
         z.string(),
         z.null()
@@ -343,7 +343,7 @@ export const zCreateCustomerRequest = z.object({
         description: 'Is deleted'
     })).default(false),
     points: z.optional(z.union([
-        z.number().default(0),
+        z.int().default(0),
         z.null()
     ])).default(0),
     internalNote: z.optional(z.string().register(z.globalRegistry, {
@@ -351,7 +351,7 @@ export const zCreateCustomerRequest = z.object({
     })).default(''),
     companyId: z.optional(z.string().register(z.globalRegistry, {
         description: 'Company ID'
-    })).default(null),
+    })).default(''),
     hexColor: z.optional(z.string().register(z.globalRegistry, {
         description: 'Hex color for customer'
     })).default('#2196F3'),
@@ -365,7 +365,7 @@ export const zCreateCustomerRequest = z.object({
         description: 'Customer barcode'
     })).default(''),
     expireDate: z.optional(z.union([
-        z.number().register(z.globalRegistry, {
+        z.int().register(z.globalRegistry, {
             description: 'Unix timestamp (seconds or milliseconds since epoch)'
         }),
         z.iso.datetime().register(z.globalRegistry, {
@@ -439,7 +439,7 @@ export const zUpdateCustomerRequest = z.object({
     companyId: z.optional(z.string().register(z.globalRegistry, {
         description: 'Company ID'
     })),
-    flags: z.optional(z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).register(z.globalRegistry, {
+    flags: z.optional(z.int().gte(0).register(z.globalRegistry, {
         description: 'Customer flags (bitwise flags)'
     }))
 });

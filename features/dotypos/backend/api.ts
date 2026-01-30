@@ -11,7 +11,6 @@ import {
   type DotyposConfigObj,
 } from "@/shared/backend/config/dotypos.config";
 import { ExternalAPIError, NetworkError } from "@/shared/backend/errors";
-import { apiBodyDefault } from "@/shared/utils/api-body-defaults";
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
 import type {
@@ -23,6 +22,7 @@ import type {
   Table,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
+import { zCreateCustomerRequest } from "../generated/zod.gen";
 import { injectReqResLogger } from "../utils/req-res-logger";
 
 /**
@@ -266,31 +266,6 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         body: CreateCustomerRequest;
       }) =>
         Effect.gen(function* () {
-          const applyDefaults = apiBodyDefault<CreateCustomerRequest>({
-            lastName: "",
-            flags: 0,
-            email: null,
-            phone: null,
-            addressLine1: "",
-            addressLine2: null,
-            city: null,
-            zip: "",
-            country: null,
-            companyName: "",
-            vatId: "",
-            note: null,
-            display: true,
-            deleted: false,
-            points: 0,
-            internalNote: "",
-            companyId: "",
-            hexColor: "#2196F3",
-            headerPrint: "",
-            tags: [],
-            barcode: "",
-            expireDate: null,
-          });
-
           yield* Effect.logDebug("DotyposApi.createCustomer called", params);
 
           const token = yield* getToken();
@@ -300,7 +275,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               const response = await generatedApi.createCustomers(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  body: [applyDefaults(params.body)],
+                  body: [zCreateCustomerRequest.parse(params.body)],
                 })
               );
 
