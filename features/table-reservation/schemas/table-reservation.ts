@@ -137,6 +137,13 @@ export const getTableReservationSchema = () => {
     })
     .optional();
 
+  const gdprConsentSchema = z
+    .boolean()
+    .default(false)
+    .refine((value) => value === true, {
+      message: m["tableReservation.validation.gdprConsent.required"](),
+    });
+
   return z
     .object({
       datetime: datetimeSchema,
@@ -148,6 +155,7 @@ export const getTableReservationSchema = () => {
       needsLargerTable: needsLargerTableSchema,
       needsPrivateSpace: needsPrivateSpaceSchema,
       specialRequests: specialRequestsSchema,
+      gdprConsent: gdprConsentSchema,
     })
     .refine(
       (data) => {

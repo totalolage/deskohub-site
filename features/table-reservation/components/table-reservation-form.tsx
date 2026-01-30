@@ -1,8 +1,10 @@
 "use client";
 
+import Interpolate from "@doist/react-interpolate";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { track } from "@vercel/analytics";
 import { Calendar, Clock, Gamepad2, MessageSquare, Phone } from "lucide-react";
+import Link from "next/link";
 import { useAction } from "next-safe-action/hooks";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
@@ -592,6 +594,41 @@ export function TableReservationForm() {
               </div>
             </CardContent>
           </Card>
+
+          <FormField
+            control={form.control}
+            name="gdprConsent"
+            render={({ field, fieldState }) => (
+              <FormItem
+                ref={registerErrorRef("gdprConsent")}
+                className={cn(
+                  styles.gridAreaGdprConsent,
+                  "scroll-mt-[calc(var(--header-height)+20px)] flex flex-row items-start space-x-3 space-y-0"
+                )}
+              >
+                <FormControl>
+                  <Checkbox
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                    className={cn(fieldState.error && "border-destructive")}
+                  />
+                </FormControl>
+                <FormLabel className="cursor-pointer leading-none text-muted-foreground">
+                  <Interpolate
+                    string={m["tableReservation.gdprConsentLabel"]()}
+                    mapping={{
+                      gdprLink: (text) => (
+                        <Link href="/gdpr" className="text-blue-500">
+                          {text}
+                        </Link>
+                      ),
+                    }}
+                  />
+                  <FormMessage />
+                </FormLabel>
+              </FormItem>
+            )}
+          />
 
           {/* Submit Button */}
           <div className={cn(styles.gridAreaSubmit, "text-center")}>

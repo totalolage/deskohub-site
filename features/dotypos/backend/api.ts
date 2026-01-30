@@ -11,6 +11,7 @@ import {
   type DotyposConfigObj,
 } from "@/shared/backend/config/dotypos.config";
 import { ExternalAPIError, NetworkError } from "@/shared/backend/errors";
+import { apiBodyDefault } from "@/shared/utils/api-body-defaults";
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
 import type {
@@ -265,25 +266,43 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         body: CreateCustomerRequest;
       }) =>
         Effect.gen(function* () {
+          const applyDefaults = apiBodyDefault<CreateCustomerRequest>({
+            lastName: "",
+            flags: 0,
+            email: null,
+            phone: null,
+            addressLine1: "",
+            addressLine2: null,
+            city: null,
+            zip: "",
+            country: null,
+            companyName: "",
+            vatId: "",
+            note: null,
+            display: true,
+            deleted: false,
+            points: 0,
+            internalNote: "",
+            companyId: "",
+            hexColor: "#2196F3",
+            headerPrint: "",
+            tags: [],
+            barcode: "",
+            expireDate: null,
+          });
+
           yield* Effect.logDebug("DotyposApi.createCustomer called", params);
 
           const token = yield* getToken();
-
-          // The API expects an array of customers with all fields present (including nulls)
-          const requestBody = [params.body];
-
-          // Creating customer
 
           const result = yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.createCustomers(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  body: requestBody,
+                  body: [applyDefaults(params.body)],
                 })
               );
-
-              // Process customer creation response
 
               if (response.error) throw response.error satisfies ErrorResponse;
 

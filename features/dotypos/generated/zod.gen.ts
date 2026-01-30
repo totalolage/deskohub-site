@@ -294,82 +294,85 @@ export const zCreateCustomerRequest = z.object({
     firstName: z.string().register(z.globalRegistry, {
         description: 'First name'
     }),
-    lastName: z.string().register(z.globalRegistry, {
+    lastName: z.optional(z.string().register(z.globalRegistry, {
         description: 'Last name'
-    }),
-    flags: z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).register(z.globalRegistry, {
+    })).default(''),
+    flags: z.optional(z.coerce.bigint().min(BigInt('-9223372036854775808'), { error: 'Invalid value: Expected int64 to be >= -9223372036854775808' }).max(BigInt('9223372036854775807'), { error: 'Invalid value: Expected int64 to be <= 9223372036854775807' }).register(z.globalRegistry, {
         description: 'Customer flags (bitwise flags)'
-    }).default(BigInt(0)),
-    email: z.union([
+    })).default(BigInt(0)),
+    email: z.optional(z.union([
         z.string(),
         z.null()
-    ]),
-    phone: z.union([
+    ])).default(null),
+    phone: z.optional(z.union([
         z.string(),
         z.null()
-    ]),
-    addressLine1: z.union([
+    ])).default(null),
+    addressLine1: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Address line 1'
+    })).default(''),
+    addressLine2: z.optional(z.union([
         z.string(),
         z.null()
-    ]),
-    addressLine2: z.union([
+    ])).default(null),
+    city: z.optional(z.union([
         z.string(),
         z.null()
-    ]),
-    city: z.union([
+    ])).default(null),
+    zip: z.optional(z.string().register(z.globalRegistry, {
+        description: 'ZIP code'
+    })).default(''),
+    country: z.optional(z.union([
         z.string(),
         z.null()
-    ]),
-    zip: z.union([
+    ])).default(null),
+    companyName: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Company name'
+    })).default(''),
+    vatId: z.optional(z.string().register(z.globalRegistry, {
+        description: 'VAT ID'
+    })).default(''),
+    note: z.optional(z.union([
         z.string(),
         z.null()
-    ]),
-    country: z.union([
-        z.string(),
-        z.null()
-    ]),
-    companyName: z.union([
-        z.string(),
-        z.null()
-    ]),
-    vatId: z.union([
-        z.string(),
-        z.null()
-    ]),
-    note: z.union([
-        z.string(),
-        z.null()
-    ]),
-    display: z.boolean().register(z.globalRegistry, {
+    ])).default(null),
+    display: z.optional(z.boolean().register(z.globalRegistry, {
         description: 'Is displayed'
-    }).default(true),
-    deleted: z.boolean().register(z.globalRegistry, {
+    })).default(true),
+    deleted: z.optional(z.boolean().register(z.globalRegistry, {
         description: 'Is deleted'
-    }).default(false),
-    points: z.union([
+    })).default(false),
+    points: z.optional(z.union([
         z.number().default(0),
         z.null()
-    ]).default(0),
-    internalNote: z.union([
-        z.string().default(''),
-        z.null()
-    ]).default(''),
-    companyId: z.union([
-        z.string(),
-        z.null()
-    ]),
-    hexColor: z.string().register(z.globalRegistry, {
+    ])).default(0),
+    internalNote: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Internal note'
+    })).default(''),
+    companyId: z.optional(z.string().register(z.globalRegistry, {
+        description: 'Company ID'
+    })).default(null),
+    hexColor: z.optional(z.string().register(z.globalRegistry, {
         description: 'Hex color for customer'
-    }).default('#2196F3'),
-    headerPrint: z.string().register(z.globalRegistry, {
+    })).default('#2196F3'),
+    headerPrint: z.optional(z.string().register(z.globalRegistry, {
         description: 'Header print text'
-    }),
-    tags: z.array(z.string()).register(z.globalRegistry, {
+    })).default(''),
+    tags: z.optional(z.array(z.string()).register(z.globalRegistry, {
         description: 'Customer tags'
-    }).default([]),
-    barcode: z.string().register(z.globalRegistry, {
+    })).default([]),
+    barcode: z.optional(z.string().register(z.globalRegistry, {
         description: 'Customer barcode'
-    }).default('')
+    })).default(''),
+    expireDate: z.optional(z.union([
+        z.number().register(z.globalRegistry, {
+            description: 'Unix timestamp (seconds or milliseconds since epoch)'
+        }),
+        z.iso.datetime().register(z.globalRegistry, {
+            description: 'ISO 8601 datetime string'
+        }),
+        z.null()
+    ]))
 });
 
 export const zUpdateCustomerRequest = z.object({

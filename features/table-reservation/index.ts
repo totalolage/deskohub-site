@@ -5,4 +5,3 @@
 export * from "./components/table-reservation-form";
 export * from "./hooks/use-form-error-scroll";
 export * from "./schemas/table-reservation";
-export * from "./table-reservation";

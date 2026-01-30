@@ -8,6 +8,7 @@
     "table-preferences"
     "special-requests"
     "pricing"
+    "gdpr-consent"
     "submit";
 }
 
@@ -19,6 +20,7 @@
       "table-preferences table-preferences"
       "special-requests special-requests"
       "pricing pricing"
+      "gdpr-consent gdpr-consent"
       "submit submit";
   }
 }
@@ -37,6 +39,10 @@
 
 .gridAreaSpecialRequests {
   grid-area: special-requests;
+}
+
+.gridAreaGdprConsent {
+  grid-area: gdpr-consent;
 }
 
 .gridAreaPricing {

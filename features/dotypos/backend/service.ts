@@ -65,7 +65,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           const [firstName = "", ...lastNameParts] = input.name
             .trim()
             .split(/\s+/);
-          const lastName = lastNameParts.join(" ") || firstName;
+          const lastName = lastNameParts.join(" ") || undefined;
 
           // Find or create customer (required for reservation)
           const customer = yield* findOrCreateCustomer({
@@ -273,7 +273,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
       const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
         function* (customerData: {
           firstName: string;
-          lastName: string;
+          lastName?: string;
           email?: string;
           phone?: string;
         }) {
@@ -497,24 +497,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                 lastName: normalizedCustomerData.lastName,
                 email: normalizedCustomerData.email || null,
                 phone: normalizedCustomerData.phone || null,
-                addressLine1: "",
-                addressLine2: null,
-                city: null,
-                zip: "",
-                country: null,
-                companyName: "",
-                vatId: "",
-                note: null,
-                display: true,
-                deleted: false,
-                points: 0,
-                internalNote: "",
-                companyId: "",
-                hexColor: "#2196F3",
-                headerPrint: "",
-                tags: [],
-                barcode: "",
-                flags: 0,
+                expireDate: Date.now() + 365 * 24 * 60 * 60 * 1000,
               },
             })
             .pipe(

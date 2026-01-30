@@ -906,27 +906,6 @@ components:
       required:
         - _cloudId
         - firstName
-        - lastName
-        - flags
-        - email
-        - phone
-        - addressLine1
-        - addressLine2
-        - city
-        - zip
-        - country
-        - companyName
-        - vatId
-        - note
-        - display
-        - deleted
-        - points
-        - internalNote
-        - companyId
-        - hexColor
-        - headerPrint
-        - tags
-        - barcode
       properties:
         _cloudId:
           type: string
@@ -937,6 +916,7 @@ components:
         lastName:
           type: string
           description: Last name
+          default: ""
         flags:
           type: integer
           format: int64
@@ -946,42 +926,48 @@ components:
           type: string
           description: Email address
           nullable: true
+          default: null
         phone:
           type: string
           description: Phone number
           nullable: true
+          default: null
         addressLine1:
           type: string
           description: Address line 1
-          nullable: true
+          default: ""
         addressLine2:
           type: string
           description: Address line 2
           nullable: true
+          default: null
         city:
           type: string
           description: City
           nullable: true
+          default: null
         zip:
           type: string
           description: ZIP code
-          nullable: true
+          default: ""
         country:
           type: string
           description: Country code
           nullable: true
+          default: null
         companyName:
           type: string
           description: Company name
-          nullable: true
+          default: ""
         vatId:
           type: string
           description: VAT ID
-          nullable: true
+          default: ""
         note:
           type: string
           description: Customer note
           nullable: true
+          default: null
         display:
           type: boolean
           description: Is displayed
@@ -998,12 +984,11 @@ components:
         internalNote:
           type: string
           description: Internal note
-          nullable: true
           default: ""
         companyId:
           type: string
           description: Company ID
-          nullable: true
+          default: 
         hexColor:
           type: string
           description: Hex color for customer
@@ -1011,6 +996,7 @@ components:
         headerPrint:
           type: string
           description: Header print text
+          default: ""
         tags:
           type: array
           description: Customer tags
@@ -1021,6 +1007,17 @@ components:
           type: string
           description: Customer barcode
           default: ""
+        expireDate:
+          description: Expiration date as either a Unix timestamp (seconds or milliseconds) or an ISO 8601 datetime string.
+          oneOf:
+            - type: number
+              description: Unix timestamp (seconds or milliseconds since epoch)
+              example: 1735689600
+            - type: string
+              format: date-time
+              description: ISO 8601 datetime string
+              example: "2025-01-01T00:00:00Z"
+          nullable: true
 
     UpdateCustomerRequest:
       type: object

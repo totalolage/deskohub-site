@@ -151,7 +151,8 @@
       "youtube": "YouTube",
       "facebook": "Facebook",
       "instagram": "Instagram"
-    }
+    },
+    "gdprLink": "Zásady zpracování osobních údajů"
   },
   "metadata": {
     "title": "Deskohub - Deskoherní klub a školící místnost",
@@ -191,11 +192,7 @@
     },
     "specialRequestsLabel": "Speciální požadavky",
     "specialRequestsPlaceholder": "Jakékoli speciální požadavky nebo přání...",
-    "preOrdersLabel": "Předobjednávky",
-    "preOrderFood": "Jídlo",
-    "preOrderDrinks": "Nápoje",
-    "preOrderDetails": "Detaily předobjednávky",
-    "preOrderDetailsPlaceholder": "Prosím uveďte své preference pro jídlo a nápoje...",
+    "gdprConsentLabel": "Souhlasím se zpracováním mých osobních údajů podle <gdprLink>Zásady zpracování osobních údajů</gdprLink> pro účely rezervace a účasti na akcích, včetně pořizování, zveřejňování a bez časového omezení používání fotografií a videozáznamů pro propagační účely. Rozumím, že souhlas mohu odvolat kdykoliv a že fotografie/video již jednou publikované budou odstraněny pokud je to technicky možné a pokud o to výslovně požádám.",
     "pricingInfo": "Vstupné: {priceForPlayers} za deskového hráče",
     "submit": "Rezervovat stůl",
     "submitting": "Odesílání...",
@@ -305,24 +302,10 @@
           }
         ]
       },
-      "preOrders": {
-        "maximum": [
-          {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
-            "match": {
-              "maxPlural=one": "Předobjednávky musí mít méně než {max} znak",
-              "maxPlural=few": "Předobjednávky musí mít méně než {max} znaky",
-              "maxPlural=other": "Předobjednávky musí mít méně než {max} znaků"
-            }
-          }
-        ]
+      "gdprConsent": {
+        "required": "Souhlas se zpracováním osobních údajů a používáním fotografií/video je povinný pro odeslání formuláře."
       },
-      "general": "Prosím opravte chyby validace",
-      "personCount": {
-        "singular": "osoba",
-        "plural": "lidé"
-      }
+      "general": "Prosím opravte chyby validace"
     }
   },
   "thankYou": {
@@ -1020,5 +1003,8 @@
       "saved": "Vaše předvolby cookies byly uloženy.",
       "error": "Nepodařilo se uložit předvolby. Zkuste to prosím znovu."
     }
+  },
+  "gdpr": {
+    "pageTitle": "Zásady zpracování osobních údajů"
   }
 }

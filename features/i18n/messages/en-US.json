@@ -147,7 +147,8 @@
       "youtube": "YouTube",
       "facebook": "Facebook",
       "instagram": "Instagram"
-    }
+    },
+    "gdprLink": "Privacy Policy"
   },
   "metadata": {
     "title": "Deskohub - Board Game Club & Training Room",
@@ -187,11 +188,7 @@
     },
     "specialRequestsLabel": "Special Requests",
     "specialRequestsPlaceholder": "Any special requirements or requests...",
-    "preOrdersLabel": "Pre-orders",
-    "preOrderFood": "Food",
-    "preOrderDrinks": "Drinks",
-    "preOrderDetails": "Pre-order Details",
-    "preOrderDetailsPlaceholder": "Please specify your food and drink preferences...",
+    "gdprConsentLabel": "I consent to the processing of my personal data in accordance with the <gdprLink>Privacy Policy</gdprLink> for the purpose of reservation and event participation, including taking, publishing, and indefinite use of photographs and video recordings for promotional purposes. I understand that I may withdraw this consent at any time and that previously published media will be removed where technically feasible and upon explicit request.",
     "pricingInfo": "Entry fee: {priceForPlayers} per board game player",
     "submit": "Book Table",
     "submitting": "Submitting...",
@@ -295,23 +292,10 @@
           }
         ]
       },
-      "preOrders": {
-        "maximum": [
-          {
-            "declarations": ["input max", "local maxPlural = max: plural"],
-            "selectors": ["maxPlural"],
-            "match": {
-              "maxPlural=one": "Pre-orders must be less than {max} character",
-              "maxPlural=other": "Pre-orders must be less than {max} characters"
-            }
-          }
-        ]
+      "gdprConsent": {
+        "required": "Consent to the processing of personal data and use of photographs/videos is required to submit this form."
       },
-      "general": "Please fix the validation errors",
-      "personCount": {
-        "singular": "person",
-        "plural": "people"
-      }
+      "general": "Please fix the validation errors"
     }
   },
   "thankYou": {
@@ -994,5 +978,8 @@
       "saved": "Your cookie preferences have been saved.",
       "error": "Failed to save preferences. Please try again."
     }
+  },
+  "gdpr": {
+    "pageTitle": "Privacy Policy"
   }
 }

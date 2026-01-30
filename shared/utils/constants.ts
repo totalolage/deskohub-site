@@ -75,6 +75,9 @@ export const siteConstants = {
     get contactEmail() {
       return `contact@${siteConstants.brand.domain}`;
     },
+    get gdprEmail() {
+      return `info@${siteConstants.brand.domain}`;
+    },
     address: {
       street: "Turnovská 10/430",
       city: "Prague", // English name, will be translated
@@ -86,6 +89,7 @@ export const siteConstants = {
       lat: 50.103136,
       lng: 14.479131,
     },
+    ico: "22134921",
   },
   social: {
     instagram: "https://www.instagram.com/deskohub/",

@@ -336,87 +336,91 @@ export type CreateCustomerRequest = {
     /**
      * Last name
      */
-    lastName: string;
+    lastName?: string;
     /**
      * Customer flags (bitwise flags)
      */
-    flags: number;
+    flags?: number;
     /**
      * Email address
      */
-    email: string | null;
+    email?: string | null;
     /**
      * Phone number
      */
-    phone: string | null;
+    phone?: string | null;
     /**
      * Address line 1
      */
-    addressLine1: string | null;
+    addressLine1?: string;
     /**
      * Address line 2
      */
-    addressLine2: string | null;
+    addressLine2?: string | null;
     /**
      * City
      */
-    city: string | null;
+    city?: string | null;
     /**
      * ZIP code
      */
-    zip: string | null;
+    zip?: string;
     /**
      * Country code
      */
-    country: string | null;
+    country?: string | null;
     /**
      * Company name
      */
-    companyName: string | null;
+    companyName?: string;
     /**
      * VAT ID
      */
-    vatId: string | null;
+    vatId?: string;
     /**
      * Customer note
      */
-    note: string | null;
+    note?: string | null;
     /**
      * Is displayed
      */
-    display: boolean;
+    display?: boolean;
     /**
      * Is deleted
      */
-    deleted: boolean;
+    deleted?: boolean;
     /**
      * Customer points
      */
-    points: number | null;
+    points?: number | null;
     /**
      * Internal note
      */
-    internalNote: string | null;
+    internalNote?: string;
     /**
      * Company ID
      */
-    companyId: string | null;
+    companyId?: string;
     /**
      * Hex color for customer
      */
-    hexColor: string;
+    hexColor?: string;
     /**
      * Header print text
      */
-    headerPrint: string;
+    headerPrint?: string;
     /**
      * Customer tags
      */
-    tags: Array<string>;
+    tags?: Array<string>;
     /**
      * Customer barcode
      */
-    barcode: string;
+    barcode?: string;
+    /**
+     * Expiration date as either a Unix timestamp (seconds or milliseconds) or an ISO 8601 datetime string.
+     */
+    expireDate?: number | string | null;
 };
 
 export type UpdateCustomerRequest = {
