@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { IBM_Plex_Sans } from "next/font/google";
 import type { ReactNode } from "react";
-import { defaultWorkspaceLocale } from "@/features/i18n/dictionary";
+import { defaultWorkspaceLocale } from "../features/i18n/dictionary";
 import "./globals.css";
 
 const ibmPlexSans = IBM_Plex_Sans({

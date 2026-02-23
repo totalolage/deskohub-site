@@ -9,6 +9,9 @@ export {
   createEmailProviderLayer,
   type EmailProviderType,
 } from "@/packages/email/backend/provider-factory";
+// Individual providers (for testing or explicit configuration)
+export { ConsoleEmailProviderLive } from "@/packages/email/backend/providers/console-provider";
+export { ResendEmailProviderLive } from "@/packages/email/backend/providers/resend-provider";
 // Services and Tags (only what's actually used externally)
 export {
   EmailConfigTag,
@@ -24,9 +27,6 @@ export type {
   EmailTemplateType,
   ReservationConfirmationData,
 } from "@/packages/email/types/email.types";
-// Individual providers (for testing or explicit configuration)
-export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
-export { ResendEmailProviderLive } from "./backend/providers/resend-provider";
 // Direct email sending functions (used by webhooks)
 export { sendNewReservationNotification } from "./backend/send-reservation-notification";
 export {
