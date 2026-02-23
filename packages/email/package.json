@@ -1,0 +1,8 @@
+{
+  "name": "@deskohub/email",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./index.ts"
+  }
+}
