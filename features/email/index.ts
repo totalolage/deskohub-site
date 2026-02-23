@@ -13,6 +13,7 @@ export {
 export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
 export { ResendEmailProviderLive } from "./backend/providers/resend-provider";
 // Direct email sending functions (used by webhooks)
+export { sendNewReservationNotification } from "./backend/send-reservation-notification";
 export {
   sendReservationConfirmedEmail,
   sendReservationCreatedEmail,
