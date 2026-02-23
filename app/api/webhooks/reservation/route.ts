@@ -4,21 +4,25 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { DotyposService } from "@/features/dotypos";
-import { StandaloneEmailServiceLive } from "@/features/email";
-import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
 import {
+  sendNewReservationNotification,
   sendReservationConfirmedEmail,
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
-} from "@/features/email/backend/send-reservation-status-email";
+} from "@/features/email";
 import { getLocale, type Locale } from "@/features/i18n";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
+import { createStandaloneEmailServiceLayer } from "@/packages/email";
 import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import {
   validateWebhookUUID,
   WebhookValidationError,
 } from "@/shared/backend/utils/webhook";
 import { dotyposTags } from "@/shared/utils/cache-tags";
+
+const StandaloneEmailServiceLive =
+  createStandaloneEmailServiceLayer(EmailConfigLayer);
 
 /**
  * Dotypos Reservation Status Codes
