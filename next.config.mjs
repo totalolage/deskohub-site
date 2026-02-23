@@ -6,6 +6,20 @@ const nextConfig = {
   experimental: {
     useCache: true,
   },
+  async redirects() {
+    return [
+      {
+        source: '/workspace',
+        destination: 'https://workspace.deskohub.cz',
+        permanent: true,
+      },
+      {
+        source: '/workspace/:path*',
+        destination: 'https://workspace.deskohub.cz/:path*',
+        permanent: true,
+      },
+    ];
+  },
   images: {
     remotePatterns: [
       {
