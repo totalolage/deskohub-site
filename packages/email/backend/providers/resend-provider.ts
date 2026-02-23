@@ -20,7 +20,7 @@ class ResendConfigTag extends Context.Tag("ResendConfig")<
 const ResendConfigLayer = Layer.effect(
   ResendConfigTag,
   Effect.gen(function* () {
-    const apiKey = yield* Config.string("RESEND_API_KEY").pipe(
+    const apiKey = yield* Config.string("EMAIL_API_KEY").pipe(
       Config.withDefault("")
     );
 

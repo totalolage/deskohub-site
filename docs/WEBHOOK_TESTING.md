@@ -34,4 +34,4 @@ Validation logic: `shared/backend/utils/webhook.ts`.
 ## Troubleshooting
 
 - If webhook calls fail, inspect server logs from the route handler.
-- If emails do not send, verify provider selection and `RESEND_API_KEY`/`EMAIL_PROVIDER` behavior.
+- If emails do not send, verify provider selection and `EMAIL_API_KEY`/`EMAIL_PROVIDER` behavior.
