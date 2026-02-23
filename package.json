@@ -2,6 +2,9 @@
   "name": "deskohub-site",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
   "type": "module",
   "scripts": {
     "build": "run-s i18n:compile next:build",
@@ -11,7 +14,7 @@
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "predev:i18n": "bun i18n:compile",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
-    "dotypos:generate": "cd features/dotypos/openapi && bunx openapi-ts",
+    "dotypos:generate": "bun run --cwd packages/dotypos generate",
     "lint": "bunx biome check .",
     "format": "bunx biome check --write --unsafe .",
     "typecheck": "bunx tsc --noEmit",
@@ -20,6 +23,7 @@
   },
   "dependencies": {
     "@doist/react-interpolate": "^2.2.1",
+    "@deskohub/dotypos": "workspace:*",
     "@effect/opentelemetry": "^0.60.0",
     "@effect/platform-node": "^0.94.0",
     "@effect/schema": "^0.75.5",

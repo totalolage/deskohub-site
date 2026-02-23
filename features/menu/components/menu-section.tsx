@@ -1,4 +1,4 @@
-import type { Category, Product } from "@/features/dotypos/generated";
+import type { Category, Product } from "@deskohub/dotypos/generated";
 import { useLocale } from "@/features/i18n/utils/use-locale";
 import { formatPrice } from "@/shared/utils/currency";
 import { formatCategory, formatMenuItem } from "../utils/format-menu-item";

@@ -2,6 +2,7 @@ import { withBotId } from "botid/next/config";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ["@deskohub/dotypos"],
   experimental: {
     useCache: true,
   },

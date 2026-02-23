@@ -1,4 +1,4 @@
-import type { Category, Product } from "@/features/dotypos/generated";
+import type { Category, Product } from "@deskohub/dotypos/generated";
 import type { Locale } from "@/features/i18n";
 import { getLocalizedText } from "@/shared/utils/localization";
 

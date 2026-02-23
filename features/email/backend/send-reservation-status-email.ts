@@ -4,12 +4,12 @@
  * Functions to send different types of reservation emails based on status
  */
 
-import { Effect } from "effect";
 import type {
   Customer,
   Reservation,
-} from "@/features/dotypos/generated/types.gen";
-import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
+} from "@deskohub/dotypos/generated/types.gen";
+import { parseNoteData } from "@deskohub/dotypos/note-metadata";
+import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
 import { buildAbsoluteUrl } from "@/shared/backend/utils/site-url";
 import { siteConstants } from "@/shared/utils/constants";
