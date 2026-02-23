@@ -1,6 +1,6 @@
+import type { Category } from "@deskohub/dotypos/generated";
 import { Data, Effect } from "effect";
 import { DotyposService, isCategoryDisplayable } from "@/features/dotypos";
-import type { Category } from "@/features/dotypos/generated";
 import { siteConstants } from "@/shared/utils/constants";
 
 class MenuDataError extends Data.TaggedError("MenuDataError")<{

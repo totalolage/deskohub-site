@@ -1,6 +1,6 @@
 "use client";
 
-import type { Category, Product } from "@/features/dotypos/generated";
+import type { Category, Product } from "@deskohub/dotypos/generated";
 import { siteConstants } from "@/shared/utils/constants";
 import { MenuFooterNote } from "./menu-footer-note";
 import { MenuOpeningHours } from "./menu-opening-hours";

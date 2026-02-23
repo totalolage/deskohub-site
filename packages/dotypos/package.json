@@ -1,0 +1,35 @@
+{
+  "name": "@deskohub/dotypos",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./backend/api": "./src/backend/api.ts",
+    "./backend/service": "./src/backend/service.ts",
+    "./config": "./src/config.ts",
+    "./errors": "./src/errors.ts",
+    "./types": "./src/types.ts",
+    "./generated": "./src/generated/index.ts",
+    "./generated/*": "./src/generated/*.ts",
+    "./note-metadata": "./src/utils/note-metadata/index.ts",
+    "./reservation-display": "./src/utils/reservation-display.ts",
+    "./category-utils": "./src/utils/category-utils.ts",
+    "./phone-formatting": "./src/utils/phone-formatting.ts"
+  },
+  "scripts": {
+    "generate": "bunx openapi-ts -f ./openapi/openapi-ts.config.ts"
+  },
+  "dependencies": {
+    "@effect/schema": "^0.75.5",
+    "@hey-api/client-fetch": "^0.13.1",
+    "effect": "^3.17.2",
+    "invisible-strings": "^0.0.1",
+    "libphonenumber-js": "^1.12.10",
+    "superjson": "^2.2.6"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.90.8",
+    "typescript": "^5"
+  }
+}

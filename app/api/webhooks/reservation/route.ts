@@ -1,8 +1,8 @@
+import { parseNoteData } from "@deskohub/dotypos/note-metadata";
 import { Effect, Layer, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { DotyposService } from "@/features/dotypos";
-import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
 import {

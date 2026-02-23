@@ -1,0 +1,423 @@
+import { Effect, Ref, Schema } from "effect";
+import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
+import { ExternalAPIError, NetworkError } from "../errors";
+import { createClient } from "../generated/client";
+import * as generatedApi from "../generated/sdk.gen";
+import type {
+  Category,
+  CreateCustomerRequest,
+  Customer,
+  ErrorResponse,
+  Product,
+  Table,
+  UpdateCustomerRequest,
+} from "../generated/types.gen";
+import { zCreateCustomerRequest } from "../generated/zod.gen";
+import { injectReqResLogger } from "../utils/req-res-logger";
+
+interface ApiErrorWithViolations {
+  error?: string;
+  error_description?: string;
+  code?: number;
+  violations?: Array<{
+    path?: string[];
+    message: string;
+  }>;
+}
+
+interface TokenCache {
+  token: string;
+  expiresAt: number;
+}
+
+export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
+  effect: Effect.gen(function* () {
+    const config = yield* DotyposRuntimeConfig;
+
+    const client = createClient({
+      baseUrl: config.apiUrl,
+    });
+    yield* injectReqResLogger(client);
+
+    const tokenCacheRef = yield* Ref.make<TokenCache | null>(null);
+
+    const getToken = (): Effect.Effect<
+      string,
+      ExternalAPIError | NetworkError
+    > =>
+      Effect.gen(function* () {
+        const cached = yield* Ref.get(tokenCacheRef);
+        if (cached && Date.now() < cached.expiresAt - 60000) {
+          return cached.token;
+        }
+
+        const response = yield* Effect.tryPromise({
+          try: async () => {
+            const result = await generatedApi.getAccessToken({
+              client,
+              headers: {
+                Authorization: `User ${config.refreshToken}`,
+              },
+              body: {
+                _cloudId: config.cloudId,
+              },
+              signal: AbortSignal.timeout(config.apiTimeout),
+            });
+
+            if (result.error) throw result.error satisfies ErrorResponse;
+
+            return result.data;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Authentication", config.apiUrl),
+        });
+
+        const newCache = {
+          token: response.accessToken,
+          expiresAt: Date.now() + 3600 * 1000,
+        };
+        yield* Ref.set(tokenCacheRef, newCache);
+        return response.accessToken;
+      }).pipe(Effect.withSpan("getAccessToken"));
+
+    return {
+      createReservation: Effect.fn("createReservation")(function* (params) {
+        const token = yield* getToken();
+
+        const cleanBody = Object.fromEntries(
+          Object.entries(params.body).filter(([_, value]) => value !== null)
+        ) as typeof params.body;
+        const requestBody = [cleanBody];
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.createReservation(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                body: requestBody,
+              })
+            );
+
+            if (response.error) {
+              let errorMessage = "";
+              const errorWithViolations =
+                response.error as ApiErrorWithViolations;
+              if (Array.isArray(errorWithViolations.violations)) {
+                const violationMessages = errorWithViolations.violations
+                  .map(
+                    (violation) =>
+                      `${violation.path?.join(".")}: ${violation.message}`
+                  )
+                  .join(", ");
+                errorMessage = `Validation failed: ${violationMessages}`;
+              }
+
+              throw {
+                ...response.error,
+                error_description: [
+                  response.error.error_description,
+                  errorMessage,
+                ]
+                  .filter(Boolean)
+                  .join("\n"),
+              } satisfies ErrorResponse;
+            }
+
+            const reservations = response.data;
+            if (!reservations.length) {
+              throw {
+                code: 502,
+                error: "Unexpected response format from reservation API",
+                error_description:
+                  "createReservation endpoint returned no reservations",
+              } satisfies ErrorResponse;
+            }
+
+            return reservations[0]!;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Create reservation", config.apiUrl),
+        });
+      }),
+
+      getReservation: Effect.fn("getReservation")(function* (params) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.getReservation(
+              createApiOptions(token, config, client, params)
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            return response.data;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Get reservation", config.apiUrl),
+        });
+      }),
+
+      searchCustomers: Effect.fn("searchCustomers")(function* (params) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async (): Promise<Customer[]> => {
+            const response = await generatedApi.getCustomers(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                query: params.query,
+              })
+            );
+
+            if (response.error) {
+              if (response.response.status === 404) return [];
+              throw response.error satisfies ErrorResponse;
+            }
+
+            return response.data.data || [];
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Search customers", config.apiUrl),
+        });
+      }),
+
+      createCustomer: (params: {
+        path: { cloudId: string };
+        body: CreateCustomerRequest;
+      }) =>
+        Effect.gen(function* () {
+          const token = yield* getToken();
+
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.createCustomers(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  body: [zCreateCustomerRequest.parse(params.body)],
+                })
+              );
+
+              if (response.error) throw response.error satisfies ErrorResponse;
+
+              const customers = response.data;
+              if (!customers.length) {
+                throw {
+                  code: 502,
+                  error: "Unexpected response format from customer API",
+                  error_description:
+                    "createCustomer endpoint returned no customers",
+                } satisfies ErrorResponse;
+              }
+
+              return customers[0]!;
+            },
+            catch: (error) =>
+              transformErrorResponse(error, "Create customer", config.apiUrl),
+          });
+        }).pipe(Effect.withSpan("dotyposApi.createCustomer")),
+
+      getCustomer: (params: {
+        path: { cloudId: string; customerId: string };
+      }) =>
+        Effect.gen(function* () {
+          const token = yield* getToken();
+
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.getCustomer(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                })
+              );
+
+              if (!response.data || response.error) {
+                throw response.error satisfies ErrorResponse;
+              }
+
+              return response.data as Customer;
+            },
+            catch: (error) =>
+              transformErrorResponse(error, "Get customer", config.apiUrl),
+          });
+        }).pipe(Effect.withSpan("dotyposApi.getCustomer")),
+
+      updateCustomer: (params: {
+        path: { cloudId: string; customerId: string };
+        body: UpdateCustomerRequest;
+      }) =>
+        Effect.gen(function* () {
+          const token = yield* getToken();
+
+          const cleanBody = Object.fromEntries(
+            Object.entries(params.body).filter(([_, value]) => value !== null)
+          ) as typeof params.body;
+
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.updateCustomer(
+                createApiOptions(token, config, client, {
+                  path: params.path,
+                  body: cleanBody,
+                })
+              );
+
+              if (response.error) throw response.error satisfies ErrorResponse;
+
+              return response.data;
+            },
+            catch: (error) =>
+              transformErrorResponse(error, "Update customer", config.apiUrl),
+          });
+        }).pipe(Effect.withSpan("dotyposApi.updateCustomer")),
+
+      getTables: Effect.fn("getTables")(function* (params) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.getTables(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                query: { limit: 100 },
+              })
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            if (
+              response.data &&
+              typeof response.data === "object" &&
+              "data" in response.data
+            ) {
+              return (response.data.data || []) as Table[];
+            }
+
+            return [] as Table[];
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Get tables", config.apiUrl),
+        });
+      }),
+
+      getProducts: Effect.fn("getProducts")(function* (params) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async (): Promise<Product[]> => {
+            const response = await generatedApi.getProducts(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                query: params.query || { limit: 100 },
+              })
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            return response.data.data || [];
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Get products", config.apiUrl),
+        });
+      }),
+
+      getCategories: Effect.fn("getCategories")(function* (params) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.getCategories(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                query: params.query || { limit: 100 },
+              })
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            if (
+              response.data &&
+              typeof response.data === "object" &&
+              "data" in response.data
+            ) {
+              return (response.data.data || []) as Category[];
+            }
+
+            return [] as Category[];
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Get categories", config.apiUrl),
+        });
+      }),
+    };
+  }),
+}) {}
+
+const ErrorResponseSchema = Schema.Struct({
+  error: Schema.optional(Schema.String),
+  error_description: Schema.optional(Schema.String),
+  code: Schema.optional(Schema.Int),
+});
+
+const transformErrorResponse = (
+  error: unknown,
+  operation: string,
+  apiUrl: string
+): ExternalAPIError | NetworkError => {
+  if (error instanceof Error) {
+    if (
+      error.message.includes("fetch") ||
+      error.message.includes("ECONNREFUSED")
+    ) {
+      return new NetworkError({
+        message: "Failed to connect to Dotypos",
+        cause: error,
+        url: apiUrl,
+      });
+    }
+  }
+
+  const parseResult = Schema.decodeUnknownOption(ErrorResponseSchema)(error);
+  if (parseResult._tag === "Some") {
+    const { error, error_description, code } = parseResult.value;
+    return new ExternalAPIError({
+      service: "Dotypos",
+      operation,
+      statusCode: code ?? 500,
+      message: error_description,
+      cause: error,
+    });
+  }
+
+  return new ExternalAPIError({
+    service: "Dotypos",
+    operation,
+    cause: error,
+  });
+};
+
+type ApiCallOptions = {
+  path?: Record<string, string>;
+  query?: Record<string, unknown>;
+  body?: unknown;
+  headers?: Record<string, string>;
+};
+
+const createApiOptions = <T extends ApiCallOptions>(
+  token: string,
+  config: DotyposRuntimeConfigObj,
+  client: ReturnType<typeof createClient>,
+  options: T
+): T & {
+  client: ReturnType<typeof createClient>;
+  headers: Record<string, string>;
+  signal: AbortSignal;
+} => ({
+  ...options,
+  client,
+  headers: {
+    Authorization: `Bearer ${token}`,
+    ...options.headers,
+  },
+  signal: AbortSignal.timeout(config.apiTimeout),
+});

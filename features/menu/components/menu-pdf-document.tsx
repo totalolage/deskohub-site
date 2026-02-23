@@ -1,3 +1,4 @@
+import type { Category, Product } from "@deskohub/dotypos/generated";
 import {
   Document,
   Font,
@@ -11,7 +12,6 @@ import { getImageProps } from "next/image";
 import type React from "react";
 import logo from "@/assets/images/logo/for-light-bg.png";
 import { env } from "@/env";
-import type { Category, Product } from "@/features/dotypos/generated";
 import type { Locale } from "@/features/i18n";
 import { formatPrice } from "@/shared/utils/currency";
 import { formatCategory, formatMenuItem } from "../utils/format-menu-item";
