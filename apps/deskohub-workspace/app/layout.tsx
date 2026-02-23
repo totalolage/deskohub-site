@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import type { ReactNode } from "react";
+import { defaultWorkspaceLocale } from "@/features/i18n/dictionary";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -18,7 +19,7 @@ type RootLayoutProps = {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang="en">
+    <html lang={defaultWorkspaceLocale}>
       <body>{children}</body>
     </html>
   );
