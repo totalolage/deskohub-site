@@ -1,37 +1,57 @@
 "use client";
 
-import { notFound } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { env } from "@/env";
 import { Button } from "@/shared/components/ui/button";
 
 export default function DotyposAuthPage() {
-  // Client credentials from Dotykacka support
-  const clientId = env.DOTYPOS_CLIENT_ID;
-  const clientSecret = env.DOTYPOS_CLIENT_SECRET;
+  const params = useParams<{ locale?: string }>();
   const [authUrl, setAuthUrl] = useState<string>("");
-
-  if (!clientId || !clientSecret) {
-    notFound();
-  }
-
-  // Hardcoded redirect URL
-  const redirectUrl = "http://localhost:3000/cs-CZ/admin/dotypos/callback";
+  const [error, setError] = useState<string | null>(null);
+  const localeParam = params.locale;
+  const locale = Array.isArray(localeParam)
+    ? (localeParam[0] ?? "en-US")
+    : (localeParam ?? "en-US");
 
   useEffect(() => {
-    // Generate a random state for CSRF protection on client side
-    const state = Math.random().toString(36).substring(7);
+    const controller = new AbortController();
 
-    // Correct Dotykacka OAuth URL with /client/connect endpoint
-    const url = new URL("https://admin.dotypos.com/client/connect");
-    url.searchParams.append("client_id", clientId);
-    url.searchParams.append("client_secret", clientSecret);
-    url.searchParams.append("scope", "*");
-    url.searchParams.append("redirect_uri", redirectUrl);
-    url.searchParams.append("state", state);
+    const loadAuthUrl = async () => {
+      try {
+        setError(null);
+        const response = await fetch(
+          `/api/admin/dotypos/auth-url?locale=${encodeURIComponent(locale)}`,
+          {
+            signal: controller.signal,
+          }
+        );
 
-    setAuthUrl(url.toString());
-  }, [clientId, clientSecret]);
+        if (!response.ok) {
+          throw new Error("Unable to prepare Dotypos OAuth URL");
+        }
+
+        const data = (await response.json()) as { authUrl?: string };
+        if (!data.authUrl) {
+          throw new Error("Dotypos OAuth URL is missing");
+        }
+
+        setAuthUrl(data.authUrl);
+      } catch (loadError) {
+        if (controller.signal.aborted) return;
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Unable to prepare Dotypos OAuth URL"
+        );
+      }
+    };
+
+    loadAuthUrl();
+
+    return () => {
+      controller.abort();
+    };
+  }, [locale]);
 
   const handleAuthenticate = () => {
     if (authUrl) {
@@ -41,7 +61,7 @@ export default function DotyposAuthPage() {
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
-      {clientId ? (
+      {!error ? (
         <Button size="lg" onClick={handleAuthenticate} disabled={!authUrl}>
           Authenticate
         </Button>
@@ -50,9 +70,7 @@ export default function DotyposAuthPage() {
           <Button disabled size="lg">
             Authenticate
           </Button>
-          <p className="text-sm text-red-600">
-            Missing DOTYPOS_CLIENT_ID environment variable
-          </p>
+          <p className="text-sm text-red-600">{error}</p>
         </div>
       )}
     </div>

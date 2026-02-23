@@ -11,7 +11,6 @@ import {
 import { Effect, Layer, Schema } from "effect";
 import { env } from "@/env";
 import { siteConstants } from "@/shared/utils/constants";
-
 /**
  * Dotypos Configuration Schema with validation
  */
@@ -31,6 +30,28 @@ export const DotyposConfigSchema = Schema.Struct({
 });
 
 export type DotyposConfigObj = Schema.Schema.Type<typeof DotyposConfigSchema>;
+
+export type DotyposConfigInput = {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  cloudId: string;
+  branchId: string;
+  employeeId: string;
+  apiUrl: string;
+  apiTimeout: number;
+};
+
+const decodeDotyposConfig = Schema.decodeUnknownSync(DotyposConfigSchema);
+
+export const parseDotyposConfig = (
+  input: DotyposConfigInput
+): DotyposConfigObj =>
+  decodeDotyposConfig({
+    ...input,
+    reservationTableIds:
+      siteConstants.tableReservation.tablesToAssignReservationsTo,
+  });
 
 /**
  * Context tag for dependency injection
@@ -65,3 +86,6 @@ export const DotyposRuntimeConfigLive = Layer.succeed(DotyposRuntimeConfig, {
   reservationTableIds:
     siteConstants.tableReservation.tablesToAssignReservationsTo,
 } satisfies DotyposRuntimeConfigObj);
+
+export const makeDotyposConfigLayer = (input: DotyposConfigInput) =>
+  Layer.succeed(DotyposRuntimeConfig, parseDotyposConfig(input));

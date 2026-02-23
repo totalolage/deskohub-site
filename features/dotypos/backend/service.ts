@@ -3,7 +3,6 @@ import { Effect, Layer } from "effect";
 import { getLocale } from "@/features/i18n";
 import type { TableReservationFormData } from "@/features/table-reservation/schemas/table-reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-
 export class DotyposService extends Effect.Service<DotyposService>()(
   "DotyposService",
   {

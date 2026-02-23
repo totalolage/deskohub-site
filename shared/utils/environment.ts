@@ -1,11 +1,19 @@
-import { env } from "@/env";
+type EnvironmentConfig = {
+  nodeEnv?: string;
+  vercelEnv?: string;
+  hostname?: string;
+};
 
-export function isDev(): boolean {
-  if (env.NEXT_PUBLIC_NODE_ENV === "development") return true;
-  if (env.NEXT_PUBLIC_VERCEL_ENV === "development") return true;
+export function isDev(config: EnvironmentConfig = {}): boolean {
+  const nodeEnv = config.nodeEnv ?? process.env.NODE_ENV;
+  if (nodeEnv === "development") return true;
 
-  let hostname: string | undefined;
-  if (typeof window !== "undefined") hostname = window.location.hostname;
+  const vercelEnv = config.vercelEnv ?? process.env.NEXT_PUBLIC_VERCEL_ENV;
+  if (vercelEnv === "development") return true;
+
+  const hostname =
+    config.hostname ??
+    (typeof window !== "undefined" ? window.location.hostname : undefined);
 
   const isLocalhost =
     hostname === "localhost" ||
