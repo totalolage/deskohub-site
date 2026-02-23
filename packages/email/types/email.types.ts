@@ -36,15 +36,15 @@ export interface EmailMessage {
   attachments?: EmailAttachment[];
   replyTo?: EmailRecipient;
   headers?: Record<string, string>;
-  tags?: string[]; // For analytics/tracking
-  metadata?: Record<string, unknown>; // Provider-specific metadata
+  tags?: string[];
+  metadata?: Record<string, unknown>;
 }
 
 /**
  * Email send result
  */
 export interface EmailSendResult {
-  id: string; // Provider-specific message ID
+  id: string;
   status: "sent" | "queued" | "failed";
   provider: string;
   timestamp: Date;
@@ -84,7 +84,7 @@ export type EmailTemplateData = {
  * Email provider configuration
  */
 export interface EmailProviderConfig {
-  provider: "resend" | "smtp" | "sendgrid" | "mailgun" | "console"; // console for dev/testing
+  provider: "resend" | "smtp" | "sendgrid" | "mailgun" | "console";
   apiKey?: string;
   smtpHost?: string;
   smtpPort?: number;
@@ -92,5 +92,5 @@ export interface EmailProviderConfig {
   smtpPassword?: string;
   smtpSecure?: boolean;
   defaultFrom: EmailRecipient;
-  testMode?: boolean; // For testing, doesn't actually send emails
+  testMode?: boolean;
 }

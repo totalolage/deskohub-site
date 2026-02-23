@@ -1,6 +1,7 @@
 import type { Locale } from "@/features/i18n";
+import { escapeHtml } from "@/packages/email/backend/escaping";
+import type { ReservationConfirmationData } from "@/packages/email/types/email.types";
 import { siteConstants } from "@/shared/utils/constants";
-import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
  * Email template for declined/cancelled reservations
@@ -33,6 +34,9 @@ export function renderReservationDeclinedEmail(
     ? `Reservation Cancelled - ${formatDate(data.datetime)}`
     : `Rezervace zrušena - ${formatDate(data.datetime)}`;
 
+  const customerName = escapeHtml(data.customerName);
+  const reservationId = escapeHtml(data.reservationId);
+
   const html = `
     <!DOCTYPE html>
     <html lang="${locale}">
@@ -55,7 +59,7 @@ export function renderReservationDeclinedEmail(
       
       <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
         <p style="font-size: 16px; margin-bottom: 20px;">
-          ${isEnglish ? `Dear ${data.customerName},` : `Vážený/á ${data.customerName},`}
+          ${isEnglish ? `Dear ${customerName},` : `Vážený/á ${customerName},`}
         </p>
         
         <p style="font-size: 16px; margin-bottom: 20px;">
@@ -77,7 +81,7 @@ export function renderReservationDeclinedEmail(
                 <strong>${isEnglish ? "Reservation ID:" : "ID rezervace:"}</strong>
               </td>
               <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-family: monospace; text-decoration: line-through;">
-                #${data.reservationId}
+                #${reservationId}
               </td>
             </tr>
             <tr>

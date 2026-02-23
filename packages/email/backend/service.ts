@@ -1,10 +1,3 @@
-/**
- * Email Service
- *
- * Core email service that provides a provider-agnostic interface
- * for sending emails. Uses Effect for error handling and composition.
- */
-
 import { Context, Duration, Effect, Layer, Schedule } from "effect";
 import type { NetworkError } from "@/shared/backend/errors";
 import type {
@@ -14,9 +7,6 @@ import type {
   EmailTemplateData,
 } from "../types/email.types";
 
-/**
- * Email service errors
- */
 export class EmailServiceError {
   readonly _tag = "EmailServiceError";
   constructor(
@@ -26,9 +16,6 @@ export class EmailServiceError {
   ) {}
 }
 
-/**
- * Email template rendering error
- */
 export class EmailTemplateError {
   readonly _tag = "EmailTemplateError";
   constructor(
@@ -38,11 +25,6 @@ export class EmailTemplateError {
   ) {}
 }
 
-/**
- * Email Provider Interface
- *
- * All email providers must implement this interface
- */
 export interface EmailProvider {
   readonly name: string;
   readonly send: (
@@ -51,19 +33,11 @@ export interface EmailProvider {
   readonly verify: () => Effect.Effect<boolean, EmailServiceError>;
 }
 
-/**
- * Email Provider Tag for dependency injection
- */
 export class EmailProviderTag extends Context.Tag("EmailProvider")<
   EmailProviderTag,
   EmailProvider
 >() {}
 
-/**
- * Email Template Service
- *
- * Renders email templates with data
- */
 export interface EmailTemplateService {
   readonly render: (
     template: EmailTemplateData
@@ -73,27 +47,14 @@ export interface EmailTemplateService {
   >;
 }
 
-/**
- * Email Template Service Tag
- */
 export class EmailTemplateServiceTag extends Context.Tag(
   "EmailTemplateService"
 )<EmailTemplateServiceTag, EmailTemplateService>() {}
 
-/**
- * Main Email Service Interface
- */
 export interface EmailService {
-  /**
-   * Send a raw email message
-   */
   readonly send: (
     message: EmailMessage
   ) => Effect.Effect<EmailSendResult, EmailServiceError | NetworkError>;
-
-  /**
-   * Send a templated email
-   */
   readonly sendTemplate: (
     recipient: string | { email: string; name?: string },
     template: EmailTemplateData
@@ -101,41 +62,23 @@ export interface EmailService {
     EmailSendResult,
     EmailServiceError | NetworkError | EmailTemplateError
   >;
-
-  /**
-   * Verify email service is configured and working
-   */
   readonly verify: () => Effect.Effect<boolean, EmailServiceError>;
 }
 
-/**
- * Email Service Tag for dependency injection
- */
 export class EmailServiceTag extends Context.Tag("EmailService")<
   EmailServiceTag,
   EmailService
 >() {}
 
-/**
- * Email Configuration Tag
- */
 export class EmailConfigTag extends Context.Tag("EmailConfig")<
   EmailConfigTag,
   EmailProviderConfig
 >() {}
 
-/**
- * Retry policy for email sending
- * - Exponential backoff starting at 1 second
- * - Maximum 3 retries (hard limit)
- * - Only retry on network errors
- */
 const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   Schedule.jittered,
-  // Use intersect to ensure BOTH conditions must be met (not either/or)
-  Schedule.intersect(Schedule.recurs(3)), // Maximum 3 retries AND exponential backoff
+  Schedule.intersect(Schedule.recurs(3)),
   Schedule.whileInput<EmailServiceError | NetworkError>((error) => {
-    // Only retry on network errors
     return error._tag === "NetworkError";
   }),
   Schedule.tapOutput(([duration, attempt]) =>
@@ -150,10 +93,7 @@ const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   )
 );
 
-/**
- * Email Service Implementation
- */
-const EmailServiceLive = Layer.effect(
+export const EmailServiceLive = Layer.effect(
   EmailServiceTag,
   Effect.gen(function* () {
     const provider = yield* EmailProviderTag;
@@ -163,7 +103,6 @@ const EmailServiceLive = Layer.effect(
     return {
       send: (message: EmailMessage) =>
         Effect.gen(function* () {
-          // Add default from if not specified
           const finalMessage = {
             ...message,
             from: message.from || config.defaultFrom,
@@ -178,7 +117,6 @@ const EmailServiceLive = Layer.effect(
           });
 
           const result = yield* provider.send(finalMessage).pipe(
-            // Log before retry
             Effect.tapError((error) =>
               Effect.logWarning(
                 "Email send failed, will retry if NetworkError",
@@ -197,12 +135,11 @@ const EmailServiceLive = Layer.effect(
                 }
               )
             ),
-            // Apply retry policy
             Effect.retry(emailRetryPolicy),
-            Effect.tap((result) =>
+            Effect.tap((sendResult) =>
               Effect.logInfo("Email sent successfully", {
-                id: result.id,
-                provider: result.provider,
+                id: sendResult.id,
+                provider: sendResult.provider,
                 recipient: Array.isArray(finalMessage.to)
                   ? finalMessage.to.map((r) => r.email || r)
                   : finalMessage.to.email || finalMessage.to,
@@ -228,14 +165,10 @@ const EmailServiceLive = Layer.effect(
 
       sendTemplate: (recipient, template) =>
         Effect.gen(function* () {
-          // Render the template
           const rendered = yield* templateService.render(template);
-
-          // Prepare recipient
           const to =
             typeof recipient === "string" ? { email: recipient } : recipient;
 
-          // Create email message
           const message: EmailMessage = {
             from: config.defaultFrom,
             to,
@@ -248,9 +181,7 @@ const EmailServiceLive = Layer.effect(
             },
           };
 
-          // Send the email
           return yield* provider.send(message).pipe(
-            // Log before retry
             Effect.tapError((error) =>
               Effect.logWarning(
                 "Template email failed, will retry if NetworkError",
@@ -268,11 +199,10 @@ const EmailServiceLive = Layer.effect(
                 }
               )
             ),
-            // Apply retry policy
             Effect.retry(emailRetryPolicy),
-            Effect.tap((result) =>
+            Effect.tap((sendResult) =>
               Effect.logInfo("Template email sent successfully", {
-                id: result.id,
+                id: sendResult.id,
                 template: template.type,
                 recipient: to.email,
                 subject: message.subject,
@@ -312,12 +242,3 @@ const EmailServiceLive = Layer.effect(
     };
   })
 );
-
-/**
- * Export the complete email service layer
- * This needs to be provided with:
- * - EmailProviderTag (specific provider implementation)
- * - EmailTemplateServiceTag (template rendering)
- * - EmailConfigTag (configuration)
- */
-export { EmailServiceLive };

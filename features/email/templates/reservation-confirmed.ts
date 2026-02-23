@@ -1,6 +1,10 @@
 import type { Locale } from "@/features/i18n";
+import {
+  escapeHtml,
+  escapeOptionalHtml,
+} from "@/packages/email/backend/escaping";
+import type { ReservationConfirmationData } from "@/packages/email/types/email.types";
 import { siteConstants } from "@/shared/utils/constants";
-import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
  * Email template for confirmed reservations
@@ -33,6 +37,11 @@ export function renderReservationConfirmedEmail(
     ? `✅ Reservation Confirmed - ${formatDate(data.datetime)}`
     : `✅ Rezervace potvrzena - ${formatDate(data.datetime)}`;
 
+  const customerName = escapeHtml(data.customerName);
+  const tableName = escapeOptionalHtml(data.tableName);
+  const specialRequests = escapeOptionalHtml(data.specialRequests);
+  const reservationId = escapeHtml(data.reservationId);
+
   const html = `
     <!DOCTYPE html>
     <html lang="${locale}">
@@ -54,7 +63,7 @@ export function renderReservationConfirmedEmail(
       
       <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
         <p style="font-size: 16px; margin-bottom: 20px;">
-          ${isEnglish ? `Dear ${data.customerName},` : `Vážený/á ${data.customerName},`}
+          ${isEnglish ? `Dear ${customerName},` : `Vážený/á ${customerName},`}
         </p>
         
         <p style="font-size: 16px; margin-bottom: 20px; color: #16a34a; font-weight: bold;">
@@ -84,7 +93,7 @@ export function renderReservationConfirmedEmail(
                 <strong>${isEnglish ? "Reservation ID:" : "ID rezervace:"}</strong>
               </td>
               <td style="padding: 10px 0; border-bottom: 1px solid #eee; font-family: monospace;">
-                #${data.reservationId}
+                #${reservationId}
               </td>
             </tr>
             <tr>
@@ -120,28 +129,28 @@ export function renderReservationConfirmedEmail(
               </td>
             </tr>
             ${
-              data.tableName
+              tableName
                 ? `
             <tr>
               <td style="padding: 10px 0; border-bottom: 1px solid #eee;">
                 <strong>${isEnglish ? "Table:" : "Stůl:"}</strong>
               </td>
               <td style="padding: 10px 0; border-bottom: 1px solid #eee;">
-                ${data.tableName}
+                ${tableName}
               </td>
             </tr>
             `
                 : ""
             }
             ${
-              data.specialRequests
+              specialRequests
                 ? `
             <tr>
               <td style="padding: 10px 0;">
                 <strong>${isEnglish ? "Special Requests:" : "Speciální požadavky:"}</strong>
               </td>
               <td style="padding: 10px 0;">
-                ${data.specialRequests}
+                ${specialRequests}
               </td>
             </tr>
             `

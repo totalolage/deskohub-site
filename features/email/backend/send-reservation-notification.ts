@@ -11,10 +11,14 @@ import type {
 import { parseNoteData } from "@deskohub/dotypos/note-metadata";
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
+import {
+  escapeHtml,
+  escapeOptionalHtml,
+} from "@/packages/email/backend/escaping";
+import { EmailServiceTag } from "@/packages/email/backend/service";
+import type { EmailMessage } from "@/packages/email/types/email.types";
 import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import { siteConstants } from "@/shared/utils/constants";
-import type { EmailMessage } from "../types/email.types";
-import { EmailServiceTag } from "./service";
 
 /**
  * Send new reservation notification to business
@@ -59,6 +63,11 @@ export const sendNewReservationNotification = (
 
     const formattedDate = formatDate(startDate);
     const formattedTime = formatTime(startDate);
+    const reservationId = reservation.id ?? "pending";
+    const reservationIdHtml = escapeHtml(reservationId);
+    const adminReservationUrl = escapeHtml(
+      `https://admin.dotypos.com/cloud/${dotyposConfig.cloudId}/reservation/${reservationId}`
+    );
 
     // Build customer name
     const customerName =
@@ -68,6 +77,18 @@ export const sendNewReservationNotification = (
         .trim() ||
       customer.companyName ||
       "Guest";
+    const customerNameHtml = escapeHtml(customerName);
+    const specialRequestsHtml = escapeOptionalHtml(specialRequests);
+    const customerEmail = customer.email ?? undefined;
+    const customerEmailHtml = escapeOptionalHtml(customerEmail);
+    const customerEmailHref = customerEmail
+      ? escapeHtml(`mailto:${customerEmail}`)
+      : undefined;
+    const customerPhone = customer.phone ?? undefined;
+    const customerPhoneHtml = escapeOptionalHtml(customerPhone);
+    const customerPhoneHref = customerPhone
+      ? escapeHtml(`tel:${customerPhone}`)
+      : undefined;
 
     // Create the email content
     const subject = `Nová rezervace - ${customerName} - ${formattedDate} ${formattedTime}`;
@@ -77,7 +98,7 @@ export const sendNewReservationNotification = (
         <h2 style="color: #333;">Nová rezervace stolů</h2>
         
         <div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; margin: 20px 0;">
-          <p style="margin: 5px 0;"><strong>ID rezervace:</strong> ${reservation.id}</p>
+          <p style="margin: 5px 0;"><strong>ID rezervace:</strong> ${reservationIdHtml}</p>
           <p style="margin: 5px 0;"><strong>Datum:</strong> ${formattedDate}</p>
           <p style="margin: 5px 0;"><strong>Čas:</strong> ${formattedTime}</p>
           <p style="margin: 5px 0;"><strong>Doba trvání:</strong> ${duration} ${
@@ -92,24 +113,24 @@ export const sendNewReservationNotification = (
         <table style="width: 100%; border-collapse: collapse;">
           <tr>
             <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Jméno:</strong></td>
-            <td style="padding: 8px; border-bottom: 1px solid #eee;">${customerName}</td>
+            <td style="padding: 8px; border-bottom: 1px solid #eee;">${customerNameHtml}</td>
           </tr>
           ${
-            customer.email
+            customerEmailHtml && customerEmailHref
               ? `<tr>
             <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Email:</strong></td>
             <td style="padding: 8px; border-bottom: 1px solid #eee;">
-              <a href="mailto:${customer.email}">${customer.email}</a>
+              <a href="${customerEmailHref}">${customerEmailHtml}</a>
             </td>
           </tr>`
               : ""
           }
           ${
-            customer.phone
+            customerPhoneHtml && customerPhoneHref
               ? `<tr>
             <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Telefon:</strong></td>
             <td style="padding: 8px; border-bottom: 1px solid #eee;">
-              <a href="tel:${customer.phone}">${customer.phone}</a>
+              <a href="${customerPhoneHref}">${customerPhoneHtml}</a>
             </td>
           </tr>`
               : ""
@@ -117,11 +138,11 @@ export const sendNewReservationNotification = (
         </table>
 
         ${
-          specialRequests
+          specialRequestsHtml
             ? `
         <h3 style="color: #666; margin-top: 20px;">Speciální požadavky:</h3>
         <div style="background-color: #fff3cd; padding: 12px; border-radius: 4px; border-left: 4px solid #ffc107;">
-          <p style="margin: 0; white-space: pre-wrap;">${specialRequests}</p>
+          <p style="margin: 0; white-space: pre-wrap;">${specialRequestsHtml}</p>
         </div>
         `
             : ""
@@ -129,7 +150,7 @@ export const sendNewReservationNotification = (
 
         <div style="margin-top: 30px; padding: 15px; background-color: #e8f5e9; border-radius: 5px;">
           <p style="margin: 5px 0; color: #2e7d32;"><strong>Akce potřebná:</strong></p>
-          <p style="margin: 5px 0;">Tato rezervace čeká na potvrzení <a href="https://admin.dotypos.com/cloud/${dotyposConfig.cloudId}/reservation/${reservation.id}" rel="noopener noreferrer" target="_blank">v systému Dotypos</a>.</p>
+          <p style="margin: 5px 0;">Tato rezervace čeká na potvrzení <a href="${adminReservationUrl}" rel="noopener noreferrer" target="_blank">v systému Dotypos</a>.</p>
           <p style="margin: 5px 0;">Zákazník obdržel email s informací, že rezervace byla přijata a čeká na potvrzení.</p>
         </div>
 
@@ -145,7 +166,7 @@ export const sendNewReservationNotification = (
     const text = `
 Nová rezervace stolů
 
-ID rezervace: ${reservation.id}
+ID rezervace: ${reservationId}
 Datum: ${formattedDate}
 Čas: ${formattedTime}
 Doba trvání: ${duration} ${
@@ -190,7 +211,7 @@ Zdroj: Webový formulář
         : undefined,
       tags: ["new-reservation-notification"],
       metadata: {
-        reservationId: reservation.id,
+        reservationId,
         customerId: customer.id,
         customerEmail: customer.email || "",
         source: "webhook",
@@ -200,13 +221,13 @@ Zdroj: Webový formulář
     yield* emailService.send(emailMessage).pipe(
       Effect.tap(() => {
         return Effect.logInfo("New reservation notification sent", {
-          reservationId: reservation.id,
+          reservationId,
           to: siteConstants.contact.reservationEmail,
         });
       }),
       Effect.tapError((error) => {
         return Effect.logError("Failed to send reservation notification", {
-          reservationId: reservation.id,
+          reservationId,
           to: siteConstants.contact.reservationEmail,
           error,
         });
