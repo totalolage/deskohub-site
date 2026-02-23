@@ -25,7 +25,7 @@ export const createEmailProviderLayer = (providerType?: EmailProviderType) => {
 
   return Layer.unwrapScoped(
     Effect.gen(function* () {
-      const resendApiKey = yield* Config.string("RESEND_API_KEY").pipe(
+      const emailApiKey = yield* Config.string("EMAIL_API_KEY").pipe(
         Config.withDefault("")
       );
 
@@ -33,7 +33,7 @@ export const createEmailProviderLayer = (providerType?: EmailProviderType) => {
         Config.withDefault("development")
       );
 
-      if (resendApiKey && nodeEnv !== "test") {
+      if (emailApiKey && nodeEnv !== "test") {
         yield* Effect.logInfo("Using Resend email provider");
         return ResendEmailProviderLive;
       }
@@ -46,9 +46,9 @@ export const createEmailProviderLayer = (providerType?: EmailProviderType) => {
 
 export const EmailProviderLive = Layer.unwrapEffect(
   Effect.gen(function* () {
-    const resendApiKey = yield* Config.string("RESEND_API_KEY").pipe(
+    const emailApiKey = yield* Config.string("EMAIL_API_KEY").pipe(
       Config.withDefault(""),
-      Config.withDescription("Resend API key for email sending")
+      Config.withDescription("Email provider API key for email sending")
     );
 
     const emailProvider = yield* Config.string("EMAIL_PROVIDER").pipe(
@@ -62,7 +62,7 @@ export const EmailProviderLive = Layer.unwrapEffect(
 
     if (
       emailProvider === "resend" ||
-      (emailProvider === "auto" && resendApiKey && nodeEnv !== "test")
+      (emailProvider === "auto" && emailApiKey && nodeEnv !== "test")
     ) {
       yield* Effect.logInfo("Initializing Resend email provider");
       return ResendEmailProviderLive;

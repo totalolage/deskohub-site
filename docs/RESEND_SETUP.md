@@ -8,14 +8,14 @@ Default behavior:
 
 - `EMAIL_PROVIDER=resend` forces Resend.
 - `EMAIL_PROVIDER=console` forces console logging provider.
-- `EMAIL_PROVIDER=auto` (default) uses Resend when `RESEND_API_KEY` is present and `NODE_ENV !== test`; otherwise console provider.
+- `EMAIL_PROVIDER=auto` (default) uses Resend when `EMAIL_API_KEY` is present and `NODE_ENV !== test`; otherwise console provider.
 
 ## Required Configuration
 
 Add to `.env.local` (or deployment env):
 
 ```bash
-RESEND_API_KEY=re_...
+EMAIL_API_KEY=re_...
 EMAIL_PROVIDER=auto
 ```
 
