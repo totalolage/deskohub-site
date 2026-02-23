@@ -2,7 +2,7 @@ import { DotyposService as SharedDotyposService } from "@deskohub/dotypos/backen
 import { Effect, Layer } from "effect";
 import { getLocale } from "@/features/i18n";
 import type { TableReservationFormData } from "@/features/table-reservation/schemas/table-reservation";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { DotyposConfigFromEnv } from "./dotypos-config.layer";
 
 export class DotyposService extends Effect.Service<DotyposService>()(
   "DotyposService",
@@ -20,7 +20,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
       };
     }),
     dependencies: [
-      Layer.provide(SharedDotyposService.Default, DotyposRuntimeConfigLive),
+      Layer.provide(SharedDotyposService.Default, DotyposConfigFromEnv),
     ],
   }
 ) {}

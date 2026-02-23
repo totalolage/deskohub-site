@@ -3,8 +3,14 @@
  */
 
 import { Data, Effect } from "effect";
-import { env } from "@/env";
 import { isDev } from "@/shared/utils/environment";
+
+type WebhookValidationConfig = {
+  webhookSecret?: string;
+  nodeEnv?: string;
+  vercelEnv?: string;
+  hostname?: string;
+};
 
 /**
  * Common Webhook Errors
@@ -28,10 +34,19 @@ export class WebhookValidationError extends Data.TaggedError(
  * @param url - The request URL containing the secret parameter
  * @returns Effect that fails with WebhookAuthError if validation fails
  */
-export const validateWebhookUUID = (url: URL) =>
+export const validateWebhookUUID = (
+  url: URL,
+  config: WebhookValidationConfig = {}
+) =>
   Effect.gen(function* () {
     // Skip validation in development
-    if (isDev()) {
+    if (
+      isDev({
+        nodeEnv: config.nodeEnv,
+        vercelEnv: config.vercelEnv,
+        hostname: config.hostname,
+      })
+    ) {
       yield* Effect.logDebug("Webhook UUID validation skipped in development");
       return;
     }
@@ -44,7 +59,13 @@ export const validateWebhookUUID = (url: URL) =>
       );
     }
 
-    if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
+    if (!config.webhookSecret) {
+      yield* Effect.fail(
+        new WebhookAuthError({ message: "Webhook secret is not configured" })
+      );
+    }
+
+    if (providedSecret !== config.webhookSecret) {
       yield* Effect.fail(
         new WebhookAuthError({ message: "Invalid webhook secret" })
       );

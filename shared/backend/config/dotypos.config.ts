@@ -4,13 +4,8 @@
  * Centralized configuration for Dotypos API integration
  */
 
-import {
-  DotyposRuntimeConfig,
-  type DotyposRuntimeConfigObj,
-} from "@deskohub/dotypos/config";
-import { Effect, Layer, Schema } from "effect";
-import { env } from "@/env";
-import { siteConstants } from "@/shared/utils/constants";
+import { makeDotyposRuntimeConfigLayer } from "@deskohub/dotypos/config";
+import { Context, Layer, Schema } from "effect";
 
 /**
  * Dotypos Configuration Schema with validation
@@ -32,36 +27,35 @@ export const DotyposConfigSchema = Schema.Struct({
 
 export type DotyposConfigObj = Schema.Schema.Type<typeof DotyposConfigSchema>;
 
+export type DotyposConfigInput = {
+  clientId: string;
+  clientSecret: string;
+  refreshToken: string;
+  cloudId: string;
+  branchId: string;
+  employeeId: string;
+  apiUrl: string;
+  apiTimeout: number;
+  reservationTableIds: string[];
+};
+
+const decodeDotyposConfig = Schema.decodeUnknownSync(DotyposConfigSchema);
+
+export const parseDotyposConfig = (
+  input: DotyposConfigInput
+): DotyposConfigObj => decodeDotyposConfig(input);
+
 /**
  * Context tag for dependency injection
  */
-export class DotyposConfig extends Effect.Service<DotyposConfig>()(
-  "DotyposConfig",
-  {
-    succeed: {
-      clientId: env.DOTYPOS_CLIENT_ID,
-      clientSecret: env.DOTYPOS_CLIENT_SECRET,
-      refreshToken: env.DOTYPOS_REFRESH_TOKEN,
-      cloudId: env.DOTYPOS_CLOUD_ID,
-      branchId: env.DOTYPOS_BRANCH_ID,
-      employeeId: env.DOTYPOS_EMPLOYEE_ID,
-      apiUrl: env.DOTYPOS_API_URL,
-      apiTimeout: env.DOTYPOS_API_TIMEOUT,
-      reservationTableIds:
-        siteConstants.tableReservation.tablesToAssignReservationsTo,
-    },
-  }
-) {}
+export const DotyposConfig =
+  Context.GenericTag<DotyposConfigObj>("@app/DotyposConfig");
 
-export const DotyposRuntimeConfigLive = Layer.succeed(DotyposRuntimeConfig, {
-  clientId: env.DOTYPOS_CLIENT_ID,
-  clientSecret: env.DOTYPOS_CLIENT_SECRET,
-  refreshToken: env.DOTYPOS_REFRESH_TOKEN,
-  cloudId: env.DOTYPOS_CLOUD_ID,
-  branchId: env.DOTYPOS_BRANCH_ID,
-  employeeId: env.DOTYPOS_EMPLOYEE_ID,
-  apiUrl: env.DOTYPOS_API_URL,
-  apiTimeout: env.DOTYPOS_API_TIMEOUT,
-  reservationTableIds:
-    siteConstants.tableReservation.tablesToAssignReservationsTo,
-} satisfies DotyposRuntimeConfigObj);
+export const makeDotyposConfigLayer = (input: DotyposConfigInput) => {
+  const config = parseDotyposConfig(input);
+
+  return Layer.mergeAll(
+    Layer.succeed(DotyposConfig, config),
+    makeDotyposRuntimeConfigLayer(config)
+  );
+};

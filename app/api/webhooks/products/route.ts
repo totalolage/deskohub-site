@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
+import { env } from "@/env";
 import {
   validateWebhookUUID,
   WebhookValidationError,
@@ -233,7 +234,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // Validate webhook security using UUID
     const url = new URL(request.url);
-    yield* validateWebhookUUID(url);
+    yield* validateWebhookUUID(url, {
+      webhookSecret: env.DOTYPOS_WEBHOOK_SECRET,
+      nodeEnv: env.NEXT_PUBLIC_NODE_ENV,
+      vercelEnv: env.NEXT_PUBLIC_VERCEL_ENV,
+    });
 
     // Parse request body
     const payload = yield* Effect.tryPromise({

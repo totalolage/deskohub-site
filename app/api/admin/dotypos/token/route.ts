@@ -1,13 +1,42 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
 
-function isTokenRequest(body: unknown): body is { code: string } {
+const LOCALE_PATTERN = /^[a-z]{2}-[A-Z]{2}$/;
+
+function isTokenRequest(
+  body: unknown
+): body is { code: string; locale?: string } {
   return (
     body !== null &&
     typeof body === "object" &&
     "code" in body &&
-    typeof (body as Record<string, unknown>).code === "string"
+    typeof (body as Record<string, unknown>).code === "string" &&
+    (!("locale" in body) ||
+      typeof (body as Record<string, unknown>).locale === "string")
   );
+}
+
+function resolveRequestOrigin(request: NextRequest): URL {
+  const protocol =
+    request.headers.get("x-forwarded-proto") ??
+    request.nextUrl.protocol.replace(":", "");
+  const host =
+    request.headers.get("x-forwarded-host") ?? request.headers.get("host");
+
+  if (!host) {
+    return new URL(request.nextUrl.origin);
+  }
+
+  return new URL(`${protocol}://${host}`);
+}
+
+function resolveLocale(
+  body: { code: string; locale?: string },
+  request: NextRequest
+): string {
+  const queryLocale = request.nextUrl.searchParams.get("locale");
+  const localeCandidate = body.locale ?? queryLocale ?? "en-US";
+  return LOCALE_PATTERN.test(localeCandidate) ? localeCandidate : "en-US";
 }
 
 function isTokenResponse(data: unknown): data is {
@@ -44,7 +73,12 @@ export async function POST(request: NextRequest) {
 
     const clientId = env.DOTYPOS_CLIENT_ID;
     const clientSecret = env.DOTYPOS_CLIENT_SECRET;
-    const redirectUrl = "http://localhost:3000/cs-CZ/admin/dotypos/callback";
+    const locale = resolveLocale(body, request);
+    const origin = resolveRequestOrigin(request);
+    const redirectUrl = new URL(
+      `/${locale}/admin/dotypos/callback`,
+      origin
+    ).toString();
 
     // Using configured OAuth2 credentials
 
