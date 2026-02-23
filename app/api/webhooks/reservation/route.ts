@@ -1,7 +1,9 @@
 import { Effect, Layer, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
+import { env } from "@/env";
 import { DotyposService } from "@/features/dotypos";
+import { DotyposConfigFromEnv } from "@/features/dotypos/backend/dotypos-config.layer";
 import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
@@ -12,7 +14,6 @@ import {
 } from "@/features/email/backend/send-reservation-status-email";
 import { getLocale, type Locale } from "@/features/i18n";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
-import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import {
   validateWebhookUUID,
   WebhookValidationError,
@@ -216,7 +217,11 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     // Validate webhook security using UUID
     const url = new URL(request.url);
-    yield* validateWebhookUUID(url);
+    yield* validateWebhookUUID(url, {
+      webhookSecret: env.DOTYPOS_WEBHOOK_SECRET,
+      nodeEnv: env.NEXT_PUBLIC_NODE_ENV,
+      vercelEnv: env.NEXT_PUBLIC_VERCEL_ENV,
+    });
 
     // Parse request body
     const payload = yield* Effect.tryPromise({
@@ -273,7 +278,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     ),
     Effect.provide(
       Layer.mergeAll(
-        DotyposConfig.Default,
+        DotyposConfigFromEnv,
         DotyposService.Default,
         StandaloneEmailServiceLive
       )

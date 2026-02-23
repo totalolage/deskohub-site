@@ -44,7 +44,16 @@ export default async function RootLayout({
           </main>
           <Footer />
           <Toaster />
-          <Analytics mode={isDev() ? "development" : "production"} />
+          <Analytics
+            mode={
+              isDev({
+                nodeEnv: env.NEXT_PUBLIC_NODE_ENV,
+                vercelEnv: env.NEXT_PUBLIC_VERCEL_ENV,
+              })
+                ? "development"
+                : "production"
+            }
+          />
         </SafeAreaProvider>
       </body>
     </html>

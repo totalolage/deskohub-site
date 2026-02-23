@@ -24,6 +24,7 @@ import type {
 import { isCategoryDisplayable } from "../utils/category-utils";
 import { createNoteData } from "../utils/note-metadata";
 import { DotyposApi } from "./api";
+import { DotyposConfigFromEnv } from "./dotypos-config.layer";
 
 /**
  * Retry policy with exponential backoff and jitter
@@ -653,7 +654,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
       Effect.withConcurrency(5)
     ),
     dependencies: [
-      Layer.provideMerge(DotyposApi.Default, DotyposConfig.Default),
+      Layer.provideMerge(DotyposApi.Default, DotyposConfigFromEnv),
     ],
   }
 ) {}
