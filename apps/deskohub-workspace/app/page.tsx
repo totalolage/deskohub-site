@@ -1,10 +1,10 @@
-import { sharedWorkspaceContract } from "@deskohub/workspace-shared";
 import { Effect } from "effect";
-import { workspaceStatusProgram } from "@/features/effect/workspace-program";
+import { workspaceStatusProgram } from "../features/effect/workspace-program";
 import {
   defaultWorkspaceLocale,
   getWorkspaceCopy,
-} from "@/features/i18n/dictionary";
+} from "../features/i18n/dictionary";
+import { sharedWorkspaceContract } from "../features/shared/workspace-contract";
 
 export default function WorkspaceHomePage() {
   const copy = getWorkspaceCopy(defaultWorkspaceLocale);

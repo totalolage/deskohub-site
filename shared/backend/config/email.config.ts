@@ -5,8 +5,8 @@
  */
 
 import { Config, Layer } from "effect";
-import type { EmailProviderConfig } from "@/features/email";
-import { EmailConfigTag } from "@/features/email";
+import type { EmailProviderConfig } from "@/packages/email";
+import { EmailConfigTag } from "@/packages/email";
 import { siteConstants } from "@/shared/utils/constants";
 
 /**
