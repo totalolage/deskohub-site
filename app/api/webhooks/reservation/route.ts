@@ -4,7 +4,6 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { DotyposService } from "@/features/dotypos";
-import { DotyposConfigFromEnv } from "@/features/dotypos/backend/dotypos-config.layer";
 import { StandaloneEmailServiceLive } from "@/features/email";
 import { sendNewReservationNotification } from "@/features/email/backend/send-reservation-notification";
 import {
@@ -14,6 +13,7 @@ import {
 } from "@/features/email/backend/send-reservation-status-email";
 import { getLocale, type Locale } from "@/features/i18n";
 import type { WebhookResult, WebhookStatusChange } from "@/features/webhook";
+import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import {
   validateWebhookUUID,
   WebhookValidationError,
@@ -278,7 +278,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     ),
     Effect.provide(
       Layer.mergeAll(
-        DotyposConfigFromEnv,
+        DotyposConfig.Default,
         DotyposService.Default,
         StandaloneEmailServiceLive
       )
