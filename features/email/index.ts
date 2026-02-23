@@ -8,7 +8,22 @@
 export {
   createEmailProviderLayer,
   type EmailProviderType,
-} from "./backend/provider-factory";
+} from "@/packages/email/backend/provider-factory";
+// Services and Tags (only what's actually used externally)
+export {
+  EmailConfigTag,
+  EmailServiceError,
+} from "@/packages/email/backend/service";
+// Types
+export type {
+  EmailMessage,
+  EmailProviderConfig,
+  EmailRecipient,
+  EmailSendResult,
+  EmailTemplateData,
+  EmailTemplateType,
+  ReservationConfirmationData,
+} from "@/packages/email/types/email.types";
 // Individual providers (for testing or explicit configuration)
 export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
 export { ResendEmailProviderLive } from "./backend/providers/resend-provider";
@@ -19,18 +34,5 @@ export {
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
 } from "./backend/send-reservation-status-email";
-// Services and Tags (only what's actually used externally)
-export { EmailConfigTag, EmailServiceError } from "./backend/service";
 // Standalone Email Service
 export { StandaloneEmailServiceLive } from "./backend/standalone-email-service";
-
-// Types
-export type {
-  EmailMessage,
-  EmailProviderConfig,
-  EmailRecipient,
-  EmailSendResult,
-  EmailTemplateData,
-  EmailTemplateType,
-  ReservationConfirmationData,
-} from "./types/email.types";

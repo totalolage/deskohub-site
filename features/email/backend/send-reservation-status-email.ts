@@ -11,16 +11,16 @@ import type {
 } from "@/features/dotypos/generated/types.gen";
 import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/features/i18n";
+import { EmailServiceTag } from "@/packages/email/backend/service";
+import type {
+  EmailMessage,
+  ReservationConfirmationData,
+} from "@/packages/email/types/email.types";
 import { buildAbsoluteUrl } from "@/shared/backend/utils/site-url";
 import { siteConstants } from "@/shared/utils/constants";
 import { renderReservationConfirmedEmail } from "../templates/reservation-confirmed";
 import { renderReservationCreatedEmail } from "../templates/reservation-created";
 import { renderReservationDeclinedEmail } from "../templates/reservation-declined";
-import type {
-  EmailMessage,
-  ReservationConfirmationData,
-} from "../types/email.types";
-import { EmailServiceTag } from "./service";
 
 /**
  * Prepare reservation data for email templates

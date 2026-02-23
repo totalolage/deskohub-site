@@ -11,10 +11,10 @@ import type {
 } from "@/features/dotypos/generated/types.gen";
 import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/features/i18n";
+import { EmailServiceTag } from "@/packages/email/backend/service";
+import type { EmailMessage } from "@/packages/email/types/email.types";
 import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import { siteConstants } from "@/shared/utils/constants";
-import type { EmailMessage } from "../types/email.types";
-import { EmailServiceTag } from "./service";
 
 /**
  * Send new reservation notification to business

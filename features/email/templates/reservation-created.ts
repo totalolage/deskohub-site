@@ -1,6 +1,6 @@
 import type { Locale } from "@/features/i18n";
+import type { ReservationConfirmationData } from "@/packages/email/types/email.types";
 import { siteConstants } from "@/shared/utils/constants";
-import type { ReservationConfirmationData } from "../types/email.types";
 
 /**
  * Email template for newly created reservations (pending confirmation)
