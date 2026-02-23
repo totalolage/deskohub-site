@@ -1,4 +1,8 @@
 import type { Locale } from "@/features/i18n";
+import {
+  escapeHtml,
+  escapeOptionalHtml,
+} from "@/packages/email/backend/escaping";
 import type { ReservationConfirmationData } from "@/packages/email/types/email.types";
 import { siteConstants } from "@/shared/utils/constants";
 
@@ -33,6 +37,9 @@ export function renderReservationCreatedEmail(
     ? `Reservation Request Received - ${data.customerName}`
     : `Přijali jsme vaši rezervaci - ${data.customerName}`;
 
+  const customerName = escapeHtml(data.customerName);
+  const specialRequests = escapeOptionalHtml(data.specialRequests);
+
   const html = `
     <!DOCTYPE html>
     <html lang="${locale}">
@@ -49,7 +56,7 @@ export function renderReservationCreatedEmail(
       
       <div style="background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px;">
         <p style="font-size: 16px; margin-bottom: 20px;">
-          ${isEnglish ? `Dear ${data.customerName},` : `Vážený/á ${data.customerName},`}
+          ${isEnglish ? `Dear ${customerName},` : `Vážený/á ${customerName},`}
         </p>
         
         <p style="font-size: 16px; margin-bottom: 20px;">
@@ -99,14 +106,14 @@ export function renderReservationCreatedEmail(
               </td>
             </tr>
             ${
-              data.specialRequests
+              specialRequests
                 ? `
             <tr>
               <td style="padding: 10px 0;">
                 <strong>${isEnglish ? "Special Requests:" : "Speciální požadavky:"}</strong>
               </td>
               <td style="padding: 10px 0;">
-                ${data.specialRequests}
+                ${specialRequests}
               </td>
             </tr>
             `
