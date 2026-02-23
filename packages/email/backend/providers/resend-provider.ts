@@ -40,132 +40,131 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 
     send: (message: EmailMessage) =>
       Effect.gen(function* () {
-        try {
-          yield* Effect.logInfo("Sending email via Resend", {
-            to: message.to,
-            subject: message.subject,
-            from: message.from,
-          });
+        yield* Effect.logInfo("Sending email via Resend", {
+          to: message.to,
+          subject: message.subject,
+          from: message.from,
+        });
 
-          const result = yield* Effect.tryPromise({
-            try: async () => {
-              const fromAddress =
-                typeof message.from === "string"
-                  ? message.from
-                  : `${message.from.name || ""} <${message.from.email}>`.trim();
+        const result = yield* Effect.tryPromise({
+          try: async () => {
+            const fromAddress =
+              typeof message.from === "string"
+                ? message.from
+                : `${message.from.name || ""} <${message.from.email}>`.trim();
 
-              const toAddresses =
-                typeof message.to === "string"
-                  ? [message.to]
-                  : Array.isArray(message.to)
-                    ? message.to.map((r) => r.email)
-                    : [message.to.email];
+            const toAddresses =
+              typeof message.to === "string"
+                ? [message.to]
+                : Array.isArray(message.to)
+                  ? message.to.map((r) => r.email)
+                  : [message.to.email];
 
-              const response = await resend.emails.send({
-                from: fromAddress,
-                to: toAddresses,
-                subject: message.subject,
-                html: message.html,
-                text: message.text || "",
-                replyTo: message.replyTo
-                  ? typeof message.replyTo === "string"
-                    ? message.replyTo
-                    : message.replyTo.email
-                  : undefined,
-              });
+            const response = await resend.emails.send({
+              from: fromAddress,
+              to: toAddresses,
+              subject: message.subject,
+              html: message.html,
+              text: message.text || "",
+              replyTo: message.replyTo
+                ? typeof message.replyTo === "string"
+                  ? message.replyTo
+                  : message.replyTo.email
+                : undefined,
+            });
 
-              if (response.error) {
-                const { error: errorMessage, statusCode } =
-                  response.error as unknown as {
-                    statusCode: number;
-                    error: string;
-                  };
-
-                if (
-                  (statusCode >= 400 && statusCode < 500) ||
-                  errorMessage.toLowerCase().includes("invalid") ||
-                  errorMessage.toLowerCase().includes("bad request") ||
-                  errorMessage.toLowerCase().includes("unauthorized") ||
-                  errorMessage.toLowerCase().includes("forbidden") ||
-                  errorMessage.toLowerCase().includes("not verified")
-                ) {
-                  throw new Error(`CLIENT_ERROR: ${errorMessage}`);
-                }
-
-                throw new Error(`API_ERROR: ${errorMessage}`);
-              }
-
-              return response;
-            },
-            catch: (error) => {
+            if (response.error) {
+              const resendError = response.error as {
+                statusCode?: number;
+                message?: string;
+                error?: string;
+                name?: string;
+              };
               const errorMessage =
-                error instanceof Error ? error.message : String(error);
-
-              if (errorMessage.includes("CLIENT_ERROR:")) {
-                return new EmailServiceError(
-                  errorMessage.replace("CLIENT_ERROR: ", ""),
-                  undefined,
-                  "resend"
-                );
-              }
+                resendError.message ||
+                resendError.error ||
+                "Unknown Resend error";
+              const normalizedErrorMessage = errorMessage.toLowerCase();
 
               if (
-                errorMessage.includes("ECONNREFUSED") ||
-                errorMessage.includes("ETIMEDOUT") ||
-                errorMessage.includes("ENOTFOUND") ||
-                errorMessage.includes("network") ||
-                errorMessage.includes("API_ERROR:")
+                (resendError.statusCode !== undefined &&
+                  resendError.statusCode >= 400 &&
+                  resendError.statusCode < 500) ||
+                normalizedErrorMessage.includes("invalid") ||
+                normalizedErrorMessage.includes("bad request") ||
+                normalizedErrorMessage.includes("unauthorized") ||
+                normalizedErrorMessage.includes("forbidden") ||
+                normalizedErrorMessage.includes("not verified")
               ) {
-                return new NetworkError({
-                  message: "Resend network error",
-                  cause: error,
-                });
+                throw new Error(`CLIENT_ERROR: ${errorMessage}`);
               }
 
+              throw new Error(`API_ERROR: ${errorMessage}`);
+            }
+
+            return response;
+          },
+          catch: (error) => {
+            const errorMessage =
+              error instanceof Error ? error.message : String(error);
+            const normalizedErrorMessage = errorMessage.toLowerCase();
+
+            if (errorMessage.includes("CLIENT_ERROR:")) {
               return new EmailServiceError(
-                `Resend error: ${errorMessage}`,
-                undefined,
+                errorMessage.replace("CLIENT_ERROR: ", ""),
+                error,
                 "resend"
               );
-            },
-          }).pipe(
-            Effect.tap((response) =>
-              Effect.logInfo("Resend tryPromise succeeded", {
-                hasData: !!response.data,
-                id: response.data?.id,
-              })
-            ),
-            Effect.tapError((error) =>
-              Effect.logWarning(
-                "Resend tryPromise failed - will retry if NetworkError",
-                {
-                  errorTag: error._tag,
-                  errorMessage: error.message,
-                  willRetry: error._tag === "NetworkError",
-                }
-              )
-            )
-          );
+            }
 
-          yield* Effect.logInfo("Email sent successfully via Resend", {
-            id: result.data?.id,
-            response: result,
-          });
+            if (
+              errorMessage.includes("API_ERROR:") ||
+              normalizedErrorMessage.includes("econnrefused") ||
+              normalizedErrorMessage.includes("etimedout") ||
+              normalizedErrorMessage.includes("enotfound") ||
+              normalizedErrorMessage.includes("network")
+            ) {
+              return new NetworkError({
+                message: "Resend network error",
+                cause: error,
+              });
+            }
 
-          return {
-            id: result.data?.id || `resend-${Date.now()}`,
-            provider: "resend",
-            timestamp: new Date(),
-          } as EmailSendResult;
-        } catch (error) {
-          yield* Effect.logError("Resend send error", { error });
-          return yield* Effect.fail(
-            new NetworkError({
-              message: "Resend API error",
-              cause: error,
+            return new EmailServiceError(
+              `Resend error: ${errorMessage}`,
+              error,
+              "resend"
+            );
+          },
+        }).pipe(
+          Effect.tap((response) =>
+            Effect.logInfo("Resend tryPromise succeeded", {
+              hasData: !!response.data,
+              id: response.data?.id,
             })
-          );
-        }
+          ),
+          Effect.tapError((error) =>
+            Effect.logWarning(
+              "Resend tryPromise failed - will retry if NetworkError",
+              {
+                errorTag: error._tag,
+                errorMessage: error.message,
+                willRetry: error._tag === "NetworkError",
+              }
+            )
+          )
+        );
+
+        yield* Effect.logInfo("Email sent successfully via Resend", {
+          id: result.data?.id,
+          response: result,
+        });
+
+        return {
+          id: result.data?.id || `resend-${Date.now()}`,
+          provider: "resend",
+          timestamp: new Date(),
+        } as EmailSendResult;
       }),
 
     verify: () =>
