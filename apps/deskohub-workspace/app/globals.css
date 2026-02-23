@@ -1,0 +1,50 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --workspace-bg: #f5f4ef;
+  --workspace-ink: #182231;
+  --workspace-accent: #0d8a6b;
+  --workspace-panel: #ffffff;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-ibm-plex-sans), "Segoe UI", sans-serif;
+  color: var(--workspace-ink);
+  background:
+    radial-gradient(circle at 20% 10%, #d7e8de 0%, transparent 48%),
+    radial-gradient(circle at 80% 90%, #d8e2f2 0%, transparent 45%),
+    var(--workspace-bg);
+}
+
+main {
+  margin: 0 auto;
+  max-width: 960px;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.workspace-card {
+  border: 1px solid rgba(24, 34, 49, 0.12);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--workspace-panel) 92%, transparent);
+  box-shadow: 0 12px 40px rgba(24, 34, 49, 0.08);
+  padding: 1.5rem;
+}
+
+.workspace-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 9999px;
+  padding: 0.25rem 0.75rem;
+  color: white;
+  background: var(--workspace-accent);
+  font-size: 0.875rem;
+  font-weight: 600;
+}
