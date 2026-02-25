@@ -12,7 +12,7 @@ Default behavior:
 
 ## Required Configuration
 
-Add to `.env.local` (or deployment env):
+Add to `apps/deskohub-boardgame-bar/.env.local` (or deployment env):
 
 ```bash
 EMAIL_API_KEY=re_...

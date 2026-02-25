@@ -83,11 +83,17 @@ bun run start
 
 ## 🌍 Environment Variables
 
-Create a `.env.local` file in the root directory:
+Environment files are app-local in this monorepo.
 
-```env
-# Add any required environment variables here
+```bash
+# Boardgame Bar app
+cp apps/deskohub-boardgame-bar/.env.example apps/deskohub-boardgame-bar/.env.local
+
+# Workspace app
+cp apps/deskohub-workspace/.env.example apps/deskohub-workspace/.env.local
 ```
+
+The root `.env.example` only points to these app-specific files.
 
 ## 📦 Project Scripts
 
