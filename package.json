@@ -9,11 +9,17 @@
   "type": "module",
   "scripts": {
     "build": "turbo run build",
+    "build:boardgame": "turbo run build --filter=deskohub-boardgame-bar",
+    "build:workspace": "turbo run build --filter=deskohub-workspace",
     "dev": "turbo run dev --parallel",
     "dev:boardgame": "turbo run dev --filter=deskohub-boardgame-bar",
     "dev:workspace": "turbo run dev --filter=deskohub-workspace",
     "lint": "turbo run lint",
+    "lint:boardgame": "turbo run lint --filter=deskohub-boardgame-bar",
+    "lint:workspace": "turbo run lint --filter=deskohub-workspace",
     "typecheck": "turbo run typecheck",
+    "typecheck:boardgame": "turbo run typecheck --filter=deskohub-boardgame-bar",
+    "typecheck:workspace": "turbo run typecheck --filter=deskohub-workspace",
     "format": "bunx biome check --write --unsafe .",
     "dotypos:generate": "turbo run dotypos:generate --filter=@deskohub/dotypos"
   },

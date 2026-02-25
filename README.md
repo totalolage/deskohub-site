@@ -83,17 +83,41 @@ bun run start
 
 ## 🌍 Environment Variables
 
-Environment files are app-local in this monorepo.
+This monorepo supports shared root defaults plus app-specific overrides.
+
+When an app command runs from the root (`bun run dev:*`, `bun run build:*`, `bun run lint:*`, `bun run typecheck:*`, or any Turbo task), env files are loaded in this order:
+
+```bash
+# root defaults
+.env
+.env.local
+.env.development
+.env.development.local
+
+# app-specific values (override root values)
+apps/<app>/.env
+apps/<app>/.env.local
+apps/<app>/.env.development
+apps/<app>/.env.development.local
+```
+
+Later files override earlier files. Host-provided environment variables still take precedence over file values.
 
 ```bash
 # Boardgame Bar app
 cp apps/deskohub-boardgame-bar/.env.example apps/deskohub-boardgame-bar/.env.local
 
+# Optional app-specific dev overrides (wins over root values for this app)
+touch apps/deskohub-boardgame-bar/.env.development.local
+
 # Workspace app
 cp apps/deskohub-workspace/.env.example apps/deskohub-workspace/.env.local
+
+# Optional app-specific dev overrides (wins over root values for this app)
+touch apps/deskohub-workspace/.env.development.local
 ```
 
-The root `.env.example` only points to these app-specific files.
+Use `EMAIL_API_KEY` (not alternate names) for email provider credentials.
 
 ## 📦 Project Scripts
 
