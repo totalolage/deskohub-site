@@ -1,7 +1,7 @@
 import { Config, Context, Effect, Layer } from "effect";
 import { Resend } from "resend";
-import { NetworkError } from "@/shared/backend/errors";
 import type { EmailMessage, EmailSendResult } from "../../types/email.types";
+import { NetworkError } from "../network-error";
 import {
   type EmailProvider,
   EmailProviderTag,

@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer, Schedule } from "effect";
-import type { NetworkError } from "@/shared/backend/errors";
+import type { NetworkError } from "./network-error";
 import type {
   EmailMessage,
   EmailProviderConfig,
