@@ -3,6 +3,7 @@
   "extends": ["//"],
   "tasks": {
     "build": {
+      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"],
       "env": [
         "NODE_ENV",
         "DOTYPOS_CLIENT_ID",
@@ -24,6 +25,9 @@
         "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
         "NEXT_PUBLIC_GTM_ID"
       ]
+    },
+    "dev": {
+      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
     }
   }
 }

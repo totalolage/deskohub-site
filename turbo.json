@@ -21,9 +21,6 @@
     },
     "i18n:compile": {
       "outputs": ["features/i18n/paraglide/**"]
-    },
-    "dotypos:generate": {
-      "outputs": ["src/generated/**"]
     }
   }
 }

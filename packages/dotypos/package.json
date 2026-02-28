@@ -18,7 +18,7 @@
     "./phone-formatting": "./src/utils/phone-formatting.ts"
   },
   "scripts": {
-    "generate": "bunx openapi-ts -f ./openapi/openapi-ts.config.ts"
+    "generate": "openapi-ts -f ./openapi/openapi-ts.config.ts"
   },
   "dependencies": {
     "@effect/schema": "^0.75.5",
@@ -26,6 +26,7 @@
     "effect": "^3.17.2",
     "invisible-strings": "^0.0.1",
     "libphonenumber-js": "^1.12.10",
+    "openapi-ts": "^0.3.4",
     "superjson": "^2.2.6"
   },
   "devDependencies": {
