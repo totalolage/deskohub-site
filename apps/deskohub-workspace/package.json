@@ -4,12 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "node ../../scripts/run-with-app-env.mjs deskohub-workspace -- bunx next build --turbo",
-    "next:build": "bunx next build --turbo",
-    "dev": "node ../../scripts/run-with-app-env.mjs deskohub-workspace -- bunx next dev --turbo --port 3010",
-    "lint": "node ../../scripts/run-with-app-env.mjs deskohub-workspace -- bunx biome check . --config-path ../../biome.json --vcs-root ../../",
-    "typecheck": "node ../../scripts/run-with-app-env.mjs deskohub-workspace -- bunx tsc --noEmit",
-    "start": "bunx next start --port 3010"
+    "build": "next build --turbo",
+    "dev": "next dev --turbo",
+    "lint": "biome check . --config-path ../../biome.json --vcs-root ../../",
+    "typecheck": "tsc --noEmit",
+    "start": "next start"
   },
   "dependencies": {
     "@t3-oss/env-nextjs": "^0.13.8",
