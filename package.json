@@ -21,7 +21,7 @@
     "typecheck:boardgame": "turbo run typecheck --filter=deskohub-boardgame-bar",
     "typecheck:workspace": "turbo run typecheck --filter=deskohub-workspace",
     "format": "bunx biome check --write --unsafe .",
-    "dotypos:generate": "turbo run dotypos:generate --filter=@deskohub/dotypos"
+    "generate:dotypos": "turbo run generate --filter=@deskohub/dotypos"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",

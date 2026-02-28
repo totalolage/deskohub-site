@@ -5,13 +5,10 @@
   "type": "module",
   "scripts": {
     "build": "next build --turbo",
-    "prebuild": "run-p i18n:compile",
     "dev": "run-p dev:next dev:i18n",
-    "dev:next": "bunx next dev --turbo",
+    "dev:next": "next dev --turbo",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
-    "predev:i18n": "bun i18n:compile",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
-    "dotypos:generate": "bun run --cwd ../../packages/dotypos generate",
     "lint": "biome check . --config-path ../../biome.json --vcs-root ../../",
     "typecheck": "run-s i18n:compile 'tsc --noEmit'",
     "start": "next start"
