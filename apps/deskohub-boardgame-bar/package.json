@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build --turbo",
+    "prebuild": "i18n:compile",
     "dev": "run-p dev:next dev:i18n",
     "dev:next": "bunx next dev --turbo",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
