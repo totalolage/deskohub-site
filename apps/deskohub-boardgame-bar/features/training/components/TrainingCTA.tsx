@@ -25,7 +25,7 @@ export const TrainingCTA = async () => {
             {m["training.cta.description"]({
               email: siteConstants.contact.infoEmail,
               phone: formatPhoneNumber(
-                siteConstants.contact.phoneTraining,
+                siteConstants.contact.phone,
                 locale
               ),
             })}

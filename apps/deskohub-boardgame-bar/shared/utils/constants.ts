@@ -62,7 +62,6 @@ export const siteConstants = {
   },
   contact: {
     phone: "+420777060478",
-    phoneTraining: "+420608200377",
     get fromEmail() {
       return `noreply@mail.${siteConstants.brand.domain}`;
     },
