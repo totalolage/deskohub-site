@@ -3,10 +3,14 @@
 @tailwind utilities;
 
 :root {
-  --workspace-bg: #f5f4ef;
-  --workspace-ink: #182231;
-  --workspace-accent: #0d8a6b;
-  --workspace-panel: #ffffff;
+  --bg: #f5f4ef;
+  --ink: #182231;
+  --brand-accent: #0d8a6b;
+  --panel: #ffffff;
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-report), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --font-heading-weight: 900;
+  --font-body-weight: 400;
 }
 
 * {
@@ -16,12 +20,23 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: var(--font-ibm-plex-sans), "Segoe UI", sans-serif;
-  color: var(--workspace-ink);
+  font-family: var(--font-body);
+  font-weight: var(--font-body-weight);
+  color: var(--ink);
   background:
     radial-gradient(circle at 20% 10%, #d7e8de 0%, transparent 48%),
     radial-gradient(circle at 80% 90%, #d8e2f2 0%, transparent 45%),
-    var(--workspace-bg);
+    var(--bg);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
 }
 
 main {
@@ -33,7 +48,7 @@ main {
 .workspace-card {
   border: 1px solid rgba(24, 34, 49, 0.12);
   border-radius: 16px;
-  background: color-mix(in srgb, var(--workspace-panel) 92%, transparent);
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
   box-shadow: 0 12px 40px rgba(24, 34, 49, 0.08);
   padding: 1.5rem;
 }
@@ -44,7 +59,7 @@ main {
   border-radius: 9999px;
   padding: 0.25rem 0.75rem;
   color: white;
-  background: var(--workspace-accent);
+  background: var(--brand-accent);
   font-size: 0.875rem;
   font-weight: 600;
 }

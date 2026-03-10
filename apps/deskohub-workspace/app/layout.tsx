@@ -1,14 +1,33 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
 import type { ReactNode } from "react";
 import { defaultWorkspaceLocale } from "../features/i18n/dictionary";
 import "./globals.css";
 
-const ibmPlexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+const report = localFont({
+  src: "../assets/fonts/Report.woff2",
+  weight: "400",
+  style: "normal",
   display: "swap",
-  variable: "--font-ibm-plex-sans",
+  variable: "--font-report",
+});
+
+const sculpin = localFont({
+  src: [
+    {
+      path: "../assets/fonts/Sculpin-Roman.woff2",
+      weight: "300 900",
+      style: "normal",
+    },
+    {
+      path: "../assets/fonts/Sculpin-Italic.woff2",
+      weight: "300 900",
+      style: "italic",
+    },
+  ],
+  preload: false,
+  display: "swap",
+  variable: "--font-sculpin",
 });
 
 export const metadata: Metadata = {
@@ -27,8 +46,11 @@ type RootLayoutProps = {
 
 export default function RootLayout({ children }: RootLayoutProps) {
   return (
-    <html lang={defaultWorkspaceLocale}>
-      <body className={ibmPlexSans.variable}>{children}</body>
+    <html
+      lang={defaultWorkspaceLocale}
+      className={`${report.variable} ${sculpin.variable}`}
+    >
+      <body>{children}</body>
     </html>
   );
 }
