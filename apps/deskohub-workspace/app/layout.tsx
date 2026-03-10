@@ -33,6 +33,9 @@ const sculpin = localFont({
 export const metadata: Metadata = {
   title: "Deskohub Workspace",
   description: "Workspace shell application for Deskohub products.",
+  icons: {
+    icon: "/favicon.svg",
+  },
 };
 
 export const viewport: Viewport = {
