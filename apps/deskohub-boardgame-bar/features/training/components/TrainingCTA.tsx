@@ -24,10 +24,7 @@ export const TrainingCTA = async () => {
           <p className="text-xl text-green-100 mb-12">
             {m["training.cta.description"]({
               email: siteConstants.contact.infoEmail,
-              phone: formatPhoneNumber(
-                siteConstants.contact.phone,
-                locale
-              ),
+              phone: formatPhoneNumber(siteConstants.contact.phone, locale),
             })}
           </p>
 
