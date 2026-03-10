@@ -8,7 +8,10 @@ type DailyWorkingHours = {
   close: ClockTime;
 };
 
-export type WeeklyWorkingHours = Record<0 | 1 | 2 | 3 | 4 | 5 | 6, DailyWorkingHours>;
+export type WeeklyWorkingHours = Record<
+  0 | 1 | 2 | 3 | 4 | 5 | 6,
+  DailyWorkingHours
+>;
 
 type ReservationValidationSettings = {
   minDurationHours: number;
@@ -80,10 +83,13 @@ export function isReservationWithinWorkingHours(
   config: ReservationScheduleConfig
 ): boolean {
   const startTime = getLocalTimeInTimezone(datetime, config.timezone);
-  const endDateTime = new Date(datetime.getTime() + durationHours * 60 * 60 * 1000);
+  const endDateTime = new Date(
+    datetime.getTime() + durationHours * 60 * 60 * 1000
+  );
   const endTime = getLocalTimeInTimezone(endDateTime, config.timezone);
 
-  const dayHours = config.workingHours[startTime.dayOfWeek as keyof WeeklyWorkingHours];
+  const dayHours =
+    config.workingHours[startTime.dayOfWeek as keyof WeeklyWorkingHours];
   const openTimeInMinutes = minutesFromClockTime(dayHours.open);
   const closeTimeInMinutes = minutesFromClockTime(dayHours.close);
   const startTimeInMinutes = startTime.hours * 60 + startTime.minutes;

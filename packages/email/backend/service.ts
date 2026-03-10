@@ -1,11 +1,11 @@
 import { Context, Duration, Effect, Layer, Schedule } from "effect";
-import type { NetworkError } from "./network-error";
 import type {
   EmailMessage,
   EmailProviderConfig,
   EmailSendResult,
   EmailTemplateData,
 } from "../types/email.types";
+import type { NetworkError } from "./network-error";
 
 export class EmailServiceError {
   readonly _tag = "EmailServiceError";
