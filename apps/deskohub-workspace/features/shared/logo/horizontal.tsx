@@ -1,4 +1,4 @@
-import { cn } from "../cn";
+import { cn } from "@/shared/utils";
 import type { LogoStyling } from "./logo";
 import Logo from "./logo";
 
