@@ -8,6 +8,8 @@
   --color-sunset-yellow: #eca423;
   --color-burned-orange: #dd480a;
   --color-aquamarine-green: #00df99;
+  --site-header-height: 5rem;
+  --anchor-scroll-offset: calc(var(--site-header-height) + 1rem);
 
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
@@ -23,11 +25,19 @@
   box-sizing: border-box;
 }
 
+html {
+  scroll-padding-top: var(--anchor-scroll-offset);
+}
+
 body {
   margin: 0;
   min-height: 100vh;
   font-family: var(--font-body);
   font-weight: var(--font-body-weight);
+  color: var(--color-navy-blue);
+  background:
+    radial-gradient(circle at top right, rgba(236, 164, 35, 0.22), transparent 42%),
+    linear-gradient(180deg, #f5f6f9 0%, #ffffff 28%);
 }
 
 h1,
@@ -40,8 +50,7 @@ h6 {
   font-weight: var(--font-heading-weight);
 }
 
-main {
-  margin: 0 auto;
-  max-width: 960px;
-  padding: 2rem 1.25rem 3rem;
+main section[id],
+footer[id] {
+  scroll-margin-top: var(--anchor-scroll-offset);
 }
