@@ -25,10 +25,12 @@ export function SiteHeader({
   return (
     <header className="sticky top-0 z-20 border-b border-navy-blue/10 bg-white/95 backdrop-blur">
       <Container className="flex min-h-20 items-center justify-between gap-4">
-        <HorizontalLogo
-          styling={{ color: "light", variant: "color" }}
-          className="justify-start"
-        />
+        <a href="/">
+          <HorizontalLogo
+            styling={{ color: "light", variant: "color" }}
+            className="justify-start"
+          />
+        </a>
 
         <nav aria-label="primary" className="hidden items-center gap-6 md:flex">
           {links.map((item, index) => (
@@ -36,7 +38,7 @@ export function SiteHeader({
               key={item.label}
               href={item.href}
               className={cn(
-                "text-sm text-navy-blue/80 transition-colors hover:text-burned-orange",
+                "py-4 text-navy-blue/80 transition-colors hover:text-burned-orange",
                 index === links.length - 1 &&
                   "rounded-full bg-burned-orange px-4 py-1.5 font-semibold text-white hover:text-white hover:bg-burned-orange/90"
               )}
