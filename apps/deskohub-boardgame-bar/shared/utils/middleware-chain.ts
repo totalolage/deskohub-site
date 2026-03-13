@@ -1,28 +1,15 @@
 import {
-  type NextFetchEvent,
-  type NextRequest,
-  NextResponse,
-} from "next/server";
-export type NextMiddleware = (
-  request: NextRequest,
-  event: NextFetchEvent,
-  response?: NextResponse
-) =>
-  | NextResponse
-  | Response
-  | null
-  | undefined
-  | Promise<NextResponse | Response | null | undefined>;
-export type MiddlewareFactory = (next: NextMiddleware) => NextMiddleware;
+  type ChainedMiddleware,
+  createMiddlewareChain as createMiddlewareChainShared,
+  type MiddlewareFactory,
+} from "@deskohub/i18n/next";
+import { type NextRequest, NextResponse } from "next/server";
 
-export function createMiddlewareChain(
-  factories: MiddlewareFactory[],
-  index = 0
-): NextMiddleware {
-  if (factories[index])
-    return factories[index]((req, event, res) => {
-      return createMiddlewareChain(factories, index + 1)(req, event, res);
-    });
+export type NextMiddleware = ChainedMiddleware;
+export type { MiddlewareFactory };
 
-  return (req, _event, _res) => NextResponse.next(req);
+export function createMiddlewareChain(factories: MiddlewareFactory[]) {
+  return createMiddlewareChainShared(factories, (request: NextRequest) =>
+    NextResponse.next(request)
+  );
 }

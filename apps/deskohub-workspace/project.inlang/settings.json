@@ -1,0 +1,14 @@
+{
+  "$schema": "https://inlang.com/schema/project-settings",
+  "baseLocale": "en-US",
+  "locales": ["en-US", "cs-CZ"],
+  "strategy": ["url", "cookie", "preferredLanguage", "baseLocale"],
+  "modules": [
+    "https://cdn.jsdelivr.net/npm/@inlang/plugin-message-format@4/dist/index.js",
+    "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-empty-pattern@1/dist/index.js",
+    "https://cdn.jsdelivr.net/npm/@inlang/message-lint-rule-missing-translation@1/dist/index.js"
+  ],
+  "plugin.inlang.messageFormat": {
+    "pathPattern": "./features/i18n/messages/{languageTag}.json"
+  }
+}

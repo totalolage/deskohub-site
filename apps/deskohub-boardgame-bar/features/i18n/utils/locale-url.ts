@@ -1,54 +1,29 @@
+import {
+  getLocaleFromPathname as getLocaleFromPathnameShared,
+  getLocalizedPathVariants,
+  pathnameHasLocale as pathnameHasLocaleShared,
+  replaceLocaleInPathname,
+  stripLocaleFromPathname,
+} from "@deskohub/i18n/pathname";
 import type { Locale } from "@/features/i18n";
 import { locales } from "@/features/i18n";
 
-/**
- * Parses a pathname to extract locale and path information
- * @param pathname - The pathname to parse
- * @returns Object containing locale and pathname without locale
- */
-function parseLocalizedPathname(pathname: string): {
-  locale: Locale | undefined;
-  pathname: string;
-} {
-  const extractedLocale = getLocaleFromPathname(pathname);
-  return {
-    locale: extractedLocale,
-    pathname: pathname.replace(new RegExp(`^/${extractedLocale}`), ""),
-  };
-}
-
 export function getLocaleFromPathname(pathname: string): Locale | undefined {
-  return locales.find((locale) => pathname.startsWith(`/${locale}`));
+  return getLocaleFromPathnameShared(pathname, locales);
 }
 
 export function setLocaleInPathname(pathname: string, locale: Locale): string {
-  const pathWithoutLocale = parseLocalizedPathname(pathname).pathname;
-  return [locale, pathWithoutLocale]
-    .filter(Boolean)
-    .map((part) => `/${part.replaceAll(/(^\/|\/$)/g, "")}`)
-    .join("");
+  return replaceLocaleInPathname(pathname, locale, locales);
 }
 
 export function removeLocaleFromPathname(pathname: string): string {
-  return parseLocalizedPathname(pathname).pathname;
+  return stripLocaleFromPathname(pathname, locales);
 }
 
 export function pathnameHasLocale(pathname: string): boolean {
-  return parseLocalizedPathname(pathname).locale !== undefined;
+  return pathnameHasLocaleShared(pathname, locales);
 }
 
 export function getAllLocalizedPaths(pathname: string) {
-  const localesAndPaths = locales.map((locale): [Locale, string] => [
-    locale,
-    setLocaleInPathname(pathname, locale),
-  ]);
-
-  const pathsWithEntries = Object.assign(
-    localesAndPaths.map(([, path]) => path),
-    {
-      entires: () => localesAndPaths,
-    }
-  );
-
-  return pathsWithEntries;
+  return getLocalizedPathVariants(pathname, locales);
 }

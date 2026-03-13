@@ -1,0 +1,9 @@
+{
+  "workspaceTitle": "Deskohub Workspace",
+  "workspaceDescription": "A monorepo-ready workspace shell with Effect and i18n hooks.",
+  "effectLabel": "Effect",
+  "sharedPackageLabel": "Shared package",
+  "workspaceStatusNote": "Paraglide is now driving localized copy in locale-prefixed routes.",
+  "languageEnglish": "English",
+  "languageCzech": "Cestina"
+}

@@ -1,0 +1,9 @@
+{
+  "workspaceTitle": "Deskohub Workspace",
+  "workspaceDescription": "Monorepo pripraveny zaklad s integraci Effect a i18n.",
+  "effectLabel": "Effect",
+  "sharedPackageLabel": "Sdileny balicek",
+  "workspaceStatusNote": "Paraglide ted ridi lokalizovany obsah na routach s locale prefixem.",
+  "languageEnglish": "English",
+  "languageCzech": "Cestina"
+}

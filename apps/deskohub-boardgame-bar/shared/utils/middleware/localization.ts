@@ -1,21 +1,23 @@
-import { NextResponse } from "next/server";
-import { extractLocaleFromRequest } from "@/features/i18n";
 import {
-  pathnameHasLocale,
-  setLocaleInPathname,
-} from "@/features/i18n/utils/locale-url";
+  getLocalizedRedirectPathname,
+  shouldRedirectForMissingLocale,
+} from "@deskohub/i18n/next";
+import { NextResponse } from "next/server";
+import { extractLocaleFromRequest, locales } from "@/features/i18n";
 import type { MiddlewareFactory } from "@/shared/utils/middleware-chain";
 
 export const localizationMiddleware: MiddlewareFactory =
   (next) => async (req, event, incomingResponse) => {
-    if (pathnameHasLocale(req.nextUrl.pathname))
+    if (!shouldRedirectForMissingLocale(req.nextUrl.pathname, locales)) {
       return next(req, event, incomingResponse);
+    }
 
-    // Redirect if there is no locale in the pathname
     const locale = extractLocaleFromRequest(req);
-
-    // For any path without locale, redirect to the user's preferred language
-    const localizedPath = setLocaleInPathname(req.nextUrl.pathname, locale);
+    const localizedPath = getLocalizedRedirectPathname(
+      req.nextUrl.pathname,
+      locale,
+      locales
+    );
     const redirectUrl = new URL(localizedPath, req.url);
     return NextResponse.redirect(redirectUrl);
   };
