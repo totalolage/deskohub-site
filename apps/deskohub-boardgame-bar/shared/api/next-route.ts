@@ -1,74 +1,10 @@
-import type { MaybePromise } from "bun";
-import { Context, Effect } from "effect";
-import { type HTTP_METHOD, isHTTPMethod } from "next/dist/server/web/http";
-import { type NextRequest, NextResponse } from "next/server";
+import { createNextRoute, RequestValue } from "@deskohub/i18n/api";
 import { extractLocaleFromRequest } from "@/features/i18n";
 import { LocaleValue } from "@/features/localization/effect-locale";
 
-export class RequestValue extends Context.Tag("Request")<
-  RequestValue,
-  Request
->() {}
+export { RequestValue };
 
-type NextRouteHandler = (request: NextRequest) => Promise<NextResponse>;
-
-type RouteEffect<A extends NextResponse, E> = Effect.Effect<
-  A,
-  E,
-  RequestValue | LocaleValue | never
->;
-type ErrorHandler<A extends NextResponse, E> = (
-  error: E,
-  opts?: Partial<{ signal: AbortSignal }>
-) => MaybePromise<A>;
-
-type NextRouteHandlerFactory = <A extends NextResponse, E>(opts: {
-  effect: RouteEffect<A, E>;
-  fallback?: ErrorHandler<A, E>;
-}) => NextRouteHandler;
-
-const createHandler =
-  (method: HTTP_METHOD): NextRouteHandlerFactory =>
-  ({
-    effect,
-    fallback = () => new NextResponse("Server error", { status: 500 }),
-  }) =>
-  (request) => {
-    const effectLive = effect.pipe(
-      Effect.catchAll((error) =>
-        Effect.promise(() =>
-          Promise.resolve(
-            fallback(error, {
-              signal: request.signal,
-            })
-          )
-        )
-      ),
-      Effect.annotateLogs({
-        method,
-        url: request.url,
-        headers: {
-          host: request.headers.get("host"),
-          referer: request.headers.get("referer"),
-          "user-agent": request.headers.get("user-agent"),
-        },
-      }),
-      Effect.tapError(Effect.logError),
-      Effect.provideService(RequestValue, request),
-      Effect.provideService(LocaleValue, extractLocaleFromRequest(request))
-    );
-
-    return Effect.runPromise(effectLive);
-  };
-
-export const NextRoute = new Proxy(
-  {} as Record<HTTP_METHOD, NextRouteHandlerFactory>,
-  {
-    get(...args): NextRouteHandlerFactory {
-      const [, prop] = args;
-      if (typeof prop === "string" && isHTTPMethod(prop))
-        return createHandler(prop);
-      return Reflect.get(...args);
-    },
-  }
-);
+export const NextRoute = createNextRoute({
+  localeTag: LocaleValue,
+  extractLocaleFromRequest,
+});

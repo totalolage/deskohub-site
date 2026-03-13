@@ -1,4 +1,4 @@
-export const PATHNAME_HEADER = "x-pathname";
+export { PATHNAME_HEADER_NAME as PATHNAME_HEADER } from "@deskohub/i18n/next";
 
 export const siteConstants = {
   // Brand information
