@@ -320,9 +320,7 @@ export function LandingPage({ locale }: LandingPageProps) {
                     </a>
                   </Button>
                   <Button asChild variant="secondary">
-                    <a href="/bar">
-                      {copy.labels.barButton}
-                    </a>
+                    <a href="/bar">{copy.labels.barButton}</a>
                   </Button>
                 </div>
               </CardContent>
