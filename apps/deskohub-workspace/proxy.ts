@@ -4,14 +4,18 @@ import {
   resolveRequestLocale,
   setLocaleCookie,
 } from "@deskohub/i18n/next";
-import { type NextRequest, NextResponse } from "next/server";
+import {
+  type MiddlewareConfig,
+  type NextRequest,
+  NextResponse,
+} from "next/server";
 import {
   workspaceLocaleConfig,
   workspaceLocaleCookieName,
   workspaceLocales,
 } from "@/features/i18n/routing";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const localeFromUrl = getLocaleFromRequestPathname(request, workspaceLocales);
 
   if (localeFromUrl) {
@@ -39,7 +43,7 @@ export function middleware(request: NextRequest) {
   return response;
 }
 
-export const config = {
+export const config: MiddlewareConfig = {
   matcher: [
     "/((?!api|_next/static|_next/image|favicon.ico|favicon.svg|.*\\..*).*)",
   ],
