@@ -3,14 +3,20 @@
 @tailwind utilities;
 
 :root {
-  --bg: #f5f4ef;
-  --ink: #182231;
-  --brand-accent: #0d8a6b;
-  --panel: #ffffff;
-  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-report), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --color-navy-blue: #00024f;
+  --color-silver: #d8d8d8;
+  --color-sunset-yellow: #eca423;
+  --color-burned-orange: #dd480a;
+  --color-aquamarine-green: #00df99;
+
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-report), "Avenir Next", "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
   --font-heading-weight: 900;
   --font-body-weight: 400;
+
+  --radius: 0.65rem;
 }
 
 * {
@@ -22,11 +28,6 @@ body {
   min-height: 100vh;
   font-family: var(--font-body);
   font-weight: var(--font-body-weight);
-  color: var(--ink);
-  background:
-    radial-gradient(circle at 20% 10%, #d7e8de 0%, transparent 48%),
-    radial-gradient(circle at 80% 90%, #d8e2f2 0%, transparent 45%),
-    var(--bg);
 }
 
 h1,
@@ -43,23 +44,4 @@ main {
   margin: 0 auto;
   max-width: 960px;
   padding: 2rem 1.25rem 3rem;
-}
-
-.workspace-card {
-  border: 1px solid rgba(24, 34, 49, 0.12);
-  border-radius: 16px;
-  background: color-mix(in srgb, var(--panel) 92%, transparent);
-  box-shadow: 0 12px 40px rgba(24, 34, 49, 0.08);
-  padding: 1.5rem;
-}
-
-.workspace-pill {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 9999px;
-  padding: 0.25rem 0.75rem;
-  color: white;
-  background: var(--brand-accent);
-  font-size: 0.875rem;
-  font-weight: 600;
 }
