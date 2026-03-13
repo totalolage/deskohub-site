@@ -1,9 +1,10 @@
 import { NextMiddleware } from "@mcrovero/effect-nextjs";
-import { Context, Data, Effect, Layer, Schema } from "effect";
-import { baseLocale, type Locale, locales, setLocale } from "@/features/i18n";
+import { Data, Effect, Layer, Schema } from "effect";
+import { baseLocale, locales, setLocale } from "@/features/i18n";
+import { LocaleValue } from "@/features/localization/locale-value";
 import { runAppWithLocale } from "../i18n/utils/setup-server";
 
-export class LocaleValue extends Context.Tag("Locale")<LocaleValue, Locale>() {}
+export { LocaleValue } from "@/features/localization/locale-value";
 
 const PromiseSchema = Schema.declare(
   (input: unknown): input is Promise<unknown> =>

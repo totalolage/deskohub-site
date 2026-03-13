@@ -1,34 +1,14 @@
-import { AsyncLocalStorage } from "node:async_hooks";
-import { Effect } from "effect";
+import { createParaglideLocaleBridge } from "@deskohub/i18n/effect";
 import { env } from "@/env";
-import { LocaleValue } from "@/features/localization/effect-locale";
+import { LocaleValue } from "@/features/localization/locale-value";
 import {
   overwriteServerAsyncLocalStorage,
-  type ParaglideAsyncLocalStorage,
   setLocale,
 } from "../paraglide/runtime";
 
-const localeAsyncLocalStorage = new AsyncLocalStorage<
-  NonNullable<ReturnType<ParaglideAsyncLocalStorage["getStore"]>>
->();
-
-overwriteServerAsyncLocalStorage(localeAsyncLocalStorage);
-
-export const runAppWithLocale = Effect.fn(function* <O>(
-  next: Effect.Effect<O, never, LocaleValue>
-) {
-  const locale = yield* LocaleValue;
-  setLocale(locale, { reload: false });
-
-  const nextWithLocale = next.pipe(Effect.provideService(LocaleValue, locale));
-
-  return yield* Effect.promise(
-    localeAsyncLocalStorage.run(
-      {
-        locale,
-        origin: env.NEXT_PUBLIC_DOMAIN,
-      },
-      () => (signal) => Effect.runPromise(nextWithLocale, { signal })
-    )
-  );
+export const { runWithLocale: runAppWithLocale } = createParaglideLocaleBridge({
+  localeTag: LocaleValue,
+  origin: env.NEXT_PUBLIC_DOMAIN,
+  setLocale,
+  overwriteServerAsyncLocalStorage,
 });
