@@ -1,5 +1,4 @@
 import { Clock, Star, Users } from "lucide-react";
-import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { getLocale, m } from "@/features/i18n";
 import { Badge } from "@/shared/components/ui/badge";
 import {
@@ -8,6 +7,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
+import { ImageWithFallback } from "@/shared/components/ui/image-with-fallback";
 import { cn } from "@/shared/utils";
 import { getLocalizedText } from "@/shared/utils/localization";
 import type { BoardGame } from "../types/board-games.types";
