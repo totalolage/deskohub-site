@@ -1,3 +1,5 @@
 {
-  "devCommand": "bun run dev:workspace"
+  "scripts": {
+    "dev": "bun run dev:workspace"
+  }
 }
