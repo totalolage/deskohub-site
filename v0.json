@@ -1,0 +1,3 @@
+{
+  "devCommand": "bun run dev:workspace"
+}
