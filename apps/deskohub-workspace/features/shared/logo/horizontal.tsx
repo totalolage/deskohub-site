@@ -18,13 +18,15 @@ export default function HorizontalLogo({
     <div className={cn("flex justify-center gap-4 py-3 px-4", className)}>
       <Logo styling={styling} height={64} />
       <div
-        className={cn("flex flex-col justify-center text-right", {
+        className={cn("flex flex-col justify-center text-left", {
           "text-silver": styling.color === "dark",
           "text-navy-blue": styling.color === "light",
         })}
       >
-        <h1 className="text-2xl leading-none tracking-wide">Deskohub</h1>
-        <p className="tracking-wider text-lg leading-none">Workspace</p>
+        <h1 className="font-heading font-stretch-expanded text-3xl tracking-wide">
+          Deskohub
+        </h1>
+        <p className="font-subheading tracking-wide leading-none">Workspace</p>
       </div>
     </div>
   );
