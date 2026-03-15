@@ -1,8 +1,8 @@
 import type { ImageProps } from "next/image";
 import Link from "next/link";
-import { ImageWithFallback } from "@/components/ui/image-with-fallback";
 import { m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
+import { ImageWithFallback } from "@/shared/components/ui/image-with-fallback";
 import { siteConstants } from "@/shared/utils/constants";
 
 export async function GamesGallery() {
