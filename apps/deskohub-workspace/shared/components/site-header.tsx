@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { LanguageSwitcher, m, type WorkspaceLocale } from "@/features/i18n";
 import HorizontalLogo from "@/features/shared/logo/horizontal";
+import Logo from "@/features/shared/logo/logo";
 import { cn } from "@/shared/utils";
 import { Container } from "./container";
 import { MobileMenu } from "./mobile-menu";
@@ -24,31 +26,36 @@ export function SiteHeader({
 
   return (
     <header className="sticky top-0 z-20 border-b border-navy-blue/10 bg-white/95 backdrop-blur">
-      <Container className="flex min-h-20 items-center justify-between gap-4">
-        <a href="/">
+      <Container className="flex min-h-20 items-center justify-between gap-4 max-w-7xl">
+        <Link href={languageSwitcherPath}>
           <HorizontalLogo
             styling={{ color: "light", variant: "color" }}
-            className="justify-start"
+            className="justify-start xl:flex hidden"
           />
-        </a>
+          <Logo
+            styling={{ color: "light", variant: "color" }}
+            height={64}
+            className="xl:hidden block"
+          />
+        </Link>
 
-        <nav aria-label="primary" className="hidden items-center gap-6 md:flex">
+        <nav aria-label="primary" className="hidden items-center gap-6 lg:flex">
           {links.map((item, index) => (
-            <a
+            <Link
               key={item.label}
               href={item.href}
               className={cn(
-                "py-4 text-navy-blue/80 transition-colors hover:text-burned-orange",
+                "py-4 text-navy-blue/80 transition-colors hover:text-burned-orange text-center",
                 index === links.length - 1 &&
                   "rounded-full bg-burned-orange px-4 py-1.5 font-semibold text-white hover:text-white hover:bg-burned-orange/90"
               )}
             >
               {item.label}
-            </a>
+            </Link>
           ))}
         </nav>
 
-        <div className="hidden md:block">
+        <div className="hidden lg:block">
           <LanguageSwitcher
             currentLocale={locale}
             pathname={languageSwitcherPath}
