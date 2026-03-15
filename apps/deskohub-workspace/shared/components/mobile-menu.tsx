@@ -38,7 +38,7 @@ export function MobileMenu({
         <Button
           variant="ghost"
           size="icon"
-          className="md:hidden text-navy-blue hover:bg-navy-blue/5"
+          className="lg:hidden text-navy-blue hover:bg-navy-blue/5"
         >
           <Menu className="h-5 w-5" />
           <span className="sr-only">Open menu</span>

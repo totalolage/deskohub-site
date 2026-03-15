@@ -24,7 +24,11 @@ export interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {
 
 function CardHeader({ className, ref, ...props }: CardHeaderProps) {
   return (
-    <div ref={ref} className={cn("space-y-1.5 p-6", className)} {...props} />
+    <div
+      ref={ref}
+      className={cn("space-y-1.5 p-6 pb-4", className)}
+      {...props}
+    />
   );
 }
 
