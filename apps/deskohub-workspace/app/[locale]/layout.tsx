@@ -15,82 +15,82 @@ const montserrat = Montserrat({
 const asgard = localFont({
   src: [
     {
-      path: "../../assets/fonts/Asgard/thin.woff2",
+      path: "../../assets/fonts/AsgardFit/thin.woff2",
       weight: "100",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/extra-light.woff2",
+      path: "../../assets/fonts/AsgardFit/extra-light.woff2",
       weight: "200",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/light.woff2",
+      path: "../../assets/fonts/AsgardFit/light.woff2",
       weight: "300",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/regular.woff2",
+      path: "../../assets/fonts/AsgardFit/regular.woff2",
       weight: "400",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/medium.woff2",
+      path: "../../assets/fonts/AsgardFit/medium.woff2",
       weight: "500",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/bold.woff2",
+      path: "../../assets/fonts/AsgardFit/bold.woff2",
       weight: "700",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/extra-bold.woff2",
+      path: "../../assets/fonts/AsgardFit/extra-bold.woff2",
       weight: "800",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/fat.woff2",
+      path: "../../assets/fonts/AsgardFit/fat.woff2",
       weight: "900",
       style: "normal",
     },
     {
-      path: "../../assets/fonts/Asgard/thin-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/thin-italic.woff2",
       weight: "100",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/extra-light-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/extra-light-italic.woff2",
       weight: "200",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/light-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/light-italic.woff2",
       weight: "300",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/regular-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/regular-italic.woff2",
       weight: "400",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/medium-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/medium-italic.woff2",
       weight: "500",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/bold-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/bold-italic.woff2",
       weight: "700",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/extra-bold-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/extra-bold-italic.woff2",
       weight: "800",
       style: "italic",
     },
     {
-      path: "../../assets/fonts/Asgard/fat-italic.woff2",
+      path: "../../assets/fonts/AsgardFit/fat-italic.woff2",
       weight: "900",
       style: "italic",
     },
