@@ -2,11 +2,11 @@
 @import "tw-animate-css";
 
 @theme inline {
-  --font-heading: var(--font-asgard), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
     sans-serif;
-  --font-subheading: var(--font-hiruko), "Avenir Next", "Segoe UI",
+  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-montserrat), "Avenir Next", "Segoe UI", "Helvetica Neue",
+  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
     Arial, sans-serif;
   --color-navy-blue: var(--brand-navy-blue);
   --color-silver: var(--brand-silver);
@@ -47,13 +47,13 @@
   --site-header-height: 5rem;
   --anchor-scroll-offset: calc(var(--site-header-height) + 1rem);
 
-  --font-heading: var(--font-asgard), "Avenir Next", "Segoe UI",
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
-  --font-subheading: var(--font-hiruko), "Avenir Next", "Segoe UI",
+  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
-  --font-body: var(--font-montserrat), "Avenir Next", "Segoe UI", "Helvetica Neue",
+  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
     Arial, sans-serif;
-  --font-heading-weight: 700;
+  --font-heading-weight: 400;
   --font-subheading-weight: 400;
   --font-body-weight: 400;
 
