@@ -26,7 +26,6 @@ export const boardgameBarServerSchema = {
   VERCEL_PROJECT_PRODUCTION_URL: z.url().optional(),
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
-  FORM_DATA_ENC_SECRET: z.base64().length(44),
 } as const;
 
 export const boardgameBarClientSchema = {
@@ -55,7 +54,6 @@ export const env = createEnv({
     DOTYPOS_API_TIMEOUT: process.env.DOTYPOS_API_TIMEOUT,
     DOTYPOS_WEBHOOK_SECRET: process.env.DOTYPOS_WEBHOOK_SECRET,
     EMAIL_API_KEY: process.env.EMAIL_API_KEY,
-    FORM_DATA_ENC_SECRET: process.env.FORM_DATA_ENC_SECRET,
     VERCEL_PROJECT_PRODUCTION_URL: normalizeOptionalUrl(
       process.env.VERCEL_PROJECT_PRODUCTION_URL
     ),
