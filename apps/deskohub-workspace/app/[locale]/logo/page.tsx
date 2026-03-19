@@ -1,5 +1,4 @@
-import HorizontalLogo from "@/features/shared/logo/horizontal";
-import Logo from "@/features/shared/logo/logo";
+import { HorizontalLogo, Logo } from "@/shared/components/logo";
 
 const SIZE = 64;
 

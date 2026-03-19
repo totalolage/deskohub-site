@@ -1,14 +1,14 @@
 import Link from "next/link";
-import { LanguageSwitcher, m, type WorkspaceLocale } from "@/features/i18n";
-import HorizontalLogo from "@/features/shared/logo/horizontal";
-import Logo from "@/features/shared/logo/logo";
+import { LanguageSwitcher, type WorkspaceLocale } from "@/features/i18n";
+import { Container } from "@/shared/components/container";
+import { HorizontalLogo, Logo } from "@/shared/components/logo";
+import { MobileMenu } from "@/shared/components/mobile-menu";
 import { cn } from "@/shared/utils";
-import { Container } from "./container";
-import { MobileMenu } from "./mobile-menu";
 
 type SiteHeaderProps = {
   locale: WorkspaceLocale;
   languageSwitcherPath: string;
+  languageLabels: Record<WorkspaceLocale, string>;
   links: Array<{ label: string; href: string }>;
   contactLabel: string;
 };
@@ -16,18 +16,14 @@ type SiteHeaderProps = {
 export function SiteHeader({
   locale,
   languageSwitcherPath,
+  languageLabels,
   links,
   contactLabel,
 }: SiteHeaderProps) {
-  const languageLabels = {
-    "en-US": m.languageEnglish({}, { locale }),
-    "cs-CZ": m.languageCzech({}, { locale }),
-  } satisfies Record<WorkspaceLocale, string>;
-
   return (
     <header className="sticky top-0 z-20 border-b border-navy-blue/10 bg-white/95 backdrop-blur">
       <Container className="flex min-h-20 items-center justify-between gap-4 max-w-7xl">
-        <Link href={languageSwitcherPath}>
+        <Link href={languageSwitcherPath} className="shrink-0">
           <HorizontalLogo
             styling={{ color: "light", variant: "color" }}
             className="justify-start xl:flex hidden"

@@ -4,7 +4,7 @@ import { Menu } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { LanguageSwitcher, type WorkspaceLocale } from "@/features/i18n";
-import HorizontalLogo from "@/features/shared/logo/horizontal";
+import { HorizontalLogo } from "@/shared/components/logo";
 import { Button } from "@/shared/components/ui/button";
 import {
   Sheet,

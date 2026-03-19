@@ -11,8 +11,8 @@ const nextConfig = {
         permanent: true,
       },
       {
-        source: "/:locale(en-US|cs-CZ)/bar",
-        destination: "https://www.deskohub.cz",
+        source: "/:locale/bar",
+        destination: "https://www.deskohub.cz/:locale",
         permanent: true,
       },
       {
@@ -21,8 +21,8 @@ const nextConfig = {
         permanent: true,
       },
       {
-        source: "/:locale(en-US|cs-CZ)/bar/:path*",
-        destination: "https://www.deskohub.cz/:path*",
+        source: "/:locale/bar/:path*",
+        destination: "https://www.deskohub.cz/:locale/:path*",
         permanent: true,
       },
     ];
