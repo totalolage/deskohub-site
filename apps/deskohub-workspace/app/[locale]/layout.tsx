@@ -1,9 +1,12 @@
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { isWorkspaceLocale, workspaceLocales } from "@/features/i18n";
-import { UnderConstructionRibbon } from "@/shared/components/under-construction-ribbon";
+import {
+  UnderConstructionRibbon,
+  underConstructionRibbonViewportStyle,
+} from "@/shared/components/under-construction-ribbon";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -55,9 +58,14 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} className={sculpin.variable}>
-      <body>
-        {children}
-        <UnderConstructionRibbon />
+      <body
+        className="sm:[--under-construction-ribbon-corner-size:13rem] sm:[--under-construction-ribbon-band-height:2.75rem]"
+        style={underConstructionRibbonViewportStyle as CSSProperties}
+      >
+        <div className="min-h-screen pb-[calc(var(--under-construction-ribbon-safe-area-block)+env(safe-area-inset-bottom))]">
+          {children}
+        </div>
+        <UnderConstructionRibbon locale={locale} />
       </body>
     </html>
   );
