@@ -1,7 +1,3 @@
-import darkBgColor from "assets/logo/color-bg:dark.svg";
-import lightBgColor from "assets/logo/color-bg:light.svg";
-import darkBgFancy from "assets/logo/fancy-bg:dark.svg";
-import lightBgFancy from "assets/logo/fancy-bg:light.svg";
 import { m, type WorkspaceLocale } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { Section } from "@/shared/components/section";
@@ -18,6 +14,10 @@ import {
 import { ImageWithFallback } from "@/shared/components/ui/image-with-fallback";
 import { cn, workspaceSiteConstants } from "@/shared/utils";
 import heroImage from "../images/hero.jpeg";
+import userJourney1 from '../images/onboarding-1.png';
+import userJourney2 from '../images/onboarding-2.png';
+import userJourney3 from '../images/onboarding-3.png';
+import userJourney4 from '../images/onboarding-4.png';
 
 type LandingPageProps = {
   locale: WorkspaceLocale;
@@ -55,20 +55,6 @@ export function LandingPage({ locale }: LandingPageProps) {
     m.landingHeroHighlightOne(),
     m.landingHeroHighlightTwo(),
     m.landingHeroHighlightThree(),
-  ];
-  const heroStats = [
-    {
-      label: m.landingHeroStatOneLabel(),
-      value: m.landingHeroStatOneValue(),
-    },
-    {
-      label: m.landingHeroStatTwoLabel(),
-      value: m.landingHeroStatTwoValue(),
-    },
-    {
-      label: m.landingHeroStatThreeLabel(),
-      value: m.landingHeroStatThreeValue(),
-    },
   ];
   const ttrpgFeatures = [
     {
@@ -155,8 +141,12 @@ export function LandingPage({ locale }: LandingPageProps) {
             className="w-full absolute inset-0 -z-1 blur-xs scale-110 origin-bottom contrast-125"
             fill
           />
-          <div className="absolute inset-0 -z-1 bg-[radial-gradient(circle_at_68%_30%,rgba(0,0,0,0)_0%,rgba(0,0,0,1)_100%)]" />
-          <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] lg:items-end">
+          <div className={cn(
+            "absolute inset-0 -z-1",
+            "bg-[radial-gradient(circle_at_68%_30%,rgba(0,0,0,0.5)_0%,rgba(0,0,0,1)_100%)]"
+            // 'bg-[rgba(0,0,0,0.5)]'
+          )}/>
+          <div className="grid gap-10 lg:grid-cols-[1.05fr_0.95fr] items-center">
             <div className="animate-in fade-in slide-in-from-bottom-8 duration-700">
               <h1 className="mt-5 max-w-4xl text-4xl leading-tight sm:text-5xl lg:text-6xl text-white/85">
                 {m.landingHeroTitle()}
@@ -188,55 +178,12 @@ export function LandingPage({ locale }: LandingPageProps) {
               </ul>
             </div>
 
-            <div className="animate-in fade-in slide-in-from-bottom-8 duration-1000">
-              <div className="grid gap-4 sm:grid-cols-2">
-                <Card className="overflow-hidden border-navy-blue/20 bg-navy-blue text-silver sm:col-span-2">
-                  <CardContent className="grid gap-4 p-4 sm:grid-cols-[0.72fr_1fr] sm:items-center sm:p-5">
-                    <ImageWithFallback
-                      src={lightBgFancy}
-                      fallbackSrc={lightBgColor}
-                      alt={m.landingUiHeroPrimaryImageAlt()}
-                      className="h-36 w-full rounded-xl bg-white/5 object-contain p-3"
-                    />
-                    <div>
-                      <p className="text-xs uppercase tracking-[0.16em] text-sunset-yellow">
-                        {m.landingUiHeroVisualTag()}
-                      </p>
-                    </div>
-                  </CardContent>
-                </Card>
-                <Card className="overflow-hidden border-burned-orange/25 bg-[linear-gradient(150deg,#fff5eb,#ffffff)]">
-                  <CardContent className="p-4">
-                    <ImageWithFallback
-                      src={darkBgFancy}
-                      fallbackSrc={darkBgColor}
-                      alt={m.landingUiHeroSecondaryImageAlt()}
-                      className="h-36 w-full rounded-xl bg-white object-contain p-3"
-                    />
-                  </CardContent>
-                </Card>
-                <Card className="border-aquamarine-green/30 bg-[linear-gradient(145deg,#f0fff8,#ffffff)]">
-                  <CardHeader className="pb-3">
-                    <CardTitle className="text-base">
-                      {m.landingUiHeroStatsTitle()}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <ul className="space-y-2 text-sm text-navy-blue/85">
-                      {heroStats.map((stat) => (
-                        <li
-                          key={stat.label}
-                          className="flex items-center justify-between rounded-lg bg-white/80 px-3 py-2"
-                        >
-                          <span>{stat.label}</span>
-                          <span className="font-semibold text-burned-orange">
-                            {stat.value}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </CardContent>
-                </Card>
+            <div className="animate-in fade-in slide-in-from-bottom-8 duration-1000 max-w-2xl">
+              <div className="grid grid-cols-3 pt-8">
+                <ImageWithFallback className="translate-x-8" src={userJourney1} alt="User journey purchase entry" width={120} />
+                <ImageWithFallback className="pt-6" src={userJourney2} alt="User journey recieve code" height={180}/>
+                <ImageWithFallback className="-translate-x-12 pt-12" src={userJourney3} alt="User journey enter workspace" width={200} />
+                <ImageWithFallback className="col-span-3 justify-self-center" src={userJourney4} alt="User journey do work" height={300}/>
               </div>
             </div>
           </div>
