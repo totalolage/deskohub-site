@@ -1,11 +1,50 @@
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { isWorkspaceLocale } from "@/features/i18n";
+import { isWorkspaceLocale, m, workspaceLocales } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LandingPage } from "@/features/landing-page/components/landing-page";
+import { workspaceSiteConstants } from "@/shared/utils";
 
 type LocalizedWorkspaceHomePageProps = {
   params: Promise<{ locale: string }>;
 };
+
+export async function generateMetadata({
+  params,
+}: LocalizedWorkspaceHomePageProps): Promise<Metadata> {
+  const { locale } = await params;
+  if (!isWorkspaceLocale(locale)) notFound();
+
+  return runWithRequestLocale(locale, () => {
+    const title = m.landingMetadataTitle({}, { locale });
+    const description = m.landingMetadataDescription({}, { locale });
+    const url = `https://${workspaceSiteConstants.brand.domain}/${locale}`;
+
+    return {
+      title,
+      description,
+      alternates: {
+        canonical: url,
+        languages: Object.fromEntries(
+          workspaceLocales.map(
+            (itemLocale: (typeof workspaceLocales)[number]) => [
+              itemLocale,
+              `https://${workspaceSiteConstants.brand.domain}/${itemLocale}`,
+            ]
+          )
+        ),
+      },
+      openGraph: {
+        title,
+        description,
+        url,
+        siteName: workspaceSiteConstants.brand.name,
+        locale,
+        type: "website",
+      },
+    } satisfies Metadata;
+  });
+}
 
 export default async function LocalizedWorkspaceHomePage({
   params,
@@ -13,5 +52,5 @@ export default async function LocalizedWorkspaceHomePage({
   const { locale } = await params;
   if (!isWorkspaceLocale(locale)) notFound();
 
-  return runWithRequestLocale(locale, () => LandingPage({ locale }));
+  return runWithRequestLocale(locale, () => <LandingPage locale={locale} />);
 }

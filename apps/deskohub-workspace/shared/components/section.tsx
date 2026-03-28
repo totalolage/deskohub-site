@@ -17,7 +17,9 @@ export function Section({
   const Component = asChild ? Slot : "section";
   return (
     <Component className={cn("py-12 sm:py-16", className)} {...props}>
-      <Container className={containerClassName} asChild={asChild}>{children}</Container>
+      <Container className={containerClassName} asChild={asChild}>
+        {children}
+      </Container>
     </Component>
   );
 }
