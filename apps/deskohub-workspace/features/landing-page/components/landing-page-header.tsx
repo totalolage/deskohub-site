@@ -26,8 +26,8 @@ export function LandingPageHeader({
   const closeMenu = () => setMobileMenuOpen(false);
 
   return (
-    <header className="fixed h-24 inset-x-0 top-0 z-50 border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
-      <div className="mx-auto flex w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+    <header className="fixed h-[var(--site-header-height)] inset-x-0 top-0 z-50 border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
+      <div className="mx-auto flex w-full max-w-7xl h-full items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
         <Link
           href={`/${currentLocale}`}
           className="shrink-0"
@@ -66,9 +66,13 @@ export function LandingPageHeader({
               const isCurrent = locale === currentLocale;
 
               return (
-                <span key={locale}className={cn(
-                  index > 0 && "before:content-['/'] before:text-white/28 before:absolute before:translate-x-[0.5ch]",
-                )}>
+                <span
+                  key={locale}
+                  className={cn(
+                    index > 0 &&
+                      "before:content-['/'] before:text-white/28 before:absolute before:translate-x-[0.5ch]"
+                  )}
+                >
                   {index > 0 && <br />}
                   {isCurrent ? (
                     <strong className="text-white">
