@@ -11,6 +11,7 @@
   --color-navy-blue: var(--brand-navy-blue);
   --color-silver: var(--brand-silver);
   --color-sunset-yellow: var(--brand-sunset-yellow);
+  --color-chilean-fire: var(--brand-chilean-fire);
   --color-burned-orange: var(--brand-burned-orange);
   --color-aquamarine-green: var(--brand-aquamarine-green);
   --radius-sm: calc(var(--radius) - 4px);
@@ -42,9 +43,10 @@
   --brand-navy-blue: #00024f;
   --brand-silver: #d8d8d8;
   --brand-sunset-yellow: #eca423;
+  --brand-chilean-fire: #f57c00;
   --brand-burned-orange: #dd480a;
   --brand-aquamarine-green: #00df99;
-  --site-header-height: 5rem;
+  --site-header-height: 6rem;
   --anchor-scroll-offset: calc(var(--site-header-height) + 1rem);
 
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
