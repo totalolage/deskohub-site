@@ -90,8 +90,8 @@ export function LandingPageExperiencesSection({
               </Button>
             </div>
 
-            <div>
-              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="flex flex-col gap-5">
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3 md:pb-10">
                 {ttrpgFeatures.map((feature, index) => (
                   <Card
                     key={feature.label}
