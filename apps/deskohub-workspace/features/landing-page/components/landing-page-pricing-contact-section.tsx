@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
-import { HorizontalLogo, Logo } from "@/shared/components/logo";
+import { Logo } from "@/shared/components/logo";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -43,25 +43,30 @@ export function LandingPagePricingContactSection({
       name: m.landingPricingItemOneName({}, { locale }),
       price: m.landingPricingItemOnePrice({}, { locale }),
       text: m.landingPricingItemOneText({}, { locale }),
+      comingSoon: true,
       featured: false,
     },
     {
       name: m.landingPricingItemTwoName({}, { locale }),
       price: m.landingPricingItemTwoPrice({}, { locale }),
       text: m.landingPricingItemTwoText({}, { locale }),
-      featured: true,
+      comingSoon: true,
+      featured: false,
     },
     {
       name: m.landingPricingItemThreeName({}, { locale }),
       price: m.landingPricingItemThreePrice({}, { locale }),
       text: m.landingPricingItemThreeText({}, { locale }),
+      comingSoon: true,
       featured: false,
     },
     {
       name: m.landingPricingItemFourName({}, { locale }),
       price: m.landingPricingItemFourPrice({}, { locale }),
       text: m.landingPricingItemFourText({}, { locale }),
+      comingSoon: false,
       featured: false,
+      contactHref,
     },
   ];
 
@@ -98,11 +103,21 @@ export function LandingPagePricingContactSection({
                   key={item.name}
                   className={cn(
                     "relative rounded-[1.9rem] bg-white shadow-[0_26px_70px_-48px_rgba(0,2,79,0.45)]",
+                    item.comingSoon &&
+                      "border border-dashed border-burned-orange/24 bg-[linear-gradient(180deg,#fff8ee_0%,#ffffff_100%)]",
                     item.featured &&
                       "border-burned-orange/18 bg-[linear-gradient(180deg,#fff9f4_0%,#ffffff_100%)] shadow-[0_34px_90px_-50px_rgba(221,72,10,0.65)]"
                   )}
                 >
                   <CardHeader>
+                    {item.comingSoon ? (
+                      <Badge
+                        variant="emphasis"
+                        className="absolute right-4 top-0 mb-4 w-fit -translate-y-1/2"
+                      >
+                        {m.landingCoworkComingSoonBadge({}, { locale })}
+                      </Badge>
+                    ) : null}
                     {item.featured ? (
                       <Badge
                         variant="emphasis"
@@ -115,11 +130,29 @@ export function LandingPagePricingContactSection({
                     <CardDescription className="text-2xl text-burned-orange">
                       {item.price}
                     </CardDescription>
+                    {item.comingSoon ? (
+                      <p className="text-sm leading-7 text-navy-blue/72">
+                        {m.landingPricingComingSoonNote({}, { locale })}
+                      </p>
+                    ) : null}
                   </CardHeader>
                   <CardContent>
-                    <p className="text-sm leading-7 text-navy-blue/78">
-                      {item.text}
-                    </p>
+                    <div className="space-y-5">
+                      <p className="text-sm leading-7 text-navy-blue/78">
+                        {item.text}
+                      </p>
+                      {item.contactHref ? (
+                        <Button
+                          asChild
+                          variant="secondary"
+                          className="h-11 border-navy-blue/10 bg-[#f4f1ea] px-5 text-sm uppercase tracking-[0.08em] text-navy-blue hover:bg-sunset-yellow"
+                        >
+                          <Link href={item.contactHref}>
+                            {m.landingFooterContactCta({}, { locale })}
+                          </Link>
+                        </Button>
+                      ) : null}
+                    </div>
                   </CardContent>
                 </Card>
               ))}
