@@ -1,5 +1,5 @@
+import { EmailServiceTag } from "@deskohub/email";
 import { Context, Effect, Layer } from "effect";
-import { EmailServiceTag } from "@/features/email/backend/service";
 import type { EmailMessage } from "@/features/email/types/email.types";
 import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";

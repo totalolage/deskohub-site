@@ -1,4 +1,7 @@
-import { EmailServiceTag } from "@deskohub/email/backend/service";
+import {
+  EmailConfigTag,
+  EmailServiceTag,
+} from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
 import { StorageError } from "@/shared/backend/errors";
@@ -25,11 +28,6 @@ export const ContactService =
 
 const workspaceRecipient = {
   email: workspaceSiteConstants.contact.infoEmail,
-  name: workspaceSiteConstants.brand.name,
-} as const;
-
-const workspaceSender = {
-  email: "mail@deskohub.cz",
   name: workspaceSiteConstants.brand.name,
 } as const;
 
@@ -65,6 +63,7 @@ export const ContactServiceLive = Layer.effect(
   ContactService,
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
+    const emailConfig = yield* EmailConfigTag;
 
     return ContactService.of({
       submit: (data, locale) =>
@@ -86,13 +85,7 @@ export const ContactServiceLive = Layer.effect(
           const safeMessageHtml = formatMessageHtml(data.message);
 
           const businessEmailMessage: EmailMessage = {
-            from: {
-              email: workspaceSender.email,
-              name:
-                locale === "cs-CZ"
-                  ? "Workspace kontaktní formulář"
-                  : "Workspace contact form",
-            },
+            from: emailConfig.defaultFrom,
             to: workspaceRecipient,
             subject: getBusinessSubject(data.name, locale),
             html: `
@@ -179,7 +172,7 @@ export const ContactServiceLive = Layer.effect(
           );
 
           const confirmationMessage: EmailMessage = {
-            from: workspaceSender,
+            from: emailConfig.defaultFrom,
             to: {
               email: data.email,
               name: data.name,

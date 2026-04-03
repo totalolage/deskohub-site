@@ -1,5 +1,5 @@
 import { parseNoteData } from "@deskohub/dotypos/note-metadata";
-import { createStandaloneEmailServiceLayer } from "@deskohub/email";
+import { StandaloneEmailServiceLayer } from "@deskohub/email";
 import { Effect, Layer, Schema } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
@@ -20,9 +20,6 @@ import {
   WebhookValidationError,
 } from "@/shared/backend/utils/webhook";
 import { dotyposTags } from "@/shared/utils/cache-tags";
-
-const StandaloneEmailServiceLive =
-  createStandaloneEmailServiceLayer(EmailConfigLayer);
 
 /**
  * Dotypos Reservation Status Codes
@@ -284,7 +281,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       Layer.mergeAll(
         DotyposConfig.Default,
         DotyposService.Default,
-        StandaloneEmailServiceLive
+        StandaloneEmailServiceLayer.pipe(Layer.provide(EmailConfigLayer))
       )
     )
   );

@@ -34,5 +34,3 @@ export {
   sendReservationCreatedEmail,
   sendReservationDeclinedEmail,
 } from "./backend/send-reservation-status-email";
-// Standalone Email Service
-export { StandaloneEmailServiceLive } from "./backend/standalone-email-service";

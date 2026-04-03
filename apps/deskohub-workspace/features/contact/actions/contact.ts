@@ -1,13 +1,15 @@
 "use server";
 
+import { EmailServiceLive } from "@deskohub/email/backend/service";
+import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Effect, Layer } from "effect";
 import {
   ContactService,
   ContactServiceLive,
 } from "@/features/contact/backend/contact.service";
 import { getContactSchema } from "@/features/contact/schemas/contact";
-import { StandaloneEmailServiceLive } from "@/features/email";
 import { getLocale, m } from "@/features/i18n";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 
 export type ContactFormState = {
   status: "idle" | "success" | "error";
@@ -53,9 +55,9 @@ export async function submitContactForm(
     };
   }).pipe(
     Effect.provide(
-      ContactServiceLive.pipe(
-        Layer.provide(StandaloneEmailServiceLive),
-        Layer.orDie
+      Layer.provideMerge(
+        ContactServiceLive,
+        Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
       )
     ),
     Effect.catchAll((error) =>

@@ -1,12 +1,13 @@
 "use server";
 
+import { StandaloneEmailServiceLayer } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import {
   ContactService,
   ContactServiceLive,
 } from "@/features/contact/backend/contact.service";
 import { getContactSchema } from "@/features/contact/schemas/contact";
-import { StandaloneEmailServiceLive } from "@/features/email";
+import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
 // Single server action that handles contact form submission
@@ -35,7 +36,9 @@ const _submitContactForm = createEffectSafeAction(
     ),
   // Provide ContactServiceLive with its email service dependency
   ContactServiceLive.pipe(
-    Layer.provide(StandaloneEmailServiceLive),
+    Layer.provide(
+      StandaloneEmailServiceLayer.pipe(Layer.provide(EmailConfigLayer))
+    ),
     Layer.orDie
   )
 );
