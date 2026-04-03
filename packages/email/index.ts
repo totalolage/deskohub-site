@@ -9,7 +9,7 @@ export {
   EmailServiceError,
   EmailServiceTag,
 } from "./backend/service";
-export { createStandaloneEmailServiceLayer } from "./backend/standalone-email-service";
+export { StandaloneEmailServiceLayer } from "./backend/standalone-email-service";
 
 export type {
   EmailMessage,
