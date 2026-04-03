@@ -141,27 +141,27 @@ export function LandingPageHeroSection({
         </Card>
 
         <div className="absolute inset-0 top-8">
-        <div
-          className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
-          style={{
-            maskImage: `url(${cornerMaskProps.src})`,
-            maskSize: "cover",
-          }}
-        >
-          <LandingPageUniverseBackgroundNoise className="bg-bottom" />
-        </div>
-        <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
-          <LandingPageUniverseBackgroundNoise className="bg-bottom" />
-        </div>
-        <div
-          className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
-          style={{
-            maskImage: `url(${cornerMaskProps.src})`,
-            maskSize: "cover",
-          }}
-        >
-          <LandingPageUniverseBackgroundNoise className="bg-bottom" />
-        </div>
+          <div
+            className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
+            style={{
+              maskImage: `url(${cornerMaskProps.src})`,
+              maskSize: "cover",
+            }}
+          >
+            <LandingPageUniverseBackgroundNoise className="bg-bottom" />
+          </div>
+          <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
+            <LandingPageUniverseBackgroundNoise className="bg-bottom" />
+          </div>
+          <div
+            className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
+            style={{
+              maskImage: `url(${cornerMaskProps.src})`,
+              maskSize: "cover",
+            }}
+          >
+            <LandingPageUniverseBackgroundNoise className="bg-bottom" />
+          </div>
         </div>
       </div>
     </section>
