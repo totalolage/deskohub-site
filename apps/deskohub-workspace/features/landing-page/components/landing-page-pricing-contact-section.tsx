@@ -3,7 +3,7 @@ import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
-import { HorizontalLogo } from "@/shared/components/logo";
+import { HorizontalLogo, Logo } from "@/shared/components/logo";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -225,9 +225,10 @@ export function LandingPagePricingContactSection({
 
               <Card className="rounded-[1.8rem] bg-white shadow-[0_24px_60px_-46px_rgba(0,2,79,0.35)]">
                 <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                  <HorizontalLogo
+                  <Logo
                     styling={{ color: "light", variant: "color" }}
                     className="justify-start px-0 py-0"
+                    width={80}
                   />
                   <p className="text-sm text-navy-blue/62">
                     {m.landingFooterLegal({}, { locale })}
