@@ -1,4 +1,5 @@
 import { CalendarRange } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
@@ -13,6 +14,8 @@ import {
   CardTitle,
 } from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
+import meetingRoomPhotoOne from "../images/zasedacka/IMG_20260319_165936.jpg";
+import meetingRoomPhotoTwo from "../images/zasedacka/IMG_20260319_165943.jpg";
 
 type LandingPageExperiencesSectionProps = {
   locale: WorkspaceLocale;
@@ -48,6 +51,17 @@ export function LandingPageExperiencesSection({
     m.landingEventsFeatureThree({}, { locale }),
   ];
 
+  const meetingRoomGallery = [
+    {
+      src: meetingRoomPhotoOne,
+      alt: m.landingMeetingRoomGalleryImageOneAlt({}, { locale }),
+    },
+    {
+      src: meetingRoomPhotoTwo,
+      alt: m.landingMeetingRoomGalleryImageTwoAlt({}, { locale }),
+    },
+  ];
+
   return (
     <>
       <section id={ttrpgSectionId} className="bg-[#f4f1ea] py-20 sm:py-24">
@@ -76,31 +90,50 @@ export function LandingPageExperiencesSection({
               </Button>
             </div>
 
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
-              {ttrpgFeatures.map((feature, index) => (
-                <Card
-                  key={feature.label}
-                  className={cn(
-                    "rounded-[1.75rem] border-white/20 shadow-[0_28px_70px_-44px_rgba(0,2,79,0.55)]",
-                    index === 1
-                      ? "bg-navy-blue text-white md:translate-y-10"
-                      : "bg-white"
-                  )}
-                >
-                  <CardHeader>
-                    <CardTitle
-                      className={index === 1 ? "text-white" : undefined}
-                    >
-                      {feature.label}
-                    </CardTitle>
-                    <CardDescription
-                      className={index === 1 ? "text-white/72" : undefined}
-                    >
-                      {feature.text}
-                    </CardDescription>
-                  </CardHeader>
-                </Card>
-              ))}
+            <div>
+              <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                {ttrpgFeatures.map((feature, index) => (
+                  <Card
+                    key={feature.label}
+                    className={cn(
+                      "rounded-[1.75rem] border-white/20 shadow-[0_28px_70px_-44px_rgba(0,2,79,0.55)]",
+                      index === 1
+                        ? "bg-navy-blue text-white md:translate-y-10"
+                        : "bg-white"
+                    )}
+                  >
+                    <CardHeader>
+                      <CardTitle
+                        className={index === 1 ? "text-white" : undefined}
+                      >
+                        {feature.label}
+                      </CardTitle>
+                      <CardDescription
+                        className={index === 1 ? "text-white/72" : undefined}
+                      >
+                        {feature.text}
+                      </CardDescription>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+
+              <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                {meetingRoomGallery.map((photo) => (
+                  <div
+                    key={photo.alt}
+                    className="relative aspect-[4/3] overflow-hidden rounded-[1.4rem] border border-white/20 bg-white shadow-[0_20px_50px_-40px_rgba(0,2,79,0.5)]"
+                  >
+                    <Image
+                      src={photo.src}
+                      alt={photo.alt}
+                      fill
+                      sizes="(min-width: 1024px) 280px, (min-width: 640px) 50vw, 100vw"
+                      className="object-cover"
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </Container>
@@ -139,7 +172,7 @@ export function LandingPageExperiencesSection({
               </CardContent>
             </Card>
 
-            <div className="grid gap-5">
+            <div className="flex flex-col gap-5">
               <Card className="rounded-[2rem] border-burned-orange/20 bg-burned-orange text-white shadow-[0_34px_80px_-45px_rgba(221,72,10,0.8)]">
                 <CardHeader>
                   <div className="flex items-center gap-3 text-white/84">

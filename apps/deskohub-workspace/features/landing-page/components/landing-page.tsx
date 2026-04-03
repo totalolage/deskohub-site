@@ -97,6 +97,7 @@ export function LandingPage({ locale }: LandingPageProps) {
           locale={locale}
           coworkSectionId={landingPageSectionIds.cowork}
           privateOfficeSectionId={landingPageSectionIds.privateOffice}
+          contactEmail={contactEmail}
         />
 
         <LandingPagePricingContactSection

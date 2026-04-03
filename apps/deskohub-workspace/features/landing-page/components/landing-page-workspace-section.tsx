@@ -17,12 +17,14 @@ type LandingPageWorkspaceSectionProps = {
   locale: WorkspaceLocale;
   coworkSectionId: string;
   privateOfficeSectionId: string;
+  contactEmail: string;
 };
 
 export function LandingPageWorkspaceSection({
   locale,
   coworkSectionId,
   privateOfficeSectionId,
+  contactEmail,
 }: LandingPageWorkspaceSectionProps) {
   const coworkCards: Array<{ icon: LucideIcon; title: string; text: string }> =
     [
@@ -142,9 +144,25 @@ export function LandingPageWorkspaceSection({
                 <p className="text-xs uppercase tracking-[0.22em] text-sunset-yellow/82">
                   {m.landingMeetingRoomTitle({}, { locale })}
                 </p>
-                <p className="mt-3 text-sm leading-7 text-white/76">
-                  {m.landingMeetingRoomText({}, { locale })}
-                </p>
+                <div className="mt-3 space-y-3 text-sm leading-7 text-white/76">
+                  <p>{m.landingMeetingRoomText({}, { locale })}</p>
+                  <p>
+                    {m.landingMeetingRoomReservationFallbackBefore(
+                      {},
+                      { locale }
+                    )}
+                    <a
+                      href={`mailto:${contactEmail}`}
+                      className="text-sunset-yellow transition-colors hover:text-white"
+                    >
+                      {contactEmail}
+                    </a>
+                    {m.landingMeetingRoomReservationFallbackAfter(
+                      {},
+                      { locale }
+                    )}
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>
