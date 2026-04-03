@@ -16,7 +16,7 @@ const emailConfig = Config.all({
   ),
   defaultFromEmail: Config.withDefault(
     Config.string("EMAIL_FROM_ADDRESS"),
-    "mail.deskohub.cz"
+    "mail@deskohub.cz"
   ),
   defaultFromName: Config.withDefault(
     Config.string("EMAIL_FROM_NAME"),

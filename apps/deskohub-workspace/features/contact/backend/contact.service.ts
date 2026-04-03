@@ -29,7 +29,7 @@ const workspaceRecipient = {
 } as const;
 
 const workspaceSender = {
-  email: "mail.deskohub.cz",
+  email: "mail@deskohub.cz",
   name: workspaceSiteConstants.brand.name,
 } as const;
 
