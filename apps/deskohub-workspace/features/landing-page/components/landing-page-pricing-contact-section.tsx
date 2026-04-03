@@ -1,4 +1,5 @@
 import { Clock3, DoorOpen, type LucideIcon, MapPin } from "lucide-react";
+import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -20,6 +21,7 @@ type LandingPagePricingContactSectionProps = {
   locale: WorkspaceLocale;
   pricingSectionId: string;
   faqContactSectionId: string;
+  contactHref: string;
   deskohubBarCtaHref: string;
   contactAddress: ContactAddress;
   contactEmail: string;
@@ -30,6 +32,7 @@ export function LandingPagePricingContactSection({
   locale,
   pricingSectionId,
   faqContactSectionId,
+  contactHref,
   deskohubBarCtaHref,
   contactAddress,
   contactEmail,
@@ -186,9 +189,9 @@ export function LandingPagePricingContactSection({
                     asChild
                     className="h-12 px-7 text-sm uppercase tracking-[0.08em]"
                   >
-                    <a href={`mailto:${contactEmail}`}>
+                    <Link href={contactHref}>
                       {m.landingFooterContactCta({}, { locale })}
-                    </a>
+                    </Link>
                   </Button>
                   <Button
                     asChild

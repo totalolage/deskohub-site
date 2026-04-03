@@ -1,4 +1,5 @@
 import { CalendarRange } from "lucide-react";
+import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -17,14 +18,14 @@ type LandingPageExperiencesSectionProps = {
   locale: WorkspaceLocale;
   ttrpgSectionId: string;
   eventsSectionId: string;
-  faqContactHref: string;
+  contactHref: string;
 };
 
 export function LandingPageExperiencesSection({
   locale,
   ttrpgSectionId,
   eventsSectionId,
-  faqContactHref,
+  contactHref,
 }: LandingPageExperiencesSectionProps) {
   const ttrpgFeatures = [
     {
@@ -69,7 +70,9 @@ export function LandingPageExperiencesSection({
                 asChild
                 className="mt-7 h-12 px-7 text-sm uppercase tracking-[0.08em]"
               >
-                <a href={faqContactHref}>{m.landingTtrpgCta({}, { locale })}</a>
+                <Link href={contactHref}>
+                  {m.landingTtrpgCta({}, { locale })}
+                </Link>
               </Button>
             </div>
 
@@ -129,9 +132,9 @@ export function LandingPageExperiencesSection({
                   asChild
                   className="mt-3 h-12 px-7 text-sm uppercase tracking-[0.08em]"
                 >
-                  <a href={faqContactHref}>
+                  <Link href={contactHref}>
                     {m.landingEventsCta({}, { locale })}
-                  </a>
+                  </Link>
                 </Button>
               </CardContent>
             </Card>

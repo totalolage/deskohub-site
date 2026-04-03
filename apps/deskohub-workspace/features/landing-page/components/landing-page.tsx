@@ -25,6 +25,7 @@ const landingPageSectionIds = {
 export function LandingPage({ locale }: LandingPageProps) {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
+  const contactHref = `${localePath}/contact`;
   const contactAddress = workspaceSiteConstants.contact.address;
   const contactEmail = workspaceSiteConstants.contact.infoEmail;
   const contactPhone = workspaceSiteConstants.contact.phone;
@@ -72,6 +73,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         languageLabels={languageLabels}
         links={headerLinks}
         contactLabel={m.landingNavContactLabel({}, { locale })}
+        contactHref={contactHref}
       />
 
       <main className="overflow-x-clip bg-navy-blue">
@@ -88,7 +90,7 @@ export function LandingPage({ locale }: LandingPageProps) {
           locale={locale}
           ttrpgSectionId={landingPageSectionIds.ttrpg}
           eventsSectionId={landingPageSectionIds.events}
-          faqContactHref={localizedHash(`#${landingPageSectionIds.faqContact}`)}
+          contactHref={contactHref}
         />
 
         <LandingPageWorkspaceSection
@@ -101,6 +103,7 @@ export function LandingPage({ locale }: LandingPageProps) {
           locale={locale}
           pricingSectionId={landingPageSectionIds.pricing}
           faqContactSectionId={landingPageSectionIds.faqContact}
+          contactHref={contactHref}
           deskohubBarCtaHref={localizedHash(
             `#${landingPageSectionIds.overview}`
           )}

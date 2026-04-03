@@ -13,6 +13,7 @@ type LandingPageHeaderProps = {
   languageLabels: Record<WorkspaceLocale, string>;
   links: Array<{ label: string; href: string }>;
   contactLabel: string;
+  contactHref: string;
 };
 
 export function LandingPageHeader({
@@ -20,6 +21,7 @@ export function LandingPageHeader({
   languageLabels,
   links,
   contactLabel,
+  contactHref,
 }: LandingPageHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
@@ -49,12 +51,12 @@ export function LandingPageHeader({
               {link.label}
             </a>
           ))}
-          <a
-            href={links.at(-1)?.href ?? `/${currentLocale}`}
+          <Link
+            href={contactHref}
             className="rounded-full text-center border border-white/12 bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue transition-colors hover:bg-sunset-yellow"
           >
             {contactLabel}
-          </a>
+          </Link>
         </nav>
 
         <div className="hidden items-center gap-3 xl:flex">
@@ -132,6 +134,15 @@ export function LandingPageHeader({
               </a>
             ))}
           </nav>
+
+          <Button
+            asChild
+            className="h-12 rounded-2xl text-sm uppercase tracking-[0.12em] xl:hidden"
+          >
+            <Link href={contactHref} onClick={closeMenu}>
+              {contactLabel}
+            </Link>
+          </Button>
 
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72">
             {workspaceLocales.map((locale) => {
