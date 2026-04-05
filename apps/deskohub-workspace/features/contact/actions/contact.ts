@@ -1,6 +1,5 @@
 "use server";
 
-import { EmailServiceLive } from "@deskohub/email/backend/service";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Effect, Layer } from "effect";
 import {
