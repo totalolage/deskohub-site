@@ -4,7 +4,7 @@ const SIZE = 64;
 
 export default function LogoPage() {
   return (
-    <div className="flex flex-col  bg-gray-500 min-h-screen gap-8">
+    <div className="flex min-h-screen flex-col gap-8 bg-gray-500 pt-[calc(var(--site-header-height)+2rem)]">
       <div className="flex gap-4 items-center justify-center">
         <Logo styling={{ color: "dark", variant: "small" }} width={SIZE} />
         <Logo styling={{ color: "dark", variant: "color" }} width={SIZE} />
