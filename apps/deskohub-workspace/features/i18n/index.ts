@@ -1,4 +1,3 @@
-export { LanguageSwitcher } from "./components/language-switcher";
 export { m } from "./paraglide/messages.js";
 export {
   baseLocale,

@@ -1,72 +1,179 @@
+"use client";
+
+import { Menu, X } from "lucide-react";
 import Link from "next/link";
-import { LanguageSwitcher, type WorkspaceLocale } from "@/features/i18n";
-import { Container } from "@/shared/components/container";
-import { HorizontalLogo, Logo } from "@/shared/components/logo";
-import { MobileMenu } from "@/shared/components/mobile-menu";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
+import {
+  type WorkspaceLocale,
+  withLocalePrefix,
+  workspaceLocales,
+} from "@/features/i18n";
+import { HorizontalLogo } from "@/shared/components/logo";
+import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 
 type SiteHeaderProps = {
-  locale: WorkspaceLocale;
-  languageSwitcherPath: string;
+  currentLocale: WorkspaceLocale;
   languageLabels: Record<WorkspaceLocale, string>;
   links: Array<{ label: string; href: string }>;
   contactLabel: string;
+  contactHref: string;
 };
 
 export function SiteHeader({
-  locale,
-  languageSwitcherPath,
+  currentLocale,
   languageLabels,
   links,
   contactLabel,
+  contactHref,
 }: SiteHeaderProps) {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const pathname = usePathname();
+
+  const closeMenu = () => setMobileMenuOpen(false);
+  const getLocaleHref = (locale: WorkspaceLocale) =>
+    withLocalePrefix(pathname, locale);
+
   return (
-    <header className="sticky top-0 z-20 border-b border-navy-blue/10 bg-white/95 backdrop-blur">
-      <Container className="flex min-h-20 items-center justify-between gap-4 max-w-7xl">
-        <Link href={languageSwitcherPath} className="shrink-0">
+    <header className="fixed inset-x-0 top-0 z-50 h-[var(--site-header-height)] border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
+      <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <Link
+          href={`/${currentLocale}`}
+          className="shrink-0"
+          onClick={closeMenu}
+        >
           <HorizontalLogo
-            styling={{ color: "light", variant: "color" }}
-            className="justify-start xl:flex hidden"
-          />
-          <Logo
-            styling={{ color: "light", variant: "color" }}
-            height={64}
-            className="xl:hidden block"
+            styling={{ color: "dark", variant: "color" }}
+            className="scale-80"
           />
         </Link>
 
-        <nav aria-label="primary" className="hidden items-center gap-6 lg:flex">
-          {links.map((item, index) => (
-            <Link
-              key={item.label}
-              href={item.href}
-              className={cn(
-                "py-4 text-navy-blue/80 transition-colors hover:text-burned-orange text-center",
-                index === links.length - 1 &&
-                  "rounded-full bg-burned-orange px-4 py-1.5 font-semibold text-white hover:text-white hover:bg-burned-orange/90"
-              )}
+        <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
+          {links.map((link) => (
+            <a
+              key={link.href}
+              href={link.href}
+              className="text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
             >
-              {item.label}
-            </Link>
+              {link.label}
+            </a>
           ))}
+          <Link
+            href={contactHref}
+            className="rounded-full border border-white/12 bg-white px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue transition-colors hover:bg-sunset-yellow"
+          >
+            {contactLabel}
+          </Link>
         </nav>
 
-        <div className="hidden lg:block">
-          <LanguageSwitcher
-            currentLocale={locale}
-            pathname={languageSwitcherPath}
-            labels={languageLabels}
-          />
+        <div className="hidden items-center gap-3 xl:flex">
+          <nav
+            aria-label="Language switcher"
+            className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
+          >
+            {workspaceLocales.map((locale, index) => {
+              const isCurrent = locale === currentLocale;
+
+              return (
+                <span
+                  key={locale}
+                  className={cn(
+                    index > 0 &&
+                      "before:absolute before:translate-x-[0.5ch] before:text-white/28 before:content-['/']"
+                  )}
+                >
+                  {index > 0 && <br />}
+                  {isCurrent ? (
+                    <strong className="text-white">
+                      {languageLabels[locale]}
+                    </strong>
+                  ) : (
+                    <Link
+                      href={getLocaleHref(locale)}
+                      className="transition-colors hover:text-sunset-yellow"
+                    >
+                      {languageLabels[locale]}
+                    </Link>
+                  )}
+                </span>
+              );
+            })}
+          </nav>
         </div>
 
-        <MobileMenu
-          currentLocale={locale}
-          languageSwitcherPath={languageSwitcherPath}
-          languageLabels={languageLabels}
-          links={links}
-          contactLabel={contactLabel}
-        />
-      </Container>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          className="rounded-full border border-white/12 bg-white/6 text-white hover:bg-white/12 hover:text-white xl:hidden"
+          aria-expanded={mobileMenuOpen}
+          aria-controls="site-header-mobile-menu"
+          aria-label={
+            mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
+          }
+          onClick={() => setMobileMenuOpen((open) => !open)}
+        >
+          {mobileMenuOpen ? (
+            <X className="h-5 w-5" />
+          ) : (
+            <Menu className="h-5 w-5" />
+          )}
+        </Button>
+      </div>
+
+      <div
+        id="site-header-mobile-menu"
+        className={cn(
+          "overflow-hidden bg-navy-blue/98 transition-[max-height] duration-300 xl:hidden",
+          mobileMenuOpen ? "max-h-[32rem] border-t border-white/10" : "max-h-0"
+        )}
+      >
+        <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">
+          <nav aria-label="Mobile primary" className="grid gap-2">
+            {links.map((link) => (
+              <a
+                key={link.href}
+                href={link.href}
+                onClick={closeMenu}
+                className="rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-sm uppercase tracking-[0.12em] text-white/80 transition-colors hover:border-sunset-yellow/60 hover:text-sunset-yellow"
+              >
+                {link.label}
+              </a>
+            ))}
+          </nav>
+
+          <Button
+            asChild
+            className="h-12 rounded-2xl text-sm uppercase tracking-[0.12em] xl:hidden"
+          >
+            <Link href={contactHref} onClick={closeMenu}>
+              {contactLabel}
+            </Link>
+          </Button>
+
+          <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72">
+            {workspaceLocales.map((locale) => {
+              const isCurrent = locale === currentLocale;
+
+              return isCurrent ? (
+                <strong key={locale} className="text-white">
+                  {languageLabels[locale]}
+                </strong>
+              ) : (
+                <Link
+                  key={locale}
+                  href={getLocaleHref(locale)}
+                  onClick={closeMenu}
+                  className="transition-colors hover:text-sunset-yellow"
+                >
+                  {languageLabels[locale]}
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      </div>
     </header>
   );
 }
