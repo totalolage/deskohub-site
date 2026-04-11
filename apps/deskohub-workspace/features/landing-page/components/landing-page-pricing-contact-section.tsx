@@ -4,7 +4,6 @@ import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getPricingContent } from "@/features/pricing";
 import { Container } from "@/shared/components/container";
-import { Logo } from "@/shared/components/logo";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -82,7 +81,10 @@ export function LandingPagePricingContactSection({
 
   return (
     <>
-      <section id={pricingSectionId} className="bg-[#f4f1ea] py-20 sm:py-24">
+      <section
+        id={pricingSectionId}
+        className="border-t border-navy-blue/8 bg-[radial-gradient(circle_at_top_right,rgba(0,223,153,0.1),transparent_24%),linear-gradient(180deg,#e6ddd0_0%,#f8f4ec_5.5rem,#fbfaf6_100%)] py-20 sm:py-24"
+      >
         <Container>
           <div className="grid gap-8 lg:grid-cols-[0.88fr_1.12fr] lg:items-start">
             <div className="space-y-5">
@@ -97,7 +99,7 @@ export function LandingPagePricingContactSection({
                 <Card
                   key={item.name}
                   className={cn(
-                    "relative rounded-[1.9rem] bg-white shadow-[0_26px_70px_-48px_rgba(0,2,79,0.45)]",
+                    "relative rounded-[1.9rem] border border-navy-blue/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(249,246,239,0.98)_100%)] shadow-[0_26px_70px_-48px_rgba(0,2,79,0.24)]",
                     item.comingSoon &&
                       "border border-dashed border-burned-orange/24 bg-[linear-gradient(180deg,#fff8ee_0%,#ffffff_100%)]",
                     item.featured &&

@@ -2,6 +2,7 @@ import { m, type WorkspaceLocale } from "@/features/i18n";
 
 const siteHeaderSectionIds = {
   overview: "overview",
+  teambuildings: "teambuildings",
   ttrpg: "ttrpg",
   events: "events",
   cowork: "cowork",
@@ -21,28 +22,24 @@ export function getSiteHeaderConfig(locale: WorkspaceLocale) {
     } satisfies Record<WorkspaceLocale, string>,
     links: [
       {
-        label: m.landingNavOverview({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.overview}`),
-      },
-      {
-        label: m.landingNavTtrpg({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.ttrpg}`),
+        label: m.landingNavCowork({}, { locale }),
+        href: localizedHash(`#${siteHeaderSectionIds.cowork}`),
       },
       {
         label: m.landingNavEvents({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.events}`),
       },
       {
-        label: m.landingNavCowork({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.cowork}`),
+        label: m.landingNavTtrpg({}, { locale }),
+        href: localizedHash(`#${siteHeaderSectionIds.ttrpg}`),
+      },
+      {
+        label: m.landingNavTeambuildings({}, { locale }),
+        href: localizedHash(`#${siteHeaderSectionIds.teambuildings}`),
       },
       {
         label: m.landingNavPricing({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.pricing}`),
-      },
-      {
-        label: m.landingNavPrivateOffice({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.privateOffice}`),
       },
       {
         label: m.landingNavFaqContact({}, { locale }),
