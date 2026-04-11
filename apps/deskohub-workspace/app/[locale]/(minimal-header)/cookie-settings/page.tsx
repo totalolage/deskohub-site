@@ -79,17 +79,7 @@ export default function CookieSettingsPage() {
 
         <Container>
           <div className="mx-auto max-w-4xl rounded-[2rem] border border-white/60 bg-white/92 p-8 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm sm:p-12">
-            <Link
-              href={`/${locale}`}
-              className="text-sm uppercase tracking-[0.14em] text-burned-orange transition-colors hover:text-chilean-fire"
-            >
-              ← {m.cookieSettingsBackToHome({}, { locale })}
-            </Link>
-
             <div className="mt-6 space-y-4">
-              <div className="inline-flex rounded-full border border-navy-blue/10 bg-navy-blue/4 px-4 py-2 text-[0.72rem] uppercase tracking-[0.18em] text-burned-orange">
-                {m.cookieSettingsEyebrow({}, { locale })}
-              </div>
               <h1 className="text-balance text-4xl leading-none sm:text-5xl">
                 {m.cookieSettingsTitle({}, { locale })}
               </h1>
