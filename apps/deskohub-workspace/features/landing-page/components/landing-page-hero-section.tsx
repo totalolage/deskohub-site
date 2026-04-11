@@ -93,7 +93,7 @@ export function LandingPageHeroSection({
               {m.landingHeroPrimaryCta({}, { locale })}
               <Understroke1
                 width="100%"
-                className="absolute -bottom-8 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
+                className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
               />
             </a>
           </Button>
@@ -111,7 +111,7 @@ export function LandingPageHeroSection({
               {m.landingHeroSecondaryCta({}, { locale })}
               <Understroke2
                 width="80%"
-                className="absolute -bottom-8 right-0"
+                className="absolute top-full mt-2 right-0"
               />
             </a>
           </Button>
