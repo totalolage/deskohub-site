@@ -1,20 +1,24 @@
 export const workspaceSiteConstants = {
   brand: {
     name: "Deskohub Workspace",
-    legalName: "Deskohub s.r.o.",
+    legalName: "Desktechub s.r.o.",
     domain: "deskohub.cz",
   },
   contact: {
-    phone: "+420777060478",
     get infoEmail() {
       return `workspace@${workspaceSiteConstants.brand.domain}`;
     },
     address: {
-      street: "Turnovska 10/430",
-      cityDistrict: "Palmovka",
+      street: "Turnovská 430/10",
+      cityDistrict: "Libeň",
       city: "Praha 8",
       postalCode: "180 00",
     },
+  },
+  company: {
+    identificationNumber: "24531596",
+    establishmentId: "1016069146",
+    vatStatus: "not-vat-payer",
   },
   social: {
     instagram: "https://www.instagram.com/deskohub/",
