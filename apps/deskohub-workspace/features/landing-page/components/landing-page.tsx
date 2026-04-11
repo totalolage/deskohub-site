@@ -4,6 +4,7 @@ import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageExperiencesSection } from "./landing-page-experiences-section";
 import { LandingPageHeroSection } from "./landing-page-hero-section";
 import { LandingPagePricingContactSection } from "./landing-page-pricing-contact-section";
+import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 import { LandingPageUniverseSection } from "./landing-page-universe-section";
 import { LandingPageWorkspaceSection } from "./landing-page-workspace-section";
 
@@ -29,6 +30,13 @@ export function LandingPage({ locale }: LandingPageProps) {
 
       <LandingPageUniverseSection locale={locale} />
 
+      <LandingPageWorkspaceSection
+        locale={locale}
+        coworkSectionId={siteHeaderSectionIds.cowork}
+        privateOfficeSectionId={siteHeaderSectionIds.privateOffice}
+        contactEmail={contactEmail}
+      />
+
       <LandingPageExperiencesSection
         locale={locale}
         ttrpgSectionId={siteHeaderSectionIds.ttrpg}
@@ -36,11 +44,10 @@ export function LandingPage({ locale }: LandingPageProps) {
         contactHref={contactHref}
       />
 
-      <LandingPageWorkspaceSection
+      <LandingPageTeambuildingsSection
         locale={locale}
-        coworkSectionId={siteHeaderSectionIds.cowork}
-        privateOfficeSectionId={siteHeaderSectionIds.privateOffice}
-        contactEmail={contactEmail}
+        teambuildingsSectionId={siteHeaderSectionIds.teambuildings}
+        contactHref={contactHref}
       />
 
       <LandingPagePricingContactSection
