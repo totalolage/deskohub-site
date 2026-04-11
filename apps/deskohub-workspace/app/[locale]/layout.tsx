@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
+import { CookieConsentProvider } from "@/features/cookie-consent";
 import { isWorkspaceLocale, workspaceLocales } from "@/features/i18n";
 import {
   UnderConstructionRibbon,
@@ -62,6 +63,7 @@ export default async function LocaleLayout({
         className="sm:[--under-construction-ribbon-corner-size:13rem] sm:[--under-construction-ribbon-band-height:2.75rem]"
         style={underConstructionRibbonViewportStyle as CSSProperties}
       >
+        <CookieConsentProvider locale={locale} />
         <div className="min-h-screen pb-[calc(var(--under-construction-ribbon-safe-area-block)+env(safe-area-inset-bottom))]">
           {children}
         </div>
