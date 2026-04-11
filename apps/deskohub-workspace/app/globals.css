@@ -47,7 +47,7 @@
   --brand-burned-orange: #dd480a;
   --brand-aquamarine-green: #00df99;
   --site-header-height: 6rem;
-  --anchor-scroll-offset: calc(var(--site-header-height) + 1rem);
+  --anchor-scroll-offset: var(--site-header-height);
 
   --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
     "Helvetica Neue", Arial, sans-serif;
@@ -64,10 +64,6 @@
 
 * {
   box-sizing: border-box;
-}
-
-html {
-  scroll-padding-top: var(--anchor-scroll-offset);
 }
 
 body {
