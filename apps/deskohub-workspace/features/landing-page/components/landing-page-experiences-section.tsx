@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
+import { getPricingContent } from "@/features/pricing";
 import { Container } from "@/shared/components/container";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -30,6 +31,7 @@ export function LandingPageExperiencesSection({
   eventsSectionId,
   contactHref,
 }: LandingPageExperiencesSectionProps) {
+  const pricingContent = getPricingContent(locale);
   const ttrpgFeatures = [
     {
       label: m.landingTtrpgFeatureOneLabel({}, { locale }),
@@ -192,12 +194,12 @@ export function LandingPageExperiencesSection({
               <Card className="rounded-[2rem] border-white/10 bg-navy-blue text-white shadow-[0_34px_80px_-45px_rgba(0,2,79,0.76)]">
                 <CardHeader>
                   <CardTitle className="text-white">
-                    {m.landingEventsFullSpaceRentalTitle({}, { locale })}
+                    {pricingContent.eventPricing.name}
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm leading-7 text-white/74">
-                    {m.landingEventsFullSpaceRentalDetail({}, { locale })}
+                    {pricingContent.eventPricing.description}
                   </p>
                 </CardContent>
               </Card>

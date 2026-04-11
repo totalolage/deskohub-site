@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { WorkspaceLocale } from "@/features/i18n";
+import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import { SiteHeader } from "@/shared/components/site-header";
 import { getSiteHeaderConfig } from "@/shared/components/site-header-config";
 
@@ -19,6 +20,7 @@ export default async function FullHeaderLayout({
     <>
       <SiteHeader currentLocale={locale} {...siteHeaderConfig} />
       {children}
+      <PublicSiteFooter locale={locale} />
     </>
   );
 }

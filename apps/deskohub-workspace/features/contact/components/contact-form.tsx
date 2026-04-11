@@ -1,6 +1,7 @@
 "use client";
 
 import { Send } from "lucide-react";
+import Link from "next/link";
 import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import {
@@ -94,7 +95,14 @@ export function ContactForm({ locale }: ContactFormProps) {
             <SubmitButton locale={locale} />
 
             <p className="text-sm leading-6 text-navy-blue/62">
-              {m.contactPrivacyNote({}, { locale })}
+              {m.contactPrivacyNoteBefore({}, { locale })}{" "}
+              <Link
+                href={`/${locale}/privacy-policy`}
+                className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+              >
+                {m.contactPrivacyNoteLinkLabel({}, { locale })}
+              </Link>{" "}
+              {m.contactPrivacyNoteAfter({}, { locale })}
             </p>
 
             {state.message ? (
