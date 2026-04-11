@@ -17,7 +17,6 @@ export function LandingPage({ locale }: LandingPageProps) {
   const contactHref = `${localePath}/contact`;
   const contactAddress = workspaceSiteConstants.contact.address;
   const contactEmail = workspaceSiteConstants.contact.infoEmail;
-  const contactPhone = workspaceSiteConstants.contact.phone;
 
   return (
     <main className="overflow-x-clip bg-navy-blue">
@@ -52,7 +51,6 @@ export function LandingPage({ locale }: LandingPageProps) {
         deskohubBarCtaHref={localizedHash(`#${siteHeaderSectionIds.overview}`)}
         contactAddress={contactAddress}
         contactEmail={contactEmail}
-        contactPhone={contactPhone}
       />
     </main>
   );

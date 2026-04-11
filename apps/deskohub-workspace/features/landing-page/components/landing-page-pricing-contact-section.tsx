@@ -2,6 +2,7 @@ import { Clock3, DoorOpen, type LucideIcon, MapPin } from "lucide-react";
 import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
+import { getPricingContent } from "@/features/pricing";
 import { Container } from "@/shared/components/container";
 import { Logo } from "@/shared/components/logo";
 import { Badge } from "@/shared/components/ui/badge";
@@ -25,7 +26,15 @@ type LandingPagePricingContactSectionProps = {
   deskohubBarCtaHref: string;
   contactAddress: ContactAddress;
   contactEmail: string;
-  contactPhone: string;
+};
+
+type PricingCard = {
+  name: string;
+  price: string;
+  text: string;
+  comingSoon: boolean;
+  featured: boolean;
+  contactHref?: string;
 };
 
 export function LandingPagePricingContactSection({
@@ -36,34 +45,20 @@ export function LandingPagePricingContactSection({
   deskohubBarCtaHref,
   contactAddress,
   contactEmail,
-  contactPhone,
 }: LandingPagePricingContactSectionProps) {
-  const pricingCards = [
+  const pricingContent = getPricingContent(locale);
+  const pricingCards: PricingCard[] = [
+    ...pricingContent.tariffs.map((tariff) => ({
+      name: tariff.name,
+      price: tariff.price,
+      text: tariff.description,
+      comingSoon: tariff.comingSoon,
+      featured: tariff.featured,
+    })),
     {
-      name: m.landingPricingItemOneName({}, { locale }),
-      price: m.landingPricingItemOnePrice({}, { locale }),
-      text: m.landingPricingItemOneText({}, { locale }),
-      comingSoon: true,
-      featured: false,
-    },
-    {
-      name: m.landingPricingItemTwoName({}, { locale }),
-      price: m.landingPricingItemTwoPrice({}, { locale }),
-      text: m.landingPricingItemTwoText({}, { locale }),
-      comingSoon: true,
-      featured: false,
-    },
-    {
-      name: m.landingPricingItemThreeName({}, { locale }),
-      price: m.landingPricingItemThreePrice({}, { locale }),
-      text: m.landingPricingItemThreeText({}, { locale }),
-      comingSoon: true,
-      featured: false,
-    },
-    {
-      name: m.landingPricingItemFourName({}, { locale }),
-      price: m.landingPricingItemFourPrice({}, { locale }),
-      text: m.landingPricingItemFourText({}, { locale }),
+      name: pricingContent.eventPricing.name,
+      price: pricingContent.eventPricing.price,
+      text: pricingContent.eventPricing.description,
       comingSoon: false,
       featured: false,
       contactHref,
@@ -207,14 +202,6 @@ export function LandingPagePricingContactSection({
                       {contactEmail}
                     </a>
                   </p>
-                  <p>
-                    <a
-                      href={`tel:${contactPhone}`}
-                      className="text-sunset-yellow transition-colors hover:text-white"
-                    >
-                      {contactPhone}
-                    </a>
-                  </p>
                 </div>
 
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -255,19 +242,6 @@ export function LandingPagePricingContactSection({
                   </CardHeader>
                 </Card>
               ))}
-
-              <Card className="rounded-[1.8rem] bg-white shadow-[0_24px_60px_-46px_rgba(0,2,79,0.35)]">
-                <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
-                  <Logo
-                    styling={{ color: "light", variant: "color" }}
-                    className="justify-start px-0 py-0"
-                    width={80}
-                  />
-                  <p className="text-sm text-navy-blue/62">
-                    {m.landingFooterLegal({}, { locale })}
-                  </p>
-                </CardContent>
-              </Card>
             </div>
           </div>
         </Container>
