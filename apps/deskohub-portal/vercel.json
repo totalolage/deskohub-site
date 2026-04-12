@@ -1,0 +1,17 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "bunVersion": "1.2.19",
+  "buildCommand": "bun run build",
+  "functions": {
+    "api/*.ts": {
+      "runtime": "nodejs22.x",
+      "includeFiles": "dist/**"
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/api/portal"
+    }
+  ]
+}
