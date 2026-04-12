@@ -1,0 +1,19 @@
+{
+  "name": "deskohub-portal",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite",
+    "lint": "biome check . --config-path ../../biome.json --vcs-root ../../",
+    "typecheck": "bunx tsc --noEmit"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/node": "^22",
+    "tailwindcss": "^4.1.13",
+    "typescript": "^5",
+    "vite": "^7.1.5"
+  }
+}
