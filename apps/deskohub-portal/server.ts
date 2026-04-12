@@ -1,5 +1,7 @@
 import { extname, join, resolve } from "node:path";
 
+import { baseLocale, m, setLocale } from "./features/i18n";
+
 const appDirectory = import.meta.dir;
 const sourceHtmlPath = join(appDirectory, "index.html");
 const distDirectory = join(appDirectory, "dist");
@@ -47,6 +49,8 @@ type ViteManifest = Record<string, { css?: string[]; file: string }>;
 
 let cachedIndexTemplate: string | null = null;
 let cachedManifest: ViteManifest | null = null;
+
+type PortalCopy = ReturnType<typeof getPortalCopy>;
 
 const server = Bun.serve({
   port,
@@ -96,9 +100,10 @@ function isStaticRoute(pathname: string) {
 
 async function renderPageHtml() {
   const htmlTemplate = await getIndexTemplate();
+  const localizedHtml = renderLocalizedHtml(htmlTemplate, getPortalCopy());
 
   if (isDevelopment) {
-    return htmlTemplate;
+    return localizedHtml;
   }
 
   const manifest = await getBuildManifest();
@@ -110,10 +115,63 @@ async function renderPageHtml() {
     );
   }
 
-  return htmlTemplate.replace(
+  return localizedHtml.replace(
     'href="/styles.css"',
     `href="/${stylesheetPath}"`
   );
+}
+
+function getPortalCopy() {
+  setLocale(baseLocale);
+
+  return {
+    lang: baseLocale,
+    metaDescription: m.portalMetaDescription(),
+    mainAriaLabel: m.portalMainAriaLabel(),
+    productsAriaLabel: m.portalProductsAriaLabel(),
+    title: m.portalTitle(),
+    kicker: m.portalKicker(),
+    barDescription: m.portalBarDescription(),
+    barHeading: m.portalBarHeading(),
+    barLabel: m.portalBarLabel(),
+    workspaceDescription: m.portalWorkspaceDescription(),
+    workspaceHeading: m.portalWorkspaceHeading(),
+    workspaceLabel: m.portalWorkspaceLabel(),
+  };
+}
+
+function renderLocalizedHtml(htmlTemplate: string, copy: PortalCopy) {
+  return htmlTemplate
+    .replaceAll("__PORTAL_LANG__", escapeHtml(copy.lang))
+    .replaceAll("__PORTAL_META_DESCRIPTION__", escapeHtml(copy.metaDescription))
+    .replaceAll("__PORTAL_MAIN_ARIA_LABEL__", escapeHtml(copy.mainAriaLabel))
+    .replaceAll(
+      "__PORTAL_PRODUCTS_ARIA_LABEL__",
+      escapeHtml(copy.productsAriaLabel)
+    )
+    .replaceAll("__PORTAL_TITLE__", escapeHtml(copy.title))
+    .replaceAll("__PORTAL_KICKER__", escapeHtml(copy.kicker))
+    .replaceAll("__PORTAL_BAR_HEADING__", escapeHtml(copy.barHeading))
+    .replaceAll("__PORTAL_BAR_DESCRIPTION__", escapeHtml(copy.barDescription))
+    .replaceAll("__PORTAL_BAR_LABEL__", escapeHtml(copy.barLabel))
+    .replaceAll(
+      "__PORTAL_WORKSPACE_HEADING__",
+      escapeHtml(copy.workspaceHeading)
+    )
+    .replaceAll(
+      "__PORTAL_WORKSPACE_DESCRIPTION__",
+      escapeHtml(copy.workspaceDescription)
+    )
+    .replaceAll("__PORTAL_WORKSPACE_LABEL__", escapeHtml(copy.workspaceLabel));
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }
 
 async function getIndexTemplate() {
