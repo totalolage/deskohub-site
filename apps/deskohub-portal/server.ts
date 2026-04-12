@@ -1,12 +1,20 @@
 import { extname, join, resolve } from "node:path";
 
 import { baseLocale, m, setLocale } from "./features/i18n";
+import {
+  assertIsLocale,
+  cookieName,
+  extractLocaleFromHeader,
+  isLocale,
+  type Locale,
+} from "./features/i18n/paraglide/runtime.js";
 
 const appDirectory = import.meta.dir;
 const sourceHtmlPath = join(appDirectory, "index.html");
 const distDirectory = join(appDirectory, "dist");
 const distManifestPath = join(distDirectory, ".vite", "manifest.json");
 const pageRoutes = new Set(["/", "/index.html"]);
+const pageRouteRedirects = new Map<string, string>([["/index.html", "/"]]);
 const passthroughStaticRoutes = new Set([
   "/favicon.ico",
   "/favicon.svg",
@@ -52,6 +60,8 @@ let cachedManifest: ViteManifest | null = null;
 
 type PortalCopy = ReturnType<typeof getPortalCopy>;
 
+await assertProductionBuildReady();
+
 const server = Bun.serve({
   port,
   development: isDevelopment,
@@ -63,19 +73,51 @@ const server = Bun.serve({
       return new Response("Method Not Allowed", { status: 405 });
     }
 
-    if (pageRoutes.has(pathname)) {
-      const html = await renderPageHtml();
-      return new Response(request.method === "HEAD" ? null : html, {
-        headers: {
-          "content-type": "text/html; charset=utf-8",
-        },
-      });
-    }
-
     if (isStaticRoute(pathname)) {
       return isDevelopment
         ? fetch(`${viteOrigin}${pathname}${search}`)
         : serveBuiltStaticFile(pathname, request.method);
+    }
+
+    const localizedRequest = getLocalizedPageRequest(pathname);
+
+    if (!localizedRequest) {
+      if (hasUnsupportedLocalePrefix(pathname)) {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      if (!pageRoutes.has(pathname)) {
+        return new Response("Not Found", { status: 404 });
+      }
+
+      return redirectToLocalizedPage(requestUrl, request);
+    }
+
+    if (!pageRoutes.has(localizedRequest.routePath)) {
+      return new Response("Not Found", { status: 404 });
+    }
+
+    const normalizedRoutePath =
+      pageRouteRedirects.get(localizedRequest.routePath) ??
+      localizedRequest.routePath;
+
+    if (normalizedRoutePath !== localizedRequest.routePath) {
+      const redirectUrl = new URL(
+        `/${localizedRequest.locale}${normalizedRoutePath}${search}`,
+        requestUrl
+      );
+
+      return redirectResponse(redirectUrl, localizedRequest.locale);
+    }
+
+    if (normalizedRoutePath === "/") {
+      const html = await renderPageHtml(localizedRequest.locale);
+      return new Response(request.method === "HEAD" ? null : html, {
+        headers: {
+          "set-cookie": createLocaleCookie(localizedRequest.locale),
+          "content-type": "text/html; charset=utf-8",
+        },
+      });
     }
 
     return new Response("Not Found", { status: 404 });
@@ -98,9 +140,12 @@ function isStaticRoute(pathname: string) {
   return staticFileExtensions.has(extname(pathname));
 }
 
-async function renderPageHtml() {
+async function renderPageHtml(locale: Locale) {
   const htmlTemplate = await getIndexTemplate();
-  const localizedHtml = renderLocalizedHtml(htmlTemplate, getPortalCopy());
+  const localizedHtml = renderLocalizedHtml(
+    htmlTemplate,
+    getPortalCopy(locale)
+  );
 
   if (isDevelopment) {
     return localizedHtml;
@@ -121,11 +166,11 @@ async function renderPageHtml() {
   );
 }
 
-function getPortalCopy() {
-  setLocale(baseLocale);
+function getPortalCopy(locale: Locale) {
+  setLocale(locale);
 
   return {
-    lang: baseLocale,
+    lang: locale,
     metaDescription: m.portalMetaDescription(),
     mainAriaLabel: m.portalMainAriaLabel(),
     productsAriaLabel: m.portalProductsAriaLabel(),
@@ -256,4 +301,112 @@ function getStylesheetPath(manifest: ViteManifest) {
   }
 
   return manifestEntry.css?.[0] ?? manifestEntry.file;
+}
+
+async function assertProductionBuildReady() {
+  if (isDevelopment) {
+    return;
+  }
+
+  const manifestFile = Bun.file(distManifestPath);
+
+  if (await manifestFile.exists()) {
+    return;
+  }
+
+  throw new Error(
+    `Missing Vite manifest at ${distManifestPath}. Run \`bun run build\` before starting the portal server.`
+  );
+}
+
+function getLocalizedPageRequest(pathname: string) {
+  const segments = pathname.split("/").filter(Boolean);
+  const [localeSegment, ...routeSegments] = segments;
+
+  if (!localeSegment || !isLocale(localeSegment)) {
+    return null;
+  }
+
+  const routePath =
+    routeSegments.length === 0 ? "/" : `/${routeSegments.join("/")}`;
+
+  return {
+    locale: assertIsLocale(localeSegment),
+    routePath,
+  } satisfies {
+    locale: Locale;
+    routePath: string;
+  };
+}
+
+function hasUnsupportedLocalePrefix(pathname: string) {
+  const segments = pathname.split("/").filter(Boolean);
+  const localeSegment = segments[0];
+
+  if (!localeSegment || isLocale(localeSegment)) {
+    return false;
+  }
+
+  return /^[a-z]{2}(?:-[a-z]{2})?$/i.test(localeSegment);
+}
+
+function redirectToLocalizedPage(requestUrl: URL, request: Request) {
+  const resolvedLocale = resolveRequestLocale(requestUrl, request);
+  const redirectUrl = new URL(`/${resolvedLocale}/`, requestUrl);
+
+  return redirectResponse(redirectUrl, resolvedLocale);
+}
+
+function resolveRequestLocale(requestUrl: URL, request: Request): Locale {
+  const localizedRequest = getLocalizedPageRequest(requestUrl.pathname);
+
+  if (localizedRequest) {
+    return localizedRequest.locale;
+  }
+
+  const cookieLocale = getLocaleFromCookie(request.headers.get("cookie"));
+
+  if (cookieLocale) {
+    return cookieLocale;
+  }
+
+  const headerLocale = extractLocaleFromHeader(request);
+
+  if (headerLocale && isLocale(headerLocale)) {
+    return assertIsLocale(headerLocale);
+  }
+
+  return baseLocale;
+}
+
+function getLocaleFromCookie(cookieHeader: string | null) {
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const localeValue = cookieHeader
+    .split(/;\s*/)
+    .find((cookie) => cookie.startsWith(`${cookieName}=`))
+    ?.split("=")[1];
+
+  if (!localeValue || !isLocale(localeValue)) {
+    return null;
+  }
+
+  return assertIsLocale(localeValue);
+}
+
+function createLocaleCookie(locale: Locale) {
+  return `${cookieName}=${locale}; Max-Age=34560000; Path=/; SameSite=Lax`;
+}
+
+function redirectResponse(redirectUrl: URL, locale: Locale) {
+  return new Response(null, {
+    status: 307,
+    headers: {
+      location: redirectUrl.href,
+      "set-cookie": createLocaleCookie(locale),
+      vary: "Accept-Language",
+    },
+  });
 }
