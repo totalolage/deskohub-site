@@ -14,7 +14,7 @@
     "build:workspace": "turbo run build --filter=deskohub-workspace",
     "dev": "turbo run dev --parallel",
     "dev:boardgame": "turbo run dev --filter=deskohub-boardgame-bar",
-    "dev:portal": "turbo run dev --filter=deskohub-portal",
+    "dev:portal": "turbo run dev:app --filter=deskohub-portal",
     "dev:portal:assets": "turbo run dev:assets --filter=deskohub-portal",
     "dev:portal:server": "turbo run dev:server --filter=deskohub-portal",
     "dev:workspace": "turbo run dev --filter=deskohub-workspace",
