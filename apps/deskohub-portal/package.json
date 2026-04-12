@@ -5,16 +5,16 @@
   "type": "module",
   "scripts": {
     "build": "bun run i18n:compile && vite build",
-    "dev": "bun run dev:app",
     "dev:app": "bun --parallel dev:server dev:assets dev:i18n",
     "dev:assets": "sh -c 'vite --host 127.0.0.1 --port ${VITE_PORT:-5173} --strictPort'",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "dev:server": "sh -c 'PORT=${PORT:-3000} PORTAL_DEV=1 VITE_PORT=${VITE_PORT:-5173} bun --watch server.ts'",
+    "dev": "bun run dev:app",
     "dev:vite": "bun run dev:assets",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
     "lint": "biome check . --config-path ../../biome.json --vcs-root ../../",
-    "start": "bun run start:app",
     "start:app": "sh -c 'test -f dist/.vite/manifest.json || { printf \"Missing dist/.vite/manifest.json. Run bun run build first.\\n\" >&2; exit 1; }; PORT=${PORT:-3000} bun server.ts'",
+    "start": "bun run start:app",
     "typecheck": "bun run i18n:compile && bunx tsc --noEmit"
   },
   "dependencies": {
