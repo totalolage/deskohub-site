@@ -230,10 +230,13 @@ a {
   transform: translate(0.18rem, -0.18rem);
 }
 
+.portal-panel:first-of-type {
+  padding-top: clamp(6.25rem, 18vw, 8.5rem);
+}
+
 .portal-panel-workspace {
   align-items: flex-end;
   justify-content: flex-start;
-  padding-top: clamp(6.25rem, 18vw, 8.5rem);
   background:
     linear-gradient(180deg, rgb(0 2 79 / 0.18) 0%, rgb(0 2 79 / 0.6) 42%, rgb(0 2 79 / 0.86) 100%),
     url("./assets/workspace.webp") center / cover no-repeat,
