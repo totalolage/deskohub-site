@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "build": "vite build",
-    "dev": "vite",
+    "dev": "bun --parallel dev:server dev:vite",
+    "dev:server": "sh -c 'PORT=${PORT:-3000} PORTAL_DEV=1 VITE_PORT=${VITE_PORT:-5173} bun --watch server.ts'",
+    "dev:vite": "sh -c 'vite --host 127.0.0.1 --port ${VITE_PORT:-5173} --strictPort'",
     "lint": "biome check . --config-path ../../biome.json --vcs-root ../../",
+    "start": "sh -c 'PORT=${PORT:-3000} bun server.ts'",
     "typecheck": "bunx tsc --noEmit"
   },
   "devDependencies": {
