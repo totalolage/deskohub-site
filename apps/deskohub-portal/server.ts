@@ -80,7 +80,12 @@ const server = Bun.serve({
 
     if (isStaticRoute(pathname)) {
       return isDevelopment
-        ? fetch(`${viteOrigin}${pathname}${search}`)
+        ? fetch(
+            new Request(`${viteOrigin}${pathname}${search}`, {
+              headers: request.headers,
+              method: request.method,
+            })
+          )
         : serveBuiltStaticFile(pathname, request.method);
     }
 
