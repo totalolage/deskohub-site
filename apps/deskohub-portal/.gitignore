@@ -1,3 +1,5 @@
 dist/
 node_modules/
 project.inlang/cache/
+.vercel
+.env*.local
