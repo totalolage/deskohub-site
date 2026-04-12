@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "bunVersion": "1.x",
-  "buildCommand": "bun build:portal",
+  "buildCommand": "bun run porta:build",
   "outputDirectory": "apps/deskohub-portal/dist",
   "functions": {
     "api/*.ts": {
