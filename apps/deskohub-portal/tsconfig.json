@@ -13,5 +13,11 @@
     "skipLibCheck": true,
     "types": ["bun", "node"]
   },
-  "include": ["server.ts", "vite.config.ts", "features/**/*.ts"]
+  "include": [
+    "server.ts",
+    "portal-server.ts",
+    "vite.config.ts",
+    "api/**/*.ts",
+    "features/**/*.ts"
+  ]
 }
