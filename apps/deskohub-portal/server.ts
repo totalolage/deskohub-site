@@ -57,6 +57,14 @@ const portalOrigin = "https://www.deskohub.cz";
 const immutableAssetCacheControl = "public, max-age=31536000, immutable";
 const localizedHtmlCacheControl = "public, max-age=0, must-revalidate";
 const redirectCacheControl = "private, no-store, max-age=0";
+const viteAssetProxyHeaderAllowlist = [
+  "accept",
+  "accept-encoding",
+  "cache-control",
+  "if-modified-since",
+  "if-none-match",
+  "range",
+] as const;
 
 type ViteManifest = Record<string, { css?: string[]; file: string }>;
 
@@ -82,7 +90,7 @@ const server = Bun.serve({
       return isDevelopment
         ? fetch(
             new Request(`${viteOrigin}${pathname}${search}`, {
-              headers: request.headers,
+              headers: getViteAssetProxyHeaders(request.headers),
               method: request.method,
             })
           )
@@ -149,6 +157,22 @@ function isStaticRoute(pathname: string) {
   }
 
   return staticFileExtensions.has(extname(pathname));
+}
+
+function getViteAssetProxyHeaders(requestHeaders: Headers) {
+  const forwardedHeaders = new Headers();
+
+  for (const headerName of viteAssetProxyHeaderAllowlist) {
+    const headerValue = requestHeaders.get(headerName);
+
+    if (!headerValue) {
+      continue;
+    }
+
+    forwardedHeaders.set(headerName, headerValue);
+  }
+
+  return forwardedHeaders;
 }
 
 async function renderPageHtml(locale: Locale) {
