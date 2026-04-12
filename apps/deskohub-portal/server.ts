@@ -3,6 +3,7 @@ import { extname, join, resolve } from "node:path";
 import { baseLocale, m, setLocale } from "./features/i18n";
 import {
   assertIsLocale,
+  cookieMaxAge,
   cookieName,
   extractLocaleFromHeader,
   isLocale,
@@ -52,6 +53,10 @@ const isDevelopment =
 const port = Number.parseInt(process.env.PORT ?? "3000", 10);
 const vitePort = Number.parseInt(process.env.VITE_PORT ?? "5173", 10);
 const viteOrigin = `http://127.0.0.1:${vitePort}`;
+const portalOrigin = "https://www.deskohub.cz";
+const immutableAssetCacheControl = "public, max-age=31536000, immutable";
+const localizedHtmlCacheControl = "public, max-age=0, must-revalidate";
+const redirectCacheControl = "private, no-store, max-age=0";
 
 type ViteManifest = Record<string, { css?: string[]; file: string }>;
 
@@ -115,6 +120,7 @@ const server = Bun.serve({
       return new Response(request.method === "HEAD" ? null : html, {
         headers: {
           "set-cookie": createLocaleCookie(localizedRequest.locale),
+          "cache-control": localizedHtmlCacheControl,
           "content-type": "text/html; charset=utf-8",
         },
       });
@@ -168,9 +174,14 @@ async function renderPageHtml(locale: Locale) {
 
 function getPortalCopy(locale: Locale) {
   setLocale(locale);
+  const canonicalUrl = getLocalizedPageUrl(locale);
 
   return {
     lang: locale,
+    canonicalUrl,
+    alternateCsCzUrl: getLocalizedPageUrl("cs-CZ"),
+    alternateEnUsUrl: getLocalizedPageUrl("en-US"),
+    alternateDefaultUrl: `${portalOrigin}/`,
     metaDescription: m.portalMetaDescription(),
     mainAriaLabel: m.portalMainAriaLabel(),
     productsAriaLabel: m.portalProductsAriaLabel(),
@@ -188,6 +199,13 @@ function getPortalCopy(locale: Locale) {
 function renderLocalizedHtml(htmlTemplate: string, copy: PortalCopy) {
   return htmlTemplate
     .replaceAll("__PORTAL_LANG__", escapeHtml(copy.lang))
+    .replaceAll("__PORTAL_CANONICAL_URL__", escapeHtml(copy.canonicalUrl))
+    .replaceAll("__PORTAL_ALTERNATE_CS_CZ__", escapeHtml(copy.alternateCsCzUrl))
+    .replaceAll("__PORTAL_ALTERNATE_EN_US__", escapeHtml(copy.alternateEnUsUrl))
+    .replaceAll(
+      "__PORTAL_ALTERNATE_X_DEFAULT__",
+      escapeHtml(copy.alternateDefaultUrl)
+    )
     .replaceAll("__PORTAL_META_DESCRIPTION__", escapeHtml(copy.metaDescription))
     .replaceAll("__PORTAL_MAIN_ARIA_LABEL__", escapeHtml(copy.mainAriaLabel))
     .replaceAll(
@@ -260,7 +278,15 @@ async function serveBuiltStaticFile(pathname: string, method: "GET" | "HEAD") {
     return new Response("Not Found", { status: 404 });
   }
 
-  return new Response(method === "HEAD" ? null : file);
+  const headers = new Headers();
+
+  if (isImmutableAssetPath(pathname)) {
+    headers.set("cache-control", immutableAssetCacheControl);
+  }
+
+  return new Response(method === "HEAD" ? null : file, {
+    headers,
+  });
 }
 
 async function resolveStaticFilePath(pathname: string) {
@@ -301,6 +327,10 @@ function getStylesheetPath(manifest: ViteManifest) {
   }
 
   return manifestEntry.css?.[0] ?? manifestEntry.file;
+}
+
+function isImmutableAssetPath(pathname: string) {
+  return pathname.startsWith("/assets/");
 }
 
 async function assertProductionBuildReady() {
@@ -397,16 +427,21 @@ function getLocaleFromCookie(cookieHeader: string | null) {
 }
 
 function createLocaleCookie(locale: Locale) {
-  return `${cookieName}=${locale}; Max-Age=34560000; Path=/; SameSite=Lax`;
+  return `${cookieName}=${locale}; Max-Age=${cookieMaxAge}; Path=/; SameSite=Lax`;
 }
 
 function redirectResponse(redirectUrl: URL, locale: Locale) {
   return new Response(null, {
     status: 307,
     headers: {
+      "cache-control": redirectCacheControl,
       location: redirectUrl.href,
       "set-cookie": createLocaleCookie(locale),
-      vary: "Accept-Language",
+      vary: "Accept-Language, Cookie",
     },
   });
+}
+
+function getLocalizedPageUrl(locale: Locale) {
+  return `${portalOrigin}/${locale}/`;
 }
