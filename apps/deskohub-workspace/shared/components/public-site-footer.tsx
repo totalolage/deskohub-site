@@ -36,10 +36,6 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
                 {workspaceSiteConstants.company.identificationNumber}
               </p>
               <p>
-                {m.footerEstablishmentIdLabel({}, { locale })}:{" "}
-                {workspaceSiteConstants.company.establishmentId}
-              </p>
-              <p>
                 {addressLabel}: {companyAddress}
               </p>
               <p>{m.footerVatStatus({}, { locale })}</p>
