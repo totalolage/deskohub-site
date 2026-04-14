@@ -1,3 +1,4 @@
+import { Analytics } from "@vercel/analytics/react";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
@@ -64,6 +65,7 @@ export default async function LocaleLayout({
         style={underConstructionRibbonViewportStyle as CSSProperties}
       >
         <CookieConsentProvider locale={locale} />
+        <Analytics />
         <div className="min-h-screen pb-[calc(var(--under-construction-ribbon-safe-area-block)+env(safe-area-inset-bottom))]">
           {children}
         </div>
