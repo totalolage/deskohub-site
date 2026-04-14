@@ -57,6 +57,7 @@ export function MinimalSiteHeader({
                 ) : (
                   <Link
                     href={getLocaleHref(locale)}
+                    scroll={false}
                     className="transition-colors hover:text-sunset-yellow"
                   >
                     {languageLabels[locale]}

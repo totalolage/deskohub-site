@@ -91,6 +91,7 @@ export function SiteHeader({
                   ) : (
                     <Link
                       href={getLocaleHref(locale)}
+                      scroll={false}
                       className="transition-colors hover:text-sunset-yellow"
                     >
                       {languageLabels[locale]}
@@ -164,6 +165,7 @@ export function SiteHeader({
                 <Link
                   key={locale}
                   href={getLocaleHref(locale)}
+                  scroll={false}
                   onClick={closeMenu}
                   className="transition-colors hover:text-sunset-yellow"
                 >
