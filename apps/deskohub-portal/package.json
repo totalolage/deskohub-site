@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "bun run --sequential i18n:compile 'vite build'",
-    "dev:assets": "sh -c 'vite --host 127.0.0.1 --port --strictPort'",
+    "dev:assets": "vite --host 127.0.0.1 --port 5173 --strictPort",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "dev:server": "bun --watch server.ts",
     "dev": "bun --parallel dev:server dev:assets dev:i18n",

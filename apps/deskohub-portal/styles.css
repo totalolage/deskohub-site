@@ -421,10 +421,6 @@ a {
     grid-template-rows: none;
   }
 
-  .portal-panel {
-    min-height: 100vh;
-  }
-
   .portal-panel-workspace {
     padding-top: clamp(1.15rem, 3vw, 2.6rem);
   }
