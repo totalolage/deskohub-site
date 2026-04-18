@@ -5,7 +5,8 @@ export const siteConstants = {
   brand: {
     name: "DeskoHub",
     legalName: "DeskoHub s.r.o.", // Full legal entity name
-    domain: "deskohub.cz",
+    publicDomain: "bar.deskohub.cz",
+    emailDomain: "deskohub.cz",
   },
   menu: {
     /**
@@ -63,19 +64,19 @@ export const siteConstants = {
   contact: {
     phone: "+420777060478",
     get fromEmail() {
-      return `noreply@mail.${siteConstants.brand.domain}`;
+      return `noreply@mail.${siteConstants.brand.emailDomain}`;
     },
     get infoEmail() {
-      return `info@${siteConstants.brand.domain}`;
+      return `info@${siteConstants.brand.emailDomain}`;
     },
     get reservationEmail() {
-      return `reservations@${siteConstants.brand.domain}`;
+      return `reservations@${siteConstants.brand.emailDomain}`;
     },
     get contactEmail() {
-      return `contact@${siteConstants.brand.domain}`;
+      return `contact@${siteConstants.brand.emailDomain}`;
     },
     get gdprEmail() {
-      return `info@${siteConstants.brand.domain}`;
+      return `info@${siteConstants.brand.emailDomain}`;
     },
     address: {
       street: "Turnovská 10/430",

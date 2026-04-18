@@ -74,7 +74,7 @@ export const env = createEnv({
       if (this.NEXT_PUBLIC_NODE_ENV === "development") {
         return `http://localhost:${process.env.PORT || 3000}`;
       }
-      return `https://${siteConstants.brand.domain}`;
+      return `https://${siteConstants.brand.publicDomain}`;
     },
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
   },
