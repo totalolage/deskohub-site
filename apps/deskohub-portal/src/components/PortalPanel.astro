@@ -1,0 +1,21 @@
+---
+type Props = {
+  className: string;
+  description: string;
+  heading: string;
+  href: string;
+  kicker: string;
+  label: string;
+};
+
+const { className, description, heading, href, kicker, label } = Astro.props;
+---
+
+<a class={`portal-panel ${className}`} href={href}>
+  <span class="portal-panel-inner">
+    <span class="portal-kicker">{kicker}</span>
+    <span class="portal-heading">{heading}</span>
+    <span class="portal-description">{description}</span>
+    <span class="portal-label">{label}</span>
+  </span>
+</a>

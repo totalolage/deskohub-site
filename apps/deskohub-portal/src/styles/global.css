@@ -1,8 +1,6 @@
-@import "tailwindcss";
-
 @font-face {
   font-family: "Sculpin";
-  src: url("../deskohub-workspace/assets/fonts/Sculpin/regular.woff2") format("woff2");
+  src: url("/fonts/regular.woff2") format("woff2");
   font-style: normal;
   font-weight: 400;
   font-display: swap;
@@ -10,13 +8,13 @@
 
 @font-face {
   font-family: "Sculpin";
-  src: url("../deskohub-workspace/assets/fonts/Sculpin/italic.woff2") format("woff2");
+  src: url("/fonts/italic.woff2") format("woff2");
   font-style: italic;
   font-weight: 400;
   font-display: swap;
 }
 
-@theme {
+:root {
   --font-workspace-display: "Sculpin", "Iowan Old Style", "Palatino Linotype", "Book Antiqua", serif;
   --font-workspace-ui: "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
   --font-bar: "Avenir Next Condensed", "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif;
@@ -47,6 +45,9 @@ html {
 
 body {
   margin: 0;
+  min-height: 100svh;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 a {
@@ -239,7 +240,7 @@ a {
   justify-content: flex-start;
   background:
     linear-gradient(180deg, rgb(0 2 79 / 0.18) 0%, rgb(0 2 79 / 0.6) 42%, rgb(0 2 79 / 0.86) 100%),
-    url("./assets/workspace.webp") center / cover no-repeat,
+    url("/images/workspace.webp") center / cover no-repeat,
     linear-gradient(155deg, rgb(0 2 79 / 0.98) 0%, rgb(4 16 72 / 0.98) 48%, rgb(8 22 78 / 0.98) 100%);
   color: var(--workspace-silver);
 }
@@ -315,7 +316,7 @@ a {
   padding-top: clamp(1.1rem, 4vw, 2rem);
   background:
     linear-gradient(180deg, rgb(15 17 21 / 0.18) 0%, rgb(15 17 21 / 0.52) 44%, rgb(15 17 21 / 0.9) 100%),
-    url("./assets/boardgame-bar.webp") center / cover no-repeat,
+    url("/images/boardgame-bar.webp") center / cover no-repeat,
     linear-gradient(210deg, rgb(15 17 21 / 0.98) 0%, rgb(23 28 34 / 0.98) 54%, rgb(10 12 16 / 0.98) 100%);
   color: var(--bar-text);
 }

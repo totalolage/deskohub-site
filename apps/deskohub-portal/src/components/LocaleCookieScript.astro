@@ -1,0 +1,15 @@
+---
+import type { Locale } from "../../features/i18n";
+import { cookieMaxAge, cookieName } from "../../features/i18n/paraglide/runtime.js";
+
+type Props = {
+  locale: Locale;
+};
+
+const { locale } = Astro.props;
+const cookieValue = `${cookieName}=${locale}; Max-Age=${cookieMaxAge}; Path=/; SameSite=Lax`;
+---
+
+<script is:inline define:vars={{ cookieValue }}>
+  document.cookie = cookieValue;
+</script>
