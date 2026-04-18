@@ -1,23 +1,18 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "astro/tsconfigs/strict",
   "compilerOptions": {
     "allowJs": true,
-    "target": "ES2022",
-    "module": "ESNext",
     "moduleResolution": "bundler",
-    "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
-    "isolatedModules": true,
-    "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
-    "types": ["bun", "node"]
+    "types": ["astro/client"]
   },
   "include": [
-    "server.ts",
-    "portal-server.ts",
-    "vite.config.ts",
-    "api/**/*.ts",
-    "features/**/*.ts"
+    "src/**/*.astro",
+    "src/**/*.ts",
+    "features/**/*.ts",
+    "astro.config.ts"
   ]
 }
