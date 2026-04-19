@@ -1,6 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "buildCommand": "bun run build",
-  "framework": "astro",
-  "outputDirectory": "apps/deskohub-portal/dist"
+  "framework": "astro"
 }
