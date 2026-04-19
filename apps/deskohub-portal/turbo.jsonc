@@ -1,6 +1,6 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
-  "extends": ["//"],
+  "extends": ["\/\/"],
   "tasks": {
     "build": {
       "outputs": ["dist/**", ".astro/**"]
