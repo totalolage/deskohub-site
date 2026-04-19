@@ -4,12 +4,11 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "bun run --sequential 'bun --version' 'pwd' i18n:compile build:site",
-    "build:site": "astro build",
+    "build": "astro build",
+    "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "dev:site": "astro dev --host 127.0.0.1 --port 4321 --strictPort",
     "dev": "bun --parallel dev:site dev:i18n",
-    "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
     "lint": "biome check astro.config.ts src features README.md package.json tsconfig.json turbo.json .gitignore --config-path ../../biome.json --vcs-root ../../",
     "typecheck": "bun run i18n:compile && bunx astro check"
   },
