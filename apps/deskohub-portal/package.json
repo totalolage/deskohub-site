@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
-    "build": "bun run --sequential 'i18n:compile' 'build:site'",
+    "build": "bun run --sequential 'bun --version' 'pwd' i18n:compile build:site",
     "build:site": "astro build",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "dev:site": "astro dev --host 127.0.0.1 --port 4321 --strictPort",
