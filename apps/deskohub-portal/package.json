@@ -16,7 +16,8 @@
   "dependencies": {
     "@astrojs/vercel": "10.0.4",
     "@inlang/paraglide-js": "^2.2.0",
-    "astro": "6.1.8"
+    "astro": "6.1.8",
+    "turbo": "^2.9.6"
   },
   "devDependencies": {
     "@astrojs/check": "0.9.8",
