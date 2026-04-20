@@ -12,6 +12,7 @@ export const env = createEnv({
   runtimeEnv: {
     EMAIL_API_KEY: process.env.EMAIL_API_KEY,
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
+    NEXT_PUBLIC_WORKSPACE_ENV: process.env.NEXT_PUBLIC_WORKSPACE_ENV,
   },
   emptyStringAsUndefined: true,
   onValidationError: (error) => {
@@ -32,4 +33,5 @@ export type WorkspaceEnv = WorkspaceServerEnv & WorkspaceClientEnv;
 
 export const publicEnv = {
   NEXT_PUBLIC_GTM_ID: env.NEXT_PUBLIC_GTM_ID,
+  NEXT_PUBLIC_WORKSPACE_ENV: env.NEXT_PUBLIC_WORKSPACE_ENV,
 } as const;
