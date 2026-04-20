@@ -6,6 +6,7 @@ export const workspaceServerEnvSchema = z.object({
 });
 
 export const workspaceClientEnvSchema = z.object({
+  NEXT_PUBLIC_GTM_ID: z.string().optional(),
   NEXT_PUBLIC_WORKSPACE_APP_URL: z.url(),
   NEXT_PUBLIC_WORKSPACE_ENV: z
     .enum(["development", "preview", "production"])

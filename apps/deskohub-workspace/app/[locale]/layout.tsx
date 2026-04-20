@@ -1,8 +1,10 @@
+import { GoogleTagManager } from "@next/third-parties/google";
 import { Analytics } from "@vercel/analytics/react";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
+import { env } from "@/env";
 import { CookieConsentProvider } from "@/features/cookie-consent";
 import { isWorkspaceLocale, workspaceLocales } from "@/features/i18n";
 import {
@@ -60,6 +62,7 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} className={sculpin.variable}>
+      {env.NEXT_PUBLIC_GTM_ID && <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />}
       <body
         className="sm:[--under-construction-ribbon-corner-size:13rem] sm:[--under-construction-ribbon-band-height:2.75rem]"
         style={underConstructionRibbonViewportStyle as CSSProperties}
