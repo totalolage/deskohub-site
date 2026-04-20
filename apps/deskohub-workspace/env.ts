@@ -12,6 +12,7 @@ export const env = createEnv({
   runtimeEnv: {
     WORKSPACE_API_URL: process.env.WORKSPACE_API_URL,
     WORKSPACE_INTERNAL_API_KEY: process.env.WORKSPACE_INTERNAL_API_KEY,
+    NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
     NEXT_PUBLIC_WORKSPACE_APP_URL: process.env.NEXT_PUBLIC_WORKSPACE_APP_URL,
     NEXT_PUBLIC_WORKSPACE_ENV: process.env.NEXT_PUBLIC_WORKSPACE_ENV,
   },
@@ -33,6 +34,7 @@ export const env = createEnv({
 export type WorkspaceEnv = WorkspaceServerEnv & WorkspaceClientEnv;
 
 export const publicEnv = {
+  NEXT_PUBLIC_GTM_ID: env.NEXT_PUBLIC_GTM_ID,
   NEXT_PUBLIC_WORKSPACE_APP_URL: env.NEXT_PUBLIC_WORKSPACE_APP_URL,
   NEXT_PUBLIC_WORKSPACE_ENV: env.NEXT_PUBLIC_WORKSPACE_ENV,
 } as const;
