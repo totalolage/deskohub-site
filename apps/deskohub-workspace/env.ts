@@ -10,6 +10,7 @@ export const env = createEnv({
   server: workspaceServerEnvSchema.shape,
   client: workspaceClientEnvSchema.shape,
   runtimeEnv: {
+    EMAIL_API_KEY: process.env.EMAIL_API_KEY,
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
   },
   emptyStringAsUndefined: true,
