@@ -30,7 +30,7 @@ export const ReservationService =
   Context.GenericTag<ReservationService>("ReservationService");
 
 const workspaceRecipient = {
-  email: "workspace@deskohub.com",
+  email: workspaceSiteConstants.contact.infoEmail,
   name: workspaceSiteConstants.brand.name,
 } as const;
 
