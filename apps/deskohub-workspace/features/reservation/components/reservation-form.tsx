@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { track } from "@vercel/analytics/react";
 import {
   AlertTriangle,
   CalendarIcon,
@@ -9,10 +10,11 @@ import {
   Send,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
+import { useCookieConsent } from "@/features/cookie-consent";
 import { m, type WorkspaceLocale } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import {
@@ -60,6 +62,18 @@ type SubmissionMessage = {
   status: "error";
   text: string;
 };
+
+const utmKeys = [
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+] as const;
+
+type UtmKey = (typeof utmKeys)[number];
+
+type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
 const tierOptions = [
   {
@@ -146,10 +160,35 @@ const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
   return message({}, { locale }) as string;
 };
 
+const getSanitizedUtmParams = (
+  searchParams: URLSearchParams
+): SanitizedUtmParams => {
+  const sanitizedParams: SanitizedUtmParams = {};
+
+  for (const key of utmKeys) {
+    const value = searchParams.get(key)?.trim();
+
+    if (!value) {
+      continue;
+    }
+
+    sanitizedParams[key] = value.slice(0, 128);
+  }
+
+  return sanitizedParams;
+};
+
 export function ReservationForm({ locale }: ReservationFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { isAccepted } = useCookieConsent();
+  const hasTrackedSuccessfulSubmission = useRef(false);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
+  const sanitizedUtmParams = useMemo(
+    () => getSanitizedUtmParams(searchParams),
+    [searchParams]
+  );
   const schema = useMemo(() => getReservationSchema(), []);
   const form = useForm<ReservationInput, unknown, ReservationData>({
     resolver: zodResolver(schema),
@@ -169,6 +208,11 @@ export function ReservationForm({ locale }: ReservationFormProps) {
           text: m.reservationErrorMessage({}, { locale }),
         });
         return;
+      }
+
+      if (!hasTrackedSuccessfulSubmission.current && isAccepted("analytics")) {
+        hasTrackedSuccessfulSubmission.current = true;
+        track("workspace_reservation_submitted", sanitizedUtmParams);
       }
 
       router.push(data.redirectUrl);
@@ -197,6 +241,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
 
   const handleSubmit = form.handleSubmit((data) => {
     setSubmissionMessage(null);
+    hasTrackedSuccessfulSubmission.current = false;
     execute({
       ...data,
       coffee: tierIncludesCourtesyCoffee(data.entryTier) ? true : data.coffee,

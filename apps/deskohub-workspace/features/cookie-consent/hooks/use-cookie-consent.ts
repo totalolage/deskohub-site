@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import * as CookieConsent from "vanilla-cookieconsent";
+import CookieConsent from "vanilla-cookieconsent";
 import type { ConsentCategory } from "../config/consent-config";
 
 export function useCookieConsent() {
