@@ -2,6 +2,7 @@ import {
   createSafeActionClient,
   DEFAULT_SERVER_ERROR_MESSAGE,
 } from "next-safe-action";
+import type { Locale } from "@/features/i18n";
 import { localeMiddleware } from "./action-middleware/locale";
 
 export const actionClient = createSafeActionClient({
@@ -14,4 +15,4 @@ export const actionClient = createSafeActionClient({
     return DEFAULT_SERVER_ERROR_MESSAGE;
   },
   defaultValidationErrorsShape: "flattened",
-}).use(localeMiddleware);
+}).use<{ locale: Locale }>(localeMiddleware);

@@ -11,14 +11,16 @@ export function createLocaleActionMiddleware<Locale extends string>({
   fallbackLocale,
   setLocale,
 }: CreateLocaleActionMiddlewareOptions<Locale>) {
-  return createMiddleware().define(async ({ next }) => {
-    const locale = (await resolveLocale()) ?? fallbackLocale;
-    setLocale(locale);
+  return createMiddleware<{ ctx: {} }>().define<{ locale: Locale }>(
+    async ({ next }) => {
+      const locale = (await resolveLocale()) ?? fallbackLocale;
+      setLocale(locale);
 
-    return next({
-      ctx: {
-        locale,
-      },
-    });
-  });
+      return next({
+        ctx: {
+          locale,
+        },
+      });
+    }
+  );
 }
