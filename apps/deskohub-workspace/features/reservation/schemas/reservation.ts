@@ -1,0 +1,158 @@
+import { isValidPhoneNumber } from "libphonenumber-js";
+import { z } from "zod/v4";
+import { m } from "@/features/i18n";
+
+export const reservationEntryTiers = [
+  "basic-day-pass",
+  "cowork-plus",
+  "profi-workstation",
+] as const;
+
+export const reservationMonitorOptions = ["2x27", "2x32", "qhd-4k"] as const;
+
+export type ReservationEntryTier = (typeof reservationEntryTiers)[number];
+export type ReservationMonitorOption =
+  (typeof reservationMonitorOptions)[number];
+
+export const tiersWithCourtesyCoffee = new Set<ReservationEntryTier>([
+  "cowork-plus",
+  "profi-workstation",
+]);
+
+const RESERVATION_VALIDATION = {
+  name: { min: 2, max: 100 },
+  email: { max: 255 },
+  phone: { max: 20 },
+  message: { max: 1000 },
+} as const;
+
+const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "Europe/Prague",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+const getCurrentPragueDate = () => {
+  const dateParts = Object.fromEntries(
+    pragueDateFormatter
+      .formatToParts(new Date())
+      .map((part) => [part.type, part.value])
+  );
+
+  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+};
+
+const isTodayOrFuturePragueDate = (date: string) =>
+  date >= getCurrentPragueDate();
+
+const requiredEmailSchema = z
+  .string()
+  .trim()
+  .min(1, { error: m.contactValidationEmailRequired() })
+  .max(RESERVATION_VALIDATION.email.max, {
+    error: m.contactValidationEmailMaximum({
+      max: RESERVATION_VALIDATION.email.max,
+    }),
+  })
+  .pipe(z.email({ error: m.contactValidationEmailInvalid() }));
+
+export const getReservationSchema = () =>
+  z
+    .object({
+      entryTier: z.enum(reservationEntryTiers, {
+        error: m.reservationValidationTierRequired(),
+      }),
+      date: z.iso
+        .date({ error: m.reservationValidationDateRequired() })
+        .refine(isTodayOrFuturePragueDate, {
+          error: m.reservationValidationDatePast(),
+        }),
+      coffee: z.boolean(),
+      monitorOption: z
+        .enum(reservationMonitorOptions)
+        .optional()
+        .or(z.literal("").transform(() => undefined)),
+      name: z
+        .string()
+        .trim()
+        .min(RESERVATION_VALIDATION.name.min, {
+          error: m.contactValidationNameMinimum({
+            min: RESERVATION_VALIDATION.name.min,
+          }),
+        })
+        .max(RESERVATION_VALIDATION.name.max, {
+          error: m.contactValidationNameMaximum({
+            max: RESERVATION_VALIDATION.name.max,
+          }),
+        }),
+      email: requiredEmailSchema,
+      phone: z
+        .string()
+        .trim()
+        .max(RESERVATION_VALIDATION.phone.max, {
+          error: m.contactValidationPhoneMaximum({
+            max: RESERVATION_VALIDATION.phone.max,
+          }),
+        })
+        .optional()
+        .or(z.literal(""))
+        .refine((phone) => !phone || isValidPhoneNumber(phone, "CZ"), {
+          error: m.contactValidationPhoneInvalid(),
+        }),
+      message: z
+        .string()
+        .trim()
+        .max(RESERVATION_VALIDATION.message.max, {
+          error: m.contactValidationMessageMaximum({
+            max: RESERVATION_VALIDATION.message.max,
+          }),
+        })
+        .optional()
+        .or(z.literal("")),
+    })
+    .superRefine((data, context) => {
+      const requiresMonitor = data.entryTier === "profi-workstation";
+      const includesCoffee = tiersWithCourtesyCoffee.has(data.entryTier);
+
+      if (requiresMonitor && !data.monitorOption) {
+        context.addIssue({
+          code: "custom",
+          path: ["monitorOption"],
+          message: m.reservationValidationMonitorRequired(),
+        });
+      }
+
+      if (!requiresMonitor && data.monitorOption) {
+        context.addIssue({
+          code: "custom",
+          path: ["monitorOption"],
+          message: m.reservationValidationMonitorUnavailable(),
+        });
+      }
+
+      if (includesCoffee && !data.coffee) {
+        context.addIssue({
+          code: "custom",
+          path: ["coffee"],
+          message: m.reservationValidationCoffeeRequired(),
+        });
+      }
+    });
+
+export type ReservationInput = z.input<ReturnType<typeof getReservationSchema>>;
+export type ReservationData = z.output<ReturnType<typeof getReservationSchema>>;
+
+export const reservationDefaultValues: ReservationInput = {
+  entryTier: "basic-day-pass",
+  date: "",
+  coffee: false,
+  monitorOption: undefined,
+  name: "",
+  email: "",
+  phone: "",
+  message: "",
+};
+
+export const tierIncludesCourtesyCoffee = (tier: ReservationEntryTier) =>
+  tiersWithCourtesyCoffee.has(tier);
