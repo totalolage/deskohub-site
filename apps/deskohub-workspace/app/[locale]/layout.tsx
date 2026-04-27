@@ -4,10 +4,8 @@ import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { env } from "@/env";
-import {
-  ConsentAwareAnalytics,
-  CookieConsentProvider,
-} from "@/features/cookie-consent";
+import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
+import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
 import { isWorkspaceLocale, workspaceLocales } from "@/features/i18n";
 import {
   UnderConstructionRibbon,
