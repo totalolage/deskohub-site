@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
+import { Suspense } from "react";
 import {
   type WorkspaceLocale,
-  withLocalePrefix,
+  withLocalePrefixAndSearch,
   workspaceLocales,
 } from "@/features/i18n";
 import { HorizontalLogo } from "@/shared/components/logo";
@@ -15,15 +16,48 @@ type MinimalSiteHeaderProps = {
   languageLabels: Record<WorkspaceLocale, string>;
 };
 
-export function MinimalSiteHeader({
+function MinimalLocaleSwitcherLinks({
   currentLocale,
   languageLabels,
 }: MinimalSiteHeaderProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const getLocaleHref = (locale: WorkspaceLocale) =>
-    withLocalePrefix(pathname, locale);
+    withLocalePrefixAndSearch(pathname, locale, searchParams);
 
+  return workspaceLocales.map((locale, index) => {
+    const isCurrent = locale === currentLocale;
+
+    return (
+      <span
+        key={locale}
+        className={cn(
+          index > 0 &&
+            "before:absolute before:translate-x-[0.5ch] before:text-white/28 before:content-['/']"
+        )}
+      >
+        {index > 0 && <br />}
+        {isCurrent ? (
+          <strong className="text-white">{languageLabels[locale]}</strong>
+        ) : (
+          <Link
+            href={getLocaleHref(locale)}
+            scroll={false}
+            className="transition-colors hover:text-sunset-yellow"
+          >
+            {languageLabels[locale]}
+          </Link>
+        )}
+      </span>
+    );
+  });
+}
+
+export function MinimalSiteHeader({
+  currentLocale,
+  languageLabels,
+}: MinimalSiteHeaderProps) {
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-[var(--site-header-height)] border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
       <div className="mx-auto flex h-full w-full max-w-7xl items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
@@ -38,34 +72,12 @@ export function MinimalSiteHeader({
           aria-label="Language switcher"
           className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
         >
-          {workspaceLocales.map((locale, index) => {
-            const isCurrent = locale === currentLocale;
-
-            return (
-              <span
-                key={locale}
-                className={cn(
-                  index > 0 &&
-                    "before:absolute before:translate-x-[0.5ch] before:text-white/28 before:content-['/']"
-                )}
-              >
-                {index > 0 && <br />}
-                {isCurrent ? (
-                  <strong className="text-white">
-                    {languageLabels[locale]}
-                  </strong>
-                ) : (
-                  <Link
-                    href={getLocaleHref(locale)}
-                    scroll={false}
-                    className="transition-colors hover:text-sunset-yellow"
-                  >
-                    {languageLabels[locale]}
-                  </Link>
-                )}
-              </span>
-            );
-          })}
+          <Suspense fallback={null}>
+            <MinimalLocaleSwitcherLinks
+              currentLocale={currentLocale}
+              languageLabels={languageLabels}
+            />
+          </Suspense>
         </nav>
       </div>
     </header>

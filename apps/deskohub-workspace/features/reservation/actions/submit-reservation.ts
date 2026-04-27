@@ -7,7 +7,10 @@ import {
   ReservationService,
   ReservationServiceLive,
 } from "@/features/reservation/backend/reservation.service";
-import { getReservationSchema } from "@/features/reservation/schemas/reservation";
+import {
+  getReservationSchema,
+  reservationMonitorOptions,
+} from "@/features/reservation/schemas/reservation";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
@@ -21,6 +24,19 @@ const submitReservationAction = createEffectSafeAction(
 
       const service = yield* ReservationService;
       const submission = yield* service.submit(input, locale);
+      const reservationSearchParams = new URLSearchParams({
+        tier: input.entryTier,
+        date: input.date,
+        coffee: input.coffee ? "1" : "0",
+      });
+
+      if (
+        input.entryTier === "profi-workstation" &&
+        input.monitorOption &&
+        reservationMonitorOptions.includes(input.monitorOption)
+      ) {
+        reservationSearchParams.set("monitor", input.monitorOption);
+      }
 
       yield* Effect.logInfo("Workspace reservation submitted", {
         locale,
@@ -30,6 +46,7 @@ const submitReservationAction = createEffectSafeAction(
 
       return {
         message: "Reservation submitted successfully",
+        redirectUrl: `/${locale}/reservation/confirmation?${reservationSearchParams.toString()}`,
         submissionId: submission.submittedAt,
       };
     }).pipe(

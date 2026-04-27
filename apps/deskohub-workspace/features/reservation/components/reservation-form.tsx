@@ -4,12 +4,12 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import {
   AlertTriangle,
   CalendarIcon,
-  CheckCircle2,
   Coffee,
   Monitor,
   Send,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
@@ -57,7 +57,7 @@ type ReservationFormProps = {
 };
 
 type SubmissionMessage = {
-  status: "success" | "error";
+  status: "error";
   text: string;
 };
 
@@ -147,6 +147,7 @@ const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
 };
 
 export function ReservationForm({ locale }: ReservationFormProps) {
+  const router = useRouter();
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
   const schema = useMemo(() => getReservationSchema(), []);
@@ -161,12 +162,16 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const shouldShowMonitors = selectedTier === "profi-workstation";
 
   const { execute, isExecuting } = useAction(submitReservation, {
-    onSuccess: () => {
-      setSubmissionMessage({
-        status: "success",
-        text: m.reservationSuccessMessage({}, { locale }),
-      });
-      form.reset(reservationDefaultValues);
+    onSuccess: ({ data }) => {
+      if (!data?.redirectUrl) {
+        setSubmissionMessage({
+          status: "error",
+          text: m.reservationErrorMessage({}, { locale }),
+        });
+        return;
+      }
+
+      router.push(data.redirectUrl);
     },
     onError: ({ error }) => {
       setSubmissionMessage({
@@ -486,16 +491,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                   aria-live="polite"
                   className={cn(
                     "flex items-start gap-2 rounded-[1rem] border px-4 py-3 text-sm leading-6",
-                    submissionMessage.status === "success"
-                      ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-navy-blue"
-                      : "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
+                    "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
                   )}
                 >
-                  {submissionMessage.status === "success" ? (
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-aquamarine-green" />
-                  ) : (
-                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
-                  )}
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
                   <span>{submissionMessage.text}</span>
                 </p>
               ) : null}

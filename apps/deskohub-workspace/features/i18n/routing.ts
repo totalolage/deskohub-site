@@ -66,3 +66,22 @@ export const withLocalePrefix = (
   pathname: string,
   locale: WorkspaceLocale
 ): string => replaceLocaleInPathname(pathname, locale, workspaceLocales);
+
+export const withLocalePrefixAndSearch = (
+  pathname: string,
+  locale: WorkspaceLocale,
+  searchParams: Pick<URLSearchParams, "toString"> | string
+): string => {
+  const localizedPathname = withLocalePrefix(pathname, locale);
+  const rawSearchString =
+    typeof searchParams === "string" ? searchParams : searchParams.toString();
+  const searchString = rawSearchString.startsWith("?")
+    ? rawSearchString.slice(1)
+    : rawSearchString;
+
+  if (!searchString) {
+    return localizedPathname;
+  }
+
+  return `${localizedPathname}?${searchString}`;
+};

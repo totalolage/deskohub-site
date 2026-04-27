@@ -15,6 +15,7 @@ export {
   resolveLocaleFromPolicy,
   type WorkspaceLocale,
   withLocalePrefix,
+  withLocalePrefixAndSearch,
   workspaceLocaleConfig,
   workspaceLocaleCookieName,
   workspaceLocales,
