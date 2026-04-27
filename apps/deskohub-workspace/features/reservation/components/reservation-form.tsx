@@ -331,28 +331,37 @@ export function ReservationForm({ locale }: ReservationFormProps) {
               control={form.control}
               name="coffee"
               render={({ field }) => (
-                <FormItem className="rounded-[1.3rem] border border-navy-blue/10 bg-gradient-to-br from-sunset-yellow/18 to-white p-4">
-                  <div className="flex items-start gap-3">
+                <FormItem>
+                  <div className="relative">
                     <FormControl>
                       <Checkbox
+                        className="absolute left-4 top-4 z-10"
                         checked={courtesyCoffeeIncluded ? true : field.value}
                         disabled={courtesyCoffeeIncluded}
+                        onBlur={field.onBlur}
                         onCheckedChange={(checked) =>
                           field.onChange(Boolean(checked))
                         }
                       />
                     </FormControl>
-                    <div className="space-y-1 leading-none">
-                      <FormLabel className="flex items-center gap-2 text-base font-semibold text-navy-blue">
-                        <Coffee className="h-4 w-4 text-burned-orange" />
-                        {m.reservationCoffeeLabel({}, { locale })}
-                      </FormLabel>
-                      <FormDescription className="leading-6">
-                        {courtesyCoffeeIncluded
-                          ? m.reservationCoffeeCourtesyNote({}, { locale })
-                          : m.reservationCoffeeBasicNote({}, { locale })}
-                      </FormDescription>
-                    </div>
+                    <FormLabel
+                      className={cn(
+                        "block cursor-pointer rounded-[1.3rem] border border-navy-blue/10 bg-gradient-to-br from-sunset-yellow/18 to-white py-4 pl-12 pr-4 text-navy-blue transition hover:border-burned-orange/30",
+                        courtesyCoffeeIncluded && "cursor-default"
+                      )}
+                    >
+                      <span className="block space-y-1 leading-none">
+                        <span className="flex items-center gap-2 text-base font-semibold text-navy-blue">
+                          <Coffee className="h-4 w-4 text-burned-orange" />
+                          {m.reservationCoffeeLabel({}, { locale })}
+                        </span>
+                        <FormDescription className="leading-6">
+                          {courtesyCoffeeIncluded
+                            ? m.reservationCoffeeCourtesyNote({}, { locale })
+                            : m.reservationCoffeeBasicNote({}, { locale })}
+                        </FormDescription>
+                      </span>
+                    </FormLabel>
                   </div>
                   <FormMessage />
                 </FormItem>
