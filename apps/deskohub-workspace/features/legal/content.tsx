@@ -70,7 +70,7 @@ const termsAndConditionsSections: LegalSection[] = [
   {
     heading: "4. Uzavření smlouvy",
     body: [
-      "4.1 Smlouva o poskytování coworkingových služeb je uzavřena okamžikem, kdy Klient uhradí cenu služby a Poskytovatel mu zašle potvrzení včetně přístupového PIN kódu.",
+      "4.1 Smlouva o poskytování coworkingových služeb je uzavřena okamžikem, kdy Klient uhradí cenu služby a Poskytovatel mu zašle potvrzení včetně přístupového PIN kódu. Odeslání rezervačního formuláře na webu představuje pouze poptávku/žádost a samo o sobě nezakládá závaznou rezervaci ani smlouvu, dokud ji Poskytovatel nepotvrdí podle těchto VOP. Požadavky na kávu, pracovní místo nebo monitory podléhají dostupnosti a potvrzení Poskytovatele.",
       "4.2 Smlouva o pronájmu prostoru pro akce je uzavřena na základě individuální nabídky Poskytovatele a jejího přijetí Klientem.",
       "4.3 Poskytovatel není povinen uzavřít smlouvu s každým Klientem a vyhrazuje si právo jakoukoli poptávku odmítnout.",
     ],
@@ -272,7 +272,7 @@ const termsAndConditionsSectionsEn: LegalSection[] = [
   {
     heading: "4. Conclusion of the Contract",
     body: [
-      "4.1 A contract for the provision of coworking services is concluded at the moment the Client pays the price of the service and the Provider sends them a confirmation including the access PIN code.",
+      "4.1 A contract for the provision of coworking services is concluded at the moment the Client pays the price of the service and the Provider sends them a confirmation including the access PIN code. Submitting a reservation form on the website constitutes an enquiry/request only and does not create a binding reservation or contract until confirmed by the Provider in accordance with these GTC. Requested coffee, workstation, or monitor preferences are subject to availability and Provider confirmation.",
       "4.2 A contract for the rental of premises for events is concluded on the basis of an individual offer from the Provider and its acceptance by the Client.",
       "4.3 The Provider is not obliged to conclude a contract with every Client and reserves the right to reject any inquiry.",
     ],
@@ -444,8 +444,8 @@ const legalDocuments: Record<
   "en-US": {
     "privacy-policy": {
       title: "Privacy Policy",
-      lead: "This page explains how Desktechub s.r.o. handles personal data submitted through the public Deskohub Workspace website.",
-      updatedAt: "6 April 2026",
+      lead: "This page explains how Desktechub s.r.o. handles personal data submitted through the public Deskohub Workspace website, including contact and reservation forms.",
+      updatedAt: "27 April 2026",
       sections: [
         {
           heading: "1. Controller",
@@ -473,10 +473,18 @@ const legalDocuments: Record<
           heading: "2. What data we process",
           body: [
             <>
-              We process only the data you provide through our public website,
+              We process the data you provide through our public website,
               especially contact details and message content sent through the
-              contact form, and technical cookie preferences described in the
-              cookie policy.
+              contact form, plus reservation form details: your name, email,
+              optional phone number, optional message, requested entry tier,
+              reservation date, coffee preference, and monitor or workstation
+              preference.
+            </>,
+            <>
+              For website operation and abuse prevention, we may also process
+              limited technical data such as IP address, User-Agent, origin or
+              host information where available, and short-lived rate-limit or
+              anti-spam signals connected with a submission.
             </>,
           ],
         },
@@ -484,14 +492,15 @@ const legalDocuments: Record<
           heading: "3. Why we process the data",
           body: [
             <>
-              We use the submitted contact data to answer your enquiry, continue
-              communication requested by you, and protect the website against
-              abuse or excessive automated submissions.
+              We use submitted contact and reservation data to process your
+              enquiry or reservation request, send an internal business
+              notification to the workspace team, send you a confirmation email,
+              follow up about the request, and protect the website and forms
+              against abuse, spam, or excessive automated submissions.
             </>,
             <>
-              We do not publish or describe any customer account, reservation,
-              payment, or invoicing processing on this page beyond what is
-              currently visible on the website.
+              We do not use reservation or enquiry data for marketing unless you
+              separately consent to receive marketing communication.
             </>,
           ],
         },
@@ -499,10 +508,11 @@ const legalDocuments: Record<
           heading: "4. Legal basis",
           body: [
             <>
-              The main legal basis is the performance of steps requested by you
-              before entering into a potential contract, or our legitimate
-              interest in responding to business enquiries and securing the
-              website.
+              For reservation handling, the main legal basis is taking steps at
+              your request before entering into a contract or performing the
+              requested service. For follow-up communication, internal handling,
+              website security, and abuse prevention, we rely on our legitimate
+              interests.
             </>,
             <>
               Optional non-essential cookies are processed only on the basis of
@@ -514,9 +524,11 @@ const legalDocuments: Record<
           heading: "5. Retention period",
           body: [
             <>
-              We keep enquiry data only for as long as needed to handle the
-              conversation, complete follow-up communication, or prove
-              compliance and protect our legitimate interests.
+              We keep enquiry and reservation data only for as long as needed to
+              handle the request, complete follow-up communication, or meet
+              legal obligations and protect our legitimate interests. Technical
+              abuse-prevention signals are short-lived and used on a best-effort
+              basis.
             </>,
           ],
         },
@@ -524,9 +536,10 @@ const legalDocuments: Record<
           heading: "6. Recipients",
           body: [
             <>
-              Your data may be accessed by our website, hosting, email, and
-              technical service providers when necessary for secure website
-              operation and communication handling.
+              Your data may be accessed by our internal workspace team and by
+              website, hosting, email, and technical service providers when
+              necessary for secure website operation, reservation handling, and
+              communication delivery.
             </>,
           ],
         },
@@ -546,7 +559,7 @@ const legalDocuments: Record<
     "terms-and-conditions": {
       title: "General Terms and Conditions",
       lead: "These General Terms and Conditions govern the provision of coworking services and the short-term rental of premises for events.",
-      updatedAt: "12 April 2026",
+      updatedAt: "27 April 2026",
       sections: termsAndConditionsSectionsEn,
     },
     "cookie-policy": {
@@ -616,8 +629,8 @@ const legalDocuments: Record<
   "cs-CZ": {
     "privacy-policy": {
       title: "Zásady ochrany osobních údajů",
-      lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace.",
-      updatedAt: "6. dubna 2026",
+      lead: "Na této stránce vysvětlujeme, jak Desktechub s.r.o. nakládá s osobními údaji zaslanými přes veřejný web Deskohub Workspace, včetně kontaktního a rezervačního formuláře.",
+      updatedAt: "27. dubna 2026",
       sections: [
         {
           heading: "1. Správce",
@@ -646,10 +659,18 @@ const legalDocuments: Record<
           heading: "2. Jaké údaje zpracováváme",
           body: [
             <>
-              Zpracováváme pouze údaje, které nám poskytnete přes veřejný web,
-              zejména kontaktní údaje a obsah zprávy odeslané přes kontaktní
-              formulář, a technické preference cookies popsané v zásadách
-              používání cookies.
+              Zpracováváme údaje, které nám poskytnete přes veřejný web, zejména
+              kontaktní údaje a obsah zprávy odeslané přes kontaktní formulář a
+              údaje z rezervačního formuláře: jméno, e-mail, volitelný telefon,
+              volitelnou zprávu, požadovaný typ vstupu, datum rezervace,
+              preferenci kávy a preferenci monitorů nebo pracovní stanice.
+            </>,
+            <>
+              Pro provoz webu a ochranu před zneužitím můžeme zpracovávat také
+              omezené technické údaje, například IP adresu, User-Agent,
+              informace o originu nebo hostu, pokud jsou dostupné, a krátkodobé
+              signály pro rate limiting nebo ochranu proti spamu související s
+              odesláním formuláře.
             </>,
           ],
         },
@@ -657,14 +678,15 @@ const legalDocuments: Record<
           heading: "3. Za jakým účelem údaje používáme",
           body: [
             <>
-              Kontaktní údaje používáme pro vyřízení vaší poptávky, navazující
-              komunikaci, kterou od nás očekáváte, a pro ochranu webu před
-              zneužitím nebo nadměrným automatizovaným odesíláním.
+              Kontaktní a rezervační údaje používáme pro vyřízení vaší poptávky
+              nebo rezervace, odeslání interního obchodního upozornění workspace
+              týmu, zaslání potvrzovacího e-mailu, navazující komunikaci a
+              ochranu webu a formulářů před zneužitím, spamem nebo nadměrným
+              automatizovaným odesíláním.
             </>,
             <>
-              Tato stránka nepopisuje žádné zákaznické účty, rezervace, platby
-              ani fakturační procesy nad rámec toho, co je aktuálně viditelné na
-              webu.
+              Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
+              tomu neudělíte samostatný souhlas.
             </>,
           ],
         },
@@ -672,9 +694,11 @@ const legalDocuments: Record<
           heading: "4. Právní základ",
           body: [
             <>
-              Hlavním právním základem je provedení opatření na vaši žádost před
-              případným uzavřením smlouvy nebo náš oprávněný zájem na vyřízení
-              obchodní poptávky a zabezpečení webu.
+              Pro vyřízení rezervace je hlavním právním základem provedení
+              opatření na vaši žádost před uzavřením smlouvy nebo plnění
+              požadované služby. Pro navazující komunikaci, interní zpracování,
+              zabezpečení webu a ochranu před zneužitím vycházíme z našeho
+              oprávněného zájmu.
             </>,
             <>
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
@@ -685,9 +709,11 @@ const legalDocuments: Record<
           heading: "5. Doba uchování",
           body: [
             <>
-              Údaje z poptávky uchováváme pouze po dobu nutnou k vyřízení
-              komunikace, navazujícímu kontaktu nebo doložení souladu s právními
-              povinnostmi a ochraně našich oprávněných zájmů.
+              Údaje z poptávky a rezervace uchováváme pouze po dobu nutnou k
+              vyřízení požadavku, navazujícímu kontaktu nebo splnění právních
+              povinností a ochraně našich oprávněných zájmů. Technické signály
+              pro ochranu před zneužitím jsou krátkodobé a používáme je v režimu
+              best-effort.
             </>,
           ],
         },
@@ -695,9 +721,10 @@ const legalDocuments: Record<
           heading: "6. Příjemci",
           body: [
             <>
-              K údajům mohou mít přístup naši poskytovatelé hostingu, e-mailu a
-              technických služeb, pokud je to nutné pro bezpečný provoz webu a
-              vyřízení komunikace.
+              K údajům může mít přístup náš interní workspace tým a naši
+              poskytovatelé hostingu, e-mailu a technických služeb, pokud je to
+              nutné pro bezpečný provoz webu, vyřízení rezervace a doručení
+              komunikace.
             </>,
           ],
         },
@@ -717,7 +744,7 @@ const legalDocuments: Record<
     "terms-and-conditions": {
       title: "Všeobecné obchodní podmínky",
       lead: "Tyto všeobecné obchodní podmínky upravují poskytování coworkingových služeb a krátkodobý pronájem prostor pro konání akcí.",
-      updatedAt: "12. dubna 2026",
+      updatedAt: "27. dubna 2026",
       sections: termsAndConditionsSections,
     },
     "cookie-policy": {
