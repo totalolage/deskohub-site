@@ -62,7 +62,9 @@ export default async function LocaleLayout({
 
   return (
     <html lang={locale} className={sculpin.variable}>
-      {env.NEXT_PUBLIC_GTM_ID && <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />}
+      {env.NEXT_PUBLIC_GTM_ID && (
+        <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />
+      )}
       <body
         className="sm:[--under-construction-ribbon-corner-size:13rem] sm:[--under-construction-ribbon-band-height:2.75rem]"
         style={underConstructionRibbonViewportStyle as CSSProperties}

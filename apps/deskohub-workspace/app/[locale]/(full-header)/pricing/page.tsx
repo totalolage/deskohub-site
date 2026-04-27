@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isWorkspaceLocale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { PricingPage, getPricingContent } from "@/features/pricing";
+import { getPricingContent, PricingPage } from "@/features/pricing";
 
 type PricingPageRouteProps = {
   params: Promise<{ locale: string }>;
