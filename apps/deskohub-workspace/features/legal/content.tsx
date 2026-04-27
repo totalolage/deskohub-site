@@ -486,6 +486,15 @@ const legalDocuments: Record<
               host information where available, and short-lived rate-limit or
               anti-spam signals connected with a submission.
             </>,
+            <>
+              If you consent to analytics cookies or similar technologies, we
+              and our analytics service providers may process website usage and
+              campaign measurement data, such as pageviews, browser and device
+              information, IP-derived technical data, event types, and standard
+              campaign parameters from URLs. These campaign parameters are
+              limited to utm_source, utm_medium, utm_campaign, utm_content, and
+              utm_term.
+            </>,
           ],
         },
         {
@@ -502,6 +511,15 @@ const legalDocuments: Record<
               We do not use reservation or enquiry data for marketing unless you
               separately consent to receive marketing communication.
             </>,
+            <>
+              With your analytics consent, we use analytics and external
+              measurement services to understand site usage, reservation
+              submission performance, and campaign effectiveness. Reservation
+              submitted conversion events are used only at category and purpose
+              level and do not include reservation form values or personal
+              details such as name, email, phone, message, reservation date,
+              selected tier, coffee preference, or monitor preference.
+            </>,
           ],
         },
         {
@@ -516,7 +534,9 @@ const legalDocuments: Record<
             </>,
             <>
               Optional non-essential cookies are processed only on the basis of
-              your consent.
+              your consent. Analytics and campaign measurement processing is
+              based on consent, which you can withdraw or change at any time via
+              cookie settings.
             </>,
           ],
         },
@@ -530,6 +550,11 @@ const legalDocuments: Record<
               abuse-prevention signals are short-lived and used on a best-effort
               basis.
             </>,
+            <>
+              Analytics and campaign measurement data is retained according to
+              the applicable analytics and technical provider settings and only
+              as long as necessary for the stated measurement purposes.
+            </>,
           ],
         },
         {
@@ -537,9 +562,12 @@ const legalDocuments: Record<
           body: [
             <>
               Your data may be accessed by our internal workspace team and by
-              website, hosting, email, and technical service providers when
-              necessary for secure website operation, reservation handling, and
-              communication delivery.
+              website, hosting, email, analytics, external measurement, and
+              technical service providers when necessary for secure website
+              operation, reservation handling, communication delivery, and
+              consented analytics or campaign measurement. We use appropriate
+              contractual, organizational, and technical safeguards for provider
+              access.
             </>,
           ],
         },
@@ -565,7 +593,7 @@ const legalDocuments: Record<
     "cookie-policy": {
       title: "Cookie Policy",
       lead: "This page explains how the Deskohub Workspace website uses cookies and how you can manage your preferences.",
-      updatedAt: "6 April 2026",
+      updatedAt: "27 April 2026",
       sections: [
         {
           heading: "1. What cookies are",
@@ -601,9 +629,25 @@ const legalDocuments: Record<
           heading: "4. Analytics and marketing cookies",
           body: [
             <>
-              Analytics and marketing cookies are optional. If such tools are
-              used on the site, they are activated only after your consent
-              through the cookie banner or the cookie settings page.
+              Analytics and marketing cookies are optional. If analytics,
+              external measurement, campaign measurement, or similar technical
+              provider tools are used on the site, they are activated only after
+              your consent through the cookie banner or the cookie settings
+              page.
+            </>,
+            <>
+              Analytics cookies help us understand site usage, reservation
+              submission performance, and campaign effectiveness. Depending on
+              the provider category, the processed data may include pageviews,
+              browser and device information, IP-derived technical data, event
+              types, and standard campaign parameters from URLs: utm_source,
+              utm_medium, utm_campaign, utm_content, and utm_term.
+            </>,
+            <>
+              Reservation submitted conversion events do not include reservation
+              form values or personal details such as name, email, phone,
+              message, reservation date, selected tier, coffee preference, or
+              monitor preference.
             </>,
           ],
         },
@@ -672,6 +716,15 @@ const legalDocuments: Record<
               signály pro rate limiting nebo ochranu proti spamu související s
               odesláním formuláře.
             </>,
+            <>
+              Pokud udělíte souhlas s analytickými cookies nebo obdobnými
+              technologiemi, můžeme my a poskytovatelé analytických služeb
+              zpracovávat údaje o používání webu a měření kampaní, například
+              zobrazení stránek, informace o prohlížeči a zařízení, technické
+              údaje odvozené z IP adresy, typy událostí a standardní kampanové
+              parametry z URL. Tyto kampanové parametry jsou omezené na
+              utm_source, utm_medium, utm_campaign, utm_content a utm_term.
+            </>,
           ],
         },
         {
@@ -688,6 +741,15 @@ const legalDocuments: Record<
               Rezervační ani poptávkové údaje nepoužíváme pro marketing, pokud k
               tomu neudělíte samostatný souhlas.
             </>,
+            <>
+              S vaším analytickým souhlasem používáme analytické a externí
+              měřicí služby, abychom porozuměli používání webu, výkonu odeslání
+              rezervací a účinnosti kampaní. Konverzní události o odeslání
+              rezervace používáme pouze na úrovni kategorie a účelu a neobsahují
+              hodnoty z rezervačního formuláře ani osobní údaje, jako je jméno,
+              e-mail, telefon, zpráva, datum rezervace, vybraný tarif,
+              preference kávy nebo preference monitorů.
+            </>,
           ],
         },
         {
@@ -702,6 +764,8 @@ const legalDocuments: Record<
             </>,
             <>
               Nepovinné cookies zpracováváme pouze na základě vašeho souhlasu.
+              Analytické a kampanové měření je založené na souhlasu, který
+              můžete kdykoli odvolat nebo změnit v nastavení cookies.
             </>,
           ],
         },
@@ -715,6 +779,11 @@ const legalDocuments: Record<
               pro ochranu před zneužitím jsou krátkodobé a používáme je v režimu
               best-effort.
             </>,
+            <>
+              Analytické údaje a údaje pro kampanové měření uchováváme podle
+              nastavení příslušných analytických a technických poskytovatelů a
+              pouze po dobu potřebnou pro uvedené účely měření.
+            </>,
           ],
         },
         {
@@ -722,9 +791,11 @@ const legalDocuments: Record<
           body: [
             <>
               K údajům může mít přístup náš interní workspace tým a naši
-              poskytovatelé hostingu, e-mailu a technických služeb, pokud je to
-              nutné pro bezpečný provoz webu, vyřízení rezervace a doručení
-              komunikace.
+              poskytovatelé hostingu, e-mailu, analytických, externích měřicích
+              a technických služeb, pokud je to nutné pro bezpečný provoz webu,
+              vyřízení rezervace, doručení komunikace a odsouhlasené analytické
+              nebo kampanové měření. Pro přístup poskytovatelů používáme
+              přiměřené smluvní, organizační a technické záruky.
             </>,
           ],
         },
@@ -750,7 +821,7 @@ const legalDocuments: Record<
     "cookie-policy": {
       title: "Zásady používání cookies",
       lead: "Na této stránce vysvětlujeme, jak web Deskohub Workspace používá cookies a jak můžete spravovat své preference.",
-      updatedAt: "6. dubna 2026",
+      updatedAt: "27. dubna 2026",
       sections: [
         {
           heading: "1. Co jsou cookies",
@@ -787,8 +858,24 @@ const legalDocuments: Record<
           body: [
             <>
               Analytické a marketingové cookies jsou volitelné. Pokud jsou
-              podobné nástroje na webu využité, aktivují se až po vašem souhlasu
-              přes cookie banner nebo stránku s nastavením cookies.
+              analytické, externí měřicí, kampanové nebo obdobné technické
+              nástroje poskytovatelů na webu využité, aktivují se až po vašem
+              souhlasu přes cookie banner nebo stránku s nastavením cookies.
+            </>,
+            <>
+              Analytické cookies nám pomáhají porozumět používání webu, výkonu
+              odesílání rezervací a účinnosti kampaní. Podle kategorie
+              poskytovatele mohou zpracovávané údaje zahrnovat zobrazení
+              stránek, informace o prohlížeči a zařízení, technické údaje
+              odvozené z IP adresy, typy událostí a standardní kampanové
+              parametry z URL: utm_source, utm_medium, utm_campaign, utm_content
+              a utm_term.
+            </>,
+            <>
+              Konverzní události o odeslání rezervace neobsahují hodnoty z
+              rezervačního formuláře ani osobní údaje, jako je jméno, e-mail,
+              telefon, zpráva, datum rezervace, vybraný tarif, preference kávy
+              nebo preference monitorů.
             </>,
           ],
         },

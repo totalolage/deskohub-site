@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -48,7 +49,9 @@ export function ReservationPage({ locale }: ReservationPageProps) {
               </div>
             </div>
 
-            <ReservationForm locale={locale} />
+            <Suspense>
+              <ReservationForm locale={locale} />
+            </Suspense>
           </div>
         </Container>
       </section>

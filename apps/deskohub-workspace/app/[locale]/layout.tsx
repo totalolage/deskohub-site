@@ -1,11 +1,13 @@
 import { GoogleTagManager } from "@next/third-parties/google";
-import { Analytics } from "@vercel/analytics/react";
 import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import { notFound } from "next/navigation";
 import type { CSSProperties, ReactNode } from "react";
 import { env } from "@/env";
-import { CookieConsentProvider } from "@/features/cookie-consent";
+import {
+  ConsentAwareAnalytics,
+  CookieConsentProvider,
+} from "@/features/cookie-consent";
 import { isWorkspaceLocale, workspaceLocales } from "@/features/i18n";
 import {
   UnderConstructionRibbon,
@@ -70,7 +72,7 @@ export default async function LocaleLayout({
         style={underConstructionRibbonViewportStyle as CSSProperties}
       >
         <CookieConsentProvider locale={locale} />
-        <Analytics />
+        <ConsentAwareAnalytics />
         <div className="min-h-screen pb-[calc(var(--under-construction-ribbon-safe-area-block)+env(safe-area-inset-bottom))]">
           {children}
         </div>
