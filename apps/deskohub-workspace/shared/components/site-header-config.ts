@@ -45,9 +45,13 @@ export function getSiteHeaderConfig(locale: WorkspaceLocale) {
         label: m.landingNavFaqContact({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.faqContact}`),
       },
+      {
+        label: m.landingNavContactLabel({}, { locale }),
+        href: `${localePath}/contact`,
+      },
     ],
-    contactLabel: m.landingNavContactLabel({}, { locale }),
-    contactHref: `${localePath}/contact`,
+    contactLabel: m.reservationNavCta({}, { locale }),
+    contactHref: `${localePath}/reservation`,
   };
 }
 
