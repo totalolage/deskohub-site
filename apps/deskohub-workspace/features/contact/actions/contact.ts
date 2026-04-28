@@ -10,24 +10,47 @@ import { getContactSchema } from "@/features/contact/schemas/contact";
 import { getLocale, m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 
+export type ContactFormValues = {
+  name: string;
+  email: string;
+  phone: string;
+  message: string;
+};
+
 export type ContactFormState = {
   status: "idle" | "success" | "error";
   message?: string;
   fieldErrors?: Partial<Record<"name" | "email" | "phone" | "message", string>>;
+  values?: ContactFormValues;
 };
+
+function getSubmittedContactValues(formData: FormData): ContactFormValues {
+  return {
+    name: getSubmittedString(formData, "name"),
+    email: getSubmittedString(formData, "email"),
+    phone: getSubmittedString(formData, "phone"),
+    message: getSubmittedString(formData, "message"),
+  };
+}
+
+function getSubmittedString(formData: FormData, name: keyof ContactFormValues) {
+  const value = formData.get(name);
+
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  return value;
+}
 
 export async function submitContactForm(
   _previousState: ContactFormState,
   formData: FormData
 ): Promise<ContactFormState> {
   const locale = getLocale();
+  const submittedValues = getSubmittedContactValues(formData);
 
-  const parsedInput = getContactSchema().safeParse({
-    name: formData.get("name"),
-    email: formData.get("email"),
-    phone: formData.get("phone"),
-    message: formData.get("message"),
-  });
+  const parsedInput = getContactSchema().safeParse(submittedValues);
 
   if (!parsedInput.success) {
     const flattened = parsedInput.error.flatten().fieldErrors;
@@ -35,6 +58,7 @@ export async function submitContactForm(
     return {
       status: "error",
       message: m.contactValidationReviewMessage({}, { locale }),
+      values: submittedValues,
       fieldErrors: {
         name: flattened.name?.[0],
         email: flattened.email?.[0],
@@ -63,6 +87,7 @@ export async function submitContactForm(
       Effect.succeed({
         status: "error" as const,
         message: error.message,
+        values: submittedValues,
       })
     )
   );

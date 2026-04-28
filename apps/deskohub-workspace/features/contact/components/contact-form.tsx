@@ -36,6 +36,17 @@ export function ContactForm({ locale }: ContactFormProps) {
     initialContactFormState
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const fieldValues = state.status === "error" ? state.values : undefined;
+  const fieldRemountKey = fieldValues
+    ? [
+        fieldValues.name,
+        fieldValues.email,
+        fieldValues.phone,
+        fieldValues.message,
+      ]
+        .map((value) => `${value.length}:${value}`)
+        .join("|")
+    : "clear";
 
   useEffect(() => {
     if (state.status === "success") {
@@ -57,39 +68,45 @@ export function ContactForm({ locale }: ContactFormProps) {
 
       <CardContent>
         <form ref={formRef} action={formAction} className="space-y-5">
-          <div className="grid gap-5 md:grid-cols-2">
+          <div key={fieldRemountKey} className="space-y-5">
+            <div className="grid gap-5 md:grid-cols-2">
+              <Field
+                name="name"
+                label={m.contactNameLabel({}, { locale })}
+                placeholder={m.contactNamePlaceholder({}, { locale })}
+                error={state.fieldErrors?.name}
+                defaultValue={fieldValues?.name}
+                autoComplete="name"
+              />
+              <Field
+                name="phone"
+                label={m.contactPhoneLabel({}, { locale })}
+                placeholder={m.contactPhonePlaceholder({}, { locale })}
+                error={state.fieldErrors?.phone}
+                defaultValue={fieldValues?.phone}
+                autoComplete="tel"
+              />
+            </div>
+
             <Field
-              name="name"
-              label={m.contactNameLabel({}, { locale })}
-              placeholder={m.contactNamePlaceholder({}, { locale })}
-              error={state.fieldErrors?.name}
-              autoComplete="name"
+              name="email"
+              type="email"
+              label={m.contactEmailLabel({}, { locale })}
+              placeholder={m.contactEmailPlaceholder({}, { locale })}
+              error={state.fieldErrors?.email}
+              defaultValue={fieldValues?.email}
+              autoComplete="email"
             />
+
             <Field
-              name="phone"
-              label={m.contactPhoneLabel({}, { locale })}
-              placeholder={m.contactPhonePlaceholder({}, { locale })}
-              error={state.fieldErrors?.phone}
-              autoComplete="tel"
+              name="message"
+              label={m.contactMessageLabel({}, { locale })}
+              placeholder={m.contactMessagePlaceholder({}, { locale })}
+              error={state.fieldErrors?.message}
+              defaultValue={fieldValues?.message}
+              multiline
             />
           </div>
-
-          <Field
-            name="email"
-            type="email"
-            label={m.contactEmailLabel({}, { locale })}
-            placeholder={m.contactEmailPlaceholder({}, { locale })}
-            error={state.fieldErrors?.email}
-            autoComplete="email"
-          />
-
-          <Field
-            name="message"
-            label={m.contactMessageLabel({}, { locale })}
-            placeholder={m.contactMessagePlaceholder({}, { locale })}
-            error={state.fieldErrors?.message}
-            multiline
-          />
 
           <div className="space-y-3 pt-2">
             <SubmitButton locale={locale} />
@@ -130,6 +147,7 @@ type FieldProps = {
   label: string;
   placeholder: string;
   error?: string;
+  defaultValue?: string;
   type?: string;
   autoComplete?: string;
   multiline?: boolean;
@@ -140,6 +158,7 @@ function Field({
   label,
   placeholder,
   error,
+  defaultValue,
   type = "text",
   autoComplete,
   multiline = false,
@@ -157,6 +176,7 @@ function Field({
           name={name}
           rows={7}
           placeholder={placeholder}
+          defaultValue={defaultValue}
           className={cn(
             fieldBaseClassName,
             "min-h-40 resize-y",
@@ -172,6 +192,7 @@ function Field({
           type={type}
           autoComplete={autoComplete}
           placeholder={placeholder}
+          defaultValue={defaultValue}
           className={cn(
             fieldBaseClassName,
             error && "border-burned-orange ring-4 ring-burned-orange/10"
