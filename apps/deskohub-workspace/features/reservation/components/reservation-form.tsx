@@ -75,6 +75,14 @@ type UtmKey = (typeof utmKeys)[number];
 
 type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
+type ReservationActionResult = {
+  data?: {
+    redirectUrl?: string;
+  };
+  serverError?: unknown;
+  validationErrors?: unknown;
+};
+
 const tierOptions = [
   {
     value: "basic-day-pass",
@@ -178,6 +186,19 @@ const getSanitizedUtmParams = (
   return sanitizedParams;
 };
 
+const getErrorFreeReservationRedirectUrl = (
+  result: ReservationActionResult
+) => {
+  if (
+    typeof result.serverError !== "undefined" ||
+    typeof result.validationErrors !== "undefined"
+  ) {
+    return undefined;
+  }
+
+  return result.data?.redirectUrl;
+};
+
 export function ReservationForm({ locale }: ReservationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -201,8 +222,17 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const shouldShowMonitors = selectedTier === "profi-workstation";
 
   const { execute, isExecuting } = useAction(submitReservation, {
-    onSuccess: ({ data }) => {
-      if (!data?.redirectUrl) {
+    onSettled: ({ result }) => {
+      const redirectUrl = getErrorFreeReservationRedirectUrl(result);
+
+      if (!redirectUrl) {
+        if (
+          typeof result.serverError !== "undefined" ||
+          typeof result.validationErrors !== "undefined"
+        ) {
+          return;
+        }
+
         setSubmissionMessage({
           status: "error",
           text: m.reservationErrorMessage({}, { locale }),
@@ -215,7 +245,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         track("workspace_reservation_submitted", sanitizedUtmParams);
       }
 
-      router.push(data.redirectUrl);
+      router.push(redirectUrl);
     },
     onError: ({ error }) => {
       setSubmissionMessage({

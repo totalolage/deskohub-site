@@ -2,7 +2,6 @@
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Effect, Layer } from "effect";
-import { assertReservationRequestIsAllowed } from "@/features/reservation/actions/reservation-abuse-protection";
 import {
   ReservationService,
   ReservationServiceLive,
@@ -18,10 +17,6 @@ const submitReservationAction = createEffectSafeAction(
   getReservationSchema(),
   (input, { locale }) =>
     Effect.gen(function* () {
-      yield* Effect.promise(() =>
-        assertReservationRequestIsAllowed(input, locale)
-      );
-
       const service = yield* ReservationService;
       const submission = yield* service.submit(input, locale);
       const reservationSearchParams = new URLSearchParams({
