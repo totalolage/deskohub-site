@@ -13,6 +13,7 @@ import {
   grantMarketingConsent,
   grantPreferencesConsent,
   initializeConsentMode,
+  pushConsentUpdateEvent,
 } from "../utils/consent-mode";
 
 type CookieConsentProviderProps = {
@@ -25,18 +26,26 @@ export function CookieConsentProvider({ locale }: CookieConsentProviderProps) {
 
     CookieConsent.run({
       ...createConsentConfig(locale),
-      onFirstConsent: handleConsentChange,
-      onConsent: handleConsentChange,
-      onChange: handleConsentChange,
+      onFirstConsent: () =>
+        handleConsentChange({ emitGtmConsentUpdateEvent: true }),
+      onConsent: () =>
+        handleConsentChange({ emitGtmConsentUpdateEvent: false }),
+      onChange: () => handleConsentChange({ emitGtmConsentUpdateEvent: true }),
     });
 
-    handleConsentChange();
+    handleConsentChange({ emitGtmConsentUpdateEvent: false });
   }, [locale]);
 
   return null;
 }
 
-function handleConsentChange() {
+type HandleConsentChangeOptions = {
+  emitGtmConsentUpdateEvent: boolean;
+};
+
+function handleConsentChange({
+  emitGtmConsentUpdateEvent,
+}: HandleConsentChangeOptions) {
   const preferences = CookieConsent.getUserPreferences();
   const acceptedCategories = preferences?.acceptedCategories || [];
 
@@ -56,6 +65,10 @@ function handleConsentChange() {
     grantPreferencesConsent();
   } else {
     denyPreferencesConsent();
+  }
+
+  if (emitGtmConsentUpdateEvent) {
+    queueMicrotask(pushConsentUpdateEvent);
   }
 
   if (typeof window === "undefined") return;

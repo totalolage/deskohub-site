@@ -20,17 +20,44 @@ export const DEFAULT_CONSENT_STATE: ConsentState = {
   security_storage: "granted",
 };
 
-export function initializeConsentMode(): void {
-  if (typeof window === "undefined") return;
+type GtmQueueWindow = Window & {
+  dataLayer: unknown[];
+  gtag: NonNullable<Window["gtag"]>;
+};
+
+function getGtmQueueWindow(): GtmQueueWindow | undefined {
+  if (typeof window === "undefined") return undefined;
 
   window.dataLayer = window.dataLayer || [];
-  window.gtag?.("consent", "default", DEFAULT_CONSENT_STATE);
+
+  if (typeof window.gtag === "function") return window as GtmQueueWindow;
+
+  window.gtag = function gtag(...gtagArguments) {
+    window.dataLayer?.push(gtagArguments);
+  };
+
+  return window as GtmQueueWindow;
+}
+
+export function initializeConsentMode(): void {
+  const gtmQueueWindow = getGtmQueueWindow();
+  if (!gtmQueueWindow) return;
+
+  gtmQueueWindow.gtag("consent", "default", DEFAULT_CONSENT_STATE);
 }
 
 export function updateConsentMode(consent: Partial<ConsentState>): void {
+  const gtmQueueWindow = getGtmQueueWindow();
+  if (!gtmQueueWindow) return;
+
+  gtmQueueWindow.gtag("consent", "update", consent);
+}
+
+export function pushConsentUpdateEvent(): void {
   if (typeof window === "undefined") return;
 
-  window.gtag?.("consent", "update", consent);
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ event: "consent_update" });
 }
 
 export function grantAnalyticsConsent(): void {
