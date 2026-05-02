@@ -16,8 +16,8 @@ import {
 } from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
 import ttrpgPhoto from "../images/ttrpg.jpeg";
-import meetingRoomPhotoOne from "../images/zasedacka/IMG_20260319_165936.jpg";
-import meetingRoomPhotoTwo from "../images/zasedacka/IMG_20260319_165943.jpg";
+import meetingRoomPhotoOne from "../images/zasedacka/IMG_20260418_162920.jpg";
+import meetingRoomPhotoTwo from "../images/zasedacka/IMG_20260418_162934.jpg";
 
 type LandingPageExperiencesSectionProps = {
   locale: WorkspaceLocale;
