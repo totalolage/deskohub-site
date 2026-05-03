@@ -2,12 +2,10 @@ export const workspaceSiteConstants = {
   brand: {
     name: "Deskohub Workspace",
     legalName: "Desktechub s.r.o.",
-    domain: "deskohub.cz",
+    domain: "workspace.deskohub.cz",
   },
   contact: {
-    get infoEmail() {
-      return `workspace@${workspaceSiteConstants.brand.domain}`;
-    },
+    infoEmail: "workspace@deskohub.cz",
     address: {
       street: "Turnovská 430/10",
       cityDistrict: "Libeň",
