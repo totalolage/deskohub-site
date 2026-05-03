@@ -9,7 +9,7 @@ export function createLegalMetadata(
   documentKey: LegalDocumentKey
 ): Metadata {
   const document = getLegalDocument(locale, documentKey);
-  const url = `https://${workspaceSiteConstants.brand.domain}/${locale}/${documentKey}`;
+  const url = `https://${workspaceSiteConstants.brand.domain}/${documentKey}`;
 
   return {
     title: `${document.title} | ${workspaceSiteConstants.brand.name}`,

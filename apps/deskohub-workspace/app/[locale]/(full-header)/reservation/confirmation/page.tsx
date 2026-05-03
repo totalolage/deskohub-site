@@ -26,7 +26,7 @@ export async function generateMetadata({
       {},
       { locale }
     );
-    const url = `https://${workspaceSiteConstants.brand.domain}/${locale}/reservation/confirmation`;
+    const url = `https://${workspaceSiteConstants.brand.domain}/reservation/confirmation`;
 
     return {
       title,

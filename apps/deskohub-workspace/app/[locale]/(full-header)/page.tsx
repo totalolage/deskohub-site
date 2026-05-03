@@ -18,7 +18,7 @@ export async function generateMetadata({
   return runWithRequestLocale(locale, () => {
     const title = m.landingMetadataTitle({}, { locale });
     const description = m.landingMetadataDescription({}, { locale });
-    const url = `https://${workspaceSiteConstants.brand.domain}/${locale}`;
+    const url = `https://${workspaceSiteConstants.brand.domain}`;
 
     return {
       title,

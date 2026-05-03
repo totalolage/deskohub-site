@@ -18,7 +18,7 @@ export async function generateMetadata({
   return runWithRequestLocale(locale, () => {
     const title = m.reservationMetadataTitle({}, { locale });
     const description = m.reservationMetadataDescription({}, { locale });
-    const url = `https://${workspaceSiteConstants.brand.domain}/${locale}/reservation`;
+    const url = `https://${workspaceSiteConstants.brand.domain}/reservation`;
 
     return {
       title,
