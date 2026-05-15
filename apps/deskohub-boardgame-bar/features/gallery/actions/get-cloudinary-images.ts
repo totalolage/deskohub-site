@@ -1,11 +1,11 @@
 "use server";
 
-import { Effect } from "effect";
-import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   normalizeExpression,
   type UnnormalizedLogicalExpression,
-} from "@/shared/utils/normalize-tag-expression";
+} from "@deskohub/cloudinary";
+import { Effect } from "effect";
+import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   type CloudinaryAsset,
   CloudinaryServiceLive,

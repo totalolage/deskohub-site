@@ -2,6 +2,7 @@ import { withBotId } from "botid/next/config";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  transpilePackages: ["@deskohub/cloudinary"],
   experimental: {
     useCache: true,
   },
@@ -28,6 +29,14 @@ const nextConfig = {
         permanent: true,
       },
     ];
+  },
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "res.cloudinary.com",
+      },
+    ],
   },
 };
 

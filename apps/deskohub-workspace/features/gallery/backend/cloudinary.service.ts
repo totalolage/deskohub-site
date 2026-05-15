@@ -28,6 +28,6 @@ export const CloudinaryServiceLive = makeCloudinaryServiceLive({
   cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
   apiKey: env.CLOUDINARY_API_KEY,
   apiSecret: env.CLOUDINARY_API_SECRET,
-  defaultMaxResults: 100,
-  serviceName: "boardgame-bar",
+  defaultMaxResults: 60,
+  serviceName: "workspace",
 });
