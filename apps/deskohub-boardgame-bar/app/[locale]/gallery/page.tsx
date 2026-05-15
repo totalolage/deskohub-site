@@ -11,7 +11,8 @@ export const generateMetadata = metadata({
 });
 
 export default async function GalleryPage({ params }: RouteProps_locale) {
-  setLocale((await params).locale);
+  const { locale } = await params;
+  setLocale(locale, { reload: false });
 
   return (
     <>

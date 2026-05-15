@@ -48,7 +48,7 @@ const ParseMiddlewareProps = Effect.fn("ParseMiddlewareProps")(
     const params = yield* Schema.decodeUnknown(schema)(paramsUnknown);
     return params;
   },
-  (effect, input) =>
+  (effect) =>
     effect.pipe(
       Effect.mapError(
         (error) =>
@@ -59,7 +59,6 @@ const ParseMiddlewareProps = Effect.fn("ParseMiddlewareProps")(
       ),
       Effect.annotateLogs({
         operation: "ParseMiddlewareProps",
-        input,
       })
     )
 );
@@ -98,7 +97,6 @@ export const LocaleMiddlewareLive = Layer.succeed(
           Effect.tapError(Effect.logError),
           Effect.annotateLogs({
             operation: "LocaleMiddlewareLive",
-            input,
           })
         )
     )
