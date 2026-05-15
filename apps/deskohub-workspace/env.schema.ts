@@ -1,10 +1,13 @@
 import { z } from "zod";
 
 export const workspaceServerEnvSchema = z.object({
+  CLOUDINARY_API_KEY: z.string(),
+  CLOUDINARY_API_SECRET: z.string(),
   EMAIL_API_KEY: z.string().optional(),
 });
 
 export const workspaceClientEnvSchema = z.object({
+  NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string(),
   NEXT_PUBLIC_GTM_ID: z.string().optional(),
   NEXT_PUBLIC_WORKSPACE_ENV: z
     .enum(["development", "preview", "production"])

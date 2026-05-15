@@ -294,5 +294,12 @@
   "contactValidationPhoneMaximum": "Telefon může mít maximálně {max} znaků.",
   "contactValidationMessageMinimum": "Zpráva musí mít alespoň {min} znaků.",
   "contactValidationMessageMaximum": "Zpráva může mít maximálně {max} znaků.",
-  "statusUnderConstruction": "Ve výstavbě"
+  "statusUnderConstruction": "Ve výstavbě",
+  "galleryMetadataTitle": "Galerie | Deskohub Workspace",
+  "galleryMetadataDescription": "Fotogalerie z Deskohub Workspace.",
+  "gallerySrTitle": "Galerie Workspace",
+  "galleryEmptyNoPhotos": "Galerie Workspace čeká na fotky v Cloudinary označené pro tuto stránku.",
+  "galleryEmptyMissingMetadata": "Cloudinary vrátilo fotky, ale žádná neměla použitelná metadata šířky a výšky.",
+  "galleryErrorTitle": "Galerie je dočasně nedostupná",
+  "galleryErrorDescription": "Fotky se nepodařilo načíst z Cloudinary. Zkuste to prosím později."
 }

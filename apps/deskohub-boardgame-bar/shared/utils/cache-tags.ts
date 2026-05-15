@@ -8,66 +8,8 @@
  * - Easy to use with cacheTag() API
  */
 
+import { createCloudinaryCacheTags } from "@deskohub/cloudinary";
 import { cacheTag } from "next/cache";
-
-/**
- * Creates a stable, short hash for complex objects to use in cache tags
- * Uses a simple hashing algorithm suitable for cache keys
- */
-function createStableHash(obj: unknown): string {
-  const seen = new WeakSet();
-  const MAX_DEPTH = 10;
-  const MAX_STRING_LENGTH = 1000; // Limit string length for performance
-
-  // Create a deterministic string representation with circular reference protection
-  const stringify = (value: unknown, depth = 0): string => {
-    if (depth > MAX_DEPTH) return "[...]";
-    if (value === null) return "null";
-    if (value === undefined) return "undefined";
-    if (typeof value !== "object") {
-      const str = String(value);
-      // Truncate very long strings to avoid memory issues
-      return str.length > 100 ? `${str.substring(0, 100)}...` : str;
-    }
-
-    // Prevent circular references
-    if (seen.has(value)) return "[circular]";
-    seen.add(value);
-
-    let result: string;
-
-    // Handle arrays
-    if (Array.isArray(value)) {
-      // Limit array processing for very large arrays
-      const items = value.slice(0, 50).map((v) => stringify(v, depth + 1));
-      result = `[${items.join(",")}${value.length > 50 ? ",..." : ""}]`;
-    } else {
-      // Handle objects - sort keys for stability
-      const sortedKeys = Object.keys(value).sort().slice(0, 50); // Limit keys
-      const pairs = sortedKeys.map(
-        (key) =>
-          `${key}:${stringify((value as Record<string, unknown>)[key], depth + 1)}`
-      );
-      result = `{${pairs.join(",")}}`;
-    }
-
-    seen.delete(value);
-    return result;
-  };
-
-  const str = stringify(obj);
-  const truncatedStr =
-    str.length > MAX_STRING_LENGTH ? str.substring(0, MAX_STRING_LENGTH) : str;
-
-  // Simple but effective hash function
-  let hash = 0;
-  for (let i = 0; i < truncatedStr.length; i++) {
-    const char = truncatedStr.charCodeAt(i);
-    hash = ((hash << 5) - hash + char) | 0; // Force to 32-bit integer
-  }
-
-  return Math.abs(hash).toString(36);
-}
 
 /**
  * Cache tag namespaces - prefix all tags to avoid collisions
@@ -98,32 +40,9 @@ export function applyCacheTags(...tags: string[]) {
 /**
  * Cloudinary image cache tags
  */
-export const cloudinaryTags = {
-  // Tag all cloudinary images
-  all: () => `${NAMESPACES.cloudinary}:all`,
-
-  // Tag specific image by public ID
-  image: (publicId: string) => `${NAMESPACES.cloudinary}:img:${publicId}`,
-
-  // Tag image search results with stable hashing for complex objects
-  search: (tags?: unknown, maxResults?: number) => {
-    const parts = [`${NAMESPACES.cloudinary}:search`];
-    if (tags) {
-      // Create a stable hash for the tags object to avoid overly long cache keys
-      const tagHash = createStableHash(tags);
-      parts.push(`tags:${tagHash}`);
-    }
-    if (maxResults) parts.push(`limit:${maxResults}`);
-    return parts.join(":");
-  },
-
-  // Get all relevant tags for a cloudinary operation
-  getTags: (publicId?: string) => {
-    const tags = [cloudinaryTags.all()];
-    if (publicId) tags.push(cloudinaryTags.image(publicId));
-    return tags;
-  },
-};
+export const cloudinaryTags = createCloudinaryCacheTags({
+  namespace: NAMESPACES.cloudinary,
+});
 
 /**
  * Dotypos API cache tags

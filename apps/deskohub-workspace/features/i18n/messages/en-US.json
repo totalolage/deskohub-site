@@ -294,5 +294,12 @@
   "contactValidationPhoneMaximum": "Phone can be at most {max} characters.",
   "contactValidationMessageMinimum": "Message must be at least {min} characters.",
   "contactValidationMessageMaximum": "Message can be at most {max} characters.",
-  "statusUnderConstruction": "Under Construction"
+  "statusUnderConstruction": "Under Construction",
+  "galleryMetadataTitle": "Gallery | Deskohub Workspace",
+  "galleryMetadataDescription": "Photo gallery from Deskohub Workspace.",
+  "gallerySrTitle": "Workspace gallery",
+  "galleryEmptyNoPhotos": "The Workspace gallery is waiting for Cloudinary photos tagged for this page.",
+  "galleryEmptyMissingMetadata": "Cloudinary returned photos, but none included usable width and height metadata.",
+  "galleryErrorTitle": "Gallery is temporarily unavailable",
+  "galleryErrorDescription": "Photos could not be loaded from Cloudinary. Please try again later."
 }

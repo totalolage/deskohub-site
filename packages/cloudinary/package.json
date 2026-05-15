@@ -4,6 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./server": "./src/server.ts",
+    "./cache-tags": "./src/cache-tags.ts",
+    "./errors": "./src/errors.ts",
+    "./expression": "./src/expression.ts",
+    "./schema": "./src/schema.ts"
+  },
+  "dependencies": {
+    "@effect/schema": "^0.75.5",
+    "cloudinary": "^2.10.0",
+    "effect": "^3.17.2",
+    "server-only": "^0.0.1"
   }
 }
