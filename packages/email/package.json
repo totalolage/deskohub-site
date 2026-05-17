@@ -11,5 +11,9 @@
     "./backend/service": "./backend/service.ts",
     "./backend/standalone-email-service": "./backend/standalone-email-service.ts",
     "./types/email.types": "./types/email.types.ts"
+  },
+  "dependencies": {
+    "effect": "^3.17.2",
+    "resend": "^6.0.1"
   }
 }
