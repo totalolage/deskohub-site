@@ -19,6 +19,7 @@ import { m, type WorkspaceLocale } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import {
   getReservationSchema,
+  isReservationEntryTier,
   type ReservationData,
   type ReservationEntryTier,
   type ReservationInput,
@@ -199,6 +200,20 @@ const getErrorFreeReservationRedirectUrl = (
   return result.data?.redirectUrl;
 };
 
+const getTierDefaultValues = (tier: string | null): ReservationInput => {
+  const requestedTier = tier ?? undefined;
+
+  if (!isReservationEntryTier(requestedTier)) {
+    return reservationDefaultValues;
+  }
+
+  return {
+    ...reservationDefaultValues,
+    entryTier: requestedTier,
+    coffee: tierIncludesCourtesyCoffee(requestedTier),
+  };
+};
+
 export function ReservationForm({ locale }: ReservationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -211,9 +226,13 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     [searchParams]
   );
   const schema = useMemo(() => getReservationSchema(), []);
+  const defaultValues = useMemo(
+    () => getTierDefaultValues(searchParams.get("tier")),
+    [searchParams]
+  );
   const form = useForm<ReservationInput, unknown, ReservationData>({
     resolver: zodResolver(schema),
-    defaultValues: reservationDefaultValues,
+    defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
   });

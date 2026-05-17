@@ -14,6 +14,12 @@ export type ReservationEntryTier = (typeof reservationEntryTiers)[number];
 export type ReservationMonitorOption =
   (typeof reservationMonitorOptions)[number];
 
+export const isReservationEntryTier = (
+  value: string | undefined
+): value is ReservationEntryTier =>
+  value !== undefined &&
+  reservationEntryTiers.includes(value as ReservationEntryTier);
+
 export const tiersWithCourtesyCoffee = new Set<ReservationEntryTier>([
   "cowork-plus",
   "profi-workstation",

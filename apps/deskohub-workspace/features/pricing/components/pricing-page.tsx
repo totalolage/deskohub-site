@@ -104,37 +104,36 @@ type TariffCardProps = {
 };
 
 function TariffCard({ tariff, locale }: TariffCardProps) {
+  const reservationHref = `/${locale}/reservation?tier=${tariff.reservationTier}`;
+
   return (
-    <Card className="rounded-[1.9rem] border-white/20 bg-white shadow-[0_24px_70px_-46px_rgba(0,2,79,0.35)]">
-      <CardHeader>
-        <CardTitle>{tariff.name}</CardTitle>
-        <CardDescription className="text-2xl text-burned-orange">
-          {tariff.price}
-        </CardDescription>
-        {tariff.comingSoon ? (
-          <p className="text-sm leading-7 text-navy-blue/72">
-            {m.landingPricingComingSoonNote({}, { locale })}
+    <Link href={reservationHref} className="group block rounded-[1.9rem]">
+      <Card className="h-full rounded-[1.9rem] border-white/20 bg-white shadow-[0_24px_70px_-46px_rgba(0,2,79,0.35)] transition duration-200 group-hover:-translate-y-0.5 group-hover:border-burned-orange/35 group-hover:shadow-[0_30px_80px_-46px_rgba(221,72,10,0.4)] group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-4 group-focus-visible:outline-burned-orange">
+        <CardHeader>
+          <CardTitle>{tariff.name}</CardTitle>
+          <CardDescription className="text-2xl text-burned-orange">
+            {tariff.price}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-5">
+          <p className="text-sm leading-7 text-navy-blue/78">
+            {tariff.description}
           </p>
-        ) : null}
-      </CardHeader>
-      <CardContent className="space-y-5">
-        <p className="text-sm leading-7 text-navy-blue/78">
-          {tariff.description}
-        </p>
-        <div className="space-y-3">
-          <p className="text-sm font-semibold uppercase tracking-[0.08em] text-navy-blue/68">
-            {locale === "cs-CZ" ? "Zahrnuje" : "Includes"}
-          </p>
-          <ul className="space-y-3 text-sm leading-7 text-navy-blue/78">
-            {tariff.includes.map((item) => (
-              <li key={item} className="flex gap-3">
-                <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-burned-orange" />
-                <span>{item}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      </CardContent>
-    </Card>
+          <div className="space-y-3">
+            <p className="text-sm font-semibold uppercase tracking-[0.08em] text-navy-blue/68">
+              {locale === "cs-CZ" ? "Zahrnuje" : "Includes"}
+            </p>
+            <ul className="space-y-3 text-sm leading-7 text-navy-blue/78">
+              {tariff.includes.map((item) => (
+                <li key={item} className="flex gap-3">
+                  <span className="mt-2 h-2 w-2 shrink-0 rounded-full bg-burned-orange" />
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </CardContent>
+      </Card>
+    </Link>
   );
 }
