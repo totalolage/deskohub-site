@@ -1,4 +1,5 @@
 import type { WorkspaceLocale } from "@/features/i18n";
+import type { ReservationEntryTier } from "@/features/reservation/schemas/reservation";
 
 type PricingRouteSlug = "cennik" | "pricing";
 
@@ -17,11 +18,11 @@ type PricingDocumentCopy = {
 
 export type PricingTariff = {
   id: "basic" | "plus" | "profi";
+  reservationTier: ReservationEntryTier;
   name: string;
   price: string;
   description: string;
   includes: string[];
-  comingSoon: boolean;
   featured: boolean;
 };
 
@@ -71,6 +72,7 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
     tariffs: [
       {
         id: "basic",
+        reservationTier: "basic-day-pass",
         name: "Basic – denní vstup",
         price: "350 Kč / den",
         description:
@@ -79,21 +81,21 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
           "přístup do sdíleného coworkingového prostoru",
           "využití společných prostor",
         ],
-        comingSoon: true,
         featured: false,
       },
       {
         id: "plus",
+        reservationTier: "cowork-plus",
         name: "Plus – denní vstup",
         price: "490 Kč / den",
         description:
           "Rozšířený denní vstup pro den, kdy chcete mít občerstvení vyřešené bez přerušování práce.",
         includes: ["vše z tarifu Basic", "občerstvení (káva, polévka)"],
-        comingSoon: true,
         featured: false,
       },
       {
         id: "profi",
+        reservationTier: "profi-workstation",
         name: "Profi – denní vstup",
         price: "550 Kč / den",
         description:
@@ -103,7 +105,6 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
           "vyhrazené pracovní místo",
           "přístup k pracovnímu vybavení (např. monitor)",
         ],
-        comingSoon: true,
         featured: false,
       },
     ],
@@ -148,6 +149,7 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
     tariffs: [
       {
         id: "basic",
+        reservationTier: "basic-day-pass",
         name: "Basic - daily pass",
         price: "CZK 350 / day",
         description:
@@ -156,11 +158,11 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
           "access to the shared coworking space",
           "use of common areas",
         ],
-        comingSoon: true,
         featured: false,
       },
       {
         id: "plus",
+        reservationTier: "cowork-plus",
         name: "Plus - daily pass",
         price: "CZK 490 / day",
         description:
@@ -169,11 +171,11 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
           "everything from the Basic tariff",
           "refreshments (coffee, soup)",
         ],
-        comingSoon: true,
         featured: false,
       },
       {
         id: "profi",
+        reservationTier: "profi-workstation",
         name: "Profi - daily pass",
         price: "CZK 550 / day",
         description:
@@ -183,7 +185,6 @@ const pricingByLocale: Record<WorkspaceLocale, PricingContent> = {
           "reserved workstation",
           "access to work equipment (for example, a monitor)",
         ],
-        comingSoon: true,
         featured: false,
       },
     ],

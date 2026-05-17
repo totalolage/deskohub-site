@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getPricingContent } from "@/features/pricing";
+import type { ReservationEntryTier } from "@/features/reservation/schemas/reservation";
 import { Container } from "@/shared/components/container";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -31,8 +32,8 @@ type PricingCard = {
   name: string;
   price: string;
   text: string;
-  comingSoon: boolean;
   featured: boolean;
+  reservationTier?: ReservationEntryTier;
   contactHref?: string;
 };
 
@@ -51,14 +52,13 @@ export function LandingPagePricingContactSection({
       name: tariff.name,
       price: tariff.price,
       text: tariff.description,
-      comingSoon: tariff.comingSoon,
       featured: tariff.featured,
+      reservationTier: tariff.reservationTier,
     })),
     {
       name: pricingContent.eventPricing.name,
       price: pricingContent.eventPricing.price,
       text: pricingContent.eventPricing.description,
-      comingSoon: false,
       featured: false,
       contactHref,
     },
@@ -95,64 +95,44 @@ export function LandingPagePricingContactSection({
             </div>
 
             <div className="grid gap-5 md:grid-cols-2">
-              {pricingCards.map((item) => (
-                <Card
-                  key={item.name}
-                  className={cn(
-                    "relative rounded-[1.9rem] border border-navy-blue/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(249,246,239,0.98)_100%)] shadow-[0_26px_70px_-48px_rgba(0,2,79,0.24)]",
-                    item.comingSoon &&
-                      "border border-dashed border-burned-orange/24 bg-[linear-gradient(180deg,#fff8ee_0%,#ffffff_100%)]",
-                    item.featured &&
-                      "border-burned-orange/18 bg-[linear-gradient(180deg,#fff9f4_0%,#ffffff_100%)] shadow-[0_34px_90px_-50px_rgba(221,72,10,0.65)]"
-                  )}
-                >
-                  <CardHeader>
-                    {item.comingSoon ? (
-                      <Badge
-                        variant="emphasis"
-                        className="absolute right-4 top-0 mb-4 w-fit -translate-y-1/2"
-                      >
-                        {m.landingCoworkComingSoonBadge({}, { locale })}
-                      </Badge>
-                    ) : null}
-                    {item.featured ? (
-                      <Badge
-                        variant="emphasis"
-                        className="absolute right-4 top-0 mb-4 w-fit -translate-y-1/2"
-                      >
-                        {m.landingPricingFeaturedBadge({}, { locale })}
-                      </Badge>
-                    ) : null}
-                    <CardTitle>{item.name}</CardTitle>
-                    <CardDescription className="text-2xl text-burned-orange">
-                      {item.price}
-                    </CardDescription>
-                    {item.comingSoon ? (
-                      <p className="text-sm leading-7 text-navy-blue/72">
-                        {m.landingPricingComingSoonNote({}, { locale })}
-                      </p>
-                    ) : null}
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-5">
-                      <p className="text-sm leading-7 text-navy-blue/78">
-                        {item.text}
-                      </p>
-                      {item.contactHref ? (
-                        <Button
-                          asChild
-                          variant="secondary"
-                          className="h-11 border-navy-blue/10 bg-[#f4f1ea] px-5 text-sm uppercase tracking-[0.08em] text-navy-blue hover:bg-sunset-yellow"
-                        >
-                          <Link href={item.contactHref}>
-                            {m.landingFooterContactCta({}, { locale })}
-                          </Link>
-                        </Button>
-                      ) : null}
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
+              {pricingCards.map((item) => {
+                const reservationHref = item.reservationTier
+                  ? `/${locale}/reservation?tier=${item.reservationTier}`
+                  : undefined;
+                if (!reservationHref) {
+                  return (
+                    <Card
+                      key={item.name}
+                      className={cn(
+                        "relative h-full rounded-[1.9rem] border border-navy-blue/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(249,246,239,0.98)_100%)] shadow-[0_26px_70px_-48px_rgba(0,2,79,0.24)]",
+                        item.featured &&
+                          "border-burned-orange/18 bg-[linear-gradient(180deg,#fff9f4_0%,#ffffff_100%)] shadow-[0_34px_90px_-50px_rgba(221,72,10,0.65)]"
+                      )}
+                    >
+                      <PricingCardContent item={item} locale={locale} />
+                    </Card>
+                  );
+                }
+
+                return (
+                  <Link
+                    key={item.name}
+                    href={reservationHref}
+                    className="group block rounded-[1.9rem] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
+                  >
+                    <Card
+                      className={cn(
+                        "relative h-full rounded-[1.9rem] border border-navy-blue/8 bg-[linear-gradient(180deg,rgba(255,255,255,0.98)_0%,rgba(249,246,239,0.98)_100%)] shadow-[0_26px_70px_-48px_rgba(0,2,79,0.24)]",
+                        "transition duration-200 group-hover:-translate-y-0.5 group-hover:border-burned-orange/35 group-hover:shadow-[0_30px_80px_-46px_rgba(221,72,10,0.35)]",
+                        item.featured &&
+                          "border-burned-orange/18 bg-[linear-gradient(180deg,#fff9f4_0%,#ffffff_100%)] shadow-[0_34px_90px_-50px_rgba(221,72,10,0.65)]"
+                      )}
+                    >
+                      <PricingCardContent item={item} locale={locale} />
+                    </Card>
+                  </Link>
+                );
+              })}
             </div>
           </div>
         </Container>
@@ -248,6 +228,48 @@ export function LandingPagePricingContactSection({
           </div>
         </Container>
       </section>
+    </>
+  );
+}
+
+type PricingCardContentProps = {
+  item: PricingCard;
+  locale: WorkspaceLocale;
+};
+
+function PricingCardContent({ item, locale }: PricingCardContentProps) {
+  return (
+    <>
+      <CardHeader>
+        {item.featured ? (
+          <Badge
+            variant="emphasis"
+            className="absolute right-4 top-0 mb-4 w-fit -translate-y-1/2"
+          >
+            {m.landingPricingFeaturedBadge({}, { locale })}
+          </Badge>
+        ) : null}
+        <CardTitle>{item.name}</CardTitle>
+        <CardDescription className="text-2xl text-burned-orange">
+          {item.price}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-5">
+          <p className="text-sm leading-7 text-navy-blue/78">{item.text}</p>
+          {item.contactHref ? (
+            <Button
+              asChild
+              variant="secondary"
+              className="h-11 border-navy-blue/10 bg-[#f4f1ea] px-5 text-sm uppercase tracking-[0.08em] text-navy-blue hover:bg-sunset-yellow"
+            >
+              <Link href={item.contactHref}>
+                {m.landingFooterContactCta({}, { locale })}
+              </Link>
+            </Button>
+          ) : null}
+        </div>
+      </CardContent>
     </>
   );
 }

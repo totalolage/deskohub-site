@@ -3,9 +3,9 @@ import Link from "next/link";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import {
+  isReservationEntryTier,
   type ReservationEntryTier,
   type ReservationMonitorOption,
-  reservationEntryTiers,
   reservationMonitorOptions,
 } from "@/features/reservation/schemas/reservation";
 import { Container } from "@/shared/components/container";
@@ -64,12 +64,6 @@ const getSingleSearchParam = (
 
   return value;
 };
-
-const isReservationEntryTier = (
-  value: string | undefined
-): value is ReservationEntryTier =>
-  value !== undefined &&
-  reservationEntryTiers.includes(value as ReservationEntryTier);
 
 const isReservationMonitorOption = (
   value: string | undefined
