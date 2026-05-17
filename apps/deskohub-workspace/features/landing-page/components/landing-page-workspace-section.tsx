@@ -70,15 +70,10 @@ export function LandingPageWorkspaceSection({
                   className={cn(
                     "relative rounded-[1.75rem] border-white/10 bg-white/6 text-white shadow-none backdrop-blur-md",
                     index === 1 &&
-                      "border border-dashed border-sunset-yellow/30 bg-[linear-gradient(180deg,rgba(236,164,35,0.12)_0%,rgba(255,255,255,0.98)_100%)] pt-8",
+                      "border border-dashed border-sunset-yellow/30 bg-[linear-gradient(180deg,rgba(236,164,35,0.12)_0%,rgba(255,255,255,0.98)_100%)]",
                     index === 1 && "bg-white text-navy-blue"
                   )}
                 >
-                  {index === 1 ? (
-                    <Badge className="absolute left-4 top-4 z-10 border-sunset-yellow/30 bg-sunset-yellow text-navy-blue shadow-sm">
-                      {m.landingCoworkComingSoonBadge({}, { locale })}
-                    </Badge>
-                  ) : null}
                   <CardHeader>
                     <div
                       className={cn(

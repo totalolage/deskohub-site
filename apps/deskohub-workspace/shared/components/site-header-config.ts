@@ -30,12 +30,8 @@ export function getSiteHeaderConfig(locale: WorkspaceLocale) {
         href: localizedHash(`#${siteHeaderSectionIds.events}`),
       },
       {
-        label: m.landingNavTtrpg({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.ttrpg}`),
-      },
-      {
-        label: m.landingNavTeambuildings({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.teambuildings}`),
+        label: m.landingNavGallery({}, { locale }),
+        href: `${localePath}/gallery`,
       },
       {
         label: m.landingNavPricing({}, { locale }),
