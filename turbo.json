@@ -9,6 +9,20 @@
         "EMAIL_API_KEY"
       ]
     },
+    "@deskohub/dotypos#generate": {
+      "passThroughEnv": [
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "EMAIL_API_KEY"
+      ]
+    },
+    "deskohub-workspace#i18n:compile": {
+      "passThroughEnv": [
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "EMAIL_API_KEY"
+      ]
+    },
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env.production*"],
