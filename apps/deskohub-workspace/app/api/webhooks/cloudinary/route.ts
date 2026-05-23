@@ -8,8 +8,6 @@ import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
-export const runtime = "nodejs";
-
 const processWebhook = Effect.fn("processWebhook")(
   function* (webhook: VerifiedCloudinaryWebhook) {
     yield* Effect.logInfo("Processing webhook");
