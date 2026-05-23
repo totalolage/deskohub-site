@@ -3,6 +3,7 @@ import { z } from "zod";
 export const workspaceServerEnvSchema = z.object({
   CLOUDINARY_API_KEY: z.string(),
   CLOUDINARY_API_SECRET: z.string(),
+  DATABASE_URL: z.url(),
   EMAIL_API_KEY: z.string().optional(),
 });
 
