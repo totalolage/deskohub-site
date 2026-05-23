@@ -12,6 +12,7 @@ export const env = createEnv({
   runtimeEnv: {
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
+    DATABASE_URL: process.env.DATABASE_URL,
     EMAIL_API_KEY: process.env.EMAIL_API_KEY,
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
       process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
