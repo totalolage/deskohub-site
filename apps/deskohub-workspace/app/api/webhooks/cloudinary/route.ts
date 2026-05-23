@@ -14,9 +14,6 @@ const processWebhook = Effect.fn("processWebhook")(
   function* (webhook: VerifiedCloudinaryWebhook) {
     yield* Effect.logInfo("Processing webhook");
 
-    // Invalidate all cloudinary image caches
-    // In the future when we parse the data from the webhook,
-    // we can invalidate only the affected images
     const tagToRevalidate = cloudinaryTags.all();
     revalidateTag(tagToRevalidate, "max");
 
@@ -51,7 +48,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
         apiKey: env.CLOUDINARY_API_KEY,
         apiSecret: env.CLOUDINARY_API_SECRET,
-        serviceName: "deskohub-boardgame-bar",
+        serviceName: "deskohub-workspace",
       });
 
       return yield* processWebhook(webhook);
