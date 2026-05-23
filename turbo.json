@@ -3,11 +3,7 @@
   "globalDependencies": [".env", ".env.local"],
   "tasks": {
     "deskohub-workspace#build": {
-      "env": [
-        "CLOUDINARY_API_KEY",
-        "CLOUDINARY_API_SECRET",
-        "EMAIL_API_KEY"
-      ]
+      "env": ["CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "EMAIL_API_KEY"]
     },
     "@deskohub/dotypos#generate": {
       "passThroughEnv": [
@@ -16,6 +12,7 @@
         "EMAIL_API_KEY"
       ]
     },
+    "@deskohub/nexi#generate": {},
     "deskohub-workspace#i18n:compile": {
       "passThroughEnv": [
         "CLOUDINARY_API_KEY",
