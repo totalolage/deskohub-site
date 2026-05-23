@@ -14,6 +14,8 @@ This directory contains project docs for architecture, integrations, and operati
 - [`dotypos-openapi-integration.md`](./dotypos-openapi-integration.md) - OpenAPI client generation and Dotypos service architecture.
 - [`dotypos-simple-integration.md`](./dotypos-simple-integration.md) - High-level reservation flow from table reservation action to Dotypos.
 - [`dotypos-reservations-integration.md`](./dotypos-reservations-integration.md) - Reservation-specific Dotypos capabilities and limitations.
+- [`NEXI_WORKSPACE_CHECKOUT_MODEL.md`](./NEXI_WORKSPACE_CHECKOUT_MODEL.md) - Workspace Nexi checkout storage model and post-payment reservation flow.
+- [`NEXI_WORKSPACE_DATABASE_SPEC.md`](./NEXI_WORKSPACE_DATABASE_SPEC.md) - Database handoff specification for Workspace Nexi checkout implementation.
 - [`WEBHOOK_TESTING.md`](./WEBHOOK_TESTING.md) - Local/dev webhook testing workflow.
 - [`RESEND_SETUP.md`](./RESEND_SETUP.md) - Email provider setup and provider-selection behavior.
 
