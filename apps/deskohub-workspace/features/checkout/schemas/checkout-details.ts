@@ -1,4 +1,15 @@
 import { z } from "zod/v4";
+import {
+  workspaceProductMonitorOptions,
+  workspaceProductTiers,
+} from "@/features/checkout/product-catalog";
+import { workspaceLocales } from "@/features/i18n";
+
+const workspaceMoneySchema = z.object({
+  value: z.int().nonnegative(),
+  exponent: z.int().nonnegative(),
+  currency: z.string().regex(/^[A-Z]{3}$/),
+});
 
 export const legalDocumentHashSchema = z.object({
   path: z.string().min(1),
@@ -12,17 +23,16 @@ export const legalDocumentHashSchema = z.object({
 export const checkoutDetailsJsonSchema = z.object({
   schema: z.literal("workspace-checkout-details"),
   schemaVersion: z.literal(1),
-  locale: z.enum(["cs-CZ", "en-US"]),
+  locale: z.enum(workspaceLocales),
   reservation: z.object({
-    tier: z.enum(["basic-day-pass", "cowork-plus", "profi-workstation"]),
+    tier: z.enum(workspaceProductTiers),
     date: z.iso.date(),
     coffee: z.boolean(),
-    monitorOption: z.enum(["2x27", "2x32", "qhd-4k"]).optional(),
+    monitorOption: z.enum(workspaceProductMonitorOptions).optional(),
     message: z.string().optional(),
   }),
   payment: z.object({
-    expectedAmountMinor: z.int().nonnegative(),
-    currency: z.literal("CZK"),
+    expectedPrice: workspaceMoneySchema,
   }),
   legal: z.object({
     acceptedAt: z.iso.datetime({ offset: true }),

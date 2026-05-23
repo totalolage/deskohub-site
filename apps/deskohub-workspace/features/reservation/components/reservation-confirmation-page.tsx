@@ -1,13 +1,14 @@
 import { CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import {
+  getWorkspaceProductByTier,
+  isWorkspaceProductMonitorOption,
+  isWorkspaceProductTier,
+  type WorkspaceProductMonitorOption,
+  type WorkspaceProductTier,
+} from "@/features/checkout/product-catalog";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-import {
-  isReservationEntryTier,
-  type ReservationEntryTier,
-  type ReservationMonitorOption,
-  reservationMonitorOptions,
-} from "@/features/reservation/schemas/reservation";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
 
@@ -19,10 +20,10 @@ export type ReservationConfirmationSearchParams = Record<
 export type ReservationConfirmationDetails =
   | {
       isCustomized: true;
-      tier: ReservationEntryTier;
+      tier: WorkspaceProductTier;
       date: string;
       coffee: boolean;
-      monitor?: ReservationMonitorOption;
+      monitor?: WorkspaceProductMonitorOption;
     }
   | {
       isCustomized: false;
@@ -42,13 +43,13 @@ const tierMessageKeys = {
   "basic-day-pass": "reservationTierBasicTitle",
   "cowork-plus": "reservationTierCoworkTitle",
   "profi-workstation": "reservationTierProfiTitle",
-} as const satisfies Record<ReservationEntryTier, keyof typeof m>;
+} as const satisfies Record<WorkspaceProductTier, keyof typeof m>;
 
 const monitorMessageKeys = {
   "2x27": "reservationMonitor2x27Title",
   "2x32": "reservationMonitor2x32Title",
   "qhd-4k": "reservationMonitorQhd4kTitle",
-} as const satisfies Record<ReservationMonitorOption, keyof typeof m>;
+} as const satisfies Record<WorkspaceProductMonitorOption, keyof typeof m>;
 
 const strictDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -64,12 +65,6 @@ const getSingleSearchParam = (
 
   return value;
 };
-
-const isReservationMonitorOption = (
-  value: string | undefined
-): value is ReservationMonitorOption =>
-  value !== undefined &&
-  reservationMonitorOptions.includes(value as ReservationMonitorOption);
 
 const parseStrictReservationDate = (value: string | undefined) => {
   if (!value || !strictDatePattern.test(value)) {
@@ -121,7 +116,7 @@ export function normalizeReservationConfirmationDetails(
   searchParams: ReservationConfirmationSearchParams
 ): ReservationConfirmationDetails {
   const tier = getSingleSearchParam(searchParams, "tier");
-  if (!isReservationEntryTier(tier)) {
+  if (!isWorkspaceProductTier(tier)) {
     return { isCustomized: false };
   }
 
@@ -140,10 +135,10 @@ export function normalizeReservationConfirmationDetails(
   }
 
   const monitor = getSingleSearchParam(searchParams, "monitor");
-  const parsedMonitor = isReservationMonitorOption(monitor)
+  const parsedMonitor = isWorkspaceProductMonitorOption(monitor)
     ? monitor
     : undefined;
-  if (tier === "profi-workstation") {
+  if (getWorkspaceProductByTier(tier).requiresMonitorOption) {
     if (!parsedMonitor) {
       return { isCustomized: false };
     }

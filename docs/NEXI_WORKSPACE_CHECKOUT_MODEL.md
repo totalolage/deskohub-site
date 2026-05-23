@@ -123,8 +123,11 @@ type CheckoutDetailsJson = {
   };
 
   payment: {
-    expectedAmountMinor: number;
-    currency: "CZK";
+    expectedPrice: {
+      value: number;
+      exponent: number; // Integer decimal exponent, 0..20
+      currency: string;
+    };
   };
 
   legal: {
@@ -158,6 +161,8 @@ Notes:
 - `date` and `acceptedAt` should be ISO strings.
 - The legal hashes should be computed from the exact rendered/source document version that the customer agreed to.
 - The checkout details JSON is the source for creating the post-payment Dotypos reservation.
+- Product catalog entries do not define access-code policy. `fulfillment.accessCodePolicy` is assigned by the payment order persistence layer when `payment_orders.checkout_details` is inserted, and records the global policy used for that order.
+- Future access-code policy changes are made by changing the hard-coded insert/storage-boundary value, and by updating the persisted type/schema if a new persisted literal is supported.
 
 ## Webhook Events
 

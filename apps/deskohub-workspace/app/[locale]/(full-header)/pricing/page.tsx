@@ -12,7 +12,9 @@ export async function generateMetadata({
   params,
 }: PricingPageRouteProps): Promise<Metadata> {
   const { locale } = await params;
-  if (locale !== "en-US" || !isWorkspaceLocale(locale)) notFound();
+  if (!isWorkspaceLocale(locale)) {
+    notFound();
+  }
 
   const content = getPricingContent(locale);
 
@@ -22,11 +24,13 @@ export async function generateMetadata({
   };
 }
 
-export default async function EnglishPricingPage({
+export default async function PricingPageRoute({
   params,
 }: PricingPageRouteProps) {
   const { locale } = await params;
-  if (locale !== "en-US" || !isWorkspaceLocale(locale)) notFound();
+  if (!isWorkspaceLocale(locale)) {
+    notFound();
+  }
 
   return runWithRequestLocale(locale, () => <PricingPage locale={locale} />);
 }

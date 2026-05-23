@@ -1,9 +1,9 @@
 import { Clock3, DoorOpen, type LucideIcon, MapPin } from "lucide-react";
 import Link from "next/link";
+import type { WorkspaceProductTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceLocale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getPricingContent } from "@/features/pricing";
-import type { ReservationEntryTier } from "@/features/reservation/schemas/reservation";
 import { Container } from "@/shared/components/container";
 import { Badge } from "@/shared/components/ui/badge";
 import { Button } from "@/shared/components/ui/button";
@@ -33,7 +33,7 @@ type PricingCard = {
   price: string;
   text: string;
   featured: boolean;
-  reservationTier?: ReservationEntryTier;
+  reservationTier?: WorkspaceProductTier;
   contactHref?: string;
 };
 

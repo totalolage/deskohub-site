@@ -2,14 +2,12 @@
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Effect, Layer } from "effect";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   ReservationService,
   ReservationServiceLive,
 } from "@/features/reservation/backend/reservation.service";
-import {
-  getReservationSchema,
-  reservationMonitorOptions,
-} from "@/features/reservation/schemas/reservation";
+import { getReservationSchema } from "@/features/reservation/schemas/reservation";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
@@ -25,10 +23,11 @@ const submitReservationAction = createEffectSafeAction(
         coffee: input.coffee ? "1" : "0",
       });
 
+      const product = getWorkspaceProductByTier(input.entryTier);
+
       if (
-        input.entryTier === "profi-workstation" &&
         input.monitorOption &&
-        reservationMonitorOptions.includes(input.monitorOption)
+        product.allowedMonitorOptions.includes(input.monitorOption)
       ) {
         reservationSearchParams.set("monitor", input.monitorOption);
       }

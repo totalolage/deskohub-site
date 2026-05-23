@@ -10,6 +10,13 @@ import { type PaymentOrder, paymentOrders } from "@/db/schema";
 import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 
+type PaymentOrderCheckoutDetailsCreateInput = Omit<
+  CheckoutDetailsJson,
+  "fulfillment"
+>;
+
+const workspacePaymentOrderAccessCodePolicy = "workspace-static-v1" as const;
+
 export class PaymentOrderStateError extends Data.TaggedError(
   "PaymentOrderStateError"
 )<{
@@ -41,7 +48,7 @@ export interface PaymentOrderRepository {
     readonly id: string;
     readonly dotyposCustomerId: string;
     readonly correlationId: string;
-    readonly checkoutDetails: CheckoutDetailsJson;
+    readonly checkoutDetails: PaymentOrderCheckoutDetailsCreateInput;
   }) => Effect.Effect<PaymentOrder, DatabaseError>;
   readonly attachNexiSession: (input: {
     readonly id: string;
@@ -229,9 +236,12 @@ export const PaymentOrderRepositoryLive = Layer.effect(
     return PaymentOrderRepository.of({
       create: (input) =>
         runDb("paymentOrders.create", async () => {
-          const checkoutDetails = checkoutDetailsJsonSchema.parse(
-            input.checkoutDetails
-          );
+          const checkoutDetails = checkoutDetailsJsonSchema.parse({
+            ...input.checkoutDetails,
+            fulfillment: {
+              accessCodePolicy: workspacePaymentOrderAccessCodePolicy,
+            },
+          });
           const [order] = await db
             .insert(paymentOrders)
             .values({
