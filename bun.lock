@@ -210,6 +210,19 @@
         "next-safe-action": "^8.0.7",
       },
     },
+    "packages/nexi": {
+      "name": "@deskohub/nexi",
+      "version": "0.1.0",
+      "dependencies": {
+        "@hey-api/client-fetch": "^0.13.1",
+        "effect": "^3.17.2",
+        "zod": "^4.0.17",
+      },
+      "devDependencies": {
+        "@hey-api/openapi-ts": "^0.90.8",
+        "typescript": "^5",
+      },
+    },
     "packages/reservation": {
       "name": "@deskohub/reservation",
       "version": "0.1.0",
@@ -303,6 +316,8 @@
     "@deskohub/email": ["@deskohub/email@workspace:packages/email"],
 
     "@deskohub/i18n": ["@deskohub/i18n@workspace:packages/i18n"],
+
+    "@deskohub/nexi": ["@deskohub/nexi@workspace:packages/nexi"],
 
     "@deskohub/reservation": ["@deskohub/reservation@workspace:packages/reservation"],
 

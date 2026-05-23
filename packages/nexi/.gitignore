@@ -1,0 +1,6 @@
+# Generated OpenAPI client output
+src/generated/
+
+# Package-local tool/dependency output
+.turbo/
+node_modules/

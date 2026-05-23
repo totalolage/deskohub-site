@@ -22,7 +22,8 @@
     "typecheck:portal": "turbo run typecheck --filter=deskohub-portal",
     "typecheck:workspace": "turbo run typecheck --filter=deskohub-workspace",
     "format": "bunx biome check --write --unsafe .",
-    "generate:dotypos": "turbo run generate --filter=@deskohub/dotypos"
+    "generate:dotypos": "turbo run generate --filter=@deskohub/dotypos",
+    "generate:nexi": "turbo run generate --filter=@deskohub/nexi"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
