@@ -1,29 +1,12 @@
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
+import {
+  getWorkspaceProductByTier,
+  type WorkspaceProductTier,
+  workspaceProductMonitorOptions,
+  workspaceProductTiers,
+} from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
-
-export const reservationEntryTiers = [
-  "basic-day-pass",
-  "cowork-plus",
-  "profi-workstation",
-] as const;
-
-export const reservationMonitorOptions = ["2x27", "2x32", "qhd-4k"] as const;
-
-export type ReservationEntryTier = (typeof reservationEntryTiers)[number];
-export type ReservationMonitorOption =
-  (typeof reservationMonitorOptions)[number];
-
-export const isReservationEntryTier = (
-  value: string | undefined
-): value is ReservationEntryTier =>
-  value !== undefined &&
-  reservationEntryTiers.includes(value as ReservationEntryTier);
-
-export const tiersWithCourtesyCoffee = new Set<ReservationEntryTier>([
-  "cowork-plus",
-  "profi-workstation",
-]);
 
 const RESERVATION_VALIDATION = {
   name: { min: 2, max: 100 },
@@ -66,7 +49,7 @@ const requiredEmailSchema = z
 export const getReservationSchema = () =>
   z
     .object({
-      entryTier: z.enum(reservationEntryTiers, {
+      entryTier: z.enum(workspaceProductTiers, {
         error: m.reservationValidationTierRequired(),
       }),
       date: z.iso
@@ -76,7 +59,7 @@ export const getReservationSchema = () =>
         }),
       coffee: z.boolean(),
       monitorOption: z
-        .enum(reservationMonitorOptions)
+        .enum(workspaceProductMonitorOptions)
         .optional()
         .or(z.literal("").transform(() => undefined)),
       name: z
@@ -118,10 +101,9 @@ export const getReservationSchema = () =>
         .or(z.literal("")),
     })
     .superRefine((data, context) => {
-      const requiresMonitor = data.entryTier === "profi-workstation";
-      const includesCoffee = tiersWithCourtesyCoffee.has(data.entryTier);
+      const product = getWorkspaceProductByTier(data.entryTier);
 
-      if (requiresMonitor && !data.monitorOption) {
+      if (product.requiresMonitorOption && !data.monitorOption) {
         context.addIssue({
           code: "custom",
           path: ["monitorOption"],
@@ -129,7 +111,11 @@ export const getReservationSchema = () =>
         });
       }
 
-      if (!requiresMonitor && data.monitorOption) {
+      if (
+        product.requiresMonitorOption &&
+        data.monitorOption &&
+        !product.allowedMonitorOptions.includes(data.monitorOption)
+      ) {
         context.addIssue({
           code: "custom",
           path: ["monitorOption"],
@@ -137,7 +123,15 @@ export const getReservationSchema = () =>
         });
       }
 
-      if (includesCoffee && !data.coffee) {
+      if (!product.requiresMonitorOption && data.monitorOption) {
+        context.addIssue({
+          code: "custom",
+          path: ["monitorOption"],
+          message: m.reservationValidationMonitorUnavailable(),
+        });
+      }
+
+      if (product.requiresCoffee && !data.coffee) {
         context.addIssue({
           code: "custom",
           path: ["coffee"],
@@ -160,5 +154,11 @@ export const reservationDefaultValues: ReservationInput = {
   message: "",
 };
 
-export const tierIncludesCourtesyCoffee = (tier: ReservationEntryTier) =>
-  tiersWithCourtesyCoffee.has(tier);
+export const tierIncludesCourtesyCoffee = (tier: WorkspaceProductTier) =>
+  getWorkspaceProductByTier(tier).includesCourtesyCoffee;
+
+export const tierRequiresMonitorOption = (tier: WorkspaceProductTier) =>
+  getWorkspaceProductByTier(tier).requiresMonitorOption;
+
+export const getAllowedMonitorOptionsForTier = (tier: WorkspaceProductTier) =>
+  getWorkspaceProductByTier(tier).allowedMonitorOptions;

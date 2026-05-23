@@ -14,18 +14,26 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
+import {
+  formatWorkspaceProductCurrencyAmount,
+  isWorkspaceProductTier,
+  type WorkspaceProductCatalogItem,
+  type WorkspaceProductMonitorOption,
+  type WorkspaceProductTier,
+  workspaceProductCatalog,
+  workspaceProductMonitorOptions,
+} from "@/features/checkout/product-catalog";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { m, type WorkspaceLocale } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import {
+  getAllowedMonitorOptionsForTier,
   getReservationSchema,
-  isReservationEntryTier,
   type ReservationData,
-  type ReservationEntryTier,
   type ReservationInput,
-  type ReservationMonitorOption,
   reservationDefaultValues,
   tierIncludesCourtesyCoffee,
+  tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
@@ -84,50 +92,64 @@ type ReservationActionResult = {
   validationErrors?: unknown;
 };
 
-const tierOptions = [
-  {
-    value: "basic-day-pass",
-    priceKey: "reservationTierBasicPrice",
+const tierOptionMessageKeys = {
+  "basic-day-pass": {
     titleKey: "reservationTierBasicTitle",
     descriptionKey: "reservationTierBasicDescription",
   },
-  {
-    value: "cowork-plus",
-    priceKey: "reservationTierCoworkPrice",
+  "cowork-plus": {
     titleKey: "reservationTierCoworkTitle",
     descriptionKey: "reservationTierCoworkDescription",
   },
-  {
-    value: "profi-workstation",
-    priceKey: "reservationTierProfiPrice",
+  "profi-workstation": {
     titleKey: "reservationTierProfiTitle",
     descriptionKey: "reservationTierProfiDescription",
   },
-] as const satisfies ReadonlyArray<{
-  value: ReservationEntryTier;
-  priceKey: keyof typeof m;
+} as const satisfies Record<
+  WorkspaceProductTier,
+  {
+    titleKey: keyof typeof m;
+    descriptionKey: keyof typeof m;
+  }
+>;
+
+const tierOptions = workspaceProductCatalog.map((product) => ({
+  product,
+  value: product.tier,
+  ...tierOptionMessageKeys[product.tier],
+})) satisfies ReadonlyArray<{
+  product: WorkspaceProductCatalogItem;
+  value: WorkspaceProductTier;
   titleKey: keyof typeof m;
   descriptionKey: keyof typeof m;
 }>;
 
-const monitorOptions = [
-  {
-    value: "2x27",
+const monitorOptionMessageKeys = {
+  "2x27": {
     titleKey: "reservationMonitor2x27Title",
     descriptionKey: "reservationMonitor2x27Description",
   },
-  {
-    value: "2x32",
+  "2x32": {
     titleKey: "reservationMonitor2x32Title",
     descriptionKey: "reservationMonitor2x32Description",
   },
-  {
-    value: "qhd-4k",
+  "qhd-4k": {
     titleKey: "reservationMonitorQhd4kTitle",
     descriptionKey: "reservationMonitorQhd4kDescription",
   },
-] as const satisfies ReadonlyArray<{
-  value: ReservationMonitorOption;
+} as const satisfies Record<
+  WorkspaceProductMonitorOption,
+  {
+    titleKey: keyof typeof m;
+    descriptionKey: keyof typeof m;
+  }
+>;
+
+const monitorOptions = workspaceProductMonitorOptions.map((option) => ({
+  value: option,
+  ...monitorOptionMessageKeys[option],
+})) satisfies ReadonlyArray<{
+  value: WorkspaceProductMonitorOption;
   titleKey: keyof typeof m;
   descriptionKey: keyof typeof m;
 }>;
@@ -203,7 +225,7 @@ const getErrorFreeReservationRedirectUrl = (
 const getTierDefaultValues = (tier: string | null): ReservationInput => {
   const requestedTier = tier ?? undefined;
 
-  if (!isReservationEntryTier(requestedTier)) {
+  if (!isWorkspaceProductTier(requestedTier)) {
     return reservationDefaultValues;
   }
 
@@ -238,7 +260,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   });
   const selectedTier = form.watch("entryTier");
   const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
-  const shouldShowMonitors = selectedTier === "profi-workstation";
+  const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
+  const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
 
   const { execute, isExecuting } = useAction(submitReservation, {
     onSettled: ({ result }) => {
@@ -294,8 +317,9 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     execute({
       ...data,
       coffee: tierIncludesCourtesyCoffee(data.entryTier) ? true : data.coffee,
-      monitorOption:
-        data.entryTier === "profi-workstation" ? data.monitorOption : undefined,
+      monitorOption: tierRequiresMonitorOption(data.entryTier)
+        ? data.monitorOption
+        : undefined,
     });
   });
 
@@ -362,7 +386,11 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                               />
                             </span>
                             <span className="text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange">
-                              {getMessage(option.priceKey, locale)}
+                              {formatWorkspaceProductCurrencyAmount(
+                                option.product,
+                                locale
+                              )}
+                              {m.pricingTariffPricePeriodSuffix({}, { locale })}
                             </span>
                             <span className="text-sm leading-6 text-navy-blue/62">
                               {getMessage(option.descriptionKey, locale)}
@@ -474,35 +502,39 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                     </FormLabel>
                     <FormControl>
                       <div className="grid gap-3 sm:grid-cols-3">
-                        {monitorOptions.map((option) => {
-                          const isSelected = field.value === option.value;
+                        {monitorOptions
+                          .filter((option) =>
+                            allowedMonitorOptions.includes(option.value)
+                          )
+                          .map((option) => {
+                            const isSelected = field.value === option.value;
 
-                          return (
-                            <label
-                              key={option.value}
-                              className={cn(
-                                "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5",
-                                isSelected
-                                  ? "border-aquamarine-green bg-white ring-4 ring-aquamarine-green/15"
-                                  : "border-navy-blue/10 bg-white/75 hover:border-aquamarine-green/55"
-                              )}
-                            >
-                              <input
-                                type="radio"
-                                className="sr-only"
-                                checked={isSelected}
-                                value={option.value}
-                                onChange={() => field.onChange(option.value)}
-                              />
-                              <span className="block font-semibold text-navy-blue">
-                                {getMessage(option.titleKey, locale)}
-                              </span>
-                              <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
-                                {getMessage(option.descriptionKey, locale)}
-                              </span>
-                            </label>
-                          );
-                        })}
+                            return (
+                              <label
+                                key={option.value}
+                                className={cn(
+                                  "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5",
+                                  isSelected
+                                    ? "border-aquamarine-green bg-white ring-4 ring-aquamarine-green/15"
+                                    : "border-navy-blue/10 bg-white/75 hover:border-aquamarine-green/55"
+                                )}
+                              >
+                                <input
+                                  type="radio"
+                                  className="sr-only"
+                                  checked={isSelected}
+                                  value={option.value}
+                                  onChange={() => field.onChange(option.value)}
+                                />
+                                <span className="block font-semibold text-navy-blue">
+                                  {getMessage(option.titleKey, locale)}
+                                </span>
+                                <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
+                                  {getMessage(option.descriptionKey, locale)}
+                                </span>
+                              </label>
+                            );
+                          })}
                       </div>
                     </FormControl>
                     <FormMessage />

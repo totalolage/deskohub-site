@@ -98,8 +98,11 @@ type CheckoutDetailsJson = {
     message?: string;
   };
   payment: {
-    expectedAmountMinor: number; // Amount in minor units, must match server calculation
-    currency: "CZK";
+    expectedPrice: {
+      value: number;    // Integer amount in currency minor units/scaled units
+      exponent: number; // Integer decimal exponent used to derive the major amount, 0..20
+      currency: string; // Uppercase ISO 4217 currency code
+    };
   };
   legal: {
     acceptedAt: string;          // ISO timestamp when terms were accepted
@@ -124,7 +127,7 @@ type LegalDocumentHash = {
   hashAlgorithm: "sha256";
 };
 
-The application must validate this object before inserting it into the database and again before fulfilment.  The database itself should enforce only that checkout_details is non‑null and of type jsonb; detailed schema validation belongs in the application layer.
+The application must validate this object before inserting it into the database and again before fulfilment.  The database itself should enforce only that checkout_details is non‑null and of type jsonb; detailed schema validation belongs in the application layer. Product catalog entries do not define access-code policy. The payment order persistence layer assigns `checkout_details.fulfillment.accessCodePolicy` at insert time so each row records the global policy used for that order. Future policy changes should update the hard-coded insert/storage-boundary value, and the persisted type/schema if a new literal is supported.
 
 4 Environment strategy (production, development/preview)
 

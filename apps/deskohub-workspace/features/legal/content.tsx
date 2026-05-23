@@ -13,7 +13,7 @@ type LegalSection = {
   body: ReactNode[];
 };
 
-type LegalDocumentContent = {
+export type LegalDocumentContent = {
   title: string;
   lead: string;
   updatedAt: string;

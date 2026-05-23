@@ -1,11 +1,9 @@
-export type WorkspaceCheckoutLocale = "cs-CZ" | "en-US";
-
-export type WorkspaceCheckoutTier =
-  | "basic-day-pass"
-  | "cowork-plus"
-  | "profi-workstation";
-
-export type WorkspaceCheckoutMonitorOption = "2x27" | "2x32" | "qhd-4k";
+import type {
+  WorkspaceMoney,
+  WorkspaceProductMonitorOption,
+  WorkspaceProductTier,
+} from "@/features/checkout/product-catalog";
+import type { WorkspaceLocale } from "@/features/i18n";
 
 export type LegalDocumentHash = {
   readonly path: string;
@@ -16,17 +14,16 @@ export type LegalDocumentHash = {
 export type CheckoutDetailsJson = {
   readonly schema: "workspace-checkout-details";
   readonly schemaVersion: 1;
-  readonly locale: WorkspaceCheckoutLocale;
+  readonly locale: WorkspaceLocale;
   readonly reservation: {
-    readonly tier: WorkspaceCheckoutTier;
+    readonly tier: WorkspaceProductTier;
     readonly date: string;
     readonly coffee: boolean;
-    readonly monitorOption?: WorkspaceCheckoutMonitorOption;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
     readonly message?: string;
   };
   readonly payment: {
-    readonly expectedAmountMinor: number;
-    readonly currency: "CZK";
+    readonly expectedPrice: WorkspaceMoney;
   };
   readonly legal: {
     readonly acceptedAt: string;

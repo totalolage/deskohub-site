@@ -37,7 +37,12 @@ export function PricingPage({ locale }: PricingPageProps) {
 
             <div className="grid gap-5">
               {content.tariffs.map((tariff) => (
-                <TariffCard key={tariff.id} tariff={tariff} locale={locale} />
+                <TariffCard
+                  key={tariff.id}
+                  includesLabel={content.document.tariffIncludesLabel}
+                  tariff={tariff}
+                  locale={locale}
+                />
               ))}
             </div>
           </div>
@@ -99,11 +104,12 @@ export function PricingPage({ locale }: PricingPageProps) {
 }
 
 type TariffCardProps = {
+  includesLabel: string;
   tariff: PricingTariff;
   locale: WorkspaceLocale;
 };
 
-function TariffCard({ tariff, locale }: TariffCardProps) {
+function TariffCard({ includesLabel, tariff, locale }: TariffCardProps) {
   const reservationHref = `/${locale}/reservation?tier=${tariff.reservationTier}`;
 
   return (
@@ -121,7 +127,7 @@ function TariffCard({ tariff, locale }: TariffCardProps) {
           </p>
           <div className="space-y-3">
             <p className="text-sm font-semibold uppercase tracking-[0.08em] text-navy-blue/68">
-              {locale === "cs-CZ" ? "Zahrnuje" : "Includes"}
+              {includesLabel}
             </p>
             <ul className="space-y-3 text-sm leading-7 text-navy-blue/78">
               {tariff.includes.map((item) => (

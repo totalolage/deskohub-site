@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { m, type WorkspaceLocale } from "@/features/i18n";
-import { getPricingPath } from "@/features/pricing";
 import { Container } from "@/shared/components/container";
 import { workspaceSiteConstants } from "@/shared/utils";
 
@@ -10,6 +9,7 @@ type PublicSiteFooterProps = {
 
 export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
   const localePath = `/${locale}`;
+  const pricingPath = `${localePath}/pricing`;
   const companyExtractPath = "/official-company-extract";
   const companyAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
   const addressLabel =
@@ -90,7 +90,7 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
                 {m.footerCookieSettingsLink({}, { locale })}
               </Link>
               <Link
-                href={getPricingPath(locale)}
+                href={pricingPath}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerPricingLink({}, { locale })}

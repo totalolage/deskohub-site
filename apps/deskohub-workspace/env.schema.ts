@@ -5,6 +5,11 @@ export const workspaceServerEnvSchema = z.object({
   CLOUDINARY_API_SECRET: z.string(),
   DATABASE_URL: z.url(),
   EMAIL_API_KEY: z.string().optional(),
+  NEXI_API_KEY: z.string().optional(),
+  NEXI_CANCEL_URL_BASE: z.url().optional(),
+  NEXI_CALLBACK_URL_BASE: z.url().optional(),
+  NEXI_ORIGIN: z.url().optional(),
+  NEXI_RESULT_URL_BASE: z.url().optional(),
 });
 
 export const workspaceClientEnvSchema = z.object({

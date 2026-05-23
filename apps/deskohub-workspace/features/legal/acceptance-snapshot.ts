@@ -1,0 +1,99 @@
+"use server";
+
+import { createHash } from "node:crypto";
+import { isValidElement, type ReactNode } from "react";
+import type { WorkspaceLocale } from "@/features/i18n";
+import { workspaceSiteConstants } from "@/shared/utils";
+import { getLegalDocument, type LegalDocumentContent } from "./content";
+
+type CheckoutLegalDocumentKey =
+  | "terms-and-conditions"
+  | "operating-rules"
+  | "privacy-policy";
+
+type CheckoutLegalDocumentSnapshot = {
+  readonly path: string;
+  readonly url: string;
+  readonly title: string;
+  readonly updatedAt: string;
+  readonly hash: string;
+  readonly hashAlgorithm: "sha256";
+};
+
+const checkoutLegalDocumentKeys = [
+  "terms-and-conditions",
+  "operating-rules",
+  "privacy-policy",
+] as const satisfies readonly CheckoutLegalDocumentKey[];
+
+const checkoutDetailsDocumentKeyByLegalDocumentKey = {
+  "terms-and-conditions": "termsAndConditions",
+  "operating-rules": "operatingRules",
+  "privacy-policy": "privacyPolicy",
+} as const;
+
+function reactNodeToCanonicalText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean") {
+    return "";
+  }
+
+  if (typeof node === "string" || typeof node === "number") {
+    return String(node);
+  }
+
+  if (Array.isArray(node)) {
+    return node.map(reactNodeToCanonicalText).join("");
+  }
+
+  if (isValidElement<{ children?: ReactNode }>(node)) {
+    return reactNodeToCanonicalText(node.props.children);
+  }
+
+  return "";
+}
+
+function getCanonicalLegalDocument(document: LegalDocumentContent): string {
+  return JSON.stringify({
+    title: document.title,
+    lead: document.lead,
+    updatedAt: document.updatedAt,
+    sections: document.sections.map((section) => ({
+      heading: section.heading,
+      body: section.body.map(reactNodeToCanonicalText),
+    })),
+  });
+}
+
+function createLegalDocumentSnapshot(
+  locale: WorkspaceLocale,
+  documentKey: CheckoutLegalDocumentKey
+): CheckoutLegalDocumentSnapshot {
+  const document = getLegalDocument(locale, documentKey);
+  const path = `/${locale}/${documentKey}`;
+
+  return {
+    path,
+    url: `https://${workspaceSiteConstants.brand.domain}${path}`,
+    title: document.title,
+    updatedAt: document.updatedAt,
+    hash: createHash("sha256")
+      .update(getCanonicalLegalDocument(document))
+      .digest("hex"),
+    hashAlgorithm: "sha256",
+  };
+}
+
+export async function getLegalAcceptanceSnapshot(locale: WorkspaceLocale) {
+  "use cache";
+
+  return Object.fromEntries(
+    checkoutLegalDocumentKeys.map((documentKey) => [
+      checkoutDetailsDocumentKeyByLegalDocumentKey[documentKey],
+      createLegalDocumentSnapshot(locale, documentKey),
+    ])
+  ) as {
+    readonly termsAndConditions: CheckoutLegalDocumentSnapshot;
+    readonly operatingRules: CheckoutLegalDocumentSnapshot;
+    readonly privacyPolicy: CheckoutLegalDocumentSnapshot;
+  };
+}

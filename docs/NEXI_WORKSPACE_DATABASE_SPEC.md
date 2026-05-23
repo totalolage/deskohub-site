@@ -277,8 +277,11 @@ type CheckoutDetailsJson = {
   };
 
   payment: {
-    expectedAmountMinor: number;
-    currency: "CZK";
+    expectedPrice: {
+      value: number;
+      exponent: number; // Integer decimal exponent, 0..20
+      currency: string;
+    };
   };
 
   legal: {
@@ -312,10 +315,12 @@ Validation expectations:
 - `schema` must be `workspace-checkout-details`.
 - `schemaVersion` must be `1` for the initial connector.
 - `reservation.date` and `legal.acceptedAt` must be ISO strings.
-- `payment.currency` must be `CZK`.
-- `payment.expectedAmountMinor` must match the server-calculated amount for the selected tier/options.
+- `payment.expectedPrice.currency` must be an uppercase ISO 4217 currency code.
+- `payment.expectedPrice.value` and `payment.expectedPrice.exponent` must match the server-calculated amount for the selected tier/options. `payment.expectedPrice.exponent` must be an integer from 0 to 20, matching the ECMA-402 currency fraction digit range used for formatting.
 - Legal hashes must be hashes of the exact document versions accepted by the customer.
 - If `monitorOption` is present, it must be valid for the selected product tier according to server-side checkout rules.
+- Product catalog entries must not define access-code policy. The payment order persistence layer assigns `checkout_details.fulfillment.accessCodePolicy` at insert time so each row records the global policy used for that order.
+- Future access-code policy changes should update the hard-coded insert/storage-boundary value, and the persisted type/schema if a new literal is supported.
 
 The database may enforce only broad JSON checks. The application/connector should perform full schema validation before insert and before fulfillment.
 
