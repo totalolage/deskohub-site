@@ -3,6 +3,7 @@ import type { ExternalAPIError, NetworkError } from "../errors";
 import type { CreateHostedPaymentPageRequest } from "../generated/types.gen";
 import type {
   CreateHostedPaymentPageInput,
+  Locale,
   PaymentOutcomeStatus,
   PaymentVerificationResult,
   VerifyPaymentOutcomeInput,
@@ -18,7 +19,7 @@ const EXECUTED_OPERATION_RESULT = "EXECUTED";
 const localeToNexiLanguage = {
   "cs-CZ": "CZE",
   "en-US": "ENG",
-} as const;
+} as const satisfies Record<Locale, "CZE" | "ENG">;
 
 const failureOperationResults = new Set([
   "DECLINED",
