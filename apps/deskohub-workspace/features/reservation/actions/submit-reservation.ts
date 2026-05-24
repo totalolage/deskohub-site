@@ -1,65 +1,51 @@
 "use server";
 
-import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer } from "effect";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import { Effect } from "effect";
 import {
-  ReservationService,
-  ReservationServiceLive,
-} from "@/features/reservation/backend/reservation.service";
+  CheckoutService,
+  CheckoutServiceLiveWithDependencies,
+} from "@/features/checkout/backend/checkout.service";
+import { m } from "@/features/i18n";
 import { getReservationSchema } from "@/features/reservation/schemas/reservation";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const submitReservationAction = createEffectSafeAction(
   getReservationSchema(),
-  (input, { locale }) =>
-    Effect.gen(function* () {
-      const service = yield* ReservationService;
-      const submission = yield* service.submit(input, locale);
-      const reservationSearchParams = new URLSearchParams({
-        tier: input.entryTier,
-        date: input.date,
-        coffee: input.coffee ? "1" : "0",
-      });
+  Effect.fn("submitWorkspaceReservation")(
+    function* (input, { locale }) {
+      const service = yield* CheckoutService;
+      const checkout = yield* service.createHostedPaymentCheckout(
+        input,
+        locale
+      );
 
-      const product = getWorkspaceProductByTier(input.entryTier);
-
-      if (
-        input.monitorOption &&
-        product.allowedMonitorOptions.includes(input.monitorOption)
-      ) {
-        reservationSearchParams.set("monitor", input.monitorOption);
-      }
-
-      yield* Effect.logInfo("Workspace reservation submitted", {
+      yield* Effect.logInfo("Workspace checkout started", {
         locale,
-        submittedAt: submission.submittedAt,
-        entryTier: submission.entryTier,
+        entryTier: input.entryTier,
       });
 
       return {
-        message: "Reservation submitted successfully",
-        redirectUrl: `/${locale}/reservation/confirmation?${reservationSearchParams.toString()}`,
-        submissionId: submission.submittedAt,
+        message: "Checkout started successfully",
+        redirectUrl: checkout.redirectUrl,
       };
-    }).pipe(
-      Effect.withSpan("submitWorkspaceReservation", {
-        attributes: {
+    },
+    (effect, input, { locale }) =>
+      effect.pipe(
+        Effect.annotateLogs({
           locale,
-          entryTier: input.entryTier,
-        },
-      })
-    ),
-  ReservationServiceLive.pipe(
-    Layer.provide(
-      Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
-    ),
-    Layer.orDie
-  )
+          ...input,
+        }),
+        Effect.mapError(
+          () =>
+            new PublicSafeActionError(m.reservationErrorMessage({}, { locale }))
+        )
+      )
+  ),
+  CheckoutServiceLiveWithDependencies
 );
 
-export const submitReservation = async (
+export const submitReservation: typeof submitReservationAction = async (
   ...args: Parameters<typeof submitReservationAction>
 ) => {
   "use server";

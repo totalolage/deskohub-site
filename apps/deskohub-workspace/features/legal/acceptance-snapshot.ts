@@ -20,17 +20,11 @@ type CheckoutLegalDocumentSnapshot = {
   readonly hashAlgorithm: "sha256";
 };
 
-const checkoutLegalDocumentKeys = [
-  "terms-and-conditions",
-  "operating-rules",
-  "privacy-policy",
-] as const satisfies readonly CheckoutLegalDocumentKey[];
-
-const checkoutDetailsDocumentKeyByLegalDocumentKey = {
-  "terms-and-conditions": "termsAndConditions",
-  "operating-rules": "operatingRules",
-  "privacy-policy": "privacyPolicy",
-} as const;
+export type CheckoutLegalAcceptanceSnapshot = {
+  readonly termsAndConditions: CheckoutLegalDocumentSnapshot;
+  readonly operatingRules: CheckoutLegalDocumentSnapshot;
+  readonly privacyPolicy: CheckoutLegalDocumentSnapshot;
+};
 
 function reactNodeToCanonicalText(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === "boolean") {
@@ -83,17 +77,17 @@ function createLegalDocumentSnapshot(
   };
 }
 
-export async function getLegalAcceptanceSnapshot(locale: Locale) {
+export async function getLegalAcceptanceSnapshot(
+  locale: Locale
+): Promise<CheckoutLegalAcceptanceSnapshot> {
   "use cache";
 
-  return Object.fromEntries(
-    checkoutLegalDocumentKeys.map((documentKey) => [
-      checkoutDetailsDocumentKeyByLegalDocumentKey[documentKey],
-      createLegalDocumentSnapshot(locale, documentKey),
-    ])
-  ) as {
-    readonly termsAndConditions: CheckoutLegalDocumentSnapshot;
-    readonly operatingRules: CheckoutLegalDocumentSnapshot;
-    readonly privacyPolicy: CheckoutLegalDocumentSnapshot;
+  return {
+    termsAndConditions: createLegalDocumentSnapshot(
+      locale,
+      "terms-and-conditions"
+    ),
+    operatingRules: createLegalDocumentSnapshot(locale, "operating-rules"),
+    privacyPolicy: createLegalDocumentSnapshot(locale, "privacy-policy"),
   };
 }
