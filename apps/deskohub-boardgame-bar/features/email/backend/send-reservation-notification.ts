@@ -8,7 +8,6 @@ import type {
   Customer,
   Reservation,
 } from "@deskohub/dotypos/generated/types.gen";
-import { parseNoteData } from "@deskohub/dotypos/note-metadata";
 import {
   escapeHtml,
   escapeOptionalHtml,
@@ -16,6 +15,7 @@ import {
 import { EmailServiceTag } from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Effect } from "effect";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/features/i18n";
 import { DotyposConfig } from "@/shared/backend/config/dotypos.config";
 import { siteConstants } from "@/shared/utils/constants";

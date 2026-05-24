@@ -8,12 +8,9 @@ import {
 import type {
   CreateReservationRequest,
   Customer,
-  Product,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
-import type { TableReservationInput } from "../types";
-import { isCategoryDisplayable } from "../utils/category-utils";
-import { createNoteData } from "../utils/note-metadata";
+import type { CreateDotyposReservationInput } from "../types";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import { DotyposApi } from "./api";
 
@@ -41,81 +38,6 @@ export class DotyposService extends Effect.Service<DotyposService>()(
     effect: Effect.gen(function* () {
       const config = yield* DotyposRuntimeConfig;
       const api = yield* DotyposApi;
-
-      const createReservation = Effect.fn("createReservation")(
-        function* (input: TableReservationInput) {
-          const [firstName = "", ...lastNameParts] = input.name
-            .trim()
-            .split(/\s+/);
-          const lastName = lastNameParts.join(" ") || undefined;
-
-          const customer = yield* findOrCreateCustomer({
-            firstName,
-            lastName,
-            email: input.email,
-            phone: input.phone,
-          });
-
-          if (!customer.id) {
-            return yield* Effect.fail(
-              new ValidationError({
-                message: "Failed to create or find customer",
-              })
-            );
-          }
-
-          const note = buildNote(input);
-
-          const tableId = yield* getTables()
-            .pipe(
-              Effect.map(
-                (tables) =>
-                  tables.find(
-                    (table) =>
-                      table.display &&
-                      table.enabled &&
-                      table.id &&
-                      config.reservationTableIds.includes(table.id)
-                  )?.id
-              ),
-              Effect.filterOrFail((table) => table != null)
-            )
-            .pipe(Effect.option);
-
-          const request: CreateReservationRequest = {
-            _branchId: config.branchId,
-            _cloudId: config.cloudId,
-            _customerId: customer.id,
-            startDate: input.datetime.getTime(),
-            endDate: input.datetime.getTime() + input.duration * 60 * 60 * 1000,
-            seats: input.guestCount,
-            status: "NEW",
-            note,
-            flags: 0,
-            ...(tableId._tag === "Some" && { _tableId: tableId.value }),
-            ...(config.employeeId && { _employeeId: config.employeeId }),
-          };
-
-          const reservation = yield* api
-            .createReservation({
-              path: { cloudId: config.cloudId },
-              body: request,
-            })
-            .pipe(
-              Effect.withSpan("dotyposService.createReservation"),
-              Effect.retry(retryPolicy)
-            );
-
-          return reservation;
-        },
-        (effect, input) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              operation: "createReservation",
-              input,
-            })
-          )
-      );
 
       const getReservation = Effect.fn("getReservation")(
         function* (id: string) {
@@ -161,6 +83,82 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           effect.pipe(
             Effect.annotateLogs({
               operation: "getReservation",
+              input,
+            })
+          )
+      );
+
+      const createReservation = Effect.fn("createReservation")(
+        function* (input: CreateDotyposReservationInput) {
+          const customerId = input.customerId.trim();
+          const tableId = input.tableId.trim();
+
+          if (!customerId) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Customer ID is required" })
+            );
+          }
+
+          if (!tableId) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Table ID is required" })
+            );
+          }
+
+          if (!Number.isInteger(input.seats) || input.seats <= 0) {
+            return yield* Effect.fail(
+              new ValidationError({
+                message: "Reservation seats must be a positive integer",
+              })
+            );
+          }
+
+          if (
+            Number.isNaN(input.startDate.getTime()) ||
+            Number.isNaN(input.endDate.getTime())
+          ) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Reservation dates must be valid" })
+            );
+          }
+
+          if (input.endDate <= input.startDate) {
+            return yield* Effect.fail(
+              new ValidationError({
+                message: "Reservation end date must be after start date",
+              })
+            );
+          }
+
+          const note = input.note?.trim();
+          const request: CreateReservationRequest = {
+            _branchId: config.branchId,
+            _cloudId: config.cloudId,
+            _customerId: customerId,
+            _tableId: tableId,
+            startDate: input.startDate.getTime(),
+            endDate: input.endDate.getTime(),
+            seats: input.seats,
+            status: input.status,
+            flags: 0,
+            ...(note && { note }),
+            ...(config.employeeId && { _employeeId: config.employeeId }),
+          };
+
+          return yield* api
+            .createReservation({
+              path: { cloudId: config.cloudId },
+              body: request,
+            })
+            .pipe(
+              Effect.withSpan("dotyposService.createReservation"),
+              Effect.retry(retryPolicy)
+            );
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              operation: "createReservation",
               input,
             })
           )
@@ -403,7 +401,9 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           })
           .pipe(
             Effect.map((products) =>
-              products.filter((product) => !product.deleted && product.display)
+              options?.includeDeleted
+                ? products
+                : products.filter((product) => !product.deleted)
             ),
             Effect.retry(retryPolicy),
             Effect.catchIf(
@@ -427,50 +427,6 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           .pipe(Effect.retry(retryPolicy));
       });
 
-      const getMenuItems = Effect.fn("getMenuItems")(function* () {
-        const categories = yield* getCategories();
-
-        const productsByCategory = yield* Effect.all(
-          categories
-            .filter((category) => category.id)
-            .filter(isCategoryDisplayable)
-            .map((category) =>
-              getProducts({
-                categoryId: category.id,
-                includeDeleted: false,
-              }).pipe(Effect.orElseSucceed(() => []))
-            ),
-          { concurrency: "inherit" }
-        );
-
-        const productMap = new Map<string, Product>();
-        for (const categoryProducts of productsByCategory) {
-          for (const product of categoryProducts) {
-            if (product.id && product.display && !product.deleted) {
-              productMap.set(product.id, product);
-            }
-          }
-        }
-
-        const products = Array.from(productMap.values());
-
-        return {
-          products,
-          categories,
-        };
-      });
-
-      const buildNote = (input: TableReservationInput) =>
-        [
-          input.specialRequests,
-          `Preference stolu: ${input.needsLargerTable ? "Velký" : input.needsPrivateSpace ? "Soukromý" : "bez preference"}`,
-          createNoteData({
-            ...input,
-            source: "website",
-            timestamp: new Date(),
-          }),
-        ].join("\n");
-
       return {
         createReservation,
         getReservation,
@@ -479,8 +435,6 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         getTables,
         getProducts,
         getCategories,
-        getMenuItems,
-        buildNote,
       };
     }).pipe(
       Effect.annotateLogs("service", "DotyposService"),

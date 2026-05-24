@@ -9,12 +9,8 @@ export {
   ValidationError,
 } from "./errors";
 export type { Reservation } from "./generated/types.gen";
-export type { TableReservationInput } from "./types";
-export { isCategoryDisplayable } from "./utils/category-utils";
-export { createNoteData, parseNoteData } from "./utils/note-metadata";
+export type {
+  CreateDotyposReservationInput,
+  DotyposReservationStatus,
+} from "./types";
 export { normalizePhoneNumber } from "./utils/phone-formatting";
-export {
-  formatDateTime,
-  formatDuration,
-  getReservationDisplayData,
-} from "./utils/reservation-display";
