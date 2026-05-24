@@ -1,7 +1,7 @@
 import { CalendarRange } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getPricingContent } from "@/features/pricing";
 import { Container } from "@/shared/components/container";
@@ -20,7 +20,7 @@ import meetingRoomPhotoOne from "../images/zasedacka/IMG_20260418_162920.jpg";
 import meetingRoomPhotoTwo from "../images/zasedacka/IMG_20260418_162934.jpg";
 
 type LandingPageExperiencesSectionProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   ttrpgSectionId: string;
   eventsSectionId: string;
   contactHref: string;

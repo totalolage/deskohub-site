@@ -4,7 +4,7 @@ import {
   type WorkspaceProductTier,
   workspaceProductCatalog,
 } from "@/features/checkout/product-catalog";
-import { m, type WorkspaceLocale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 
 type PricingDocumentCopy = {
   eyebrow: string;
@@ -84,26 +84,24 @@ const pricingTariffMessageKeys = {
   },
 } as const satisfies Record<WorkspaceProductTier, PricingTariffMessageKeys>;
 
-const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
+const getMessage = (key: keyof typeof m, locale: Locale) => {
   const message = m[key] as (
     inputs: object,
-    options: { locale: WorkspaceLocale }
+    options: { locale: Locale }
   ) => string;
   return message({}, { locale }) as string;
 };
 
-const getMessages = (
-  keys: readonly (keyof typeof m)[],
-  locale: WorkspaceLocale
-) => keys.map((key) => getMessage(key, locale));
+const getMessages = (keys: readonly (keyof typeof m)[], locale: Locale) =>
+  keys.map((key) => getMessage(key, locale));
 
 const formatTariffPrice = (
   product: ReturnType<typeof getWorkspaceProductByTier>,
-  locale: WorkspaceLocale
+  locale: Locale
 ) =>
   `${formatWorkspaceProductCurrencyAmount(product, locale)}${m.pricingTariffPricePeriodSuffix({}, { locale })}`;
 
-export function getPricingContent(locale: WorkspaceLocale): PricingContent {
+export function getPricingContent(locale: Locale): PricingContent {
   return {
     footerLabel: m.pricingFooterLabel({}, { locale }),
     metadataTitle: m.pricingMetadataTitle({}, { locale }),

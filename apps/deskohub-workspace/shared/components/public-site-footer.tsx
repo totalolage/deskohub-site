@@ -1,10 +1,10 @@
 import Link from "next/link";
-import { m, type WorkspaceLocale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 type PublicSiteFooterProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {

@@ -1,4 +1,4 @@
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import {
@@ -12,7 +12,7 @@ import noiseTexture from "../images/noise-texture.png";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 
 type LandingPageUniverseSectionProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export const LandingPageUniverseBackgroundNoise = ({

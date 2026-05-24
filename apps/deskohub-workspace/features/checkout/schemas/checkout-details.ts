@@ -3,7 +3,7 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
-import { workspaceLocales } from "@/features/i18n";
+import { locales } from "@/features/i18n";
 
 const workspaceMoneySchema = z.object({
   value: z.int().nonnegative(),
@@ -23,7 +23,7 @@ export const legalDocumentHashSchema = z.object({
 export const checkoutDetailsJsonSchema = z.object({
   schema: z.literal("workspace-checkout-details"),
   schemaVersion: z.literal(1),
-  locale: z.enum(workspaceLocales),
+  locale: z.enum(locales),
   reservation: z.object({
     tier: z.enum(workspaceProductTiers),
     date: z.iso.date(),

@@ -24,7 +24,7 @@ import {
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { useCookieConsent } from "@/features/cookie-consent";
-import { m, type WorkspaceLocale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import {
   getAllowedMonitorOptionsForTier,
@@ -64,7 +64,7 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
 
 type ReservationFormProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 type SubmissionMessage = {
@@ -170,7 +170,7 @@ const parseInputDate = (date: string) => {
   return new Date(`${date}T12:00:00`);
 };
 
-const formatDisplayDate = (date: string, locale: WorkspaceLocale) => {
+const formatDisplayDate = (date: string, locale: Locale) => {
   const parsedDate = parseInputDate(date);
 
   if (!parsedDate) {
@@ -183,10 +183,10 @@ const formatDisplayDate = (date: string, locale: WorkspaceLocale) => {
   });
 };
 
-const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
+const getMessage = (key: keyof typeof m, locale: Locale) => {
   const message = m[key] as (
     inputs: object,
-    options: { locale: WorkspaceLocale }
+    options: { locale: Locale }
   ) => string;
   return message({}, { locale }) as string;
 };

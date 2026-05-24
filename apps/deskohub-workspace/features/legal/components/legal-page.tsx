@@ -1,10 +1,10 @@
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { getLegalDocument, type LegalDocumentKey } from "../content";
 
 type LegalPageProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   documentKey: LegalDocumentKey;
 };
 

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import {
   getPricingContent,
@@ -15,7 +15,7 @@ import {
 } from "@/shared/components/ui/card";
 
 type PricingPageProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function PricingPage({ locale }: PricingPageProps) {
@@ -106,7 +106,7 @@ export function PricingPage({ locale }: PricingPageProps) {
 type TariffCardProps = {
   includesLabel: string;
   tariff: PricingTariff;
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 function TariffCard({ includesLabel, tariff, locale }: TariffCardProps) {

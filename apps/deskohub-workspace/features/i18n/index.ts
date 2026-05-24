@@ -8,15 +8,12 @@ export {
   setLocale,
 } from "./paraglide/runtime.js";
 export {
-  defaultWorkspaceLocale,
+  defaultLocale,
   getLocaleFromPathname,
   getPreferredLocaleFromAcceptLanguage,
-  isWorkspaceLocale,
+  localeConfig,
+  localeCookieName,
   resolveLocaleFromPolicy,
-  type WorkspaceLocale,
   withLocalePrefix,
   withLocalePrefixAndSearch,
-  workspaceLocaleConfig,
-  workspaceLocaleCookieName,
-  workspaceLocales,
 } from "./routing";

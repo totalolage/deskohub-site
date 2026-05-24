@@ -1,4 +1,4 @@
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 
 export type WorkspaceMoney = {
   readonly value: number;
@@ -117,10 +117,7 @@ export function toWorkspaceMoneyMajorAmount(money: WorkspaceMoney) {
   return money.value / 10 ** money.exponent;
 }
 
-export function formatWorkspaceMoney(
-  money: WorkspaceMoney,
-  locale: WorkspaceLocale
-) {
+export function formatWorkspaceMoney(money: WorkspaceMoney, locale: Locale) {
   if (!Number.isInteger(money.exponent) || money.exponent < 0) {
     throw new RangeError(
       "Workspace money exponent must be a non-negative intege"
@@ -137,7 +134,7 @@ export function formatWorkspaceMoney(
 
 export function formatWorkspaceProductCurrencyAmount(
   product: WorkspaceProductCatalogItem,
-  locale: WorkspaceLocale
+  locale: Locale
 ) {
   return formatWorkspaceMoney(product.price, locale);
 }

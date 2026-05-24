@@ -6,7 +6,7 @@ import type { CSSProperties, ReactNode } from "react";
 import { env } from "@/env";
 import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
 import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
-import { isWorkspaceLocale, workspaceLocales } from "@/features/i18n";
+import { isLocale, locales } from "@/features/i18n";
 import {
   UnderConstructionRibbon,
   underConstructionRibbonViewportStyle,
@@ -45,7 +45,7 @@ export const viewport: Viewport = {
 };
 
 export function generateStaticParams() {
-  return workspaceLocales.map((locale) => ({ locale }));
+  return locales.map((locale) => ({ locale }));
 }
 
 type LocaleLayoutProps = {
@@ -58,7 +58,7 @@ export default async function LocaleLayout({
   params,
 }: LocaleLayoutProps) {
   const { locale } = await params;
-  if (!isWorkspaceLocale(locale)) notFound();
+  if (!isLocale(locale)) notFound();
 
   return (
     <html lang={locale} className={sculpin.variable}>

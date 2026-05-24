@@ -7,7 +7,7 @@ import {
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
@@ -30,7 +30,7 @@ export type ReservationConfirmationDetails =
     };
 
 type ReservationConfirmationPageProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   details: ReservationConfirmationDetails;
 };
 
@@ -98,16 +98,16 @@ const parseCoffeePreference = (value: string | undefined) => {
   return undefined;
 };
 
-const formatReservationDate = (date: string, locale: WorkspaceLocale) =>
+const formatReservationDate = (date: string, locale: Locale) =>
   new Date(`${date}T12:00:00.000Z`).toLocaleDateString(locale, {
     dateStyle: "full",
     timeZone: "Europe/Prague",
   });
 
-const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
+const getMessage = (key: keyof typeof m, locale: Locale) => {
   const message = m[key] as (
     inputs: object,
-    options: { locale: WorkspaceLocale }
+    options: { locale: Locale }
   ) => string;
   return message({}, { locale }) as string;
 };

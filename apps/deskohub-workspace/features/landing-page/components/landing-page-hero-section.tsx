@@ -1,6 +1,6 @@
 import { DoorOpen, type LucideIcon, MapPin, Sparkles } from "lucide-react";
 import Image, { getImageProps } from "next/image";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import Arrow1 from "@/shared/components/icons/arrow-1";
@@ -21,7 +21,7 @@ import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPageUniverseBackgroundNoise } from "./landing-page-universe-section";
 
 type LandingPageHeroSectionProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   overviewSectionId: string;
   pricingHref: string;
   eventsHref: string;

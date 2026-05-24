@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 export type LegalDocumentKey =
@@ -438,7 +438,7 @@ const operatingRulesSectionsEn: LegalSection[] = [
 ];
 
 const legalDocuments: Record<
-  WorkspaceLocale,
+  Locale,
   Record<LegalDocumentKey, LegalDocumentContent>
 > = {
   "en-US": {
@@ -901,7 +901,7 @@ const legalDocuments: Record<
 };
 
 export function getLegalDocument(
-  locale: WorkspaceLocale,
+  locale: Locale,
   documentKey: LegalDocumentKey
 ) {
   return legalDocuments[locale][documentKey];

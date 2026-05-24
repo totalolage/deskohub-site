@@ -1,6 +1,6 @@
 import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
 import type { z } from "zod/v4";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { formatEffectError } from "@/shared/utils/error-formatting";
 import {
   actionClient,
@@ -9,10 +9,7 @@ import {
 
 export function createEffectSafeAction<I, O, E, R>(
   schema: z.ZodSchema<I>,
-  handler: (
-    input: I,
-    context: { locale: WorkspaceLocale }
-  ) => Effect.Effect<O, E, R>,
+  handler: (input: I, context: { locale: Locale }) => Effect.Effect<O, E, R>,
   layers: Layer.Layer<R, never, never>
 ) {
   return actionClient

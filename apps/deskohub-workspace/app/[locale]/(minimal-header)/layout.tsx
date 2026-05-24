@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { MinimalSiteHeader } from "@/shared/components/minimal-site-header";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import { getSiteHeaderConfig } from "@/shared/components/site-header-config";
 
 type MinimalHeaderLayoutProps = {
   children: ReactNode;
-  params: Promise<{ locale: WorkspaceLocale }>;
+  params: Promise<{ locale: Locale }>;
 };
 
 export default async function MinimalHeaderLayout({

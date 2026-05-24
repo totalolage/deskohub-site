@@ -6,70 +6,67 @@ import {
   getLocaleFromPathname as getLocaleFromPathnameShared,
   replaceLocaleInPathname,
 } from "@deskohub/i18n/pathname";
+import {
+  baseLocale,
+  cookieName,
+  type Locale,
+  locales,
+} from "./paraglide/runtime.js";
 
-export const workspaceLocales = ["en-US", "cs-CZ"] as const;
+export { locales };
 
-export type WorkspaceLocale = (typeof workspaceLocales)[number];
+export const defaultLocale: Locale = baseLocale;
 
-export const defaultWorkspaceLocale: WorkspaceLocale = "en-US";
+export const localeCookieName = cookieName;
 
-export const workspaceLocaleCookieName = "PARAGLIDE_LOCALE";
-
-export const workspaceLocaleConfig = {
-  locales: workspaceLocales,
-  baseLocale: defaultWorkspaceLocale,
+export const localeConfig = {
+  locales,
+  baseLocale: defaultLocale,
   preferredLanguageToLocale: {
     cs: "cs-CZ",
     en: "en-US",
   },
 } as const;
 
-export const isWorkspaceLocale = (value: string): value is WorkspaceLocale =>
-  workspaceLocales.includes(value as WorkspaceLocale);
-
-export const getLocaleFromPathname = (
-  pathname: string
-): WorkspaceLocale | undefined =>
-  getLocaleFromPathnameShared(pathname, workspaceLocales);
+export const getLocaleFromPathname = (pathname: string): Locale | undefined =>
+  getLocaleFromPathnameShared(pathname, locales);
 
 export const getPreferredLocaleFromAcceptLanguage = (
   headerValue: string | null
-): WorkspaceLocale | undefined => {
+): Locale | undefined => {
   return resolvePreferredLocale({
     headerValue,
-    locales: workspaceLocaleConfig.locales,
-    preferredLanguageToLocale: workspaceLocaleConfig.preferredLanguageToLocale,
+    locales: localeConfig.locales,
+    preferredLanguageToLocale: localeConfig.preferredLanguageToLocale,
   });
 };
 
 type ResolveLocaleInput = {
   localeFromUrl?: string;
   localeFromCookie?: string;
-  localeFromPreferredLanguage?: WorkspaceLocale;
+  localeFromPreferredLanguage?: Locale;
 };
 
 export const resolveLocaleFromPolicy = ({
   localeFromUrl,
   localeFromCookie,
   localeFromPreferredLanguage,
-}: ResolveLocaleInput): WorkspaceLocale => {
+}: ResolveLocaleInput): Locale => {
   return resolveLocaleFromPolicyShared({
     localeFromUrl,
     localeFromCookie,
     localeFromPreferredLanguage,
-    locales: workspaceLocaleConfig.locales,
-    fallbackLocale: workspaceLocaleConfig.baseLocale,
+    locales: localeConfig.locales,
+    fallbackLocale: localeConfig.baseLocale,
   });
 };
 
-export const withLocalePrefix = (
-  pathname: string,
-  locale: WorkspaceLocale
-): string => replaceLocaleInPathname(pathname, locale, workspaceLocales);
+export const withLocalePrefix = (pathname: string, locale: Locale): string =>
+  replaceLocaleInPathname(pathname, locale, locales);
 
 export const withLocalePrefixAndSearch = (
   pathname: string,
-  locale: WorkspaceLocale,
+  locale: Locale,
   searchParams: Pick<URLSearchParams, "toString"> | string
 ): string => {
   const localizedPathname = withLocalePrefix(pathname, locale);

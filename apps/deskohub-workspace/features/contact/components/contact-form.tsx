@@ -8,7 +8,7 @@ import {
   type ContactFormState,
   submitContactForm,
 } from "@/features/contact/actions/contact";
-import { m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -23,7 +23,7 @@ const fieldBaseClassName =
   "w-full rounded-[1.2rem] border border-navy-blue/12 bg-white px-4 py-3 text-base text-navy-blue outline-none transition focus:border-burned-orange focus:ring-4 focus:ring-burned-orange/10";
 
 type ContactFormProps = {
-  locale: "en-US" | "cs-CZ";
+  locale: Locale;
 };
 
 const initialContactFormState: ContactFormState = {
