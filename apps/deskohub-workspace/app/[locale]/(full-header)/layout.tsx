@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
 import { SiteHeader } from "@/shared/components/site-header";
 import { getSiteHeaderConfig } from "@/shared/components/site-header-config";
 
 type FullHeaderLayoutProps = {
   children: ReactNode;
-  params: Promise<{ locale: WorkspaceLocale }>;
+  params: Promise<{ locale: Locale }>;
 };
 
 export default async function FullHeaderLayout({

@@ -1,11 +1,11 @@
 import { Suspense } from "react";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { ReservationForm } from "./reservation-form";
 
 type ReservationPageProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function ReservationPage({ locale }: ReservationPageProps) {

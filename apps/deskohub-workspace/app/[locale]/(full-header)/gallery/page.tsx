@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import { WorkspaceGalleryAlbum } from "@/features/gallery/components/workspace-gallery-album";
 import { toGalleryPhotos } from "@/features/gallery/types/gallery-photo";
-import { isWorkspaceLocale, m } from "@/features/i18n";
+import { isLocale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { Container } from "@/shared/components/container";
 
@@ -15,7 +15,7 @@ export async function generateMetadata({
   params,
 }: GalleryPageProps): Promise<Metadata> {
   const { locale } = await params;
-  if (!isWorkspaceLocale(locale)) notFound();
+  if (!isLocale(locale)) notFound();
 
   return runWithRequestLocale(locale, () => ({
     title: m.galleryMetadataTitle({}, { locale }),
@@ -26,7 +26,7 @@ export async function generateMetadata({
 
 export default async function GalleryPage({ params }: GalleryPageProps) {
   const { locale } = await params;
-  if (!isWorkspaceLocale(locale)) notFound();
+  if (!isLocale(locale)) notFound();
 
   return runWithRequestLocale(locale, async () => {
     const result = await getCloudinaryImages({

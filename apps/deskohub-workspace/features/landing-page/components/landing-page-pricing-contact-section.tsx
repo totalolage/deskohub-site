@@ -1,7 +1,7 @@
 import { Clock3, DoorOpen, type LucideIcon, MapPin } from "lucide-react";
 import Link from "next/link";
 import type { WorkspaceProductTier } from "@/features/checkout/product-catalog";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { getPricingContent } from "@/features/pricing";
 import { Container } from "@/shared/components/container";
@@ -19,7 +19,7 @@ import { cn, type workspaceSiteConstants } from "@/shared/utils";
 type ContactAddress = typeof workspaceSiteConstants.contact.address;
 
 type LandingPagePricingContactSectionProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   pricingSectionId: string;
   faqContactSectionId: string;
   contactHref: string;
@@ -234,7 +234,7 @@ export function LandingPagePricingContactSection({
 
 type PricingCardContentProps = {
   item: PricingCard;
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 function PricingCardContent({ item, locale }: PricingCardContentProps) {

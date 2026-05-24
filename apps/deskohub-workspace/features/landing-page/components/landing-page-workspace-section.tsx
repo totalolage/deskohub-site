@@ -1,5 +1,5 @@
 import { type LucideIcon, Monitor, Users } from "lucide-react";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { Logo } from "@/shared/components/logo";
@@ -14,7 +14,7 @@ import {
 import { cn } from "@/shared/utils";
 
 type LandingPageWorkspaceSectionProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   coworkSectionId: string;
   privateOfficeSectionId: string;
   contactEmail: string;

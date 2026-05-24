@@ -1,10 +1,10 @@
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { ContactForm } from "./contact-form";
 
 type ContactPageProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function ContactPage({ locale }: ContactPageProps) {

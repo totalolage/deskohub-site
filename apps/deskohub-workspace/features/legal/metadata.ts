@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import type { WorkspaceLocale } from "@/features/i18n";
-import { workspaceLocales } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
+import { locales } from "@/features/i18n";
 import {
   getLegalDocument,
   type LegalDocumentKey,
@@ -8,7 +8,7 @@ import {
 import { workspaceSiteConstants } from "@/shared/utils";
 
 export function createLegalMetadata(
-  locale: WorkspaceLocale,
+  locale: Locale,
   documentKey: LegalDocumentKey
 ): Metadata {
   const document = getLegalDocument(locale, documentKey);
@@ -20,7 +20,7 @@ export function createLegalMetadata(
     alternates: {
       canonical: url,
       languages: Object.fromEntries(
-        workspaceLocales.map((itemLocale) => [
+        locales.map((itemLocale) => [
           itemLocale,
           `https://${workspaceSiteConstants.brand.domain}/${itemLocale}/${documentKey}`,
         ])

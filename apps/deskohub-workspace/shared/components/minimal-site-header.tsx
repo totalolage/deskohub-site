@@ -4,16 +4,16 @@ import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { Suspense } from "react";
 import {
-  type WorkspaceLocale,
+  type Locale,
+  locales,
   withLocalePrefixAndSearch,
-  workspaceLocales,
 } from "@/features/i18n";
 import { HorizontalLogo } from "@/shared/components/logo";
 import { cn } from "@/shared/utils";
 
 type MinimalSiteHeaderProps = {
-  currentLocale: WorkspaceLocale;
-  languageLabels: Record<WorkspaceLocale, string>;
+  currentLocale: Locale;
+  languageLabels: Record<Locale, string>;
 };
 
 function MinimalLocaleSwitcherLinks({
@@ -23,10 +23,10 @@ function MinimalLocaleSwitcherLinks({
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  const getLocaleHref = (locale: WorkspaceLocale) =>
+  const getLocaleHref = (locale: Locale) =>
     withLocalePrefixAndSearch(pathname, locale, searchParams);
 
-  return workspaceLocales.map((locale, index) => {
+  return locales.map((locale, index) => {
     const isCurrent = locale === currentLocale;
 
     return (

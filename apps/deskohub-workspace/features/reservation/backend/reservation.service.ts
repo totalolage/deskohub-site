@@ -9,7 +9,7 @@ import {
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
-import { m, type WorkspaceLocale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import type { ReservationData } from "@/features/reservation/schemas/reservation";
 import { StorageError } from "@/shared/backend/errors";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -18,13 +18,13 @@ type DetailRow = readonly [string, string];
 
 export interface ReservationSubmission extends ReservationData {
   submittedAt: string;
-  locale?: WorkspaceLocale;
+  locale?: Locale;
 }
 
 export interface ReservationService {
   readonly submit: (
     data: ReservationData,
-    locale?: WorkspaceLocale
+    locale?: Locale
   ) => Effect.Effect<ReservationSubmission, StorageError>;
 }
 
@@ -47,14 +47,14 @@ const escapeHtml = (value: string) =>
 const formatMessageHtml = (message: string) =>
   escapeHtml(message).replaceAll("\n", "<br />");
 
-const formatSubmissionDate = (submittedAt: string, locale?: WorkspaceLocale) =>
+const formatSubmissionDate = (submittedAt: string, locale?: Locale) =>
   new Date(submittedAt).toLocaleString(locale, {
     dateStyle: "full",
     timeStyle: "short",
     timeZone: "Europe/Prague",
   });
 
-const formatReservationDate = (date: string, locale?: WorkspaceLocale) =>
+const formatReservationDate = (date: string, locale?: Locale) =>
   new Date(`${date}T12:00:00+01:00`).toLocaleDateString(locale, {
     dateStyle: "full",
     timeZone: "Europe/Prague",
@@ -63,10 +63,10 @@ const formatReservationDate = (date: string, locale?: WorkspaceLocale) =>
 const getTierLabel = (tier: WorkspaceProductTier) =>
   getWorkspaceProductByTier(tier).label;
 
-const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
+const getMessage = (key: keyof typeof m, locale: Locale) => {
   const message = m[key] as (
     inputs: object,
-    options: { locale: WorkspaceLocale }
+    options: { locale: Locale }
   ) => string;
 
   return message({}, { locale });
@@ -75,11 +75,11 @@ const getMessage = (key: keyof typeof m, locale: WorkspaceLocale) => {
 const getMessageWithParams = <TInput extends object>(
   key: keyof typeof m,
   input: TInput,
-  locale: WorkspaceLocale
+  locale: Locale
 ) => {
   const message = m[key] as (
     inputs: TInput,
-    options: { locale: WorkspaceLocale }
+    options: { locale: Locale }
   ) => string;
 
   return message(input, { locale });
@@ -87,7 +87,7 @@ const getMessageWithParams = <TInput extends object>(
 
 const getMonitorLabel = (
   monitor: WorkspaceProductMonitorOption,
-  locale: WorkspaceLocale
+  locale: Locale
 ) => {
   const labels = {
     "2x27": "reservationEmailMonitor2x27Label",
@@ -98,23 +98,19 @@ const getMonitorLabel = (
   return getMessage(labels[monitor], locale);
 };
 
-const getBusinessSubject = (
-  name: string,
-  date: string,
-  locale: WorkspaceLocale
-) =>
+const getBusinessSubject = (name: string, date: string, locale: Locale) =>
   getMessageWithParams(
     "reservationEmailBusinessSubject",
     { name, date },
     locale
   );
 
-const getConfirmationSubject = (locale: WorkspaceLocale) =>
+const getConfirmationSubject = (locale: Locale) =>
   m.reservationEmailConfirmationSubject({}, { locale });
 
 const createDetailRows = (
   submission: ReservationSubmission,
-  locale: WorkspaceLocale
+  locale: Locale
 ): DetailRow[] => {
   const labels = {
     tier: m.reservationEmailTierLabel({}, { locale }),

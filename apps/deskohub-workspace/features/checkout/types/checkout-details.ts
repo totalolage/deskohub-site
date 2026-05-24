@@ -3,7 +3,7 @@ import type {
   WorkspaceProductMonitorOption,
   WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 
 export type LegalDocumentHash = {
   readonly path: string;
@@ -14,7 +14,7 @@ export type LegalDocumentHash = {
 export type CheckoutDetailsJson = {
   readonly schema: "workspace-checkout-details";
   readonly schemaVersion: 1;
-  readonly locale: WorkspaceLocale;
+  readonly locale: Locale;
   readonly reservation: {
     readonly tier: WorkspaceProductTier;
     readonly date: string;

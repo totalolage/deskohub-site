@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { isWorkspaceLocale, m, workspaceLocales } from "@/features/i18n";
+import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationPage } from "@/features/reservation";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -13,7 +13,7 @@ export async function generateMetadata({
   params,
 }: LocalizedWorkspaceReservationPageProps): Promise<Metadata> {
   const { locale } = await params;
-  if (!isWorkspaceLocale(locale)) notFound();
+  if (!isLocale(locale)) notFound();
 
   return runWithRequestLocale(locale, () => {
     const title = m.reservationMetadataTitle({}, { locale });
@@ -26,7 +26,7 @@ export async function generateMetadata({
       alternates: {
         canonical: url,
         languages: Object.fromEntries(
-          workspaceLocales.map((itemLocale) => [
+          locales.map((itemLocale) => [
             itemLocale,
             `https://${workspaceSiteConstants.brand.domain}/${itemLocale}/reservation`,
           ])
@@ -48,7 +48,7 @@ export default async function LocalizedWorkspaceReservationPage({
   params,
 }: LocalizedWorkspaceReservationPageProps) {
   const { locale } = await params;
-  if (!isWorkspaceLocale(locale)) notFound();
+  if (!isLocale(locale)) notFound();
 
   return runWithRequestLocale(locale, () => (
     <ReservationPage locale={locale} />

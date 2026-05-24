@@ -1,4 +1,4 @@
-import { m, type WorkspaceLocale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 
 const siteHeaderSectionIds = {
   overview: "overview",
@@ -11,7 +11,7 @@ const siteHeaderSectionIds = {
   faqContact: "faq-contact",
 } as const;
 
-export function getSiteHeaderConfig(locale: WorkspaceLocale) {
+export function getSiteHeaderConfig(locale: Locale) {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
 
@@ -19,7 +19,7 @@ export function getSiteHeaderConfig(locale: WorkspaceLocale) {
     languageLabels: {
       "cs-CZ": m.languageCzech({}, { locale }),
       "en-US": m.languageEnglish({}, { locale }),
-    } satisfies Record<WorkspaceLocale, string>,
+    } satisfies Record<Locale, string>,
     links: [
       {
         label: m.landingNavCowork({}, { locale }),

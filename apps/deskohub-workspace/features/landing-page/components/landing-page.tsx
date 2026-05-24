@@ -1,4 +1,4 @@
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageExperiencesSection } from "./landing-page-experiences-section";
@@ -9,7 +9,7 @@ import { LandingPageUniverseSection } from "./landing-page-universe-section";
 import { LandingPageWorkspaceSection } from "./landing-page-workspace-section";
 
 type LandingPageProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function LandingPage({ locale }: LandingPageProps) {

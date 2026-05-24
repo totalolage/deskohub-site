@@ -2,7 +2,7 @@
 
 import { createHash } from "node:crypto";
 import { isValidElement, type ReactNode } from "react";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { getLegalDocument, type LegalDocumentContent } from "./content";
 
@@ -65,7 +65,7 @@ function getCanonicalLegalDocument(document: LegalDocumentContent): string {
 }
 
 function createLegalDocumentSnapshot(
-  locale: WorkspaceLocale,
+  locale: Locale,
   documentKey: CheckoutLegalDocumentKey
 ): CheckoutLegalDocumentSnapshot {
   const document = getLegalDocument(locale, documentKey);
@@ -83,7 +83,7 @@ function createLegalDocumentSnapshot(
   };
 }
 
-export async function getLegalAcceptanceSnapshot(locale: WorkspaceLocale) {
+export async function getLegalAcceptanceSnapshot(locale: Locale) {
   "use cache";
 
   return Object.fromEntries(

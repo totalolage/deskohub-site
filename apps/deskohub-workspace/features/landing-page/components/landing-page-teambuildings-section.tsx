@@ -1,6 +1,6 @@
 import { ArrowRight, Blend, Sparkles, Users } from "lucide-react";
 import Link from "next/link";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { Badge } from "@/shared/components/ui/badge";
@@ -14,7 +14,7 @@ import {
 } from "@/shared/components/ui/card";
 
 type LandingPageTeambuildingsSectionProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
   teambuildingsSectionId: string;
   contactHref: string;
 };

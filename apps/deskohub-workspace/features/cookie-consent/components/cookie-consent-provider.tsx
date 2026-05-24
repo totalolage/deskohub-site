@@ -3,7 +3,7 @@
 import { useEffect } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import "vanilla-cookieconsent/dist/cookieconsent.css";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { createConsentConfig } from "../config/consent-config";
 import {
   denyAnalyticsConsent,
@@ -17,7 +17,7 @@ import {
 } from "../utils/consent-mode";
 
 type CookieConsentProviderProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function CookieConsentProvider({ locale }: CookieConsentProviderProps) {

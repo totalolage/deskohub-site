@@ -1,5 +1,5 @@
 import type { CSSProperties } from "react";
-import { m, type WorkspaceLocale } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 
 const RIBBON_SQUARE_ROOT_OF_TWO = "1.41421356237";
 type RibbonViewportStyle = CSSProperties & Record<`--${string}`, string>;
@@ -13,7 +13,7 @@ export const underConstructionRibbonViewportStyle = {
 } satisfies RibbonViewportStyle;
 
 type UnderConstructionRibbonProps = {
-  locale: WorkspaceLocale;
+  locale: Locale;
 };
 
 export function UnderConstructionRibbon({

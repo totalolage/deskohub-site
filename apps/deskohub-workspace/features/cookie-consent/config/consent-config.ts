@@ -1,5 +1,5 @@
 import type CookieConsent from "vanilla-cookieconsent";
-import type { WorkspaceLocale } from "@/features/i18n";
+import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 
 export type ConsentCategory =
@@ -9,7 +9,7 @@ export type ConsentCategory =
   | "preferences";
 
 export function createConsentConfig(
-  locale: WorkspaceLocale
+  locale: Locale
 ): CookieConsent.CookieConsentConfig {
   return {
     guiOptions: {
