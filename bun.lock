@@ -114,6 +114,7 @@
       "version": "0.1.0",
       "dependencies": {
         "@deskohub/cloudinary": "workspace:*",
+        "@deskohub/dotypos": "workspace:*",
         "@deskohub/email": "workspace:*",
         "@deskohub/i18n": "workspace:*",
         "@effect/schema": "^0.75.5",

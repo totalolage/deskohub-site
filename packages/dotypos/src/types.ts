@@ -1,13 +1,13 @@
-export interface TableReservationInput {
-  readonly datetime: Date;
-  readonly duration: number;
-  readonly guestCount: number;
-  readonly name: string;
-  readonly email?: string;
-  readonly phone?: string;
-  readonly needsLargerTable: boolean;
-  readonly needsPrivateSpace: boolean;
-  readonly specialRequests?: string;
-  readonly gdprConsent: boolean;
-  readonly locale: "cs-CZ" | "en-US";
+import type { CreateReservationRequest } from "./generated/types.gen";
+
+export type DotyposReservationStatus = CreateReservationRequest["status"];
+
+export interface CreateDotyposReservationInput {
+  readonly customerId: string;
+  readonly startDate: Date;
+  readonly endDate: Date;
+  readonly seats: number;
+  readonly tableId: string;
+  readonly status: DotyposReservationStatus;
+  readonly note?: string;
 }

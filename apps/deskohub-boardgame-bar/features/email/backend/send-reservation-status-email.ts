@@ -8,13 +8,13 @@ import type {
   Customer,
   Reservation,
 } from "@deskohub/dotypos/generated/types.gen";
-import { parseNoteData } from "@deskohub/dotypos/note-metadata";
 import { EmailServiceTag } from "@deskohub/email/backend/service";
 import type {
   EmailMessage,
   ReservationConfirmationData,
 } from "@deskohub/email/types/email.types";
 import { Effect } from "effect";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
 import type { Locale } from "@/features/i18n";
 import { buildAbsoluteUrl } from "@/shared/backend/utils/site-url";
 import { siteConstants } from "@/shared/utils/constants";

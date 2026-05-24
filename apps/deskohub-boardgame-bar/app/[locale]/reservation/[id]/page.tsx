@@ -1,8 +1,8 @@
-import { parseNoteData } from "@deskohub/dotypos/note-metadata";
-import { getReservationDisplayData } from "@deskohub/dotypos/reservation-display";
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { DotyposService } from "@/features/dotypos";
+import { parseNoteData } from "@/features/dotypos/utils/note-metadata";
+import { getReservationDisplayData } from "@/features/dotypos/utils/reservation-display";
 import { getLocale, m, setLocale } from "@/features/i18n";
 import {
   ReservationConfirmation,

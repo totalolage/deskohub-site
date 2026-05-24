@@ -12,9 +12,6 @@
     "./types": "./src/types.ts",
     "./generated": "./src/generated/index.ts",
     "./generated/*": "./src/generated/*.ts",
-    "./note-metadata": "./src/utils/note-metadata/index.ts",
-    "./reservation-display": "./src/utils/reservation-display.ts",
-    "./category-utils": "./src/utils/category-utils.ts",
     "./phone-formatting": "./src/utils/phone-formatting.ts"
   },
   "scripts": {
