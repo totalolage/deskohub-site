@@ -8,11 +8,7 @@ import * as schema from "./schema";
 export class DatabaseError extends Data.TaggedError("DatabaseError")<{
   readonly operation: string;
   readonly cause: unknown;
-}> {
-  get code() {
-    return "DATABASE_ERROR";
-  }
-}
+}> {}
 
 const pool = new Pool({ connectionString: env.DATABASE_URL });
 attachDatabasePool(pool);

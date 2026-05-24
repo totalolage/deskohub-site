@@ -66,8 +66,8 @@ export const ContactServiceLive = Layer.effect(
     const emailConfig = yield* EmailConfigTag;
 
     return ContactService.of({
-      submit: (data, locale) =>
-        Effect.gen(function* () {
+      submit: Effect.fn("workspaceContactSubmit")(
+        function* (data, locale) {
           const submission: ContactSubmission = {
             ...data,
             submittedAt: new Date().toISOString(),
@@ -221,15 +221,15 @@ export const ContactServiceLive = Layer.effect(
             .pipe(Effect.catchAll(() => Effect.void));
 
           return submission;
-        }).pipe(
-          Effect.withSpan("workspaceContactSubmit", {
-            attributes: {
-              "contact.name": data.name,
-              "contact.email": data.email,
-              "contact.hasPhone": Boolean(data.phone),
-            },
-          })
-        ),
+        },
+        (effect, data, locale) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              locale,
+              ...data,
+            })
+          )
+      ),
     });
   })
 );

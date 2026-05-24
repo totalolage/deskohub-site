@@ -26,14 +26,14 @@ export interface CreateWorkspaceDotyposReservationInput {
   readonly status: DotyposReservationStatus;
 }
 
-export const createWorkspaceDotyposReservation = (
+export const createWorkspaceDotyposReservation: (
   input: CreateWorkspaceDotyposReservationInput
-): Effect.Effect<
+) => Effect.Effect<
   Reservation,
   ExternalAPIError | NetworkError | ValidationError,
   DotyposService
-> =>
-  Effect.gen(function* () {
+> = Effect.fn("createWorkspaceDotyposReservation")(
+  function* (input) {
     if (
       WORKSPACE_DOTYPOS_TABLE_ID.trim() === workspaceDotyposTableIdPlaceholder
     ) {
@@ -60,7 +60,18 @@ export const createWorkspaceDotyposReservation = (
     };
 
     return yield* dotypos.createReservation(reservationInput);
-  });
+  },
+  (effect, input) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        paymentOrderId: input.paymentOrderId,
+        locale: input.checkoutDetails.locale,
+        entryTier: input.checkoutDetails.reservation.tier,
+        date: input.checkoutDetails.reservation.date,
+        reservationStatus: input.status,
+      })
+    )
+);
 
 const getPragueAllDayRange = (
   date: string

@@ -8,29 +8,23 @@ import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
-const processWebhook = Effect.fn("processWebhook")(
-  function* (webhook: VerifiedCloudinaryWebhook) {
-    yield* Effect.logInfo("Processing webhook");
+const processWebhook = Effect.fn("processWebhook")(function* (
+  webhook: VerifiedCloudinaryWebhook
+) {
+  yield* Effect.logInfo("Processing webhook");
 
-    const tagToRevalidate = cloudinaryTags.all();
-    revalidateTag(tagToRevalidate, "max");
+  const tagToRevalidate = cloudinaryTags.all();
+  revalidateTag(tagToRevalidate, "max");
 
-    yield* Effect.logInfo("Cloudinary webhook received, cache invalidated", {
-      invalidatedTag: tagToRevalidate,
-      webhookTimestamp: webhook.timestamp,
-    });
+  yield* Effect.logInfo("Cloudinary webhook received, cache invalidated", {
+    invalidatedTag: tagToRevalidate,
+    webhookTimestamp: webhook.timestamp,
+  });
 
-    return NextResponse.json({
-      message: "Webhook received",
-    });
-  },
-  (effect) =>
-    effect.pipe(
-      Effect.annotateLogs({
-        operation: "processWebhook",
-      })
-    )
-);
+  return NextResponse.json({
+    message: "Webhook received",
+  });
+});
 
 /**
  * POST /api/webhooks/cloudinary
