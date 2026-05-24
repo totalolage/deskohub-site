@@ -79,11 +79,10 @@ export class DotyposService extends Effect.Service<DotyposService>()(
 
           return { reservation, customer };
         },
-        (effect, input) =>
+        (effect, reservationId) =>
           effect.pipe(
             Effect.annotateLogs({
-              operation: "getReservation",
-              input,
+              reservationId,
             })
           )
       );
@@ -118,7 +117,9 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             Number.isNaN(input.endDate.getTime())
           ) {
             return yield* Effect.fail(
-              new ValidationError({ message: "Reservation dates must be valid" })
+              new ValidationError({
+                message: "Reservation dates must be valid",
+              })
             );
           }
 
@@ -155,13 +156,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               Effect.retry(retryPolicy)
             );
         },
-        (effect, input) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              operation: "createReservation",
-              input,
-            })
-          )
+        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       );
 
       const getCustomer = Effect.fn("getCustomer")(
@@ -192,11 +187,10 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               )
             );
         },
-        (effect, input) =>
+        (effect, customerId) =>
           effect.pipe(
             Effect.annotateLogs({
-              operation: "getCustomer",
-              input,
+              customerId,
             })
           )
       );
@@ -357,13 +351,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             })
             .pipe(Effect.retry(retryPolicy));
         },
-        (effect, input) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              operation: "findOrCreateCustomer",
-              input,
-            })
-          )
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
       );
 
       const getTables = Effect.fn("getTables")(function* () {

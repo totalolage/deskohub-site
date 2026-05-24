@@ -13,11 +13,7 @@ export class WebhookEventStateError extends Data.TaggedError(
   readonly operation: string;
   readonly eventId: string;
   readonly message: string;
-}> {
-  get code() {
-    return "WEBHOOK_EVENT_STATE_ERROR";
-  }
-}
+}> {}
 
 export type InsertWebhookEventResult =
   | { readonly status: "inserted"; readonly event: WebhookEvent }
@@ -78,28 +74,32 @@ export const WebhookEventRepositoryLive = Layer.effect(
     const { db } = yield* WorkspaceDatabase;
 
     return WebhookEventRepository.of({
-      insertReceived: (input) =>
-        runDb("webhookEvents.insertReceived", async () => {
-          const [event] = await db
-            .insert(webhookEvents)
-            .values({
-              id: input.id,
-              provider: "nexi",
-              eventId: input.eventId,
-              paymentOrderId: input.paymentOrderId,
-              receivedAt: input.receivedAt,
-              status: "received",
-            })
-            .onConflictDoNothing({ target: webhookEvents.eventId })
-            .returning();
+      insertReceived: Effect.fn("webhookEvents.insertReceived")(
+        function* (input) {
+          return yield* runDb("webhookEvents.insertReceived", async () => {
+            const [event] = await db
+              .insert(webhookEvents)
+              .values({
+                id: input.id,
+                provider: "nexi",
+                eventId: input.eventId,
+                paymentOrderId: input.paymentOrderId,
+                receivedAt: input.receivedAt,
+                status: "received",
+              })
+              .onConflictDoNothing({ target: webhookEvents.eventId })
+              .returning();
 
-          return event
-            ? { status: "inserted", event }
-            : { status: "duplicate" };
-        }),
+            return (
+              event ? { status: "inserted", event } : { status: "duplicate" }
+            ) satisfies InsertWebhookEventResult;
+          });
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
 
-      markProcessed: (input) =>
-        Effect.gen(function* () {
+      markProcessed: Effect.fn("webhookEvents.markProcessed")(
+        function* (input) {
           const updated = yield* runDb("webhookEvents.markProcessed", () =>
             db
               .update(webhookEvents)
@@ -107,7 +107,6 @@ export const WebhookEventRepositoryLive = Layer.effect(
                 status: "processed",
                 processedAt: input.processedAt,
                 errorCode: null,
-                updatedAt: new Date(),
               })
               .where(eventIdentityWhere(input))
               .returning({ id: webhookEvents.id })
@@ -118,17 +117,18 @@ export const WebhookEventRepositoryLive = Layer.effect(
             "webhookEvents.markProcessed",
             eventIdentityLabel(input)
           );
-        }),
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
 
-      markFailed: (input) =>
-        Effect.gen(function* () {
+      markFailed: Effect.fn("webhookEvents.markFailed")(
+        function* (input) {
           const updated = yield* runDb("webhookEvents.markFailed", () =>
             db
               .update(webhookEvents)
               .set({
                 status: "failed",
                 errorCode: input.errorCode,
-                updatedAt: new Date(),
               })
               .where(eventIdentityWhere(input))
               .returning({ id: webhookEvents.id })
@@ -139,7 +139,9 @@ export const WebhookEventRepositoryLive = Layer.effect(
             "webhookEvents.markFailed",
             eventIdentityLabel(input)
           );
-        }),
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
     });
   })
 );

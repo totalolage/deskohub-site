@@ -164,8 +164,8 @@ export const ReservationServiceLive = Layer.effect(
     const emailConfig = yield* EmailConfigTag;
 
     return ReservationService.of({
-      submit: (data, locale) =>
-        Effect.gen(function* () {
+      submit: Effect.fn("workspaceReservationSubmit")(
+        function* (data, locale) {
           const emailLocale = locale ?? "en-US";
           const submission: ReservationSubmission = {
             ...data,
@@ -293,14 +293,15 @@ export const ReservationServiceLive = Layer.effect(
             .pipe(Effect.catchAll(() => Effect.void));
 
           return submission;
-        }).pipe(
-          Effect.withSpan("workspaceReservationSubmit", {
-            attributes: {
-              "reservation.entryTier": data.entryTier,
-              "reservation.date": data.date,
-            },
-          })
-        ),
+        },
+        (effect, data, locale) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              locale,
+              ...data,
+            })
+          )
+      ),
     });
   })
 );
