@@ -84,14 +84,6 @@ type UtmKey = (typeof utmKeys)[number];
 
 type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
-type ReservationActionResult = {
-  data?: {
-    redirectUrl?: string;
-  };
-  serverError?: unknown;
-  validationErrors?: unknown;
-};
-
 const tierOptionMessageKeys = {
   "basic-day-pass": {
     titleKey: "reservationTierBasicTitle",
@@ -209,19 +201,6 @@ const getSanitizedUtmParams = (
   return sanitizedParams;
 };
 
-const getErrorFreeReservationRedirectUrl = (
-  result: ReservationActionResult
-) => {
-  if (
-    typeof result.serverError !== "undefined" ||
-    typeof result.validationErrors !== "undefined"
-  ) {
-    return undefined;
-  }
-
-  return result.data?.redirectUrl;
-};
-
 const getTierDefaultValues = (tier: string | null): ReservationInput => {
   const requestedTier = tier ?? undefined;
 
@@ -264,17 +243,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
 
   const { execute, isExecuting } = useAction(submitReservation, {
-    onSettled: ({ result }) => {
-      const redirectUrl = getErrorFreeReservationRedirectUrl(result);
+    onSuccess: ({ data }) => {
+      const { redirectUrl } = data;
 
       if (!redirectUrl) {
-        if (
-          typeof result.serverError !== "undefined" ||
-          typeof result.validationErrors !== "undefined"
-        ) {
-          return;
-        }
-
         setSubmissionMessage({
           status: "error",
           text: m.reservationErrorMessage({}, { locale }),
@@ -284,7 +256,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
 
       if (!hasTrackedSuccessfulSubmission.current && isAccepted("analytics")) {
         hasTrackedSuccessfulSubmission.current = true;
-        track("workspace_reservation_submitted", sanitizedUtmParams);
+        track("workspace_checkout_started", sanitizedUtmParams);
       }
 
       router.push(redirectUrl);
@@ -324,8 +296,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   });
 
   return (
-    <Card className="relative overflow-hidden rounded-[2rem] border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-sunset-yellow/80 to-transparent" />
+    <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
         <CardTitle className="text-3xl sm:text-[2.35rem]">
           {m.reservationFormTitle({}, { locale })}
@@ -468,7 +440,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                     </FormControl>
                     <FormLabel
                       className={cn(
-                        "block cursor-pointer rounded-[1.3rem] border border-navy-blue/10 bg-gradient-to-br from-sunset-yellow/18 to-white py-4 pl-12 pr-4 text-navy-blue transition hover:border-burned-orange/30",
+                        "block cursor-pointer rounded-[1.3rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white py-4 pl-12 pr-4 text-navy-blue transition hover:border-burned-orange/30",
                         courtesyCoffeeIncluded && "cursor-default"
                       )}
                     >
@@ -495,7 +467,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                 control={form.control}
                 name="monitorOption"
                 render={({ field }) => (
-                  <FormItem className="rounded-[1.5rem] border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
+                  <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
                     <FormLabel className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
                       <Monitor className="h-4 w-4 text-aquamarine-green" />
                       {m.reservationMonitorLabel({}, { locale })}
@@ -594,6 +566,60 @@ export function ReservationForm({ locale }: ReservationFormProps) {
               )}
             />
 
+            <FormField
+              control={form.control}
+              name="legalConsent"
+              render={({ field }) => (
+                <FormItem className="rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4">
+                  <div className="flex items-start gap-3">
+                    <FormControl>
+                      <Checkbox
+                        className="mt-1"
+                        checked={field.value}
+                        onBlur={field.onBlur}
+                        onCheckedChange={(checked) =>
+                          field.onChange(Boolean(checked))
+                        }
+                      />
+                    </FormControl>
+                    <div className="space-y-2">
+                      <FormLabel className="cursor-pointer text-sm font-semibold leading-6 text-navy-blue">
+                        {m.reservationLegalConsentLabel({}, { locale })}
+                      </FormLabel>
+                      <FormDescription className="text-sm leading-6 text-navy-blue/66">
+                        {m.reservationLegalConsentBefore({}, { locale })}{" "}
+                        <LegalLink
+                          href={`/${locale}/terms-and-conditions`}
+                          label={m.reservationLegalConsentTermsLink(
+                            {},
+                            { locale }
+                          )}
+                        />
+                        {", "}
+                        <LegalLink
+                          href={`/${locale}/operating-rules`}
+                          label={m.reservationLegalConsentOperatingRulesLink(
+                            {},
+                            { locale }
+                          )}
+                        />{" "}
+                        {m.reservationLegalConsentAnd({}, { locale })}{" "}
+                        <LegalLink
+                          href={`/${locale}/privacy-policy`}
+                          label={m.reservationLegalConsentPrivacyLink(
+                            {},
+                            { locale }
+                          )}
+                        />
+                        . {m.reservationLegalConsentNoRefund({}, { locale })}
+                      </FormDescription>
+                    </div>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="space-y-3 pt-1">
               <Button
                 type="submit"
@@ -625,7 +651,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                 <p
                   aria-live="polite"
                   className={cn(
-                    "flex items-start gap-2 rounded-[1rem] border px-4 py-3 text-sm leading-6",
+                    "flex items-start gap-2 rounded-2xl border px-4 py-3 text-sm leading-6",
                     "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
                   )}
                 >
@@ -638,6 +664,19 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         </Form>
       </CardContent>
     </Card>
+  );
+}
+
+function LegalLink({ href, label }: { href: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+    >
+      {label}
+    </Link>
   );
 }
 

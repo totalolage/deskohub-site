@@ -99,6 +99,9 @@ export const getReservationSchema = () =>
         })
         .optional()
         .or(z.literal("")),
+      legalConsent: z.boolean().refine(Boolean, {
+        error: m.reservationValidationLegalConsentRequired(),
+      }),
     })
     .superRefine((data, context) => {
       const product = getWorkspaceProductByTier(data.entryTier);
@@ -152,6 +155,7 @@ export const reservationDefaultValues: ReservationInput = {
   email: "",
   phone: "",
   message: "",
+  legalConsent: false,
 };
 
 export const tierIncludesCourtesyCoffee = (tier: WorkspaceProductTier) =>

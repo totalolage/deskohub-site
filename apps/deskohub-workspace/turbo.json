@@ -3,7 +3,11 @@
   "extends": ["//"],
   "tasks": {
     "build": {
-      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"],
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile"
+      ],
       "env": [
         "NODE_ENV",
         "DOTYPOS_CLIENT_ID",
@@ -16,9 +20,11 @@
         "DOTYPOS_API_TIMEOUT",
         "DOTYPOS_WEBHOOK_SECRET",
         "EMAIL_API_KEY",
+        "NEXI_API_KEY",
+        "NEXI_API_ORIGIN",
+        "VERCEL_ENV",
         "VERCEL_PROJECT_PRODUCTION_URL",
-        "NEXT_PUBLIC_VERCEL_URL",
-        "NEXT_PUBLIC_VERCEL_ENV",
+        "VERCEL_URL",
         "CLOUDINARY_API_KEY",
         "CLOUDINARY_API_SECRET",
         "DATABASE_URL",
@@ -27,7 +33,14 @@
       ]
     },
     "dev": {
-      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["@deskohub/nexi#generate", "i18n:compile"]
     }
   }
 }

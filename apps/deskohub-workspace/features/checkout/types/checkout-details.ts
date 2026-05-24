@@ -33,9 +33,10 @@ export type CheckoutDetailsJson = {
       readonly privacyPolicy: LegalDocumentHash;
     };
     readonly acknowledgements: {
-      readonly operatingRules: true;
-      readonly noRefundAfterPinDelivery: true;
-      readonly privacyPolicy: true;
+      readonly termsAndConditions: boolean;
+      readonly operatingRules: boolean;
+      readonly noRefundAfterPinDelivery: boolean;
+      readonly privacyPolicy: boolean;
     };
   };
   readonly fulfillment: {

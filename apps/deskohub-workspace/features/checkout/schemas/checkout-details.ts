@@ -42,9 +42,10 @@ export const checkoutDetailsJsonSchema = z.object({
       privacyPolicy: legalDocumentHashSchema,
     }),
     acknowledgements: z.object({
-      operatingRules: z.literal(true),
-      noRefundAfterPinDelivery: z.literal(true),
-      privacyPolicy: z.literal(true),
+      termsAndConditions: z.boolean(),
+      operatingRules: z.boolean(),
+      noRefundAfterPinDelivery: z.boolean(),
+      privacyPolicy: z.boolean(),
     }),
   }),
   fulfillment: z.object({
