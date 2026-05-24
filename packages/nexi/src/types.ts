@@ -1,4 +1,6 @@
-export type NexiLocale = "cs-CZ" | "en-US";
+export const locales = ["cs-CZ", "en-US"] as const;
+
+export type Locale = (typeof locales)[number];
 
 export type NexiCurrency = "CZK";
 
@@ -6,7 +8,7 @@ export interface CreateHostedPaymentPageInput {
   readonly orderId: string;
   readonly amount: string;
   readonly currency?: NexiCurrency;
-  readonly locale: NexiLocale;
+  readonly locale: Locale;
   readonly resultUrl: string;
   readonly cancelUrl: string;
   readonly notificationUrl: string;
