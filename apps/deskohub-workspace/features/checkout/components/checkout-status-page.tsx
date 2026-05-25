@@ -1,0 +1,317 @@
+import { cva } from "class-variance-authority";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  HelpCircle,
+  MailCheck,
+  XCircle,
+} from "lucide-react";
+import Link from "next/link";
+import type {
+  CheckoutStatusKind,
+  CheckoutStatusReturnOutcome,
+  CheckoutStatusViewModel,
+} from "@/features/checkout/backend/checkout-status.service";
+import { formatWorkspaceMoney } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductMonitorTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
+import { type Locale, m } from "@/features/i18n";
+import { Container } from "@/shared/components/container";
+import { Button } from "@/shared/components/ui/button";
+
+type CheckoutStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutStatusViewModel;
+};
+
+type SummaryRow = {
+  readonly label: string;
+  readonly value: string;
+};
+
+type StatusCopy = {
+  readonly title: string;
+  readonly lead: string;
+  readonly tone: "success" | "pending" | "warning" | "failed" | "unknown";
+  readonly Icon: typeof CheckCircle2;
+};
+
+const statusIconWrapperVariants = cva(
+  "flex h-16 w-16 shrink-0 items-center justify-center rounded-full ring-8",
+  {
+    variants: {
+      tone: {
+        success:
+          "bg-aquamarine-green/14 text-aquamarine-green ring-aquamarine-green/8",
+        pending: "bg-burned-orange/12 text-burned-orange ring-burned-orange/8",
+        warning: "bg-burned-orange/12 text-burned-orange ring-burned-orange/8",
+        failed: "bg-red-500/10 text-red-600 ring-red-500/8",
+        unknown: "bg-navy-blue/8 text-navy-blue/60 ring-navy-blue/6",
+      },
+    },
+  }
+);
+
+const statusTruthBadgeVariants = cva(
+  "mt-5 inline-flex rounded-full border px-4 py-2 text-sm font-semibold",
+  {
+    variants: {
+      tone: {
+        success:
+          "border-aquamarine-green/22 bg-aquamarine-green/12 text-aquamarine-green",
+        pending:
+          "border-burned-orange/22 bg-burned-orange/10 text-burned-orange",
+        warning:
+          "border-burned-orange/22 bg-burned-orange/10 text-burned-orange",
+        failed: "border-red-500/20 bg-red-500/8 text-red-700",
+        unknown: "border-navy-blue/12 bg-navy-blue/6 text-navy-blue/62",
+      },
+    },
+  }
+);
+
+const formatReservationDate = (date: string, locale: Locale) => {
+  try {
+    return Temporal.PlainDate.from(date).toLocaleString(locale, {
+      calendar: "iso8601",
+      dateStyle: "full",
+    });
+  } catch {
+    return date;
+  }
+};
+
+const getStatusCopy = (
+  status: CheckoutStatusKind,
+  locale: Locale
+): StatusCopy => {
+  switch (status) {
+    case "created":
+      return {
+        title: m.checkoutStatusCreatedTitle({}, { locale }),
+        lead: m.checkoutStatusCreatedLead({}, { locale }),
+        tone: "pending",
+        Icon: Clock3,
+      };
+    case "pending":
+      return {
+        title: m.checkoutStatusPendingTitle({}, { locale }),
+        lead: m.checkoutStatusPendingLead({}, { locale }),
+        tone: "pending",
+        Icon: Clock3,
+      };
+    case "paid_waiting_fulfillment":
+      return {
+        title: m.checkoutStatusPaidWaitingFulfillmentTitle({}, { locale }),
+        lead: m.checkoutStatusPaidWaitingFulfillmentLead({}, { locale }),
+        tone: "success",
+        Icon: MailCheck,
+      };
+    case "fulfilled":
+      return {
+        title: m.checkoutStatusFulfilledTitle({}, { locale }),
+        lead: m.checkoutStatusFulfilledLead({}, { locale }),
+        tone: "success",
+        Icon: CheckCircle2,
+      };
+    case "fulfillment_failed":
+      return {
+        title: m.checkoutStatusFulfillmentFailedTitle({}, { locale }),
+        lead: m.checkoutStatusFulfillmentFailedLead({}, { locale }),
+        tone: "warning",
+        Icon: AlertTriangle,
+      };
+    case "payment_failed":
+      return {
+        title: m.checkoutStatusPaymentFailedTitle({}, { locale }),
+        lead: m.checkoutStatusPaymentFailedLead({}, { locale }),
+        tone: "failed",
+        Icon: XCircle,
+      };
+    case "cancelled":
+      return {
+        title: m.checkoutStatusCancelledTitle({}, { locale }),
+        lead: m.checkoutStatusCancelledLead({}, { locale }),
+        tone: "warning",
+        Icon: XCircle,
+      };
+    case "expired":
+      return {
+        title: m.checkoutStatusExpiredTitle({}, { locale }),
+        lead: m.checkoutStatusExpiredLead({}, { locale }),
+        tone: "warning",
+        Icon: Clock3,
+      };
+    case "not_found":
+      return {
+        title: m.checkoutStatusNotFoundTitle({}, { locale }),
+        lead: m.checkoutStatusNotFoundLead({}, { locale }),
+        tone: "unknown",
+        Icon: HelpCircle,
+      };
+  }
+};
+
+const getOutcomeHint = (
+  outcome: CheckoutStatusReturnOutcome,
+  locale: Locale
+) => {
+  switch (outcome) {
+    case "success":
+      return m.checkoutStatusSuccessReturnHint({}, { locale });
+    case "cancelled":
+      return m.checkoutStatusCancelledReturnHint({}, { locale });
+    case "unknown":
+      return undefined;
+  }
+};
+
+const getSummaryRows = (
+  status: CheckoutStatusViewModel,
+  locale: Locale
+): SummaryRow[] => {
+  const details = status.checkoutDetails;
+  if (!details) {
+    return [];
+  }
+
+  const rows: Array<SummaryRow | undefined> = [
+    {
+      label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
+      value: getWorkspaceProductTierTitle(details.reservation.tier, locale),
+    },
+    {
+      label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
+      value: formatReservationDate(details.reservation.date, locale),
+    },
+    {
+      label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+      value: details.reservation.coffee
+        ? m.checkoutStatusYes({}, { locale })
+        : m.checkoutStatusNo({}, { locale }),
+    },
+    details.reservation.monitorOption
+      ? {
+          label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
+          value: getWorkspaceProductMonitorTitle(
+            details.reservation.monitorOption,
+            locale
+          ),
+        }
+      : undefined,
+    {
+      label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
+      value: formatWorkspaceMoney(details.payment.expectedPrice, locale),
+    },
+  ];
+
+  return rows.filter((row): row is SummaryRow => row !== undefined);
+};
+
+export function CheckoutStatusPage({
+  locale,
+  status,
+}: CheckoutStatusPageProps) {
+  const copy = getStatusCopy(status.status, locale);
+  const outcomeHint = getOutcomeHint(status.returnOutcome, locale);
+  const summaryRows = getSummaryRows(status, locale);
+  const Icon = copy.Icon;
+
+  return (
+    <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
+      <section className="relative isolate overflow-hidden pb-20 pt-28 sm:pb-24 sm:pt-36">
+        <div className="absolute left-1/2 top-20 -z-10 h-80 w-3xl -translate-x-1/2 rotate-[-10deg] rounded-full bg-aquamarine-green/18 blur-3xl" />
+        <div className="absolute -right-32 bottom-8 -z-10 h-72 w-72 rounded-full bg-burned-orange/18 blur-3xl" />
+
+        <Container>
+          <div className="mx-auto max-w-3xl">
+            <div className="rounded-[2.25rem] border border-white/55 bg-white/94 p-6 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm sm:p-10">
+              <div className="flex flex-col gap-6 sm:flex-row sm:items-start">
+                <div className={statusIconWrapperVariants({ tone: copy.tone })}>
+                  <Icon className="h-9 w-9" aria-hidden="true" />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold uppercase tracking-[0.18em] text-burned-orange">
+                    {m.checkoutStatusEyebrow({}, { locale })}
+                  </p>
+                  <h1 className="mt-4 text-balance text-4xl leading-none sm:text-5xl">
+                    {copy.title}
+                  </h1>
+                  <p className="mt-5 text-lg leading-8 text-navy-blue/70">
+                    {copy.lead}
+                  </p>
+                  <p className={statusTruthBadgeVariants({ tone: copy.tone })}>
+                    {m.checkoutStatusSystemTruthNote({}, { locale })}
+                  </p>
+                </div>
+              </div>
+
+              {!!outcomeHint && (
+                <p className="mt-8 rounded-[1.15rem] border border-navy-blue/10 bg-navy-blue/5 px-4 py-3 text-sm leading-6 text-navy-blue/64">
+                  {outcomeHint}
+                </p>
+              )}
+
+              <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
+                <h2 className="text-xl text-navy-blue">
+                  {m.checkoutStatusSummaryTitle({}, { locale })}
+                </h2>
+
+                <dl className="mt-5 grid gap-3">
+                  <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
+                    <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+                      {m.checkoutStatusOrderIdLabel({}, { locale })}
+                    </dt>
+                    <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
+                      {status.orderId}
+                    </dd>
+                  </div>
+                  {summaryRows.map((row) => (
+                    <div
+                      key={row.label}
+                      className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
+                    >
+                      <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+                        {row.label}
+                      </dt>
+                      <dd className="text-base font-semibold text-navy-blue">
+                        {row.value}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+
+                {summaryRows.length === 0 && (
+                  <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/70">
+                    {m.checkoutStatusMissingSummary({}, { locale })}
+                  </p>
+                )}
+              </div>
+
+              <p className="mt-8 rounded-[1.15rem] border border-aquamarine-green/18 bg-aquamarine-green/10 px-4 py-3 text-sm leading-6 text-navy-blue/70">
+                {m.checkoutStatusEmailAccessNote({}, { locale })}
+              </p>
+
+              <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+                <Button asChild className="h-12 px-6">
+                  <Link href={`/${locale}/reservation`}>
+                    {m.checkoutStatusReserveAgain({}, { locale })}
+                  </Link>
+                </Button>
+                <Button asChild variant="secondary" className="h-12 px-6">
+                  <Link href={`/${locale}`}>
+                    {m.checkoutStatusBackHome({}, { locale })}
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </Container>
+      </section>
+    </main>
+  );
+}

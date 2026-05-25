@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { ReservationPage } from "@/features/reservation";
-import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  getWorkspaceLocalizedCanonicalUrl,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 
 type LocalizedWorkspaceReservationPageProps = {
   params: Promise<{ locale: string }>;
@@ -18,7 +21,7 @@ export async function generateMetadata({
   return runWithRequestLocale(locale, () => {
     const title = m.reservationMetadataTitle({}, { locale });
     const description = m.reservationMetadataDescription({}, { locale });
-    const url = `https://${workspaceSiteConstants.brand.domain}/reservation`;
+    const url = getWorkspaceLocalizedCanonicalUrl(locale, "/reservation");
 
     return {
       title,
@@ -28,7 +31,7 @@ export async function generateMetadata({
         languages: Object.fromEntries(
           locales.map((itemLocale) => [
             itemLocale,
-            `https://${workspaceSiteConstants.brand.domain}/${itemLocale}/reservation`,
+            getWorkspaceLocalizedCanonicalUrl(itemLocale, "/reservation"),
           ])
         ),
       },

@@ -5,6 +5,7 @@
   "exports": {
     ".": "./index.ts",
     "./backend/escaping": "./backend/escaping.ts",
+    "./backend/network-error": "./backend/network-error.ts",
     "./backend/provider-factory": "./backend/provider-factory.ts",
     "./backend/providers/console-provider": "./backend/providers/console-provider.ts",
     "./backend/providers/resend-provider": "./backend/providers/resend-provider.ts",

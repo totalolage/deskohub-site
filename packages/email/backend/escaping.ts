@@ -14,6 +14,10 @@ export const escapeHtml = (value: string): string => {
   });
 };
 
+export const escapeMultilineHtml = (value: string): string => {
+  return escapeHtml(value).replaceAll("\n", "<br />");
+};
+
 export const escapeOptionalHtml = (
   value: string | undefined | null
 ): string | undefined => {

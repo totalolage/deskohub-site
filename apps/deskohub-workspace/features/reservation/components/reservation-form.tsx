@@ -23,6 +23,11 @@ import {
   workspaceProductCatalog,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductMessage,
+  workspaceProductMonitorMessageKeys,
+  workspaceProductTierMessageKeys,
+} from "@/features/checkout/product-catalog.i18n";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
@@ -84,31 +89,10 @@ type UtmKey = (typeof utmKeys)[number];
 
 type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
-const tierOptionMessageKeys = {
-  "basic-day-pass": {
-    titleKey: "reservationTierBasicTitle",
-    descriptionKey: "reservationTierBasicDescription",
-  },
-  "cowork-plus": {
-    titleKey: "reservationTierCoworkTitle",
-    descriptionKey: "reservationTierCoworkDescription",
-  },
-  "profi-workstation": {
-    titleKey: "reservationTierProfiTitle",
-    descriptionKey: "reservationTierProfiDescription",
-  },
-} as const satisfies Record<
-  WorkspaceProductTier,
-  {
-    titleKey: keyof typeof m;
-    descriptionKey: keyof typeof m;
-  }
->;
-
 const tierOptions = workspaceProductCatalog.map((product) => ({
   product,
   value: product.tier,
-  ...tierOptionMessageKeys[product.tier],
+  ...workspaceProductTierMessageKeys[product.tier],
 })) satisfies ReadonlyArray<{
   product: WorkspaceProductCatalogItem;
   value: WorkspaceProductTier;
@@ -116,30 +100,9 @@ const tierOptions = workspaceProductCatalog.map((product) => ({
   descriptionKey: keyof typeof m;
 }>;
 
-const monitorOptionMessageKeys = {
-  "2x27": {
-    titleKey: "reservationMonitor2x27Title",
-    descriptionKey: "reservationMonitor2x27Description",
-  },
-  "2x32": {
-    titleKey: "reservationMonitor2x32Title",
-    descriptionKey: "reservationMonitor2x32Description",
-  },
-  "qhd-4k": {
-    titleKey: "reservationMonitorQhd4kTitle",
-    descriptionKey: "reservationMonitorQhd4kDescription",
-  },
-} as const satisfies Record<
-  WorkspaceProductMonitorOption,
-  {
-    titleKey: keyof typeof m;
-    descriptionKey: keyof typeof m;
-  }
->;
-
 const monitorOptions = workspaceProductMonitorOptions.map((option) => ({
   value: option,
-  ...monitorOptionMessageKeys[option],
+  ...workspaceProductMonitorMessageKeys[option],
 })) satisfies ReadonlyArray<{
   value: WorkspaceProductMonitorOption;
   titleKey: keyof typeof m;
@@ -173,14 +136,6 @@ const formatDisplayDate = (date: string, locale: Locale) => {
     dateStyle: "full",
     timeZone: "Europe/Prague",
   });
-};
-
-const getMessage = (key: keyof typeof m, locale: Locale) => {
-  const message = m[key] as (
-    inputs: object,
-    options: { locale: Locale }
-  ) => string;
-  return message({}, { locale }) as string;
 };
 
 const getSanitizedUtmParams = (
@@ -343,7 +298,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                             />
                             <span className="flex items-start justify-between gap-2">
                               <span className="text-lg leading-6">
-                                {getMessage(option.titleKey, locale)}
+                                {getWorkspaceProductMessage(
+                                  option.titleKey,
+                                  locale
+                                )}
                               </span>
                               <span
                                 data-reservation-tier-radio-visual={
@@ -365,7 +323,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                               {m.pricingTariffPricePeriodSuffix({}, { locale })}
                             </span>
                             <span className="text-sm leading-6 text-navy-blue/62">
-                              {getMessage(option.descriptionKey, locale)}
+                              {getWorkspaceProductMessage(
+                                option.descriptionKey,
+                                locale
+                              )}
                             </span>
                           </label>
                         );
@@ -462,7 +423,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
               )}
             />
 
-            {shouldShowMonitors ? (
+            {shouldShowMonitors && (
               <FormField
                 control={form.control}
                 name="monitorOption"
@@ -499,10 +460,16 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                                   onChange={() => field.onChange(option.value)}
                                 />
                                 <span className="block font-semibold text-navy-blue">
-                                  {getMessage(option.titleKey, locale)}
+                                  {getWorkspaceProductMessage(
+                                    option.titleKey,
+                                    locale
+                                  )}
                                 </span>
                                 <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
-                                  {getMessage(option.descriptionKey, locale)}
+                                  {getWorkspaceProductMessage(
+                                    option.descriptionKey,
+                                    locale
+                                  )}
                                 </span>
                               </label>
                             );
@@ -513,7 +480,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                   </FormItem>
                 )}
               />
-            ) : null}
+            )}
 
             <div className="grid gap-5 md:grid-cols-2">
               <TextField
@@ -647,7 +614,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                 {m.reservationPrivacyNoteAfter({}, { locale })}
               </p>
 
-              {submissionMessage ? (
+              {!!submissionMessage && (
                 <p
                   aria-live="polite"
                   className={cn(
@@ -658,7 +625,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
                   <span>{submissionMessage.text}</span>
                 </p>
-              ) : null}
+              )}
             </div>
           </form>
         </Form>

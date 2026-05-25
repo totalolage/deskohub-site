@@ -3,7 +3,7 @@
 import { createHash } from "node:crypto";
 import { isValidElement, type ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { getWorkspaceCanonicalUrl } from "@/shared/utils";
 import { getLegalDocument, type LegalDocumentContent } from "./content";
 
 type CheckoutLegalDocumentKey =
@@ -67,7 +67,7 @@ function createLegalDocumentSnapshot(
 
   return {
     path,
-    url: `https://${workspaceSiteConstants.brand.domain}${path}`,
+    url: getWorkspaceCanonicalUrl(path),
     title: document.title,
     updatedAt: document.updatedAt,
     hash: createHash("sha256")

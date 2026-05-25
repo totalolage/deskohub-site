@@ -1,3 +1,5 @@
+import "./shared/polyfills/temporal";
+
 import { initBotId } from "botid/client/core";
 
 initBotId({
