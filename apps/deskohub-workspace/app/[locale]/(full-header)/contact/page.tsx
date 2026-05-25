@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { ContactPage } from "@/features/contact";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  getWorkspaceLocalizedCanonicalUrl,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 
 type LocalizedWorkspaceContactPageProps = {
   params: Promise<{ locale: string }>;
@@ -18,7 +21,7 @@ export async function generateMetadata({
   return runWithRequestLocale(locale, () => {
     const title = m.contactMetadataTitle({}, { locale });
     const description = m.contactMetadataDescription({}, { locale });
-    const url = `https://${workspaceSiteConstants.brand.domain}/contact`;
+    const url = getWorkspaceLocalizedCanonicalUrl(locale, "/contact");
 
     return {
       title,
@@ -28,7 +31,7 @@ export async function generateMetadata({
         languages: Object.fromEntries(
           locales.map((itemLocale) => [
             itemLocale,
-            `https://${workspaceSiteConstants.brand.domain}/${itemLocale}/contact`,
+            getWorkspaceLocalizedCanonicalUrl(itemLocale, "/contact"),
           ])
         ),
       },

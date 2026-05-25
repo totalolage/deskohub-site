@@ -122,7 +122,7 @@ export function ContactForm({ locale }: ContactFormProps) {
               {m.contactPrivacyNoteAfter({}, { locale })}
             </p>
 
-            {state.message ? (
+            {!!state.message && (
               <p
                 aria-live="polite"
                 className={cn(
@@ -134,7 +134,7 @@ export function ContactForm({ locale }: ContactFormProps) {
               >
                 {state.message}
               </p>
-            ) : null}
+            )}
           </div>
         </form>
       </CardContent>
@@ -201,11 +201,11 @@ function Field({
           aria-describedby={error ? `${name}-error` : undefined}
         />
       )}
-      {error ? (
+      {!!error && (
         <span id={`${name}-error`} className="text-sm text-burned-orange">
           {error}
         </span>
-      ) : null}
+      )}
     </label>
   );
 }

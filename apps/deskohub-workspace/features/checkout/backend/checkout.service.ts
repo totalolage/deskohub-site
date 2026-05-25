@@ -4,7 +4,6 @@ import { ValidationError as DotyposValidationError } from "@deskohub/dotypos/err
 import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { env } from "@/env";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
 import {
   PaymentOrderRepository,
@@ -16,6 +15,10 @@ import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot
 import type { ReservationData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
+import {
+  getWorkspaceRuntimeCallbackOrigin,
+  type WorkspaceUrlConfigError,
+} from "@/shared/backend/config/workspace-url.config";
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly message: string;
@@ -32,35 +35,22 @@ export interface CheckoutService {
 export const CheckoutService =
   Context.GenericTag<CheckoutService>("CheckoutService");
 
-const getCheckoutCallbackOrigin = Effect.gen(function* () {
-  const url =
-    env.VERCEL_ENV === "production"
-      ? env.VERCEL_PROJECT_PRODUCTION_URL
-      : env.VERCEL_URL;
-
-  if (!url) {
-    return yield* new CheckoutError({
-      message: "Payment checkout callback URL is not configured.",
-    });
-  }
-
-  return yield* Effect.try({
-    try: () => new URL(url.includes("://") ? url : `https://${url}`),
-    catch: (cause) =>
-      new CheckoutError({
-        message: "Payment checkout callback URL is not configured.",
-        cause,
-      }),
-  });
-});
+const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
+  Effect.fail(
+    new CheckoutError({
+      message: cause.message,
+      cause,
+    })
+  );
 
 const getCheckoutStatusUrl: (
-  origin: URL,
   locale: Locale,
   orderId: string,
   outcome: "success" | "cancelled"
 ) => Effect.Effect<string, CheckoutError> = Effect.fn("getCheckoutStatusUrl")(
-  function* (origin, locale, orderId, outcome) {
+  function* (locale, orderId, outcome) {
+    const origin = yield* getWorkspaceRuntimeCallbackOrigin;
+
     return yield* Effect.try({
       try: () => {
         const url = new URL(`/${locale}/checkout/status/${orderId}`, origin);
@@ -73,13 +63,22 @@ const getCheckoutStatusUrl: (
           cause,
         }),
     });
-  }
+  },
+  (effect, locale, orderId, outcome) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        locale,
+        orderId,
+        outcome,
+      }),
+      Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError)
+    )
 );
 
-const getNotificationUrl: (
-  origin: URL
-) => Effect.Effect<string, CheckoutError> = Effect.fn("getNotificationUrl")(
-  function* (origin) {
+const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
+  function* () {
+    const origin = yield* getWorkspaceRuntimeCallbackOrigin;
+
     return yield* Effect.try({
       try: () => new URL("/api/webhooks/nexi", origin).toString(),
       catch: (cause) =>
@@ -89,7 +88,7 @@ const getNotificationUrl: (
         }),
     });
   }
-);
+).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
 const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
 
@@ -240,22 +239,14 @@ export const CheckoutServiceLive = Layer.effect(
               },
             },
           });
-          const callbackOrigin = yield* getCheckoutCallbackOrigin;
-
           const hostedPaymentPage = yield* nexi.createHostedPaymentPage({
             orderId: order.id,
             amount: nexiAmount.amount,
             currency: nexiAmount.currency,
             locale,
-            notificationUrl: yield* getNotificationUrl(callbackOrigin),
-            resultUrl: yield* getCheckoutStatusUrl(
-              callbackOrigin,
-              locale,
-              order.id,
-              "success"
-            ),
+            notificationUrl: yield* getNotificationUrl,
+            resultUrl: yield* getCheckoutStatusUrl(locale, order.id, "success"),
             cancelUrl: yield* getCheckoutStatusUrl(
-              callbackOrigin,
               locale,
               order.id,
               "cancelled"

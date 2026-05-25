@@ -88,11 +88,11 @@ export function WorkspaceGalleryAlbum({ photos }: WorkspaceGalleryAlbumProps) {
             />
           ),
           extras: (_, { photo }) =>
-            photo.caption ? (
+            !!photo.caption && (
               <figcaption className="pointer-events-none absolute inset-x-0 bottom-0 z-10 bg-gradient-to-t from-navy-blue/78 via-navy-blue/28 to-transparent px-4 pb-3 pt-12 text-sm font-medium leading-5 text-white opacity-95">
                 {photo.caption}
               </figcaption>
-            ) : null,
+            ),
         }}
         sizes={{
           size: "352px",

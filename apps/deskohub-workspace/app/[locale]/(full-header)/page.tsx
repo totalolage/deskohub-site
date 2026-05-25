@@ -3,7 +3,10 @@ import { notFound } from "next/navigation";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { LandingPage } from "@/features/landing-page/components/landing-page";
-import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  getWorkspaceLocalizedCanonicalUrl,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 
 type LocalizedWorkspaceHomePageProps = {
   params: Promise<{ locale: string }>;
@@ -18,7 +21,7 @@ export async function generateMetadata({
   return runWithRequestLocale(locale, () => {
     const title = m.landingMetadataTitle({}, { locale });
     const description = m.landingMetadataDescription({}, { locale });
-    const url = `https://${workspaceSiteConstants.brand.domain}`;
+    const url = getWorkspaceLocalizedCanonicalUrl(locale);
 
     return {
       title,
@@ -28,7 +31,7 @@ export async function generateMetadata({
         languages: Object.fromEntries(
           locales.map((itemLocale: (typeof locales)[number]) => [
             itemLocale,
-            `https://${workspaceSiteConstants.brand.domain}/${itemLocale}`,
+            getWorkspaceLocalizedCanonicalUrl(itemLocale),
           ])
         ),
       },

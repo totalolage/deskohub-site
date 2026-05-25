@@ -1,4 +1,8 @@
 import {
+  escapeHtml,
+  escapeMultilineHtml,
+} from "@deskohub/email/backend/escaping";
+import {
   EmailConfigTag,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
@@ -11,10 +15,13 @@ import {
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 import type { ReservationData } from "@/features/reservation/schemas/reservation";
+import {
+  type EmailDetailRow,
+  renderEmailRowsText,
+  renderWorkspaceEmailRowsHtml,
+} from "@/shared/backend/email/rendering";
 import { StorageError } from "@/shared/backend/errors";
 import { workspaceSiteConstants } from "@/shared/utils";
-
-type DetailRow = readonly [string, string];
 
 export interface ReservationSubmission extends ReservationData {
   submittedAt: string;
@@ -35,17 +42,6 @@ const workspaceRecipient = {
   email: workspaceSiteConstants.contact.infoEmail,
   name: workspaceSiteConstants.brand.name,
 } as const;
-
-const escapeHtml = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-
-const formatMessageHtml = (message: string) =>
-  escapeHtml(message).replaceAll("\n", "<br />");
 
 const formatSubmissionDate = (submittedAt: string, locale?: Locale) =>
   new Date(submittedAt).toLocaleString(locale, {
@@ -111,7 +107,7 @@ const getConfirmationSubject = (locale: Locale) =>
 const createDetailRows = (
   submission: ReservationSubmission,
   locale: Locale
-): DetailRow[] => {
+): EmailDetailRow[] => {
   const labels = {
     tier: m.reservationEmailTierLabel({}, { locale }),
     date: m.reservationEmailDateLabel({}, { locale }),
@@ -124,7 +120,7 @@ const createDetailRows = (
   const yes = m.reservationConfirmationYes({}, { locale });
   const no = m.reservationConfirmationNo({}, { locale });
 
-  const rows: DetailRow[] = [
+  const rows: EmailDetailRow[] = [
     [labels.tier, getTierLabel(submission.entryTier)],
     [labels.date, formatReservationDate(submission.date, locale)],
     [labels.coffee, submission.coffee ? yes : no],
@@ -147,16 +143,6 @@ const createDetailRows = (
   return rows;
 };
 
-const renderRowsHtml = (rows: readonly DetailRow[]) =>
-  rows
-    .map(
-      ([label, value]) => `<tr>
-        <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;"><strong>${escapeHtml(label)}:</strong></td>
-        <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;">${escapeHtml(value)}</td>
-      </tr>`
-    )
-    .join("");
-
 export const ReservationServiceLive = Layer.effect(
   ReservationService,
   Effect.gen(function* () {
@@ -174,7 +160,7 @@ export const ReservationServiceLive = Layer.effect(
           };
           const rows = createDetailRows(submission, emailLocale);
           const safeMessageHtml = submission.message
-            ? formatMessageHtml(submission.message)
+            ? escapeMultilineHtml(submission.message)
             : undefined;
           const intro = m.reservationEmailBusinessIntro(
             {},
@@ -213,7 +199,7 @@ export const ReservationServiceLive = Layer.effect(
               <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0b1848;">
                 <h2 style="color: #0b1848;">${escapeHtml(intro)}</h2>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-                  ${renderRowsHtml(rows)}
+                  ${renderWorkspaceEmailRowsHtml(rows)}
                 </table>
                 ${
                   safeMessageHtml
@@ -225,7 +211,7 @@ export const ReservationServiceLive = Layer.effect(
             text: [
               intro,
               "",
-              ...rows.map(([label, value]) => `${label}: ${value}`),
+              ...renderEmailRowsText(rows),
               ...(submission.message
                 ? ["", messageTextHeading, submission.message]
                 : []),
@@ -271,7 +257,7 @@ export const ReservationServiceLive = Layer.effect(
                 <h2 style="color: #0b1848;">${escapeHtml(confirmationHeading)}</h2>
                 <p>${escapeHtml(confirmationBody)}</p>
                 <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-                  ${renderRowsHtml(rows.slice(0, 4))}
+                  ${renderWorkspaceEmailRowsHtml(rows.slice(0, 4))}
                 </table>
                 <p style="margin-top: 20px;">${escapeHtml(confirmationFollowUp)}</p>
               </div>
@@ -281,7 +267,7 @@ export const ReservationServiceLive = Layer.effect(
               "",
               confirmationBody,
               "",
-              ...rows.slice(0, 4).map(([label, value]) => `${label}: ${value}`),
+              ...renderEmailRowsText(rows.slice(0, 4)),
               "",
               confirmationFollowUp,
             ].join("\n"),

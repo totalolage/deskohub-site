@@ -5,14 +5,17 @@ import {
   getLegalDocument,
   type LegalDocumentKey,
 } from "@/features/legal/content";
-import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  getWorkspaceLocalizedCanonicalUrl,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 
 export function createLegalMetadata(
   locale: Locale,
   documentKey: LegalDocumentKey
 ): Metadata {
   const document = getLegalDocument(locale, documentKey);
-  const url = `https://${workspaceSiteConstants.brand.domain}/${documentKey}`;
+  const url = getWorkspaceLocalizedCanonicalUrl(locale, documentKey);
 
   return {
     title: `${document.title} | ${workspaceSiteConstants.brand.name}`,
@@ -22,7 +25,7 @@ export function createLegalMetadata(
       languages: Object.fromEntries(
         locales.map((itemLocale) => [
           itemLocale,
-          `https://${workspaceSiteConstants.brand.domain}/${itemLocale}/${documentKey}`,
+          getWorkspaceLocalizedCanonicalUrl(itemLocale, documentKey),
         ])
       ),
     },

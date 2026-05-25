@@ -1,4 +1,8 @@
 import {
+  escapeHtml,
+  escapeMultilineHtml,
+} from "@deskohub/email/backend/escaping";
+import {
   EmailConfigTag,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
@@ -30,17 +34,6 @@ const workspaceRecipient = {
   email: workspaceSiteConstants.contact.infoEmail,
   name: workspaceSiteConstants.brand.name,
 } as const;
-
-const escapeHtml = (value: string) =>
-  value
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-
-const formatMessageHtml = (message: string) =>
-  escapeHtml(message).replaceAll("\n", "<br />");
 
 const formatSubmissionDate = (submittedAt: string, locale?: string) =>
   new Date(submittedAt).toLocaleString(locale, {
@@ -82,7 +75,7 @@ export const ContactServiceLive = Layer.effect(
           const safeEmail = escapeHtml(data.email);
           const safePhone = data.phone ? escapeHtml(data.phone) : undefined;
           const safeFormattedDate = escapeHtml(formattedDate);
-          const safeMessageHtml = formatMessageHtml(data.message);
+          const safeMessageHtml = escapeMultilineHtml(data.message);
 
           const businessEmailMessage: EmailMessage = {
             from: emailConfig.defaultFrom,

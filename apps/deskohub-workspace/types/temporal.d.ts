@@ -1,20 +1,9 @@
-declare namespace Temporal {
-  interface DurationLike {
-    readonly days?: number;
-  }
+import type { Temporal as TemporalPolyfill } from "@js-temporal/polyfill";
 
-  class PlainDate {
-    static from(item: string): PlainDate;
+declare global {
+  var Temporal: typeof TemporalPolyfill;
 
-    add(duration: DurationLike): PlainDate;
-    toZonedDateTime(item: { readonly timeZone: string }): ZonedDateTime;
-  }
-
-  interface ZonedDateTime {
-    toInstant(): Instant;
-  }
-
-  interface Instant {
-    readonly epochMilliseconds: number;
+  namespace Temporal {
+    type PlainDate = TemporalPolyfill.PlainDate;
   }
 }

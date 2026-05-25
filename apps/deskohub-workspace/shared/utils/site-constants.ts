@@ -23,3 +23,44 @@ export const workspaceSiteConstants = {
     facebook: "https://www.facebook.com/deskohub",
   },
 } as const;
+
+type WorkspaceCanonicalSearchParams = ConstructorParameters<
+  typeof URLSearchParams
+>[0];
+
+const normalizePathname = (pathname: string) => {
+  if (pathname === "" || pathname === "/") return "/";
+  return pathname.startsWith("/") ? pathname : `/${pathname}`;
+};
+
+export function getWorkspaceCanonicalUrl(
+  pathname: string | URL = "/",
+  searchParams?: WorkspaceCanonicalSearchParams
+): string {
+  const canonicalPathname =
+    pathname instanceof URL
+      ? `${pathname.pathname}${pathname.search}${pathname.hash}`
+      : normalizePathname(pathname);
+  const url = new URL(
+    canonicalPathname,
+    `https://${workspaceSiteConstants.brand.domain}`
+  );
+
+  if (searchParams) {
+    for (const [key, value] of new URLSearchParams(searchParams)) {
+      url.searchParams.append(key, value);
+    }
+  }
+
+  return url.toString();
+}
+
+export function getWorkspaceLocalizedCanonicalUrl(
+  locale: string,
+  pathname = "/"
+): string {
+  const localizedPathname = normalizePathname(pathname);
+  const suffix = localizedPathname === "/" ? "" : localizedPathname;
+
+  return getWorkspaceCanonicalUrl(`/${locale}${suffix}`);
+}

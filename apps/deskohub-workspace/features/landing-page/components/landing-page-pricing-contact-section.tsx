@@ -241,14 +241,14 @@ function PricingCardContent({ item, locale }: PricingCardContentProps) {
   return (
     <>
       <CardHeader>
-        {item.featured ? (
+        {item.featured && (
           <Badge
             variant="emphasis"
             className="absolute right-4 top-0 mb-4 w-fit -translate-y-1/2"
           >
             {m.landingPricingFeaturedBadge({}, { locale })}
           </Badge>
-        ) : null}
+        )}
         <CardTitle>{item.name}</CardTitle>
         <CardDescription className="text-2xl text-burned-orange">
           {item.price}
@@ -257,7 +257,7 @@ function PricingCardContent({ item, locale }: PricingCardContentProps) {
       <CardContent>
         <div className="space-y-5">
           <p className="text-sm leading-7 text-navy-blue/78">{item.text}</p>
-          {item.contactHref ? (
+          {!!item.contactHref && (
             <Button
               asChild
               variant="secondary"
@@ -267,7 +267,7 @@ function PricingCardContent({ item, locale }: PricingCardContentProps) {
                 {m.landingFooterContactCta({}, { locale })}
               </Link>
             </Button>
-          ) : null}
+          )}
         </div>
       </CardContent>
     </>
