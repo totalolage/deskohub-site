@@ -24,7 +24,7 @@ CREATE TABLE "payment_orders" (
 	CONSTRAINT "payment_orders_correlation_id_unique" UNIQUE("correlation_id"),
 	CONSTRAINT "payment_orders_provider_check" CHECK ("payment_orders"."provider" in ('nexi')),
 	CONSTRAINT "payment_orders_payment_status_check" CHECK ("payment_orders"."payment_status" in ('created', 'payment_pending', 'paid', 'payment_failed', 'cancelled', 'expired')),
-	CONSTRAINT "payment_orders_fulfillment_status_check" CHECK ("payment_orders"."fulfillment_status" in ('not_started', 'fulfilled', 'failed')),
+	CONSTRAINT "payment_orders_fulfillment_status_check" CHECK ("payment_orders"."fulfillment_status" in ('not_started', 'processing', 'fulfilled', 'failed')),
 	CONSTRAINT "payment_orders_paid_at_check" CHECK ("payment_orders"."payment_status" <> 'paid' or "payment_orders"."paid_at" is not null),
 	CONSTRAINT "payment_orders_fulfilled_check" CHECK ("payment_orders"."fulfillment_status" <> 'fulfilled' or ("payment_orders"."fulfilled_at" is not null and "payment_orders"."dotypos_reservation_id" is not null)),
 	CONSTRAINT "payment_orders_fulfillment_failed_check" CHECK ("payment_orders"."fulfillment_status" <> 'failed' or ("payment_orders"."fulfillment_failed_at" is not null and "payment_orders"."fulfillment_failure_code" is not null))
