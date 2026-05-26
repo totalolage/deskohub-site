@@ -3,6 +3,10 @@ import { Context, Effect, Layer } from "effect";
 import type { EmailMessage } from "@/features/email/types/email.types";
 import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";
+import {
+  renderBusinessTrainingReservationEmailHtml,
+  renderTrainingReservationConfirmationEmailHtml,
+} from "./training-reservation-email-rendering";
 
 export interface TrainingRoomReservation {
   firstName: string;
@@ -75,99 +79,17 @@ export const TrainingReservationServiceLive = Layer.effect(
 
           const businessEmailContent = {
             subject: `Nová rezervace školící místnosti - ${displayName}`,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">Nová rezervace školící místnosti</h2>
-                
-                <h3 style="color: #666;">Kontaktní údaje:</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                  ${
-                    data.firstName || data.lastName
-                      ? `
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Jméno:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${fullName}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  ${
-                    data.company
-                      ? `
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Společnost:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.company}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  ${
-                    data.role
-                      ? `
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Pozice:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.role}</td>
-                  </tr>
-                  `
-                      : ""
-                  }
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Email:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.email}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Telefon:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${data.phone}</td>
-                  </tr>
-                </table>
-                
-                <h3 style="color: #666; margin-top: 20px;">Detaily rezervace:</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Datum:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${formattedDate}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Čas:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${formattedTime}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>Doba trvání:</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${
-                      duration === 1
-                        ? "hodina"
-                        : duration < 5
-                          ? "hodiny"
-                          : "hodin"
-                    }</td>
-                  </tr>
-                </table>
-                
-                ${
-                  data.specialRequirements
-                    ? `
-                  <h3 style="color: #666; margin-top: 20px;">Speciální požadavky:</h3>
-                  <p style="background-color: #f5f5f5; padding: 12px; border-radius: 4px;">
-                    ${data.specialRequirements}
-                  </p>
-                `
-                    : ""
-                }
-                
-                <div style="background-color: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin-top: 20px;">
-                  <h3 style="color: #856404; margin-top: 0;">⚠️ Požadovaná akce:</h3>
-                  <p style="color: #856404; margin: 0;">
-                    <strong>Zavolejte zákazníkovi pro potvrzení rezervace!</strong><br>
-                    Telefon: <strong>${data.phone}</strong>
-                  </p>
-                </div>
-                
-                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-                <p style="color: #999; font-size: 12px;">
-                  Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
-                </p>
-              </div>
-            `,
+            html: renderBusinessTrainingReservationEmailHtml({
+              fullName,
+              company: data.company,
+              role: data.role,
+              email: data.email,
+              phone: data.phone,
+              formattedDate,
+              formattedTime,
+              duration,
+              specialRequirements: data.specialRequirements,
+            }),
             text: `
 Nová rezervace školící místnosti
 
@@ -266,85 +188,12 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
               locale === "cs-CZ"
                 ? "Potvrzení rezervace školící místnosti - DeskoHub"
                 : "Training Room Reservation Confirmation - DeskoHub",
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                <h2 style="color: #333;">${
-                  locale === "cs-CZ"
-                    ? "Potvrzení přijetí rezervace"
-                    : "Reservation Received"
-                }</h2>
-                <p>${
-                  locale === "cs-CZ"
-                    ? "Děkujeme za Vaši rezervaci školící místnosti. Vaši žádost jsme úspěšně přijali a brzy Vás budeme telefonicky kontaktovat pro potvrzení všech detailů."
-                    : "Thank you for your training room reservation. We have successfully received your request and will contact you by phone soon to confirm all details."
-                }</p>
-                
-                <div style="background-color: #e8f5e9; border: 1px solid #4caf50; border-radius: 4px; padding: 15px; margin: 20px 0;">
-                  <p style="color: #2e7d32; margin: 0;">
-                    <strong>${locale === "cs-CZ" ? "Co bude následovat:" : "What's next:"}</strong><br>
-                    ${
-                      locale === "cs-CZ"
-                        ? "📞 Zavoláme Vám v nejbližší pracovní době pro potvrzení rezervace a zodpovězení případných dotazů."
-                        : "📞 We will call you during the next business hours to confirm your reservation and answer any questions."
-                    }
-                  </p>
-                </div>
-                
-                <h3 style="color: #666;">${
-                  locale === "cs-CZ"
-                    ? "Detaily rezervace:"
-                    : "Reservation Details:"
-                }</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${
-                      locale === "cs-CZ" ? "Datum:" : "Date:"
-                    }</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${formattedDate}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${
-                      locale === "cs-CZ" ? "Čas:" : "Time:"
-                    }</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${formattedTime}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${
-                      locale === "cs-CZ" ? "Doba trvání:" : "Duration:"
-                    }</strong></td>
-                    <td style="padding: 8px; border-bottom: 1px solid #eee;">${duration} ${
-                      locale === "cs-CZ"
-                        ? duration === 1
-                          ? "hodina"
-                          : duration < 5
-                            ? "hodiny"
-                            : "hodin"
-                        : duration === 1
-                          ? "hour"
-                          : "hours"
-                    }</td>
-                  </tr>
-                </table>
-                
-                <p style="margin-top: 20px;">
-                  ${
-                    locale === "cs-CZ"
-                      ? `Pokud máte jakékoliv dotazy, neváhejte nás kontaktovat na emailu ${siteConstants.contact.reservationEmail}.`
-                      : `If you have any questions, please don't hesitate to contact us at ${siteConstants.contact.reservationEmail}.`
-                  }
-                </p>
-                
-                <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
-                <p style="color: #999; font-size: 12px;">
-                  DeskoHub<br>
-                  ${
-                    locale === "cs-CZ"
-                      ? "Váš prostor pro práci a kreativitu"
-                      : "Your space for work and creativity"
-                  }
-                </p>
-              </div>
-            `,
+            html: renderTrainingReservationConfirmationEmailHtml({
+              locale,
+              formattedDate,
+              formattedTime,
+              duration,
+            }),
             text:
               locale === "cs-CZ"
                 ? `

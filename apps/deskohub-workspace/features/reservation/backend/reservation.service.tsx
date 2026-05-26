@@ -1,8 +1,4 @@
 import {
-  escapeHtml,
-  escapeMultilineHtml,
-} from "@deskohub/email/backend/escaping";
-import {
   EmailConfigTag,
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
@@ -17,8 +13,10 @@ import { type Locale, m } from "@/features/i18n";
 import type { ReservationData } from "@/features/reservation/schemas/reservation";
 import {
   type EmailDetailRow,
+  MultilineEmailText,
   renderEmailRowsText,
-  renderWorkspaceEmailRowsHtml,
+  renderWorkspaceEmailHtml,
+  WorkspaceEmailRows,
 } from "@/shared/backend/email/rendering";
 import { StorageError } from "@/shared/backend/errors";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -104,6 +102,13 @@ const getBusinessSubject = (name: string, date: string, locale: Locale) =>
 const getConfirmationSubject = (locale: Locale) =>
   m.reservationEmailConfirmationSubject({}, { locale });
 
+const messageBlockStyle = {
+  background: "#f4f1ea",
+  borderRadius: "16px",
+  padding: "16px",
+  whiteSpace: "normal",
+} as const;
+
 const createDetailRows = (
   submission: ReservationSubmission,
   locale: Locale
@@ -159,9 +164,6 @@ export const ReservationServiceLive = Layer.effect(
             locale: emailLocale,
           };
           const rows = createDetailRows(submission, emailLocale);
-          const safeMessageHtml = submission.message
-            ? escapeMultilineHtml(submission.message)
-            : undefined;
           const intro = m.reservationEmailBusinessIntro(
             {},
             { locale: emailLocale }
@@ -195,19 +197,39 @@ export const ReservationServiceLive = Layer.effect(
               formatReservationDate(data.date, emailLocale),
               emailLocale
             ),
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0b1848;">
-                <h2 style="color: #0b1848;">${escapeHtml(intro)}</h2>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-                  ${renderWorkspaceEmailRowsHtml(rows)}
+            html: renderWorkspaceEmailHtml(
+              <div
+                style={{
+                  fontFamily: "Arial, sans-serif",
+                  maxWidth: "640px",
+                  margin: "0 auto",
+                  color: "#0b1848",
+                }}
+              >
+                <h2 style={{ color: "#0b1848" }}>{intro}</h2>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    marginTop: "16px",
+                  }}
+                >
+                  <tbody>
+                    <WorkspaceEmailRows rows={rows} />
+                  </tbody>
                 </table>
-                ${
-                  safeMessageHtml
-                    ? `<h3 style="margin-top: 24px; color: #0b1848;">${escapeHtml(messageHeading)}</h3><div style="background: #f4f1ea; border-radius: 16px; padding: 16px; white-space: normal;">${safeMessageHtml}</div>`
-                    : ""
-                }
+                {submission.message ? (
+                  <>
+                    <h3 style={{ marginTop: "24px", color: "#0b1848" }}>
+                      {messageHeading}
+                    </h3>
+                    <div style={messageBlockStyle}>
+                      <MultilineEmailText value={submission.message} />
+                    </div>
+                  </>
+                ) : null}
               </div>
-            `,
+            ),
             text: [
               intro,
               "",
@@ -252,16 +274,31 @@ export const ReservationServiceLive = Layer.effect(
               name: data.name,
             },
             subject: getConfirmationSubject(emailLocale),
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0b1848;">
-                <h2 style="color: #0b1848;">${escapeHtml(confirmationHeading)}</h2>
-                <p>${escapeHtml(confirmationBody)}</p>
-                <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-                  ${renderWorkspaceEmailRowsHtml(rows.slice(0, 4))}
+            html: renderWorkspaceEmailHtml(
+              <div
+                style={{
+                  fontFamily: "Arial, sans-serif",
+                  maxWidth: "640px",
+                  margin: "0 auto",
+                  color: "#0b1848",
+                }}
+              >
+                <h2 style={{ color: "#0b1848" }}>{confirmationHeading}</h2>
+                <p>{confirmationBody}</p>
+                <table
+                  style={{
+                    width: "100%",
+                    borderCollapse: "collapse",
+                    marginTop: "16px",
+                  }}
+                >
+                  <tbody>
+                    <WorkspaceEmailRows rows={rows.slice(0, 4)} />
+                  </tbody>
                 </table>
-                <p style="margin-top: 20px;">${escapeHtml(confirmationFollowUp)}</p>
+                <p style={{ marginTop: "20px" }}>{confirmationFollowUp}</p>
               </div>
-            `,
+            ),
             text: [
               confirmationHeading,
               "",
