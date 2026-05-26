@@ -34,7 +34,7 @@ dotypos_reservation_id	No	Set after successful payment and reservation creation.
 security_token	No	Nexi security token used to validate webhooks.
 checkout_details	Yes (jsonb)	JSON contract capturing reservation options, payment amount and legal acceptance. Must not include PII.
 payment_status	Yes (enum)	created, payment_pending, paid, payment_failed, cancelled, expired.
-fulfillment_status	Yes (enum)	not_started, fulfilled, failed.
+fulfillment_status	Yes (enum)	not_started, processing, fulfilled, failed. `processing` is an internal claim/lease state for paid fulfillment concurrency.
 last_webhook_event_id, last_provider_operation_id, last_provider_status	No	Tracking of last provider event for idempotency.
 failure_code	No	Normalised failure/expiry code.
 paid_at, reservation_created_at, customer_access_email_sent_at, internal_notification_sent_at, fulfilled_at, fulfillment_failed_at	No	Domain timestamps describing payment and fulfilment milestones.  Each timestamp should only be set once.
@@ -183,6 +183,7 @@ export const paymentOrders = pgTable("payment_orders", {
   >(),
   fulfillmentStatus: text("fulfillment_status").notNull().$type<
     | "not_started"
+    | "processing"
     | "fulfilled"
     | "failed"
   >(),
@@ -305,7 +306,7 @@ Processing webhooks and fulfilment can involve concurrent or duplicate requests.
 
 * Webhook dedupe: Insert into webhook_events using a unique constraint on event_id.  If insertion fails due to existing event_id, treat it as a duplicate and skip processing.【324857154152910†L289-L301】
 * Atomic updates: When applying provider results to a payment order (marking paid or failed), wrap the read‑modify‑write in a transaction to prevent race conditions.  Check the current status before updating.
-* Guarded fulfilment: Only run fulfilment when payment_status = 'paid' and fulfillment_status ∈ { 'not_started', 'failed' }.  Ensure that dotypos_reservation_id is null before creating a reservation.
+* Guarded fulfilment: Claim fulfilment only when payment_status = 'paid' and fulfillment_status ∈ { 'not_started', 'failed' }, then set fulfillment_status = 'processing' before external side effects.  `processing` is an internal claim/lease state that prevents concurrent workers from duplicating reservation or notification work. Ensure that dotypos_reservation_id is null before creating a reservation.
 * Idempotent notifications: Use the timestamp columns (customer_access_email_sent_at, internal_notification_sent_at) as idempotency markers.  Repository methods should return a boolean indicating whether a timestamp was set, allowing the caller to skip duplicate sends.
 
 7 Operational considerations
@@ -324,7 +325,7 @@ Processing webhooks and fulfilment can involve concurrent or duplicate requests.
 7.3 Security and privacy
 
 * Do not store customer name, email, phone or other PII in the database.  Only store dotypos_customer_id and checkout_details fields that exclude PII.
-* Do not store raw Nexi webhook payloads.  Capture only the normalised event identity and processing status.
+* Do not store or log raw Nexi notification payloads, notification security tokens, customerInfo, payment instrument details, warnings, additionalData, or other sensitive optional notification extras. Capture only the normalised event identity and processing status.
 * Treat checkout_details.reservation.message as user content.  Avoid logging it unless necessary for debugging.
 
 8 Summary

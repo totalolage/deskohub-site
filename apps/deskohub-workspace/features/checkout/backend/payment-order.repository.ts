@@ -94,6 +94,9 @@ export interface PaymentOrderRepository {
     readonly dotyposReservationId: string;
     readonly reservationCreatedAt: Date;
   }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly claimPaidFulfillment: (
+    id: string
+  ) => Effect.Effect<PaymentOrder | null, DatabaseError>;
   readonly markCustomerAccessEmailSent: (input: {
     readonly id: string;
     readonly sentAt: Date;
@@ -307,7 +310,14 @@ export const PaymentOrderRepositoryLive = Layer.effect(
             "Order was not found or already has a different Nexi security token"
           );
         },
-        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              id: input.id,
+              providerOperationId: input.providerOperationId,
+              providerStatus: input.providerStatus,
+            })
+          )
       ),
 
       findById,
@@ -453,6 +463,7 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                   and(
                     eq(paymentOrders.id, input.id),
                     eq(paymentOrders.paymentStatus, "paid"),
+                    eq(paymentOrders.fulfillmentStatus, "processing"),
                     or(
                       isNull(paymentOrders.dotyposReservationId),
                       eq(
@@ -469,10 +480,39 @@ export const PaymentOrderRepositoryLive = Layer.effect(
             updated,
             "paymentOrders.attachDotyposReservation",
             input.id,
-            "Reservation can only be attached to paid orders and cannot overwrite a different reservation"
+            "Reservation can only be attached to paid processing orders and cannot overwrite a different reservation"
           );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      claimPaidFulfillment: Effect.fn("paymentOrders.claimPaidFulfillment")(
+        function* (id) {
+          return yield* runDb(
+            "paymentOrders.claimPaidFulfillment",
+            async () => {
+              const [order] = await db
+                .update(paymentOrders)
+                .set({
+                  fulfillmentStatus: "processing",
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, id),
+                    eq(paymentOrders.paymentStatus, "paid"),
+                    inArray(paymentOrders.fulfillmentStatus, [
+                      "not_started",
+                      "failed",
+                    ])
+                  )
+                )
+                .returning();
+
+              return order ?? null;
+            }
+          );
+        },
+        (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
       ),
 
       markCustomerAccessEmailSent: Effect.fn(
@@ -490,6 +530,8 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 .where(
                   and(
                     eq(paymentOrders.id, input.id),
+                    eq(paymentOrders.paymentStatus, "paid"),
+                    eq(paymentOrders.fulfillmentStatus, "processing"),
                     isNull(paymentOrders.customerAccessEmailSentAt)
                   )
                 )
@@ -516,6 +558,8 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 .where(
                   and(
                     eq(paymentOrders.id, input.id),
+                    eq(paymentOrders.paymentStatus, "paid"),
+                    eq(paymentOrders.fulfillmentStatus, "processing"),
                     isNull(paymentOrders.internalNotificationSentAt)
                   )
                 )
@@ -540,10 +584,7 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 and(
                   eq(paymentOrders.id, input.id),
                   eq(paymentOrders.paymentStatus, "paid"),
-                  inArray(paymentOrders.fulfillmentStatus, [
-                    "not_started",
-                    "failed",
-                  ]),
+                  eq(paymentOrders.fulfillmentStatus, "processing"),
                   isNotNull(paymentOrders.dotyposReservationId),
                   isNotNull(paymentOrders.customerAccessEmailSentAt),
                   isNotNull(paymentOrders.internalNotificationSentAt)
@@ -592,7 +633,8 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 .where(
                   and(
                     eq(paymentOrders.id, input.id),
-                    eq(paymentOrders.paymentStatus, "paid")
+                    eq(paymentOrders.paymentStatus, "paid"),
+                    eq(paymentOrders.fulfillmentStatus, "processing")
                   )
                 )
                 .returning({ id: paymentOrders.id })

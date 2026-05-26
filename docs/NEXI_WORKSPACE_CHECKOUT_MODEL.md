@@ -8,7 +8,7 @@ The goal is to keep the local payment database focused on payment state, webhook
 
 | Store | Owns | Does Not Own |
 | --- | --- | --- |
-| Postgres payment DB | Pending checkout details, payment state, Nexi security token, Dotypos customer/reservation references, webhook dedupe, fulfillment status | Customer name/email/phone as separate columns, raw Nexi payloads, transient function-progress states |
+| Postgres payment DB | Pending checkout details, payment state, Nexi security token returned with the HPP session, Dotypos customer/reservation references, webhook dedupe, fulfillment status | Customer name/email/phone as separate columns, raw Nexi notification payloads, transient function-progress states |
 | Dotypos customer | Customer PII: name, email, phone | Payment state, pending checkout state, transient payment metadata |
 | Dotypos reservation | Created only after successful payment; staff-readable service details; optional machine-readable reservation metadata | Pre-payment checkout intent |
 | Nexi | Hosted payment page, payment/order processing, operation results, security token origin | Workspace customer/reservation details |
@@ -52,6 +52,7 @@ type PaymentOrder = {
 
   fulfillmentStatus:
     | "not_started"
+    | "processing"
     | "fulfilled"
     | "failed";
 
@@ -166,7 +167,7 @@ Notes:
 
 ## Webhook Events
 
-A separate webhook event table is recommended for deduplication. It should not store raw payloads.
+A separate webhook event table is recommended for deduplication. It should not store raw notification payloads or sensitive optional notification extras.
 
 Logical model:
 
@@ -278,24 +279,36 @@ If invisible metadata is added to the reservation note, it should describe the c
 
 ## Webhook Flow
 
-1. Nexi sends a notification to `/api/webhooks/nexi`.
-2. The route validates the webhook payload shape.
-3. The route inserts or checks `webhook_events.event_id` for dedupe.
+Nexi server-to-server outcome notifications are enabled when the HPP session request includes `paymentSession.notificationUrl`. The official notification API body is a JSON object with optional top-level `eventId`, `eventTime`, `securityToken`, and `operation` fields. For Workspace processing, `operation.orderId` is required because it identifies `payment_orders.id`.
+
+The operation fields we use are `operationId`, `operationType`, `operationResult`, `operationTime`, `operationAmount`, and `operationCurrency`. Nexi notifications can also include sensitive optional data such as `customerInfo`, payment instrument details, warnings, and `additionalData`; do not persist or log the raw notification payload or those extras.
+
+`@deskohub/nexi` owns provider-level webhook contracts and pure interpretation: strict official-envelope decoding, normalization that trims optional strings and converts blanks to `undefined`, event identity derivation, notification security-token comparison, provider failure-status classification, and metadata extraction from provider verification results. Workspace owns persistence, dedupe insertion, payment-order transitions, expected amount encoding from `checkout_details`, fulfillment, route responses, app failure codes, and app logging.
+
+`eventId` is optional in the official schema. If Nexi omits it, derive a deterministic event identity from non-secret operation fields and event/operation time. `securityToken` is also optional in the notification API schema, although the HPP docs describe progress notifications with a `securityToken`. If it is present, compare it with the stored HPP token before provider verification. If it is absent, still treat the notification only as a trigger and verify through Nexi before changing local payment state.
+
+No signature, MAC, or header-validation mechanism is confirmed in the verified Nexi docs, and none is implemented here. The authoritative payment result comes from `NexiService.verifyPaymentOutcome`, which calls Nexi `GET /orders/{orderId}` and compares local expected facts such as order ID, amount, currency, and stored security token.
+
+1. Nexi sends a JSON notification to `/api/webhooks/nexi`.
+2. The route validates the official notification envelope and requires `operation.orderId`.
+3. The route inserts or checks `webhook_events.event_id` for dedupe, using the optional `eventId` or a deterministic derived identity.
 4. The route loads `payment_orders` by `operation.orderId`.
-5. The route verifies `securityToken` against the stored payment order token.
-6. The route updates payment state:
+5. If notification `securityToken` is present, the route compares it against the stored payment order token.
+6. The route calls `NexiService.verifyPaymentOutcome` / Nexi `GET /orders/{orderId}`; the unverified notification status is not authoritative.
+7. The route updates payment state from verified provider facts:
    - successful terminal result -> `payment_status = paid`, set `paid_at`
    - failed/cancelled/expired terminal result -> corresponding failed status and `failure_code`
-7. If paid and `fulfillment_status = not_started`, fulfillment runs.
-8. Fulfillment loads the Dotypos customer by `dotypos_customer_id`.
-9. Fulfillment reads `checkout_details` from Postgres.
-10. Fulfillment generates the access code through the access-code service. Initially this returns `8529`.
-11. Fulfillment creates the Dotypos reservation and staff note.
-12. Fulfillment stores `dotypos_reservation_id` and `reservation_created_at`.
-13. Fulfillment stubs the customer access email and internal `workspace@deskohub.cz` notification.
-14. Fulfillment stores the corresponding email timestamps when those stubs become real sends.
-15. Fulfillment sets `fulfillment_status = fulfilled` and `fulfilled_at`.
-16. If fulfillment fails after payment, set `fulfillment_status = failed`, `fulfillment_failed_at`, and `fulfillment_failure_code` so the operation can be retried or fixed manually.
+8. If paid and `fulfillment_status = not_started` or `failed`, fulfillment claims the order by setting `fulfillment_status = processing`.
+9. `processing` is an internal claim/lease state used to prevent concurrent paid fulfillment workers from duplicating reservation or notification work.
+10. Fulfillment loads the Dotypos customer by `dotypos_customer_id`.
+11. Fulfillment reads `checkout_details` from Postgres.
+12. Fulfillment generates the access code through the access-code service. Initially this returns `8529`.
+13. Fulfillment creates the Dotypos reservation and staff note.
+14. Fulfillment stores `dotypos_reservation_id` and `reservation_created_at`.
+15. Fulfillment stubs the customer access email and internal `workspace@deskohub.cz` notification.
+16. Fulfillment stores the corresponding email timestamps when those stubs become real sends.
+17. Fulfillment sets `fulfillment_status = fulfilled` and `fulfilled_at`.
+18. If fulfillment fails after payment, set `fulfillment_status = failed`, `fulfillment_failed_at`, and `fulfillment_failure_code` so the operation can be retried or fixed manually.
 
 ## Recovery Semantics
 
@@ -303,6 +316,7 @@ If invisible metadata is added to the reservation note, it should describe the c
 | --- | --- | --- |
 | `payment_pending` | Nexi payment is not terminal yet | Wait for webhook or query Nexi order status |
 | `paid` + `not_started` | Payment confirmed, reservation not created | Run fulfillment |
+| `paid` + `processing` | Payment confirmed, fulfillment worker has claimed the order | Let the active fulfillment attempt finish or inspect if the lease is stale |
 | `paid` + `failed` | Payment confirmed, fulfillment failed | Retry fulfillment from `checkout_details` |
 | `paid` + `fulfilled` | Reservation/access flow completed | Ignore duplicate successful webhooks |
 | failed/cancelled/expired payment | No reservation should be created | No fulfillment |
