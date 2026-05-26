@@ -1,5 +1,5 @@
 {
-  "id": "5d1d6ccd-32ac-41ab-b93a-2b6f3dc85794",
+  "id": "d5ae8e78-b420-419a-940c-ecc532f226c2",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -218,7 +218,7 @@
         },
         "payment_orders_fulfillment_status_check": {
           "name": "payment_orders_fulfillment_status_check",
-          "value": "\"payment_orders\".\"fulfillment_status\" in ('not_started', 'fulfilled', 'failed')"
+          "value": "\"payment_orders\".\"fulfillment_status\" in ('not_started', 'processing', 'fulfilled', 'failed')"
         },
         "payment_orders_paid_at_check": {
           "name": "payment_orders_paid_at_check",
