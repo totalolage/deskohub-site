@@ -50,6 +50,7 @@ const toCheckoutStatusKind = (
         return "fulfilled";
       case "failed":
         return "fulfillment_failed";
+      case "processing":
       case "not_started":
         return "paid_waiting_fulfillment";
     }

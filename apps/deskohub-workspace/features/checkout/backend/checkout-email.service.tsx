@@ -1,4 +1,3 @@
-import { escapeHtml } from "@deskohub/email/backend/escaping";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
 import {
   EmailConfigTag,
@@ -21,7 +20,9 @@ import { type Locale, m } from "@/features/i18n";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
-  renderWorkspaceEmailRowsHtml,
+  renderWorkspaceEmailHtml,
+  WorkspaceEmailRow,
+  WorkspaceEmailRows,
 } from "@/shared/backend/email/rendering";
 import { workspaceSiteConstants } from "@/shared/utils";
 
@@ -146,24 +147,58 @@ const createCustomerAccessMessage = (
     from,
     to: input.customer,
     subject: m.checkoutEmailCustomerAccessSubject({}, { locale: input.locale }),
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0b1848;">
-        <h2 style="color: #0b1848;">${escapeHtml(heading)}</h2>
-        <p>${escapeHtml(body)}</p>
-        <div style="background: #f4f1ea; border-radius: 16px; padding: 20px; margin: 20px 0;">
-          <p style="margin: 0 0 8px;"><strong>${escapeHtml(accessCodeLabel)}</strong></p>
-          <p style="font-size: 32px; letter-spacing: 0.2em; margin: 0;">${escapeHtml(accessCode)}</p>
+    html: renderWorkspaceEmailHtml(
+      <div
+        style={{
+          fontFamily: "Arial, sans-serif",
+          maxWidth: "640px",
+          margin: "0 auto",
+          color: "#0b1848",
+        }}
+      >
+        <h2 style={{ color: "#0b1848" }}>{heading}</h2>
+        <p>{body}</p>
+        <div
+          style={{
+            background: "#f4f1ea",
+            borderRadius: "16px",
+            padding: "20px",
+            margin: "20px 0",
+          }}
+        >
+          <p style={{ margin: "0 0 8px" }}>
+            <strong>{accessCodeLabel}</strong>
+          </p>
+          <p style={{ fontSize: "32px", letterSpacing: "0.2em", margin: 0 }}>
+            {accessCode}
+          </p>
         </div>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-          ${renderWorkspaceEmailRowsHtml(rows)}
-          <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;"><strong>${escapeHtml(reservationIdLabel)}:</strong></td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;">${escapeHtml(input.dotyposReservationId)}</td>
-          </tr>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            marginTop: "16px",
+          }}
+        >
+          <tbody>
+            <WorkspaceEmailRows rows={rows} />
+            <tr>
+              <td
+                style={{ padding: "8px 0", borderBottom: "1px solid #e6e9f3" }}
+              >
+                <strong>{reservationIdLabel}:</strong>
+              </td>
+              <td
+                style={{ padding: "8px 0", borderBottom: "1px solid #e6e9f3" }}
+              >
+                {input.dotyposReservationId}
+              </td>
+            </tr>
+          </tbody>
         </table>
-        <p style="margin-top: 20px; color: #4f587c;">${escapeHtml(note)}</p>
+        <p style={{ marginTop: "20px", color: "#4f587c" }}>{note}</p>
       </div>
-    `,
+    ),
     text: [
       heading,
       "",
@@ -227,28 +262,37 @@ const createInternalPaidReservationMessage = (
       { orderId: input.orderId },
       { locale: input.locale }
     ),
-    html: `
-      <div style="font-family: Arial, sans-serif; max-width: 640px; margin: 0 auto; color: #0b1848;">
-        <h2 style="color: #0b1848;">${escapeHtml(heading)}</h2>
-        <p>${escapeHtml(intro)}</p>
-        <table style="width: 100%; border-collapse: collapse; margin-top: 16px;">
-          <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;"><strong>${escapeHtml(orderIdLabel)}:</strong></td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;">${escapeHtml(input.orderId)}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;"><strong>${escapeHtml(reservationIdLabel)}:</strong></td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;">${escapeHtml(input.dotyposReservationId)}</td>
-          </tr>
-          <tr>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;"><strong>${escapeHtml(accessCodeLabel)}:</strong></td>
-            <td style="padding: 8px 0; border-bottom: 1px solid #e6e9f3;">${escapeHtml(accessCode)}</td>
-          </tr>
-          ${renderWorkspaceEmailRowsHtml(rows)}
+    html: renderWorkspaceEmailHtml(
+      <div
+        style={{
+          fontFamily: "Arial, sans-serif",
+          maxWidth: "640px",
+          margin: "0 auto",
+          color: "#0b1848",
+        }}
+      >
+        <h2 style={{ color: "#0b1848" }}>{heading}</h2>
+        <p>{intro}</p>
+        <table
+          style={{
+            width: "100%",
+            borderCollapse: "collapse",
+            marginTop: "16px",
+          }}
+        >
+          <tbody>
+            <WorkspaceEmailRow label={orderIdLabel} value={input.orderId} />
+            <WorkspaceEmailRow
+              label={reservationIdLabel}
+              value={input.dotyposReservationId}
+            />
+            <WorkspaceEmailRow label={accessCodeLabel} value={accessCode} />
+            <WorkspaceEmailRows rows={rows} />
+          </tbody>
         </table>
-        <p style="margin-top: 20px; color: #4f587c;">${escapeHtml(note)}</p>
+        <p style={{ marginTop: "20px", color: "#4f587c" }}>{note}</p>
       </div>
-    `,
+    ),
     text: [
       heading,
       "",
@@ -299,16 +343,7 @@ export const WorkspaceCheckoutEmailServiceLive = Layer.effect(
             )
           );
         },
-        (effect, input) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              orderId: input.orderId,
-              locale: input.locale,
-              reservationDate: input.booking.date,
-              entryTier: input.booking.tier,
-              dotyposReservationId: input.dotyposReservationId,
-            })
-          )
+        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       ),
       sendInternalPaidReservationEmail: Effect.fn(
         "workspaceCheckoutEmail.sendInternalPaidReservationEmail"

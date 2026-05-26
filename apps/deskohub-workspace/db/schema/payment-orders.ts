@@ -20,6 +20,7 @@ export const paymentStatuses = [
 
 export const fulfillmentStatuses = [
   "not_started",
+  "processing",
   "fulfilled",
   "failed",
 ] as const;
@@ -84,7 +85,7 @@ export const paymentOrders = pgTable(
     ),
     check(
       "payment_orders_fulfillment_status_check",
-      sql`${t.fulfillmentStatus} in ('not_started', 'fulfilled', 'failed')`
+      sql`${t.fulfillmentStatus} in ('not_started', 'processing', 'fulfilled', 'failed')`
     ),
     check(
       "payment_orders_paid_at_check",

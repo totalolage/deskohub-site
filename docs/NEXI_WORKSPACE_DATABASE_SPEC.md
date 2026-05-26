@@ -17,7 +17,7 @@ The database must support these operational needs:
 
 - Persist a pending checkout intent without storing customer name, email, or phone as local columns.
 - Link each checkout to the Dotypos customer created or reused before payment.
-- Store the Nexi security token needed to validate webhook authenticity for the order.
+- Store the Nexi security token returned during hosted payment page creation so notifications that include a token can be compared before provider verification.
 - Deduplicate Nexi webhook deliveries.
 - Track stable payment and fulfillment states for recovery and retries.
 - Preserve legal acceptance evidence through document hashes inside `checkout_details`.
@@ -32,7 +32,7 @@ The database is not a CRM, reservation system, or raw webhook archive. It should
 | Customer name, email, phone | Dotypos customer | Store only `dotypos_customer_id` locally. Do not add separate PII columns. |
 | Pending reservation details | Local Postgres DB | Store in `payment_orders.checkout_details` as `jsonb`. |
 | Payment page/session state | Nexi and local DB | Store local order ID, payment status, operation IDs/statuses, and `security_token`. |
-| Raw Nexi webhook payloads | Nexi/logging if needed | Do not store raw payloads in the database. |
+| Raw Nexi notification payloads | Nexi | Do not store raw payloads or sensitive optional notification extras in the database or application logs. |
 | Webhook dedupe state | Local Postgres DB | Store normalized event identity and processing result in `webhook_events`. |
 | Final reservation | Dotypos reservation | Store only `dotypos_reservation_id` and fulfillment timestamps locally. |
 | Access/email fulfillment state | Local Postgres DB | Store stable sent/completed/failure timestamps. |
@@ -65,7 +65,7 @@ Additional operational tables are not required for the first implementation. Avo
 | `dotypos_customer_id` | text | yes | Dotypos customer record that owns the customer PII. |
 | `dotypos_reservation_id` | text | no | Dotypos reservation created after successful payment. Null before fulfillment creates it. |
 | `correlation_id` | text | yes | Unique cross-system tracing ID for logs and support. |
-| `security_token` | text | no | Nexi security token returned during hosted payment page creation. Required for webhook verification after session attach. |
+| `security_token` | text | no | Nexi security token returned during hosted payment page creation. Required for `GET /orders/{orderId}` outcome verification and used to compare notification `securityToken` when Nexi supplies one. |
 | `checkout_details` | jsonb | yes | Pending booking details and legal evidence needed for post-payment reservation creation. Must not contain customer PII. |
 | `payment_status` | text/enum | yes | Stable payment state. |
 | `fulfillment_status` | text/enum | yes | Stable post-payment fulfillment state. |
@@ -99,6 +99,7 @@ Additional operational tables are not required for the first implementation. Avo
 `fulfillment_status`:
 
 - `not_started`: no post-payment fulfillment has completed.
+- `processing`: internal claim/lease state for a paid fulfillment worker; used to prevent concurrent workers from duplicating reservation or notification work.
 - `fulfilled`: Dotypos reservation and required notifications/access work are complete.
 - `failed`: payment succeeded, but fulfillment failed and needs retry/manual repair.
 
@@ -156,7 +157,7 @@ create table payment_orders (
     )
   ),
   fulfillment_status text not null check (
-    fulfillment_status in ('not_started', 'fulfilled', 'failed')
+    fulfillment_status in ('not_started', 'processing', 'fulfilled', 'failed')
   ),
   last_webhook_event_id text null,
   last_provider_operation_id text null,
@@ -186,7 +187,13 @@ create index payment_orders_dotypos_reservation_idx
 
 ## Table: `webhook_events`
 
-`webhook_events` exists for Nexi webhook deduplication and normalized processing status. It must not store raw webhook payloads.
+`webhook_events` exists for Nexi webhook deduplication and normalized processing status. It must not store raw notification payloads or sensitive optional notification extras.
+
+Nexi's official notification API body is a JSON object with optional top-level `eventId`, `eventTime`, `securityToken`, and `operation` fields. Workspace processing requires `operation.orderId` to associate the notification with `payment_orders.id`. The operation fields used by the application are `operationId`, `operationType`, `operationResult`, `operationTime`, `operationAmount`, and `operationCurrency`.
+
+Nexi may include sensitive optional data such as `customerInfo`, payment instrument details, warnings, and `additionalData`; those values are outside the local database contract and must not be persisted as raw payload data. `eventId` is optional. When absent, derive a deterministic event identity from non-secret operation fields and event/operation time. `securityToken` is optional in the notification API schema, although HPP progress-notification docs describe it as present; compare it with the stored token if supplied, but still verify final payment state through Nexi `GET /orders/{orderId}`.
+
+Notifications are triggers, not authoritative payment-state sources. Do not model flat local webhook shapes such as a top-level `orderId`, `order.orderId`, or `payment.orderId`; the supported association field is the official `operation.orderId`. Do not claim or depend on signature, MAC, or special header validation unless Nexi documents and implementation add it later.
 
 ### Logical Columns
 
@@ -344,7 +351,9 @@ After Nexi hosted payment page creation succeeds:
 
 ### Payment Terminal States
 
-Webhook processing may transition payment state to:
+Webhook processing may transition payment state only after `NexiService.verifyPaymentOutcome` verifies the outcome through Nexi `GET /orders/{orderId}` and local expected facts. The notification's `operationResult` is useful context but is not authoritative by itself.
+
+Verified webhook-triggered processing may transition payment state to:
 
 - `paid`, with `paid_at`, `last_provider_operation_id`, and `last_provider_status` set.
 - `payment_failed`, `cancelled`, or `expired`, with `failure_code` when available.
@@ -357,6 +366,8 @@ Fulfillment is allowed only when:
 
 - `payment_status = 'paid'`
 - `fulfillment_status = 'not_started'` or `fulfillment_status = 'failed'` for retry
+
+Before performing external fulfillment work, a worker should atomically claim the order by changing `fulfillment_status` to `processing`. `processing` is an internal claim/lease state for paid fulfillment concurrency; it is not a customer-facing outcome.
 
 Successful fulfillment should set:
 
@@ -373,7 +384,7 @@ If fulfillment fails after payment succeeds, set:
 - `fulfillment_failed_at`
 - `fulfillment_failure_code`
 
-Do not use database rows to track transient in-function steps such as "currently creating reservation" unless a future concurrent-worker design requires explicit locking or leases.
+Do not add separate database rows to track transient in-function steps such as "currently creating reservation" unless a future concurrent-worker design requires additional locking or leases beyond `fulfillment_status = 'processing'`.
 
 ## Recovery Queries
 
@@ -383,6 +394,7 @@ The implementation should make these operational queries easy:
 | --- | --- | --- |
 | Payment pending too long | `payment_status = 'payment_pending'` | Wait, show pending status, or query Nexi order status. |
 | Paid but not fulfilled | `payment_status = 'paid' and fulfillment_status = 'not_started'` | Run fulfillment. |
+| Paid fulfillment in progress | `payment_status = 'paid' and fulfillment_status = 'processing'` | Let the active fulfillment attempt finish or inspect if the claim is stale. |
 | Paid but fulfillment failed | `payment_status = 'paid' and fulfillment_status = 'failed'` | Retry fulfillment from `checkout_details` or repair manually. |
 | Fulfilled order | `payment_status = 'paid' and fulfillment_status = 'fulfilled'` | Ignore duplicate successful webhooks. |
 | Reservation exists but emails incomplete | `dotypos_reservation_id is not null` plus null email timestamp | Send only the missing emails. |
@@ -494,7 +506,7 @@ Recommended behavior:
 
 - Insert `webhook_events.event_id` using an atomic unique constraint/upsert.
 - Load and update the related `payment_orders` row inside a transaction when applying payment state.
-- Use guarded updates for fulfillment transitions, for example update only when `payment_status = 'paid'` and `fulfillment_status in ('not_started', 'failed')`.
+- Use guarded updates for fulfillment transitions, for example claim work only when `payment_status = 'paid'` and `fulfillment_status in ('not_started', 'failed')`, then require `fulfillment_status = 'processing'` for fulfillment side-effect markers and completion.
 - Avoid creating a second Dotypos reservation if `dotypos_reservation_id` is already set.
 - Treat email timestamp columns as idempotency markers for notification sends.
 
@@ -505,7 +517,7 @@ External side effects, such as Dotypos reservation creation and email sends, can
 Privacy constraints are part of the database contract:
 
 - Do not add local columns for customer name, email, or phone.
-- Do not store raw Nexi webhook payloads.
+- Do not store or log raw Nexi notification payloads, notification `securityToken`, `customerInfo`, payment instrument details, warnings, or `additionalData`.
 - Do not store full Workspace customer or reservation details in Nexi `customField`.
 - Keep reservation/customer PII in Dotypos.
 - Store legal evidence as document paths and hashes, not full rendered legal documents.
@@ -533,6 +545,6 @@ The initial database implementation does not need to provide:
 - Implement repository methods as state transitions rather than generic writes.
 - Validate `CheckoutDetailsJson` before insert and before fulfillment.
 - Ensure checkout creation stores Dotypos customer ID but not customer PII.
-- Ensure Nexi webhook handling verifies `security_token` against the stored order token.
+- Ensure Nexi webhook handling compares notification `securityToken` against the stored order token when present, and always verifies the final outcome through Nexi `GET /orders/{orderId}` before applying payment state.
 - Ensure Dotypos reservation creation happens only after `payment_status = 'paid'`.
 - Ensure duplicate webhooks and retry attempts do not duplicate reservations or notifications.
