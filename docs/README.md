@@ -16,6 +16,7 @@ This directory contains project docs for architecture, integrations, and operati
 - [`dotypos-reservations-integration.md`](./dotypos-reservations-integration.md) - Reservation-specific Dotypos capabilities and limitations.
 - [`NEXI_WORKSPACE_CHECKOUT_MODEL.md`](./NEXI_WORKSPACE_CHECKOUT_MODEL.md) - Workspace Nexi checkout storage model and post-payment reservation flow.
 - [`NEXI_WORKSPACE_DATABASE_SPEC.md`](./NEXI_WORKSPACE_DATABASE_SPEC.md) - Database handoff specification for Workspace Nexi checkout implementation.
+- [`WORKSPACE_VERCEL_PREVIEW_E2E.md`](./WORKSPACE_VERCEL_PREVIEW_E2E.md) - Preview deployment and Nexi payment/notification E2E checklist.
 - [`WEBHOOK_TESTING.md`](./WEBHOOK_TESTING.md) - Local/dev webhook testing workflow.
 - [`RESEND_SETUP.md`](./RESEND_SETUP.md) - Email provider setup and provider-selection behavior.
 
