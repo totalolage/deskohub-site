@@ -251,7 +251,21 @@ export const CheckoutServiceLive = Layer.effect(
               order.id,
               "cancelled"
             ),
-          });
+          }).pipe(
+            Effect.tapError(() =>
+              paymentOrders.deleteUnassociatedCreated(order.id).pipe(
+                Effect.catchAll((cleanupError) =>
+                  Effect.logError(
+                    "Failed to delete unassociated payment order after Nexi checkout failure",
+                    {
+                      orderId: order.id,
+                      cleanupError,
+                    }
+                  )
+                )
+              )
+            )
+          );
 
           yield* paymentOrders.attachNexiSession({
             id: order.id,
