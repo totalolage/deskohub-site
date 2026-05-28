@@ -46,6 +46,9 @@ export interface PaymentOrderRepository {
     readonly correlationId: string;
     readonly checkoutDetails: PaymentOrderCheckoutDetailsCreateInput;
   }) => Effect.Effect<PaymentOrder, DatabaseError>;
+  readonly deleteUnassociatedCreated: (
+    id: string
+  ) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
   readonly attachNexiSession: (input: {
     readonly id: string;
     readonly securityToken: string;
@@ -279,6 +282,37 @@ export const PaymentOrderRepositoryLive = Layer.effect(
           });
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      deleteUnassociatedCreated: Effect.fn(
+        "paymentOrders.deleteUnassociatedCreated"
+      )(
+        function* (id) {
+          const deleted = yield* runDb(
+            "paymentOrders.deleteUnassociatedCreated",
+            () =>
+              db
+                .delete(paymentOrders)
+                .where(
+                  and(
+                    eq(paymentOrders.id, id),
+                    eq(paymentOrders.paymentStatus, "created"),
+                    isNull(paymentOrders.securityToken),
+                    isNull(paymentOrders.lastProviderOperationId),
+                    isNull(paymentOrders.lastProviderStatus)
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            deleted,
+            "paymentOrders.deleteUnassociatedCreated",
+            id,
+            "Only unassociated created orders can be deleted"
+          );
+        },
+        (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
       ),
 
       attachNexiSession: Effect.fn("paymentOrders.attachNexiSession")(
