@@ -1,6 +1,8 @@
 {
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
   "globalDependencies": [".env", ".env.local"],
+  "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
+  "globalPassThroughEnv": ["VERCEL", "VERCEL_*", "!VERCEL_ENV"],
   "tasks": {
     "deskohub-workspace#build": {
       "env": ["CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "EMAIL_API_KEY"]

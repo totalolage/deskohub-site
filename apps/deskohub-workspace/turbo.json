@@ -9,7 +9,6 @@
         "i18n:compile"
       ],
       "env": [
-        "NODE_ENV",
         "DOTYPOS_CLIENT_ID",
         "DOTYPOS_CLIENT_SECRET",
         "DOTYPOS_REFRESH_TOKEN",
@@ -22,9 +21,6 @@
         "EMAIL_API_KEY",
         "NEXI_API_KEY",
         "NEXI_API_ORIGIN",
-        "VERCEL_ENV",
-        "VERCEL_PROJECT_PRODUCTION_URL",
-        "VERCEL_URL",
         "CLOUDINARY_API_KEY",
         "CLOUDINARY_API_SECRET",
         "DATABASE_URL",
@@ -37,6 +33,25 @@
         "@deskohub/dotypos#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
+      ],
+      "passThroughEnv": [
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "DATABASE_URL",
+        "DOTYPOS_API_TIMEOUT",
+        "DOTYPOS_API_URL",
+        "DOTYPOS_BRANCH_ID",
+        "DOTYPOS_CLIENT_ID",
+        "DOTYPOS_CLIENT_SECRET",
+        "DOTYPOS_CLOUD_ID",
+        "DOTYPOS_EMPLOYEE_ID",
+        "DOTYPOS_REFRESH_TOKEN",
+        "DOTYPOS_WEBHOOK_SECRET",
+        "EMAIL_API_KEY",
+        "NEXI_API_KEY",
+        "NEXI_API_ORIGIN",
+        "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
+        "NEXT_PUBLIC_GTM_ID"
       ]
     },
     "typecheck": {
