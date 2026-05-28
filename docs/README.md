@@ -11,14 +11,17 @@ This directory contains project docs for architecture, integrations, and operati
 
 ## Integration Guides
 
-- [`dotypos-openapi-integration.md`](./dotypos-openapi-integration.md) - OpenAPI client generation and Dotypos service architecture.
-- [`dotypos-simple-integration.md`](./dotypos-simple-integration.md) - High-level reservation flow from table reservation action to Dotypos.
-- [`dotypos-reservations-integration.md`](./dotypos-reservations-integration.md) - Reservation-specific Dotypos capabilities and limitations.
-- [`NEXI_WORKSPACE_CHECKOUT_MODEL.md`](./NEXI_WORKSPACE_CHECKOUT_MODEL.md) - Workspace Nexi checkout storage model and post-payment reservation flow.
-- [`NEXI_WORKSPACE_DATABASE_SPEC.md`](./NEXI_WORKSPACE_DATABASE_SPEC.md) - Database handoff specification for Workspace Nexi checkout implementation.
-- [`WORKSPACE_VERCEL_PREVIEW_E2E.md`](./WORKSPACE_VERCEL_PREVIEW_E2E.md) - Preview deployment and Nexi payment/notification E2E checklist.
-- [`WEBHOOK_TESTING.md`](./WEBHOOK_TESTING.md) - Local/dev webhook testing workflow.
-- [`RESEND_SETUP.md`](./RESEND_SETUP.md) - Email provider setup and provider-selection behavior.
+- [`../packages/dotypos/docs/OPENAPI_INTEGRATION.md`](../packages/dotypos/docs/OPENAPI_INTEGRATION.md) - OpenAPI client generation and Dotypos package service architecture.
+- [`../packages/dotypos/docs/REFRESH_TOKEN.md`](../packages/dotypos/docs/REFRESH_TOKEN.md) - Dotypos Connector v2 refresh-token acquisition flow.
+- [`../apps/deskohub-boardgame-bar/docs/DOTYPOS_SIMPLE_INTEGRATION.md`](../apps/deskohub-boardgame-bar/docs/DOTYPOS_SIMPLE_INTEGRATION.md) - Boardgame Bar reservation flow from table reservation action to Dotypos.
+- [`../apps/deskohub-boardgame-bar/docs/DOTYPOS_RESERVATIONS_INTEGRATION.md`](../apps/deskohub-boardgame-bar/docs/DOTYPOS_RESERVATIONS_INTEGRATION.md) - Boardgame Bar Dotypos reservation capabilities and limitations.
+- [`../apps/deskohub-workspace/docs/NEXI_WORKSPACE_CHECKOUT_MODEL.md`](../apps/deskohub-workspace/docs/NEXI_WORKSPACE_CHECKOUT_MODEL.md) - Workspace Nexi checkout storage model and post-payment reservation flow.
+- [`../apps/deskohub-workspace/docs/NEXI_WORKSPACE_DATABASE_SPEC.md`](../apps/deskohub-workspace/docs/NEXI_WORKSPACE_DATABASE_SPEC.md) - Database handoff specification for Workspace Nexi checkout implementation.
+- [`../apps/deskohub-workspace/docs/WORKSPACE_DATABASE_IMPL.md`](../apps/deskohub-workspace/docs/WORKSPACE_DATABASE_IMPL.md) - Workspace database implementation handoff and architecture notes.
+- [`../packages/nexi/docs/TESTING_API.md`](../packages/nexi/docs/TESTING_API.md) - Nexi XPay CEE sandbox API origin, test keys, accounting terminal behavior, and test cards.
+- [`../apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md`](../apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md) - Preview deployment and Nexi payment/notification E2E checklist.
+- [`../apps/deskohub-boardgame-bar/docs/WEBHOOK_TESTING.md`](../apps/deskohub-boardgame-bar/docs/WEBHOOK_TESTING.md) - Boardgame Bar local/dev reservation webhook testing workflow.
+- [`../apps/deskohub-boardgame-bar/docs/RESEND_SETUP.md`](../apps/deskohub-boardgame-bar/docs/RESEND_SETUP.md) - Boardgame Bar email provider setup and provider-selection behavior.
 
 ## Environment Notes
 
