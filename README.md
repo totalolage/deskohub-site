@@ -19,7 +19,7 @@ A modern web application for DeskohHub, featuring table reservations, workspace 
 Comprehensive documentation is available in the `/docs` directory:
 
 - **[Project Structure](./docs/PROJECT_STRUCTURE.md)** - Understanding our feature-based architecture
-- **[Designer Integration](./docs/DESIGNER_PAGE_INTEGRATION.md)** - Guide for integrating design exports
+- **[Documentation Index](./docs/README.md)** - Architecture, integration, and operational docs
 - **[Best Practices](./docs/BEST_PRACTICES.md)** - Coding standards and conventions
 
 ## 🛠️ Tech Stack

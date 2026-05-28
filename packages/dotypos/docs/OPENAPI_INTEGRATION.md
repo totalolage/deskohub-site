@@ -4,22 +4,23 @@
 
 Dotypos integration is OpenAPI-first and layered:
 
-1. OpenAPI schema (`features/dotypos/openapi/dotypos-api.yaml`)
-2. Generated client/types (`features/dotypos/generated/*`)
-3. Effect service layer (`features/dotypos/backend/service.ts`)
-4. Consumption by feature actions/routes (`table-reservation`, reservation webhooks, menu reads)
+1. OpenAPI schema (`openapi/dotypos-api.yaml`)
+2. Generated client/types (`src/generated/*`)
+3. Effect service layer (`src/backend/service.ts`)
+4. Consumption by app feature actions/routes through `@deskohub/dotypos`
 
 ## Directory Layout
 
 ```text
-features/dotypos/
+packages/dotypos/
 |- openapi/
 |  |- dotypos-api.yaml
 |  `- openapi-ts.config.ts
-|- generated/
-|- backend/
-|- utils/
-`- index.ts
+`- src/
+   |- generated/
+   |- backend/
+   |- utils/
+   `- index.ts
 ```
 
 ## Code Generation
@@ -27,17 +28,17 @@ features/dotypos/
 Regenerate Dotypos client code with:
 
 ```bash
-bun run dotypos:generate
+bun run generate:dotypos
 ```
 
-(`package.json` script currently runs `cd features/dotypos/openapi && bunx openapi-ts`.)
+The root script runs the package `generate` script for `@deskohub/dotypos`.
 
 ## Service Usage
 
 Import from feature public API:
 
 ```ts
-import { DotyposService } from "@/features/dotypos";
+import { DotyposService } from "@deskohub/dotypos";
 ```
 
 Provide the default layer where needed:
@@ -56,4 +57,4 @@ DotyposService.Default
 - `DOTYPOS_CLOUD_ID`
 - `DOTYPOS_EMPLOYEE_ID`
 
-All are validated in `env.ts`.
+Apps validate these values in their own `env.ts` / config layers and pass them to `@deskohub/dotypos`.

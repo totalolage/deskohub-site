@@ -41,7 +41,7 @@ User-supplied values:
 
 Known/defaultable values:
 
-- `NEXI_API_ORIGIN`: `https://xpaysandbox.nexigroup.com` for Nexi sandbox.
+- `NEXI_API_ORIGIN`: `https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp` for Nexi sandbox. See [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md) for test keys, accounting terminal behavior, and test cards.
 - `DOTYPOS_API_URL`: Dotypos API origin for the configured account.
 - `DOTYPOS_API_TIMEOUT`: `30000` unless a different timeout is required.
 - `VERCEL_ENV`, `VERCEL_URL`, `VERCEL_PROJECT_PRODUCTION_URL`: provided by Vercel on deployments. Local values are deployment stand-ins only because callback config builds `https://${url}`; local Nexi HPP callbacks need a real HTTPS URL reachable by Nexi, or use a Vercel preview deployment.
