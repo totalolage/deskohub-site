@@ -12,10 +12,13 @@ export const workspaceServerEnvSchema = z.object({
   DOTYPOS_CLOUD_ID: z.string(),
   DOTYPOS_EMPLOYEE_ID: z.string(),
   DOTYPOS_REFRESH_TOKEN: z.string(),
+  WORKSPACE_DOTYPOS_TABLE_ID: z.string(),
   EMAIL_API_KEY: z.string().optional(),
   NEXI_API_KEY: z.string(),
   NEXI_API_ORIGIN: z.url(),
+  NEXI_CHECKOUT_CURRENCY_OVERRIDE: z.enum(["EUR"]).optional(),
   VERCEL_ENV: z.enum(["production", "preview", "development"]),
+  VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
   VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
   VERCEL_URL: z.string().optional(),
 });
