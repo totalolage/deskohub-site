@@ -177,6 +177,7 @@ export const getNexiPaymentMetadata = (
 
 export interface CreateHostedPaymentPageInput {
   readonly orderId: string;
+  readonly correlationId: string;
   /** Integer minor-unit/scaled amount string, e.g. "5000" for 50.00. */
   readonly amount: string;
   readonly currency: NexiCurrency;

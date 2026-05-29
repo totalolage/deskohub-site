@@ -19,12 +19,16 @@ export class NexiApi extends Effect.Service<NexiApi>()("NexiApi", {
 
     return {
       createHostedPaymentPage: Effect.fn("createHostedPaymentPage")(
-        function* (params: { body: CreateHostedPaymentPageRequest }) {
+        function* (params: {
+          body: CreateHostedPaymentPageRequest;
+          headers?: Record<string, string>;
+        }) {
           return yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.createHostedPaymentPage(
                 createApiOptions(config, client, {
                   body: params.body,
+                  headers: params.headers,
                 })
               );
 
@@ -65,6 +69,14 @@ export class NexiApi extends Effect.Service<NexiApi>()("NexiApi", {
 }) {}
 
 const ErrorResponseSchema = Schema.Struct({
+  errors: Schema.optional(
+    Schema.Array(
+      Schema.Struct({
+        code: Schema.optional(Schema.String),
+        description: Schema.optional(Schema.String),
+      })
+    )
+  ),
   status: Schema.optional(Schema.Int),
   error: Schema.optional(Schema.String),
   message: Schema.optional(Schema.String),
@@ -95,13 +107,13 @@ const transformErrorResponse = (
 
   const parseResult = Schema.decodeUnknownOption(ErrorResponseSchema)(error);
   if (parseResult._tag === "Some") {
-    const { status, error: errorCode, message } = parseResult.value;
+    const { errors, status, error: errorCode, message } = parseResult.value;
     return new ExternalAPIError({
       service: "Nexi",
       operation,
       statusCode: status ?? 500,
-      message,
-      cause: errorCode,
+      message: message ?? errors?.[0]?.description,
+      cause: errors ?? errorCode,
     });
   }
 
