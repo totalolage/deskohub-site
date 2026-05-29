@@ -6,7 +6,7 @@ export type Locale = (typeof locales)[number];
 
 export const nexiMinorUnitExponent = 2;
 
-export const NexiCurrencySchema = Schema.Literal("CZK").annotations({
+export const NexiCurrencySchema = Schema.Literal("CZK", "EUR").annotations({
   identifier: "NexiCurrency",
   description:
     "Nexi amount currency code. Supported settlement currencies depend on the merchant configuration.",
@@ -195,6 +195,7 @@ export interface HostedPaymentPageSession {
 
 export interface VerifyPaymentOutcomeInput {
   readonly orderId: string;
+  readonly correlationId: string;
   /** Integer minor-unit/scaled amount string, matching the submitted order amount. */
   readonly amount: string;
   readonly currency?: NexiCurrency;

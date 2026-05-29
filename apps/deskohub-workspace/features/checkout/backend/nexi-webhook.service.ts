@@ -5,6 +5,7 @@ import {
   decodeNexiWebhookNotification,
   deriveNexiWebhookEventIdentity,
   getNexiPaymentMetadata,
+  type NexiCurrency,
   NexiService,
   type PaymentVerificationResult,
 } from "@deskohub/nexi";
@@ -136,7 +137,7 @@ const getExpectedNexiAmount: (input: {
   readonly eventId: string;
   readonly webhookEvents: WebhookEventRepository;
 }) => Effect.Effect<
-  { readonly amount: string; readonly currency: "CZK" },
+  { readonly amount: string; readonly currency: NexiCurrency },
   NexiWebhookProcessingError
 > = Effect.fn("nexiWebhook.getExpectedNexiAmount")(
   function* (input) {
@@ -223,6 +224,7 @@ const verifyPayment: (input: {
       return yield* input.nexi
         .verifyPaymentOutcome({
           orderId: input.order.id,
+          correlationId: input.order.correlationId,
           amount: expectedAmount.amount,
           currency: expectedAmount.currency,
           securityToken: input.order.securityToken,
@@ -395,6 +397,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             .insertReceived({
               id: randomUUID(),
               eventId,
+              paymentOrderId: orderId,
               receivedAt: new Date(),
             })
             .pipe(

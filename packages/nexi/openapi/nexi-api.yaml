@@ -113,6 +113,13 @@ components:
           type: string
           enum:
             - IMPLICIT
+        actionType:
+          type: string
+          enum:
+            - PAY
+            - VERIFY
+            - PURCHASE
+            - PREAUTH
     CreateHostedPaymentPageRequest:
       type: object
       required:
@@ -166,6 +173,7 @@ components:
         operationType:
           type: string
           enum:
+            - AUTHORIZATION
             - CAPTURE
         operationResult:
           type: string
@@ -183,12 +191,50 @@ components:
             - REFUNDED
         amount:
           $ref: "#/components/schemas/Amount"
+        operationAmount:
+          type: string
+          pattern: "^[0-9]+$"
+        operationCurrency:
+          type: string
+          minLength: 3
+          maxLength: 3
         securityToken:
           type: string
-    OrderResponse:
+        operationTime:
+          type: string
+    OrderStatusOrder:
       type: object
       required:
         - orderId
+        - amount
+        - currency
+      properties:
+        orderId:
+          type: string
+        amount:
+          type: string
+          pattern: "^[0-9]+$"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+    OrderStatus:
+      type: object
+      required:
+        - order
+      properties:
+        authorizedAmount:
+          type: string
+        capturedAmount:
+          type: string
+        lastOperationTime:
+          type: string
+        lastOperationType:
+          type: string
+        order:
+          $ref: "#/components/schemas/OrderStatusOrder"
+    OrderResponse:
+      type: object
       properties:
         orderId:
           type: string
@@ -197,7 +243,7 @@ components:
         securityToken:
           type: string
         orderStatus:
-          type: string
+          $ref: "#/components/schemas/OrderStatus"
         operations:
           type: array
           items:

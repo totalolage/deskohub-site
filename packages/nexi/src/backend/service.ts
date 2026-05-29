@@ -13,6 +13,8 @@ import { NexiApi } from "./api";
 
 const DEFAULT_PAYMENT_SERVICE = "CARDS";
 const DEFAULT_CAPTURE_TYPE = "IMPLICIT";
+const DEFAULT_ACTION_TYPE = "PAY";
+const AUTHORIZATION_OPERATION_TYPE = "AUTHORIZATION";
 const CAPTURE_OPERATION_TYPE = "CAPTURE";
 const EXECUTED_OPERATION_RESULT = "EXECUTED";
 
@@ -70,6 +72,7 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
             notificationUrl: input.notificationUrl,
             paymentService: DEFAULT_PAYMENT_SERVICE,
             captureType: DEFAULT_CAPTURE_TYPE,
+            actionType: DEFAULT_ACTION_TYPE,
           },
         };
 
@@ -92,33 +95,45 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
     const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
       function* (input: VerifyPaymentOutcomeInput) {
         const order = yield* api
-          .getOrder({ path: { orderId: input.orderId } })
+          .getOrder({
+            path: { orderId: input.orderId },
+            headers: { "Correlation-Id": input.correlationId },
+          })
           .pipe(Effect.retry(retryPolicy));
 
-        const captureOperation = order.operations?.find(
+        const providerOrder = order.orderStatus?.order;
+        const operations = order.operations ?? [];
+        const executedPaymentOperation = operations.find(
           (operation) =>
-            operation.operationType === CAPTURE_OPERATION_TYPE &&
+            isPaymentOperationType(operation.operationType) &&
             operation.operationResult === EXECUTED_OPERATION_RESULT
         );
-        const failedOperation = order.operations?.find((operation) =>
+        const failedOperation = operations.find((operation) =>
           isFailureStatus(operation.operationResult)
         );
-        const providerAmount = captureOperation?.amount ?? order.amount;
+        const providerAmount =
+          getOperationAmount(executedPaymentOperation) ?? providerOrder;
         const providerSecurityToken =
-          captureOperation?.securityToken ?? order.securityToken;
+          executedPaymentOperation?.securityToken ?? order.securityToken;
+        const providerOrderId = providerOrder?.orderId ?? order.orderId;
         const mismatches: Writeable<PaymentVerificationResult["mismatches"]> =
           [];
-        if (order.orderId !== input.orderId) mismatches.push("orderId");
+        if (providerOrderId !== input.orderId) mismatches.push("orderId");
         if (providerAmount?.amount !== input.amount) mismatches.push("amount");
         if (providerAmount?.currency !== input.currency)
           mismatches.push("currency");
-        if (providerSecurityToken !== input.securityToken)
+        if (providerSecurityToken && providerSecurityToken !== input.securityToken)
           mismatches.push("securityToken");
+
+        const providerStatus =
+          executedPaymentOperation?.operationResult ??
+          failedOperation?.operationResult ??
+          order.orderStatus?.lastOperationType;
 
         const status: PaymentOutcomeStatus = (() => {
           if (mismatches.length > 0) return "failure";
-          if (captureOperation) return "success";
-          if (failedOperation || isFailureStatus(order.orderStatus)) {
+          if (executedPaymentOperation) return "success";
+          if (failedOperation || isFailureStatus(providerStatus)) {
             return "failure";
           }
           return "pending";
@@ -127,11 +142,11 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
         return {
           status,
           provider: {
-            orderId: order.orderId,
+            orderId: providerOrderId ?? input.orderId,
             amount: providerAmount?.amount,
             currency: providerAmount?.currency,
-            orderStatus: order.orderStatus,
-            captureExecuted: Boolean(captureOperation),
+            orderStatus: providerStatus,
+            captureExecuted: Boolean(executedPaymentOperation),
           },
           mismatches,
         };
@@ -148,3 +163,24 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
 
 const isFailureStatus = (status: string | undefined) =>
   status ? failureOperationResults.has(status.toUpperCase()) : false;
+
+const isPaymentOperationType = (operationType: string | undefined) =>
+  operationType === AUTHORIZATION_OPERATION_TYPE ||
+  operationType === CAPTURE_OPERATION_TYPE;
+
+const getOperationAmount = (operation:
+  | {
+      readonly amount?: { readonly amount?: string; readonly currency?: string };
+      readonly operationAmount?: string;
+      readonly operationCurrency?: string;
+    }
+  | undefined) => {
+  if (!operation) return undefined;
+  if (operation.amount) return operation.amount;
+  if (!operation.operationAmount) return undefined;
+
+  return {
+    amount: operation.operationAmount,
+    currency: operation.operationCurrency,
+  };
+};
