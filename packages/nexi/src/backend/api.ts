@@ -48,12 +48,14 @@ export class NexiApi extends Effect.Service<NexiApi>()("NexiApi", {
 
       getOrder: Effect.fn("getOrder")(function* (params: {
         path: { orderId: string };
+        headers?: Record<string, string>;
       }) {
         return yield* Effect.tryPromise({
           try: async () => {
             const response = await generatedApi.getOrder(
               createApiOptions(config, client, {
                 path: params.path,
+                headers: params.headers,
               })
             );
 
