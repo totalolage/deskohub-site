@@ -1,0 +1,1 @@
+- Remove training room
