@@ -65,7 +65,7 @@ Additional operational tables are not required for the first implementation. Avo
 | `dotypos_customer_id` | text | yes | Dotypos customer record that owns the customer PII. |
 | `dotypos_reservation_id` | text | no | Dotypos reservation created after successful payment. Null before fulfillment creates it. |
 | `correlation_id` | text | yes | Unique cross-system tracing ID for logs and support. |
-| `security_token` | text | no | Nexi security token returned during hosted payment page creation. Required for `GET /orders/{orderId}` outcome verification and used to compare notification `securityToken` when Nexi supplies one. |
+| `security_token` | text | no | Nexi security token returned during hosted payment page creation. Used to compare notification/order `securityToken` when Nexi supplies one. CEE `GET /orders/{orderId}` does not always echo the token on successful payments, so token absence in the verified order response is not by itself a failed verification. |
 | `checkout_details` | jsonb | yes | Pending booking details and legal evidence needed for post-payment reservation creation. Must not contain customer PII. |
 | `payment_status` | text/enum | yes | Stable payment state. |
 | `fulfillment_status` | text/enum | yes | Stable post-payment fulfillment state. |
@@ -194,6 +194,8 @@ Nexi's official notification API body is a JSON object with optional top-level `
 Nexi may include sensitive optional data such as `customerInfo`, payment instrument details, warnings, and `additionalData`; those values are outside the local database contract and must not be persisted as raw payload data. `eventId` is optional. When absent, derive a deterministic event identity from non-secret operation fields and event/operation time. `securityToken` is optional in the notification API schema, although HPP progress-notification docs describe it as present; compare it with the stored token if supplied, but still verify final payment state through Nexi `GET /orders/{orderId}`.
 
 Notifications are triggers, not authoritative payment-state sources. Do not model flat local webhook shapes such as a top-level `orderId`, `order.orderId`, or `payment.orderId`; the supported association field is the official `operation.orderId`. Do not claim or depend on signature, MAC, or special header validation unless Nexi documents and implementation add it later.
+
+For implicit-accounting CEE hosted payments, successful order verification can return `operationType = AUTHORIZATION` and `operationResult = EXECUTED`, with both authorized and captured amounts populated. Database transitions should treat that as `payment_status = 'paid'` after expected order ID, amount, and currency checks pass.
 
 ### Logical Columns
 

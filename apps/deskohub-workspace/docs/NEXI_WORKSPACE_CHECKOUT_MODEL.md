@@ -271,6 +271,7 @@ If invisible metadata is added to the reservation note, it should describe the c
 6. The server calls Nexi `POST /orders/hpp`:
    - `order.orderId = payment_orders.id`
    - `order.customField` omitted or set to a short non-PII reference
+   - `paymentSession.actionType = PAY`
    - `paymentSession.notificationUrl` points to the Nexi webhook route
    - `paymentSession.resultUrl` points to a payment return/status page
 7. The server stores Nexi `securityToken` on the payment order.
@@ -287,7 +288,9 @@ The operation fields we use are `operationId`, `operationType`, `operationResult
 
 `eventId` is optional in the official schema. If Nexi omits it, derive a deterministic event identity from non-secret operation fields and event/operation time. `securityToken` is also optional in the notification API schema, although the HPP docs describe progress notifications with a `securityToken`. If it is present, compare it with the stored HPP token before provider verification. If it is absent, still treat the notification only as a trigger and verify through Nexi before changing local payment state.
 
-No signature, MAC, or header-validation mechanism is confirmed in the verified Nexi docs, and none is implemented here. The authoritative payment result comes from `NexiService.verifyPaymentOutcome`, which calls Nexi `GET /orders/{orderId}` and compares local expected facts such as order ID, amount, currency, and stored security token.
+No signature, MAC, or header-validation mechanism is confirmed in the verified Nexi docs, and none is implemented here. The authoritative payment result comes from `NexiService.verifyPaymentOutcome`, which calls Nexi `GET /orders/{orderId}` and compares local expected facts such as order ID, amount, and currency. It also compares the stored security token when Nexi echoes one, but CEE order verification does not always return the HPP `securityToken` on successful payments, so absence of an echoed token is not itself a failure.
+
+For implicit-accounting HPP payments, Nexi CEE can report a successful paid payment as `operationType = AUTHORIZATION` and `operationResult = EXECUTED`, while both `authorizedAmount` and `capturedAmount` are present on the order. Treat that combination as a successful terminal payment for Workspace. Do not require `operationType = CAPTURE` for this flow.
 
 1. Nexi sends a JSON notification to `/api/webhooks/nexi`.
 2. The route validates the official notification envelope and requires `operation.orderId`.
