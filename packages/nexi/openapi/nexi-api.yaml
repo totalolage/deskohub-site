@@ -88,7 +88,9 @@ components:
         - notificationUrl
       properties:
         amount:
-          $ref: "#/components/schemas/Amount"
+          type: string
+          description: Amount of the first payment in smallest currency unit.
+          pattern: "^[0-9]+$"
         language:
           type: string
           enum:
@@ -103,6 +105,14 @@ components:
         notificationUrl:
           type: string
           format: uri
+        paymentService:
+          type: string
+          enum:
+            - CARDS
+        captureType:
+          type: string
+          enum:
+            - IMPLICIT
     CreateHostedPaymentPageRequest:
       type: object
       required:
@@ -118,7 +128,13 @@ components:
             orderId:
               type: string
             amount:
-              $ref: "#/components/schemas/Amount"
+              type: string
+              description: Transaction amount in smallest currency unit.
+              pattern: "^[0-9]+$"
+            currency:
+              type: string
+              minLength: 3
+              maxLength: 3
         paymentSession:
           $ref: "#/components/schemas/PaymentSession"
         paymentService:

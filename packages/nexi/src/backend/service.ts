@@ -59,27 +59,25 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
         const request: CreateHostedPaymentPageRequest = {
           order: {
             orderId: input.orderId,
-            amount: {
-              amount: input.amount,
-              currency: input.currency,
-            },
+            amount: input.amount,
+            currency: input.currency,
           },
           paymentSession: {
-            amount: {
-              amount: input.amount,
-              currency: input.currency,
-            },
+            amount: input.amount,
             language: localeToNexiLanguage[input.locale],
             resultUrl: input.resultUrl,
             cancelUrl: input.cancelUrl,
             notificationUrl: input.notificationUrl,
+            paymentService: DEFAULT_PAYMENT_SERVICE,
+            captureType: DEFAULT_CAPTURE_TYPE,
           },
-          paymentService: DEFAULT_PAYMENT_SERVICE,
-          captureType: DEFAULT_CAPTURE_TYPE,
         };
 
         const response = yield* api
-          .createHostedPaymentPage({ body: request })
+          .createHostedPaymentPage({
+            body: request,
+            headers: { "Correlation-Id": input.correlationId },
+          })
           .pipe(Effect.retry(retryPolicy));
 
         return {

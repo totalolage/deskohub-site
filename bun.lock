@@ -191,6 +191,7 @@
         "libphonenumber-js": "^1.12.10",
         "openapi-ts": "^0.3.4",
         "superjson": "^2.2.6",
+        "zod": "^4.0.17",
       },
       "devDependencies": {
         "@hey-api/openapi-ts": "^0.90.8",

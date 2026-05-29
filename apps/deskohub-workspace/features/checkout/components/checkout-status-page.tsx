@@ -10,7 +10,6 @@ import {
 import Link from "next/link";
 import type {
   CheckoutStatusKind,
-  CheckoutStatusReturnOutcome,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
 import { formatWorkspaceMoney } from "@/features/checkout/product-catalog";
@@ -50,24 +49,6 @@ const statusIconWrapperVariants = cva(
         warning: "bg-burned-orange/12 text-burned-orange ring-burned-orange/8",
         failed: "bg-red-500/10 text-red-600 ring-red-500/8",
         unknown: "bg-navy-blue/8 text-navy-blue/60 ring-navy-blue/6",
-      },
-    },
-  }
-);
-
-const statusTruthBadgeVariants = cva(
-  "mt-5 inline-flex rounded-full border px-4 py-2 text-sm font-semibold",
-  {
-    variants: {
-      tone: {
-        success:
-          "border-aquamarine-green/22 bg-aquamarine-green/12 text-aquamarine-green",
-        pending:
-          "border-burned-orange/22 bg-burned-orange/10 text-burned-orange",
-        warning:
-          "border-burned-orange/22 bg-burned-orange/10 text-burned-orange",
-        failed: "border-red-500/20 bg-red-500/8 text-red-700",
-        unknown: "border-navy-blue/12 bg-navy-blue/6 text-navy-blue/62",
       },
     },
   }
@@ -155,20 +136,6 @@ const getStatusCopy = (
   }
 };
 
-const getOutcomeHint = (
-  outcome: CheckoutStatusReturnOutcome,
-  locale: Locale
-) => {
-  switch (outcome) {
-    case "success":
-      return m.checkoutStatusSuccessReturnHint({}, { locale });
-    case "cancelled":
-      return m.checkoutStatusCancelledReturnHint({}, { locale });
-    case "unknown":
-      return undefined;
-  }
-};
-
 const getSummaryRows = (
   status: CheckoutStatusViewModel,
   locale: Locale
@@ -216,7 +183,6 @@ export function CheckoutStatusPage({
   status,
 }: CheckoutStatusPageProps) {
   const copy = getStatusCopy(status.status, locale);
-  const outcomeHint = getOutcomeHint(status.returnOutcome, locale);
   const summaryRows = getSummaryRows(status, locale);
   const Icon = copy.Icon;
 
@@ -244,17 +210,8 @@ export function CheckoutStatusPage({
                   <p className="mt-5 text-lg leading-8 text-navy-blue/70">
                     {copy.lead}
                   </p>
-                  <p className={statusTruthBadgeVariants({ tone: copy.tone })}>
-                    {m.checkoutStatusSystemTruthNote({}, { locale })}
-                  </p>
                 </div>
               </div>
-
-              {!!outcomeHint && (
-                <p className="mt-8 rounded-[1.15rem] border border-navy-blue/10 bg-navy-blue/5 px-4 py-3 text-sm leading-6 text-navy-blue/64">
-                  {outcomeHint}
-                </p>
-              )}
 
               <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
                 <h2 className="text-xl text-navy-blue">

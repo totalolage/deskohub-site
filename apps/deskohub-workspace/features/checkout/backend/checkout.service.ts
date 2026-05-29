@@ -150,6 +150,9 @@ const splitName = (name: string) => {
   };
 };
 
+const generateOrderId = () =>
+  `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`).toString(36).toUpperCase()}`;
+
 const mapCheckoutFailure = (cause: unknown) => {
   if (cause instanceof CheckoutError) {
     return cause;
@@ -187,7 +190,7 @@ export const CheckoutServiceLive = Layer.effect(
           }
 
           const product = getWorkspaceProductByTier(data.entryTier);
-          const orderId = randomUUID();
+          const orderId = generateOrderId();
           const acceptedAt = new Date().toISOString();
           const legalConsent = data.legalConsent;
           const legalDocuments =
@@ -241,6 +244,7 @@ export const CheckoutServiceLive = Layer.effect(
           });
           const hostedPaymentPage = yield* nexi.createHostedPaymentPage({
             orderId: order.id,
+            correlationId,
             amount: nexiAmount.amount,
             currency: nexiAmount.currency,
             locale,
