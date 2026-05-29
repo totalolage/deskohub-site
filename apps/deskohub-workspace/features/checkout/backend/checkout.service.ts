@@ -4,12 +4,16 @@ import { ValidationError as DotyposValidationError } from "@deskohub/dotypos/err
 import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { env } from "@/env";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
 import {
   PaymentOrderRepository,
   PaymentOrderRepositoryLive,
 } from "@/features/checkout/backend/payment-order.repository";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductByTier,
+  type WorkspaceMoney,
+} from "@/features/checkout/product-catalog";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type { ReservationData } from "@/features/reservation/schemas/reservation";
@@ -55,6 +59,7 @@ const getCheckoutStatusUrl: (
       try: () => {
         const url = new URL(`/${locale}/checkout/status/${orderId}`, origin);
         url.searchParams.set("outcome", outcome);
+        addVercelProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
@@ -80,7 +85,11 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 
     return yield* Effect.try({
-      try: () => new URL("/api/webhooks/nexi", origin).toString(),
+      try: () => {
+        const url = new URL("/api/webhooks/nexi", origin);
+        addVercelProtectionBypass(url);
+        return url.toString();
+      },
       catch: (cause) =>
         new CheckoutError({
           message: "Payment checkout notification URL could not be created.",
@@ -91,6 +100,27 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
 const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
+
+const addVercelProtectionBypass = (url: URL) => {
+  if (env.VERCEL_ENV !== "preview") return;
+  if (!env.VERCEL_AUTOMATION_BYPASS_SECRET) return;
+
+  url.searchParams.set(
+    "x-vercel-protection-bypass",
+    env.VERCEL_AUTOMATION_BYPASS_SECRET
+  );
+};
+
+const getNexiCheckoutPrice = (price: WorkspaceMoney): WorkspaceMoney => {
+  if (env.VERCEL_ENV === "production") return price;
+  if (!env.NEXI_API_ORIGIN.includes("xpaysandbox.nexigroup.com")) return price;
+  if (!env.NEXI_CHECKOUT_CURRENCY_OVERRIDE) return price;
+
+  return {
+    ...price,
+    currency: env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
+  };
+};
 
 const getCheckoutLegalAcceptanceSnapshot: (
   locale: Locale
@@ -151,7 +181,9 @@ const splitName = (name: string) => {
 };
 
 const generateOrderId = () =>
-  `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`).toString(36).toUpperCase()}`;
+  `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
+    .toString(36)
+    .toUpperCase()}`;
 
 const mapCheckoutFailure = (cause: unknown) => {
   if (cause instanceof CheckoutError) {
@@ -202,7 +234,8 @@ export const CheckoutServiceLive = Layer.effect(
             phone: data.phone || undefined,
           });
           const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-          const nexiAmount = yield* toNexiAmount(product.price).pipe(
+          const checkoutPrice = getNexiCheckoutPrice(product.price);
+          const nexiAmount = yield* toNexiAmount(checkoutPrice).pipe(
             Effect.mapError(
               (cause) =>
                 new CheckoutError({
@@ -228,7 +261,7 @@ export const CheckoutServiceLive = Layer.effect(
                 message: data.message,
               },
               payment: {
-                expectedPrice: product.price,
+                expectedPrice: checkoutPrice,
               },
               legal: {
                 acceptedAt,
@@ -242,34 +275,40 @@ export const CheckoutServiceLive = Layer.effect(
               },
             },
           });
-          const hostedPaymentPage = yield* nexi.createHostedPaymentPage({
-            orderId: order.id,
-            correlationId,
-            amount: nexiAmount.amount,
-            currency: nexiAmount.currency,
-            locale,
-            notificationUrl: yield* getNotificationUrl,
-            resultUrl: yield* getCheckoutStatusUrl(locale, order.id, "success"),
-            cancelUrl: yield* getCheckoutStatusUrl(
+          const hostedPaymentPage = yield* nexi
+            .createHostedPaymentPage({
+              orderId: order.id,
+              correlationId,
+              amount: nexiAmount.amount,
+              currency: nexiAmount.currency,
               locale,
-              order.id,
-              "cancelled"
-            ),
-          }).pipe(
-            Effect.tapError(() =>
-              paymentOrders.deleteUnassociatedCreated(order.id).pipe(
-                Effect.catchAll((cleanupError) =>
-                  Effect.logError(
-                    "Failed to delete unassociated payment order after Nexi checkout failure",
-                    {
-                      orderId: order.id,
-                      cleanupError,
-                    }
+              notificationUrl: yield* getNotificationUrl,
+              resultUrl: yield* getCheckoutStatusUrl(
+                locale,
+                order.id,
+                "success"
+              ),
+              cancelUrl: yield* getCheckoutStatusUrl(
+                locale,
+                order.id,
+                "cancelled"
+              ),
+            })
+            .pipe(
+              Effect.tapError(() =>
+                paymentOrders.deleteUnassociatedCreated(order.id).pipe(
+                  Effect.catchAll((cleanupError) =>
+                    Effect.logError(
+                      "Failed to delete unassociated payment order after Nexi checkout failure",
+                      {
+                        orderId: order.id,
+                        cleanupError,
+                      }
+                    )
                   )
                 )
               )
-            )
-          );
+            );
 
           yield* paymentOrders.attachNexiSession({
             id: order.id,

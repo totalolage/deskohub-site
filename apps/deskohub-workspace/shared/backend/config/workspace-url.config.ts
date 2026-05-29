@@ -25,7 +25,9 @@ export const getWorkspaceRuntimeCallbackOrigin: Effect.Effect<
 
   return yield* Effect.try({
     try: () =>
-      new URL(`${env.VERCEL_ENV === "development" ? "http" : "https"}://${url}`),
+      new URL(
+        `${env.VERCEL_ENV === "development" ? "http" : "https"}://${url}`
+      ),
     catch: (cause) =>
       new WorkspaceUrlConfigError({
         message: "Payment checkout callback URL is not configured.",
