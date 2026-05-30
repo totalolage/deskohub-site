@@ -52,7 +52,10 @@ const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
     })
   );
 
-const appendVercelProtectionBypass = (url: URL) => {
+const appendVercelProtectionBypass = (
+  url: URL,
+  options: { readonly setBypassCookie?: boolean } = {}
+) => {
   if (env.VERCEL_ENV === "production") return;
   if (!env.VERCEL_AUTOMATION_BYPASS_SECRET) return;
 
@@ -60,6 +63,10 @@ const appendVercelProtectionBypass = (url: URL) => {
     "x-vercel-protection-bypass",
     env.VERCEL_AUTOMATION_BYPASS_SECRET
   );
+
+  if (options.setBypassCookie) {
+    url.searchParams.set("x-vercel-set-bypass-cookie", "true");
+  }
 };
 
 const getCheckoutOrderReturnUrl: (
@@ -76,7 +83,7 @@ const getCheckoutOrderReturnUrl: (
       try: () => {
         const url = new URL(`/${locale}/checkout/result/${orderId}`, origin);
         appendCheckoutReturnStateToken(url, checkoutToken);
-        appendVercelProtectionBypass(url);
+        appendVercelProtectionBypass(url, { setBypassCookie: true });
         return url.toString();
       },
       catch: (cause) =>
@@ -112,7 +119,7 @@ const getCheckoutPaymentRetryUrl: (
         const url = new URL(`/${locale}/checkout/payment/${orderId}`, origin);
         url.searchParams.set("outcome", outcome);
         appendCheckoutReturnStateToken(url, checkoutToken);
-        appendVercelProtectionBypass(url);
+        appendVercelProtectionBypass(url, { setBypassCookie: true });
         return url.toString();
       },
       catch: (cause) =>
