@@ -59,11 +59,32 @@ The public CEE test merchant and cards are currency-sensitive. The OK cards have
 
 For 3DS sandbox challenges, choose the successful authentication option in the Nexi stub to complete the OK-card path.
 
+For Workspace checkout E2E, use the OK cards to verify successful completion and the KO card, or HPP user cancellation, to verify cancellation/failure retry paths.
+
 ## Hosted Payment Page Request Notes
 
 For the Workspace HPP flow, include `paymentSession.actionType=PAY`. Send a stable local order ID as `order.orderId`; this is the ID returned in webhooks and used for `GET /orders/{orderId}` verification.
 
 `paymentSession.notificationUrl` and `paymentSession.resultUrl` must be public HTTPS URLs reachable by Nexi. Localhost callbacks are not suitable unless they are exposed through a real HTTPS tunnel.
+
+## Workspace Preview E2E
+
+Run Workspace Nexi checkout E2E from a Vercel preview deployment. Deploy the preview first, configure the preview environment with the Nexi sandbox origin and sandbox API key, and open the checkout flow from the preview URL so Nexi receives public HTTPS callback URLs.
+
+Protected Vercel previews may require the automation bypass for manual browser sessions and E2E automation. Use Vercel's auth bypass documentation at `https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation`. Read the value from `.env.development.local` as `VERCEL_AUTOMATION_BYPASS_SECRET`; do not print or commit the secret. Start browser/manual testing with `?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET`, or append `&x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET` when other query parameters exist. Automation can also pass `x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET` when fetching/navigating if that is more convenient. If the query parameter sets access for the browser session, use that preview URL for Nexi return URL and callback-safe checkout testing.
+
+If Workspace catalog prices are `CZK` while validating against the public Nexi CEE sandbox merchant/cards, set this only on the non-production preview environment:
+
+```env
+NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR
+```
+
+Then test both paths:
+
+- Successful completion with an OK sandbox card and successful 3DS stub authentication.
+- Cancellation or failure retry with the KO sandbox card or an HPP cancellation, followed by the Workspace retry/restart path.
+
+See [`../../../apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md`](../../../apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md) for the Workspace-specific deployment checklist and database checks.
 
 ## Order Verification Notes
 

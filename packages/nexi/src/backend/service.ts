@@ -52,6 +52,34 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
   })
 );
 
+const getUrlOriginForLogs = (url: string) => {
+  try {
+    return new URL(url).origin;
+  } catch {
+    return "invalid-url";
+  }
+};
+
+const getHostedPaymentPageLogAnnotations = (
+  input: CreateHostedPaymentPageInput
+) => ({
+  orderId: input.orderId,
+  correlationId: input.correlationId,
+  amount: input.amount,
+  currency: input.currency,
+  locale: input.locale,
+  resultUrlOrigin: getUrlOriginForLogs(input.resultUrl),
+  cancelUrlOrigin: getUrlOriginForLogs(input.cancelUrl),
+  notificationUrlOrigin: getUrlOriginForLogs(input.notificationUrl),
+});
+
+const getPaymentOutcomeLogAnnotations = (input: VerifyPaymentOutcomeInput) => ({
+  orderId: input.orderId,
+  correlationId: input.correlationId,
+  amount: input.amount,
+  currency: input.currency,
+});
+
 export class NexiService extends Effect.Service<NexiService>()("NexiService", {
   effect: Effect.gen(function* () {
     const api = yield* NexiApi;
@@ -89,7 +117,10 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           securityToken: response.securityToken,
         };
       },
-      (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+      (effect, input) =>
+        effect.pipe(
+          Effect.annotateLogs(getHostedPaymentPageLogAnnotations(input))
+        )
     );
 
     const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
@@ -122,7 +153,10 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
         if (providerAmount?.amount !== input.amount) mismatches.push("amount");
         if (providerAmount?.currency !== input.currency)
           mismatches.push("currency");
-        if (providerSecurityToken && providerSecurityToken !== input.securityToken)
+        if (
+          providerSecurityToken &&
+          providerSecurityToken !== input.securityToken
+        )
           mismatches.push("securityToken");
 
         const providerStatus =
@@ -151,7 +185,8 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           mismatches,
         };
       },
-      (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+      (effect, input) =>
+        effect.pipe(Effect.annotateLogs(getPaymentOutcomeLogAnnotations(input)))
     );
 
     return {
@@ -168,13 +203,18 @@ const isPaymentOperationType = (operationType: string | undefined) =>
   operationType === AUTHORIZATION_OPERATION_TYPE ||
   operationType === CAPTURE_OPERATION_TYPE;
 
-const getOperationAmount = (operation:
-  | {
-      readonly amount?: { readonly amount?: string; readonly currency?: string };
-      readonly operationAmount?: string;
-      readonly operationCurrency?: string;
-    }
-  | undefined) => {
+const getOperationAmount = (
+  operation:
+    | {
+        readonly amount?: {
+          readonly amount?: string;
+          readonly currency?: string;
+        };
+        readonly operationAmount?: string;
+        readonly operationCurrency?: string;
+      }
+    | undefined
+) => {
   if (!operation) return undefined;
   if (operation.amount) return operation.amount;
   if (!operation.operationAmount) return undefined;

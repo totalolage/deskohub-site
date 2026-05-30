@@ -9,6 +9,7 @@ import {
 import { getContactSchema } from "@/features/contact/schemas/contact";
 import { getLocale, m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
 export type ContactFormValues = {
   name: string;
@@ -92,5 +93,5 @@ export async function submitContactForm(
     )
   );
 
-  return await Effect.runPromise(program);
+  return await runWorkspaceEffect(program);
 }

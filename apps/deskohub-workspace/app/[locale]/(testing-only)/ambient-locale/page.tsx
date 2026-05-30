@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { Suspense } from "react";
 import { getLocale, isLocale, type Locale, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { Container } from "@/shared/components/container";
@@ -106,7 +107,9 @@ export default async function AmbientLocaleTestPage({
             </section>
 
             <NestedServerProbe expectedLocale={locale} />
-            <ClientLocaleProbe expectedLocale={locale} />
+            <Suspense>
+              <ClientLocaleProbe expectedLocale={locale} />
+            </Suspense>
           </div>
         </Container>
       </main>

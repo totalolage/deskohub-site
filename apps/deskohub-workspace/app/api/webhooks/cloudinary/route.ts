@@ -6,6 +6,7 @@ import { Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const processWebhook = Effect.fn("processWebhook")(function* (
@@ -32,7 +33,7 @@ const processWebhook = Effect.fn("processWebhook")(function* (
  * Receives webhooks from Cloudinary
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return Effect.runPromise(
+  return runWorkspaceEffect(
     Effect.gen(function* () {
       yield* Effect.log("Webhook invoked");
 

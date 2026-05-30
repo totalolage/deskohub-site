@@ -1,6 +1,7 @@
 import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
 import type { z } from "zod/v4";
 import type { Locale } from "@/features/i18n";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { formatEffectError } from "@/shared/utils/error-formatting";
 import {
   actionClient,
@@ -44,7 +45,7 @@ export function createEffectSafeAction<I, O, E, R>(
       );
 
       try {
-        return await Effect.runPromise(
+        return await runWorkspaceEffect(
           Logger.withMinimumLogLevel(program, LogLevel.All)
         );
       } catch (error: unknown) {
