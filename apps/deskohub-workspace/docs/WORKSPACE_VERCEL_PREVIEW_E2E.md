@@ -92,6 +92,22 @@ vercel --cwd apps/deskohub-workspace
 
 If the project is not linked yet, run Vercel's link flow from `apps/deskohub-workspace` and confirm it points at the Workspace project before deploying.
 
+## Build-Time Migrations
+
+Workspace Vercel builds intentionally run Drizzle migrations before the app build, but that wiring must stay scoped to the Workspace Vercel project. App-root deployments resolve to `bun run build:vercel`, which runs `drizzle-kit migrate` via `bun run db:migrate` before the existing `bun run i18n:compile && next build --turbo` build script.
+
+Do not put Workspace migrations in the shared repository-root `vercel.json`: root-linked Vercel projects for other apps must not advance the Workspace database schema or build the Workspace app. If the Workspace Vercel project remains linked at the repository root instead of `apps/deskohub-workspace`, configure that specific Vercel project's Build Command in Vercel project settings to run `bun --cwd apps/deskohub-workspace run db:migrate && bun run build:workspace`.
+
+The selected migration policy is all Vercel builds migrate. This is unconditional for production and preview builds, using that deployment environment's `DATABASE_URL`. This is high risk if preview deployments point at the production database; only do that when accepting that preview builds may advance production schema.
+
+Database requirements and risks:
+
+- `DATABASE_URL` is required in every Vercel environment that builds Workspace.
+- Prefer a direct, unpooled Neon Postgres connection URL for migrations. Keep pooled URLs for runtime traffic only when both are configured separately.
+- Review and commit generated SQL in `apps/deskohub-workspace/db/migrations` before deploy.
+- Migrations can advance the schema even if the later Next.js build or deployment fails.
+- Concurrent production and preview builds can race on the same database if they share `DATABASE_URL`.
+
 ## Checkout E2E Procedure
 
 Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi HPP result and notification callbacks must be public HTTPS URLs reachable by Nexi, and Workspace builds those URLs from the preview deployment host.
