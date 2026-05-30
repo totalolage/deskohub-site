@@ -32,6 +32,17 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
   })
 );
 
+type CustomerLookupField = "email" | "phone";
+
+type FindOrCreateCustomerOptions = {
+  readonly lookupFields?: readonly CustomerLookupField[];
+};
+
+const defaultCustomerLookupFields = [
+  "email",
+  "phone",
+] as const satisfies readonly CustomerLookupField[];
+
 export class DotyposService extends Effect.Service<DotyposService>()(
   "DotyposService",
   {
@@ -196,12 +207,15 @@ export class DotyposService extends Effect.Service<DotyposService>()(
       );
 
       const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
-        function* (customerData: {
-          firstName: string;
-          lastName?: string;
-          email?: string;
-          phone?: string;
-        }) {
+        function* (
+          customerData: {
+            firstName: string;
+            lastName?: string;
+            email?: string;
+            phone?: string;
+          },
+          options?: FindOrCreateCustomerOptions
+        ) {
           const normalizedPhone = customerData.phone
             ? normalizePhoneNumber(customerData.phone)
             : null;
@@ -250,10 +264,15 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                 );
             });
 
+          const lookupFields =
+            options?.lookupFields ?? defaultCustomerLookupFields;
+          const shouldLookupBy = (field: CustomerLookupField) =>
+            lookupFields.includes(field);
+
           let existingCustomer: Customer | undefined;
           const matchingCustomers: Customer[] = [];
 
-          if (normalizedCustomerData.email) {
+          if (shouldLookupBy("email") && normalizedCustomerData.email) {
             const customersByEmail = yield* searchByField(
               "email",
               normalizedCustomerData.email
@@ -266,7 +285,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             }
           }
 
-          if (normalizedCustomerData.phone) {
+          if (shouldLookupBy("phone") && normalizedCustomerData.phone) {
             const customersByPhone = yield* searchByField(
               "phone",
               normalizedCustomerData.phone
@@ -351,7 +370,8 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             })
             .pipe(Effect.retry(retryPolicy));
         },
-        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+        (effect, input, options) =>
+          effect.pipe(Effect.annotateLogs({ ...input, ...options }))
       );
 
       const getTables = Effect.fn("getTables")(function* () {
