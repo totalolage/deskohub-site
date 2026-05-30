@@ -97,7 +97,7 @@ export function LandingPagePricingContactSection({
             <div className="grid gap-5 md:grid-cols-2">
               {pricingCards.map((item) => {
                 const reservationHref = item.reservationTier
-                  ? `/${locale}/reservation?tier=${item.reservationTier}`
+                  ? `/${locale}/checkout/order?tier=${item.reservationTier}`
                   : undefined;
                 if (!reservationHref) {
                   return (
