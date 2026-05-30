@@ -14,6 +14,7 @@ export const workspaceServerEnvSchema = z.object({
   DOTYPOS_REFRESH_TOKEN: z.string(),
   WORKSPACE_DOTYPOS_TABLE_ID: z.string(),
   EMAIL_API_KEY: z.string().optional(),
+  CHECKOUT_RETURN_STATE_TOKEN_SECRET: z.string().min(32).optional(),
   NEXI_API_KEY: z.string(),
   NEXI_API_ORIGIN: z.url(),
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: z.enum(["EUR"]).optional(),

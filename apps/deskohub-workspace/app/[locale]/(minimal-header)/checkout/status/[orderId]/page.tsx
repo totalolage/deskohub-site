@@ -1,6 +1,6 @@
 import { Effect, Array as EffectArray, Either, Layer, Schema } from "effect";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   type CheckoutStatusReturnOutcome,
@@ -9,8 +9,13 @@ import {
   type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
+import {
+  appendExistingCheckoutReturnStateToken,
+  getCheckoutReturnStateTokenFromSearchParams,
+} from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
@@ -77,7 +82,7 @@ const loadCheckoutStatus = (
   Effect.gen(function* () {
     const service = yield* CheckoutStatusService;
     return yield* service.getStatus({ orderId, returnOutcome });
-  }).pipe(Effect.provide(checkoutStatusLayer), Effect.runPromise);
+  }).pipe(Effect.provide(checkoutStatusLayer), runWorkspaceEffect);
 
 const getFallbackStatus = (
   orderId: string,
@@ -87,6 +92,28 @@ const getFallbackStatus = (
   returnOutcome,
   status: "not_found",
 });
+
+const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
+  if (status === "cancelled") return "cancelled";
+  if (status === "payment_failed" || status === "expired") return "failed";
+  return undefined;
+};
+
+const getCheckoutPaymentRetryRedirectPath = (input: {
+  readonly locale: string;
+  readonly orderId: string;
+  readonly outcome: "cancelled" | "failed";
+  readonly searchParams: CheckoutStatusSearchParams;
+}) => {
+  const url = new URL(
+    `/${input.locale}/checkout/payment/${input.orderId}`,
+    "https://deskohub.local"
+  );
+  url.searchParams.set("outcome", input.outcome);
+  appendExistingCheckoutReturnStateToken(url, input.searchParams);
+
+  return `${url.pathname}${url.search}`;
+};
 
 export async function generateMetadata({
   params,
@@ -141,13 +168,29 @@ export default async function LocalizedCheckoutStatusPage({
 
   const { locale, orderId } = decodedParams.right;
 
+  const rawSearchParams = await searchParams;
   const { outcome: returnOutcome } = Either.getOrElse(
-    decodeCheckoutStatusSearchParams(await searchParams),
+    decodeCheckoutStatusSearchParams(rawSearchParams),
     () => ({ outcome: "unknown" as const })
   );
   const status = await loadCheckoutStatus(orderId, returnOutcome).catch(() =>
     getFallbackStatus(orderId, returnOutcome)
   );
+  const retryOutcome = getRetryOutcome(status.status);
+
+  if (
+    retryOutcome &&
+    getCheckoutReturnStateTokenFromSearchParams(rawSearchParams)
+  ) {
+    redirect(
+      getCheckoutPaymentRetryRedirectPath({
+        locale,
+        orderId,
+        outcome: retryOutcome,
+        searchParams: rawSearchParams,
+      })
+    );
+  }
 
   return runWithRequestLocale(locale, () => (
     <CheckoutStatusPage locale={locale} status={status} />
