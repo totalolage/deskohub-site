@@ -54,7 +54,7 @@ Vercel protection notes:
 - Read the secret value from `.env.development.local` as `VERCEL_AUTOMATION_BYPASS_SECRET`; do not print or commit the secret.
 - For browser/manual testing, start from the protected preview URL with `?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET`, or append `&x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET` when the URL already has query parameters. If this sets access for the browser session, use that preview URL for the Nexi checkout return/callback-safe flow.
 - For automation, pass either the same query parameter or the `x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET` header when fetching/navigating, whichever is more convenient.
-- Workspace appends `x-vercel-protection-bypass` to Nexi callback URLs only for preview deployments when the secret is present. Browser return URLs also include `x-vercel-set-bypass-cookie=true` so the post-callback result or retry redirect can render in the same protected deployment.
+- Workspace appends `x-vercel-protection-bypass` to Nexi callback URLs only for preview deployments when the secret is present. Workspace-owned post-callback redirects add `x-vercel-set-bypass-cookie=true` so the final result or retry page can render in the same protected deployment without sending that cookie-setting parameter through Nexi.
 - If webhooks appear not to arrive, first confirm the callback URL works through protection with the bypass parameter before debugging Nexi payload handling.
 
 Nexi sandbox notes:
