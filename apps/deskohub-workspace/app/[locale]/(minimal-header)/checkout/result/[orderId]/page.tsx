@@ -6,6 +6,7 @@ import {
   CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
+import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
@@ -87,6 +88,7 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   );
   url.searchParams.set("outcome", input.outcome);
   appendExistingCheckoutReturnStateToken(url, input.searchParams);
+  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
 
   return `${url.pathname}${url.search}`;
 };
@@ -102,6 +104,7 @@ const getCheckoutOrderRedirectPath = (input: {
   );
   url.searchParams.set("paymentOrderId", input.orderId);
   appendExistingCheckoutReturnStateToken(url, input.searchParams);
+  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
 
   const paymentId = getSearchParam(input.searchParams, "paymentid");
   if (paymentId) {

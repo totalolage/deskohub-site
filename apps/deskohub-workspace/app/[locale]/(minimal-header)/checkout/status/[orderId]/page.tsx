@@ -8,6 +8,7 @@ import {
   CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
+import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import {
   appendExistingCheckoutReturnStateToken,
@@ -111,6 +112,7 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   );
   url.searchParams.set("outcome", input.outcome);
   appendExistingCheckoutReturnStateToken(url, input.searchParams);
+  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
 
   return `${url.pathname}${url.search}`;
 };

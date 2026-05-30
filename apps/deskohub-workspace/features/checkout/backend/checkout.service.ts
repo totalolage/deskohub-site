@@ -14,6 +14,7 @@ import {
   PaymentOrderRepository,
   PaymentOrderRepositoryLive,
 } from "@/features/checkout/backend/payment-order.repository";
+import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import {
   getWorkspaceProductByTier,
   type WorkspaceMoney,
@@ -52,23 +53,6 @@ const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
     })
   );
 
-const appendVercelProtectionBypass = (
-  url: URL,
-  options: { readonly setBypassCookie?: boolean } = {}
-) => {
-  if (env.VERCEL_ENV === "production") return;
-  if (!env.VERCEL_AUTOMATION_BYPASS_SECRET) return;
-
-  url.searchParams.set(
-    "x-vercel-protection-bypass",
-    env.VERCEL_AUTOMATION_BYPASS_SECRET
-  );
-
-  if (options.setBypassCookie) {
-    url.searchParams.set("x-vercel-set-bypass-cookie", "true");
-  }
-};
-
 const getCheckoutOrderReturnUrl: (
   locale: Locale,
   orderId: string,
@@ -83,7 +67,7 @@ const getCheckoutOrderReturnUrl: (
       try: () => {
         const url = new URL(`/${locale}/checkout/result/${orderId}`, origin);
         appendCheckoutReturnStateToken(url, checkoutToken);
-        appendVercelProtectionBypass(url, { setBypassCookie: true });
+        appendVercelPreviewProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
@@ -119,7 +103,7 @@ const getCheckoutPaymentRetryUrl: (
         const url = new URL(`/${locale}/checkout/payment/${orderId}`, origin);
         url.searchParams.set("outcome", outcome);
         appendCheckoutReturnStateToken(url, checkoutToken);
-        appendVercelProtectionBypass(url, { setBypassCookie: true });
+        appendVercelPreviewProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
@@ -147,7 +131,7 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
     return yield* Effect.try({
       try: () => {
         const url = new URL("/api/webhooks/nexi", origin);
-        appendVercelProtectionBypass(url);
+        appendVercelPreviewProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
