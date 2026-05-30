@@ -30,6 +30,14 @@
         "NEXT_PUBLIC_GTM_ID"
       ]
     },
+    "build:vercel": {
+      "dependsOn": ["db:migrate", "build"],
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false,
+      "env": ["DATABASE_URL"]
+    },
     "dev": {
       "dependsOn": [
         "@deskohub/dotypos#generate",
