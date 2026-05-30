@@ -52,6 +52,16 @@ const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
     })
   );
 
+const appendVercelProtectionBypass = (url: URL) => {
+  if (env.VERCEL_ENV === "production") return;
+  if (!env.VERCEL_AUTOMATION_BYPASS_SECRET) return;
+
+  url.searchParams.set(
+    "x-vercel-protection-bypass",
+    env.VERCEL_AUTOMATION_BYPASS_SECRET
+  );
+};
+
 const getCheckoutOrderReturnUrl: (
   locale: Locale,
   orderId: string,
@@ -66,6 +76,7 @@ const getCheckoutOrderReturnUrl: (
       try: () => {
         const url = new URL(`/${locale}/checkout/result/${orderId}`, origin);
         appendCheckoutReturnStateToken(url, checkoutToken);
+        appendVercelProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
@@ -101,6 +112,7 @@ const getCheckoutPaymentRetryUrl: (
         const url = new URL(`/${locale}/checkout/payment/${orderId}`, origin);
         url.searchParams.set("outcome", outcome);
         appendCheckoutReturnStateToken(url, checkoutToken);
+        appendVercelProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
@@ -128,6 +140,7 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
     return yield* Effect.try({
       try: () => {
         const url = new URL("/api/webhooks/nexi", origin);
+        appendVercelProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
