@@ -8,7 +8,7 @@ import {
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 
-const RESERVATION_VALIDATION = {
+export const RESERVATION_VALIDATION = {
   name: { min: 2, max: 100 },
   email: { max: 255 },
   phone: { max: 20 },
@@ -32,7 +32,7 @@ const getCurrentPragueDate = () => {
   return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
 };
 
-const isTodayOrFuturePragueDate = (date: string) =>
+export const isTodayOrFuturePragueDate = (date: string) =>
   date >= getCurrentPragueDate();
 
 const requiredEmailSchema = z

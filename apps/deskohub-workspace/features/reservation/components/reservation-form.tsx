@@ -18,7 +18,6 @@ import {
   formatWorkspaceMoney,
   formatWorkspaceProductCurrencyAmount,
   getWorkspaceProductCoffeePriceForTier,
-  isWorkspaceProductTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
@@ -39,10 +38,10 @@ import {
   getReservationSchema,
   type ReservationData,
   type ReservationInput,
-  reservationDefaultValues,
   tierIncludesCourtesyCoffee,
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
+import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import {
@@ -163,20 +162,6 @@ const getSanitizedUtmParams = (
   return sanitizedParams;
 };
 
-const getTierDefaultValues = (tier: string | null): ReservationInput => {
-  const requestedTier = tier ?? undefined;
-
-  if (!isWorkspaceProductTier(requestedTier)) {
-    return reservationDefaultValues;
-  }
-
-  return {
-    ...reservationDefaultValues,
-    entryTier: requestedTier,
-    coffee: tierIncludesCourtesyCoffee(requestedTier),
-  };
-};
-
 export function ReservationForm({
   locale,
   showIntro = true,
@@ -193,7 +178,7 @@ export function ReservationForm({
   );
   const schema = useMemo(() => getReservationSchema(), []);
   const defaultValues = useMemo(
-    () => getTierDefaultValues(searchParams.get("tier")),
+    () => getReservationDefaultValuesFromSearchParams(searchParams),
     [searchParams]
   );
   const form = useForm<ReservationInput, unknown, ReservationData>({

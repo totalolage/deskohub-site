@@ -5,6 +5,10 @@ import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
+import {
+  CheckoutReturnStateTokenRepository,
+  CheckoutReturnStateTokenRepositoryLive,
+} from "@/features/checkout/backend/checkout-return-state-token.repository";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
 import {
   PaymentOrderRepository,
@@ -14,6 +18,7 @@ import {
   getWorkspaceProductByTier,
   type WorkspaceMoney,
 } from "@/features/checkout/product-catalog";
+import { appendCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type { ReservationData } from "@/features/reservation/schemas/reservation";
@@ -47,24 +52,60 @@ const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
     })
   );
 
-const getCheckoutStatusUrl: (
+const getCheckoutOrderReturnUrl: (
   locale: Locale,
   orderId: string,
-  outcome: "success" | "cancelled"
-) => Effect.Effect<string, CheckoutError> = Effect.fn("getCheckoutStatusUrl")(
-  function* (locale, orderId, outcome) {
+  checkoutToken: string
+) => Effect.Effect<string, CheckoutError> = Effect.fn(
+  "getCheckoutOrderReturnUrl"
+)(
+  function* (locale, orderId, checkoutToken) {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
 
     return yield* Effect.try({
       try: () => {
-        const url = new URL(`/${locale}/checkout/status/${orderId}`, origin);
-        url.searchParams.set("outcome", outcome);
-        addVercelProtectionBypass(url);
+        const url = new URL(`/${locale}/checkout/result/${orderId}`, origin);
+        appendCheckoutReturnStateToken(url, checkoutToken);
         return url.toString();
       },
       catch: (cause) =>
         new CheckoutError({
-          message: "Payment checkout status URL could not be created.",
+          message: "Payment checkout return URL could not be created.",
+          cause,
+        }),
+    });
+  },
+  (effect, locale, orderId) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        locale,
+        orderId,
+      }),
+      Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError)
+    )
+);
+
+const getCheckoutPaymentRetryUrl: (
+  locale: Locale,
+  orderId: string,
+  outcome: "cancelled",
+  checkoutToken: string
+) => Effect.Effect<string, CheckoutError> = Effect.fn(
+  "getCheckoutPaymentRetryUrl"
+)(
+  function* (locale, orderId, outcome, checkoutToken) {
+    const origin = yield* getWorkspaceRuntimeCallbackOrigin;
+
+    return yield* Effect.try({
+      try: () => {
+        const url = new URL(`/${locale}/checkout/payment/${orderId}`, origin);
+        url.searchParams.set("outcome", outcome);
+        appendCheckoutReturnStateToken(url, checkoutToken);
+        return url.toString();
+      },
+      catch: (cause) =>
+        new CheckoutError({
+          message: "Payment checkout retry URL could not be created.",
           cause,
         }),
     });
@@ -87,7 +128,6 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
     return yield* Effect.try({
       try: () => {
         const url = new URL("/api/webhooks/nexi", origin);
-        addVercelProtectionBypass(url);
         return url.toString();
       },
       catch: (cause) =>
@@ -100,16 +140,6 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
 const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
-
-const addVercelProtectionBypass = (url: URL) => {
-  if (env.VERCEL_ENV !== "preview") return;
-  if (!env.VERCEL_AUTOMATION_BYPASS_SECRET) return;
-
-  url.searchParams.set(
-    "x-vercel-protection-bypass",
-    env.VERCEL_AUTOMATION_BYPASS_SECRET
-  );
-};
 
 const getNexiCheckoutPrice = (price: WorkspaceMoney): WorkspaceMoney => {
   if (env.VERCEL_ENV === "production") return price;
@@ -209,6 +239,7 @@ export const CheckoutServiceLive = Layer.effect(
     const dotypos = yield* DotyposService;
     const nexi = yield* NexiService;
     const paymentOrders = yield* PaymentOrderRepository;
+    const checkoutReturnStateTokens = yield* CheckoutReturnStateTokenRepository;
 
     return CheckoutService.of({
       createHostedPaymentCheckout: Effect.fn(
@@ -287,6 +318,23 @@ export const CheckoutServiceLive = Layer.effect(
               },
             },
           });
+          const checkoutToken = yield* checkoutReturnStateTokens.create({
+            paymentOrderId: order.id,
+            state: {
+              schema: "workspace-checkout-return-state",
+              schemaVersion: 1,
+              reservation: {
+                entryTier: data.entryTier,
+                date: data.date,
+                coffee: data.coffee,
+                monitorOption: data.monitorOption,
+                name: data.name,
+                email: data.email,
+                phone: data.phone,
+                message: data.message,
+              },
+            },
+          });
           const hostedPaymentPage = yield* nexi
             .createHostedPaymentPage({
               orderId: order.id,
@@ -295,15 +343,16 @@ export const CheckoutServiceLive = Layer.effect(
               currency: nexiAmount.currency,
               locale,
               notificationUrl: yield* getNotificationUrl,
-              resultUrl: yield* getCheckoutStatusUrl(
+              resultUrl: yield* getCheckoutOrderReturnUrl(
                 locale,
                 order.id,
-                "success"
+                checkoutToken
               ),
-              cancelUrl: yield* getCheckoutStatusUrl(
+              cancelUrl: yield* getCheckoutPaymentRetryUrl(
                 locale,
                 order.id,
-                "cancelled"
+                "cancelled",
+                checkoutToken
               ),
             })
             .pipe(
@@ -343,7 +392,7 @@ export const CheckoutServiceLive = Layer.effect(
             Effect.scoped,
             Effect.annotateLogs({
               locale,
-              data,
+              entryTier: data.entryTier,
             }),
             Effect.mapError(mapCheckoutFailure)
           )
@@ -353,6 +402,7 @@ export const CheckoutServiceLive = Layer.effect(
 );
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
+  Layer.provide(CheckoutReturnStateTokenRepositoryLive),
   Layer.provide(PaymentOrderRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(
