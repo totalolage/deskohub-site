@@ -50,7 +50,10 @@ Known/defaultable values:
 
 Vercel protection notes:
 
-- Keep deployment protection enabled for previews when required, but configure Vercel's protection-bypass secret in `VERCEL_AUTOMATION_BYPASS_SECRET`.
+- Keep deployment protection enabled for previews when required, but configure Vercel's protection-bypass secret in `VERCEL_AUTOMATION_BYPASS_SECRET`. Use Vercel's auth bypass documentation at `https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation`.
+- Read the secret value from `.env.development.local` as `VERCEL_AUTOMATION_BYPASS_SECRET`; do not print or commit the secret.
+- For browser/manual testing, start from the protected preview URL with `?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET`, or append `&x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET` when the URL already has query parameters. If this sets access for the browser session, use that preview URL for the Nexi checkout return/callback-safe flow.
+- For automation, pass either the same query parameter or the `x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET` header when fetching/navigating, whichever is more convenient.
 - Workspace appends `x-vercel-protection-bypass` to Nexi notification/result URLs only for preview deployments when the secret is present.
 - If webhooks appear not to arrive, first confirm the callback URL works through protection with the bypass parameter before debugging Nexi payload handling.
 
@@ -89,6 +92,18 @@ vercel --cwd apps/deskohub-workspace
 
 If the project is not linked yet, run Vercel's link flow from `apps/deskohub-workspace` and confirm it points at the Workspace project before deploying.
 
+## Checkout E2E Procedure
+
+Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi HPP result and notification callbacks must be public HTTPS URLs reachable by Nexi, and Workspace builds those URLs from the preview deployment host.
+
+1. Deploy the Vercel preview first.
+2. Confirm the preview environment uses the Nexi sandbox origin and sandbox API key from [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
+3. If validating Workspace catalog prices that are still `CZK` against the public Nexi CEE sandbox merchant/cards, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on the preview environment only.
+4. Open the deployed preview URL and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values.
+5. Complete one payment with an OK sandbox card and the successful 3DS stub option.
+6. Start a second checkout and exercise the cancellation or failure path with the documented KO card or a user cancellation from HPP.
+7. From the returned Workspace status page, retry or restart checkout as the UI allows and confirm the retry path does not mutate the already failed/cancelled order into a false success.
+
 ## First E2E Focus
 
 Validate the payment and notification path first:
@@ -102,6 +117,13 @@ Validate the payment and notification path first:
 - Successful payment transitions the order to `payment_status=paid`, sets `paid_at`, and records provider operation/status fields.
 - Duplicate or replayed webhook notifications are idempotent and keep stable state.
 - Logs do not contain `NEXI_API_KEY`, raw webhook payloads, card data, or customer secrets.
+
+Validate cancellation/failure retry behavior separately:
+
+- A KO sandbox card or cancelled HPP session returns to the preview result/status URL without creating a paid order.
+- The order remains `payment_status=payment_failed`, `cancelled`, or another documented non-paid terminal/pending state that matches the provider result.
+- Retrying checkout creates or uses the intended follow-up checkout path without overwriting the failed/cancelled provider facts from the original order.
+- A later successful retry still follows the same webhook verification and database checks as the normal OK-card path.
 
 Database checks for a successful sandbox payment:
 

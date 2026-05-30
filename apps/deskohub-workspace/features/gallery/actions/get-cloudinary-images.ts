@@ -5,6 +5,7 @@ import {
   type UnnormalizedLogicalExpression,
 } from "@deskohub/cloudinary";
 import { Effect } from "effect";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   type CloudinaryAsset,
@@ -44,6 +45,6 @@ export async function getCloudinaryImages({
         errorCode: "gallery_unavailable" as const,
       })
     ),
-    Effect.runPromise
+    runWorkspaceEffect
   );
 }

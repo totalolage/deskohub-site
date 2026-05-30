@@ -34,7 +34,7 @@ const submitReservationAction = createEffectSafeAction(
       effect.pipe(
         Effect.annotateLogs({
           locale,
-          ...input,
+          entryTier: input.entryTier,
         }),
         Effect.mapError(
           () =>
