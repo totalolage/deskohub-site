@@ -2,11 +2,34 @@
   "$schema": "https://v2-9-14.turborepo.dev/schema.json",
   "globalDependencies": [".env", ".env.local"],
   "globalEnv": ["NODE_ENV", "VERCEL_ENV"],
-  "globalPassThroughEnv": ["VERCEL", "VERCEL_*", "!VERCEL_ENV"],
+  "globalPassThroughEnv": [
+    "CHECKOUT_RETURN_STATE_TOKEN_SECRET",
+    "CLOUDINARY_API_KEY",
+    "CLOUDINARY_API_SECRET",
+    "DATABASE_URL",
+    "DOTYPOS_API_TIMEOUT",
+    "DOTYPOS_API_URL",
+    "DOTYPOS_BRANCH_ID",
+    "DOTYPOS_CLIENT_ID",
+    "DOTYPOS_CLIENT_SECRET",
+    "DOTYPOS_CLOUD_ID",
+    "DOTYPOS_EMPLOYEE_ID",
+    "DOTYPOS_REFRESH_TOKEN",
+    "EMAIL_API_KEY",
+    "NEXI_API_KEY",
+    "NEXI_API_ORIGIN",
+    "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
+    "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
+    "NEXT_PUBLIC_GTM_ID",
+    "VERCEL",
+    "VERCEL_*",
+    "!VERCEL_ENV",
+    "VERCEL_AUTOMATION_BYPASS_SECRET",
+    "VERCEL_PROJECT_PRODUCTION_URL",
+    "VERCEL_URL",
+    "WORKSPACE_DOTYPOS_TABLE_ID"
+  ],
   "tasks": {
-    "deskohub-workspace#build": {
-      "env": ["CLOUDINARY_API_KEY", "CLOUDINARY_API_SECRET", "EMAIL_API_KEY"]
-    },
     "@deskohub/dotypos#generate": {
       "passThroughEnv": [
         "CLOUDINARY_API_KEY",
