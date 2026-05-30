@@ -9,25 +9,10 @@
         "i18n:compile"
       ],
       "env": [
-        "DOTYPOS_CLIENT_ID",
-        "DOTYPOS_CLIENT_SECRET",
-        "DOTYPOS_REFRESH_TOKEN",
-        "DOTYPOS_API_URL",
-        "DOTYPOS_BRANCH_ID",
-        "DOTYPOS_CLOUD_ID",
-        "DOTYPOS_EMPLOYEE_ID",
-        "DOTYPOS_API_TIMEOUT",
-        "DOTYPOS_WEBHOOK_SECRET",
-        "WORKSPACE_DOTYPOS_TABLE_ID",
-        "EMAIL_API_KEY",
-        "NEXI_API_KEY",
-        "NEXI_API_ORIGIN",
-        "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
-        "CLOUDINARY_API_KEY",
-        "CLOUDINARY_API_SECRET",
-        "DATABASE_URL",
         "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
-        "NEXT_PUBLIC_GTM_ID"
+        "NEXT_PUBLIC_GTM_ID",
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "VERCEL_URL"
       ]
     },
     "build:vercel": {
@@ -43,27 +28,6 @@
         "@deskohub/dotypos#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
-      ],
-      "passThroughEnv": [
-        "CLOUDINARY_API_KEY",
-        "CLOUDINARY_API_SECRET",
-        "DATABASE_URL",
-        "DOTYPOS_API_TIMEOUT",
-        "DOTYPOS_API_URL",
-        "DOTYPOS_BRANCH_ID",
-        "DOTYPOS_CLIENT_ID",
-        "DOTYPOS_CLIENT_SECRET",
-        "DOTYPOS_CLOUD_ID",
-        "DOTYPOS_EMPLOYEE_ID",
-        "DOTYPOS_REFRESH_TOKEN",
-        "DOTYPOS_WEBHOOK_SECRET",
-        "WORKSPACE_DOTYPOS_TABLE_ID",
-        "EMAIL_API_KEY",
-        "NEXI_API_KEY",
-        "NEXI_API_ORIGIN",
-        "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
-        "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
-        "NEXT_PUBLIC_GTM_ID"
       ]
     },
     "typecheck": {
