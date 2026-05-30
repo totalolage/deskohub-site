@@ -94,9 +94,9 @@ If the project is not linked yet, run Vercel's link flow from `apps/deskohub-wor
 
 ## Build-Time Migrations
 
-Workspace Vercel builds intentionally run Drizzle migrations before the app build, but that wiring must stay scoped to the Workspace Vercel project. App-root deployments resolve to `bun run build:vercel`, which runs `drizzle-kit migrate` via `bun run db:migrate` before the existing `bun run i18n:compile && next build --turbo` build script.
+Workspace Vercel builds intentionally run Drizzle migrations before the app build, but that wiring must stay scoped to the Workspace Vercel project. App-root deployments resolve to `bun turbo build:vercel`, where Turbo's `build:vercel` task depends on the Workspace `db:migrate` task and the real Workspace `build` task. The app's `build` script remains the atomic core Next build (`next build --turbo`), while Turbo's Workspace build task is responsible for running `i18n:compile` and upstream generation such as `@deskohub/nexi#generate` before that build starts.
 
-Do not put Workspace migrations in the shared repository-root `vercel.json`: root-linked Vercel projects for other apps must not advance the Workspace database schema or build the Workspace app. If the Workspace Vercel project remains linked at the repository root instead of `apps/deskohub-workspace`, configure that specific Vercel project's Build Command in Vercel project settings to run `bun --cwd apps/deskohub-workspace run db:migrate && bun run build:workspace`.
+Do not put Workspace migrations in the shared repository-root `vercel.json`: root-linked Vercel projects for other apps must not advance the Workspace database schema or build the Workspace app. If the Workspace Vercel project remains linked at the repository root instead of `apps/deskohub-workspace`, configure that specific Vercel project's Build Command in Vercel project settings to run `bun turbo build:vercel --filter=deskohub-workspace`.
 
 The selected migration policy is all Vercel builds migrate. This is unconditional for production and preview builds, using that deployment environment's `DATABASE_URL`. This is high risk if preview deployments point at the production database; only do that when accepting that preview builds may advance production schema.
 
