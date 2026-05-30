@@ -15,7 +15,9 @@ import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
 import {
+  formatWorkspaceMoney,
   formatWorkspaceProductCurrencyAmount,
+  getWorkspaceProductCoffeePriceForTier,
   isWorkspaceProductTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
@@ -26,6 +28,7 @@ import {
 import {
   getWorkspaceProductMessage,
   workspaceProductMonitorMessageKeys,
+  workspaceProductTierBulletMessageKeys,
   workspaceProductTierMessageKeys,
 } from "@/features/checkout/product-catalog.i18n";
 import { useCookieConsent } from "@/features/cookie-consent";
@@ -65,11 +68,13 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
+import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
 
 type ReservationFormProps = {
   locale: Locale;
+  showIntro?: boolean;
 };
 
 type SubmissionMessage = {
@@ -99,6 +104,8 @@ const tierOptions = workspaceProductCatalog.map((product) => ({
   titleKey: keyof typeof m;
   descriptionKey: keyof typeof m;
 }>;
+
+const tierBulletContent = workspaceProductTierBulletMessageKeys;
 
 const monitorOptions = workspaceProductMonitorOptions.map((option) => ({
   value: option,
@@ -170,7 +177,10 @@ const getTierDefaultValues = (tier: string | null): ReservationInput => {
   };
 };
 
-export function ReservationForm({ locale }: ReservationFormProps) {
+export function ReservationForm({
+  locale,
+  showIntro = true,
+}: ReservationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
@@ -194,6 +204,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   });
   const selectedTier = form.watch("entryTier");
   const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
+  const coffeePrice = getWorkspaceProductCoffeePriceForTier(selectedTier);
+  const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
 
@@ -225,12 +237,6 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   });
 
   useEffect(() => {
-    if (courtesyCoffeeIncluded) {
-      form.setValue("coffee", true, { shouldValidate: true });
-    }
-  }, [courtesyCoffeeIncluded, form]);
-
-  useEffect(() => {
     if (shouldShowMonitors) {
       return;
     }
@@ -253,16 +259,18 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   return (
     <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      <CardHeader className="space-y-3 pb-6">
-        <CardTitle className="text-3xl sm:text-[2.35rem]">
-          {m.reservationFormTitle({}, { locale })}
-        </CardTitle>
-        <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
-          {m.reservationFormDescription({}, { locale })}
-        </CardDescription>
-      </CardHeader>
+      {showIntro ? (
+        <CardHeader className="space-y-3 pb-6">
+          <CardTitle className="text-3xl sm:text-[2.35rem]">
+            {m.reservationFormTitle({}, { locale })}
+          </CardTitle>
+          <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
+            {m.reservationFormDescription({}, { locale })}
+          </CardDescription>
+        </CardHeader>
+      ) : null}
 
-      <CardContent>
+      <CardContent className={showIntro ? undefined : "pt-6"}>
         <Form {...form}>
           <form onSubmit={handleSubmit} className="space-y-7">
             <FormField
@@ -274,34 +282,33 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                     {m.reservationTierLabel({}, { locale })}
                   </FormLabel>
                   <FormControl>
-                    <div className="grid gap-3 lg:grid-cols-3">
+                    <div className="grid gap-3 lg:grid-cols-3 lg:gap-x-3 lg:gap-y-3">
                       {tierOptions.map((option) => {
                         const isSelected = field.value === option.value;
+                        const bulletContent = tierBulletContent[option.value];
+                        const inputId = `reservation-entry-tier-${option.value}`;
+                        const optionTitle = getWorkspaceProductMessage(
+                          option.titleKey,
+                          locale
+                        );
 
                         return (
-                          <label
+                          <div
                             key={option.value}
                             data-reservation-tier-option={option.value}
                             className={cn(
-                              "group relative flex cursor-pointer flex-col gap-3 rounded-[1.4rem] border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)]",
+                              "group relative flex cursor-pointer flex-col gap-3 rounded-[1.4rem] border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:row-span-4 lg:grid lg:grid-rows-subgrid",
                               isSelected
                                 ? "border-burned-orange bg-burned-orange/8 ring-4 ring-burned-orange/10"
                                 : "border-navy-blue/10 bg-white hover:border-burned-orange/45"
                             )}
                           >
-                            <input
-                              type="radio"
-                              className="sr-only"
-                              checked={isSelected}
-                              value={option.value}
-                              onChange={() => field.onChange(option.value)}
-                            />
-                            <span className="flex items-start justify-between gap-2">
+                            <label
+                              htmlFor={inputId}
+                              className="relative z-10 flex cursor-pointer items-start justify-between gap-2"
+                            >
                               <span className="text-lg leading-6">
-                                {getWorkspaceProductMessage(
-                                  option.titleKey,
-                                  locale
-                                )}
+                                {optionTitle}
                               </span>
                               <span
                                 data-reservation-tier-radio-visual={
@@ -314,7 +321,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                                     : "border-navy-blue/25"
                                 )}
                               />
-                            </span>
+                            </label>
                             <span className="text-sm font-semibold uppercase tracking-[0.12em] text-burned-orange">
                               {formatWorkspaceProductCurrencyAmount(
                                 option.product,
@@ -322,13 +329,64 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                               )}
                               {m.pricingTariffPricePeriodSuffix({}, { locale })}
                             </span>
-                            <span className="text-sm leading-6 text-navy-blue/62">
-                              {getWorkspaceProductMessage(
-                                option.descriptionKey,
-                                locale
-                              )}
-                            </span>
-                          </label>
+                            <div className="text-sm leading-5 text-navy-blue/62">
+                              <ul className="list-disc space-y-0.5 pl-4">
+                                {bulletContent.main.map((key) => (
+                                  <li key={key}>
+                                    {getWorkspaceProductMessage(key, locale)}
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <div className="space-y-1 text-sm leading-5 text-navy-blue/62">
+                              <span className="block font-semibold leading-5 text-navy-blue/72">
+                                {getWorkspaceProductMessage(
+                                  bulletContent.perksLabelKey,
+                                  locale
+                                )}
+                              </span>
+                              <ul className="space-y-0.5">
+                                {bulletContent.perks.map((perk) => (
+                                  <li
+                                    key={perk.key}
+                                    className={cn(
+                                      "flex gap-1.5 leading-5",
+                                      perk.highlighted && "text-burned-orange"
+                                    )}
+                                  >
+                                    <span
+                                      aria-hidden="true"
+                                      className="w-3 shrink-0 text-center"
+                                    >
+                                      {perk.marker === "plus" ? "+" : "\u2022"}
+                                    </span>
+                                    <span>
+                                      {getWorkspaceProductMessage(
+                                        perk.key,
+                                        locale
+                                      )}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                            <label
+                              htmlFor={inputId}
+                              className="absolute inset-0 cursor-pointer rounded-[1.4rem]"
+                            >
+                              <input
+                                id={inputId}
+                                name={field.name}
+                                type="radio"
+                                className="sr-only"
+                                checked={isSelected}
+                                value={option.value}
+                                onChange={() => field.onChange(option.value)}
+                                onBlur={field.onBlur}
+                                ref={field.ref}
+                              />
+                            </label>
+                          </div>
                         );
                       })}
                     </div>
@@ -338,86 +396,138 @@ export function ReservationForm({ locale }: ReservationFormProps) {
               )}
             />
 
-            <FormField
-              control={form.control}
-              name="date"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
-                    {m.reservationDateLabel({}, { locale })}
-                  </FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          className={cn(
-                            "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-                            !field.value && "text-navy-blue/44"
-                          )}
-                        >
-                          <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                          {formatDisplayDate(field.value, locale)}
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent align="start" className="w-auto p-3">
-                      <Calendar
-                        mode="single"
-                        selected={parseInputDate(field.value)}
-                        onSelect={(date) => {
-                          if (!date) {
-                            return;
-                          }
+            <div className="grid gap-5 md:grid-cols-2">
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                      {m.reservationDateLabel({}, { locale })}
+                    </FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            type="button"
+                            variant="secondary"
+                            className={cn(
+                              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                              !field.value && "text-navy-blue/44"
+                            )}
+                          >
+                            <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                            {formatDisplayDate(field.value, locale)}
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent align="start" className="w-auto p-3">
+                        <Calendar
+                          mode="single"
+                          selected={parseInputDate(field.value)}
+                          onSelect={(date) => {
+                            if (!date) {
+                              return;
+                            }
 
-                          field.onChange(formatDateForInput(date));
-                        }}
-                        disabled={{ before: new Date() }}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
+                            field.onChange(formatDateForInput(date));
+                          }}
+                          disabled={{ before: new Date() }}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <FormField
+                control={form.control}
+                name="coffee"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                      {m.reservationCoffeeLabel({}, { locale })}
+                    </FormLabel>
+                    <FormLabel
+                      className={cn(
+                        "flex h-13 items-center justify-between gap-3 rounded-[1.1rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white px-4 py-3 text-navy-blue transition",
+                        !courtesyCoffeeIncluded &&
+                          "cursor-pointer hover:border-burned-orange/30",
+                        courtesyCoffeeIncluded && "cursor-default"
+                      )}
+                    >
+                      <span className="flex items-center gap-3">
+                        <Coffee className="h-5 w-5 shrink-0 text-burned-orange" />
+                        <FormControl>
+                          <Switch
+                            checked={
+                              courtesyCoffeeIncluded ? true : field.value
+                            }
+                            disabled={courtesyCoffeeIncluded}
+                            onBlur={field.onBlur}
+                            onCheckedChange={(checked) =>
+                              field.onChange(Boolean(checked))
+                            }
+                          />
+                        </FormControl>
+                      </span>
+                      <span className="text-sm font-semibold text-navy-blue before:content-['+']">
+                        {coffeePriceLabel}
+                      </span>
+                    </FormLabel>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
+
+            <div className="grid gap-5 md:grid-cols-2">
+              <TextField
+                control={form.control}
+                name="email"
+                type="email"
+                label={m.contactEmailLabel({}, { locale })}
+                placeholder={m.contactEmailPlaceholder({}, { locale })}
+                autoComplete="email"
+              />
+              <TextField
+                control={form.control}
+                name="phone"
+                label={m.contactPhoneLabel({}, { locale })}
+                placeholder={m.contactPhonePlaceholder({}, { locale })}
+                autoComplete="tel"
+              />
+            </div>
+
+            <TextField
+              control={form.control}
+              name="name"
+              label={m.contactNameLabel({}, { locale })}
+              placeholder={m.contactNamePlaceholder({}, { locale })}
+              autoComplete="name"
             />
 
             <FormField
               control={form.control}
-              name="coffee"
-              render={({ field }) => (
+              name="message"
+              render={({ field, fieldState }) => (
                 <FormItem>
-                  <div className="relative">
-                    <FormControl>
-                      <Checkbox
-                        className="absolute left-4 top-4 z-10"
-                        checked={courtesyCoffeeIncluded ? true : field.value}
-                        disabled={courtesyCoffeeIncluded}
-                        onBlur={field.onBlur}
-                        onCheckedChange={(checked) =>
-                          field.onChange(Boolean(checked))
-                        }
-                      />
-                    </FormControl>
-                    <FormLabel
-                      className={cn(
-                        "block cursor-pointer rounded-[1.3rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white py-4 pl-12 pr-4 text-navy-blue transition hover:border-burned-orange/30",
-                        courtesyCoffeeIncluded && "cursor-default"
+                  <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                    {m.reservationMessageLabel({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <Textarea
+                      {...field}
+                      value={field.value || ""}
+                      rows={5}
+                      variant={fieldState.error ? "error" : "default"}
+                      placeholder={m.reservationMessagePlaceholder(
+                        {},
+                        { locale }
                       )}
-                    >
-                      <span className="block space-y-1 leading-none">
-                        <span className="flex items-center gap-2 text-base font-semibold text-navy-blue">
-                          <Coffee className="h-4 w-4 text-burned-orange" />
-                          {m.reservationCoffeeLabel({}, { locale })}
-                        </span>
-                        <FormDescription className="leading-6">
-                          {courtesyCoffeeIncluded
-                            ? m.reservationCoffeeCourtesyNote({}, { locale })
-                            : m.reservationCoffeeBasicNote({}, { locale })}
-                        </FormDescription>
-                      </span>
-                    </FormLabel>
-                  </div>
+                    />
+                  </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
@@ -481,57 +591,6 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                 )}
               />
             )}
-
-            <div className="grid gap-5 md:grid-cols-2">
-              <TextField
-                control={form.control}
-                name="name"
-                label={m.contactNameLabel({}, { locale })}
-                placeholder={m.contactNamePlaceholder({}, { locale })}
-                autoComplete="name"
-              />
-              <TextField
-                control={form.control}
-                name="email"
-                type="email"
-                label={m.contactEmailLabel({}, { locale })}
-                placeholder={m.contactEmailPlaceholder({}, { locale })}
-                autoComplete="email"
-              />
-            </div>
-
-            <TextField
-              control={form.control}
-              name="phone"
-              label={m.contactPhoneLabel({}, { locale })}
-              placeholder={m.contactPhonePlaceholder({}, { locale })}
-              autoComplete="tel"
-            />
-
-            <FormField
-              control={form.control}
-              name="message"
-              render={({ field, fieldState }) => (
-                <FormItem>
-                  <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
-                    {m.reservationMessageLabel({}, { locale })}
-                  </FormLabel>
-                  <FormControl>
-                    <Textarea
-                      {...field}
-                      value={field.value || ""}
-                      rows={5}
-                      variant={fieldState.error ? "error" : "default"}
-                      placeholder={m.reservationMessagePlaceholder(
-                        {},
-                        { locale }
-                      )}
-                    />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
 
             <FormField
               control={form.control}

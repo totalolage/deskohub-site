@@ -5,6 +5,17 @@ import type {
 import { type Locale, m } from "@/features/i18n";
 
 type WorkspaceProductMessageKey = keyof typeof m;
+type WorkspaceProductTierPerkMarker = "bullet" | "plus";
+
+type WorkspaceProductTierBulletMessageKeys = {
+  readonly main: readonly WorkspaceProductMessageKey[];
+  readonly perksLabelKey: WorkspaceProductMessageKey;
+  readonly perks: readonly {
+    readonly key: WorkspaceProductMessageKey;
+    readonly highlighted?: boolean;
+    readonly marker?: WorkspaceProductTierPerkMarker;
+  }[];
+};
 
 export const workspaceProductTierMessageKeys = {
   "basic-day-pass": {
@@ -26,6 +37,36 @@ export const workspaceProductTierMessageKeys = {
     readonly descriptionKey: WorkspaceProductMessageKey;
   }
 >;
+
+export const workspaceProductTierBulletMessageKeys: Record<
+  WorkspaceProductTier,
+  WorkspaceProductTierBulletMessageKeys
+> = {
+  "basic-day-pass": {
+    main: ["reservationTierBasicBulletDesk"],
+    perksLabelKey: "reservationTierPerksLabel",
+    perks: [
+      { key: "reservationTierBasicPerkWifi" },
+      { key: "reservationTierBasicPerkWater" },
+    ],
+  },
+  "cowork-plus": {
+    main: ["reservationTierCoworkBulletDesk"],
+    perksLabelKey: "reservationTierPerksLabel",
+    perks: [
+      { key: "reservationTierPerkAllBasic", highlighted: true },
+      { key: "reservationTierPerkFreeCoffee", marker: "plus" },
+    ],
+  },
+  "profi-workstation": {
+    main: ["reservationTierProfiBulletDesk"],
+    perksLabelKey: "reservationTierPerksLabel",
+    perks: [
+      { key: "reservationTierPerkAllCowork", highlighted: true },
+      { key: "reservationTierPerkProSetup", marker: "plus" },
+    ],
+  },
+};
 
 export const workspaceProductMonitorMessageKeys = {
   "2x27": {

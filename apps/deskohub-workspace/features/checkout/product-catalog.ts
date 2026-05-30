@@ -1,4 +1,5 @@
 import type { Locale } from "@/features/i18n";
+import { tierIncludesCourtesyCoffee } from "../reservation/schemas/reservation";
 
 export type WorkspaceMoney = {
   readonly value: number;
@@ -73,6 +74,12 @@ export const workspaceProductCatalog = [
   },
 ] as const satisfies readonly WorkspaceProductCatalogItem[];
 
+export const workspaceProductCoffeePrice: WorkspaceMoney = {
+  value: 5000,
+  exponent: 2,
+  currency: "CZK",
+};
+
 const productsByTier = new Map<
   WorkspaceProductTier,
   WorkspaceProductCatalogItem
@@ -118,12 +125,6 @@ export function toWorkspaceMoneyMajorAmount(money: WorkspaceMoney) {
 }
 
 export function formatWorkspaceMoney(money: WorkspaceMoney, locale: Locale) {
-  if (!Number.isInteger(money.exponent) || money.exponent < 0) {
-    throw new RangeError(
-      "Workspace money exponent must be a non-negative intege"
-    );
-  }
-
   return new Intl.NumberFormat(locale, {
     style: "currency",
     currency: money.currency,
@@ -137,4 +138,15 @@ export function formatWorkspaceProductCurrencyAmount(
   locale: Locale
 ) {
   return formatWorkspaceMoney(product.price, locale);
+}
+
+export function getWorkspaceProductCoffeePriceForTier(
+  tier: WorkspaceProductTier
+) {
+  if (tierIncludesCourtesyCoffee(tier))
+    return {
+      ...workspaceProductCoffeePrice,
+      value: 0,
+    };
+  return workspaceProductCoffeePrice;
 }

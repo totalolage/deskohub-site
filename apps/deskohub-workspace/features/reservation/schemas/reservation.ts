@@ -133,14 +133,11 @@ export const getReservationSchema = () =>
           message: m.reservationValidationMonitorUnavailable(),
         });
       }
+    })
+    .transform((data) => {
+      const product = getWorkspaceProductByTier(data.entryTier);
 
-      if (product.requiresCoffee && !data.coffee) {
-        context.addIssue({
-          code: "custom",
-          path: ["coffee"],
-          message: m.reservationValidationCoffeeRequired(),
-        });
-      }
+      return product.requiresCoffee ? { ...data, coffee: true } : data;
     });
 
 export type ReservationInput = z.input<ReturnType<typeof getReservationSchema>>;
