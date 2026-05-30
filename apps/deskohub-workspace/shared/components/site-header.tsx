@@ -122,18 +122,20 @@ export function SiteHeader({
               {link.label}
             </a>
           ))}
+        </nav>
+
+        <div className="flex items-center gap-2 sm:gap-3 xl:gap-3">
           <Link
             href={contactHref}
-            className="rounded-full border border-white/12 bg-white px-4 py-2 text-center text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue transition-colors hover:bg-sunset-yellow"
+            className="rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
+            onClick={closeMenu}
           >
             {contactLabel}
           </Link>
-        </nav>
 
-        <div className="hidden items-center gap-3 xl:flex">
           <nav
             aria-label="Language switcher"
-            className="rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72"
+            className="hidden rounded-full border border-white/12 bg-white/6 px-6 py-2 text-center text-xs uppercase tracking-[0.14em] text-white/72 xl:block"
           >
             <Suspense fallback={null}>
               <LocaleSwitcherLinks
@@ -142,26 +144,26 @@ export function SiteHeader({
               />
             </Suspense>
           </nav>
-        </div>
 
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          className="rounded-full border border-white/12 bg-white/6 text-white hover:bg-white/12 hover:text-white xl:hidden"
-          aria-expanded={mobileMenuOpen}
-          aria-controls="site-header-mobile-menu"
-          aria-label={
-            mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
-          }
-          onClick={() => setMobileMenuOpen((open) => !open)}
-        >
-          {mobileMenuOpen ? (
-            <X className="h-5 w-5" />
-          ) : (
-            <Menu className="h-5 w-5" />
-          )}
-        </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            className="rounded-full border border-white/12 bg-white/6 text-white hover:bg-white/12 hover:text-white xl:hidden"
+            aria-expanded={mobileMenuOpen}
+            aria-controls="site-header-mobile-menu"
+            aria-label={
+              mobileMenuOpen ? "Close navigation menu" : "Open navigation menu"
+            }
+            onClick={() => setMobileMenuOpen((open) => !open)}
+          >
+            {mobileMenuOpen ? (
+              <X className="h-5 w-5" />
+            ) : (
+              <Menu className="h-5 w-5" />
+            )}
+          </Button>
+        </div>
       </div>
 
       <div
@@ -184,15 +186,6 @@ export function SiteHeader({
               </a>
             ))}
           </nav>
-
-          <Button
-            asChild
-            className="h-12 rounded-2xl text-sm uppercase tracking-[0.12em] xl:hidden"
-          >
-            <Link href={contactHref} onClick={closeMenu}>
-              {contactLabel}
-            </Link>
-          </Button>
 
           <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-white/8 bg-white/5 px-4 py-3 text-xs uppercase tracking-[0.14em] text-white/72">
             <Suspense fallback={null}>
