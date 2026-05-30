@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-export const workspaceCheckoutPlaceholderAccessCode = "8529";
+export const workspaceCheckoutPlaceholderAccessCode = "451936";
 
 export interface ResolveWorkspaceCustomerAccessCodeInput {
   readonly orderId: string;

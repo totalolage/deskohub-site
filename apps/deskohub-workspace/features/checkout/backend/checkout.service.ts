@@ -122,6 +122,12 @@ const getNexiCheckoutPrice = (price: WorkspaceMoney): WorkspaceMoney => {
   };
 };
 
+const getReservationCheckoutPrice = (data: ReservationData): WorkspaceMoney => {
+  const product = getWorkspaceProductByTier(data.entryTier);
+
+  return product.price;
+};
+
 const getCheckoutLegalAcceptanceSnapshot: (
   locale: Locale
 ) => Effect.Effect<
@@ -221,20 +227,26 @@ export const CheckoutServiceLive = Layer.effect(
             );
           }
 
-          const product = getWorkspaceProductByTier(data.entryTier);
           const orderId = generateOrderId();
           const acceptedAt = new Date().toISOString();
           const legalConsent = data.legalConsent;
           const legalDocuments =
             yield* getCheckoutLegalAcceptanceSnapshot(locale);
           const customerName = splitName(data.name);
-          const customer = yield* dotypos.findOrCreateCustomer({
-            ...customerName,
-            email: data.email,
-            phone: data.phone || undefined,
-          });
+          const customer = yield* dotypos.findOrCreateCustomer(
+            {
+              ...customerName,
+              email: data.email,
+              phone: data.phone || undefined,
+            },
+            {
+              lookupFields: ["email"],
+            }
+          );
           const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-          const checkoutPrice = getNexiCheckoutPrice(product.price);
+          const checkoutPrice = getNexiCheckoutPrice(
+            getReservationCheckoutPrice(data)
+          );
           const nexiAmount = yield* toNexiAmount(checkoutPrice).pipe(
             Effect.mapError(
               (cause) =>
