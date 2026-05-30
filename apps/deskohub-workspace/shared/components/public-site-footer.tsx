@@ -128,7 +128,7 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
                 {m.footerContactLink({}, { locale })}
               </Link>
               <Link
-                href={`${localePath}/reservation`}
+                href={`${localePath}/checkout/order`}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerReservationLink({}, { locale })}

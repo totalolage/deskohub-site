@@ -47,7 +47,7 @@ export function getSiteHeaderConfig(locale: Locale) {
       },
     ],
     contactLabel: m.reservationNavCta({}, { locale }),
-    contactHref: `${localePath}/reservation`,
+    contactHref: `${localePath}/checkout/order`,
   };
 }
 

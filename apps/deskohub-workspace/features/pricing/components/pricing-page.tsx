@@ -110,7 +110,7 @@ type TariffCardProps = {
 };
 
 function TariffCard({ includesLabel, tariff, locale }: TariffCardProps) {
-  const reservationHref = `/${locale}/reservation?tier=${tariff.reservationTier}`;
+  const reservationHref = `/${locale}/checkout/order?tier=${tariff.reservationTier}`;
 
   return (
     <Link href={reservationHref} className="group block rounded-[1.9rem]">
