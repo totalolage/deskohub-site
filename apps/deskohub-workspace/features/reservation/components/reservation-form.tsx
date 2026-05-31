@@ -284,7 +284,10 @@ export function ReservationForm({
               name="entryTier"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                  <FormLabel
+                    className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                    required
+                  >
                     {m.reservationTierLabel({}, { locale })}
                   </FormLabel>
                   <FormControl>
@@ -408,7 +411,10 @@ export function ReservationForm({
                 name="date"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                    <FormLabel
+                      className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                      required
+                    >
                       {m.reservationDateLabel({}, { locale })}
                     </FormLabel>
                     <Popover>
@@ -545,7 +551,10 @@ export function ReservationForm({
                 name="monitorOption"
                 render={({ field }) => (
                   <FormItem className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
-                    <FormLabel className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                    <FormLabel
+                      className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                      required
+                    >
                       <Monitor className="h-4 w-4 text-aquamarine-green" />
                       {m.reservationMonitorLabel({}, { locale })}
                     </FormLabel>
@@ -775,6 +784,7 @@ type TextFieldProps = {
   name: "name" | "email" | "phone";
   label: string;
   placeholder: string;
+  required?: boolean;
   type?: string;
   autoComplete?: string;
 };
@@ -784,6 +794,7 @@ function TextField({
   name,
   label,
   placeholder,
+  required = true,
   type = "text",
   autoComplete,
 }: TextFieldProps) {
@@ -793,7 +804,10 @@ function TextField({
       name={name}
       render={({ field, fieldState }) => (
         <FormItem>
-          <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+          <FormLabel
+            className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+            required={required}
+          >
             {label}
           </FormLabel>
           <FormControl>
