@@ -36,8 +36,9 @@ export const checkoutDetailsJsonSchema = z.object({
     undiscountedPrice: workspaceMoneySchema.optional(),
     customerDiscount: z
       .object({
-        source: z.literal("dotypos-customer"),
+        source: z.literal("dotypos-discount-group"),
         field: z.string().min(1),
+        discountGroupId: z.string().min(1),
         percent: z.number().positive().max(100),
         amount: workspaceMoneySchema,
       })
