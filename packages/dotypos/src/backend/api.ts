@@ -1,4 +1,4 @@
-import { Effect, Ref, Schema } from "effect";
+import { Effect, ParseResult, Ref, Schema } from "effect";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError } from "../errors";
 import { createClient } from "../generated/client";
@@ -194,12 +194,23 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         Effect.gen(function* () {
           const token = yield* getToken();
 
+          const body = zCreateCustomerRequest.safeParse(params.body);
+          if (body.error) {
+            return yield* ParseResult.parseError({
+              ...body.error,
+              actual: body,
+              _tag: "Unexpected",
+            });
+          }
+
+          const requestBody = [body.data];
+
           return yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.createCustomers(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  body: [zCreateCustomerRequest.parse(params.body)],
+                  body: requestBody,
                 })
               );
 
@@ -217,8 +228,20 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
               return customers[0]!;
             },
-            catch: (error) =>
-              transformErrorResponse(error, "Create customer", config.apiUrl),
+            catch: Effect.fn(function* (error) {
+              yield* Effect.logError("Dotypos createCustomer failed", {
+                cause: error,
+                request: {
+                  path: params.path,
+                  body: requestBody,
+                },
+              });
+              return transformErrorResponse(
+                error,
+                "Create customer",
+                config.apiUrl
+              );
+            }),
           });
         }).pipe(Effect.withSpan("dotyposApi.createCustomer")),
 
