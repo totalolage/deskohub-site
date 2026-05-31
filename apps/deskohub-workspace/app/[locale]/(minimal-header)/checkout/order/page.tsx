@@ -1,12 +1,7 @@
 import { Effect, Layer } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
-import {
-  CheckoutStatusService,
-  CheckoutStatusServiceLiveWithDependencies,
-  type CheckoutStatusViewModel,
-} from "@/features/checkout/backend/checkout-status.service";
+import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order-page";
 import {
@@ -31,19 +26,25 @@ type LocalizedCheckoutOrderPageProps = {
   searchParams: Promise<CheckoutOrderSearchParams>;
 };
 
-const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
-  Layer.provide(WorkspaceDatabaseLive),
-  Layer.orDie
-);
+const loadProviderReturnStatus = async (orderId: string) => {
+  const [{ WorkspaceDatabaseLive }, checkoutStatus] = await Promise.all([
+    import("@/db/database.service"),
+    import("@/features/checkout/backend/checkout-status.service"),
+  ]);
+  const checkoutStatusLayer =
+    checkoutStatus.CheckoutStatusServiceLiveWithDependencies.pipe(
+      Layer.provide(WorkspaceDatabaseLive),
+      Layer.orDie
+    );
 
-const loadProviderReturnStatus = (orderId: string) =>
-  Effect.gen(function* () {
-    const service = yield* CheckoutStatusService;
+  return Effect.gen(function* () {
+    const service = yield* checkoutStatus.CheckoutStatusService;
     return yield* service.recordProviderReturn({
       orderId,
       returnOutcome: "unknown",
     });
   }).pipe(Effect.provide(checkoutStatusLayer), runWorkspaceEffect);
+};
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
