@@ -5,34 +5,36 @@ import { Container } from "@/shared/components/container";
 import { cn } from "@/shared/utils";
 
 type CheckoutFlowLayoutProps = {
-  readonly activeStepIndex: number;
+  readonly activeStepKey: CheckoutStepKey;
   readonly children: ReactNode;
   readonly locale: Locale;
 };
 
 type CheckoutStepsProps = {
-  readonly activeStepIndex: number;
+  readonly activeStepKey: CheckoutStepKey;
   readonly locale: Locale;
 };
 
-const stepMessageGetters = [
-  m.checkoutOrderStepReservation,
-  m.checkoutOrderStepPayment,
-  m.checkoutOrderStepAccess,
+export const checkoutFlowSteps = [
+  { key: "order", getLabel: m.checkoutOrderStepReservation },
+  { key: "pay", getLabel: m.checkoutOrderStepPayment },
+  { key: "access", getLabel: m.checkoutOrderStepAccess },
 ] as const;
 
-export function CheckoutSteps({ activeStepIndex, locale }: CheckoutStepsProps) {
+export type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
+
+export function CheckoutSteps({ activeStepKey, locale }: CheckoutStepsProps) {
   return (
     <ol
       className="grid gap-2 sm:grid-cols-3"
       aria-label={m.checkoutOrderStepsLabel({}, { locale })}
     >
-      {stepMessageGetters.map((getStepLabel, index) => {
-        const isCurrentStep = index === activeStepIndex;
+      {checkoutFlowSteps.map((step, index) => {
+        const isCurrentStep = step.key === activeStepKey;
 
         return (
           <li
-            key={String(index)}
+            key={step.key}
             aria-current={isCurrentStep ? "step" : undefined}
             className="flex items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68"
           >
@@ -47,7 +49,7 @@ export function CheckoutSteps({ activeStepIndex, locale }: CheckoutStepsProps) {
               {index + 1}
             </span>
             <span className={cn(isCurrentStep && "text-white")}>
-              {getStepLabel({}, { locale })}
+              {step.getLabel({}, { locale })}
             </span>
           </li>
         );
@@ -57,7 +59,7 @@ export function CheckoutSteps({ activeStepIndex, locale }: CheckoutStepsProps) {
 }
 
 export function CheckoutFlowLayout({
-  activeStepIndex,
+  activeStepKey,
   children,
   locale,
 }: CheckoutFlowLayoutProps) {
@@ -69,7 +71,7 @@ export function CheckoutFlowLayout({
 
         <Container className="max-w-4xl">
           <div className="mx-auto max-w-3xl flex flex-col gap-6">
-            <CheckoutSteps activeStepIndex={activeStepIndex} locale={locale} />
+            <CheckoutSteps activeStepKey={activeStepKey} locale={locale} />
             {children}
           </div>
         </Container>
