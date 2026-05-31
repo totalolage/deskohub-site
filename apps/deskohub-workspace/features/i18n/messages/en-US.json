@@ -266,7 +266,6 @@
   "reservationMessageLabel": "Message",
   "reservationMessagePlaceholder": "Arrival time, company name, invoice note, or anything we should know.",
   "reservationSubmitButton": "Continue to secure payment",
-  "reservationSubmitPending": "Preparing secure payment...",
   "reservationLegalConsentLabel": "I agree to the payment and workspace terms",
   "reservationLegalConsentBefore": "By continuing to payment, I agree to the",
   "reservationLegalConsentTermsLink": "General Terms and Conditions",
