@@ -35,6 +35,10 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("set_cookie")).toBe(true);
     expect(isSensitiveLogKey("set.cookie")).toBe(true);
     expect(isSensitiveLogKey("session")).toBe(true);
+    expect(isSensitiveLogKey("email")).toBe(true);
+    expect(isSensitiveLogKey("phone")).toBe(true);
+    expect(isSensitiveLogKey("firstName")).toBe(true);
+    expect(isSensitiveLogKey("lastName")).toBe(true);
   });
 
   test("matches common prefixed camelCase credential key shapes", () => {
@@ -79,6 +83,10 @@ describe("censorLogValue", () => {
         oauthClientSecret: "secret-oauth-client-secret",
         requestAuthorization: "Bearer secret",
         visible: "safe",
+        email: "ada@example.com",
+        phone: "+420777123456",
+        firstName: "Ada",
+        lastName: "Lovelace",
         sessionDuration: 123,
         userSessionCount: 2,
       },
@@ -97,6 +105,10 @@ describe("censorLogValue", () => {
         oauthClientSecret: CENSORED_LOG_VALUE,
         requestAuthorization: CENSORED_LOG_VALUE,
         visible: "safe",
+        email: CENSORED_LOG_VALUE,
+        phone: CENSORED_LOG_VALUE,
+        firstName: CENSORED_LOG_VALUE,
+        lastName: CENSORED_LOG_VALUE,
         sessionDuration: 123,
         userSessionCount: 2,
       },
@@ -140,12 +152,16 @@ describe("censorLogValue", () => {
   });
 
   test("redacts Map entries by sensitive string keys without mutating input", () => {
+    const objectKey = { secret: "key-secret" };
     const input = new Map<unknown, unknown>([
       ["password", "secret-password"],
       ["headers:authorization", "Bearer secret"],
+      ["payState", "pay-state-secret"],
+      ["payStateRef", "pay-state-ref-secret"],
+      ["checkoutToken", "checkout-token-secret"],
       ["sessionDuration", 123],
       ["nested", { apiKey: "secret-api-key" }],
-      [{ secret: "key-secret" }, "visible"],
+      [objectKey, "visible"],
     ]);
 
     const censored = censorLogValue(input) as Map<unknown, unknown>;
@@ -153,12 +169,46 @@ describe("censorLogValue", () => {
     expect(censored).not.toBe(input);
     expect(censored.get("password")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("headers:authorization")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.get("payState")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.get("payStateRef")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
     expect(censored.get("sessionDuration")).toBe(123);
     expect(censored.get("nested")).toEqual({ apiKey: CENSORED_LOG_VALUE });
-    expect(censored.get([...input.keys()][4])).toBe("visible");
+    expect(censored.get(objectKey)).toBe("visible");
     expect(input.get("password")).toBe("secret-password");
     expect(input.get("headers:authorization")).toBe("Bearer secret");
+    expect(input.get("payState")).toBe("pay-state-secret");
+    expect(input.get("payStateRef")).toBe("pay-state-ref-secret");
+    expect(input.get("checkoutToken")).toBe("checkout-token-secret");
     expect(input.get("nested")).toEqual({ apiKey: "secret-api-key" });
+  });
+
+  test("redacts sensitive relative URL query params", () => {
+    expect(
+      censorLogValue(
+        "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&visible=safe#summary"
+      )
+    ).toBe(
+      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
+    );
+  });
+
+  test("redacts sensitive bare relative URL query params", () => {
+    expect(
+      censorLogValue(
+        "checkout/pay?payState=secret&checkoutToken=token&visible=safe#summary"
+      )
+    ).toBe(
+      `checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
+    );
+  });
+
+  test("redacts bare relative URL query params case-insensitively", () => {
+    expect(
+      censorLogValue("checkout/pay?PayState=secret&CHECKOUTTOKEN=token")
+    ).toBe(
+      `checkout/pay?PayState=${encodeURIComponent(CENSORED_LOG_VALUE)}&CHECKOUTTOKEN=${encodeURIComponent(CENSORED_LOG_VALUE)}`
+    );
   });
 
   test("redacts Headers and URLSearchParams by key without mutating input", () => {
@@ -168,13 +218,21 @@ describe("censorLogValue", () => {
     ]);
     const searchParams = new URLSearchParams([
       ["client_secret", "secret-client"],
+      ["payState", "dhp1.secret"],
+      ["PayStateRef", "opaque-secret"],
+      ["checkoutToken", "checkout-secret"],
       ["sessionDuration", "123"],
     ]);
-    const input = { headers, searchParams };
+    const input = {
+      headers,
+      searchParams,
+      plain: { payStateRef: "opaque-secret", nested: { checkoutToken: "x" } },
+    };
 
     const censored = censorLogValue(input) as {
       headers: Headers;
       searchParams: URLSearchParams;
+      plain: { payStateRef: string; nested: { checkoutToken: string } };
     };
 
     expect(censored.headers).not.toBe(headers);
@@ -183,8 +241,13 @@ describe("censorLogValue", () => {
     expect(headers.get("authorization")).toBe("Bearer secret");
     expect(censored.searchParams).not.toBe(searchParams);
     expect(censored.searchParams.get("client_secret")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.searchParams.get("payState")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.searchParams.get("PayStateRef")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.searchParams.get("checkoutToken")).toBe(CENSORED_LOG_VALUE);
     expect(censored.searchParams.get("sessionDuration")).toBe("123");
     expect(searchParams.get("client_secret")).toBe("secret-client");
+    expect(censored.plain.payStateRef).toBe(CENSORED_LOG_VALUE);
+    expect(censored.plain.nested.checkoutToken).toBe(CENSORED_LOG_VALUE);
   });
 });
 
