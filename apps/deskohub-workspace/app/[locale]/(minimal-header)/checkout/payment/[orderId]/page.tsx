@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { Effect, Layer } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -6,15 +7,25 @@ import {
   CheckoutReturnStateTokenRepository,
   CheckoutReturnStateTokenRepositoryLive,
 } from "@/features/checkout/backend/checkout-return-state-token.repository";
+import {
+  CheckoutStatusService,
+  CheckoutStatusServiceLiveWithDependencies,
+  type CheckoutStatusViewModel,
+} from "@/features/checkout/backend/checkout-status.service";
+import {
+  buildSignedPayState,
+  sealPayStateForUrl,
+} from "@/features/checkout/backend/pay-state.server";
+import { buildAuthoritativeWorkspaceCheckoutQuote } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
-import { CheckoutPaymentRetryPage } from "@/features/checkout/components/checkout-payment-retry-page";
+import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { checkoutReturnStateJsonSchema } from "@/features/checkout/schemas/checkout-return-state";
 import { getCheckoutReturnStateTokenFromSearchParams } from "@/features/checkout/schemas/checkout-return-state-token";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import type { ReservationInput } from "@/features/reservation/schemas/reservation";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
+  getSearchParam,
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -37,18 +48,49 @@ const checkoutReturnStateTokenLayer =
     Layer.orDie
   );
 
+const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
+  Layer.provide(WorkspaceDatabaseLive),
+  Layer.orDie
+);
+
+const getRetryOutcome = (
+  status: CheckoutStatusViewModel["status"]
+): "cancelled" | "failed" | undefined => {
+  if (status === "cancelled") return "cancelled";
+  if (status === "payment_failed" || status === "expired") return "failed";
+  return undefined;
+};
+
 const loadCheckoutReturnStateReservation = (input: {
   readonly orderId: string;
   readonly checkoutToken: string;
+  readonly outcome: string | undefined;
 }) =>
   Effect.gen(function* () {
-    // Consume only at final retry form rendering so the opaque token survives
-    // Nexi return/cancel plus internal result/order/status redirects.
     const repository = yield* CheckoutReturnStateTokenRepository;
-    const token = yield* repository.consume({
+    const checkoutStatus = yield* CheckoutStatusService;
+    const token = yield* repository.readValid({
       paymentOrderId: input.orderId,
       token: input.checkoutToken,
     });
+    const originalOrderStatus =
+      input.outcome === "cancelled"
+        ? yield* checkoutStatus.recordProviderReturn({
+            orderId: input.orderId,
+            returnOutcome: "cancelled",
+          })
+        : yield* checkoutStatus.getStatus({
+            orderId: input.orderId,
+            returnOutcome: "unknown",
+          });
+    const retryOutcome = getRetryOutcome(originalOrderStatus.status);
+
+    if (!retryOutcome) {
+      return yield* Effect.fail(
+        new Error("Original payment order is not retryable")
+      );
+    }
+
     const state = checkoutReturnStateJsonSchema.safeParse(token.state);
 
     if (!state.success) {
@@ -57,11 +99,17 @@ const loadCheckoutReturnStateReservation = (input: {
       );
     }
 
-    return {
-      ...state.data.reservation,
-      legalConsent: false,
-    } satisfies ReservationInput;
-  }).pipe(Effect.provide(checkoutReturnStateTokenLayer), runWorkspaceEffect);
+    const reservation = state.data.reservation;
+    const quote = yield* Effect.tryPromise(() =>
+      buildAuthoritativeWorkspaceCheckoutQuote(reservation)
+    );
+
+    return { reservation, quote, retryOutcome };
+  }).pipe(
+    Effect.provide(checkoutReturnStateTokenLayer),
+    Effect.provide(checkoutStatusLayer),
+    runWorkspaceEffect
+  );
 
 export async function generateMetadata({
   params,
@@ -119,18 +167,31 @@ export default async function LocalizedCheckoutPaymentPage({
     await searchParams
   );
   if (!checkoutToken) notFound();
+  const outcome = getSearchParam(await searchParams, "outcome");
 
-  const reservation = await loadCheckoutReturnStateReservation({
+  const retryState = await loadCheckoutReturnStateReservation({
     orderId,
     checkoutToken,
+    outcome,
   }).catch(() => notFound());
+  const payState = buildSignedPayState({
+    locale,
+    reservation: retryState.reservation,
+    quote: retryState.quote,
+    orderId: randomUUID(),
+  });
+  const sealedPayState = sealPayStateForUrl(payState);
+  if (sealedPayState.type !== "sealedPayState") notFound();
 
   return runWithRequestLocale(locale, () => (
-    <CheckoutFlowLayout activeStepIndex={1} locale={locale}>
-      <CheckoutPaymentRetryPage
+    <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+      <CheckoutPayPage
         locale={locale}
         orderId={orderId}
-        reservation={reservation}
+        payStateToken={sealedPayState.token}
+        retryOutcome={retryState.retryOutcome}
+        summary={retryState.quote.summary}
+        variant="retry"
       />
     </CheckoutFlowLayout>
   ));

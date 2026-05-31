@@ -1,3 +1,4 @@
+import type { CheckoutSummarySection } from "@/features/checkout/checkout-quote";
 import type {
   WorkspaceMoney,
   WorkspaceProductMonitorOption,
@@ -20,11 +21,16 @@ export type CheckoutDetailsJson = {
     readonly date: string;
     readonly coffee: boolean;
     readonly monitorOption?: WorkspaceProductMonitorOption;
-    readonly message?: string;
   };
   readonly payment: {
     readonly expectedPrice: WorkspaceMoney;
     readonly undiscountedPrice?: WorkspaceMoney;
+    readonly quoteFingerprint: string;
+    readonly summary: {
+      readonly sections: readonly CheckoutSummarySection[];
+      readonly total: WorkspaceMoney;
+    };
+    readonly providerRedirectUrl?: string;
     readonly customerDiscount?: {
       readonly source: "dotypos-discount-group";
       readonly field: string;
@@ -35,6 +41,8 @@ export type CheckoutDetailsJson = {
   };
   readonly legal: {
     readonly acceptedAt: string;
+    readonly locale: Locale;
+    readonly source: "workspace-pay-final-submit";
     readonly documents: {
       readonly termsAndConditions: LegalDocumentHash;
       readonly operatingRules: LegalDocumentHash;

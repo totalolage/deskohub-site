@@ -1,9 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import {
   getSubmitReservationCheckoutLocale,
   getSubmitReservationSchema,
 } from "./submit-reservation-input";
+
+const validSubmit = {
+  locale: "en-US",
+  payStateToken: "dhp1.test-token",
+  legalConsent: true,
+};
 
 const validReservation = {
   entryTier: "basic-day-pass",
@@ -19,10 +26,7 @@ const validReservation = {
 describe("submit reservation locale input", () => {
   test("uses explicit route locale instead of action context locale", () => {
     const schema = getSubmitReservationSchema();
-    const input = schema.parse({
-      locale: "en-US",
-      reservation: validReservation,
-    });
+    const input = schema.parse(validSubmit);
 
     expect(getSubmitReservationCheckoutLocale(input, "cs-CZ")).toBe("en-US");
   });
@@ -30,8 +34,8 @@ describe("submit reservation locale input", () => {
   test("accepts Czech route locale for checkout creation", () => {
     const schema = getSubmitReservationSchema();
     const input = schema.parse({
+      ...validSubmit,
       locale: "cs-CZ",
-      reservation: validReservation,
     });
 
     expect(getSubmitReservationCheckoutLocale(input, "en-US")).toBe("cs-CZ");
@@ -42,10 +46,51 @@ describe("submit reservation locale input", () => {
 
     expect(
       schema.safeParse({
+        ...validSubmit,
         locale: "de-DE",
-        reservation: validReservation,
       }).success
     ).toBe(false);
+  });
+
+  test("accepts actual legal consent value for service enforcement", () => {
+    const schema = getSubmitReservationSchema();
+
+    expect(schema.parse({ ...validSubmit, legalConsent: false })).toEqual({
+      ...validSubmit,
+      legalConsent: false,
+    });
+    expect(
+      schema.safeParse({
+        locale: "en-US",
+        payStateToken: "",
+        legalConsent: true,
+      }).success
+    ).toBe(false);
+  });
+});
+
+describe("reservation order schema", () => {
+  test("does not include or require legal consent", () => {
+    const schema = getReservationOrderSchema();
+
+    expect(schema.parse(validReservation)).toEqual({
+      entryTier: "basic-day-pass",
+      date: "2099-06-10",
+      coffee: false,
+      name: "Locale Test",
+      email: "locale-test@example.com",
+      phone: "+420777123463",
+      message: "Locale propagation test",
+    });
+    expect(
+      schema.safeParse({
+        entryTier: "basic-day-pass",
+        date: "2099-06-10",
+        coffee: false,
+        name: "Locale Test",
+        email: "locale-test@example.com",
+      }).success
+    ).toBe(true);
   });
 });
 

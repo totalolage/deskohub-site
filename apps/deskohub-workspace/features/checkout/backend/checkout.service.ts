@@ -5,31 +5,54 @@ import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
-import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout-pricing";
+import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
 import {
   CheckoutReturnStateTokenRepository,
   CheckoutReturnStateTokenRepositoryLive,
 } from "@/features/checkout/backend/checkout-return-state-token.repository";
+import {
+  AmbiguousDotyposCustomerError,
+  getConfirmedDotyposCustomerDiscount,
+  splitCustomerName,
+} from "@/features/checkout/backend/dotypos-customer-policy";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
+import {
+  openPayState,
+  type SignedPayState,
+} from "@/features/checkout/backend/pay-state.server";
 import {
   PaymentOrderRepository,
   PaymentOrderRepositoryLive,
 } from "@/features/checkout/backend/payment-order.repository";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import {
-  getWorkspaceProductByTier,
-  type WorkspaceMoney,
-} from "@/features/checkout/product-catalog";
+  buildWorkspaceCheckoutQuote,
+  getCheckoutSummaryChangedKeys,
+  type WorkspaceCheckoutQuote,
+} from "@/features/checkout/checkout-quote";
 import { appendCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import type { ReservationData } from "@/features/reservation/schemas/reservation";
+import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
 import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
+
+type CheckoutLegalEvidence = {
+  readonly acceptedAt: string;
+  readonly locale: Locale;
+  readonly source: "workspace-pay-final-submit";
+  readonly documents: ReturnType<typeof toCheckoutLegalDocuments>;
+  readonly acknowledgements: {
+    readonly termsAndConditions: true;
+    readonly operatingRules: true;
+    readonly noRefundAfterPinDelivery: true;
+    readonly privacyPolicy: true;
+  };
+};
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly message: string;
@@ -38,9 +61,22 @@ export class CheckoutError extends Data.TaggedError("CheckoutError")<{
 
 export interface CheckoutService {
   readonly createHostedPaymentCheckout: (
-    data: ReservationData,
+    input: {
+      readonly payStateToken: string;
+      readonly legalConsent?: boolean;
+    },
     locale: Locale
-  ) => Effect.Effect<{ readonly redirectUrl: string }, CheckoutError>;
+  ) => Effect.Effect<
+    | { readonly status: "redirect"; readonly redirectUrl: string }
+    | {
+        readonly status: "pricing_changed";
+        readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
+        readonly freshSummary: WorkspaceCheckoutQuote["summary"];
+        readonly freshPayUrl: string;
+      }
+    | { readonly status: "in_progress" },
+    CheckoutError
+  >;
 }
 
 export const CheckoutService =
@@ -146,21 +182,11 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 
 const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
 
-const getNexiCheckoutPrice = (price: WorkspaceMoney): WorkspaceMoney => {
-  if (env.VERCEL_ENV === "production") return price;
-  if (!env.NEXI_API_ORIGIN.includes("xpaysandbox.nexigroup.com")) return price;
-  if (!env.NEXI_CHECKOUT_CURRENCY_OVERRIDE) return price;
-
-  return {
-    ...price,
-    currency: env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
-  };
-};
-
-const getReservationCheckoutPrice = (data: ReservationData): WorkspaceMoney => {
-  const product = getWorkspaceProductByTier(data.entryTier);
-
-  return product.price;
+export const getNexiCheckoutCurrencyOverride = () => {
+  if (env.VERCEL_ENV === "production") return undefined;
+  if (!env.NEXI_API_ORIGIN.includes("xpaysandbox.nexigroup.com"))
+    return undefined;
+  return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
 };
 
 const getCheckoutLegalAcceptanceSnapshot: (
@@ -213,22 +239,98 @@ const toCheckoutLegalDocuments = (
   },
 });
 
-const splitName = (name: string) => {
-  const [firstName = "", ...lastNameParts] = name.trim().split(/\s+/);
-  return {
-    firstName,
-    lastName: lastNameParts.join(" ") || undefined,
-  };
-};
+const getFreshPayUrl: (input: {
+  readonly locale: Locale;
+  readonly reservation: ReservationOrderData;
+  readonly quote: WorkspaceCheckoutQuote;
+  readonly orderId: string;
+  readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
+}) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
+  function* (input) {
+    const payPath = buildFreshCheckoutPayPath({
+      locale: input.locale,
+      reservation: input.reservation,
+      quote: input.quote,
+      orderId: input.orderId,
+      changedKeys: input.changedKeys,
+    });
 
-const generateOrderId = () =>
-  `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
-    .toString(36)
-    .toUpperCase()}`;
+    if (!payPath) {
+      return yield* Effect.fail(
+        new CheckoutError({
+          message: "Updated Pay state was too large to continue checkout.",
+        })
+      );
+    }
+
+    return payPath;
+  }
+);
+
+const isActivePaymentStatus = (status: string) =>
+  status === "created" || status === "payment_pending";
+
+const moneyEquals = (
+  left: WorkspaceCheckoutQuote["summary"]["total"],
+  right: WorkspaceCheckoutQuote["summary"]["total"]
+) =>
+  left.value === right.value &&
+  left.currency === right.currency &&
+  left.exponent === right.exponent;
+
+const getCheckoutLegalEvidence = (input: {
+  readonly acceptedAt: string;
+  readonly locale: Locale;
+  readonly legalDocuments: Awaited<
+    ReturnType<typeof getLegalAcceptanceSnapshot>
+  >;
+}): CheckoutLegalEvidence => ({
+  acceptedAt: input.acceptedAt,
+  locale: input.locale,
+  source: "workspace-pay-final-submit",
+  documents: toCheckoutLegalDocuments(input.legalDocuments),
+  acknowledgements: {
+    termsAndConditions: true,
+    operatingRules: true,
+    noRefundAfterPinDelivery: true,
+    privacyPolicy: true,
+  },
+});
+
+const openFinalPayState: (
+  payStateToken: string,
+  locale: Locale
+) => Effect.Effect<SignedPayState, CheckoutError> = Effect.fn(
+  "openFinalPayState"
+)(function* (payStateToken, locale) {
+  const state = yield* Effect.try({
+    try: () => openPayState(payStateToken),
+    catch: (cause) =>
+      new CheckoutError({
+        message:
+          "Pay state is invalid or expired. Please review checkout again.",
+        cause,
+      }),
+  });
+
+  if (state.locale !== locale) {
+    return yield* Effect.fail(
+      new CheckoutError({
+        message: "Pay state locale does not match this checkout session.",
+      })
+    );
+  }
+
+  return state;
+});
 
 const mapCheckoutFailure = (cause: unknown) => {
   if (cause instanceof CheckoutError) {
     return cause;
+  }
+
+  if (cause instanceof AmbiguousDotyposCustomerError) {
+    return new CheckoutError({ message: cause.message, cause });
   }
 
   return new CheckoutError({
@@ -246,16 +348,126 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentOrders = yield* PaymentOrderRepository;
     const checkoutReturnStateTokens = yield* CheckoutReturnStateTokenRepository;
 
+    const startProviderSession = Effect.fn("checkout.startProviderSession")(
+      function* (input: {
+        readonly orderId: string;
+        readonly correlationId: string;
+        readonly locale: Locale;
+        readonly data: ReservationOrderData;
+        readonly total: WorkspaceCheckoutQuote["summary"]["total"];
+      }) {
+        const claimed = yield* paymentOrders.claimNexiSessionCreation(
+          input.orderId
+        );
+
+        if (!claimed) {
+          const order = yield* paymentOrders.findById(input.orderId);
+          const redirectUrl =
+            order?.checkoutDetails.payment.providerRedirectUrl;
+
+          if (
+            order &&
+            isActivePaymentStatus(order.paymentStatus) &&
+            order.securityToken &&
+            redirectUrl
+          ) {
+            return { status: "redirect" as const, redirectUrl };
+          }
+
+          return { status: "in_progress" as const };
+        }
+
+        const nexiAmount = yield* toNexiAmount(input.total).pipe(
+          Effect.mapError(
+            (cause) =>
+              new CheckoutError({
+                message: "Unsupported payment amount.",
+                cause,
+              })
+          )
+        );
+        const checkoutToken = yield* checkoutReturnStateTokens.create({
+          paymentOrderId: input.orderId,
+          state: {
+            schema: "workspace-checkout-return-state",
+            schemaVersion: 1,
+            reservation: {
+              entryTier: input.data.entryTier,
+              date: input.data.date,
+              coffee: input.data.coffee,
+              monitorOption: input.data.monitorOption,
+              name: input.data.name,
+              email: input.data.email,
+              phone: input.data.phone,
+              message: input.data.message,
+            },
+          },
+        });
+        const hostedPaymentPage = yield* nexi
+          .createHostedPaymentPage({
+            orderId: input.orderId,
+            correlationId: input.correlationId,
+            amount: nexiAmount.amount,
+            currency: nexiAmount.currency,
+            locale: input.locale,
+            notificationUrl: yield* getNotificationUrl,
+            resultUrl: yield* getCheckoutOrderReturnUrl(
+              input.locale,
+              input.orderId,
+              checkoutToken
+            ),
+            cancelUrl: yield* getCheckoutPaymentRetryUrl(
+              input.locale,
+              input.orderId,
+              "cancelled",
+              checkoutToken
+            ),
+          })
+          .pipe(
+            Effect.tapError((cause) =>
+              paymentOrders
+                .markFailed({
+                  id: input.orderId,
+                  failureCode: "nexi_hpp_create_failed",
+                  providerStatus: "hpp_create_failed",
+                })
+                .pipe(
+                  Effect.catchAll((cleanupCause) =>
+                    Effect.logError(
+                      "Failed to mark checkout order after Nexi HPP creation failure",
+                      { cleanupCause, originalCause: cause }
+                    )
+                  )
+                )
+            )
+          );
+
+        yield* paymentOrders.attachNexiSession({
+          id: input.orderId,
+          securityToken: hostedPaymentPage.securityToken,
+          providerOperationId: hostedPaymentPage.orderId,
+          providerStatus: "hpp_created",
+          providerRedirectUrl: hostedPaymentPage.hostedPage,
+        });
+        yield* paymentOrders.markPaymentPending(input.orderId);
+
+        return {
+          status: "redirect" as const,
+          redirectUrl: hostedPaymentPage.hostedPage,
+        };
+      }
+    );
+
     return CheckoutService.of({
       createHostedPaymentCheckout: Effect.fn(
         "checkout.createHostedPaymentCheckout"
       )(
-        function* (data, locale) {
+        function* (input, locale) {
           const correlationId = randomUUID();
 
           yield* Effect.annotateLogsScoped({ correlationId });
 
-          if (data.legalConsent !== true) {
+          if (input.legalConsent !== true) {
             return yield* Effect.fail(
               new CheckoutError({
                 message: "Legal consent is required before checkout.",
@@ -263,12 +475,149 @@ export const CheckoutServiceLive = Layer.effect(
             );
           }
 
-          const orderId = generateOrderId();
+          const state = yield* openFinalPayState(input.payStateToken, locale);
+          const data = state.reservation;
+          const orderId = state.orderId;
+
+          const existingOrder = yield* paymentOrders.findById(orderId);
+          if (existingOrder) {
+            const redirectUrl =
+              existingOrder.checkoutDetails.payment.providerRedirectUrl;
+            if (
+              isActivePaymentStatus(existingOrder.paymentStatus) &&
+              existingOrder.securityToken &&
+              redirectUrl
+            ) {
+              return { status: "redirect" as const, redirectUrl };
+            }
+
+            if (
+              existingOrder.paymentStatus === "created" &&
+              !existingOrder.securityToken &&
+              !existingOrder.lastProviderStatus
+            ) {
+              const customerDiscount =
+                yield* getConfirmedDotyposCustomerDiscount(data).pipe(
+                  Effect.provideService(DotyposService, dotypos)
+                );
+              const quote = buildWorkspaceCheckoutQuote(data, {
+                customerDiscount,
+                currencyOverride: getNexiCheckoutCurrencyOverride(),
+              });
+
+              if (
+                quote.fingerprint !==
+                  existingOrder.checkoutDetails.payment.quoteFingerprint ||
+                !moneyEquals(
+                  quote.summary.total,
+                  existingOrder.checkoutDetails.payment.expectedPrice
+                ) ||
+                quote.fingerprint !== state.quote.fingerprint ||
+                !moneyEquals(quote.summary.total, state.acceptedTotal)
+              ) {
+                const changedKeys = getCheckoutSummaryChangedKeys(
+                  state.quote.summary,
+                  quote.summary
+                );
+                const freshPayUrl = yield* getFreshPayUrl({
+                  locale,
+                  reservation: data,
+                  quote,
+                  orderId: randomUUID(),
+                  changedKeys,
+                });
+
+                return {
+                  status: "pricing_changed" as const,
+                  changedKeys,
+                  freshSummary: quote.summary,
+                  freshPayUrl,
+                };
+              }
+
+              return yield* startProviderSession({
+                orderId: existingOrder.id,
+                correlationId,
+                locale,
+                data,
+                total: quote.payment.expectedPrice,
+              });
+            }
+
+            if (!isActivePaymentStatus(existingOrder.paymentStatus)) {
+              const customerDiscount =
+                yield* getConfirmedDotyposCustomerDiscount(data).pipe(
+                  Effect.provideService(DotyposService, dotypos)
+                );
+              const quote = buildWorkspaceCheckoutQuote(data, {
+                customerDiscount,
+                currencyOverride: getNexiCheckoutCurrencyOverride(),
+              });
+              const changedKeys = getCheckoutSummaryChangedKeys(
+                state.quote.summary,
+                quote.summary
+              );
+              const freshPayUrl = yield* getFreshPayUrl({
+                locale,
+                reservation: data,
+                quote,
+                orderId: randomUUID(),
+                changedKeys,
+              });
+
+              return {
+                status: "pricing_changed" as const,
+                changedKeys,
+                freshSummary: quote.summary,
+                freshPayUrl,
+              };
+            }
+
+            return { status: "in_progress" as const };
+          }
+
+          const customerName = splitCustomerName(data.name);
+          const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
+            data
+          ).pipe(Effect.provideService(DotyposService, dotypos));
+          const quote = buildWorkspaceCheckoutQuote(data, {
+            customerDiscount,
+            currencyOverride: getNexiCheckoutCurrencyOverride(),
+          });
+
+          if (
+            quote.fingerprint !== state.quote.fingerprint ||
+            !moneyEquals(quote.summary.total, state.acceptedTotal)
+          ) {
+            const changedKeys = getCheckoutSummaryChangedKeys(
+              state.quote.summary,
+              quote.summary
+            );
+            const freshPayUrl = yield* getFreshPayUrl({
+              locale,
+              reservation: data,
+              quote,
+              orderId,
+              changedKeys,
+            });
+
+            return {
+              status: "pricing_changed" as const,
+              changedKeys,
+              freshSummary: quote.summary,
+              freshPayUrl,
+            };
+          }
+
           const acceptedAt = new Date().toISOString();
-          const legalConsent = data.legalConsent;
           const legalDocuments =
             yield* getCheckoutLegalAcceptanceSnapshot(locale);
-          const customerName = splitName(data.name);
+          const legalEvidence = getCheckoutLegalEvidence({
+            acceptedAt,
+            locale,
+            legalDocuments,
+          });
+
           const customer = yield* dotypos.findOrCreateCustomer(
             {
               ...customerName,
@@ -280,25 +629,9 @@ export const CheckoutServiceLive = Layer.effect(
             }
           );
           const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-          const baseCheckoutPrice = getNexiCheckoutPrice(
-            getReservationCheckoutPrice(data)
-          );
-          const customerDiscount = yield* dotypos.getCustomerDiscount(customer);
-          const pricing = applyWorkspaceCustomerDiscount(
-            baseCheckoutPrice,
-            customerDiscount
-          );
-          const checkoutPrice = pricing.expectedPrice;
-          const nexiAmount = yield* toNexiAmount(checkoutPrice).pipe(
-            Effect.mapError(
-              (cause) =>
-                new CheckoutError({
-                  message: "Unsupported payment amount.",
-                  cause,
-                })
-            )
-          );
-
+          const baseCheckoutPrice =
+            quote.payment.undiscountedPrice ?? quote.payment.expectedPrice;
+          const checkoutPrice = quote.payment.expectedPrice;
           const order = yield* paymentOrders.create({
             id: orderId,
             dotyposCustomerId,
@@ -312,87 +645,48 @@ export const CheckoutServiceLive = Layer.effect(
                 date: data.date,
                 coffee: data.coffee,
                 monitorOption: data.monitorOption,
-                message: data.message,
               },
               payment: {
                 expectedPrice: checkoutPrice,
-                ...(pricing.customerDiscount && {
+                quoteFingerprint: quote.fingerprint,
+                summary: quote.summary,
+                ...(quote.payment.customerDiscount && {
                   undiscountedPrice: baseCheckoutPrice,
-                  customerDiscount: pricing.customerDiscount,
+                  customerDiscount: quote.payment.customerDiscount,
                 }),
               },
-              legal: {
-                acceptedAt,
-                documents: toCheckoutLegalDocuments(legalDocuments),
-                acknowledgements: {
-                  termsAndConditions: legalConsent,
-                  operatingRules: legalConsent,
-                  noRefundAfterPinDelivery: legalConsent,
-                  privacyPolicy: legalConsent,
-                },
-              },
+              legal: legalEvidence,
             },
           });
-          const checkoutToken = yield* checkoutReturnStateTokens.create({
-            paymentOrderId: order.id,
-            state: {
-              schema: "workspace-checkout-return-state",
-              schemaVersion: 1,
-              reservation: {
-                entryTier: data.entryTier,
-                date: data.date,
-                coffee: data.coffee,
-                monitorOption: data.monitorOption,
-                name: data.name,
-                email: data.email,
-                phone: data.phone,
-                message: data.message,
-              },
-            },
-          });
-          const hostedPaymentPage = yield* nexi
-            .createHostedPaymentPage({
-              orderId: order.id,
-              correlationId,
-              amount: nexiAmount.amount,
-              currency: nexiAmount.currency,
-              locale,
-              notificationUrl: yield* getNotificationUrl,
-              resultUrl: yield* getCheckoutOrderReturnUrl(
-                locale,
-                order.id,
-                checkoutToken
-              ),
-              cancelUrl: yield* getCheckoutPaymentRetryUrl(
-                locale,
-                order.id,
-                "cancelled",
-                checkoutToken
-              ),
-            })
-            .pipe(
-              Effect.tapError(() =>
-                paymentOrders.deleteUnassociatedCreated(order.id).pipe(
-                  Effect.catchAll((cleanupError) =>
-                    Effect.logError(
-                      "Failed to delete unassociated payment order after Nexi checkout failure",
-                      {
-                        orderId: order.id,
-                        cleanupError,
-                      }
-                    )
-                  )
-                )
-              )
-            );
 
-          yield* paymentOrders.attachNexiSession({
-            id: order.id,
-            securityToken: hostedPaymentPage.securityToken,
-            providerOperationId: hostedPaymentPage.orderId,
-            providerStatus: "hpp_created",
+          const existingRedirectUrl =
+            order.checkoutDetails.payment.providerRedirectUrl;
+          if (
+            isActivePaymentStatus(order.paymentStatus) &&
+            order.securityToken &&
+            existingRedirectUrl
+          ) {
+            return {
+              status: "redirect" as const,
+              redirectUrl: existingRedirectUrl,
+            };
+          }
+
+          if (
+            order.paymentStatus !== "created" ||
+            order.securityToken ||
+            order.lastProviderStatus
+          ) {
+            return { status: "in_progress" as const };
+          }
+
+          const result = yield* startProviderSession({
+            orderId: order.id,
+            correlationId,
+            locale,
+            data,
+            total: checkoutPrice,
           });
-          yield* paymentOrders.markPaymentPending(order.id);
 
           yield* Effect.logInfo("Workspace checkout payment pending", {
             locale,
@@ -400,14 +694,14 @@ export const CheckoutServiceLive = Layer.effect(
             orderId: order.id,
           });
 
-          return { redirectUrl: hostedPaymentPage.hostedPage };
+          return result;
         },
-        (effect, data, locale) =>
+        (effect, input, locale) =>
           effect.pipe(
             Effect.scoped,
             Effect.annotateLogs({
               locale,
-              entryTier: data.entryTier,
+              hasPayStateToken: input.payStateToken.length > 0,
             }),
             Effect.mapError(mapCheckoutFailure)
           )

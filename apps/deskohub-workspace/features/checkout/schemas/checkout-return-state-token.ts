@@ -1,21 +1,8 @@
-type NextSearchParams = Record<string, string | string[] | undefined>;
-type SupportedSearchParams = URLSearchParams | NextSearchParams;
+import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
 export const checkoutReturnStateTokenQueryParam = "checkoutToken";
 
 const checkoutReturnStateTokenPattern = /^[A-Za-z0-9_-]{43}$/;
-
-const getSearchParam = (
-  searchParams: SupportedSearchParams,
-  key: string
-): string | undefined => {
-  if (searchParams instanceof URLSearchParams) {
-    return searchParams.get(key) ?? undefined;
-  }
-
-  const value = searchParams[key];
-  return Array.isArray(value) ? value[0] : value;
-};
 
 export const parseCheckoutReturnStateToken = (
   value: string | undefined
