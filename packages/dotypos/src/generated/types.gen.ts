@@ -344,11 +344,11 @@ export type CreateCustomerRequest = {
     /**
      * Email address
      */
-    email?: string | null;
+    email: string;
     /**
      * Phone number
      */
-    phone?: string | null;
+    phone: string;
     /**
      * Address line 1
      */

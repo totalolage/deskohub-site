@@ -2,7 +2,7 @@ import { defineConfig } from "@hey-api/openapi-ts";
 
 export default defineConfig({
   input:
-    "../../apps/deskohub-boardgame-bar/features/dotypos/openapi/dotypos-api.yaml",
+    "./openapi/dotypos-api.yaml",
   output: {
     path: "./src/generated",
     postProcess: ["biome:lint", "biome:format"],

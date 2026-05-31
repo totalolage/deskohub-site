@@ -78,14 +78,13 @@ const reservationOrderObjectSchema = () =>
     phone: z
       .string()
       .trim()
+      .min(1, { error: m.contactValidationPhoneRequired() })
       .max(RESERVATION_VALIDATION.phone.max, {
         error: m.contactValidationPhoneMaximum({
           max: RESERVATION_VALIDATION.phone.max,
         }),
       })
-      .optional()
-      .or(z.literal(""))
-      .refine((phone) => !phone || isValidPhoneNumber(phone, "CZ"), {
+      .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
         error: m.contactValidationPhoneInvalid(),
       }),
     message: z

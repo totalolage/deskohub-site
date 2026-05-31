@@ -1,6 +1,6 @@
 import { Effect, ParseResult, Ref, Schema } from "effect";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
-import { ExternalAPIError, NetworkError } from "../errors";
+import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
 import type {
@@ -190,59 +190,61 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
       createCustomer: (params: {
         path: { cloudId: string };
         body: CreateCustomerRequest;
-      }) =>
+      }): Effect.Effect<
+        Customer,
+        ExternalAPIError | NetworkError | ValidationError
+      > =>
         Effect.gen(function* () {
           const token = yield* getToken();
 
           const body = zCreateCustomerRequest.safeParse(params.body);
-          if (body.error) {
-            return yield* ParseResult.parseError({
-              ...body.error,
-              actual: body,
-              _tag: "Unexpected",
+          if (body.error)
+            return yield* new ValidationError({
+              message: "Invalid customer request",
+              cause: body.error,
             });
-          }
 
           const requestBody = [body.data];
 
-          return yield* Effect.tryPromise({
-            try: async () => {
-              const response = await generatedApi.createCustomers(
-                createApiOptions(token, config, client, {
-                  path: params.path,
-                  body: requestBody,
-                })
-              );
+          const customer = yield* Effect.tryPromise(async () => {
+            const response = await generatedApi.createCustomers(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                body: requestBody,
+              })
+            );
 
-              if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw response.error satisfies ErrorResponse;
 
-              const customers = response.data;
-              if (!customers.length) {
-                throw {
-                  code: 502,
-                  error: "Unexpected response format from customer API",
-                  error_description:
-                    "createCustomer endpoint returned no customers",
-                } satisfies ErrorResponse;
-              }
+            const customers = response.data;
+            if (!customers.length) {
+              throw {
+                code: 502,
+                error: "Unexpected response format from customer API",
+                error_description:
+                  "createCustomer endpoint returned no customers",
+              } satisfies ErrorResponse;
+            }
 
-              return customers[0]!;
-            },
-            catch: Effect.fn(function* (error) {
-              yield* Effect.logError("Dotypos createCustomer failed", {
-                cause: error,
-                request: {
-                  path: params.path,
-                  body: requestBody,
-                },
-              });
-              return transformErrorResponse(
-                error,
-                "Create customer",
-                config.apiUrl
-              );
-            }),
-          });
+            return customers[0]!;
+          }).pipe(
+            Effect.tapError(
+              Effect.fn(function* (error) {
+                yield* Effect.logError("Dotypos createCustomer failed", {
+                  cause: error,
+                  request: {
+                    path: params.path,
+                    body: requestBody,
+                  },
+                });
+              })
+            ),
+            Effect.mapError((error) =>
+              transformErrorResponse(error, "Create customer", config.apiUrl)
+            )
+          );
+
+          return customer;
         }).pipe(Effect.withSpan("dotyposApi.createCustomer")),
 
       getCustomer: (params: {

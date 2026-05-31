@@ -622,7 +622,7 @@ export const CheckoutServiceLive = Layer.effect(
             {
               ...customerName,
               email: data.email,
-              phone: data.phone || undefined,
+              phone: data.phone,
             },
             {
               lookupFields: ["email"],

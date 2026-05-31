@@ -90,7 +90,7 @@ describe("reservation order schema", () => {
         name: "Locale Test",
         email: "locale-test@example.com",
       }).success
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 
