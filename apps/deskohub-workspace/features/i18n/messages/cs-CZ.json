@@ -266,7 +266,6 @@
   "reservationMessageLabel": "Zpráva",
   "reservationMessagePlaceholder": "Čas příchodu, název firmy, poznámka k fakturaci nebo cokoliv, co máme vědět.",
   "reservationSubmitButton": "Pokračovat k bezpečné platbě",
-  "reservationSubmitPending": "Připravujeme bezpečnou platbu...",
   "reservationLegalConsentLabel": "Souhlasím s platebními a workspace podmínkami",
   "reservationLegalConsentBefore": "Pokračováním k platbě souhlasím s dokumenty",
   "reservationLegalConsentTermsLink": "Všeobecné obchodní podmínky",

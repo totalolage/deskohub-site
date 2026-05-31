@@ -613,14 +613,8 @@ export function ReservationForm({
                 className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
                 disabled={isExecuting}
               >
-                {isExecuting ? (
-                  m.reservationSubmitPending({}, { locale })
-                ) : (
-                  <>
-                    <ArrowRight className="h-4 w-4" />
-                    {m.checkoutContinueButton({}, { locale })}
-                  </>
-                )}
+                <ArrowRight className="h-4 w-4" />
+                {m.checkoutContinueButton({}, { locale })}
               </Button>
 
               <p className="text-sm leading-6 text-navy-blue/62">
