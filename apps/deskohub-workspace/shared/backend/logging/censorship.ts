@@ -18,15 +18,27 @@ const sensitiveLogKeyFragments = [
   "cookie",
   "set cookie",
   "session",
+  "email",
+  "phone",
+  "first name",
+  "last name",
 ] as const;
 
 const sensitiveLogUrlSearchParams = new Set([
   "checkouttoken",
+  "paystate",
+  "paystateref",
   "x-vercel-protection-bypass",
   "token",
   "state",
   "secret",
 ]);
+
+const isSensitiveLogUrlSearchParam = (key: string): boolean =>
+  sensitiveLogUrlSearchParams.has(key.toLowerCase());
+
+const isSensitiveLogRecordKey = (key: string): boolean =>
+  isSensitiveLogKey(key) || isSensitiveLogUrlSearchParam(key);
 
 const splitSensitiveLogKeyFragment = (fragment: string) => fragment.split(" ");
 
@@ -109,27 +121,60 @@ const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return prototype === Object.prototype || prototype === null;
 };
 
-const censorUrlString = (value: string) => {
-  let url: URL;
-
-  try {
-    url = new URL(value);
-  } catch {
-    return value;
-  }
-
-  if (url.protocol !== "http:" && url.protocol !== "https:") return value;
-
+const redactUrlSearchParams = (url: URL): void => {
   for (const key of Array.from(url.searchParams.keys())) {
-    if (
-      isSensitiveLogKey(key) ||
-      sensitiveLogUrlSearchParams.has(key.toLowerCase())
-    ) {
+    if (isSensitiveLogRecordKey(key)) {
       url.searchParams.set(key, CENSORED_LOG_VALUE);
     }
   }
+};
 
-  return url.toString();
+const censorUrlString = (value: string) => {
+  let absoluteUrl: URL | undefined;
+
+  try {
+    absoluteUrl = new URL(value);
+  } catch {
+    absoluteUrl = undefined;
+  }
+
+  if (absoluteUrl) {
+    if (absoluteUrl.protocol !== "http:" && absoluteUrl.protocol !== "https:") {
+      return value;
+    }
+
+    redactUrlSearchParams(absoluteUrl);
+    return absoluteUrl.toString();
+  }
+
+  const isQueryOnlyRelativeUrl = value.startsWith("?");
+  const isPathRelativeUrl = value.startsWith("/");
+  const isBareRelativeUrlWithQuery = value.includes("?");
+
+  if (
+    !(isPathRelativeUrl || isQueryOnlyRelativeUrl || isBareRelativeUrlWithQuery)
+  ) {
+    return value;
+  }
+
+  try {
+    const relativeUrl = new URL(value, "https://deskohub.local");
+    redactUrlSearchParams(relativeUrl);
+
+    if (value.startsWith("//")) {
+      return `//${relativeUrl.host}${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
+    }
+
+    if (!(isPathRelativeUrl || isQueryOnlyRelativeUrl)) {
+      return `${relativeUrl.pathname.slice(1)}${relativeUrl.search}${relativeUrl.hash}`;
+    }
+
+    return isQueryOnlyRelativeUrl
+      ? `${relativeUrl.search}${relativeUrl.hash}`
+      : `${relativeUrl.pathname}${relativeUrl.search}${relativeUrl.hash}`;
+  } catch {
+    return value;
+  }
 };
 
 const censorLogValueInternal = (
@@ -162,7 +207,7 @@ const censorLogValueInternal = (
     for (const [key, nestedValue] of value) {
       result.set(
         key,
-        typeof key === "string" && isSensitiveLogKey(key)
+        typeof key === "string" && isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
           : censorLogValueInternal(nestedValue, seen)
       );
@@ -181,7 +226,7 @@ const censorLogValueInternal = (
     value.forEach((nestedValue, key) => {
       result.set(
         key,
-        isSensitiveLogKey(key)
+        isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
           : String(censorLogValueInternal(nestedValue, seen))
       );
@@ -200,7 +245,7 @@ const censorLogValueInternal = (
     value.forEach((nestedValue, key) => {
       result.append(
         key,
-        isSensitiveLogKey(key)
+        isSensitiveLogRecordKey(key)
           ? CENSORED_LOG_VALUE
           : String(censorLogValueInternal(nestedValue, seen))
       );
@@ -220,7 +265,7 @@ const censorLogValueInternal = (
   seen.set(value, result);
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = isSensitiveLogKey(key)
+    result[key] = isSensitiveLogRecordKey(key)
       ? CENSORED_LOG_VALUE
       : censorLogValueInternal(nestedValue, seen);
   }
