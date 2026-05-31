@@ -208,7 +208,7 @@
   "contactFormDescription": "Minimal friction, no extra steps. Share the context, preferred timing, and anything your team needs from the space.",
   "contactNameLabel": "Name *",
   "contactNamePlaceholder": "Your full name",
-  "contactPhoneLabel": "Phone",
+  "contactPhoneLabel": "Phone *",
   "contactPhonePlaceholder": "+420 777 060 478",
   "contactEmailLabel": "Email *",
   "contactEmailPlaceholder": "name@company.com",

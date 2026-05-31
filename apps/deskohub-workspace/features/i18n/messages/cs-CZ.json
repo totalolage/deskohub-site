@@ -208,7 +208,7 @@
   "contactFormDescription": "Bez zbytečných kroků. Pošli kontext, termín a všechno, co má prostor pro tebe nebo tým splnit.",
   "contactNameLabel": "Jméno *",
   "contactNamePlaceholder": "Tvoje celé jméno",
-  "contactPhoneLabel": "Telefon",
+  "contactPhoneLabel": "Telefon *",
   "contactPhonePlaceholder": "+420 777 060 478",
   "contactEmailLabel": "Email *",
   "contactEmailPlaceholder": "jmeno@firma.cz",
