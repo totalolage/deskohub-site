@@ -7,7 +7,7 @@ import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { getNexiCheckoutCurrencyOverride } from "./checkout.service";
 
-const dotyposLayer = Layer.provide(
+export const WorkspaceCheckoutQuoteLive = Layer.provide(
   DotyposService.Default,
   DotyposRuntimeConfigLive
 ).pipe(Layer.orDie);
@@ -28,6 +28,6 @@ export const buildAuthoritativeWorkspaceCheckoutQuote = (
   reservation: ReservationOrderData
 ) =>
   buildAuthoritativeWorkspaceCheckoutQuoteEffect(reservation).pipe(
-    Effect.provide(dotyposLayer),
+    Effect.provide(WorkspaceCheckoutQuoteLive),
     runWorkspaceEffect
   );

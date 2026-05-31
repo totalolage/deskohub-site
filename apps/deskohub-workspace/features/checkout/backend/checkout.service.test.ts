@@ -4,8 +4,6 @@ import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import {
   buildSignedPayState,
-  openPayState,
-  payStateTokenQueryParam,
   sealPayState,
 } from "@/features/checkout/backend/pay-state";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
@@ -20,6 +18,7 @@ type PaymentOrderRepositoryShape = {
   readonly claimNexiSessionCreation: ReturnType<typeof mock>;
   readonly markPaymentPending: ReturnType<typeof mock>;
   readonly markFailed: ReturnType<typeof mock>;
+  readonly resetUnsuccessfulForRetry: ReturnType<typeof mock>;
 };
 
 const reservation = {
@@ -100,6 +99,18 @@ const makePaymentOrderRepository = (
   claimNexiSessionCreation: mock(() => Effect.succeed(true)),
   markPaymentPending: mock(() => Effect.void),
   markFailed: mock(() => Effect.void),
+  resetUnsuccessfulForRetry: mock((input) =>
+    Effect.succeed(
+      makePaymentOrder({
+        id: input.id,
+        correlationId: input.correlationId,
+        checkoutDetails: checkoutDetailsJsonSchema.parse({
+          ...input.checkoutDetails,
+          fulfillment: { accessCodePolicy: "workspace-static-v1" },
+        }),
+      })
+    )
+  ),
   ...overrides,
 });
 
@@ -305,7 +316,7 @@ describe("CheckoutService final submit enforcement", () => {
     expect(paymentOrders.create).not.toHaveBeenCalled();
   });
 
-  test("does not replay stale stored redirect for terminal order and returns fresh Pay recovery", async () => {
+  test("retries terminal order with the same orderId", async () => {
     const findCustomer = mock(() =>
       Effect.succeed({ _tag: "NotFound", matches: [] })
     );
@@ -344,38 +355,26 @@ describe("CheckoutService final submit enforcement", () => {
       })
     );
 
-    expect(result.status).toBe("pricing_changed");
-    expect(
-      result.status === "pricing_changed" &&
-        result.freshPayUrl.startsWith("/en-US/checkout/pay?")
-    ).toBe(true);
-    expect(JSON.stringify(result)).not.toContain("stale-hosted");
-
-    const freshPayUrl = new URL(
-      result.status === "pricing_changed" ? result.freshPayUrl : "/",
-      "https://deskohub.local"
-    );
-    const freshPayStateToken = freshPayUrl.searchParams.get(
-      payStateTokenQueryParam
-    );
-
-    expect(typeof freshPayStateToken).toBe("string");
-    const freshPayState = openPayState(freshPayStateToken!);
-    expect(freshPayState).toEqual(
-      expect.objectContaining({
-        type: "signedPayState",
-        locale: "en-US",
-        reservation,
-      })
-    );
-    expect(freshPayState.orderId).not.toBe("checkout-service-test-order");
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://nexi.example/new-hosted",
+    });
     expect(findCustomer).toHaveBeenCalled();
     expect(findOrCreateCustomer).not.toHaveBeenCalled();
     expect(paymentOrders.create).not.toHaveBeenCalled();
-    expect(paymentOrders.claimNexiSessionCreation).not.toHaveBeenCalled();
-    expect(paymentOrders.attachNexiSession).not.toHaveBeenCalled();
-    expect(paymentOrders.markPaymentPending).not.toHaveBeenCalled();
-    expect(createHostedPaymentPage).not.toHaveBeenCalled();
+    expect(paymentOrders.resetUnsuccessfulForRetry).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "checkout-service-test-order" })
+    );
+    expect(paymentOrders.claimNexiSessionCreation).toHaveBeenCalledTimes(1);
+    expect(createHostedPaymentPage).toHaveBeenCalledWith(
+      expect.objectContaining({ orderId: "checkout-service-test-order" })
+    );
+    expect(paymentOrders.attachNexiSession).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "checkout-service-test-order" })
+    );
+    expect(paymentOrders.markPaymentPending).toHaveBeenCalledWith(
+      "checkout-service-test-order"
+    );
   });
 
   test("rejects ambiguous Dotypos lookup before mutable side effects", async () => {
