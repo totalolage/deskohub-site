@@ -1,6 +1,11 @@
 export { DotyposApi } from "./backend/api";
-export type { DotyposCustomerDiscount } from "./backend/service";
-export { DotyposService } from "./backend/service";
+export type {
+  DotyposCustomerDiscount,
+  DotyposCustomerLookupData,
+  CustomerLookupField,
+  FindCustomerOptions,
+} from "./backend/service";
+export { DotyposService, FindCustomerResult } from "./backend/service";
 export type { DotyposRuntimeConfigObj } from "./config";
 export { DotyposRuntimeConfig, makeDotyposRuntimeConfigLayer } from "./config";
 
