@@ -1,10 +1,6 @@
 import { Data, Effect, Schedule } from "effect";
 import { DotyposRuntimeConfig } from "../config";
-import {
-  ExternalAPIError,
-  type NetworkError,
-  ValidationError,
-} from "../errors";
+import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import type {
   CreateReservationRequest,
   Customer,
@@ -17,18 +13,12 @@ import { DotyposApi } from "./api";
 const retryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
   Schedule.intersect(Schedule.recurs(3)),
-  Schedule.whileInput<ExternalAPIError | NetworkError>((error) => {
-    if (error._tag === "NetworkError") return true;
+  Schedule.whileInput((error: unknown) => {
+    if (error instanceof ValidationError) return false;
+    if (error instanceof ExternalAPIError)
+      return Boolean(error.statusCode && error.statusCode >= 500);
 
-    if (
-      error._tag === "ExternalAPIError" &&
-      error.statusCode &&
-      error.statusCode >= 500
-    ) {
-      return true;
-    }
-
-    return false;
+    return error instanceof NetworkError;
   })
 );
 
@@ -283,7 +273,8 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           customerData: DotyposCustomerLookupData,
           options?: FindCustomerOptions
         ) {
-          const normalizedCustomerData = normalizeCustomerLookupData(customerData);
+          const normalizedCustomerData =
+            normalizeCustomerLookupData(customerData);
 
           const searchByField = (fieldName: "email" | "phone", value: string) =>
             Effect.gen(function* () {
@@ -379,7 +370,9 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           };
         },
         (effect, _input, options) =>
-          effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
+          effect.pipe(
+            Effect.annotateLogs(getCustomerLookupLogAnnotations(options))
+          )
       );
 
       const findCustomer = Effect.fn("findCustomer")(
@@ -387,10 +380,8 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           customerData: DotyposCustomerLookupData,
           options?: FindCustomerOptions
         ) {
-          const { normalizedCustomerData: _, ...result } = yield* lookupCustomer(
-            customerData,
-            options
-          );
+          const { normalizedCustomerData: _, ...result } =
+            yield* lookupCustomer(customerData, options);
 
           switch (result._tag) {
             case "Matched":
@@ -405,7 +396,9 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           }
         },
         (effect, _input, options) =>
-          effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
+          effect.pipe(
+            Effect.annotateLogs(getCustomerLookupLogAnnotations(options))
+          )
       );
 
       const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
@@ -466,6 +459,18 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             return existingCustomer;
           }
 
+          if (!normalizedCustomerData.email) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Customer email is required" })
+            );
+          }
+
+          if (!normalizedCustomerData.phone) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Customer phone is required" })
+            );
+          }
+
           return yield* api
             .createCustomer({
               path: { cloudId: config.cloudId },
@@ -473,15 +478,17 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                 _cloudId: config.cloudId,
                 firstName: normalizedCustomerData.firstName,
                 lastName: normalizedCustomerData.lastName,
-                email: normalizedCustomerData.email || null,
-                phone: normalizedCustomerData.phone || null,
+                email: normalizedCustomerData.email,
+                phone: normalizedCustomerData.phone,
                 expireDate: Date.now() + 365 * 24 * 60 * 60 * 1000,
               },
             })
             .pipe(Effect.retry(retryPolicy));
         },
         (effect, _input, options) =>
-          effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
+          effect.pipe(
+            Effect.annotateLogs(getCustomerLookupLogAnnotations(options))
+          )
       );
 
       const getCustomerDiscount = Effect.fn("getCustomerDiscount")(

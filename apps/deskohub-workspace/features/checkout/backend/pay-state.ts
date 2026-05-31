@@ -143,7 +143,7 @@ export type BuildSignedPayStateInput = {
     readonly monitorOption?: WorkspaceCheckoutOrder["monitorOption"];
     readonly name: string;
     readonly email: string;
-    readonly phone?: string;
+    readonly phone: string;
     readonly message?: string;
   };
   readonly quote: WorkspaceCheckoutQuote;

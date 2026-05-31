@@ -36,7 +36,7 @@ export const getConfirmedDotyposCustomerDiscount = Effect.fn(
     {
       ...splitCustomerName(reservation.name),
       email: reservation.email,
-      phone: reservation.phone || undefined,
+      phone: reservation.phone,
     },
     { lookupFields: ["email"] }
   );

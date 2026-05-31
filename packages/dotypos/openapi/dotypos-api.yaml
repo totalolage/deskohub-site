@@ -906,6 +906,8 @@ components:
       required:
         - _cloudId
         - firstName
+        - email
+        - phone
       properties:
         _cloudId:
           type: string
@@ -925,13 +927,9 @@ components:
         email:
           type: string
           description: Email address
-          nullable: true
-          default: null
         phone:
           type: string
           description: Phone number
-          nullable: true
-          default: null
         addressLine1:
           type: string
           description: Address line 1

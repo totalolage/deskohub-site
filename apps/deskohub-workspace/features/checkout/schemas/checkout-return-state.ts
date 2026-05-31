@@ -29,10 +29,9 @@ const checkoutReturnStateReservationSchema = z
     phone: z
       .string()
       .trim()
+      .min(1)
       .max(RESERVATION_VALIDATION.phone.max)
-      .optional()
-      .or(z.literal(""))
-      .refine((phone) => !phone || isValidPhoneNumber(phone, "CZ")),
+      .refine((phone) => isValidPhoneNumber(phone, "CZ")),
     message: z
       .string()
       .trim()

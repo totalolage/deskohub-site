@@ -300,14 +300,12 @@ export const zCreateCustomerRequest = z.object({
     flags: z.optional(z.int().gte(0).register(z.globalRegistry, {
         description: 'Customer flags (bitwise flags)'
     })).default(0),
-    email: z.optional(z.union([
-        z.string(),
-        z.null()
-    ])).default(null),
-    phone: z.optional(z.union([
-        z.string(),
-        z.null()
-    ])).default(null),
+    email: z.string().register(z.globalRegistry, {
+        description: 'Email address'
+    }),
+    phone: z.string().register(z.globalRegistry, {
+        description: 'Phone number'
+    }),
     addressLine1: z.optional(z.string().register(z.globalRegistry, {
         description: 'Address line 1'
     })).default(''),
