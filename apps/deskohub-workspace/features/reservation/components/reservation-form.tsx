@@ -204,7 +204,7 @@ export function ReservationForm({
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
 
-  const { execute, isExecuting } = useAction(preparePayState, {
+  const { executeAsync: sendReservation } = useAction(preparePayState, {
     onSuccess: ({ data }) => {
       if (data?.status === "error") {
         setSubmissionMessage({
@@ -247,10 +247,10 @@ export function ReservationForm({
     form.setValue("monitorOption", undefined, { shouldValidate: true });
   }, [form, shouldShowMonitors]);
 
-  const handleSubmit = form.handleSubmit((data) => {
+  const handleSubmit = form.handleSubmit(async (data) => {
     setSubmissionMessage(null);
     hasTrackedSuccessfulSubmission.current = false;
-    execute({
+    await sendReservation({
       locale,
       reservation: {
         ...data,
@@ -611,7 +611,10 @@ export function ReservationForm({
               <Button
                 type="submit"
                 className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-                disabled={isExecuting}
+                disabled={
+                  form.formState.isSubmitting ||
+                  form.formState.isSubmitSuccessful
+                }
               >
                 <ArrowRight className="h-4 w-4" />
                 {m.checkoutContinueButton({}, { locale })}
