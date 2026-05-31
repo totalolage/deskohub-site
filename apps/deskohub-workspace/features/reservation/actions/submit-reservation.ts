@@ -40,9 +40,10 @@ const submitReservationAction = createEffectSafeAction(
         Effect.scoped,
         Effect.annotateLogs(input),
         Effect.mapError(
-          () =>
+          (error) =>
             new PublicSafeActionError(
-              m.reservationErrorMessage({}, { locale: input.locale })
+              m.reservationErrorMessage({}, { locale: input.locale }),
+              { cause: error }
             )
         )
       )
