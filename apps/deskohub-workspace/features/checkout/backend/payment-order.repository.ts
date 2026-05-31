@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -54,7 +54,11 @@ export interface PaymentOrderRepository {
     readonly securityToken: string;
     readonly providerOperationId?: string;
     readonly providerStatus?: string;
+    readonly providerRedirectUrl?: string;
   }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly claimNexiSessionCreation: (
+    id: string
+  ) => Effect.Effect<boolean, DatabaseError>;
   readonly findById: (
     id: string
   ) => Effect.Effect<PaymentOrder | null, DatabaseError>;
@@ -272,10 +276,21 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 paymentStatus: "created",
                 fulfillmentStatus: "not_started",
               })
+              .onConflictDoNothing()
               .returning();
 
             if (!order) {
-              throw new Error("Payment order insert returned no row");
+              const [existingOrder] = await db
+                .select()
+                .from(paymentOrders)
+                .where(eq(paymentOrders.id, input.id))
+                .limit(1);
+
+              if (!existingOrder) {
+                throw new Error("Payment order insert returned no row");
+              }
+
+              return existingOrder;
             }
 
             return order;
@@ -324,6 +339,9 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 securityToken: input.securityToken,
                 lastProviderOperationId: input.providerOperationId,
                 lastProviderStatus: input.providerStatus,
+                ...(input.providerRedirectUrl && {
+                  checkoutDetails: sql`jsonb_set(${paymentOrders.checkoutDetails}, '{payment,providerRedirectUrl}', to_jsonb(${input.providerRedirectUrl}::text), true)`,
+                }),
               })
               .where(
                 and(
@@ -352,6 +370,32 @@ export const PaymentOrderRepositoryLive = Layer.effect(
               providerStatus: input.providerStatus,
             })
           )
+      ),
+
+      claimNexiSessionCreation: Effect.fn(
+        "paymentOrders.claimNexiSessionCreation"
+      )(
+        function* (id) {
+          const updated = yield* runDb(
+            "paymentOrders.claimNexiSessionCreation",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({ lastProviderStatus: "hpp_creating" })
+                .where(
+                  and(
+                    eq(paymentOrders.id, id),
+                    eq(paymentOrders.paymentStatus, "created"),
+                    isNull(paymentOrders.securityToken),
+                    isNull(paymentOrders.lastProviderStatus)
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          return updated.length > 0;
+        },
+        (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
       ),
 
       findById,

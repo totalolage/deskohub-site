@@ -35,6 +35,13 @@ export interface CheckoutReturnStateTokenRepository {
     CheckoutReturnStateToken,
     DatabaseError | CheckoutReturnStateTokenError
   >;
+  readonly readValid: (input: {
+    readonly paymentOrderId: string;
+    readonly token: string;
+  }) => Effect.Effect<
+    CheckoutReturnStateToken,
+    DatabaseError | CheckoutReturnStateTokenError
+  >;
 }
 
 export const CheckoutReturnStateTokenRepository =
@@ -113,6 +120,42 @@ export const CheckoutReturnStateTokenRepositoryLive = Layer.effect(
             return yield* new CheckoutReturnStateTokenError({
               message:
                 "Checkout return-state token was invalid, expired, or already used.",
+            });
+          }
+
+          return token;
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({ paymentOrderId: input.paymentOrderId })
+          )
+      ),
+      readValid: Effect.fn("checkoutReturnStateTokens.readValid")(
+        function* (input) {
+          const tokenHash = hashCheckoutReturnStateToken(input.token);
+
+          const [token] = yield* runDb(
+            "checkoutReturnStateTokens.readValid",
+            async () =>
+              await db
+                .select()
+                .from(checkoutReturnStateTokens)
+                .where(
+                  and(
+                    eq(checkoutReturnStateTokens.tokenHash, tokenHash),
+                    eq(
+                      checkoutReturnStateTokens.paymentOrderId,
+                      input.paymentOrderId
+                    ),
+                    sql`${checkoutReturnStateTokens.expiresAt} > now()`
+                  )
+                )
+                .limit(1)
+          );
+
+          if (!token) {
+            return yield* new CheckoutReturnStateTokenError({
+              message: "Checkout return-state token was invalid or expired.",
             });
           }
 

@@ -119,7 +119,6 @@ const formatWorkspaceReservationNote = (
           checkoutDetails.locale
         )}, ${checkoutDetails.payment.customerDiscount.field})`
       : null,
-    reservation.message ? `Customer note: ${reservation.message}` : null,
   ];
 
   return lines.filter((line) => line !== null).join("\n");

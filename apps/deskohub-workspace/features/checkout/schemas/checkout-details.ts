@@ -3,13 +3,11 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
+import {
+  checkoutSummarySectionSchema,
+  nonNegativeWorkspaceMoneySchema,
+} from "@/features/checkout/schemas/checkout-summary";
 import { locales } from "@/features/i18n";
-
-const workspaceMoneySchema = z.object({
-  value: z.int().nonnegative(),
-  exponent: z.int().nonnegative(),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-});
 
 export const legalDocumentHashSchema = z.object({
   path: z.string().min(1),
@@ -29,23 +27,30 @@ export const checkoutDetailsJsonSchema = z.object({
     date: z.iso.date(),
     coffee: z.boolean(),
     monitorOption: z.enum(workspaceProductMonitorOptions).optional(),
-    message: z.string().optional(),
   }),
   payment: z.object({
-    expectedPrice: workspaceMoneySchema,
-    undiscountedPrice: workspaceMoneySchema.optional(),
+    expectedPrice: nonNegativeWorkspaceMoneySchema,
+    undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
+    quoteFingerprint: z.string().min(1),
+    summary: z.object({
+      sections: z.array(checkoutSummarySectionSchema),
+      total: nonNegativeWorkspaceMoneySchema,
+    }),
+    providerRedirectUrl: z.url().optional(),
     customerDiscount: z
       .object({
         source: z.literal("dotypos-discount-group"),
         field: z.string().min(1),
         discountGroupId: z.string().min(1),
         percent: z.number().positive().max(100),
-        amount: workspaceMoneySchema,
+        amount: nonNegativeWorkspaceMoneySchema,
       })
       .optional(),
   }),
   legal: z.object({
     acceptedAt: z.iso.datetime({ offset: true }),
+    locale: z.enum(locales),
+    source: z.literal("workspace-pay-final-submit"),
     documents: z.object({
       termsAndConditions: legalDocumentHashSchema,
       operatingRules: legalDocumentHashSchema,

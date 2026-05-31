@@ -10,6 +10,7 @@ import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { getSearchParam } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -35,14 +36,6 @@ const decodeCheckoutResultParams = Schema.decodeUnknownEither(
   CheckoutResultRouteParamsSchema
 );
 
-const getSearchParam = (
-  searchParams: CheckoutResultSearchParams,
-  key: string
-): string | undefined => {
-  const value = searchParams[key];
-  return Array.isArray(value) ? value[0] : value;
-};
-
 const sleep = (milliseconds: number) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
@@ -58,13 +51,13 @@ const loadProviderReturnStatus = (orderId: string) =>
 const loadProviderReturnStatusWithBriefRetry = async (orderId: string) => {
   let status: CheckoutStatusViewModel | undefined;
 
-  for (let attempt = 0; attempt < 20; attempt += 1) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
     status = await loadProviderReturnStatus(orderId).catch(() => undefined);
     if (status && status.status !== "created" && status.status !== "pending") {
       return status;
     }
 
-    if (attempt < 19) await sleep(1500);
+    if (attempt < 3) await sleep(1500);
   }
 
   return status;

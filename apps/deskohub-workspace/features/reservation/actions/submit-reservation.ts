@@ -19,10 +19,12 @@ const submitReservationAction = createEffectSafeAction(
     function* (input, context) {
       const locale = getSubmitReservationCheckoutLocale(input, context.locale);
       yield* Effect.annotateLogsScoped({ locale });
-      const { reservation } = input;
       const service = yield* CheckoutService;
       const checkout = yield* service.createHostedPaymentCheckout(
-        reservation,
+        {
+          payStateToken: input.payStateToken,
+          legalConsent: input.legalConsent,
+        },
         locale
       );
 
@@ -30,7 +32,7 @@ const submitReservationAction = createEffectSafeAction(
 
       return {
         message: "Checkout started successfully",
-        redirectUrl: checkout.redirectUrl,
+        ...checkout,
       };
     },
     (effect, input) =>
