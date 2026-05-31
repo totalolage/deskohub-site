@@ -6,39 +6,42 @@ import {
   CheckoutServiceLiveWithDependencies,
 } from "@/features/checkout/backend/checkout.service";
 import { m } from "@/features/i18n";
-import { getReservationSchema } from "@/features/reservation/schemas/reservation";
+import {
+  getSubmitReservationCheckoutLocale,
+  getSubmitReservationSchema,
+} from "@/features/reservation/actions/submit-reservation-input";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const submitReservationAction = createEffectSafeAction(
-  getReservationSchema(),
+  getSubmitReservationSchema(),
   Effect.fn("submitWorkspaceReservation")(
-    function* (input, { locale }) {
+    function* (input, context) {
+      const locale = getSubmitReservationCheckoutLocale(input, context.locale);
+      yield* Effect.annotateLogsScoped({ locale });
+      const { reservation } = input;
       const service = yield* CheckoutService;
       const checkout = yield* service.createHostedPaymentCheckout(
-        input,
+        reservation,
         locale
       );
 
-      yield* Effect.logInfo("Workspace checkout started", {
-        locale,
-        entryTier: input.entryTier,
-      });
+      yield* Effect.logInfo("Workspace checkout started");
 
       return {
         message: "Checkout started successfully",
         redirectUrl: checkout.redirectUrl,
       };
     },
-    (effect, input, { locale }) =>
+    (effect, input) =>
       effect.pipe(
-        Effect.annotateLogs({
-          locale,
-          entryTier: input.entryTier,
-        }),
+        Effect.scoped,
+        Effect.annotateLogs(input),
         Effect.mapError(
           () =>
-            new PublicSafeActionError(m.reservationErrorMessage({}, { locale }))
+            new PublicSafeActionError(
+              m.reservationErrorMessage({}, { locale: input.locale })
+            )
         )
       )
   ),

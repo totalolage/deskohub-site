@@ -110,8 +110,11 @@ export function CheckoutPaymentRetryPage({
           onClick={() => {
             setErrorMessage(null);
             execute({
-              ...reservation,
-              legalConsent: true,
+              locale,
+              reservation: {
+                ...reservation,
+                legalConsent,
+              },
             });
           }}
         >

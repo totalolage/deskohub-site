@@ -233,11 +233,14 @@ export function ReservationForm({
     setSubmissionMessage(null);
     hasTrackedSuccessfulSubmission.current = false;
     execute({
-      ...data,
-      coffee: tierIncludesCourtesyCoffee(data.entryTier) ? true : data.coffee,
-      monitorOption: tierRequiresMonitorOption(data.entryTier)
-        ? data.monitorOption
-        : undefined,
+      locale,
+      reservation: {
+        ...data,
+        coffee: tierIncludesCourtesyCoffee(data.entryTier) ? true : data.coffee,
+        monitorOption: tierRequiresMonitorOption(data.entryTier)
+          ? data.monitorOption
+          : undefined,
+      },
     });
   });
 
