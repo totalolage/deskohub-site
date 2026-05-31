@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { Effect, Layer } from "effect";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -178,7 +177,7 @@ export default async function LocalizedCheckoutPaymentPage({
     locale,
     reservation: retryState.reservation,
     quote: retryState.quote,
-    orderId: randomUUID(),
+    orderId,
   });
   const sealedPayState = sealPayStateForUrl(payState);
   if (sealedPayState.type !== "sealedPayState") notFound();

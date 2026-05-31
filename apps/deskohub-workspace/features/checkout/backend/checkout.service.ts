@@ -553,24 +553,74 @@ export const CheckoutServiceLive = Layer.effect(
                 customerDiscount,
                 currencyOverride: getNexiCheckoutCurrencyOverride(),
               });
-              const changedKeys = getCheckoutSummaryChangedKeys(
-                state.quote.summary,
-                quote.summary
-              );
-              const freshPayUrl = yield* getFreshPayUrl({
+
+              if (
+                quote.fingerprint !== state.quote.fingerprint ||
+                !moneyEquals(quote.summary.total, state.acceptedTotal)
+              ) {
+                const changedKeys = getCheckoutSummaryChangedKeys(
+                  state.quote.summary,
+                  quote.summary
+                );
+                const freshPayUrl = yield* getFreshPayUrl({
+                  locale,
+                  reservation: data,
+                  quote,
+                  orderId,
+                  changedKeys,
+                });
+
+                return {
+                  status: "pricing_changed" as const,
+                  changedKeys,
+                  freshSummary: quote.summary,
+                  freshPayUrl,
+                };
+              }
+
+              const acceptedAt = new Date().toISOString();
+              const legalDocuments =
+                yield* getCheckoutLegalAcceptanceSnapshot(locale);
+              const legalEvidence = getCheckoutLegalEvidence({
+                acceptedAt,
                 locale,
-                reservation: data,
-                quote,
-                orderId: randomUUID(),
-                changedKeys,
+                legalDocuments,
+              });
+              const baseCheckoutPrice =
+                quote.payment.undiscountedPrice ?? quote.payment.expectedPrice;
+              const order = yield* paymentOrders.resetUnsuccessfulForRetry({
+                id: existingOrder.id,
+                correlationId,
+                checkoutDetails: {
+                  schema: "workspace-checkout-details",
+                  schemaVersion: 1,
+                  locale,
+                  reservation: {
+                    tier: data.entryTier,
+                    date: data.date,
+                    coffee: data.coffee,
+                    monitorOption: data.monitorOption,
+                  },
+                  payment: {
+                    expectedPrice: quote.payment.expectedPrice,
+                    quoteFingerprint: quote.fingerprint,
+                    summary: quote.summary,
+                    ...(quote.payment.customerDiscount && {
+                      undiscountedPrice: baseCheckoutPrice,
+                      customerDiscount: quote.payment.customerDiscount,
+                    }),
+                  },
+                  legal: legalEvidence,
+                },
               });
 
-              return {
-                status: "pricing_changed" as const,
-                changedKeys,
-                freshSummary: quote.summary,
-                freshPayUrl,
-              };
+              return yield* startProviderSession({
+                orderId: order.id,
+                correlationId,
+                locale,
+                data,
+                total: quote.payment.expectedPrice,
+              });
             }
 
             return { status: "in_progress" as const };

@@ -65,6 +65,11 @@ export interface PaymentOrderRepository {
   readonly markPaymentPending: (
     id: string
   ) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly resetUnsuccessfulForRetry: (input: {
+    readonly id: string;
+    readonly correlationId: string;
+    readonly checkoutDetails: PaymentOrderCheckoutDetailsCreateInput;
+  }) => Effect.Effect<PaymentOrder, DatabaseError | PaymentOrderStateError>;
   readonly markPaid: (input: {
     readonly id: string;
     readonly providerOperationId?: string;
@@ -362,14 +367,7 @@ export const PaymentOrderRepositoryLive = Layer.effect(
             "Order was not found or already has a different Nexi security token"
           );
         },
-        (effect, input) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              id: input.id,
-              providerOperationId: input.providerOperationId,
-              providerStatus: input.providerStatus,
-            })
-          )
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
 
       claimNexiSessionCreation: Effect.fn(
@@ -426,6 +424,62 @@ export const PaymentOrderRepositoryLive = Layer.effect(
           );
         },
         (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
+      ),
+
+      resetUnsuccessfulForRetry: Effect.fn(
+        "paymentOrders.resetUnsuccessfulForRetry"
+      )(
+        function* (input) {
+          const checkoutDetails = checkoutDetailsJsonSchema.parse({
+            ...input.checkoutDetails,
+            fulfillment: {
+              accessCodePolicy: workspacePaymentOrderAccessCodePolicy,
+            },
+          });
+          const updated = yield* runDb(
+            "paymentOrders.resetUnsuccessfulForRetry",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  correlationId: input.correlationId,
+                  checkoutDetails,
+                  paymentStatus: "created",
+                  securityToken: null,
+                  lastWebhookEventId: null,
+                  lastProviderOperationId: null,
+                  lastProviderStatus: null,
+                  failureCode: null,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    inArray(paymentOrders.paymentStatus, [
+                      "payment_failed",
+                      "cancelled",
+                      "expired",
+                    ]),
+                    eq(paymentOrders.fulfillmentStatus, "not_started")
+                  )
+                )
+                .returning()
+          );
+
+          const [order] = updated;
+          if (!order) {
+            return yield* Effect.fail(
+              new PaymentOrderStateError({
+                operation: "paymentOrders.resetUnsuccessfulForRetry",
+                orderId: input.id,
+                message:
+                  "Only unsuccessful, unfulfilled terminal orders can be retried",
+              })
+            );
+          }
+
+          return order;
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
 
       markPaid: Effect.fn("paymentOrders.markPaid")(
