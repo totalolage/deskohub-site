@@ -24,6 +24,13 @@ export type CheckoutDetailsJson = {
   };
   readonly payment: {
     readonly expectedPrice: WorkspaceMoney;
+    readonly undiscountedPrice?: WorkspaceMoney;
+    readonly customerDiscount?: {
+      readonly source: "dotypos-customer";
+      readonly field: string;
+      readonly percent: number;
+      readonly amount: WorkspaceMoney;
+    };
   };
   readonly legal: {
     readonly acceptedAt: string;

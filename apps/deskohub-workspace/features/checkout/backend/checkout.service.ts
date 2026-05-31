@@ -5,6 +5,7 @@ import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
+import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout-pricing";
 import {
   CheckoutReturnStateTokenRepository,
   CheckoutReturnStateTokenRepositoryLive,
@@ -279,9 +280,14 @@ export const CheckoutServiceLive = Layer.effect(
             }
           );
           const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-          const checkoutPrice = getNexiCheckoutPrice(
+          const baseCheckoutPrice = getNexiCheckoutPrice(
             getReservationCheckoutPrice(data)
           );
+          const pricing = applyWorkspaceCustomerDiscount(
+            baseCheckoutPrice,
+            customer
+          );
+          const checkoutPrice = pricing.expectedPrice;
           const nexiAmount = yield* toNexiAmount(checkoutPrice).pipe(
             Effect.mapError(
               (cause) =>
@@ -309,6 +315,10 @@ export const CheckoutServiceLive = Layer.effect(
               },
               payment: {
                 expectedPrice: checkoutPrice,
+                ...(pricing.customerDiscount && {
+                  undiscountedPrice: baseCheckoutPrice,
+                  customerDiscount: pricing.customerDiscount,
+                }),
               },
               legal: {
                 acceptedAt,

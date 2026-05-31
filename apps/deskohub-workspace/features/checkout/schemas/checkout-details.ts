@@ -33,6 +33,15 @@ export const checkoutDetailsJsonSchema = z.object({
   }),
   payment: z.object({
     expectedPrice: workspaceMoneySchema,
+    undiscountedPrice: workspaceMoneySchema.optional(),
+    customerDiscount: z
+      .object({
+        source: z.literal("dotypos-customer"),
+        field: z.string().min(1),
+        percent: z.number().positive().max(100),
+        amount: workspaceMoneySchema,
+      })
+      .optional(),
   }),
   legal: z.object({
     acceptedAt: z.iso.datetime({ offset: true }),
