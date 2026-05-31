@@ -11,9 +11,10 @@ import type {
   ErrorResponse,
   Product,
   Table,
+  TokenResponse,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
-import { zCreateCustomerRequest } from "../generated/zod.gen";
+import { zCreateCustomerRequest, zTokenResponse } from "../generated/zod.gen";
 import { injectReqResLogger } from "../utils/req-res-logger";
 
 type DiscountGroup = {
@@ -49,6 +50,56 @@ const dotyposAuthDiagnostics = (config: DotyposRuntimeConfigObj) => ({
   clientSecret: secretFingerprint(config.clientSecret),
   refreshToken: secretFingerprint(config.refreshToken),
 });
+
+type DirectTokenResult =
+  | { readonly ok: true; readonly data: TokenResponse }
+  | {
+      readonly ok: false;
+      readonly status?: number;
+      readonly statusText?: string;
+      readonly error: unknown;
+    };
+
+const fetchAccessTokenDirect = async (
+  config: DotyposRuntimeConfigObj
+): Promise<DirectTokenResult> => {
+  try {
+    const response = await fetch(`${config.apiUrl}/signin/token`, {
+      method: "POST",
+      headers: {
+        Authorization: `User ${config.refreshToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ _cloudId: config.cloudId }),
+      signal: AbortSignal.timeout(config.apiTimeout),
+    });
+    const text = await response.text();
+    const body = text ? JSON.parse(text) : undefined;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        error: body ?? text,
+      };
+    }
+
+    const parsedBody = zTokenResponse.safeParse(body);
+    if (!parsedBody.success) {
+      return {
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        error: parsedBody.error,
+      };
+    }
+
+    return { ok: true, data: parsedBody.data };
+  } catch (error) {
+    return { ok: false, error };
+  }
+};
 
 export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
   effect: Effect.gen(function* () {
@@ -90,6 +141,17 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
                   status: result.response.status,
                   statusText: result.response.statusText,
                   error: result.error,
+                  config: dotyposAuthDiagnostics(config),
+                })
+              );
+              const directResponse = await fetchAccessTokenDirect(config);
+              if (directResponse.ok) return directResponse.data;
+
+              Effect.runSync(
+                Effect.logError("Dotypos direct access token request failed", {
+                  status: directResponse.status,
+                  statusText: directResponse.statusText,
+                  error: directResponse.error,
                   config: dotyposAuthDiagnostics(config),
                 })
               );
