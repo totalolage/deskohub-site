@@ -113,6 +113,12 @@ const formatWorkspaceReservationNote = (
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
     )}`,
+    checkoutDetails.payment.customerDiscount
+      ? `Customer discount: ${checkoutDetails.payment.customerDiscount.percent}% (${formatWorkspaceMoney(
+          checkoutDetails.payment.customerDiscount.amount,
+          checkoutDetails.locale
+        )}, ${checkoutDetails.payment.customerDiscount.field})`
+      : null,
     reservation.message ? `Customer note: ${reservation.message}` : null,
   ];
 
