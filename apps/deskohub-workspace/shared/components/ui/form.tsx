@@ -78,9 +78,11 @@ function FormItem({
 
 function FormLabel({
   className,
+  required,
   ref,
   ...props
 }: React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root> & {
+  required?: boolean;
   ref?: React.Ref<React.ComponentRef<typeof LabelPrimitive.Root>>;
 }) {
   const { error, formItemId } = useFormField();
@@ -88,7 +90,11 @@ function FormLabel({
   return (
     <Label
       ref={ref}
-      className={cn(error && "text-burned-orange", className)}
+      className={cn(
+        error && "text-burned-orange",
+        required && "after:content-['_*']",
+        className
+      )}
       htmlFor={formItemId}
       {...props}
     />

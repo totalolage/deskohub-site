@@ -77,6 +77,7 @@ export function ContactForm({ locale }: ContactFormProps) {
                 error={state.fieldErrors?.name}
                 defaultValue={fieldValues?.name}
                 autoComplete="name"
+                required
               />
               <Field
                 name="phone"
@@ -96,6 +97,7 @@ export function ContactForm({ locale }: ContactFormProps) {
               error={state.fieldErrors?.email}
               defaultValue={fieldValues?.email}
               autoComplete="email"
+              required
             />
 
             <Field
@@ -105,6 +107,7 @@ export function ContactForm({ locale }: ContactFormProps) {
               error={state.fieldErrors?.message}
               defaultValue={fieldValues?.message}
               multiline
+              required
             />
           </div>
 
@@ -151,6 +154,7 @@ type FieldProps = {
   type?: string;
   autoComplete?: string;
   multiline?: boolean;
+  required?: boolean;
 };
 
 function Field({
@@ -162,12 +166,18 @@ function Field({
   type = "text",
   autoComplete,
   multiline = false,
+  required = false,
 }: FieldProps) {
   const inputId = `contact-${name}`;
 
   return (
     <label htmlFor={inputId} className="block space-y-2">
-      <span className="block text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+      <span
+        className={cn(
+          "block text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72",
+          required && "after:content-['_*']"
+        )}
+      >
         {label}
       </span>
       {multiline ? (
