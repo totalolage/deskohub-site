@@ -3,6 +3,7 @@ import { drizzle } from "drizzle-orm/node-postgres";
 import { Context, Data, Effect, Layer } from "effect";
 import { Pool } from "pg";
 import { env } from "@/env";
+import { normalizePostgresConnectionUrl } from "./postgres-connection-url";
 import * as schema from "./schema";
 
 export class DatabaseError extends Data.TaggedError("DatabaseError")<{
@@ -10,7 +11,9 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<{
   readonly cause: unknown;
 }> {}
 
-const pool = new Pool({ connectionString: env.DATABASE_URL });
+const pool = new Pool({
+  connectionString: normalizePostgresConnectionUrl(env.DATABASE_URL),
+});
 attachDatabasePool(pool);
 
 export const workspaceDb = drizzle(pool, { schema });

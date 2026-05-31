@@ -21,7 +21,7 @@
     },
     "db:migrate": {
       "cache": false,
-      "env": ["DATABASE_URL"]
+      "env": ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]
     },
     "dev": {
       "dependsOn": [
