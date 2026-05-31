@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { Effect, Ref, Schema } from "effect";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
@@ -37,21 +36,7 @@ interface TokenCache {
   expiresAt: number;
 }
 
-const secretFingerprint = (value: string) => ({
-  length: value.length,
-  sha256Prefix: createHash("sha256").update(value).digest("hex").slice(0, 12),
-});
-
-const dotyposAuthDiagnostics = (config: DotyposRuntimeConfigObj) => ({
-  apiUrl: config.apiUrl,
-  apiTimeout: config.apiTimeout,
-  cloudId: config.cloudId,
-  clientId: secretFingerprint(config.clientId),
-  clientSecret: secretFingerprint(config.clientSecret),
-  refreshToken: secretFingerprint(config.refreshToken),
-});
-
-type DirectTokenResult =
+type TokenResult =
   | { readonly ok: true; readonly data: TokenResponse }
   | {
       readonly ok: false;
@@ -60,9 +45,9 @@ type DirectTokenResult =
       readonly error: unknown;
     };
 
-const fetchAccessTokenDirect = async (
+const fetchAccessToken = async (
   config: DotyposRuntimeConfigObj
-): Promise<DirectTokenResult> => {
+): Promise<TokenResult> => {
   try {
     const response = await fetch(`${config.apiUrl}/signin/token`, {
       method: "POST",
@@ -124,38 +109,16 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
         const response = yield* Effect.tryPromise({
           try: async () => {
-            const result = await generatedApi.getAccessToken({
-              client,
-              headers: {
-                Authorization: `User ${config.refreshToken}`,
-              },
-              body: {
-                _cloudId: config.cloudId,
-              },
-              signal: AbortSignal.timeout(config.apiTimeout),
-            });
-
-            if (result.error) {
+            const result = await fetchAccessToken(config);
+            if (!result.ok) {
               Effect.runSync(
                 Effect.logError("Dotypos access token request failed", {
-                  status: result.response.status,
-                  statusText: result.response.statusText,
+                  status: result.status,
+                  statusText: result.statusText,
                   error: result.error,
-                  config: dotyposAuthDiagnostics(config),
                 })
               );
-              const directResponse = await fetchAccessTokenDirect(config);
-              if (directResponse.ok) return directResponse.data;
-
-              Effect.runSync(
-                Effect.logError("Dotypos direct access token request failed", {
-                  status: directResponse.status,
-                  statusText: directResponse.statusText,
-                  error: directResponse.error,
-                  config: dotyposAuthDiagnostics(config),
-                })
-              );
-              throw result.error satisfies ErrorResponse;
+              throw result.error;
             }
 
             return result.data;
