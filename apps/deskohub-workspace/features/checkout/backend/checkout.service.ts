@@ -283,9 +283,10 @@ export const CheckoutServiceLive = Layer.effect(
           const baseCheckoutPrice = getNexiCheckoutPrice(
             getReservationCheckoutPrice(data)
           );
+          const customerDiscount = yield* dotypos.getCustomerDiscount(customer);
           const pricing = applyWorkspaceCustomerDiscount(
             baseCheckoutPrice,
-            customer
+            customerDiscount
           );
           const checkoutPrice = pricing.expectedPrice;
           const nexiAmount = yield* toNexiAmount(checkoutPrice).pipe(

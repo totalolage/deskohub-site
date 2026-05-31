@@ -34,6 +34,13 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
 
 type CustomerLookupField = "email" | "phone";
 
+export type DotyposCustomerDiscount = {
+  readonly source: "dotypos-discount-group";
+  readonly field: "_discountGroupId";
+  readonly discountGroupId: string;
+  readonly percent: number;
+};
+
 type FindOrCreateCustomerOptions = {
   readonly lookupFields?: readonly CustomerLookupField[];
 };
@@ -42,6 +49,20 @@ const defaultCustomerLookupFields = [
   "email",
   "phone",
 ] as const satisfies readonly CustomerLookupField[];
+
+const parseDiscountPercent = (value: unknown) => {
+  const percent =
+    typeof value === "number"
+      ? value
+      : typeof value === "string"
+        ? Number(value)
+        : Number.NaN;
+
+  if (!Number.isFinite(percent)) return undefined;
+  if (percent <= 0 || percent > 100) return undefined;
+
+  return percent;
+};
 
 export class DotyposService extends Effect.Service<DotyposService>()(
   "DotyposService",
@@ -374,6 +395,35 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           effect.pipe(Effect.annotateLogs({ ...input, ...options }))
       );
 
+      const getCustomerDiscount = Effect.fn("getCustomerDiscount")(
+        function* (customer: Customer) {
+          const discountGroupId = customer._discountGroupId?.toString().trim();
+          if (!discountGroupId) return undefined;
+
+          const discountGroup = yield* api
+            .getDiscountGroup({
+              path: { cloudId: config.cloudId, discountGroupId },
+            })
+            .pipe(Effect.retry(retryPolicy));
+          const percent = parseDiscountPercent(discountGroup.discountPercent);
+
+          if (percent === undefined) return undefined;
+
+          return {
+            source: "dotypos-discount-group",
+            field: "_discountGroupId",
+            discountGroupId,
+            percent,
+          } satisfies DotyposCustomerDiscount;
+        },
+        (effect, customer) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              customer,
+            })
+          )
+      );
+
       const getTables = Effect.fn("getTables")(function* () {
         return yield* api
           .getTables({
@@ -439,6 +489,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         createReservation,
         getReservation,
         getCustomer,
+        getCustomerDiscount,
         findOrCreateCustomer,
         getTables,
         getProducts,

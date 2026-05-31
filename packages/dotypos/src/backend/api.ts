@@ -15,6 +15,11 @@ import type {
 import { zCreateCustomerRequest } from "../generated/zod.gen";
 import { injectReqResLogger } from "../utils/req-res-logger";
 
+type DiscountGroup = {
+  readonly id?: string | number;
+  readonly discountPercent?: number | string | null;
+};
+
 interface ApiErrorWithViolations {
   error?: string;
   error_description?: string;
@@ -349,9 +354,54 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
             transformErrorResponse(error, "Get categories", config.apiUrl),
         });
       }),
+
+      getDiscountGroup: Effect.fn("getDiscountGroup")(function* (params: {
+        path: { cloudId: string; discountGroupId: string };
+      }) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async (): Promise<DiscountGroup> => {
+            const baseUrl = config.apiUrl.replace(/\/$/, "");
+            const response = await fetch(
+              `${baseUrl}/clouds/${encodeURIComponent(
+                params.path.cloudId
+              )}/discount-groups/${encodeURIComponent(
+                params.path.discountGroupId
+              )}`,
+              {
+                headers: { Authorization: `Bearer ${token}` },
+                signal: AbortSignal.timeout(config.apiTimeout),
+              }
+            );
+
+            if (!response.ok) {
+              throw await readResponseError(response);
+            }
+
+            return (await response.json()) as DiscountGroup;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Get discount group", config.apiUrl),
+        });
+      }),
     };
   }),
 }) {}
+
+const readResponseError = async (response: Response) => {
+  const body = await response.json().catch(() => undefined);
+
+  if (body && typeof body === "object") {
+    return body;
+  }
+
+  return {
+    code: response.status,
+    error: response.statusText,
+    error_description: await response.text().catch(() => undefined),
+  } satisfies ErrorResponse;
+};
 
 const ErrorResponseSchema = Schema.Struct({
   error: Schema.optional(Schema.String),

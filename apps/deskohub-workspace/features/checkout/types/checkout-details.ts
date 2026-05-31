@@ -26,8 +26,9 @@ export type CheckoutDetailsJson = {
     readonly expectedPrice: WorkspaceMoney;
     readonly undiscountedPrice?: WorkspaceMoney;
     readonly customerDiscount?: {
-      readonly source: "dotypos-customer";
+      readonly source: "dotypos-discount-group";
       readonly field: string;
+      readonly discountGroupId: string;
       readonly percent: number;
       readonly amount: WorkspaceMoney;
     };
