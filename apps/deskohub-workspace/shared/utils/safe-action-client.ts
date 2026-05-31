@@ -5,8 +5,11 @@ import {
 import { localeMiddleware } from "./action-middleware/locale";
 
 export class PublicSafeActionError extends Error {
-  constructor(message: string) {
-    super(message);
+  constructor(
+    message: string,
+    errorOptions?: ErrorOptions
+  ) {
+    super(message, errorOptions);
     this.name = "PublicSafeActionError";
   }
 }
