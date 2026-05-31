@@ -11,6 +11,7 @@ import {
   type ReservationInput,
   reservationDefaultValues,
 } from "@/features/reservation/schemas/reservation";
+import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
 export const reservationCheckoutQueryFields = [
   "entryTier",
@@ -31,26 +32,11 @@ export type ReservationCheckoutQueryValues = Pick<
   ReservationCheckoutQueryField
 >;
 
-type NextSearchParams = Record<string, string | string[] | undefined>;
-type SupportedSearchParams = URLSearchParams | NextSearchParams;
-
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
 const queryEmailSchema = z
   .string()
   .max(RESERVATION_VALIDATION.email.max)
   .pipe(z.email());
-
-const getSearchParam = (
-  searchParams: SupportedSearchParams,
-  key: string
-): string | undefined => {
-  if (searchParams instanceof URLSearchParams) {
-    return searchParams.get(key) ?? undefined;
-  }
-
-  const value = searchParams[key];
-  return Array.isArray(value) ? value[0] : value;
-};
 
 const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,

@@ -4,10 +4,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { track } from "@vercel/analytics/react";
 import {
   AlertTriangle,
+  ArrowRight,
   CalendarIcon,
   Coffee,
   Monitor,
-  Send,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -17,7 +17,7 @@ import { type Control, useForm } from "react-hook-form";
 import {
   formatWorkspaceMoney,
   formatWorkspaceProductCurrencyAmount,
-  getWorkspaceProductCoffeePriceForTier,
+  getWorkspaceProductCoffeeLinePriceForTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
@@ -32,12 +32,12 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import { submitReservation } from "@/features/reservation/actions/submit-reservation";
+import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import {
   getAllowedMonitorOptionsForTier,
-  getReservationSchema,
-  type ReservationData,
-  type ReservationInput,
+  getReservationOrderSchema,
+  type ReservationOrderData,
+  type ReservationOrderInput,
   tierIncludesCourtesyCoffee,
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
@@ -51,11 +51,9 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
-import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
   FormLabel,
@@ -74,6 +72,10 @@ import { cn } from "@/shared/utils";
 type ReservationFormProps = {
   locale: Locale;
   showIntro?: boolean;
+};
+
+type ReservationFormFallbackProps = ReservationFormProps & {
+  showMonitorOption?: boolean;
 };
 
 type SubmissionMessage = {
@@ -114,6 +116,14 @@ const monitorOptions = workspaceProductMonitorOptions.map((option) => ({
   titleKey: keyof typeof m;
   descriptionKey: keyof typeof m;
 }>;
+
+const reservationFormCardClassName =
+  "relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm";
+
+const reservationFormSkeletonClassName =
+  "rounded-full bg-navy-blue/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
+
+const fallbackTierCards = ["tier-1", "tier-2", "tier-3"] as const;
 
 const formatDateForInput = (date: Date) => {
   const year = date.getFullYear();
@@ -176,12 +186,12 @@ export function ReservationForm({
     () => getSanitizedUtmParams(searchParams),
     [searchParams]
   );
-  const schema = useMemo(() => getReservationSchema(), []);
+  const schema = useMemo(() => getReservationOrderSchema(), []);
   const defaultValues = useMemo(
     () => getReservationDefaultValuesFromSearchParams(searchParams),
     [searchParams]
   );
-  const form = useForm<ReservationInput, unknown, ReservationData>({
+  const form = useForm<ReservationOrderInput, unknown, ReservationOrderData>({
     resolver: zodResolver(schema),
     defaultValues,
     mode: "onBlur",
@@ -189,14 +199,22 @@ export function ReservationForm({
   });
   const selectedTier = form.watch("entryTier");
   const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
-  const coffeePrice = getWorkspaceProductCoffeePriceForTier(selectedTier);
+  const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
 
-  const { execute, isExecuting } = useAction(submitReservation, {
+  const { execute, isExecuting } = useAction(preparePayState, {
     onSuccess: ({ data }) => {
-      const { redirectUrl } = data;
+      if (data?.status === "error") {
+        setSubmissionMessage({
+          status: "error",
+          text: data.message,
+        });
+        return;
+      }
+
+      const redirectUrl = data?.redirectUrl;
 
       if (!redirectUrl) {
         setSubmissionMessage({
@@ -245,7 +263,7 @@ export function ReservationForm({
   });
 
   return (
-    <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
+    <Card className={reservationFormCardClassName}>
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       {showIntro ? (
         <CardHeader className="space-y-3 pb-6">
@@ -580,60 +598,6 @@ export function ReservationForm({
               />
             )}
 
-            <FormField
-              control={form.control}
-              name="legalConsent"
-              render={({ field }) => (
-                <FormItem className="rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4">
-                  <div className="flex items-start gap-3">
-                    <FormControl>
-                      <Checkbox
-                        className="mt-1"
-                        checked={field.value}
-                        onBlur={field.onBlur}
-                        onCheckedChange={(checked) =>
-                          field.onChange(Boolean(checked))
-                        }
-                      />
-                    </FormControl>
-                    <div className="space-y-2">
-                      <FormLabel className="cursor-pointer text-sm font-semibold leading-6 text-navy-blue">
-                        {m.reservationLegalConsentLabel({}, { locale })}
-                      </FormLabel>
-                      <FormDescription className="text-sm leading-6 text-navy-blue/66">
-                        {m.reservationLegalConsentBefore({}, { locale })}{" "}
-                        <LegalLink
-                          href={`/${locale}/terms-and-conditions`}
-                          label={m.reservationLegalConsentTermsLink(
-                            {},
-                            { locale }
-                          )}
-                        />
-                        {", "}
-                        <LegalLink
-                          href={`/${locale}/operating-rules`}
-                          label={m.reservationLegalConsentOperatingRulesLink(
-                            {},
-                            { locale }
-                          )}
-                        />{" "}
-                        {m.reservationLegalConsentAnd({}, { locale })}{" "}
-                        <LegalLink
-                          href={`/${locale}/privacy-policy`}
-                          label={m.reservationLegalConsentPrivacyLink(
-                            {},
-                            { locale }
-                          )}
-                        />
-                        . {m.reservationLegalConsentNoRefund({}, { locale })}
-                      </FormDescription>
-                    </div>
-                  </div>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
             <div className="space-y-3 pt-1">
               <Button
                 type="submit"
@@ -644,8 +608,8 @@ export function ReservationForm({
                   m.reservationSubmitPending({}, { locale })
                 ) : (
                   <>
-                    <Send className="h-4 w-4" />
-                    {m.reservationSubmitButton({}, { locale })}
+                    <ArrowRight className="h-4 w-4" />
+                    {m.checkoutContinueButton({}, { locale })}
                   </>
                 )}
               </Button>
@@ -681,21 +645,133 @@ export function ReservationForm({
   );
 }
 
-function LegalLink({ href, label }: { href: string; label: string }) {
+export function ReservationFormFallback({
+  locale,
+  showIntro = true,
+  showMonitorOption = false,
+}: ReservationFormFallbackProps) {
   return (
-    <Link
-      href={href}
-      target="_blank"
-      rel="noreferrer"
-      className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+    <Card
+      aria-busy="true"
+      aria-label={m.reservationFormTitle({}, { locale })}
+      className={reservationFormCardClassName}
     >
-      {label}
-    </Link>
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
+
+      {showIntro ? (
+        <CardHeader className="space-y-3 pb-6">
+          <SkeletonBlock className="h-10 w-4/5 max-w-xl sm:h-11" />
+          <div className="max-w-2xl space-y-2">
+            <SkeletonBlock className="h-4 w-full" />
+            <SkeletonBlock className="h-4 w-5/6" />
+          </div>
+        </CardHeader>
+      ) : null}
+
+      <CardContent className={showIntro ? undefined : "pt-6"}>
+        <div aria-hidden="true" className="space-y-7">
+          <div className="space-y-2">
+            <SkeletonBlock className="h-4 w-28" />
+            <div className="grid gap-3 lg:grid-cols-3 lg:gap-x-3 lg:gap-y-3">
+              {fallbackTierCards.map((tierCard) => (
+                <div
+                  className="rounded-[1.4rem] border border-navy-blue/10 bg-white p-4"
+                  key={tierCard}
+                >
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <SkeletonBlock className="h-6 w-32" />
+                      <SkeletonBlock className="h-4 w-4 shrink-0 rounded-full" />
+                    </div>
+                    <SkeletonBlock className="h-4 w-24 bg-burned-orange/15" />
+                    <div className="space-y-2 pt-1">
+                      <SkeletonBlock className="h-3 w-full" />
+                      <SkeletonBlock className="h-3 w-11/12" />
+                      <SkeletonBlock className="h-3 w-4/5" />
+                    </div>
+                    <div className="space-y-2 pt-1">
+                      <SkeletonBlock className="h-4 w-24" />
+                      <SkeletonBlock className="h-3 w-full" />
+                      <SkeletonBlock className="h-3 w-10/12" />
+                      <SkeletonBlock className="h-3 w-9/12" />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <SkeletonField />
+            <SkeletonField />
+          </div>
+
+          <div className="grid gap-5 md:grid-cols-2">
+            <SkeletonField />
+            <SkeletonField />
+          </div>
+
+          <SkeletonField />
+
+          <div className="space-y-2">
+            <SkeletonBlock className="h-4 w-36" />
+            <SkeletonBlock className="h-[8.5rem] w-full rounded-[1.1rem]" />
+          </div>
+
+          {showMonitorOption ? <SkeletonMonitorOptionField /> : null}
+
+          <div className="space-y-3 pt-1">
+            <SkeletonBlock className="h-13 w-full rounded-full bg-burned-orange/18" />
+            <div className="space-y-2">
+              <SkeletonBlock className="h-4 w-full" />
+              <SkeletonBlock className="h-4 w-4/5" />
+            </div>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
+function SkeletonMonitorOptionField() {
+  return (
+    <div className="rounded-3xl border border-aquamarine-green/25 bg-aquamarine-green/8 p-4">
+      <div className="space-y-3">
+        <SkeletonBlock className="h-4 w-40 bg-aquamarine-green/15" />
+        <div className="grid gap-3 sm:grid-cols-3">
+          {monitorOptions.map((option) => (
+            <div
+              className="rounded-[1.1rem] border border-navy-blue/10 bg-white/75 p-3"
+              key={option.value}
+            >
+              <SkeletonBlock className="h-5 w-16" />
+              <div className="mt-2 space-y-2">
+                <SkeletonBlock className="h-3 w-full" />
+                <SkeletonBlock className="h-3 w-3/4" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SkeletonField() {
+  return (
+    <div className="space-y-2">
+      <SkeletonBlock className="h-4 w-28" />
+      <SkeletonBlock className="h-13 w-full rounded-[1.1rem]" />
+    </div>
+  );
+}
+
+function SkeletonBlock({ className }: { className: string }) {
+  return <div className={cn(reservationFormSkeletonClassName, className)} />;
+}
+
 type TextFieldProps = {
-  control: Control<ReservationInput, unknown, ReservationData>;
+  control: Control<ReservationOrderInput, unknown, ReservationOrderData>;
   name: "name" | "email" | "phone";
   label: string;
   placeholder: string;

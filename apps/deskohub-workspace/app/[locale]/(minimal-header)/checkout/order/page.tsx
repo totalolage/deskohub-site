@@ -17,6 +17,7 @@ import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
+  getSearchParam,
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -34,14 +35,6 @@ const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
   Layer.provide(WorkspaceDatabaseLive),
   Layer.orDie
 );
-
-const getSearchParam = (
-  searchParams: CheckoutOrderSearchParams,
-  key: string
-): string | undefined => {
-  const value = searchParams[key];
-  return Array.isArray(value) ? value[0] : value;
-};
 
 const loadProviderReturnStatus = (orderId: string) =>
   Effect.gen(function* () {
@@ -142,6 +135,6 @@ export default async function LocalizedCheckoutOrderPage({
   }
 
   return runWithRequestLocale(locale, () => (
-    <CheckoutOrderPage locale={locale} />
+    <CheckoutOrderPage locale={locale} searchParams={rawSearchParams} />
   ));
 }

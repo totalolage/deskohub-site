@@ -1,5 +1,4 @@
 import type { Locale } from "@/features/i18n";
-import { tierIncludesCourtesyCoffee } from "../reservation/schemas/reservation";
 
 export type WorkspaceMoney = {
   readonly value: number;
@@ -140,10 +139,10 @@ export function formatWorkspaceProductCurrencyAmount(
   return formatWorkspaceMoney(product.price, locale);
 }
 
-export function getWorkspaceProductCoffeePriceForTier(
+export function getWorkspaceProductCoffeeLinePriceForTier(
   tier: WorkspaceProductTier
 ) {
-  if (tierIncludesCourtesyCoffee(tier))
+  if (getWorkspaceProductByTier(tier).includesCourtesyCoffee)
     return {
       ...workspaceProductCoffeePrice,
       value: 0,

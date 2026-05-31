@@ -46,102 +46,130 @@ const requiredEmailSchema = z
   })
   .pipe(z.email({ error: m.contactValidationEmailInvalid() }));
 
-export const getReservationSchema = () =>
-  z
-    .object({
-      entryTier: z.enum(workspaceProductTiers, {
-        error: m.reservationValidationTierRequired(),
+const reservationOrderObjectSchema = () =>
+  z.object({
+    entryTier: z.enum(workspaceProductTiers, {
+      error: m.reservationValidationTierRequired(),
+    }),
+    date: z.iso
+      .date({ error: m.reservationValidationDateRequired() })
+      .refine(isTodayOrFuturePragueDate, {
+        error: m.reservationValidationDatePast(),
       }),
-      date: z.iso
-        .date({ error: m.reservationValidationDateRequired() })
-        .refine(isTodayOrFuturePragueDate, {
-          error: m.reservationValidationDatePast(),
+    coffee: z.boolean(),
+    monitorOption: z
+      .enum(workspaceProductMonitorOptions)
+      .optional()
+      .or(z.literal("").transform(() => undefined)),
+    name: z
+      .string()
+      .trim()
+      .min(RESERVATION_VALIDATION.name.min, {
+        error: m.contactValidationNameMinimum({
+          min: RESERVATION_VALIDATION.name.min,
         }),
-      coffee: z.boolean(),
-      monitorOption: z
-        .enum(workspaceProductMonitorOptions)
-        .optional()
-        .or(z.literal("").transform(() => undefined)),
-      name: z
-        .string()
-        .trim()
-        .min(RESERVATION_VALIDATION.name.min, {
-          error: m.contactValidationNameMinimum({
-            min: RESERVATION_VALIDATION.name.min,
-          }),
-        })
-        .max(RESERVATION_VALIDATION.name.max, {
-          error: m.contactValidationNameMaximum({
-            max: RESERVATION_VALIDATION.name.max,
-          }),
+      })
+      .max(RESERVATION_VALIDATION.name.max, {
+        error: m.contactValidationNameMaximum({
+          max: RESERVATION_VALIDATION.name.max,
         }),
-      email: requiredEmailSchema,
-      phone: z
-        .string()
-        .trim()
-        .max(RESERVATION_VALIDATION.phone.max, {
-          error: m.contactValidationPhoneMaximum({
-            max: RESERVATION_VALIDATION.phone.max,
-          }),
-        })
-        .optional()
-        .or(z.literal(""))
-        .refine((phone) => !phone || isValidPhoneNumber(phone, "CZ"), {
-          error: m.contactValidationPhoneInvalid(),
+      }),
+    email: requiredEmailSchema,
+    phone: z
+      .string()
+      .trim()
+      .max(RESERVATION_VALIDATION.phone.max, {
+        error: m.contactValidationPhoneMaximum({
+          max: RESERVATION_VALIDATION.phone.max,
         }),
-      message: z
-        .string()
-        .trim()
-        .max(RESERVATION_VALIDATION.message.max, {
-          error: m.contactValidationMessageMaximum({
-            max: RESERVATION_VALIDATION.message.max,
-          }),
-        })
-        .optional()
-        .or(z.literal("")),
+      })
+      .optional()
+      .or(z.literal(""))
+      .refine((phone) => !phone || isValidPhoneNumber(phone, "CZ"), {
+        error: m.contactValidationPhoneInvalid(),
+      }),
+    message: z
+      .string()
+      .trim()
+      .max(RESERVATION_VALIDATION.message.max, {
+        error: m.contactValidationMessageMaximum({
+          max: RESERVATION_VALIDATION.message.max,
+        }),
+      })
+      .optional()
+      .or(z.literal("")),
+  });
+
+const validateReservationOrder = (
+  data: z.output<ReturnType<typeof reservationOrderObjectSchema>>,
+  context: z.core.$RefinementCtx<
+    z.output<ReturnType<typeof reservationOrderObjectSchema>>
+  >
+) => {
+  const product = getWorkspaceProductByTier(data.entryTier);
+
+  if (product.requiresMonitorOption && !data.monitorOption) {
+    context.addIssue({
+      code: "custom",
+      path: ["monitorOption"],
+      message: m.reservationValidationMonitorRequired(),
+    });
+  }
+
+  if (
+    product.requiresMonitorOption &&
+    data.monitorOption &&
+    !product.allowedMonitorOptions.includes(data.monitorOption)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["monitorOption"],
+      message: m.reservationValidationMonitorUnavailable(),
+    });
+  }
+
+  if (!product.requiresMonitorOption && data.monitorOption) {
+    context.addIssue({
+      code: "custom",
+      path: ["monitorOption"],
+      message: m.reservationValidationMonitorUnavailable(),
+    });
+  }
+};
+
+const normalizeReservationOrder = <
+  T extends { entryTier: WorkspaceProductTier; coffee: boolean },
+>(
+  data: T
+) => {
+  const product = getWorkspaceProductByTier(data.entryTier);
+
+  return product.requiresCoffee ? { ...data, coffee: true } : data;
+};
+
+export const getReservationOrderSchema = () =>
+  reservationOrderObjectSchema()
+    .superRefine(validateReservationOrder)
+    .transform(normalizeReservationOrder);
+
+export const getReservationSchema = () =>
+  reservationOrderObjectSchema()
+    .extend({
       legalConsent: z.boolean().refine(Boolean, {
         error: m.reservationValidationLegalConsentRequired(),
       }),
     })
-    .superRefine((data, context) => {
-      const product = getWorkspaceProductByTier(data.entryTier);
-
-      if (product.requiresMonitorOption && !data.monitorOption) {
-        context.addIssue({
-          code: "custom",
-          path: ["monitorOption"],
-          message: m.reservationValidationMonitorRequired(),
-        });
-      }
-
-      if (
-        product.requiresMonitorOption &&
-        data.monitorOption &&
-        !product.allowedMonitorOptions.includes(data.monitorOption)
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["monitorOption"],
-          message: m.reservationValidationMonitorUnavailable(),
-        });
-      }
-
-      if (!product.requiresMonitorOption && data.monitorOption) {
-        context.addIssue({
-          code: "custom",
-          path: ["monitorOption"],
-          message: m.reservationValidationMonitorUnavailable(),
-        });
-      }
-    })
-    .transform((data) => {
-      const product = getWorkspaceProductByTier(data.entryTier);
-
-      return product.requiresCoffee ? { ...data, coffee: true } : data;
-    });
+    .superRefine(validateReservationOrder)
+    .transform(normalizeReservationOrder);
 
 export type ReservationInput = z.input<ReturnType<typeof getReservationSchema>>;
 export type ReservationData = z.output<ReturnType<typeof getReservationSchema>>;
+export type ReservationOrderInput = z.input<
+  ReturnType<typeof getReservationOrderSchema>
+>;
+export type ReservationOrderData = z.output<
+  ReturnType<typeof getReservationOrderSchema>
+>;
 
 export const reservationDefaultValues: ReservationInput = {
   entryTier: "basic-day-pass",
