@@ -32,7 +32,14 @@ const retryPolicy = Schedule.exponential("100 millis").pipe(
   })
 );
 
-type CustomerLookupField = "email" | "phone";
+export type CustomerLookupField = "email" | "phone";
+
+export type DotyposCustomerLookupData = {
+  firstName: string;
+  lastName?: string;
+  email?: string;
+  phone?: string;
+};
 
 export type DotyposCustomerDiscount = {
   readonly source: "dotypos-discount-group";
@@ -41,14 +48,58 @@ export type DotyposCustomerDiscount = {
   readonly percent: number;
 };
 
-type FindOrCreateCustomerOptions = {
+export type FindCustomerOptions = {
   readonly lookupFields?: readonly CustomerLookupField[];
 };
+
+export type FindCustomerResult = Data.TaggedEnum<{
+  Matched: {
+    readonly customer: Customer;
+    readonly matches: readonly Customer[];
+  };
+  NotFound: {
+    readonly matches: readonly [];
+  };
+  Ambiguous: {
+    readonly matches: readonly [Customer, Customer, ...Customer[]];
+  };
+}>;
+
+export const FindCustomerResult = Data.taggedEnum<FindCustomerResult>();
 
 const defaultCustomerLookupFields = [
   "email",
   "phone",
 ] as const satisfies readonly CustomerLookupField[];
+
+const normalizeCustomerLookupData = (
+  customerData: DotyposCustomerLookupData
+): DotyposCustomerLookupData => {
+  const normalizedPhone = customerData.phone
+    ? normalizePhoneNumber(customerData.phone)
+    : null;
+
+  return {
+    ...customerData,
+    phone: normalizedPhone || undefined,
+  };
+};
+
+const getCustomerLookupLogAnnotations = (
+  options?: FindCustomerOptions
+): Record<string, unknown> => ({
+  lookupFields: options?.lookupFields ?? defaultCustomerLookupFields,
+});
+
+const addUniqueCustomer = (customers: Customer[], customer: Customer) => {
+  const isDuplicate = customers.find((existing) =>
+    customer.id ? existing.id === customer.id : existing === customer
+  );
+
+  if (!isDuplicate) {
+    customers.push(customer);
+  }
+};
 
 const parseDiscountPercent = (value: unknown) => {
   const percent =
@@ -227,24 +278,12 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           )
       );
 
-      const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
+      const lookupCustomer = Effect.fn("lookupCustomer")(
         function* (
-          customerData: {
-            firstName: string;
-            lastName?: string;
-            email?: string;
-            phone?: string;
-          },
-          options?: FindOrCreateCustomerOptions
+          customerData: DotyposCustomerLookupData,
+          options?: FindCustomerOptions
         ) {
-          const normalizedPhone = customerData.phone
-            ? normalizePhoneNumber(customerData.phone)
-            : null;
-
-          const normalizedCustomerData = {
-            ...customerData,
-            phone: normalizedPhone || undefined,
-          };
+          const normalizedCustomerData = normalizeCustomerLookupData(customerData);
 
           const searchByField = (fieldName: "email" | "phone", value: string) =>
             Effect.gen(function* () {
@@ -290,7 +329,6 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           const shouldLookupBy = (field: CustomerLookupField) =>
             lookupFields.includes(field);
 
-          let existingCustomer: Customer | undefined;
           const matchingCustomers: Customer[] = [];
 
           if (shouldLookupBy("email") && normalizedCustomerData.email) {
@@ -298,11 +336,10 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               "email",
               normalizedCustomerData.email
             );
-            const emailMatch = customersByEmail.find(
-              (customer) => customer.email === normalizedCustomerData.email
-            );
-            if (emailMatch) {
-              matchingCustomers.push(emailMatch);
+            for (const customer of customersByEmail) {
+              if (customer.email === normalizedCustomerData.email) {
+                addUniqueCustomer(matchingCustomers, customer);
+              }
             }
           }
 
@@ -311,22 +348,74 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               "phone",
               normalizedCustomerData.phone
             );
-            const phoneMatch = customersByPhone.find(
-              (customer) => customer.phone === normalizedCustomerData.phone
-            );
-            if (
-              phoneMatch &&
-              !matchingCustomers.find(
-                (customer) => customer.id === phoneMatch.id
-              )
-            ) {
-              matchingCustomers.push(phoneMatch);
+            for (const customer of customersByPhone) {
+              if (customer.phone === normalizedCustomerData.phone) {
+                addUniqueCustomer(matchingCustomers, customer);
+              }
             }
           }
 
-          if (matchingCustomers.length > 0) {
-            existingCustomer = matchingCustomers[0];
+          if (matchingCustomers.length === 0) {
+            return {
+              _tag: "NotFound" as const,
+              matches: [],
+              normalizedCustomerData,
+            };
           }
+
+          if (matchingCustomers.length > 1) {
+            return {
+              _tag: "Ambiguous" as const,
+              matches: matchingCustomers as [Customer, Customer, ...Customer[]],
+              normalizedCustomerData,
+            };
+          }
+
+          return {
+            _tag: "Matched" as const,
+            customer: matchingCustomers[0]!,
+            matches: matchingCustomers,
+            normalizedCustomerData,
+          };
+        },
+        (effect, _input, options) =>
+          effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
+      );
+
+      const findCustomer = Effect.fn("findCustomer")(
+        function* (
+          customerData: DotyposCustomerLookupData,
+          options?: FindCustomerOptions
+        ) {
+          const { normalizedCustomerData: _, ...result } = yield* lookupCustomer(
+            customerData,
+            options
+          );
+
+          switch (result._tag) {
+            case "Matched":
+              return FindCustomerResult.Matched({
+                customer: result.customer,
+                matches: result.matches,
+              });
+            case "Ambiguous":
+              return FindCustomerResult.Ambiguous({ matches: result.matches });
+            case "NotFound":
+              return FindCustomerResult.NotFound({ matches: [] });
+          }
+        },
+        (effect, _input, options) =>
+          effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
+      );
+
+      const findOrCreateCustomer = Effect.fn("findOrCreateCustomer")(
+        function* (
+          customerData: DotyposCustomerLookupData,
+          options?: FindCustomerOptions
+        ) {
+          const lookup = yield* lookupCustomer(customerData, options);
+          const normalizedCustomerData = lookup.normalizedCustomerData;
+          const existingCustomer = lookup.matches[0];
 
           if (existingCustomer) {
             const needsUpdate =
@@ -391,8 +480,8 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             })
             .pipe(Effect.retry(retryPolicy));
         },
-        (effect, input, options) =>
-          effect.pipe(Effect.annotateLogs({ ...input, ...options }))
+        (effect, _input, options) =>
+          effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
       );
 
       const getCustomerDiscount = Effect.fn("getCustomerDiscount")(
@@ -419,7 +508,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         (effect, customer) =>
           effect.pipe(
             Effect.annotateLogs({
-              customer,
+              discountGroupId: customer._discountGroupId?.toString().trim(),
             })
           )
       );
@@ -490,6 +579,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         getReservation,
         getCustomer,
         getCustomerDiscount,
+        findCustomer,
         findOrCreateCustomer,
         getTables,
         getProducts,
