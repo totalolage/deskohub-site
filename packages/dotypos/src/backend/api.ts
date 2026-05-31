@@ -1,4 +1,5 @@
-import { Effect, ParseResult, Ref, Schema } from "effect";
+import { createHash } from "node:crypto";
+import { Effect, Ref, Schema } from "effect";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import { createClient } from "../generated/client";
@@ -35,6 +36,20 @@ interface TokenCache {
   expiresAt: number;
 }
 
+const secretFingerprint = (value: string) => ({
+  length: value.length,
+  sha256Prefix: createHash("sha256").update(value).digest("hex").slice(0, 12),
+});
+
+const dotyposAuthDiagnostics = (config: DotyposRuntimeConfigObj) => ({
+  apiUrl: config.apiUrl,
+  apiTimeout: config.apiTimeout,
+  cloudId: config.cloudId,
+  clientId: secretFingerprint(config.clientId),
+  clientSecret: secretFingerprint(config.clientSecret),
+  refreshToken: secretFingerprint(config.refreshToken),
+});
+
 export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
   effect: Effect.gen(function* () {
     const config = yield* DotyposRuntimeConfig;
@@ -69,7 +84,17 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               signal: AbortSignal.timeout(config.apiTimeout),
             });
 
-            if (result.error) throw result.error satisfies ErrorResponse;
+            if (result.error) {
+              Effect.runSync(
+                Effect.logError("Dotypos access token request failed", {
+                  status: result.response.status,
+                  statusText: result.response.statusText,
+                  error: result.error,
+                  config: dotyposAuthDiagnostics(config),
+                })
+              );
+              throw result.error satisfies ErrorResponse;
+            }
 
             return result.data;
           },
