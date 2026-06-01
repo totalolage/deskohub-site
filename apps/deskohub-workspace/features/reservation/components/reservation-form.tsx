@@ -18,6 +18,8 @@ import {
   formatWorkspaceMoney,
   formatWorkspaceProductCurrencyAmount,
   getWorkspaceProductCoffeeLinePriceForTier,
+  isWorkspaceProductMonitorOption,
+  isWorkspaceProductTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
@@ -83,6 +85,43 @@ type SubmissionMessage = {
   text: string;
 };
 
+type WorkspaceAvailability = {
+  readonly unavailableDates: readonly string[];
+  readonly unavailableTiers: readonly WorkspaceProductTier[];
+  readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
+};
+
+const getObjectProperty = (value: unknown, key: string): unknown => {
+  if (!value || typeof value !== "object") {
+    return undefined;
+  }
+
+  return Object.getOwnPropertyDescriptor(value, key)?.value;
+};
+
+const getStringArrayProperty = (value: unknown, key: string): readonly string[] => {
+  const property = getObjectProperty(value, key);
+
+  if (!Array.isArray(property)) {
+    return [];
+  }
+
+  return property.filter((item): item is string => typeof item === "string");
+};
+
+const parseWorkspaceAvailabilityResponse = (
+  value: unknown
+): WorkspaceAvailability => ({
+  unavailableDates: getStringArrayProperty(value, "unavailableDates"),
+  unavailableTiers: getStringArrayProperty(value, "unavailableTiers").filter(
+    isWorkspaceProductTier
+  ),
+  unavailableMonitorOptions: getStringArrayProperty(
+    value,
+    "unavailableMonitorOptions"
+  ).filter(isWorkspaceProductMonitorOption),
+});
+
 const utmKeys = [
   "utm_source",
   "utm_medium",
@@ -132,6 +171,9 @@ const formatDateForInput = (date: Date) => {
 
   return `${year}-${month}-${day}`;
 };
+
+const addMonthsToInputDate = (date: string, months: number) =>
+  Temporal.PlainDate.from(date).add({ months }).toString();
 
 const parseInputDate = (date: string) => {
   if (!date) {
@@ -198,11 +240,39 @@ export function ReservationForm({
     reValidateMode: "onChange",
   });
   const selectedTier = form.watch("entryTier");
+  const selectedDate = form.watch("date");
+  const selectedMonitorOption = form.watch("monitorOption");
   const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
   const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
+  const [availability, setAvailability] =
+    useState<WorkspaceAvailability | null>(null);
+  const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
+  const unavailableDates = useMemo(
+    () => new Set(availability?.unavailableDates ?? []),
+    [availability]
+  );
+  const unavailableTiers = useMemo(
+    () => new Set(availability?.unavailableTiers ?? []),
+    [availability]
+  );
+  const unavailableMonitorOptions = useMemo(
+    () => new Set(availability?.unavailableMonitorOptions ?? []),
+    [availability]
+  );
+  const isSelectedTierUnavailable = unavailableTiers.has(selectedTier);
+  const isSelectedMonitorUnavailable = Boolean(
+    selectedMonitorOption && unavailableMonitorOptions.has(selectedMonitorOption)
+  );
+  const isSelectedDateUnavailable = Boolean(
+    selectedDate && unavailableDates.has(selectedDate)
+  );
+  const isSelectedReservationUnavailable =
+    isSelectedTierUnavailable ||
+    isSelectedMonitorUnavailable ||
+    isSelectedDateUnavailable;
 
   const { executeAsync: sendReservation } = useAction(preparePayState, {
     onSuccess: ({ data }) => {
@@ -247,8 +317,53 @@ export function ReservationForm({
     form.setValue("monitorOption", undefined, { shouldValidate: true });
   }, [form, shouldShowMonitors]);
 
+  useEffect(() => {
+    const controller = new AbortController();
+    const today = formatDateForInput(new Date());
+    const params = new URLSearchParams({
+      from: today,
+      to: addMonthsToInputDate(today, 6),
+    });
+
+    if (selectedDate) params.set("date", selectedDate);
+    if (isWorkspaceProductTier(selectedTier)) {
+      params.set("entryTier", selectedTier);
+    }
+    if (isWorkspaceProductMonitorOption(selectedMonitorOption)) {
+      params.set("monitorOption", selectedMonitorOption);
+    }
+
+    setIsAvailabilityLoading(true);
+    fetch(`/api/workspace/availability?${params.toString()}`, {
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Availability request failed");
+        return parseWorkspaceAvailabilityResponse(await response.json());
+      })
+      .then((nextAvailability) => setAvailability(nextAvailability))
+      .catch((error) => {
+        if (error instanceof DOMException && error.name === "AbortError") {
+          return;
+        }
+        setAvailability(null);
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setIsAvailabilityLoading(false);
+      });
+
+    return () => controller.abort();
+  }, [selectedDate, selectedMonitorOption, selectedTier]);
+
   const handleSubmit = form.handleSubmit(async (data) => {
     setSubmissionMessage(null);
+    if (isSelectedReservationUnavailable) {
+      setSubmissionMessage({
+        status: "error",
+        text: m.reservationAvailabilityUnavailable({}, { locale }),
+      });
+      return;
+    }
     hasTrackedSuccessfulSubmission.current = false;
     await sendReservation({
       locale,
@@ -300,6 +415,9 @@ export function ReservationForm({
                           option.titleKey,
                           locale
                         );
+                        const isUnavailable = unavailableTiers.has(
+                          option.value
+                        );
 
                         return (
                           <div
@@ -307,6 +425,8 @@ export function ReservationForm({
                             data-reservation-tier-option={option.value}
                             className={cn(
                               "group relative flex cursor-pointer flex-col gap-3 rounded-[1.4rem] border p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_18px_44px_-28px_rgba(0,2,79,0.7)] lg:row-span-4 lg:grid lg:grid-rows-subgrid",
+                              isUnavailable &&
+                                "cursor-not-allowed opacity-45 hover:translate-y-0 hover:shadow-none",
                               isSelected
                                 ? "border-burned-orange bg-burned-orange/8 ring-4 ring-burned-orange/10"
                                 : "border-navy-blue/10 bg-white hover:border-burned-orange/45"
@@ -314,7 +434,10 @@ export function ReservationForm({
                           >
                             <label
                               htmlFor={inputId}
-                              className="relative z-10 flex cursor-pointer items-start justify-between gap-2"
+                              className={cn(
+                                "relative z-10 flex cursor-pointer items-start justify-between gap-2",
+                                isUnavailable && "cursor-not-allowed"
+                              )}
                             >
                               <span className="text-lg leading-6">
                                 {optionTitle}
@@ -381,7 +504,10 @@ export function ReservationForm({
                             </div>
                             <label
                               htmlFor={inputId}
-                              className="absolute inset-0 cursor-pointer rounded-[1.4rem]"
+                              className={cn(
+                                "absolute inset-0 cursor-pointer rounded-[1.4rem]",
+                                isUnavailable && "cursor-not-allowed"
+                              )}
                             >
                               <input
                                 id={inputId}
@@ -390,7 +516,10 @@ export function ReservationForm({
                                 className="sr-only"
                                 checked={isSelected}
                                 value={option.value}
-                                onChange={() => field.onChange(option.value)}
+                                disabled={isUnavailable}
+                                onChange={() => {
+                                  if (!isUnavailable) field.onChange(option.value);
+                                }}
                                 onBlur={field.onBlur}
                                 ref={field.ref}
                               />
@@ -444,7 +573,11 @@ export function ReservationForm({
 
                             field.onChange(formatDateForInput(date));
                           }}
-                          disabled={{ before: new Date() }}
+                          disabled={[
+                            { before: new Date() },
+                            (date) =>
+                              unavailableDates.has(formatDateForInput(date)),
+                          ]}
                         />
                       </PopoverContent>
                     </Popover>
@@ -566,12 +699,16 @@ export function ReservationForm({
                           )
                           .map((option) => {
                             const isSelected = field.value === option.value;
+                            const isUnavailable =
+                              unavailableMonitorOptions.has(option.value);
 
                             return (
                               <label
                                 key={option.value}
                                 className={cn(
                                   "cursor-pointer rounded-[1.1rem] border p-3 transition hover:-translate-y-0.5",
+                                  isUnavailable &&
+                                    "cursor-not-allowed opacity-45 hover:translate-y-0",
                                   isSelected
                                     ? "border-aquamarine-green bg-white ring-4 ring-aquamarine-green/15"
                                     : "border-navy-blue/10 bg-white/75 hover:border-aquamarine-green/55"
@@ -582,7 +719,10 @@ export function ReservationForm({
                                   className="sr-only"
                                   checked={isSelected}
                                   value={option.value}
-                                  onChange={() => field.onChange(option.value)}
+                                  disabled={isUnavailable}
+                                  onChange={() => {
+                                    if (!isUnavailable) field.onChange(option.value);
+                                  }}
                                 />
                                 <span className="block font-semibold text-navy-blue">
                                   {getWorkspaceProductMessage(
@@ -613,7 +753,9 @@ export function ReservationForm({
                 className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
                 disabled={
                   form.formState.isSubmitting ||
-                  form.formState.isSubmitSuccessful
+                  form.formState.isSubmitSuccessful ||
+                  isSelectedReservationUnavailable ||
+                  isAvailabilityLoading
                 }
               >
                 <ArrowRight className="h-4 w-4" />
@@ -643,6 +785,25 @@ export function ReservationForm({
                   <span>{submissionMessage.text}</span>
                 </p>
               )}
+              {isSelectedReservationUnavailable && !submissionMessage ? (
+                <p
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
+                  <span>
+                    {m.reservationAvailabilityUnavailable({}, { locale })}
+                  </span>
+                </p>
+              ) : null}
+              {isAvailabilityLoading && !submissionMessage ? (
+                <p
+                  aria-live="polite"
+                  className="text-sm leading-6 text-navy-blue/62"
+                >
+                  {m.reservationAvailabilityLoading({}, { locale })}
+                </p>
+              ) : null}
             </div>
           </form>
         </Form>

@@ -32,6 +32,11 @@ import {
 } from "@/features/checkout/checkout-quote";
 import { appendCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import type { Locale } from "@/features/i18n";
+import {
+  WorkspaceAvailabilityService,
+  WorkspaceAvailabilityServiceLive,
+  WorkspaceTableUnavailableError,
+} from "@/features/reservation/backend/workspace-availability.service";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
@@ -333,6 +338,10 @@ const mapCheckoutFailure = (cause: unknown) => {
     return new CheckoutError({ message: cause.message, cause });
   }
 
+  if (cause instanceof WorkspaceTableUnavailableError) {
+    return new CheckoutError({ message: "workspace_table_unavailable", cause });
+  }
+
   return new CheckoutError({
     message:
       "Payment checkout could not be started. Please review your details and try again.",
@@ -344,6 +353,7 @@ export const CheckoutServiceLive = Layer.effect(
   CheckoutService,
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const availability = yield* WorkspaceAvailabilityService;
     const nexi = yield* NexiService;
     const paymentOrders = yield* PaymentOrderRepository;
     const checkoutReturnStateTokens = yield* CheckoutReturnStateTokenRepository;
@@ -535,6 +545,12 @@ export const CheckoutServiceLive = Layer.effect(
                 };
               }
 
+              yield* availability.ensureAvailable({
+                date: data.date,
+                entryTier: data.entryTier,
+                monitorOption: data.monitorOption,
+              });
+
               return yield* startProviderSession({
                 orderId: existingOrder.id,
                 correlationId,
@@ -614,6 +630,12 @@ export const CheckoutServiceLive = Layer.effect(
                 },
               });
 
+              yield* availability.ensureAvailable({
+                date: data.date,
+                entryTier: data.entryTier,
+                monitorOption: data.monitorOption,
+              });
+
               return yield* startProviderSession({
                 orderId: order.id,
                 correlationId,
@@ -666,6 +688,12 @@ export const CheckoutServiceLive = Layer.effect(
             acceptedAt,
             locale,
             legalDocuments,
+          });
+
+          yield* availability.ensureAvailable({
+            date: data.date,
+            entryTier: data.entryTier,
+            monitorOption: data.monitorOption,
           });
 
           const customer = yield* dotypos.findOrCreateCustomer(
@@ -761,6 +789,7 @@ export const CheckoutServiceLive = Layer.effect(
 );
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
+  Layer.provide(WorkspaceAvailabilityServiceLive),
   Layer.provide(CheckoutReturnStateTokenRepositoryLive),
   Layer.provide(PaymentOrderRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
