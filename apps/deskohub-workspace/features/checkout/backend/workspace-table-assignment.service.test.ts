@@ -8,6 +8,8 @@ import {
   WorkspaceTableAssignmentServiceLive,
 } from "./workspace-table-assignment.service";
 
+type DotyposAssignmentTestService = typeof DotyposService.Service;
+
 const makeReservation = (
   overrides: Partial<CheckoutDetailsJson["reservation"]> = {}
 ): CheckoutDetailsJson["reservation"] => ({
@@ -34,18 +36,29 @@ const assignTableId = (
   reservation: CheckoutDetailsJson["reservation"],
   tables: readonly Table[]
 ) =>
-  Effect.gen(function* () {
-    const service = yield* WorkspaceTableAssignmentService;
-    return yield* service.assignTableId(reservation);
-  }).pipe(
-    Effect.provide(WorkspaceTableAssignmentServiceLive),
-    Effect.provide(
-      Layer.succeed(DotyposService, {
-        getTables: mock(() => Effect.succeed([...tables])),
-      } as never)
-    ),
-    Effect.runPromise
-  );
+  {
+    const dotyposService: DotyposAssignmentTestService = {
+      createReservation: mock(() => Effect.die("createReservation not mocked")),
+      getReservation: mock(() => Effect.die("getReservation not mocked")),
+      getCustomer: mock(() => Effect.die("getCustomer not mocked")),
+      findCustomer: mock(() => Effect.die("findCustomer not mocked")),
+      findOrCreateCustomer: mock(() => Effect.die("findOrCreateCustomer not mocked")),
+      getCustomerDiscount: mock(() => Effect.die("getCustomerDiscount not mocked")),
+      getTables: mock(() => Effect.succeed([...tables])),
+      listReservations: mock(() => Effect.die("listReservations not mocked")),
+      getProducts: mock(() => Effect.die("getProducts not mocked")),
+      getCategories: mock(() => Effect.die("getCategories not mocked")),
+    };
+
+    return Effect.gen(function* () {
+      const service = yield* WorkspaceTableAssignmentService;
+      return yield* service.assignTableId(reservation);
+    }).pipe(
+      Effect.provide(WorkspaceTableAssignmentServiceLive),
+      Effect.provide(Layer.succeed(DotyposService, dotyposService)),
+      Effect.runPromise
+    );
+  };
 
 describe("WorkspaceTableAssignmentService", () => {
   test("matches Profi 2x27 QHD by tier and monitor tags", async () => {
@@ -141,7 +154,7 @@ describe("WorkspaceTableAssignmentService", () => {
           id: "missing-display-enabled",
           name: "0",
           tags: ["tier:basic"],
-        } as Table,
+        } satisfies Table,
         makeTable({
           id: "hidden",
           name: "1",
@@ -168,14 +181,15 @@ describe("WorkspaceTableAssignmentService", () => {
   });
 
   test("fails clearly when Profi has an unsupported monitor option", async () => {
+    const invalidReservation: CheckoutDetailsJson["reservation"] = JSON.parse(
+      JSON.stringify({
+        ...makeReservation({ tier: "profi" }),
+        monitorOption: "2x27",
+      })
+    );
+
     await expect(
-      assignTableId(
-        makeReservation({
-          tier: "profi",
-          monitorOption: "2x27" as never,
-        }),
-        []
-      )
+      assignTableId(invalidReservation, [])
     ).rejects.toThrow("monitor option is not supported");
   });
 

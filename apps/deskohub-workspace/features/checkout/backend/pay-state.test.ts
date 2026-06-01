@@ -64,15 +64,26 @@ const replaceTokenHeader = (
   const [prefix, encodedHeader, ...rest] = token.split(".");
   if (!prefix || !encodedHeader) throw new Error("Unexpected test token shape");
 
-  const header = JSON.parse(
+  const header = parseJsonRecord(
     Buffer.from(encodedHeader, "base64url").toString("utf8")
-  ) as Record<string, unknown>;
+  );
 
   return [
     prefix,
     Buffer.from(JSON.stringify(replace(header))).toString("base64url"),
     ...rest,
   ].join(".");
+};
+
+const parseJsonRecord = (json: string): Record<string, unknown> => {
+  const parsed = JSON.parse(json);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Expected JSON object");
+  }
+
+  return Object.fromEntries(
+    Object.entries(parsed).map(([key, value]) => [key, value])
+  );
 };
 
 const tamperCiphertext = (token: string) => {
@@ -159,9 +170,11 @@ describe("Pay URL state", () => {
     expect(() =>
       openPayState(versionTwoToken, { keys: [fixedKey], now: () => fixedNow })
     ).toThrow("Unsupported Pay state token header");
-    expect(() => seal(buildState({ schemaVersion: 2 as 1 }))).toThrow(
-      "Expected SignedPayState"
+    const unsupportedState = parseJsonRecord(
+      JSON.stringify({ ...buildState(), schemaVersion: 2 })
     );
+
+    expect(() => sealPayState(unsupportedState)).toThrow("Expected SignedPayState");
   });
 
   test("redacts tokens in URLs and raw log strings", () => {

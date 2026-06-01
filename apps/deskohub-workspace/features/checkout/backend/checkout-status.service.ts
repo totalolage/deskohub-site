@@ -2,7 +2,7 @@ import {
   classifyNexiFailureStatus,
   getNexiPaymentMetadata,
   NexiApi,
-  type NexiCurrency,
+  NexiCurrencySchema,
   NexiService,
 } from "@deskohub/nexi";
 import { Context, Effect, Layer, Schema } from "effect";
@@ -142,12 +142,15 @@ export const CheckoutStatusServiceLive = Layer.effect(
             const expectedAmount = yield* toNexiAmount(
               order.checkoutDetails.payment.expectedPrice
             ).pipe(Effect.orDie);
+            const expectedCurrency = yield* Schema.decodeUnknown(
+              NexiCurrencySchema
+            )(expectedAmount.currency).pipe(Effect.orDie);
             const verification = yield* nexi
               .verifyPaymentOutcome({
                 orderId: order.id,
                 correlationId: order.correlationId,
                 amount: expectedAmount.amount,
-                currency: expectedAmount.currency as NexiCurrency,
+                currency: expectedCurrency,
                 securityToken: order.securityToken,
               })
               .pipe(Effect.orElseSucceed(() => undefined));
