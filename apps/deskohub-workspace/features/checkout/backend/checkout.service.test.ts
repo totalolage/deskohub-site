@@ -8,6 +8,8 @@ import {
 } from "@/features/checkout/backend/pay-state";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
+import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 
 mock.module("server-only", () => ({}));
 
@@ -20,6 +22,10 @@ type PaymentOrderRepositoryShape = {
   readonly markFailed: ReturnType<typeof mock>;
   readonly resetUnsuccessfulForRetry: ReturnType<typeof mock>;
 };
+
+type DotyposCheckoutTestService = typeof DotyposService.Service;
+type NexiCheckoutTestService = typeof NexiService.Service;
+type AvailabilityCheckoutTestService = WorkspaceAvailabilityService;
 
 const reservation = {
   entryTier: "basic" as const,
@@ -50,13 +56,50 @@ const makePaymentOrder = (overrides: Record<string, unknown> = {}) => ({
   ...(() => {
     const quote = buildWorkspaceCheckoutQuote(reservation);
     return {
-      checkoutDetails: {
+      checkoutDetails: checkoutDetailsJsonSchema.parse({
+        schema: "workspace-checkout-details",
+        schemaVersion: 1,
+        locale: "en-US",
+        reservation: {
+          tier: reservation.entryTier,
+          date: reservation.date,
+          coffee: reservation.coffee,
+        },
         payment: {
           expectedPrice: quote.summary.total,
           quoteFingerprint: quote.fingerprint,
           summary: quote.summary,
         },
-      } as never,
+        legal: {
+          acceptedAt: new Date("2026-06-01T10:00:00.000Z").toISOString(),
+          locale: "en-US",
+          source: "workspace-pay-final-submit",
+          documents: {
+            termsAndConditions: {
+              path: "/terms-and-conditions",
+              hash: "terms-hash",
+              hashAlgorithm: "sha256",
+            },
+            operatingRules: {
+              path: "/operating-rules",
+              hash: "rules-hash",
+              hashAlgorithm: "sha256",
+            },
+            privacyPolicy: {
+              path: "/privacy-policy",
+              hash: "privacy-hash",
+              hashAlgorithm: "sha256",
+            },
+          },
+          acknowledgements: {
+            termsAndConditions: true,
+            operatingRules: true,
+            noRefundAfterPinDelivery: true,
+            privacyPolicy: true,
+          },
+        },
+        fulfillment: { accessCodePolicy: "workspace-static-v1" },
+      } satisfies CheckoutDetailsJson),
     };
   })(),
   id: "checkout-service-test-order",
@@ -149,33 +192,57 @@ const loadBackend = async () => {
 };
 
 const makeLayer = async (input: {
-  readonly dotypos?: Record<string, unknown>;
-  readonly nexi?: Record<string, unknown>;
+  readonly dotypos?: Partial<DotyposCheckoutTestService>;
+  readonly nexi?: Partial<NexiCheckoutTestService>;
+  readonly availability?: Partial<AvailabilityCheckoutTestService>;
   readonly paymentOrders?: PaymentOrderRepositoryShape;
   readonly returnTokens?: Record<string, unknown>;
 }) => {
   const backend = await loadBackend();
+  const dotyposService: DotyposCheckoutTestService = {
+    createReservation: mock(() => Effect.die("createReservation not mocked")),
+    getReservation: mock(() => Effect.die("getReservation not mocked")),
+    getCustomer: mock(() => Effect.die("getCustomer not mocked")),
+    findCustomer: mock(() =>
+      Effect.succeed({ _tag: "NotFound" as const, matches: [] })
+    ),
+    findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer" })),
+    getCustomerDiscount: mock(() => Effect.succeed(undefined)),
+    getTables: mock(() => Effect.die("getTables not mocked")),
+    listReservations: mock(() => Effect.die("listReservations not mocked")),
+    getProducts: mock(() => Effect.die("getProducts not mocked")),
+    getCategories: mock(() => Effect.die("getCategories not mocked")),
+    ...input.dotypos,
+  };
+  const nexiService: NexiCheckoutTestService = {
+    createHostedPaymentPage: mock(() =>
+      Effect.succeed({
+        orderId: "checkout-service-test-order",
+        hostedPage: "https://nexi.example/hosted",
+        securityToken: "token",
+      })
+    ),
+    verifyPaymentOutcome: mock(() => Effect.succeed({ status: "pending" })),
+    ...input.nexi,
+  };
+  const availabilityService: AvailabilityCheckoutTestService = {
+    getAvailability: mock(() =>
+      Effect.succeed({
+        from: reservation.date,
+        to: reservation.date,
+        unavailableDates: [],
+        unavailableTiers: [],
+        unavailableMonitorOptions: [],
+      })
+    ),
+    ensureAvailable: mock(() => Effect.void),
+    ...input.availability,
+  };
 
   return Layer.mergeAll(
-    Layer.succeed(DotyposService, {
-      findCustomer: mock(() =>
-        Effect.succeed({ _tag: "NotFound", matches: [] })
-      ),
-      findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer" })),
-      getCustomerDiscount: mock(() => Effect.succeed(undefined)),
-      ...input.dotypos,
-    } as never),
-    Layer.succeed(NexiService, {
-      createHostedPaymentPage: mock(() =>
-        Effect.succeed({
-          orderId: "checkout-service-test-order",
-          hostedPage: "https://nexi.example/hosted",
-          securityToken: "token",
-        })
-      ),
-      verifyPaymentOutcome: mock(() => Effect.succeed({ status: "pending" })),
-      ...input.nexi,
-    } as never),
+    Layer.succeed(DotyposService, dotyposService),
+    Layer.succeed(NexiService, nexiService),
+    Layer.succeed(WorkspaceAvailabilityService, availabilityService),
     Layer.succeed(
       backend.paymentOrders.PaymentOrderRepository,
       input.paymentOrders ?? makePaymentOrderRepository()
@@ -183,7 +250,7 @@ const makeLayer = async (input: {
     Layer.succeed(backend.returnTokens.CheckoutReturnStateTokenRepository, {
       create: mock(() => Effect.succeed("a".repeat(43))),
       ...input.returnTokens,
-    } as never)
+    })
   );
 };
 
@@ -485,22 +552,31 @@ describe("CheckoutService final submit enforcement", () => {
 
   test("quote preview also fails closed on ambiguous Dotypos lookup", async () => {
     const backend = await loadBackend();
+    const dotyposService: DotyposCheckoutTestService = {
+      createReservation: mock(() => Effect.die("createReservation not mocked")),
+      getReservation: mock(() => Effect.die("getReservation not mocked")),
+      getCustomer: mock(() => Effect.die("getCustomer not mocked")),
+      findCustomer: mock(() =>
+        Effect.succeed({
+          _tag: "Ambiguous" as const,
+          matches: [{ id: "a" }, { id: "b" }],
+        })
+      ),
+      findOrCreateCustomer: mock(() =>
+        Effect.die("findOrCreateCustomer not mocked")
+      ),
+      getCustomerDiscount: mock(() => Effect.succeed(undefined)),
+      getTables: mock(() => Effect.die("getTables not mocked")),
+      listReservations: mock(() => Effect.die("listReservations not mocked")),
+      getProducts: mock(() => Effect.die("getProducts not mocked")),
+      getCategories: mock(() => Effect.die("getCategories not mocked")),
+    };
 
     await expect(
       backend.workspaceQuote
         .buildAuthoritativeWorkspaceCheckoutQuoteEffect(reservation)
         .pipe(
-          Effect.provide(
-            Layer.succeed(DotyposService, {
-              findCustomer: mock(() =>
-                Effect.succeed({
-                  _tag: "Ambiguous",
-                  matches: [{ id: "a" }, { id: "b" }],
-                })
-              ),
-              getCustomerDiscount: mock(() => Effect.succeed(undefined)),
-            } as never)
-          ),
+          Effect.provide(Layer.succeed(DotyposService, dotyposService)),
           Effect.runPromise
         )
     ).rejects.toThrow("Customer discount could not be confirmed");
