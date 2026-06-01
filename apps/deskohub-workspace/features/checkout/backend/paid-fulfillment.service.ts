@@ -18,6 +18,10 @@ import {
   PaymentOrderRepositoryLive,
   type PaymentOrderStateError,
 } from "@/features/checkout/backend/payment-order.repository";
+import {
+  WorkspaceTableAssignmentService,
+  WorkspaceTableAssignmentServiceLive,
+} from "@/features/checkout/backend/workspace-table-assignment.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 
@@ -131,6 +135,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     const paymentOrders = yield* PaymentOrderRepository;
     const emails = yield* WorkspaceCheckoutEmailService;
     const dotypos = yield* DotyposService;
+    const tableAssignments = yield* WorkspaceTableAssignmentService;
 
     const loadOrder: (input: {
       readonly orderId: string;
@@ -221,6 +226,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           status: "CONFIRMED",
         }).pipe(
           Effect.provideService(DotyposService, dotypos),
+          Effect.provideService(
+            WorkspaceTableAssignmentService,
+            tableAssignments
+          ),
           Effect.catchAll((cause) =>
             failFulfillment({
               orderId: input.orderId,
@@ -513,6 +522,7 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(WorkspaceCheckoutEmailServiceLive),
     Layer.provide(WorkspaceCheckoutAccessCodeServiceLive),
+    Layer.provide(WorkspaceTableAssignmentServiceLive),
     Layer.provide(StandaloneEmailServiceLayer),
     Layer.provide(EmailConfigLayer),
     Layer.provide(

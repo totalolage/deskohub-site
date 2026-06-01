@@ -13,7 +13,7 @@ const validSubmit = {
 };
 
 const validReservation = {
-  entryTier: "basic-day-pass",
+  entryTier: "basic",
   date: "2099-06-10",
   coffee: false,
   name: "Locale Test",
@@ -74,7 +74,7 @@ describe("reservation order schema", () => {
     const schema = getReservationOrderSchema();
 
     expect(schema.parse(validReservation)).toEqual({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       date: "2099-06-10",
       coffee: false,
       name: "Locale Test",
@@ -84,7 +84,7 @@ describe("reservation order schema", () => {
     });
     expect(
       schema.safeParse({
-        entryTier: "basic-day-pass",
+        entryTier: "basic",
         date: "2099-06-10",
         coffee: false,
         name: "Locale Test",

@@ -29,9 +29,9 @@ const getFallbackProps = async (
 
 describe("CheckoutOrderPage", () => {
   test("reserves monitor option fallback space for workstation tier query", async () => {
-    expect(
-      (await getFallbackProps({ tier: "profi-workstation" })).showMonitorOption
-    ).toBe(true);
+    expect((await getFallbackProps({ tier: "profi" })).showMonitorOption).toBe(
+      true
+    );
   });
 
   test("does not reserve monitor option fallback space by default", async () => {

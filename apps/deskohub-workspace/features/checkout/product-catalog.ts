@@ -6,29 +6,32 @@ export type WorkspaceMoney = {
   readonly currency: string;
 };
 
-export const workspaceProductTiers = [
-  "basic-day-pass",
-  "cowork-plus",
-  "profi-workstation",
-] as const;
+export const workspaceProductTiers = ["basic", "plus", "profi"] as const;
 
 export const workspaceProductMonitorOptions = [
-  "2x27",
-  "2x32",
-  "qhd-4k",
+  "2x27-qhd",
+  "2x32-qhd",
+  "2x27-4k",
+  "2x32-4k",
 ] as const;
 
 export type WorkspaceProductTier = (typeof workspaceProductTiers)[number];
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
 
+export const workspaceProductMonitorOptionTableTags = {
+  "2x27-qhd": ["monitor:count:2", "monitor:size:27", "monitor:resolution:qhd"],
+  "2x32-qhd": ["monitor:count:2", "monitor:size:32", "monitor:resolution:qhd"],
+  "2x27-4k": ["monitor:count:2", "monitor:size:27", "monitor:resolution:4k"],
+  "2x32-4k": ["monitor:count:2", "monitor:size:32", "monitor:resolution:4k"],
+} as const satisfies Record<WorkspaceProductMonitorOption, readonly string[]>;
+
 export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceProductTier;
-  readonly tariffId: "basic" | "plus" | "profi";
   readonly productCode:
-    | "workspace-basic-day-pass"
-    | "workspace-cowork-plus"
-    | "workspace-profi-workstation";
+    | "workspace-basic"
+    | "workspace-plus"
+    | "workspace-profi";
   readonly label: string;
   readonly price: WorkspaceMoney;
   readonly includesCourtesyCoffee: boolean;
@@ -39,9 +42,8 @@ export type WorkspaceProductCatalogItem = {
 
 export const workspaceProductCatalog = [
   {
-    tier: "basic-day-pass",
-    tariffId: "basic",
-    productCode: "workspace-basic-day-pass",
+    tier: "basic",
+    productCode: "workspace-basic",
     label: "Basic Day Pass",
     price: { value: 35_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: false,
@@ -50,9 +52,8 @@ export const workspaceProductCatalog = [
     allowedMonitorOptions: [],
   },
   {
-    tier: "cowork-plus",
-    tariffId: "plus",
-    productCode: "workspace-cowork-plus",
+    tier: "plus",
+    productCode: "workspace-plus",
     label: "Cowork Plus",
     price: { value: 49_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: true,
@@ -61,9 +62,8 @@ export const workspaceProductCatalog = [
     allowedMonitorOptions: [],
   },
   {
-    tier: "profi-workstation",
-    tariffId: "profi",
-    productCode: "workspace-profi-workstation",
+    tier: "profi",
+    productCode: "workspace-profi",
     label: "Profi Workstation",
     price: { value: 55_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: true,

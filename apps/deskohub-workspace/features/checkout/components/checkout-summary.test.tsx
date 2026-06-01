@@ -6,7 +6,7 @@ import { CheckoutSummary } from "./checkout-summary";
 describe("CheckoutSummary", () => {
   test("renders server-provided summary rows and amounts without a duplicate title", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: true,
     });
 

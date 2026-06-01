@@ -2,7 +2,10 @@ import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-quote";
-import { formatWorkspaceMoney } from "@/features/checkout/product-catalog";
+import {
+  formatWorkspaceMoney,
+  isWorkspaceProductMonitorOption,
+} from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
@@ -17,9 +20,9 @@ type CheckoutSummaryProps = {
 };
 
 const productItemTiers = {
-  "product:workspace-basic-day-pass": "basic-day-pass",
-  "product:workspace-cowork-plus": "cowork-plus",
-  "product:workspace-profi-workstation": "profi-workstation",
+  "product:workspace-basic": "basic",
+  "product:workspace-plus": "plus",
+  "product:workspace-profi": "profi",
 } as const;
 
 const summarySectionLabels = {
@@ -37,11 +40,8 @@ const getSummaryItemLabel = (key: string, locale: Locale) => {
 
   if (key.startsWith("monitor:")) {
     const monitorOption = key.slice("monitor:".length);
-    if (["2x27", "2x32", "qhd-4k"].includes(monitorOption)) {
-      return getWorkspaceProductMonitorTitle(
-        monitorOption as "2x27" | "2x32" | "qhd-4k",
-        locale
-      );
+    if (isWorkspaceProductMonitorOption(monitorOption)) {
+      return getWorkspaceProductMonitorTitle(monitorOption, locale);
     }
   }
 

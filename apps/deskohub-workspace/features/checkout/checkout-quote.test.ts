@@ -8,7 +8,7 @@ import {
 describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: false,
     });
 
@@ -22,19 +22,19 @@ describe("workspace checkout quotes", () => {
       "total",
     ]);
     expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
-      "product:workspace-basic-day-pass",
+      "product:workspace-basic",
     ]);
   });
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: true,
     });
 
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:workspace-basic-day-pass",
+        key: "product:workspace-basic",
         amount: { value: 35_000, exponent: 2, currency: "CZK" },
       },
       {
@@ -47,14 +47,14 @@ describe("workspace checkout quotes", () => {
 
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "cowork-plus",
+      entryTier: "plus",
       coffee: false,
     });
 
     expect(quote.order.coffee).toBe(true);
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:workspace-cowork-plus",
+        key: "product:workspace-plus",
         amount: { value: 49_000, exponent: 2, currency: "CZK" },
       },
       {
@@ -68,15 +68,15 @@ describe("workspace checkout quotes", () => {
   test("rejects unreachable monitor combinations consistently", () => {
     expect(() =>
       buildWorkspaceCheckoutQuote({
-        entryTier: "basic-day-pass",
+        entryTier: "basic",
         coffee: false,
-        monitorOption: "2x27",
+        monitorOption: "2x27-qhd",
       })
     ).toThrow("Monitor option is unavailable");
 
     expect(() =>
       buildWorkspaceCheckoutQuote({
-        entryTier: "profi-workstation",
+        entryTier: "profi",
         coffee: true,
       })
     ).toThrow("Monitor option is required");
@@ -85,7 +85,7 @@ describe("workspace checkout quotes", () => {
   test("includes customer discount as a negative display item", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic-day-pass",
+        entryTier: "basic",
         coffee: true,
       },
       {
@@ -115,7 +115,7 @@ describe("workspace checkout quotes", () => {
   test("preserves minor-unit rounding behavior", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic-day-pass",
+        entryTier: "basic",
         coffee: false,
       },
       {
@@ -134,12 +134,12 @@ describe("workspace checkout quotes", () => {
 
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: false,
     });
     const coffeeDiscountedToSameTotal = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic-day-pass",
+        entryTier: "basic",
         coffee: true,
       },
       {
@@ -163,7 +163,7 @@ describe("workspace checkout quotes", () => {
 
   test("sanitizes runtime contact and consent fields from quote output", () => {
     const orderWithRuntimeExtras = {
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       date: "2026-06-01",
       coffee: false,
       legalConsent: true,
@@ -176,7 +176,7 @@ describe("workspace checkout quotes", () => {
     const quote = buildWorkspaceCheckoutQuote(orderWithRuntimeExtras);
 
     expect(quote.order).toEqual({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: false,
     });
     expect(quote.order).not.toHaveProperty("date");
@@ -189,11 +189,11 @@ describe("workspace checkout quotes", () => {
 
   test("ignores runtime contact and consent fields when fingerprinting", () => {
     const cleanQuote = buildWorkspaceCheckoutQuote({
-      entryTier: "cowork-plus",
+      entryTier: "plus",
       coffee: false,
     });
     const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
-      entryTier: "cowork-plus",
+      entryTier: "plus",
       date: "2026-06-01",
       coffee: false,
       legalConsent: true,
@@ -220,11 +220,11 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: false,
     });
     const withCoffee = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: true,
     });
 
@@ -238,7 +238,7 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary currency and exponent", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: false,
     });
     const changedCurrency = {
@@ -268,7 +268,7 @@ describe("workspace checkout quotes", () => {
 
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedCurrency).itemKeys
-    ).toContain("order/product:workspace-basic-day-pass");
+    ).toContain("order/product:workspace-basic");
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedExponent).sectionKeys
     ).toContain("total");

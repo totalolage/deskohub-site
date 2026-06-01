@@ -11,7 +11,7 @@ const document = {
 describe("checkout details persistence", () => {
   test("persists quote summary, fingerprint, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic-day-pass",
+      entryTier: "basic",
       coffee: false,
     });
     const details = checkoutDetailsJsonSchema.parse({
@@ -19,7 +19,7 @@ describe("checkout details persistence", () => {
       schemaVersion: 1,
       locale: "en-US",
       reservation: {
-        tier: "basic-day-pass",
+        tier: "basic",
         date: "2099-06-10",
         coffee: false,
         message: "Please keep this private.",
@@ -61,7 +61,7 @@ describe("checkout details persistence", () => {
 
   test("accepts negative discount rows but rejects negative expected totals", () => {
     const quote = buildWorkspaceCheckoutQuote(
-      { entryTier: "basic-day-pass", coffee: false },
+      { entryTier: "basic", coffee: false },
       {
         customerDiscount: {
           source: "dotypos-discount-group",
@@ -78,7 +78,7 @@ describe("checkout details persistence", () => {
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
-          tier: "basic-day-pass",
+          tier: "basic",
           date: "2099-06-10",
           coffee: false,
         },
@@ -113,7 +113,7 @@ describe("checkout details persistence", () => {
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
-          tier: "basic-day-pass",
+          tier: "basic",
           date: "2099-06-10",
           coffee: false,
         },

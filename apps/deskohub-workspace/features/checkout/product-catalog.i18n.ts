@@ -18,15 +18,15 @@ type WorkspaceProductTierBulletMessageKeys = {
 };
 
 export const workspaceProductTierMessageKeys = {
-  "basic-day-pass": {
+  basic: {
     titleKey: "reservationTierBasicTitle",
     descriptionKey: "reservationTierBasicDescription",
   },
-  "cowork-plus": {
+  plus: {
     titleKey: "reservationTierCoworkTitle",
     descriptionKey: "reservationTierCoworkDescription",
   },
-  "profi-workstation": {
+  profi: {
     titleKey: "reservationTierProfiTitle",
     descriptionKey: "reservationTierProfiDescription",
   },
@@ -42,7 +42,7 @@ export const workspaceProductTierBulletMessageKeys: Record<
   WorkspaceProductTier,
   WorkspaceProductTierBulletMessageKeys
 > = {
-  "basic-day-pass": {
+  basic: {
     main: ["reservationTierBasicBulletDesk"],
     perksLabelKey: "reservationTierPerksLabel",
     perks: [
@@ -50,7 +50,7 @@ export const workspaceProductTierBulletMessageKeys: Record<
       { key: "reservationTierBasicPerkWater" },
     ],
   },
-  "cowork-plus": {
+  plus: {
     main: ["reservationTierCoworkBulletDesk"],
     perksLabelKey: "reservationTierPerksLabel",
     perks: [
@@ -58,7 +58,7 @@ export const workspaceProductTierBulletMessageKeys: Record<
       { key: "reservationTierPerkFreeCoffee", marker: "plus" },
     ],
   },
-  "profi-workstation": {
+  profi: {
     main: ["reservationTierProfiBulletDesk"],
     perksLabelKey: "reservationTierPerksLabel",
     perks: [
@@ -69,17 +69,21 @@ export const workspaceProductTierBulletMessageKeys: Record<
 };
 
 export const workspaceProductMonitorMessageKeys = {
-  "2x27": {
-    titleKey: "reservationMonitor2x27Title",
-    descriptionKey: "reservationMonitor2x27Description",
+  "2x27-qhd": {
+    titleKey: "reservationMonitor2x27QhdTitle",
+    descriptionKey: "reservationMonitor2x27QhdDescription",
   },
-  "2x32": {
-    titleKey: "reservationMonitor2x32Title",
-    descriptionKey: "reservationMonitor2x32Description",
+  "2x32-qhd": {
+    titleKey: "reservationMonitor2x32QhdTitle",
+    descriptionKey: "reservationMonitor2x32QhdDescription",
   },
-  "qhd-4k": {
-    titleKey: "reservationMonitorQhd4kTitle",
-    descriptionKey: "reservationMonitorQhd4kDescription",
+  "2x27-4k": {
+    titleKey: "reservationMonitor2x27FourKTitle",
+    descriptionKey: "reservationMonitor2x27FourKDescription",
+  },
+  "2x32-4k": {
+    titleKey: "reservationMonitor2x32FourKTitle",
+    descriptionKey: "reservationMonitor2x32FourKDescription",
   },
 } as const satisfies Record<
   WorkspaceProductMonitorOption,

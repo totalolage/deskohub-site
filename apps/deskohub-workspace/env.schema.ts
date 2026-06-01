@@ -13,7 +13,6 @@ export const workspaceServerEnvSchema = z.object({
   DOTYPOS_CLOUD_ID: z.string().min(1),
   DOTYPOS_EMPLOYEE_ID: z.string().min(1),
   DOTYPOS_REFRESH_TOKEN: z.string().min(1),
-  WORKSPACE_DOTYPOS_TABLE_ID: z.string().min(1),
   EMAIL_API_KEY: z.string().optional(),
   CHECKOUT_PAY_STATE_KEYS: z.string().min(1),
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: z.string().min(32).optional(),

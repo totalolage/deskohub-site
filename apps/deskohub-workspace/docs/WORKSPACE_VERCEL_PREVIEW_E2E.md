@@ -1,6 +1,6 @@
 # Workspace Vercel Preview E2E Checklist
 
-Use this checklist for Workspace preview deployments focused on Nexi payment and notification behavior. Nexi callbacks require a public HTTPS URL, so the payment/webhook happy path should be validated on a Vercel preview or another externally reachable HTTPS deployment. Do not treat Dotypos reservation fulfillment as a preview blocker until the Workspace reservation table ID code placeholder is replaced.
+Use this checklist for Workspace preview deployments focused on Nexi payment and notification behavior. Nexi callbacks require a public HTTPS URL, so the payment/webhook happy path should be validated on a Vercel preview or another externally reachable HTTPS deployment.
 
 ## Static Validation
 
@@ -46,6 +46,7 @@ Known/defaultable values:
 - `NEXI_CHECKOUT_CURRENCY_OVERRIDE`: optional. Use `EUR` only in non-production deployments against Nexi sandbox when validating the public Nexi CEE test merchant/cards. Leave unset for production and for any test merchant that supports the product catalog currency directly.
 - `DOTYPOS_API_URL`: Dotypos API origin for the configured account.
 - `DOTYPOS_API_TIMEOUT`: `30000` unless a different timeout is required.
+- Dotypos Workspace tables must be active, visible, and tagged for fulfillment: `tier:basic`, `tier:plus`, or `tier:profi`; Profi monitor tables also need `monitor:count:2`, `monitor:size:27|32`, and `monitor:resolution:qhd|4k`.
 - `VERCEL_ENV`, `VERCEL_URL`, `VERCEL_PROJECT_PRODUCTION_URL`: provided by Vercel on deployments. Local values are deployment stand-ins only because callback config builds `https://${url}`; local Nexi HPP callbacks need a real HTTPS URL reachable by Nexi, or use a Vercel preview deployment.
 
 Vercel protection notes:
@@ -154,11 +155,9 @@ Database checks for a successful sandbox payment:
 
 Expected fulfillment boundary:
 
-- Dotypos reservation fulfillment may fail because `WORKSPACE_DOTYPOS_TABLE_ID` is hardcoded to a placeholder in `apps/deskohub-workspace/features/checkout/backend/constants.ts` and guarded in `dotypos-reservation.adapter.ts`.
-- No env var currently configures the Workspace Dotypos table ID.
-- This is acceptable for the first preview as long as payment/webhook state is correct.
-- Confirm the order remains `payment_status=paid`, transitions to `fulfillment_status=failed`, sets `fulfillment_failed_at`, and records a stable `fulfillment_failure_code`.
-- If fulfillment fails before email dispatch, customer/internal emails may not send in the first pass; this should not block payment/webhook validation.
+- Dotypos reservation fulfillment assigns an active visible Workspace table by Dotypos tags rather than a static table ID env var.
+- If no Dotypos table matches the requested workspace tier and monitor option tags, confirm the order remains `payment_status=paid`, transitions to `fulfillment_status=failed`, sets `fulfillment_failed_at`, and records a stable `fulfillment_failure_code`.
+- If fulfillment fails before email dispatch, customer/internal emails may not send; this should not block payment/webhook validation.
 
 ## Post-Deploy Checks
 

@@ -84,9 +84,10 @@ const getMonitorLabel = (
   locale: Locale
 ) => {
   const labels = {
-    "2x27": "reservationEmailMonitor2x27Label",
-    "2x32": "reservationEmailMonitor2x32Label",
-    "qhd-4k": "reservationEmailMonitorQhd4kLabel",
+    "2x27-qhd": "reservationEmailMonitor2x27QhdLabel",
+    "2x32-qhd": "reservationEmailMonitor2x32QhdLabel",
+    "2x27-4k": "reservationEmailMonitor2x27FourKLabel",
+    "2x32-4k": "reservationEmailMonitor2x32FourKLabel",
   } satisfies Record<WorkspaceProductMonitorOption, keyof typeof m>;
 
   return getMessage(labels[monitor], locale);
