@@ -31,10 +31,10 @@ const customer = (overrides: Partial<Customer>): Customer => ({
 
 const runWithApi = <A, E>(
   effect: Effect.Effect<A, E, DotyposService>,
-  api: Partial<DotyposApi>
+  api: DotyposApi
 ) => {
   const dependencies = Layer.merge(
-    Layer.succeed(DotyposApi, api as DotyposApi),
+    Layer.succeed(DotyposApi, api),
     makeDotyposRuntimeConfigLayer(config)
   );
   const serviceLayer = DotyposService.DefaultWithoutDependencies.pipe(
@@ -44,8 +44,8 @@ const runWithApi = <A, E>(
   return Effect.runPromise(effect.pipe(Effect.provide(serviceLayer)));
 };
 
-const makeApi = (overrides: Partial<DotyposApi> = {}) => ({
-  searchCustomers: mock(() => Effect.succeed([] as Customer[])),
+const makeApi = (overrides: Partial<DotyposApi> = {}): DotyposApi => ({
+  searchCustomers: mock(() => Effect.succeed<Customer[]>([])),
   createCustomer: mock((params) =>
     Effect.succeed(customer({ id: "created-customer-id", ...params.body }))
   ),
@@ -55,6 +55,7 @@ const makeApi = (overrides: Partial<DotyposApi> = {}) => ({
   getCustomer: mock(() => Effect.die("getCustomer not mocked")),
   createReservation: mock(() => Effect.die("createReservation not mocked")),
   getReservation: mock(() => Effect.die("getReservation not mocked")),
+  listReservations: mock(() => Effect.die("listReservations not mocked")),
   getTables: mock(() => Effect.die("getTables not mocked")),
   getProducts: mock(() => Effect.die("getProducts not mocked")),
   getCategories: mock(() => Effect.die("getCategories not mocked")),
@@ -102,7 +103,7 @@ describe("DotyposService customer lookup", () => {
       searchCustomers: mock((params) =>
         params.query.filter === "phone|like|+420777777777"
           ? Effect.succeed([matched])
-          : Effect.succeed([] as Customer[])
+          : Effect.succeed<Customer[]>([])
       ),
     });
 
@@ -171,9 +172,8 @@ describe("DotyposService customer lookup", () => {
 
   test('workspace-style lookupFields:["email"] does not match by phone', async () => {
     const phoneMatch = customer({ id: "phone-match", phone: "+420777777777" });
-    const api = makeApi({
-      searchCustomers: mock(() => Effect.succeed([phoneMatch])),
-    });
+    const searchCustomers = mock(() => Effect.succeed([phoneMatch]));
+    const api = makeApi({ searchCustomers });
 
     const result = await runWithApi(
       Effect.gen(function* () {
@@ -192,7 +192,7 @@ describe("DotyposService customer lookup", () => {
 
     expect(result).toEqual({ _tag: "NotFound", matches: [] });
     expect(api.searchCustomers).toHaveBeenCalledTimes(1);
-    expect((api.searchCustomers as any).mock.calls[0]?.[0].query.filter).toBe(
+    expect(searchCustomers.mock.calls[0]?.[0].query.filter).toBe(
       "email|like|ada@example.com"
     );
   });

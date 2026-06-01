@@ -9,11 +9,18 @@ import type {
   Customer,
   ErrorResponse,
   Product,
+  Reservation,
   Table,
   TokenResponse,
   UpdateCustomerRequest,
 } from "../generated/types.gen";
-import { zCreateCustomerRequest, zTokenResponse } from "../generated/zod.gen";
+import {
+  zCategory,
+  zCreateCustomerRequest,
+  zCustomer,
+  zTable,
+  zTokenResponse,
+} from "../generated/zod.gen";
 import { injectReqResLogger } from "../utils/req-res-logger";
 
 type DiscountGroup = {
@@ -164,10 +171,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
       createReservation: Effect.fn("createReservation")(function* (params) {
         const token = yield* getToken();
 
-        const cleanBody = Object.fromEntries(
-          Object.entries(params.body).filter(([_, value]) => value !== null)
-        ) as typeof params.body;
-        const requestBody = [cleanBody];
+        const requestBody = [params.body];
 
         return yield* Effect.tryPromise({
           try: async () => {
@@ -180,10 +184,9 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
             if (response.error) {
               let errorMessage = "";
-              const errorWithViolations =
-                response.error as ApiErrorWithViolations;
-              if (Array.isArray(errorWithViolations.violations)) {
-                const violationMessages = errorWithViolations.violations
+              const violations = getViolations(response.error);
+              if (violations.length > 0) {
+                const violationMessages = violations
                   .map(
                     (violation) =>
                       `${violation.path?.join(".")}: ${violation.message}`
@@ -235,6 +238,37 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
           },
           catch: (error) =>
             transformErrorResponse(error, "Get reservation", config.apiUrl),
+        });
+      }),
+
+      listReservations: Effect.fn("listReservations")(function* (params: {
+        path: { cloudId: string };
+        query?: { page?: number; limit?: number };
+      }) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async (): Promise<Reservation[]> => {
+            const response = await generatedApi.listReservations(
+              createApiOptions(token, config, client, {
+                path: params.path,
+                query: params.query || { limit: 100 },
+              })
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            const responseData: unknown = response.data;
+
+            if (isReservationArray(responseData)) return responseData;
+
+            const pageData = getObjectProperty(responseData, "data");
+            if (isReservationArray(pageData)) return pageData;
+
+            return [];
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "List reservations", config.apiUrl),
         });
       }),
 
@@ -340,7 +374,10 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
                 throw response.error satisfies ErrorResponse;
               }
 
-              return response.data as Customer;
+              const parsedCustomer = zCustomer.safeParse(response.data);
+              if (!parsedCustomer.success) throw parsedCustomer.error;
+
+              return parsedCustomer.data;
             },
             catch: (error) =>
               transformErrorResponse(error, "Get customer", config.apiUrl),
@@ -354,16 +391,12 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         Effect.gen(function* () {
           const token = yield* getToken();
 
-          const cleanBody = Object.fromEntries(
-            Object.entries(params.body).filter(([_, value]) => value !== null)
-          ) as typeof params.body;
-
           return yield* Effect.tryPromise({
             try: async () => {
               const response = await generatedApi.updateCustomer(
                 createApiOptions(token, config, client, {
                   path: params.path,
-                  body: cleanBody,
+                  body: params.body,
                 })
               );
 
@@ -390,15 +423,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
             if (response.error) throw response.error satisfies ErrorResponse;
 
-            if (
-              response.data &&
-              typeof response.data === "object" &&
-              "data" in response.data
-            ) {
-              return (response.data.data || []) as Table[];
-            }
-
-            return [] as Table[];
+            return parseArrayPageData(response.data, zTable.safeParse);
           },
           catch: (error) =>
             transformErrorResponse(error, "Get tables", config.apiUrl),
@@ -440,15 +465,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
             if (response.error) throw response.error satisfies ErrorResponse;
 
-            if (
-              response.data &&
-              typeof response.data === "object" &&
-              "data" in response.data
-            ) {
-              return (response.data.data || []) as Category[];
-            }
-
-            return [] as Category[];
+            return parseArrayPageData(response.data, zCategory.safeParse);
           },
           catch: (error) =>
             transformErrorResponse(error, "Get categories", config.apiUrl),
@@ -479,7 +496,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               throw await readResponseError(response);
             }
 
-            return (await response.json()) as DiscountGroup;
+            return parseDiscountGroup(await response.json());
           },
           catch: (error) =>
             transformErrorResponse(error, "Get discount group", config.apiUrl),
@@ -545,6 +562,72 @@ const transformErrorResponse = (
     cause: error,
   });
 };
+
+const getViolations = (
+  error: unknown
+): NonNullable<ApiErrorWithViolations["violations"]> => {
+  const violations = getObjectProperty(error, "violations");
+  if (!Array.isArray(violations)) return [];
+
+  return violations.flatMap((violation) => {
+    const message = getObjectProperty(violation, "message");
+    if (typeof message !== "string") return [];
+
+    const path = getObjectProperty(violation, "path");
+    return {
+      message,
+      path: Array.isArray(path)
+        ? path.filter((part): part is string => typeof part === "string")
+        : undefined,
+    };
+  });
+};
+
+const getObjectProperty = (value: unknown, key: string) => {
+  if (!value || typeof value !== "object") return undefined;
+  return Object.getOwnPropertyDescriptor(value, key)?.value;
+};
+
+const parseArrayPageData = <T>(
+  data: unknown,
+  parse: (value: unknown) =>
+    | { readonly success: true; readonly data: T }
+    | { readonly success: false }
+) => {
+  const pageData = getObjectProperty(data, "data");
+  if (!Array.isArray(pageData)) return [];
+
+  return pageData.flatMap((item) => {
+    const parsedItem = parse(item);
+    return parsedItem.success ? [parsedItem.data] : [];
+  });
+};
+
+const parseDiscountGroup = (value: unknown): DiscountGroup => {
+  const id = getObjectProperty(value, "id");
+  const discountPercent = getObjectProperty(value, "discountPercent");
+
+  return {
+    ...(typeof id === "string" || typeof id === "number" ? { id } : {}),
+    ...(
+      typeof discountPercent === "string" ||
+      typeof discountPercent === "number" ||
+      discountPercent === null
+        ? { discountPercent }
+        : {}
+    ),
+  };
+};
+
+const isReservationArray = (value: unknown): value is Reservation[] =>
+  Array.isArray(value) && value.every(isReservation);
+
+const isReservation = (value: unknown): value is Reservation =>
+  Boolean(value) &&
+  typeof value === "object" &&
+  typeof getObjectProperty(value, "startDate") === "string" &&
+  typeof getObjectProperty(value, "endDate") === "string" &&
+  typeof getObjectProperty(value, "seats") === "string";
 
 type ApiCallOptions = {
   path?: Record<string, string>;

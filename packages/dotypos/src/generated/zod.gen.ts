@@ -162,6 +162,12 @@ export const zPaginationBase = z.object({
     description: 'Base pagination properties shared by all paginated responses'
 });
 
+export const zPaginatedReservations = zPaginationBase.and(z.object({
+    data: z.optional(z.array(zReservation).register(z.globalRegistry, {
+        description: 'Array of reservations'
+    }))
+}));
+
 export const zCustomer = z.object({
     id: z.optional(z.string().register(z.globalRegistry, {
         description: 'Customer ID'
@@ -763,9 +769,7 @@ export const zGetAccessTokenResponse = zTokenResponse;
 /**
  * List of reservations
  */
-export const zListReservationsResponse = z.array(zReservation).register(z.globalRegistry, {
-    description: 'List of reservations'
-});
+export const zListReservationsResponse = zPaginatedReservations;
 
 /**
  * Reservations created successfully
