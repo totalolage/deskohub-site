@@ -10,7 +10,6 @@ import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
-import { getSearchParam } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
@@ -86,23 +85,15 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   return `${url.pathname}${url.search}`;
 };
 
-const getCheckoutOrderRedirectPath = (input: {
+const getCheckoutStatusRedirectPath = (input: {
   readonly locale: string;
   readonly orderId: string;
-  readonly searchParams: CheckoutResultSearchParams;
 }) => {
   const url = new URL(
-    `/${input.locale}/checkout/order`,
+    `/${input.locale}/checkout/status/${input.orderId}`,
     "https://deskohub.local"
   );
-  url.searchParams.set("paymentOrderId", input.orderId);
-  appendExistingCheckoutReturnStateToken(url, input.searchParams);
   appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
-
-  const paymentId = getSearchParam(input.searchParams, "paymentid");
-  if (paymentId) {
-    url.searchParams.set("paymentid", paymentId);
-  }
 
   return `${url.pathname}${url.search}`;
 };
@@ -131,10 +122,9 @@ export default async function LocalizedCheckoutResultPage({
   }
 
   redirect(
-    getCheckoutOrderRedirectPath({
+    getCheckoutStatusRedirectPath({
       locale,
       orderId,
-      searchParams: rawSearchParams,
     })
   );
 }
