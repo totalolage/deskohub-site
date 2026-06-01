@@ -126,6 +126,50 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    put:
+      tags:
+        - Reservations
+      summary: Replace or create reservations
+      operationId: replaceReservations
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Reservation'
+              maxItems: 100
+      responses:
+        '200':
+          description: Reservations replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /clouds/{cloudId}/reservations/{reservationId}:
     get:
       tags:
@@ -209,6 +253,57 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    patch:
+      tags:
+        - Reservations
+      summary: Partially update reservation
+      operationId: patchReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReservationRequest'
+      responses:
+        '200':
+          description: Reservation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
     delete:
       tags:
         - Reservations
@@ -228,7 +323,7 @@ paths:
             type: string
           description: Reservation ID
       responses:
-        '204':
+        '200':
           description: Reservation cancelled successfully
         '404':
           description: Reservation not found
@@ -297,6 +392,48 @@ paths:
       responses:
         '200':
           description: Customers created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Customers
+      summary: Replace or create customers
+      operationId: replaceCustomers
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Customer'
+      responses:
+        '200':
+          description: Customers replaced successfully
           content:
             application/json:
               schema:
@@ -388,6 +525,93 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    post:
+      tags:
+        - Products
+      summary: Create products
+      operationId: createProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Product'
+              maxItems: 100
+      responses:
+        '200':
+          description: Products created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Products
+      summary: Replace or create products
+      operationId: replaceProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Product'
+              maxItems: 100
+      responses:
+        '200':
+          description: Products replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
   /clouds/{cloudId}/products/{productId}:
     get:
       tags:
@@ -421,6 +645,159 @@ paths:
                 $ref: '#/components/schemas/Product'
         '404':
           description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Products
+      summary: Replace or create product
+      operationId: replaceProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '200':
+          description: Product replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Products
+      summary: Partially update product
+      operationId: patchProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchProductRequest'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Products
+      summary: Delete product
+      operationId: deleteProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteProductRequest'
+      responses:
+        '200':
+          description: Product deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Product delete conflict
           content:
             application/json:
               schema:
@@ -471,8 +848,274 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
-      security:
-        - bearer: []
+
+    post:
+      summary: Create product categories
+      operationId: createCategories
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Category'
+              maxItems: 100
+      responses:
+        '200':
+          description: Categories created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Replace or create product categories
+      operationId: replaceCategories
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Category'
+              maxItems: 100
+      responses:
+        '200':
+          description: Categories replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /clouds/{cloudId}/categories/{categoryId}:
+    get:
+      summary: Get product category by ID
+      operationId: getCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+      responses:
+        '200':
+          description: Category details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Replace or create product category
+      operationId: replaceCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Category'
+      responses:
+        '200':
+          description: Category replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      summary: Partially update product category
+      operationId: patchCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCategoryRequest'
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete product category
+      operationId: deleteCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      responses:
+        '200':
+          description: Category deleted successfully
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Category delete conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
 
   /clouds/{cloudId}/customers/{customerId}:
     get:
@@ -559,6 +1202,94 @@ paths:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
 
+    patch:
+      tags:
+        - Customers
+      summary: Partially update customer
+      operationId: patchCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Customers
+      summary: Delete customer
+      operationId: deleteCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: anonymize
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Anonymize customer data when deleting
+        - $ref: '#/components/parameters/IfMatchParam'
+      responses:
+        '200':
+          description: Customer deleted successfully
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     bearerAuth:
@@ -583,6 +1314,22 @@ components:
         default: 100
         maximum: 100
       description: Items per page (max 100)
+
+    IfMatchParam:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+      description: ETag to update only if not changed
+
+    IfMatchRequiredParam:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+      description: ETag to update only if not changed
 
   schemas:
     TranslatedStrings:
@@ -1361,6 +2108,28 @@ components:
               description: Array of categories
               items:
                 $ref: '#/components/schemas/Category'
+
+    PatchProductRequest:
+      type: object
+      additionalProperties: true
+      description: Partial product object for PATCH requests
+
+    DeleteProductRequest:
+      type: object
+      properties:
+        productIsIngredient:
+          type: string
+          enum: [ERROR, PRESERVE, DELETE]
+          description: Strategy when the product is an ingredient
+        productHasIngredients:
+          type: string
+          enum: [ERROR, PRESERVE, DELETE]
+          description: Strategy when the product has ingredients
+
+    PatchCategoryRequest:
+      type: object
+      additionalProperties: true
+      description: Partial category object for PATCH requests
 
     ErrorResponse:
       type: object
