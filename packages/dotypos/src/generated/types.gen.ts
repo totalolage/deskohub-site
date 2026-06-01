@@ -186,6 +186,13 @@ export type PaginationBase = {
     prevPage?: string | null;
 };
 
+export type PaginatedReservations = PaginationBase & {
+    /**
+     * Array of reservations
+     */
+    data?: Array<Reservation>;
+};
+
 export type PaginatedCustomers = PaginationBase & {
     /**
      * Array of customers
@@ -896,7 +903,7 @@ export type ListReservationsResponses = {
     /**
      * List of reservations
      */
-    200: Array<Reservation>;
+    200: PaginatedReservations;
 };
 
 export type ListReservationsResponse = ListReservationsResponses[keyof ListReservationsResponses];

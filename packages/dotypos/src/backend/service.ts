@@ -105,6 +105,11 @@ const parseDiscountPercent = (value: unknown) => {
   return percent;
 };
 
+const hasAtLeastTwoCustomers = (
+  customers: readonly Customer[]
+): customers is readonly [Customer, Customer, ...Customer[]] =>
+  customers.length >= 2;
+
 export class DotyposService extends Effect.Service<DotyposService>()(
   "DotyposService",
   {
@@ -297,7 +302,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                     (error) =>
                       error instanceof ExternalAPIError &&
                       error.statusCode === 404,
-                    () => Effect.succeed([] as Customer[])
+                    () => Effect.succeed<Customer[]>([])
                   ),
                   Effect.retry(
                     Schedule.exponential("100 millis").pipe(
@@ -355,16 +360,37 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           }
 
           if (matchingCustomers.length > 1) {
+            const [firstCustomer, secondCustomer, ...remainingCustomers] =
+              matchingCustomers;
+
+            if (!firstCustomer || !secondCustomer) {
+              return {
+                _tag: "NotFound" as const,
+                matches: [],
+                normalizedCustomerData,
+              };
+            }
+
             return {
               _tag: "Ambiguous" as const,
-              matches: matchingCustomers as [Customer, Customer, ...Customer[]],
+              matches: [firstCustomer, secondCustomer, ...remainingCustomers],
+              normalizedCustomerData,
+            };
+          }
+
+          const matchedCustomer = matchingCustomers[0];
+
+          if (!matchedCustomer) {
+            return {
+              _tag: "NotFound" as const,
+              matches: [],
               normalizedCustomerData,
             };
           }
 
           return {
             _tag: "Matched" as const,
-            customer: matchingCustomers[0]!,
+            customer: matchedCustomer,
             matches: matchingCustomers,
             normalizedCustomerData,
           };
@@ -390,7 +416,9 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                 matches: result.matches,
               });
             case "Ambiguous":
-              return FindCustomerResult.Ambiguous({ matches: result.matches });
+              return hasAtLeastTwoCustomers(result.matches)
+                ? FindCustomerResult.Ambiguous({ matches: result.matches })
+                : FindCustomerResult.NotFound({ matches: [] });
             case "NotFound":
               return FindCustomerResult.NotFound({ matches: [] });
           }
@@ -539,6 +567,26 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           );
       });
 
+      const listReservations = Effect.fn("listReservations")(function* () {
+        return yield* api
+          .listReservations({
+            path: { cloudId: config.cloudId },
+            query: { limit: 100 },
+          })
+          .pipe(
+            Effect.retry(retryPolicy),
+            Effect.catchIf(
+              (error) => !(error instanceof Data.TaggedError),
+              (error) =>
+                new ExternalAPIError({
+                  service: "Dotypos",
+                  operation: "listReservations",
+                  cause: error,
+                })
+            )
+          );
+      });
+
       const getProducts = Effect.fn("getProducts")(function* (options: {
         categoryId?: string;
         includeDeleted?: boolean;
@@ -589,6 +637,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         findCustomer,
         findOrCreateCustomer,
         getTables,
+        listReservations,
         getProducts,
         getCategories,
       };
