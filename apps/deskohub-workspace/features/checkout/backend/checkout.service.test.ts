@@ -22,7 +22,7 @@ type PaymentOrderRepositoryShape = {
 };
 
 const reservation = {
-  entryTier: "basic-day-pass" as const,
+  entryTier: "basic" as const,
   date: "2099-06-10",
   coffee: false,
   name: "Ada Lovelace",
@@ -126,7 +126,6 @@ const setRequiredEnv = () => {
   process.env.DOTYPOS_CLOUD_ID = "cloud";
   process.env.DOTYPOS_EMPLOYEE_ID = "employee";
   process.env.DOTYPOS_REFRESH_TOKEN = "refresh";
-  process.env.WORKSPACE_DOTYPOS_TABLE_ID = "table";
   process.env.NEXI_API_KEY = "nexi";
   process.env.NEXI_API_ORIGIN = "https://xpaysandbox.nexigroup.com";
   process.env.VERCEL_ENV = "development";
@@ -684,7 +683,7 @@ describe("CheckoutService final submit enforcement", () => {
       })
     );
     expect(checkoutDetails.reservation).toEqual({
-      tier: "basic-day-pass",
+      tier: "basic",
       date: "2099-06-10",
       coffee: false,
       monitorOption: undefined,

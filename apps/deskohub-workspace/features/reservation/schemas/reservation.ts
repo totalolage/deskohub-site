@@ -171,7 +171,7 @@ export type ReservationOrderData = z.output<
 >;
 
 export const reservationDefaultValues: ReservationInput = {
-  entryTier: "basic-day-pass",
+  entryTier: "basic",
   date: "",
   coffee: false,
   monitorOption: undefined,

@@ -30,10 +30,10 @@ const wrongKey: PayStateKey = parsePayStateKey(
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 
 const baseReservation = {
-  entryTier: "profi-workstation" as const,
+  entryTier: "profi" as const,
   date: "2026-06-20",
   coffee: true,
-  monitorOption: "2x27" as const,
+  monitorOption: "2x27-qhd" as const,
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",

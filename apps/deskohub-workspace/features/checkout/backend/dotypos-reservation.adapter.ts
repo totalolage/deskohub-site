@@ -13,11 +13,9 @@ import {
   getWorkspaceProductByTier,
 } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
-import { WORKSPACE_DOTYPOS_TABLE_ID } from "./constants";
+import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 
 const allDayReservationSeats = 1;
-const workspaceDotyposTableIdPlaceholder =
-  "TODO_REPLACE_WITH_WORKSPACE_DOTYPOS_TABLE_ID_BEFORE_PRODUCTION";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: string;
@@ -31,22 +29,16 @@ export const createWorkspaceDotyposReservation: (
 ) => Effect.Effect<
   Reservation,
   ExternalAPIError | NetworkError | ValidationError,
-  DotyposService
+  DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
   function* (input) {
-    if (
-      WORKSPACE_DOTYPOS_TABLE_ID.trim() === workspaceDotyposTableIdPlaceholder
-    ) {
-      return yield* Effect.fail(
-        new ValidationError({
-          message: "Workspace Dotypos table ID is not configured",
-        })
-      );
-    }
-
     const dotypos = yield* DotyposService;
+    const tableAssignments = yield* WorkspaceTableAssignmentService;
     const { startDate, endDate } = yield* getPragueAllDayRange(
       input.checkoutDetails.reservation.date
+    );
+    const tableId = yield* tableAssignments.assignTableId(
+      input.checkoutDetails.reservation
     );
 
     const reservationInput: CreateDotyposReservationInput = {
@@ -54,7 +46,7 @@ export const createWorkspaceDotyposReservation: (
       startDate,
       endDate,
       seats: allDayReservationSeats,
-      tableId: WORKSPACE_DOTYPOS_TABLE_ID,
+      tableId,
       status: input.status,
       note: formatWorkspaceReservationNote(input),
     };

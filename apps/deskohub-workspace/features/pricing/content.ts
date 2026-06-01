@@ -54,7 +54,7 @@ type PricingTariffMessageKeys = {
 };
 
 const pricingTariffMessageKeys = {
-  "basic-day-pass": {
+  basic: {
     name: "pricingTariffBasicName",
     description: "pricingTariffBasicDescription",
     includes: [
@@ -63,7 +63,7 @@ const pricingTariffMessageKeys = {
     ],
     featured: false,
   },
-  "cowork-plus": {
+  plus: {
     name: "pricingTariffCoworkName",
     description: "pricingTariffCoworkDescription",
     includes: [
@@ -72,7 +72,7 @@ const pricingTariffMessageKeys = {
     ],
     featured: false,
   },
-  "profi-workstation": {
+  profi: {
     name: "pricingTariffProfiName",
     description: "pricingTariffProfiDescription",
     includes: [
@@ -129,7 +129,7 @@ export function getPricingContent(locale: Locale): PricingContent {
       const tariffMessages = pricingTariffMessageKeys[product.tier];
 
       return {
-        id: catalogProduct.tariffId,
+        id: catalogProduct.tier,
         reservationTier: catalogProduct.tier,
         name: getMessage(tariffMessages.name, locale),
         price: formatTariffPrice(catalogProduct, locale),

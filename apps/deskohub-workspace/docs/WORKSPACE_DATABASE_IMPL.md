@@ -91,10 +91,10 @@ type CheckoutDetailsJson = {
   schemaVersion: 1;
   locale: "cs-CZ" | "en-US";
   reservation: {
-    tier: "basic-day-pass" | "cowork-plus" | "profi-workstation";
+    tier: "basic" | "plus" | "profi";
     date: string;                // ISO date for the booking
     coffee: boolean;
-    monitorOption?: "2x27" | "2x32" | "qhd-4k";
+    monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
     message?: string;
   };
   payment: {

@@ -101,7 +101,7 @@ type CheckoutStatusViewModel = {
 };
 
 const reservation = {
-  entryTier: "basic-day-pass" as const,
+  entryTier: "basic" as const,
   date: "2099-06-10",
   coffee: false,
   name: "Ada Lovelace",
