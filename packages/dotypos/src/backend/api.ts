@@ -21,6 +21,11 @@ type DiscountGroup = {
   readonly discountPercent?: number | string | null;
 };
 
+interface TokenCache {
+  token: string;
+  expiresAt: number;
+}
+
 interface ApiErrorWithViolations {
   error?: string;
   error_description?: string;
@@ -29,11 +34,6 @@ interface ApiErrorWithViolations {
     path?: string[];
     message: string;
   }>;
-}
-
-interface TokenCache {
-  token: string;
-  expiresAt: number;
 }
 
 type TokenResult =
@@ -45,37 +45,61 @@ type TokenResult =
       readonly error: unknown;
     };
 
+const fetchPreconnect: typeof fetch.preconnect = (url, options) => {
+  fetch.preconnect?.(url, options);
+};
+
+const fetchUsingRequestInit: typeof fetch = Object.assign(
+  async (
+    input: Parameters<typeof fetch>[0],
+    init?: Parameters<typeof fetch>[1]
+  ): Promise<Response> => {
+    if (!(input instanceof Request)) return fetch(input, init);
+
+    const body =
+      input.method === "GET" || input.method === "HEAD"
+        ? undefined
+        : await input.clone().text();
+
+    return fetch(input.url, {
+      body,
+      headers: input.headers,
+      method: input.method,
+      signal: input.signal,
+      ...init,
+    });
+  },
+  {
+    preconnect: fetchPreconnect,
+  }
+);
+
 const fetchAccessToken = async (
-  config: DotyposRuntimeConfigObj
+  config: DotyposRuntimeConfigObj,
+  client: ReturnType<typeof createClient>
 ): Promise<TokenResult> => {
   try {
-    const response = await fetch(`${config.apiUrl}/signin/token`, {
-      method: "POST",
-      headers: {
-        Authorization: `User ${config.refreshToken}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ _cloudId: config.cloudId }),
+    const result = await generatedApi.getAccessToken({
+      client,
+      headers: { Authorization: `User ${config.refreshToken}` },
+      body: { _cloudId: config.cloudId },
       signal: AbortSignal.timeout(config.apiTimeout),
     });
-    const text = await response.text();
-    const body = text ? JSON.parse(text) : undefined;
-
-    if (!response.ok) {
+    if (result.error) {
       return {
         ok: false,
-        status: response.status,
-        statusText: response.statusText,
-        error: body ?? text,
+        status: result.response.status,
+        statusText: result.response.statusText,
+        error: result.error,
       };
     }
 
-    const parsedBody = zTokenResponse.safeParse(body);
+    const parsedBody = zTokenResponse.safeParse(result.data);
     if (!parsedBody.success) {
       return {
         ok: false,
-        status: response.status,
-        statusText: response.statusText,
+        status: result.response.status,
+        statusText: result.response.statusText,
         error: parsedBody.error,
       };
     }
@@ -92,6 +116,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
     const client = createClient({
       baseUrl: config.apiUrl,
+      fetch: fetchUsingRequestInit,
     });
     yield* injectReqResLogger(client);
 
@@ -109,7 +134,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
         const response = yield* Effect.tryPromise({
           try: async () => {
-            const result = await fetchAccessToken(config);
+            const result = await fetchAccessToken(config, client);
             if (!result.ok) {
               Effect.runSync(
                 Effect.logError("Dotypos access token request failed", {
