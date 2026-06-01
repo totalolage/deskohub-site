@@ -2,8 +2,8 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { CancelReservationData, CancelReservationErrors, CancelReservationResponses, CreateCustomersData, CreateCustomersErrors, CreateCustomersResponses, CreateReservationData, CreateReservationErrors, CreateReservationResponses, GetAccessTokenData, GetAccessTokenErrors, GetAccessTokenResponses, GetCategoriesData, GetCategoriesErrors, GetCategoriesResponses, GetCustomerData, GetCustomerErrors, GetCustomerResponses, GetCustomersData, GetCustomersErrors, GetCustomersResponses, GetProductData, GetProductErrors, GetProductResponses, GetProductsData, GetProductsErrors, GetProductsResponses, GetReservationData, GetReservationErrors, GetReservationResponses, GetTablesData, GetTablesErrors, GetTablesResponses, ListReservationsData, ListReservationsErrors, ListReservationsResponses, UpdateCustomerData, UpdateCustomerErrors, UpdateCustomerResponses, UpdateReservationData, UpdateReservationErrors, UpdateReservationResponses } from './types.gen';
-import { zCancelReservationResponse, zCreateCustomersResponse, zCreateReservationResponse, zGetAccessTokenResponse, zGetCategoriesResponse, zGetCustomerResponse, zGetCustomersResponse, zGetProductResponse, zGetProductsResponse, zGetReservationResponse, zGetTablesResponse, zListReservationsResponse, zUpdateCustomerResponse, zUpdateReservationResponse } from './zod.gen';
+import type { CancelReservationData, CancelReservationErrors, CancelReservationResponses, CreateCategoriesData, CreateCategoriesErrors, CreateCategoriesResponses, CreateCustomersData, CreateCustomersErrors, CreateCustomersResponses, CreateProductsData, CreateProductsErrors, CreateProductsResponses, CreateReservationData, CreateReservationErrors, CreateReservationResponses, DeleteCategoryData, DeleteCategoryErrors, DeleteCategoryResponses, DeleteCustomerData, DeleteCustomerErrors, DeleteCustomerResponses, DeleteProductData, DeleteProductErrors, DeleteProductResponses, GetAccessTokenData, GetAccessTokenErrors, GetAccessTokenResponses, GetCategoriesData, GetCategoriesErrors, GetCategoriesResponses, GetCategoryData, GetCategoryErrors, GetCategoryResponses, GetCustomerData, GetCustomerErrors, GetCustomerResponses, GetCustomersData, GetCustomersErrors, GetCustomersResponses, GetProductData, GetProductErrors, GetProductResponses, GetProductsData, GetProductsErrors, GetProductsResponses, GetReservationData, GetReservationErrors, GetReservationResponses, GetTablesData, GetTablesErrors, GetTablesResponses, ListReservationsData, ListReservationsErrors, ListReservationsResponses, PatchCategoryData, PatchCategoryErrors, PatchCategoryResponses, PatchCustomerData, PatchCustomerErrors, PatchCustomerResponses, PatchProductData, PatchProductErrors, PatchProductResponses, PatchReservationData, PatchReservationErrors, PatchReservationResponses, ReplaceCategoriesData, ReplaceCategoriesErrors, ReplaceCategoriesResponses, ReplaceCategoryData, ReplaceCategoryErrors, ReplaceCategoryResponses, ReplaceCustomersData, ReplaceCustomersErrors, ReplaceCustomersResponses, ReplaceProductData, ReplaceProductErrors, ReplaceProductResponses, ReplaceProductsData, ReplaceProductsErrors, ReplaceProductsResponses, ReplaceReservationsData, ReplaceReservationsErrors, ReplaceReservationsResponses, UpdateCustomerData, UpdateCustomerErrors, UpdateCustomerResponses, UpdateReservationData, UpdateReservationErrors, UpdateReservationResponses } from './types.gen';
+import { zCreateCategoriesResponse, zCreateCustomersResponse, zCreateProductsResponse, zCreateReservationResponse, zDeleteProductResponse, zGetAccessTokenResponse, zGetCategoriesResponse, zGetCategoryResponse, zGetCustomerResponse, zGetCustomersResponse, zGetProductResponse, zGetProductsResponse, zGetReservationResponse, zGetTablesResponse, zListReservationsResponse, zPatchCategoryResponse, zPatchCustomerResponse, zPatchProductResponse, zPatchReservationResponse, zReplaceCategoriesResponse, zReplaceCategoryResponse, zReplaceCustomersResponse, zReplaceProductResponse, zReplaceProductsResponse, zReplaceReservationsResponse, zUpdateCustomerResponse, zUpdateReservationResponse } from './zod.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean> = Options2<TData, ThrowOnError> & {
     /**
@@ -57,10 +57,23 @@ export const createReservation = <ThrowOnError extends boolean = false>(options:
 });
 
 /**
+ * Replace or create reservations
+ */
+export const replaceReservations = <ThrowOnError extends boolean = false>(options: Options<ReplaceReservationsData, ThrowOnError>) => (options.client ?? client).put<ReplaceReservationsResponses, ReplaceReservationsErrors, ThrowOnError>({
+    responseValidator: async (data) => await zReplaceReservationsResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/reservations',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Cancel reservation
  */
 export const cancelReservation = <ThrowOnError extends boolean = false>(options: Options<CancelReservationData, ThrowOnError>) => (options.client ?? client).delete<CancelReservationResponses, CancelReservationErrors, ThrowOnError>({
-    responseValidator: async (data) => await zCancelReservationResponse.parseAsync(data),
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/clouds/{cloudId}/reservations/{reservationId}',
     ...options
@@ -74,6 +87,20 @@ export const getReservation = <ThrowOnError extends boolean = false>(options: Op
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/clouds/{cloudId}/reservations/{reservationId}',
     ...options
+});
+
+/**
+ * Partially update reservation
+ */
+export const patchReservation = <ThrowOnError extends boolean = false>(options: Options<PatchReservationData, ThrowOnError>) => (options.client ?? client).patch<PatchReservationResponses, PatchReservationErrors, ThrowOnError>({
+    responseValidator: async (data) => await zPatchReservationResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/reservations/{reservationId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**
@@ -115,6 +142,20 @@ export const createCustomers = <ThrowOnError extends boolean = false>(options: O
 });
 
 /**
+ * Replace or create customers
+ */
+export const replaceCustomers = <ThrowOnError extends boolean = false>(options: Options<ReplaceCustomersData, ThrowOnError>) => (options.client ?? client).put<ReplaceCustomersResponses, ReplaceCustomersErrors, ThrowOnError>({
+    responseValidator: async (data) => await zReplaceCustomersResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/customers',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Get tables
  */
 export const getTables = <ThrowOnError extends boolean = false>(options: Options<GetTablesData, ThrowOnError>) => (options.client ?? client).get<GetTablesResponses, GetTablesErrors, ThrowOnError>({
@@ -135,6 +176,48 @@ export const getProducts = <ThrowOnError extends boolean = false>(options: Optio
 });
 
 /**
+ * Create products
+ */
+export const createProducts = <ThrowOnError extends boolean = false>(options: Options<CreateProductsData, ThrowOnError>) => (options.client ?? client).post<CreateProductsResponses, CreateProductsErrors, ThrowOnError>({
+    responseValidator: async (data) => await zCreateProductsResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/products',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Replace or create products
+ */
+export const replaceProducts = <ThrowOnError extends boolean = false>(options: Options<ReplaceProductsData, ThrowOnError>) => (options.client ?? client).put<ReplaceProductsResponses, ReplaceProductsErrors, ThrowOnError>({
+    responseValidator: async (data) => await zReplaceProductsResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/products',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete product
+ */
+export const deleteProduct = <ThrowOnError extends boolean = false>(options: Options<DeleteProductData, ThrowOnError>) => (options.client ?? client).delete<DeleteProductResponses, DeleteProductErrors, ThrowOnError>({
+    responseValidator: async (data) => await zDeleteProductResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/products/{productId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Get product by ID
  */
 export const getProduct = <ThrowOnError extends boolean = false>(options: Options<GetProductData, ThrowOnError>) => (options.client ?? client).get<GetProductResponses, GetProductErrors, ThrowOnError>({
@@ -145,11 +228,124 @@ export const getProduct = <ThrowOnError extends boolean = false>(options: Option
 });
 
 /**
+ * Partially update product
+ */
+export const patchProduct = <ThrowOnError extends boolean = false>(options: Options<PatchProductData, ThrowOnError>) => (options.client ?? client).patch<PatchProductResponses, PatchProductErrors, ThrowOnError>({
+    responseValidator: async (data) => await zPatchProductResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/products/{productId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Replace or create product
+ */
+export const replaceProduct = <ThrowOnError extends boolean = false>(options: Options<ReplaceProductData, ThrowOnError>) => (options.client ?? client).put<ReplaceProductResponses, ReplaceProductErrors, ThrowOnError>({
+    responseValidator: async (data) => await zReplaceProductResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/products/{productId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
  * Get product categories
  */
 export const getCategories = <ThrowOnError extends boolean = false>(options: Options<GetCategoriesData, ThrowOnError>) => (options.client ?? client).get<GetCategoriesResponses, GetCategoriesErrors, ThrowOnError>({
     responseValidator: async (data) => await zGetCategoriesResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
     url: '/clouds/{cloudId}/categories',
+    ...options
+});
+
+/**
+ * Create product categories
+ */
+export const createCategories = <ThrowOnError extends boolean = false>(options: Options<CreateCategoriesData, ThrowOnError>) => (options.client ?? client).post<CreateCategoriesResponses, CreateCategoriesErrors, ThrowOnError>({
+    responseValidator: async (data) => await zCreateCategoriesResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/categories',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Replace or create product categories
+ */
+export const replaceCategories = <ThrowOnError extends boolean = false>(options: Options<ReplaceCategoriesData, ThrowOnError>) => (options.client ?? client).put<ReplaceCategoriesResponses, ReplaceCategoriesErrors, ThrowOnError>({
+    responseValidator: async (data) => await zReplaceCategoriesResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/categories',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete product category
+ */
+export const deleteCategory = <ThrowOnError extends boolean = false>(options: Options<DeleteCategoryData, ThrowOnError>) => (options.client ?? client).delete<DeleteCategoryResponses, DeleteCategoryErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/categories/{categoryId}',
+    ...options
+});
+
+/**
+ * Get product category by ID
+ */
+export const getCategory = <ThrowOnError extends boolean = false>(options: Options<GetCategoryData, ThrowOnError>) => (options.client ?? client).get<GetCategoryResponses, GetCategoryErrors, ThrowOnError>({
+    responseValidator: async (data) => await zGetCategoryResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/categories/{categoryId}',
+    ...options
+});
+
+/**
+ * Partially update product category
+ */
+export const patchCategory = <ThrowOnError extends boolean = false>(options: Options<PatchCategoryData, ThrowOnError>) => (options.client ?? client).patch<PatchCategoryResponses, PatchCategoryErrors, ThrowOnError>({
+    responseValidator: async (data) => await zPatchCategoryResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/categories/{categoryId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Replace or create product category
+ */
+export const replaceCategory = <ThrowOnError extends boolean = false>(options: Options<ReplaceCategoryData, ThrowOnError>) => (options.client ?? client).put<ReplaceCategoryResponses, ReplaceCategoryErrors, ThrowOnError>({
+    responseValidator: async (data) => await zReplaceCategoryResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/categories/{categoryId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
+});
+
+/**
+ * Delete customer
+ */
+export const deleteCustomer = <ThrowOnError extends boolean = false>(options: Options<DeleteCustomerData, ThrowOnError>) => (options.client ?? client).delete<DeleteCustomerResponses, DeleteCustomerErrors, ThrowOnError>({
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/customers/{customerId}',
     ...options
 });
 
@@ -161,6 +357,20 @@ export const getCustomer = <ThrowOnError extends boolean = false>(options: Optio
     security: [{ scheme: 'bearer', type: 'http' }],
     url: '/clouds/{cloudId}/customers/{customerId}',
     ...options
+});
+
+/**
+ * Partially update customer
+ */
+export const patchCustomer = <ThrowOnError extends boolean = false>(options: Options<PatchCustomerData, ThrowOnError>) => (options.client ?? client).patch<PatchCustomerResponses, PatchCustomerErrors, ThrowOnError>({
+    responseValidator: async (data) => await zPatchCustomerResponse.parseAsync(data),
+    security: [{ scheme: 'bearer', type: 'http' }],
+    url: '/clouds/{cloudId}/customers/{customerId}',
+    ...options,
+    headers: {
+        'Content-Type': 'application/json',
+        ...options.headers
+    }
 });
 
 /**

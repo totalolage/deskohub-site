@@ -185,12 +185,14 @@ export const zCustomer = z.object({
         z.string(),
         z.null()
     ])),
-    companyName: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Company name (at least one of firstName, lastName, or companyName must be non-blank)'
-    })),
-    companyId: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Company ID'
-    })),
+    companyName: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
+    companyId: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
     email: z.optional(z.union([
         z.string(),
         z.null()
@@ -199,9 +201,10 @@ export const zCustomer = z.object({
         z.string(),
         z.null()
     ])),
-    addressLine1: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Address line 1'
-    })),
+    addressLine1: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
     addressLine2: z.optional(z.union([
         z.string(),
         z.null()
@@ -210,16 +213,18 @@ export const zCustomer = z.object({
         z.string(),
         z.null()
     ])),
-    zip: z.optional(z.string().register(z.globalRegistry, {
-        description: 'ZIP code'
-    })),
+    zip: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
     country: z.optional(z.union([
         z.string(),
         z.null()
     ])),
-    vatId: z.optional(z.string().register(z.globalRegistry, {
-        description: 'VAT ID'
-    })),
+    vatId: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
     barcode: z.optional(z.union([
         z.string(),
         z.null()
@@ -240,9 +245,10 @@ export const zCustomer = z.object({
         z.string(),
         z.null()
     ])),
-    headerPrint: z.optional(z.string().register(z.globalRegistry, {
-        description: 'Header print text'
-    })),
+    headerPrint: z.optional(z.union([
+        z.string(),
+        z.null()
+    ])),
     hexColor: z.optional(z.union([
         z.string(),
         z.null()
@@ -684,6 +690,37 @@ export const zPaginatedCategories = zPaginationBase.and(z.object({
     }))
 }));
 
+/**
+ * Partial product object for PATCH requests
+ */
+export const zPatchProductRequest = z.record(z.string(), z.unknown()).register(z.globalRegistry, {
+    description: 'Partial product object for PATCH requests'
+});
+
+export const zDeleteProductRequest = z.object({
+    productIsIngredient: z.optional(z.enum([
+        'ERROR',
+        'PRESERVE',
+        'DELETE'
+    ]).register(z.globalRegistry, {
+        description: 'Strategy when the product is an ingredient'
+    })),
+    productHasIngredients: z.optional(z.enum([
+        'ERROR',
+        'PRESERVE',
+        'DELETE'
+    ]).register(z.globalRegistry, {
+        description: 'Strategy when the product has ingredients'
+    }))
+});
+
+/**
+ * Partial category object for PATCH requests
+ */
+export const zPatchCategoryRequest = z.record(z.string(), z.unknown()).register(z.globalRegistry, {
+    description: 'Partial category object for PATCH requests'
+});
+
 export const zErrorResponse = z.object({
     error: z.optional(z.string()),
     error_description: z.optional(z.string()),
@@ -705,6 +742,20 @@ export const zLimitParam = z.int().lte(100).register(z.globalRegistry, {
 }).default(100);
 
 /**
+ * ETag to update only if not changed
+ */
+export const zIfMatchParam = z.string().register(z.globalRegistry, {
+    description: 'ETag to update only if not changed'
+});
+
+/**
+ * ETag to update only if not changed
+ */
+export const zIfMatchRequiredParam = z.string().register(z.globalRegistry, {
+    description: 'ETag to update only if not changed'
+});
+
+/**
  * Successful authentication
  */
 export const zGetAccessTokenResponse = zTokenResponse;
@@ -724,16 +775,21 @@ export const zCreateReservationResponse = z.array(zReservation).register(z.globa
 });
 
 /**
- * Reservation cancelled successfully
+ * Reservations replaced successfully
  */
-export const zCancelReservationResponse = z.void().register(z.globalRegistry, {
-    description: 'Reservation cancelled successfully'
+export const zReplaceReservationsResponse = z.array(zReservation).register(z.globalRegistry, {
+    description: 'Reservations replaced successfully'
 });
 
 /**
  * Reservation details
  */
 export const zGetReservationResponse = zReservation;
+
+/**
+ * Reservation updated successfully
+ */
+export const zPatchReservationResponse = zReservation;
 
 /**
  * Reservation updated successfully
@@ -753,6 +809,13 @@ export const zCreateCustomersResponse = z.array(zCustomer).register(z.globalRegi
 });
 
 /**
+ * Customers replaced successfully
+ */
+export const zReplaceCustomersResponse = z.array(zCustomer).register(z.globalRegistry, {
+    description: 'Customers replaced successfully'
+});
+
+/**
  * Paginated list of tables
  */
 export const zGetTablesResponse = zPaginatedTables;
@@ -763,9 +826,40 @@ export const zGetTablesResponse = zPaginatedTables;
 export const zGetProductsResponse = zPaginatedProducts;
 
 /**
+ * Products created successfully
+ */
+export const zCreateProductsResponse = z.array(zProduct).register(z.globalRegistry, {
+    description: 'Products created successfully'
+});
+
+/**
+ * Products replaced successfully
+ */
+export const zReplaceProductsResponse = z.array(zProduct).register(z.globalRegistry, {
+    description: 'Products replaced successfully'
+});
+
+/**
+ * Product deleted successfully
+ */
+export const zDeleteProductResponse = z.record(z.string(), z.unknown()).register(z.globalRegistry, {
+    description: 'Product deleted successfully'
+});
+
+/**
  * Product details
  */
 export const zGetProductResponse = zProduct;
+
+/**
+ * Product updated successfully
+ */
+export const zPatchProductResponse = zProduct;
+
+/**
+ * Product replaced successfully
+ */
+export const zReplaceProductResponse = zProduct;
 
 /**
  * Paginated list of categories
@@ -773,9 +867,43 @@ export const zGetProductResponse = zProduct;
 export const zGetCategoriesResponse = zPaginatedCategories;
 
 /**
+ * Categories created successfully
+ */
+export const zCreateCategoriesResponse = z.array(zCategory).register(z.globalRegistry, {
+    description: 'Categories created successfully'
+});
+
+/**
+ * Categories replaced successfully
+ */
+export const zReplaceCategoriesResponse = z.array(zCategory).register(z.globalRegistry, {
+    description: 'Categories replaced successfully'
+});
+
+/**
+ * Category details
+ */
+export const zGetCategoryResponse = zCategory;
+
+/**
+ * Category updated successfully
+ */
+export const zPatchCategoryResponse = zCategory;
+
+/**
+ * Category replaced successfully
+ */
+export const zReplaceCategoryResponse = zCategory;
+
+/**
  * Customer details
  */
 export const zGetCustomerResponse = zCustomer;
+
+/**
+ * Customer updated successfully
+ */
+export const zPatchCustomerResponse = zCustomer;
 
 /**
  * Customer updated successfully
