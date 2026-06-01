@@ -80,8 +80,6 @@ function createLegalDocumentSnapshot(
 export async function getLegalAcceptanceSnapshot(
   locale: Locale
 ): Promise<CheckoutLegalAcceptanceSnapshot> {
-  "use cache";
-
   return {
     termsAndConditions: createLegalDocumentSnapshot(
       locale,

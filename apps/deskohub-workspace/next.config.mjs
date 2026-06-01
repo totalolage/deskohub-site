@@ -3,9 +3,6 @@ import { withBotId } from "botid/next/config";
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   transpilePackages: ["@deskohub/cloudinary"],
-  experimental: {
-    useCache: true,
-  },
   async redirects() {
     return [
       {
