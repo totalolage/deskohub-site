@@ -1553,9 +1553,11 @@ components:
           description: Last name (at least one of firstName, lastName, or companyName must be non-blank)
         companyName:
           type: string
+          nullable: true
           description: Company name (at least one of firstName, lastName, or companyName must be non-blank)
         companyId:
           type: string
+          nullable: true
           description: Company ID
         email:
           type: string
@@ -1567,6 +1569,7 @@ components:
           description: Phone number
         addressLine1:
           type: string
+          nullable: true
           description: Address line 1
         addressLine2:
           type: string
@@ -1578,6 +1581,7 @@ components:
           description: City
         zip:
           type: string
+          nullable: true
           description: ZIP code
         country:
           type: string
@@ -1585,6 +1589,7 @@ components:
           description: Country code
         vatId:
           type: string
+          nullable: true
           description: VAT ID
         barcode:
           type: string
@@ -1608,6 +1613,7 @@ components:
           description: External ID
         headerPrint:
           type: string
+          nullable: true
           description: Header print text
         hexColor:
           type: string

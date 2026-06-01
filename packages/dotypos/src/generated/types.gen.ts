@@ -221,11 +221,11 @@ export type Customer = {
     /**
      * Company name (at least one of firstName, lastName, or companyName must be non-blank)
      */
-    companyName?: string;
+    companyName?: string | null;
     /**
      * Company ID
      */
-    companyId?: string;
+    companyId?: string | null;
     /**
      * Email address
      */
@@ -237,7 +237,7 @@ export type Customer = {
     /**
      * Address line 1
      */
-    addressLine1?: string;
+    addressLine1?: string | null;
     /**
      * Address line 2
      */
@@ -249,7 +249,7 @@ export type Customer = {
     /**
      * ZIP code
      */
-    zip?: string;
+    zip?: string | null;
     /**
      * Country code
      */
@@ -257,7 +257,7 @@ export type Customer = {
     /**
      * VAT ID
      */
-    vatId?: string;
+    vatId?: string | null;
     /**
      * Customer barcode
      */
@@ -281,7 +281,7 @@ export type Customer = {
     /**
      * Header print text
      */
-    headerPrint?: string;
+    headerPrint?: string | null;
     /**
      * Hex color code
      */
@@ -776,6 +776,31 @@ export type PaginatedCategories = PaginationBase & {
     data?: Array<Category>;
 };
 
+/**
+ * Partial product object for PATCH requests
+ */
+export type PatchProductRequest = {
+    [key: string]: unknown;
+};
+
+export type DeleteProductRequest = {
+    /**
+     * Strategy when the product is an ingredient
+     */
+    productIsIngredient?: 'ERROR' | 'PRESERVE' | 'DELETE';
+    /**
+     * Strategy when the product has ingredients
+     */
+    productHasIngredients?: 'ERROR' | 'PRESERVE' | 'DELETE';
+};
+
+/**
+ * Partial category object for PATCH requests
+ */
+export type PatchCategoryRequest = {
+    [key: string]: unknown;
+};
+
 export type ErrorResponse = {
     error?: string;
     error_description?: string;
@@ -791,6 +816,16 @@ export type PageParam = number;
  * Items per page (max 100)
  */
 export type LimitParam = number;
+
+/**
+ * ETag to update only if not changed
+ */
+export type IfMatchParam = string;
+
+/**
+ * ETag to update only if not changed
+ */
+export type IfMatchRequiredParam = string;
 
 export type GetAccessTokenData = {
     body: TokenRequest;
@@ -903,6 +938,46 @@ export type CreateReservationResponses = {
 
 export type CreateReservationResponse = CreateReservationResponses[keyof CreateReservationResponses];
 
+export type ReplaceReservationsData = {
+    body: Array<Reservation>;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/reservations';
+};
+
+export type ReplaceReservationsErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type ReplaceReservationsError = ReplaceReservationsErrors[keyof ReplaceReservationsErrors];
+
+export type ReplaceReservationsResponses = {
+    /**
+     * Reservations replaced successfully
+     */
+    200: Array<Reservation>;
+};
+
+export type ReplaceReservationsResponse = ReplaceReservationsResponses[keyof ReplaceReservationsResponses];
+
 export type CancelReservationData = {
     body?: never;
     path: {
@@ -936,10 +1011,8 @@ export type CancelReservationResponses = {
     /**
      * Reservation cancelled successfully
      */
-    204: void;
+    200: unknown;
 };
-
-export type CancelReservationResponse = CancelReservationResponses[keyof CancelReservationResponses];
 
 export type GetReservationData = {
     body?: never;
@@ -978,6 +1051,54 @@ export type GetReservationResponses = {
 };
 
 export type GetReservationResponse = GetReservationResponses[keyof GetReservationResponses];
+
+export type PatchReservationData = {
+    body: UpdateReservationRequest;
+    headers: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match': string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Reservation ID
+         */
+        reservationId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/reservations/{reservationId}';
+};
+
+export type PatchReservationErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Reservation not found
+     */
+    404: ErrorResponse;
+};
+
+export type PatchReservationError = PatchReservationErrors[keyof PatchReservationErrors];
+
+export type PatchReservationResponses = {
+    /**
+     * Reservation updated successfully
+     */
+    200: Reservation;
+};
+
+export type PatchReservationResponse = PatchReservationResponses[keyof PatchReservationResponses];
 
 export type UpdateReservationData = {
     body: UpdateReservationRequest;
@@ -1088,6 +1209,43 @@ export type CreateCustomersResponses = {
 
 export type CreateCustomersResponse = CreateCustomersResponses[keyof CreateCustomersResponses];
 
+export type ReplaceCustomersData = {
+    body: Array<Customer>;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        cloudId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/customers';
+};
+
+export type ReplaceCustomersErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type ReplaceCustomersError = ReplaceCustomersErrors[keyof ReplaceCustomersErrors];
+
+export type ReplaceCustomersResponses = {
+    /**
+     * Customers replaced successfully
+     */
+    200: Array<Customer>;
+};
+
+export type ReplaceCustomersResponse = ReplaceCustomersResponses[keyof ReplaceCustomersResponses];
+
 export type GetTablesData = {
     body?: never;
     path: {
@@ -1175,6 +1333,130 @@ export type GetProductsResponses = {
 
 export type GetProductsResponse = GetProductsResponses[keyof GetProductsResponses];
 
+export type CreateProductsData = {
+    body: Array<Product>;
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/products';
+};
+
+export type CreateProductsErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type CreateProductsError = CreateProductsErrors[keyof CreateProductsErrors];
+
+export type CreateProductsResponses = {
+    /**
+     * Products created successfully
+     */
+    200: Array<Product>;
+};
+
+export type CreateProductsResponse = CreateProductsResponses[keyof CreateProductsResponses];
+
+export type ReplaceProductsData = {
+    body: Array<Product>;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/products';
+};
+
+export type ReplaceProductsErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type ReplaceProductsError = ReplaceProductsErrors[keyof ReplaceProductsErrors];
+
+export type ReplaceProductsResponses = {
+    /**
+     * Products replaced successfully
+     */
+    200: Array<Product>;
+};
+
+export type ReplaceProductsResponse = ReplaceProductsResponses[keyof ReplaceProductsResponses];
+
+export type DeleteProductData = {
+    body?: DeleteProductRequest;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Product ID
+         */
+        productId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/products/{productId}';
+};
+
+export type DeleteProductErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Product not found
+     */
+    404: ErrorResponse;
+    /**
+     * Product delete conflict
+     */
+    409: ErrorResponse;
+};
+
+export type DeleteProductError = DeleteProductErrors[keyof DeleteProductErrors];
+
+export type DeleteProductResponses = {
+    /**
+     * Product deleted successfully
+     */
+    200: {
+        [key: string]: unknown;
+    };
+};
+
+export type DeleteProductResponse = DeleteProductResponses[keyof DeleteProductResponses];
+
 export type GetProductData = {
     body?: never;
     path: {
@@ -1217,6 +1499,102 @@ export type GetProductResponses = {
 };
 
 export type GetProductResponse = GetProductResponses[keyof GetProductResponses];
+
+export type PatchProductData = {
+    body: PatchProductRequest;
+    headers: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match': string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Product ID
+         */
+        productId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/products/{productId}';
+};
+
+export type PatchProductErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Product not found
+     */
+    404: ErrorResponse;
+};
+
+export type PatchProductError = PatchProductErrors[keyof PatchProductErrors];
+
+export type PatchProductResponses = {
+    /**
+     * Product updated successfully
+     */
+    200: Product;
+};
+
+export type PatchProductResponse = PatchProductResponses[keyof PatchProductResponses];
+
+export type ReplaceProductData = {
+    body: Product;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Product ID
+         */
+        productId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/products/{productId}';
+};
+
+export type ReplaceProductErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Product not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReplaceProductError = ReplaceProductErrors[keyof ReplaceProductErrors];
+
+export type ReplaceProductResponses = {
+    /**
+     * Product replaced successfully
+     */
+    200: Product;
+};
+
+export type ReplaceProductResponse = ReplaceProductResponses[keyof ReplaceProductResponses];
 
 export type GetCategoriesData = {
     body?: never;
@@ -1265,6 +1643,301 @@ export type GetCategoriesResponses = {
 
 export type GetCategoriesResponse = GetCategoriesResponses[keyof GetCategoriesResponses];
 
+export type CreateCategoriesData = {
+    body: Array<Category>;
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/categories';
+};
+
+export type CreateCategoriesErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type CreateCategoriesError = CreateCategoriesErrors[keyof CreateCategoriesErrors];
+
+export type CreateCategoriesResponses = {
+    /**
+     * Categories created successfully
+     */
+    200: Array<Category>;
+};
+
+export type CreateCategoriesResponse = CreateCategoriesResponses[keyof CreateCategoriesResponses];
+
+export type ReplaceCategoriesData = {
+    body: Array<Category>;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/categories';
+};
+
+export type ReplaceCategoriesErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+};
+
+export type ReplaceCategoriesError = ReplaceCategoriesErrors[keyof ReplaceCategoriesErrors];
+
+export type ReplaceCategoriesResponses = {
+    /**
+     * Categories replaced successfully
+     */
+    200: Array<Category>;
+};
+
+export type ReplaceCategoriesResponse = ReplaceCategoriesResponses[keyof ReplaceCategoriesResponses];
+
+export type DeleteCategoryData = {
+    body?: never;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Category ID
+         */
+        categoryId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/categories/{categoryId}';
+};
+
+export type DeleteCategoryErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Category not found
+     */
+    404: ErrorResponse;
+    /**
+     * Category delete conflict
+     */
+    409: ErrorResponse;
+};
+
+export type DeleteCategoryError = DeleteCategoryErrors[keyof DeleteCategoryErrors];
+
+export type DeleteCategoryResponses = {
+    /**
+     * Category deleted successfully
+     */
+    200: unknown;
+};
+
+export type GetCategoryData = {
+    body?: never;
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Category ID
+         */
+        categoryId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/categories/{categoryId}';
+};
+
+export type GetCategoryErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Category not found
+     */
+    404: ErrorResponse;
+};
+
+export type GetCategoryError = GetCategoryErrors[keyof GetCategoryErrors];
+
+export type GetCategoryResponses = {
+    /**
+     * Category details
+     */
+    200: Category;
+};
+
+export type GetCategoryResponse = GetCategoryResponses[keyof GetCategoryResponses];
+
+export type PatchCategoryData = {
+    body: PatchCategoryRequest;
+    headers: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match': string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Category ID
+         */
+        categoryId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/categories/{categoryId}';
+};
+
+export type PatchCategoryErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Category not found
+     */
+    404: ErrorResponse;
+};
+
+export type PatchCategoryError = PatchCategoryErrors[keyof PatchCategoryErrors];
+
+export type PatchCategoryResponses = {
+    /**
+     * Category updated successfully
+     */
+    200: Category;
+};
+
+export type PatchCategoryResponse = PatchCategoryResponses[keyof PatchCategoryResponses];
+
+export type ReplaceCategoryData = {
+    body: Category;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        /**
+         * Cloud ID
+         */
+        cloudId: string;
+        /**
+         * Category ID
+         */
+        categoryId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/categories/{categoryId}';
+};
+
+export type ReplaceCategoryErrors = {
+    /**
+     * Bad request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Category not found
+     */
+    404: ErrorResponse;
+};
+
+export type ReplaceCategoryError = ReplaceCategoryErrors[keyof ReplaceCategoryErrors];
+
+export type ReplaceCategoryResponses = {
+    /**
+     * Category replaced successfully
+     */
+    200: Category;
+};
+
+export type ReplaceCategoryResponse = ReplaceCategoryResponses[keyof ReplaceCategoryResponses];
+
+export type DeleteCustomerData = {
+    body?: never;
+    headers?: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match'?: string;
+    };
+    path: {
+        cloudId: string;
+        customerId: string;
+    };
+    query?: {
+        /**
+         * Anonymize customer data when deleting
+         */
+        anonymize?: boolean;
+    };
+    url: '/clouds/{cloudId}/customers/{customerId}';
+};
+
+export type DeleteCustomerErrors = {
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Customer not found
+     */
+    404: ErrorResponse;
+};
+
+export type DeleteCustomerError = DeleteCustomerErrors[keyof DeleteCustomerErrors];
+
+export type DeleteCustomerResponses = {
+    /**
+     * Customer deleted successfully
+     */
+    200: unknown;
+};
+
 export type GetCustomerData = {
     body?: never;
     path: {
@@ -1296,6 +1969,48 @@ export type GetCustomerResponses = {
 };
 
 export type GetCustomerResponse = GetCustomerResponses[keyof GetCustomerResponses];
+
+export type PatchCustomerData = {
+    body: UpdateCustomerRequest;
+    headers: {
+        /**
+         * ETag to update only if not changed
+         */
+        'If-Match': string;
+    };
+    path: {
+        cloudId: string;
+        customerId: string;
+    };
+    query?: never;
+    url: '/clouds/{cloudId}/customers/{customerId}';
+};
+
+export type PatchCustomerErrors = {
+    /**
+     * Bad Request
+     */
+    400: ErrorResponse;
+    /**
+     * Unauthorized
+     */
+    401: ErrorResponse;
+    /**
+     * Customer not found
+     */
+    404: ErrorResponse;
+};
+
+export type PatchCustomerError = PatchCustomerErrors[keyof PatchCustomerErrors];
+
+export type PatchCustomerResponses = {
+    /**
+     * Customer updated successfully
+     */
+    200: Customer;
+};
+
+export type PatchCustomerResponse = PatchCustomerResponses[keyof PatchCustomerResponses];
 
 export type UpdateCustomerData = {
     body: UpdateCustomerRequest;
