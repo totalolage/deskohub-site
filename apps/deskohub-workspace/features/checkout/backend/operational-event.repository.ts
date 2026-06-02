@@ -152,16 +152,7 @@ export const OperationalEventRepositoryLive = Layer.effect(
 
           return inserted;
         },
-        (effect, input) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              workspaceReservationId: input.workspaceReservationId,
-              paymentAttemptId: input.paymentAttemptId,
-              eventType: input.eventType,
-              severity: input.severity,
-              failureCode: input.failureCode,
-            })
-          )
+        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       ),
     });
   })

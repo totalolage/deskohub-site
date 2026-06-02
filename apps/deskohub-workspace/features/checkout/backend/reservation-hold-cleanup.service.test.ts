@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 
-import { DotyposService } from "@deskohub/dotypos";
 import { describe, expect, mock, test } from "bun:test";
+import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "@/features/checkout/backend/operational-event.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
@@ -60,7 +60,9 @@ describe("ReservationHoldCleanupService", () => {
       Effect.provide(
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
-      Effect.provide(Layer.succeed(OperationalEventRepository, operationalEvents)),
+      Effect.provide(
+        Layer.succeed(OperationalEventRepository, operationalEvents)
+      ),
       Effect.provide(Layer.succeed(DotyposService, dotypos)),
       Effect.runPromise
     );

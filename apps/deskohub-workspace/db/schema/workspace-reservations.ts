@@ -13,9 +13,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { locales } from "@/features/i18n";
-
-const quotedSqlList = (values: readonly string[]) =>
-  values.map((value) => `'${value}'`).join(", ");
+import { quotedSqlList } from "./sql-list";
 
 export const reservationStates = [
   "draft",
@@ -49,6 +47,15 @@ export type ReservationState = (typeof reservationStates)[number];
 export type PaymentState = (typeof paymentStates)[number];
 export type FulfillmentState = (typeof fulfillmentStates)[number];
 
+const reservationStatesRequiringDotyposReservationId = [
+  "held",
+  "confirming",
+  "confirmed",
+  "cancelling",
+  "cancelled",
+  "cancellation_failed",
+] as const satisfies readonly ReservationState[];
+
 export const workspaceReservations = pgTable(
   "workspace_reservations",
   {
@@ -57,6 +64,7 @@ export const workspaceReservations = pgTable(
     correlationId: text("correlation_id").notNull().unique(),
     dotyposCustomerId: text("dotypos_customer_id").notNull(),
     dotyposReservationId: text("dotypos_reservation_id"),
+    customerAccessCode: text("customer_access_code").notNull(),
     reservationState: text("reservation_state")
       .notNull()
       .$type<ReservationState>(),
@@ -110,31 +118,31 @@ export const workspaceReservations = pgTable(
   (t) => [
     check(
       "workspace_reservations_reservation_state_check",
-      sql`${t.reservationState} in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed')`
+      sql`${t.reservationState} in (${quotedSqlList(reservationStates)})`
     ),
     check(
       "workspace_reservations_payment_state_check",
-      sql`${t.paymentState} in ('not_started', 'pending', 'paid', 'failed', 'cancelled', 'expired')`
+      sql`${t.paymentState} in (${quotedSqlList(paymentStates)})`
     ),
     check(
       "workspace_reservations_fulfillment_state_check",
-      sql`${t.fulfillmentState} in ('not_started', 'processing', 'fulfilled', 'failed')`
+      sql`${t.fulfillmentState} in (${quotedSqlList(fulfillmentStates)})`
     ),
     check(
       "workspace_reservations_product_tier_check",
-      sql`${t.productTier} in (${sql.raw(quotedSqlList(workspaceProductTiers))})`
+      sql`${t.productTier} in (${quotedSqlList(workspaceProductTiers)})`
     ),
     check(
       "workspace_reservations_product_monitor_option_check",
-      sql`${t.productMonitorOption} is null or ${t.productMonitorOption} in (${sql.raw(quotedSqlList(workspaceProductMonitorOptions))})`
+      sql`${t.productMonitorOption} is null or ${t.productMonitorOption} in (${quotedSqlList(workspaceProductMonitorOptions)})`
     ),
     check(
       "workspace_reservations_locale_check",
-      sql`${t.locale} in (${sql.raw(quotedSqlList(locales))})`
+      sql`${t.locale} in (${quotedSqlList(locales)})`
     ),
     check(
       "workspace_reservations_hold_id_check",
-      sql`${t.reservationState} not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed') or ${t.dotyposReservationId} is not null`
+      sql`${t.reservationState} not in (${quotedSqlList(reservationStatesRequiringDotyposReservationId)}) or ${t.dotyposReservationId} is not null`
     ),
     check(
       "workspace_reservations_paid_at_check",

@@ -35,30 +35,33 @@ const makeTable = (input: {
 const assignTableId = (
   reservation: CheckoutDetailsJson["reservation"],
   tables: readonly Table[]
-) =>
-  {
-    const dotyposService: DotyposAssignmentTestService = {
-      createReservation: mock(() => Effect.die("createReservation not mocked")),
-      getReservation: mock(() => Effect.die("getReservation not mocked")),
-      getCustomer: mock(() => Effect.die("getCustomer not mocked")),
-      findCustomer: mock(() => Effect.die("findCustomer not mocked")),
-      findOrCreateCustomer: mock(() => Effect.die("findOrCreateCustomer not mocked")),
-      getCustomerDiscount: mock(() => Effect.die("getCustomerDiscount not mocked")),
-      getTables: mock(() => Effect.succeed([...tables])),
-      listReservations: mock(() => Effect.die("listReservations not mocked")),
-      getProducts: mock(() => Effect.die("getProducts not mocked")),
-      getCategories: mock(() => Effect.die("getCategories not mocked")),
-    };
-
-    return Effect.gen(function* () {
-      const service = yield* WorkspaceTableAssignmentService;
-      return yield* service.assignTableId(reservation);
-    }).pipe(
-      Effect.provide(WorkspaceTableAssignmentServiceLive),
-      Effect.provide(Layer.succeed(DotyposService, dotyposService)),
-      Effect.runPromise
-    );
+) => {
+  const dotyposService: DotyposAssignmentTestService = {
+    createReservation: mock(() => Effect.die("createReservation not mocked")),
+    getReservation: mock(() => Effect.die("getReservation not mocked")),
+    getCustomer: mock(() => Effect.die("getCustomer not mocked")),
+    findCustomer: mock(() => Effect.die("findCustomer not mocked")),
+    findOrCreateCustomer: mock(() =>
+      Effect.die("findOrCreateCustomer not mocked")
+    ),
+    getCustomerDiscount: mock(() =>
+      Effect.die("getCustomerDiscount not mocked")
+    ),
+    getTables: mock(() => Effect.succeed([...tables])),
+    listReservations: mock(() => Effect.die("listReservations not mocked")),
+    getProducts: mock(() => Effect.die("getProducts not mocked")),
+    getCategories: mock(() => Effect.die("getCategories not mocked")),
   };
+
+  return Effect.gen(function* () {
+    const service = yield* WorkspaceTableAssignmentService;
+    return yield* service.assignTableId(reservation);
+  }).pipe(
+    Effect.provide(WorkspaceTableAssignmentServiceLive),
+    Effect.provide(Layer.succeed(DotyposService, dotyposService)),
+    Effect.runPromise
+  );
+};
 
 describe("WorkspaceTableAssignmentService", () => {
   test("matches Profi 2x27 QHD by tier and monitor tags", async () => {
@@ -188,9 +191,9 @@ describe("WorkspaceTableAssignmentService", () => {
       })
     );
 
-    await expect(
-      assignTableId(invalidReservation, [])
-    ).rejects.toThrow("monitor option is not supported");
+    await expect(assignTableId(invalidReservation, [])).rejects.toThrow(
+      "monitor option is not supported"
+    );
   });
 
   test("fails clearly when no active visible table matches all required tags", async () => {

@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
 
 export const paymentAttemptStates = [
@@ -21,6 +22,16 @@ export const paymentAttemptStates = [
 
 export type PaymentAttemptState = (typeof paymentAttemptStates)[number];
 
+export const paymentProviders = ["nexi"] as const;
+
+export type PaymentProvider = (typeof paymentProviders)[number];
+
+const paymentAttemptStatesRequiringFailureCode = [
+  "failed",
+  "cancelled",
+  "expired",
+] as const satisfies readonly PaymentAttemptState[];
+
 export const paymentAttempts = pgTable(
   "payment_attempts",
   {
@@ -28,14 +39,13 @@ export const paymentAttempts = pgTable(
     workspaceReservationId: text("workspace_reservation_id")
       .notNull()
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),
-    provider: text("provider").notNull().$type<"nexi">(),
+    provider: text("provider").notNull().$type<PaymentProvider>(),
     providerOrderId: text("provider_order_id").notNull(),
     securityToken: text("security_token"),
     state: text("state").notNull().$type<PaymentAttemptState>(),
     amountValue: integer("amount_value").notNull(),
     amountExponent: integer("amount_exponent").notNull(),
     currency: text("currency").notNull(),
-    quoteFingerprint: text("quote_fingerprint").notNull(),
     providerRedirectUrl: text("provider_redirect_url"),
     lastWebhookEventId: text("last_webhook_event_id"),
     lastProviderOperationId: text("last_provider_operation_id"),
@@ -49,19 +59,18 @@ export const paymentAttempts = pgTable(
       .defaultNow(),
   },
   (t) => [
-    check("payment_attempts_provider_check", sql`${t.provider} in ('nexi')`),
     check(
-      "payment_attempts_state_check",
-      sql`${t.state} in ('created', 'pending', 'paid', 'failed', 'cancelled', 'expired')`
+      "payment_attempts_provider_check",
+      sql`${t.provider} in (${quotedSqlList(paymentProviders)})`
     ),
     check(
-      "payment_attempts_amount_exponent_check",
-      sql`${t.amountExponent} >= 0 and ${t.amountExponent} <= 20`
+      "payment_attempts_state_check",
+      sql`${t.state} in (${quotedSqlList(paymentAttemptStates)})`
     ),
     check("payment_attempts_currency_check", sql`${t.currency} ~ '^[A-Z]{3}$'`),
     check(
       "payment_attempts_failure_code_check",
-      sql`${t.state} not in ('failed', 'cancelled', 'expired') or ${t.failureCode} is not null`
+      sql`${t.state} not in (${quotedSqlList(paymentAttemptStatesRequiringFailureCode)}) or ${t.failureCode} is not null`
     ),
     uniqueIndex("payment_attempts_provider_order_unique_idx").on(
       t.provider,

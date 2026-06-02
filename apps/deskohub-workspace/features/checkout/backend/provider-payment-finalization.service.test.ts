@@ -1,10 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
 import type { NexiService as NexiServiceType } from "@deskohub/nexi";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
+import { Effect, Layer } from "effect";
 import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "@/features/checkout/backend/paid-fulfillment.service";
+import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
 
 const paidUnfulfilledReservation = {
@@ -51,15 +51,22 @@ describe("ProviderPaymentFinalizationService", () => {
       Effect.provide(
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
-      Effect.provide(Layer.succeed(WorkspacePaidFulfillmentService, fulfillment)),
       Effect.provide(
-        Layer.succeed(PaymentAttemptRepository, {} as PaymentAttemptRepositoryType)
+        Layer.succeed(WorkspacePaidFulfillmentService, fulfillment)
+      ),
+      Effect.provide(
+        Layer.succeed(
+          PaymentAttemptRepository,
+          {} as PaymentAttemptRepositoryType
+        )
       ),
       Effect.provide(Layer.succeed(NexiService, {} as NexiServiceType)),
       Effect.runPromise
     );
 
     expect(result).toBe("paid");
-    expect(fulfillPaidOrder).toHaveBeenCalledWith({ orderId: "reservation-id" });
+    expect(fulfillPaidOrder).toHaveBeenCalledWith({
+      orderId: "reservation-id",
+    });
   });
 });

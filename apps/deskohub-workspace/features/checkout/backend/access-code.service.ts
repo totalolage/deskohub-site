@@ -2,15 +2,8 @@ import { Context, Effect, Layer } from "effect";
 
 export const workspaceCheckoutPlaceholderAccessCode = "451936";
 
-export interface ResolveWorkspaceCustomerAccessCodeInput {
-  readonly orderId: string;
-  readonly dotyposReservationId: string;
-}
-
 export interface WorkspaceCheckoutAccessCodeService {
-  readonly resolveCustomerAccessCode: (
-    input: ResolveWorkspaceCustomerAccessCodeInput
-  ) => Effect.Effect<string>;
+  readonly generateCustomerAccessCode: () => Effect.Effect<string>;
 }
 
 export const WorkspaceCheckoutAccessCodeService =
@@ -18,20 +11,16 @@ export const WorkspaceCheckoutAccessCodeService =
     "WorkspaceCheckoutAccessCodeService"
   );
 
-export const resolveWorkspaceCustomerAccessCode: (
-  input: ResolveWorkspaceCustomerAccessCodeInput
-) => Effect.Effect<string> = Effect.fn(
-  "workspaceCheckoutAccessCode.resolveCustomerAccessCode"
-)(
-  function* (_input) {
-    return yield* Effect.succeed(workspaceCheckoutPlaceholderAccessCode);
-  },
-  (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
-);
+export const generateWorkspaceCustomerAccessCode: () => Effect.Effect<string> =
+  Effect.fn("workspaceCheckoutAccessCode.generateCustomerAccessCode")(
+    function* () {
+      return yield* Effect.succeed(workspaceCheckoutPlaceholderAccessCode);
+    }
+  );
 
 export const WorkspaceCheckoutAccessCodeServiceLive = Layer.succeed(
   WorkspaceCheckoutAccessCodeService,
   WorkspaceCheckoutAccessCodeService.of({
-    resolveCustomerAccessCode: resolveWorkspaceCustomerAccessCode,
+    generateCustomerAccessCode: generateWorkspaceCustomerAccessCode,
   })
 );

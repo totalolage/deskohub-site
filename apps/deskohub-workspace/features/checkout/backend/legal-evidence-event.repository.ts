@@ -13,7 +13,6 @@ import { legalEvidenceSchema } from "@/features/checkout/schemas/checkout-detail
 
 const legalEvidenceEventInputSchema = z.object({
   workspaceReservationId: z.string().min(1).optional(),
-  idempotencyKey: z.string().min(1),
   evidence: legalEvidenceSchema,
 });
 
@@ -52,7 +51,6 @@ const parseLegalEvidenceEventInput = (input: LegalEvidenceEventInput) => {
   const parsed = legalEvidenceEventInputSchema.parse(input);
   return {
     workspaceReservationId: parsed.workspaceReservationId,
-    idempotencyKey: parsed.idempotencyKey,
     documentKey: parsed.evidence.documentKey,
     documentPath: parsed.evidence.document.path,
     documentHash: parsed.evidence.documentHash,
@@ -101,7 +99,7 @@ export const LegalEvidenceEventRepositoryLive = Layer.effect(
         effect.pipe(
           Effect.annotateLogs({
             workspaceReservationId: input.workspaceReservationId,
-            idempotencyKey: input.idempotencyKey,
+            documentKey: input.evidence.documentKey,
           })
         )
     );

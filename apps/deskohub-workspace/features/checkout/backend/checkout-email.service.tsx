@@ -9,13 +9,10 @@ import type {
   EmailRecipient,
 } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
-import { WorkspaceCheckoutAccessCodeService } from "@/features/checkout/backend/access-code.service";
-import {
-  formatWorkspaceMoney,
-  getWorkspaceProductByTier,
-} from "@/features/checkout/product-catalog";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import { getWorkspaceProductMonitorTitle } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import {
   type EmailDetailRow,
@@ -41,6 +38,7 @@ export interface SendWorkspaceCustomerAccessEmailInput {
   readonly customer: EmailRecipient;
   readonly booking: WorkspaceCheckoutEmailBookingSummary;
   readonly dotyposReservationId: string;
+  readonly accessCode: string;
 }
 
 export interface SendWorkspaceInternalPaidReservationEmailInput {
@@ -48,6 +46,7 @@ export interface SendWorkspaceInternalPaidReservationEmailInput {
   readonly locale: Locale;
   readonly booking: WorkspaceCheckoutEmailBookingSummary;
   readonly dotyposReservationId: string;
+  readonly accessCode: string;
 }
 
 export interface WorkspaceCheckoutEmailService {
@@ -89,21 +88,22 @@ const createBookingRows = (
   options?: { readonly includePrice?: boolean }
 ): EmailDetailRow[] => {
   const yes = m.reservationConfirmationYes({}, { locale });
-  const no = m.reservationConfirmationNo({}, { locale });
-  const rows: EmailDetailRow[] = [
+  // const no = m.reservationConfirmationNo({}, { locale });
+  const rows: EmailDetailRow[] = (
     [
-      m.checkoutStatusSummaryTierLabel({}, { locale }),
-      getProductLabel(booking.tier),
-    ],
-    [
-      m.checkoutStatusSummaryDateLabel({}, { locale }),
-      formatReservationDate(booking.date, locale),
-    ],
-    [
-      m.checkoutStatusSummaryCoffeeLabel({}, { locale }),
-      booking.coffee ? yes : no,
-    ],
-  ];
+      [
+        m.checkoutStatusSummaryTierLabel({}, { locale }),
+        getProductLabel(booking.tier),
+      ],
+      [
+        m.checkoutStatusSummaryDateLabel({}, { locale }),
+        formatReservationDate(booking.date, locale),
+      ],
+      booking.coffee
+        ? [m.checkoutStatusSummaryCoffeeLabel({}, { locale }), yes]
+        : undefined,
+    ] satisfies (EmailDetailRow | undefined)[]
+  ).filter(Boolean);
 
   if (booking.monitorOption) {
     rows.push([
@@ -312,70 +312,35 @@ export const WorkspaceCheckoutEmailServiceLive = Layer.effect(
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
     const emailConfig = yield* EmailConfigTag;
-    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-
-    const annotateCustomerAccessEmailLogs = (
-      input: SendWorkspaceCustomerAccessEmailInput
-    ) =>
-      Effect.annotateLogs({
-        orderId: input.orderId,
-        locale: input.locale,
-        customerEmail: input.customer.email,
-        bookingTier: input.booking.tier,
-        reservationDate: input.booking.date,
-        dotyposReservationId: input.dotyposReservationId,
-      });
-
-    const annotateInternalPaidReservationEmailLogs = (
-      input: SendWorkspaceInternalPaidReservationEmailInput
-    ) =>
-      Effect.annotateLogs({
-        orderId: input.orderId,
-        locale: input.locale,
-        bookingTier: input.booking.tier,
-        reservationDate: input.booking.date,
-        dotyposReservationId: input.dotyposReservationId,
-      });
 
     return WorkspaceCheckoutEmailService.of({
       sendCustomerAccessEmail: Effect.fn(
         "workspaceCheckoutEmail.sendCustomerAccessEmail"
       )(
         function* (input) {
-          const accessCode = yield* accessCodes.resolveCustomerAccessCode({
-            orderId: input.orderId,
-            dotyposReservationId: input.dotyposReservationId,
-          });
-
           yield* emailService.send(
             createCustomerAccessMessage(
               input,
-              accessCode,
+              input.accessCode,
               emailConfig.defaultFrom
             )
           );
         },
-        (effect, input) => effect.pipe(annotateCustomerAccessEmailLogs(input))
+        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       ),
       sendInternalPaidReservationEmail: Effect.fn(
         "workspaceCheckoutEmail.sendInternalPaidReservationEmail"
       )(
         function* (input) {
-          const accessCode = yield* accessCodes.resolveCustomerAccessCode({
-            orderId: input.orderId,
-            dotyposReservationId: input.dotyposReservationId,
-          });
-
           yield* emailService.send(
             createInternalPaidReservationMessage(
               input,
-              accessCode,
+              input.accessCode,
               emailConfig.defaultFrom
             )
           );
         },
-        (effect, input) =>
-          effect.pipe(annotateInternalPaidReservationEmailLogs(input))
+        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       ),
     });
   })

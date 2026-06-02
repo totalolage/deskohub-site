@@ -1,5 +1,5 @@
-import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
-import type { z } from "zod/v4";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { Duration, Effect, type Layer, Logger, LogLevel } from "effect";
 import type { Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { formatEffectError } from "@/shared/utils/error-formatting";
@@ -8,29 +8,35 @@ import {
   PublicSafeActionError,
 } from "@/shared/utils/safe-action-client";
 
-export function createEffectSafeAction<I, O, E, R>(
-  schema: z.ZodSchema<I>,
-  handler: (input: I, context: { locale: Locale }) => Effect.Effect<O, E, R>,
+type ParsedInput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
+
+export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
+  schema: S,
+  handler: (
+    input: ParsedInput<S>,
+    context: { locale: Locale }
+  ) => Effect.Effect<O, E, R>,
   layers: Layer.Layer<R, never, never>
 ) {
   return actionClient
     .inputSchema(schema)
     .action(async ({ parsedInput, ctx }) => {
-      const program = pipe(
-        Effect.gen(function* () {
-          yield* Effect.logDebug("Safe action executed", {
-            locale: ctx.locale,
-            inputKeys:
-              parsedInput && typeof parsedInput === "object"
-                ? Object.keys(parsedInput)
-                : [],
-          });
+      const program = Effect.gen(function* () {
+        yield* Effect.logDebug("Safe action executed", {
+          locale: ctx.locale,
+          inputKeys:
+            parsedInput && typeof parsedInput === "object"
+              ? Object.keys(parsedInput)
+              : [],
+        });
 
-          const result = yield* handler(parsedInput, { locale: ctx.locale });
+        const result = yield* handler(parsedInput, {
+          locale: ctx.locale,
+        });
 
-          yield* Effect.logDebug("Action completed successfully");
-          return result;
-        }),
+        yield* Effect.logDebug("Action completed successfully");
+        return result;
+      }).pipe(
         Effect.tapError((error) => Effect.logError("Action failed", error)),
         Effect.withSpan("safeAction", {
           attributes: {
@@ -38,10 +44,10 @@ export function createEffectSafeAction<I, O, E, R>(
           },
         }),
         Effect.provide(layers),
-        Effect.timeout(Duration.seconds(45)),
-        Effect.catchTag("TimeoutException", () =>
-          Effect.fail(new Error("Request timed out. Please try again."))
-        )
+        Effect.timeoutFail({
+          duration: Duration.seconds(45),
+          onTimeout: () => new Error("Request timed out. Please try again."),
+        })
       );
 
       try {

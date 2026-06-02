@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
-import { NexiApi, NexiService } from "@deskohub/nexi";
+import { NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
@@ -33,7 +33,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/checkout/backend/workspace-reservation.repository";
 import {
-  buildWorkspaceCheckoutQuote,
+  buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
@@ -41,16 +41,18 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
+import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import type {
   CheckoutDetailsJson,
   LegalEvidenceMap,
 } from "@/features/checkout/types/checkout-details";
+import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
+import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
@@ -84,7 +86,7 @@ export interface CheckoutService {
 export const CheckoutService =
   Context.GenericTag<CheckoutService>("CheckoutService");
 
-const generatePaymentAttemptId = () =>
+const generateNexiOrderId = () =>
   `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
     .toString(36)
     .toUpperCase()}`;
@@ -177,14 +179,6 @@ export const getNexiCheckoutCurrencyOverride = () => {
   return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
 };
 
-const moneyEquals = (
-  left: WorkspaceCheckoutQuote["summary"]["total"],
-  right: WorkspaceCheckoutQuote["summary"]["total"]
-) =>
-  left.value === right.value &&
-  left.currency === right.currency &&
-  left.exponent === right.exponent;
-
 const getCheckoutLegalAcceptanceSnapshot: (
   locale: Locale
 ) => Effect.Effect<
@@ -265,8 +259,7 @@ const buildCheckoutDetailsForPayment = (input: {
   },
   payment: {
     expectedPrice: input.quote.payment.expectedPrice,
-    quoteFingerprint: input.quote.fingerprint,
-    summary: input.quote.summary,
+    summary: checkoutSummarySchema.parse(input.quote.summary),
     ...(input.quote.payment.customerDiscount && {
       undiscountedPrice:
         input.quote.payment.undiscountedPrice ??
@@ -311,17 +304,7 @@ const getFreshPayUrl: (input: {
   readonly orderId: string;
   readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
 }) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
-  function* (input) {
-    const payPath = buildFreshCheckoutPayPath(input);
-    if (!payPath) {
-      return yield* Effect.fail(
-        new CheckoutError({
-          message: "Updated Pay state was too large to continue checkout.",
-        })
-      );
-    }
-    return payPath;
-  }
+  (input) => Effect.succeed(buildFreshCheckoutPayPath(input))
 );
 
 const mapCheckoutFailure = (cause: unknown) => {
@@ -358,7 +341,6 @@ export const CheckoutServiceLive = Layer.effect(
         readonly correlationId: string;
         readonly locale: Locale;
         readonly total: WorkspaceCheckoutQuote["summary"]["total"];
-        readonly quoteFingerprint: string;
       }) {
         const nexiAmount = yield* toNexiAmount(input.total).pipe(
           Effect.mapError(
@@ -369,15 +351,13 @@ export const CheckoutServiceLive = Layer.effect(
               })
           )
         );
-        const attemptId = generatePaymentAttemptId();
         const attempt = yield* paymentAttempts.create({
-          id: attemptId,
+          id: randomUUID(),
           workspaceReservationId: input.workspaceReservationId,
-          providerOrderId: attemptId,
+          providerOrderId: generateNexiOrderId(),
           amountValue: input.total.value,
           amountExponent: input.total.exponent,
           currency: input.total.currency,
-          quoteFingerprint: input.quoteFingerprint,
         });
 
         const hostedPaymentPage = yield* nexi
@@ -408,7 +388,19 @@ export const CheckoutServiceLive = Layer.effect(
                   failureCode: "nexi_hpp_create_failed",
                   providerStatus: "hpp_create_failed",
                 })
-                .pipe(Effect.ignore)
+                .pipe(
+                  Effect.tapError((cause) =>
+                    Effect.logWarning(
+                      "Payment attempt terminal marker failed after checkout creation failure",
+                      {
+                        orderId: input.workspaceReservationId,
+                        paymentAttemptId: attempt.id,
+                        cause,
+                      }
+                    )
+                  ),
+                  Effect.ignore
+                )
             )
           );
 
@@ -435,7 +427,14 @@ export const CheckoutServiceLive = Layer.effect(
 
           yield* holdCleanup
             .sweepExpiredHolds({ now: new Date(), limit: 10 })
-            .pipe(Effect.ignore);
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning("Checkout expired hold sweep failed", {
+                  cause,
+                })
+              ),
+              Effect.ignore
+            );
 
           if (input.legalConsent !== true) {
             return yield* Effect.fail(
@@ -466,7 +465,18 @@ export const CheckoutServiceLive = Layer.effect(
                 orderId: reservation.id,
                 holdExpiredAt: new Date(),
               })
-              .pipe(Effect.ignore);
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Checkout expired hold cancellation failed",
+                    {
+                      orderId: reservation.id,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.ignore
+              );
             return { status: "in_progress" as const };
           }
 
@@ -490,14 +500,14 @@ export const CheckoutServiceLive = Layer.effect(
           const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
             data
           ).pipe(Effect.provideService(DotyposService, dotypos));
-          const quote = buildWorkspaceCheckoutQuote(data, {
+          const quote = yield* buildWorkspaceCheckoutQuoteEffect(data, {
             customerDiscount,
             currencyOverride: getNexiCheckoutCurrencyOverride(),
           });
 
           if (
             quote.fingerprint !== state.quote.fingerprint ||
-            !moneyEquals(quote.summary.total, state.acceptedTotal)
+            !workspaceMoneyEquals(quote.summary.total, state.acceptedTotal)
           ) {
             const changedKeys = getCheckoutSummaryChangedKeys(
               state.quote.summary,
@@ -543,7 +553,6 @@ export const CheckoutServiceLive = Layer.effect(
           yield* legalEvidenceEvents.recordMany(
             Object.values(checkoutDetails.legal).map((evidence) => ({
               workspaceReservationId: reservation.id,
-              idempotencyKey: `${reservation.id}:payment:${evidence.documentHash}`,
               evidence,
             }))
           );
@@ -553,7 +562,6 @@ export const CheckoutServiceLive = Layer.effect(
             correlationId,
             locale,
             total: quote.payment.expectedPrice,
-            quoteFingerprint: quote.fingerprint,
           });
         },
         (effect, input, locale) =>
@@ -580,11 +588,5 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(
     Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
   ),
-  Layer.provide(
-    Layer.provide(
-      NexiService.Default,
-      Layer.provide(NexiApi.Default, NexiRuntimeConfigLive)
-    )
-  ),
-  Layer.orDie
+  Layer.provide(NexiServiceLive)
 );

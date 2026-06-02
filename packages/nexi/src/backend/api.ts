@@ -87,7 +87,7 @@ const ErrorResponseSchema = Schema.Struct({
 const NEXI_API_PATH = "/api/phoenix-0.0/psp/api/v1";
 
 const getNexiApiBaseUrl = (origin: string) =>
-  new URL(NEXI_API_PATH, origin).toString().replace(/\/$/, "");
+  new URL(NEXI_API_PATH, origin).toString();
 
 const transformErrorResponse = (
   error: unknown,

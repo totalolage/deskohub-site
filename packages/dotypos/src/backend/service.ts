@@ -1,4 +1,4 @@
-import { Data, Effect, Schedule } from "effect";
+import { Data, Effect, Option, Schedule, Schema } from "effect";
 import { DotyposRuntimeConfig } from "../config";
 import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import type {
@@ -33,7 +33,6 @@ export type DotyposCustomerLookupData = {
 
 export type DotyposCustomerDiscount = {
   readonly source: "dotypos-discount-group";
-  readonly field: "_discountGroupId";
   readonly discountGroupId: string;
   readonly percent: number;
 };
@@ -57,10 +56,10 @@ export type FindCustomerResult = Data.TaggedEnum<{
 
 export const FindCustomerResult = Data.taggedEnum<FindCustomerResult>();
 
-const defaultCustomerLookupFields = [
+const defaultCustomerLookupFields: readonly CustomerLookupField[] = [
   "email",
   "phone",
-] as const satisfies readonly CustomerLookupField[];
+];
 
 const normalizeCustomerLookupData = (
   customerData: DotyposCustomerLookupData
@@ -91,19 +90,15 @@ const addUniqueCustomer = (customers: Customer[], customer: Customer) => {
   }
 };
 
-const parseDiscountPercent = (value: unknown) => {
-  const percent =
-    typeof value === "number"
-      ? value
-      : typeof value === "string"
-        ? Number(value)
-        : Number.NaN;
+const DiscountPercentSchema = Schema.Union(
+  Schema.Finite,
+  Schema.NumberFromString.pipe(Schema.finite())
+).pipe(Schema.greaterThan(0), Schema.lessThanOrEqualTo(100));
 
-  if (!Number.isFinite(percent)) return undefined;
-  if (percent <= 0 || percent > 100) return undefined;
-
-  return percent;
-};
+const parseDiscountPercent = (value: unknown) =>
+  Option.getOrUndefined(
+    Schema.decodeUnknownOption(DiscountPercentSchema)(value)
+  );
 
 const hasAtLeastTwoCustomers = (
   customers: readonly Customer[]
@@ -550,6 +545,24 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                 })
                 .pipe(
                   Effect.retry(retryPolicy),
+                  Effect.tapError((error) =>
+                    Effect.logWarning(
+                      "Dotypos customer update failed; using existing customer",
+                      {
+                        error,
+                        existingCustomer,
+                        input: normalizedCustomerData,
+                        operation: "updateCustomer",
+                        request: {
+                          path: {
+                            cloudId: config.cloudId,
+                            customerId: existingCustomer.id!,
+                          },
+                          body: updateRequest,
+                        },
+                      }
+                    )
+                  ),
                   Effect.orElse(() => Effect.succeed(existingCustomer!))
                 );
 
@@ -607,7 +620,6 @@ export class DotyposService extends Effect.Service<DotyposService>()(
 
           return {
             source: "dotypos-discount-group",
-            field: "_discountGroupId",
             discountGroupId,
             percent,
           } satisfies DotyposCustomerDiscount;

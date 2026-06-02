@@ -6,17 +6,18 @@ import {
 } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer } from "effect";
+import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
+import { ReservationHoldCleanupService } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import {
   getWorkspaceProductByTier,
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
   type WorkspaceProductMonitorOption,
+  type WorkspaceProductTier,
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
-  type WorkspaceProductTier,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
-import { ReservationHoldCleanupService } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 
 export type WorkspaceAvailabilityQuery = {
   readonly date?: string;
@@ -78,7 +79,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
       function* () {
         yield* holdCleanup
           .sweepExpiredHolds({ now: new Date(), limit: 10 })
-          .pipe(Effect.ignore);
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Availability expired hold sweep failed", {
+                cause,
+              })
+            ),
+            Effect.ignore
+          );
 
         const [tables, reservations] = yield* Effect.all(
           [dotypos.getTables(), dotypos.listReservations()],
@@ -248,8 +256,7 @@ const getAssignableTableId = (
   table: Table,
   requiredTags: readonly string[]
 ) => {
-  if (typeof table.id !== "string") return undefined;
-  const tableId = table.id.trim();
+  const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return undefined;
   if (table.enabled !== true || table.display !== true) return undefined;
 
@@ -275,11 +282,17 @@ const getOccupiedTableIds = (
 
     const reservationStart = Date.parse(reservation.startDate);
     const reservationEnd = Date.parse(reservation.endDate);
-    if (!Number.isFinite(reservationStart) || !Number.isFinite(reservationEnd)) {
+    if (
+      !Number.isFinite(reservationStart) ||
+      !Number.isFinite(reservationEnd)
+    ) {
       continue;
     }
 
-    if (reservationStart < dayRange.endMs && reservationEnd > dayRange.startMs) {
+    if (
+      reservationStart < dayRange.endMs &&
+      reservationEnd > dayRange.startMs
+    ) {
       occupied.add(reservation._tableId);
     }
   }

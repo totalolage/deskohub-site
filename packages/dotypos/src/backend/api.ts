@@ -1,16 +1,14 @@
-import { Effect, Ref, Schema } from "effect";
+import { Effect, Option, Ref, Schema } from "effect";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import { createClient } from "../generated/client";
 import * as generatedApi from "../generated/sdk.gen";
 import type {
-  Category,
   CreateCustomerRequest,
   Customer,
   ErrorResponse,
   Product,
   Reservation,
-  Table,
   TokenResponse,
   UpdateCustomerRequest,
   UpdateReservationRequest,
@@ -53,10 +51,6 @@ type TokenResult =
       readonly error: unknown;
     };
 
-const fetchPreconnect: typeof fetch.preconnect = (url, options) => {
-  fetch.preconnect?.(url, options);
-};
-
 const fetchUsingRequestInit: typeof fetch = Object.assign(
   async (
     input: Parameters<typeof fetch>[0],
@@ -78,7 +72,7 @@ const fetchUsingRequestInit: typeof fetch = Object.assign(
     });
   },
   {
-    preconnect: fetchPreconnect,
+    preconnect: fetch.preconnect,
   }
 );
 
@@ -566,13 +560,16 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
         return yield* Effect.tryPromise({
           try: async (): Promise<DiscountGroup> => {
-            const baseUrl = config.apiUrl.replace(/\/$/, "");
-            const response = await fetch(
-              `${baseUrl}/clouds/${encodeURIComponent(
+            const url = new URL(
+              `clouds/${encodeURIComponent(
                 params.path.cloudId
               )}/discount-groups/${encodeURIComponent(
                 params.path.discountGroupId
               )}`,
+              config.apiUrl.endsWith("/") ? config.apiUrl : `${config.apiUrl}/`
+            );
+            const response = await fetch(
+              url,
               {
                 headers: { Authorization: `Bearer ${token}` },
                 signal: AbortSignal.timeout(config.apiTimeout),
@@ -594,6 +591,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 }) {}
 
 const readResponseError = async (response: Response) => {
+  // Best-effort diagnostics: response bodies can be absent or already consumed.
   const body = await response.json().catch(() => undefined);
 
   if (body && typeof body === "object") {
@@ -603,6 +601,7 @@ const readResponseError = async (response: Response) => {
   return {
     code: response.status,
     error: response.statusText,
+    // Best-effort fallback detail; the status fields above remain authoritative.
     error_description: await response.text().catch(() => undefined),
   } satisfies ErrorResponse;
 };
@@ -675,6 +674,19 @@ const getObjectProperty = (value: unknown, key: string) => {
   return Object.getOwnPropertyDescriptor(value, key)?.value;
 };
 
+const DiscountGroupIdSchema = Schema.Union(Schema.String, Schema.Number);
+
+const DiscountGroupDiscountPercentSchema = Schema.Union(
+  Schema.String,
+  Schema.Number,
+  Schema.Null
+);
+
+const DiscountGroupPropertiesSchema = Schema.Struct({
+  id: Schema.optional(Schema.Unknown),
+  discountPercent: Schema.optional(Schema.Unknown),
+});
+
 const parseArrayPageData = <T>(
   data: unknown,
   parse: (value: unknown) =>
@@ -691,18 +703,23 @@ const parseArrayPageData = <T>(
 };
 
 const parseDiscountGroup = (value: unknown): DiscountGroup => {
-  const id = getObjectProperty(value, "id");
-  const discountPercent = getObjectProperty(value, "discountPercent");
+  const properties = Option.getOrUndefined(
+    Schema.decodeUnknownOption(DiscountGroupPropertiesSchema)(value)
+  );
+  if (!properties) return {};
+
+  const id = Option.getOrUndefined(
+    Schema.decodeUnknownOption(DiscountGroupIdSchema)(properties.id)
+  );
+  const discountPercent = Option.getOrUndefined(
+    Schema.decodeUnknownOption(DiscountGroupDiscountPercentSchema)(
+      properties.discountPercent
+    )
+  );
 
   return {
-    ...(typeof id === "string" || typeof id === "number" ? { id } : {}),
-    ...(
-      typeof discountPercent === "string" ||
-      typeof discountPercent === "number" ||
-      discountPercent === null
-        ? { discountPercent }
-        : {}
-    ),
+    ...(id !== undefined ? { id } : {}),
+    ...(discountPercent !== undefined ? { discountPercent } : {}),
   };
 };
 

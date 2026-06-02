@@ -29,7 +29,7 @@ export async function generateMetadata({
       alternates: {
         canonical: url,
         languages: Object.fromEntries(
-          locales.map((itemLocale: (typeof locales)[number]) => [
+          locales.map((itemLocale) => [
             itemLocale,
             getWorkspaceLocalizedCanonicalUrl(itemLocale),
           ])

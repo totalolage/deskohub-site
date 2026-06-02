@@ -37,7 +37,7 @@ const legalEvidenceMap = legalEvidenceMapSchema.parse({
 });
 
 describe("checkout details persistence", () => {
-  test("persists quote summary, fingerprint, legal evidence, and no contact PII", () => {
+  test("persists quote summary, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
       coffee: false,
@@ -54,16 +54,14 @@ describe("checkout details persistence", () => {
       },
       payment: {
         expectedPrice: quote.payment.expectedPrice,
-        quoteFingerprint: quote.fingerprint,
         summary: quote.summary,
       },
-        legal: legalEvidenceMap,
-        fulfillment: { accessCodePolicy: "workspace-static-v1" },
-      });
+      legal: legalEvidenceMap,
+      fulfillment: { accessCodePolicy: "workspace-static-v1" },
+    });
 
     const serialized = JSON.stringify(details);
 
-    expect(details.payment.quoteFingerprint).toBe(quote.fingerprint);
     expect(details.payment.summary.total).toEqual(quote.summary.total);
     expect(details.legal[document.hash]?.source).toBe(
       paymentSubmitLegalEvidenceSource
@@ -80,7 +78,6 @@ describe("checkout details persistence", () => {
       {
         customerDiscount: {
           source: "dotypos-discount-group",
-          field: "_discountGroupId",
           discountGroupId: "vip",
           percent: 10,
         },
@@ -99,10 +96,9 @@ describe("checkout details persistence", () => {
         },
         payment: {
           expectedPrice: quote.payment.expectedPrice,
-          quoteFingerprint: quote.fingerprint,
           summary: quote.summary,
         },
-          legal: legalEvidenceMap,
+        legal: legalEvidenceMap,
         fulfillment: { accessCodePolicy: "workspace-static-v1" },
       })
     ).not.toThrow();
@@ -119,10 +115,9 @@ describe("checkout details persistence", () => {
         },
         payment: {
           expectedPrice: { value: -1, exponent: 2, currency: "CZK" },
-          quoteFingerprint: quote.fingerprint,
           summary: quote.summary,
         },
-          legal: legalEvidenceMap,
+        legal: legalEvidenceMap,
         fulfillment: { accessCodePolicy: "workspace-static-v1" },
       })
     ).toThrow();

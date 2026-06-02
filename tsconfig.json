@@ -29,7 +29,6 @@
   },
   "include": [
     "next-env.d.ts",
-    "types/reset.d.ts",
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",

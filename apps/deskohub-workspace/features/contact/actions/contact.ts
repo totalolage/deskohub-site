@@ -2,6 +2,7 @@
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Effect, Layer } from "effect";
+import { z } from "zod/v4";
 import {
   ContactService,
   ContactServiceLive,
@@ -54,7 +55,7 @@ export async function submitContactForm(
   const parsedInput = getContactSchema().safeParse(submittedValues);
 
   if (!parsedInput.success) {
-    const flattened = parsedInput.error.flatten().fieldErrors;
+    const flattened = z.flattenError(parsedInput.error).fieldErrors;
 
     return {
       status: "error",
@@ -85,11 +86,15 @@ export async function submitContactForm(
       )
     ),
     Effect.catchAll((error) =>
-      Effect.succeed({
-        status: "error" as const,
-        message: error.message,
-        values: submittedValues,
-      })
+      Effect.logError("Workspace contact form submission failed", {
+        errorMessage: error.message,
+      }).pipe(
+        Effect.as({
+          status: "error" as const,
+          message: error.message,
+          values: submittedValues,
+        })
+      )
     )
   );
 

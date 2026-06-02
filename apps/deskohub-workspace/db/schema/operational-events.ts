@@ -1,6 +1,7 @@
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
 import { paymentAttempts } from "./payment-attempts";
+import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
 
 export const operationalEventSeverities = ["info", "warning", "error"] as const;
@@ -34,7 +35,7 @@ export const operationalEvents = pgTable(
   (t) => [
     check(
       "operational_events_severity_check",
-      sql`${t.severity} in ('info', 'warning', 'error')`
+      sql`${t.severity} in (${quotedSqlList(operationalEventSeverities)})`
     ),
     index("operational_events_workspace_reservation_idx").on(
       t.workspaceReservationId

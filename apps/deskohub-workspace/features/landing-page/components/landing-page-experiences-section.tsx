@@ -187,13 +187,11 @@ export function LandingPageExperiencesSection({
                     )}
                   >
                     <CardHeader>
-                      <CardTitle
-                        className={index === 1 ? "text-white" : undefined}
-                      >
+                      <CardTitle className={cn(index === 1 && "text-white")}>
                         {feature.label}
                       </CardTitle>
                       <CardDescription
-                        className={index === 1 ? "text-white/72" : undefined}
+                        className={cn(index === 1 && "text-white/72")}
                       >
                         {feature.text}
                       </CardDescription>

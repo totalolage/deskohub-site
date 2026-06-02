@@ -20,19 +20,12 @@ export const buildCheckoutPayPath = (
   sealedState: SealPayStateForUrlResult
 ) => {
   const payUrl = buildCheckoutPayUrl(locale, sealedState);
-  if (payUrl.type !== "payUrl") return payUrl;
 
-  return {
-    type: "payPath" as const,
-    path: `${payUrl.url.pathname}${payUrl.url.search}`,
-  };
+  return `${payUrl.url.pathname}${payUrl.url.search}`;
 };
 
 export const buildFreshCheckoutPayPath = (input: BuildSignedPayStateInput) => {
   const freshState = buildSignedPayState(input);
   const sealedState = sealPayStateForUrl(freshState);
-  const payUrl = buildCheckoutPayPath(input.locale, sealedState);
-
-  if (payUrl.type !== "payPath") return undefined;
-  return payUrl.path;
+  return buildCheckoutPayPath(input.locale, sealedState);
 };

@@ -1,3 +1,4 @@
+import { Data, Effect } from "effect";
 import { z } from "zod/v4";
 import {
   workspaceProductMonitorOptions,
@@ -5,8 +6,8 @@ import {
 } from "@/features/checkout/product-catalog";
 import {
   checkoutSummarySectionSchema,
-  nonNegativeWorkspaceMoneySchema,
 } from "@/features/checkout/schemas/checkout-summary";
+import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
 
 export const legalDocumentKeys = [
@@ -14,6 +15,8 @@ export const legalDocumentKeys = [
   "operatingRules",
   "privacyPolicy",
 ] as const;
+
+export type LegalDocumentKey = (typeof legalDocumentKeys)[number];
 
 export const workspacePrivacyPolicyLegalDocumentKey = "privacyPolicy";
 export const workspacePaymentTermsLegalDocumentKeys = [
@@ -34,6 +37,8 @@ export const legalDocumentHashSchema = z.object({
   hash: z.string().min(1),
   hashAlgorithm: z.literal("sha256"),
 });
+
+export type LegalDocumentHash = z.output<typeof legalDocumentHashSchema>;
 
 export const legalEvidenceSchema = z
   .object({
@@ -56,6 +61,8 @@ export const legalEvidenceSchema = z
     }
   });
 
+export type LegalEvidence = z.output<typeof legalEvidenceSchema>;
+
 export const legalEvidenceMapSchema = z
   .record(z.string().min(1), legalEvidenceSchema)
   .superRefine((evidenceMap, ctx) => {
@@ -70,26 +77,77 @@ export const legalEvidenceMapSchema = z
     }
   });
 
-export const mergeLegalEvidenceMaps = (input: {
+export type LegalEvidenceMap = z.output<typeof legalEvidenceMapSchema>;
+
+export class CheckoutDetailsError extends Data.TaggedError(
+  "CheckoutDetailsError"
+)<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+export const mergeLegalEvidenceMapsEffect = Effect.fn(
+  "mergeLegalEvidenceMaps"
+)(function* (input: {
   readonly existing: unknown;
   readonly incoming: unknown;
-}) => {
-  const existing = legalEvidenceMapSchema.parse(input.existing);
-  const incoming = legalEvidenceMapSchema.parse(input.incoming);
-  const merged = legalEvidenceMapSchema.parse(existing);
+}) {
+  const existing = yield* Effect.try({
+    try: () => legalEvidenceMapSchema.parse(input.existing),
+    catch: (cause) =>
+      new CheckoutDetailsError({
+        message: "Invalid existing legal evidence map.",
+        cause,
+      }),
+  });
+  const incoming = yield* Effect.try({
+    try: () => legalEvidenceMapSchema.parse(input.incoming),
+    catch: (cause) =>
+      new CheckoutDetailsError({
+        message: "Invalid incoming legal evidence map.",
+        cause,
+      }),
+  });
+  const merged = yield* Effect.try({
+    try: () => legalEvidenceMapSchema.parse(existing),
+    catch: (cause) =>
+      new CheckoutDetailsError({
+        message: "Invalid merged legal evidence map.",
+        cause,
+      }),
+  });
 
   for (const [documentHash, nextEvidence] of Object.entries(incoming)) {
     const currentEvidence = merged[documentHash];
 
-    if (currentEvidence && currentEvidence.documentHash !== nextEvidence.documentHash) {
-      throw new Error("Legal evidence collision for mismatched document hash.");
+    if (
+      currentEvidence &&
+      currentEvidence.documentHash !== nextEvidence.documentHash
+    ) {
+      return yield* Effect.fail(
+        new CheckoutDetailsError({
+          message: "Legal evidence collision for mismatched document hash.",
+        })
+      );
     }
 
     merged[documentHash] = nextEvidence;
   }
 
-  return legalEvidenceMapSchema.parse(merged);
-};
+  return yield* Effect.try({
+    try: () => legalEvidenceMapSchema.parse(merged),
+    catch: (cause) =>
+      new CheckoutDetailsError({
+        message: "Invalid merged legal evidence map.",
+        cause,
+      }),
+  });
+});
+
+export const mergeLegalEvidenceMaps = (input: {
+  readonly existing: unknown;
+  readonly incoming: unknown;
+}): LegalEvidenceMap => Effect.runSync(mergeLegalEvidenceMapsEffect(input));
 
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
@@ -107,7 +165,6 @@ export const checkoutDetailsJsonSchema = z.object({
   payment: z.object({
     expectedPrice: nonNegativeWorkspaceMoneySchema,
     undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
-    quoteFingerprint: z.string().min(1),
     summary: z.object({
       sections: z.array(checkoutSummarySectionSchema),
       total: nonNegativeWorkspaceMoneySchema,
@@ -116,7 +173,6 @@ export const checkoutDetailsJsonSchema = z.object({
     customerDiscount: z
       .object({
         source: z.literal("dotypos-discount-group"),
-        field: z.string().min(1),
         discountGroupId: z.string().min(1),
         percent: z.number().positive().max(100),
         amount: nonNegativeWorkspaceMoneySchema,
@@ -129,6 +185,7 @@ export const checkoutDetailsJsonSchema = z.object({
   }),
 });
 
+export type CheckoutDetailsJson = z.output<typeof checkoutDetailsJsonSchema>;
 export type CheckoutDetailsJsonInput = z.input<
   typeof checkoutDetailsJsonSchema
 >;

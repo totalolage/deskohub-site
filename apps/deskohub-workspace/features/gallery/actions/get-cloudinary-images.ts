@@ -14,10 +14,6 @@ import {
 } from "../backend/cloudinary.service";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
-export type GalleryImagesResult =
-  | { status: "ok"; assets: readonly CloudinaryAsset[] }
-  | { status: "error"; errorCode: "gallery_unavailable" };
-
 export interface GetCloudinaryImagesOptions {
   tags: UnnormalizedLogicalExpression<CloudinaryTag>;
   maxResults?: number;
@@ -26,7 +22,7 @@ export interface GetCloudinaryImagesOptions {
 export async function getCloudinaryImages({
   tags,
   maxResults = 60,
-}: GetCloudinaryImagesOptions): Promise<GalleryImagesResult> {
+}: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
   "use cache";
 
   applyCacheTags(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults));
@@ -35,15 +31,8 @@ export async function getCloudinaryImages({
     getGalleryImages(normalizeExpression(tags), { maxResults }),
     CloudinaryServiceLive
   ).pipe(
-    Effect.map((assets) => ({ status: "ok" as const, assets })),
     Effect.tapError((error) =>
       Effect.logError("Workspace Cloudinary gallery search failed", error)
-    ),
-    Effect.catchAll(() =>
-      Effect.succeed({
-        status: "error" as const,
-        errorCode: "gallery_unavailable" as const,
-      })
     ),
     runWorkspaceEffect
   );

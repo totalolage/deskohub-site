@@ -22,7 +22,7 @@ export function PricingPage({ locale }: PricingPageProps) {
   const content = getPricingContent(locale);
 
   return (
-    <main className="bg-[#f4f1ea] pb-20 pt-16 sm:pb-24 mt-[var(--site-header-height)]">
+    <main className="bg-[#f4f1ea] pb-20 pt-16 sm:pb-24 mt-(--site-header-height)">
       <Container className="space-y-10">
         <section className="grid gap-6 lg:grid-cols-[1.15fr_0.85fr] lg:items-start">
           <div className="space-y-6">
@@ -114,7 +114,7 @@ function TariffCard({ includesLabel, tariff, locale }: TariffCardProps) {
 
   return (
     <Link href={reservationHref} className="group block rounded-[1.9rem]">
-      <Card className="h-full rounded-[1.9rem] border-white/20 bg-white shadow-[0_24px_70px_-46px_rgba(0,2,79,0.35)] transition duration-200 group-hover:-translate-y-0.5 group-hover:border-burned-orange/35 group-hover:shadow-[0_30px_80px_-46px_rgba(221,72,10,0.4)] group-focus-visible:outline group-focus-visible:outline-2 group-focus-visible:outline-offset-4 group-focus-visible:outline-burned-orange">
+      <Card className="h-full rounded-[1.9rem] border-white/20 bg-white shadow-[0_24px_70px_-46px_rgba(0,2,79,0.35)] transition duration-200 group-hover:-translate-y-0.5 group-hover:border-burned-orange/35 group-hover:shadow-[0_30px_80px_-46px_rgba(221,72,10,0.4)] group-focus-visible:outline group-focus-visible:outline-offset-4 group-focus-visible:outline-burned-orange">
         <CardHeader>
           <CardTitle>{tariff.name}</CardTitle>
           <CardDescription className="text-2xl text-burned-orange">

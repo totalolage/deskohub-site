@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { Effect, Schema as EffectSchema, ParseResult } from "effect";
+import { Data, Effect, Schema as EffectSchema, ParseResult } from "effect";
 import { z } from "zod/v4";
 import type {
   CheckoutSummaryChangedKeys,
@@ -7,18 +7,14 @@ import type {
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import { checkoutReturnStateJsonSchema } from "@/features/checkout/schemas/checkout-return-state";
-import {
-  checkoutSummarySchema,
-  nonNegativeWorkspaceMoneySchema,
-} from "@/features/checkout/schemas/checkout-summary";
+import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
+import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
 
 export const payStateSchemaVersion = 1 as const;
 export const payStateAlgorithm = "A256GCM" as const;
 export const payStateTokenQueryParam = "payState" as const;
-export const payStateOpaqueRefQueryParam = "payStateRef" as const;
 export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
-export const payStateMaxSerializedTokenSize = 3072;
 
 const payStateTokenPrefix = "dhp1" as const;
 const ivByteLength = 12;
@@ -43,7 +39,6 @@ const quoteSnapshotSchema = z.object({
     customerDiscount: z
       .object({
         source: z.literal("dotypos-discount-group"),
-        field: z.string().min(1),
         discountGroupId: z.string().min(1),
         percent: z.number().positive().max(100),
         amount: nonNegativeWorkspaceMoneySchema,
@@ -107,32 +102,13 @@ export type PayStateCryptoOptions = {
   readonly keys?: readonly PayStateKey[];
   readonly now?: () => Date;
   readonly randomBytes?: (size: number) => Buffer;
-  readonly maxSerializedTokenSize?: number;
 };
 
-export type SealPayStateForUrlResult =
-  | {
-      readonly type: "sealedPayState";
-      readonly token: string;
-      readonly queryParam: typeof payStateTokenQueryParam;
-      readonly serializedTokenSize: number;
-    }
-  | {
-      readonly type: "requiresOpaqueState";
-      readonly reason: "serialized-token-size-exceeded";
-      readonly queryParam: typeof payStateOpaqueRefQueryParam;
-      readonly serializedTokenSize: number;
-      readonly maxSerializedTokenSize: number;
-      readonly encryptedStateToken: string;
-    };
-
-export interface PayStateOpaqueStateRepository {
-  readonly create: (input: {
-    readonly encryptedStateToken: string;
-    readonly expiresAt: Date;
-    readonly orderId: string;
-  }) => Promise<{ readonly opaqueStateRef: string }>;
-}
+export type SealPayStateForUrlResult = {
+  readonly type: "sealedPayState";
+  readonly token: string;
+  readonly queryParam: typeof payStateTokenQueryParam;
+};
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
@@ -225,7 +201,7 @@ const getPayStateKeyByKid = (
   return key;
 };
 
-export class PayStateTokenError extends Error {
+export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
   readonly code:
     | "missing-secret"
     | "invalid-secret"
@@ -233,16 +209,8 @@ export class PayStateTokenError extends Error {
     | "unknown-kid"
     | "expired"
     | "unsupported-version";
-
-  constructor(input: {
-    readonly code: PayStateTokenError["code"];
-    readonly message: string;
-  }) {
-    super(input.message);
-    this.name = "PayStateTokenError";
-    this.code = input.code;
-  }
-}
+  readonly message: string;
+}> {}
 
 export const parsePayStateKey = (
   kid: string,
@@ -300,7 +268,9 @@ export const buildSignedPayState = (
       schemaVersion: input.quote.schemaVersion,
       fingerprint: input.quote.fingerprint,
       order: input.quote.order,
-      summary: JSON.parse(JSON.stringify(input.quote.summary)),
+      summary: checkoutSummarySchema.parse(
+        JSON.parse(JSON.stringify(input.quote.summary))
+      ),
       payment: input.quote.payment,
     },
     acceptedTotal: input.quote.summary.total,
@@ -526,33 +496,17 @@ export const sealPayStateForUrl = (
   options: PayStateCryptoOptions = {}
 ): SealPayStateForUrlResult => {
   const token = sealPayState(state, options);
-  const maxSerializedTokenSize =
-    options.maxSerializedTokenSize ?? payStateMaxSerializedTokenSize;
-
-  if (token.length > maxSerializedTokenSize) {
-    return {
-      type: "requiresOpaqueState",
-      reason: "serialized-token-size-exceeded",
-      queryParam: payStateOpaqueRefQueryParam,
-      serializedTokenSize: token.length,
-      maxSerializedTokenSize,
-      encryptedStateToken: token,
-    };
-  }
 
   return {
     type: "sealedPayState",
     token,
     queryParam: payStateTokenQueryParam,
-    serializedTokenSize: token.length,
   };
 };
 
 export const buildPayStateQueryParams = (result: SealPayStateForUrlResult) => {
   const searchParams = new URLSearchParams();
-  if (result.type === "sealedPayState") {
-    searchParams.set(payStateTokenQueryParam, result.token);
-  }
+  searchParams.set(payStateTokenQueryParam, result.token);
 
   return searchParams;
 };
@@ -561,25 +515,8 @@ export const buildPayUrl = (
   baseUrl: string | URL,
   result: SealPayStateForUrlResult
 ) => {
-  if (result.type === "requiresOpaqueState") return result;
-
   const url = new URL(baseUrl);
   url.searchParams.set(payStateTokenQueryParam, result.token);
 
   return { type: "payUrl" as const, url };
 };
-
-export const redactPayStateTokens = (value: string) =>
-  value
-    .replace(
-      new RegExp(`(${payStateTokenQueryParam}=)[A-Za-z0-9_.-]+`, "g"),
-      `$1[REDACTED]`
-    )
-    .replace(
-      new RegExp(`(${payStateOpaqueRefQueryParam}=)[A-Za-z0-9_-]+`, "g"),
-      `$1[REDACTED]`
-    )
-    .replace(
-      /dhp1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g,
-      "[REDACTED_PAY_STATE]"
-    );

@@ -9,15 +9,9 @@ type PublicSiteFooterProps = {
 
 export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
   const localePath = `/${locale}`;
-  const pricingPath = `${localePath}/pricing`;
+  const reservationPath = `${localePath}/checkout/order`;
   const companyExtractPath = "/official-company-extract";
   const companyAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
-  const addressLabel =
-    locale === "cs-CZ" ? "Adresa provozovny" : "Establishment address";
-  const commercialRegisterDisclosure =
-    locale === "cs-CZ"
-      ? "Údaje o zápisu v obchodním rejstříku jsou k dispozici v odkazovaném oficiálním výpisu společnosti."
-      : "Commercial register details are available in the linked official company extract.";
 
   return (
     <footer className="border-t border-white/12 bg-navy-blue text-white">
@@ -36,10 +30,10 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
                 {workspaceSiteConstants.company.identificationNumber}
               </p>
               <p>
-                {addressLabel}: {companyAddress}
+                {m.footerCompanyAddressLabel({}, { locale })}: {companyAddress}
               </p>
               <p>{m.footerVatStatus({}, { locale })}</p>
-              <p>{commercialRegisterDisclosure}</p>
+              <p>{m.footerCommercialRegisterDisclosure({}, { locale })}</p>
               <p>
                 <a
                   href={`mailto:${workspaceSiteConstants.contact.infoEmail}`}
@@ -90,7 +84,7 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
                 {m.footerCookieSettingsLink({}, { locale })}
               </Link>
               <Link
-                href={pricingPath}
+                href={reservationPath}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerPricingLink({}, { locale })}

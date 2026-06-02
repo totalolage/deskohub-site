@@ -66,7 +66,16 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             failureCode: input.failureCode,
             failedAt: new Date(),
           })
-          .pipe(Effect.ignore);
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("Paid fulfillment failure marker failed", {
+                orderId: input.orderId,
+                failureCode: input.failureCode,
+                cause,
+              })
+            ),
+            Effect.ignore
+          );
         yield* operationalEvents
           .record({
             workspaceReservationId: input.orderId,
@@ -74,7 +83,18 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             severity: "error",
             failureCode: input.failureCode,
           })
-          .pipe(Effect.ignore);
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError(
+                "Paid fulfillment failure event recording failed",
+                {
+                  input,
+                  cause,
+                }
+              )
+            ),
+            Effect.ignore
+          );
 
         return yield* Effect.fail(
           new WorkspacePaidFulfillmentError({

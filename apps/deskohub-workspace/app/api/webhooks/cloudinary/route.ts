@@ -27,6 +27,28 @@ const processWebhook = Effect.fn("processWebhook")(function* (
   });
 });
 
+const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
+  function* (request: Request) {
+    yield* Effect.log("Webhook invoked");
+
+    const webhook = yield* verifyCloudinaryWebhookRequest(request, {
+      cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+      apiKey: env.CLOUDINARY_API_KEY,
+      apiSecret: env.CLOUDINARY_API_SECRET,
+      serviceName: "deskohub-workspace",
+    });
+
+    return yield* processWebhook(webhook);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        method: "POST",
+        operation: "webhook",
+      })
+    )
+);
+
 /**
  * POST /api/webhooks/cloudinary
  *
@@ -34,27 +56,8 @@ const processWebhook = Effect.fn("processWebhook")(function* (
  */
 export async function POST(request: Request): Promise<NextResponse> {
   return runWorkspaceEffect(
-    Effect.gen(function* () {
-      yield* Effect.log("Webhook invoked");
-
-      const webhook = yield* verifyCloudinaryWebhookRequest(request, {
-        cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-        apiKey: env.CLOUDINARY_API_KEY,
-        apiSecret: env.CLOUDINARY_API_SECRET,
-        serviceName: "deskohub-workspace",
-      });
-
-      return yield* processWebhook(webhook);
-    }).pipe(
-      Effect.tapError(
-        Effect.fn(function* (error) {
-          yield* Effect.logError(error);
-        })
-      ),
-      Effect.annotateLogs({
-        method: "POST",
-        operation: "webhook",
-      }),
+    processWebhookRequest(request).pipe(
+      Effect.tapError(Effect.logError),
       Effect.catchTags({
         CloudinaryWebhookAuthError: (error) =>
           Effect.succeed(

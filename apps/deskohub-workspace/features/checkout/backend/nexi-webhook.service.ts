@@ -40,6 +40,7 @@ type NexiWebhookFailureCode =
   | "nexi_webhook_parse_failed"
   | "nexi_webhook_unknown_order"
   | "nexi_webhook_missing_security_token"
+  | "nexi_webhook_invalid_currency"
   | "nexi_webhook_verification_failed"
   | "nexi_webhook_verification_mismatch"
   | "nexi_webhook_transition_failed"
@@ -70,21 +71,21 @@ export interface NexiWebhookService {
 export const NexiWebhookService =
   Context.GenericTag<NexiWebhookService>("NexiWebhookService");
 
-const toWebhookProcessingError =
-  (input: {
-    readonly errorCode: NexiWebhookFailureCode;
-    readonly eventId?: string;
-    readonly orderId?: string;
-    readonly message: string;
-  }) =>
-  (cause: unknown) =>
-    new NexiWebhookProcessingError({ ...input, cause });
-
 const markEventFailed = (
   webhookEvents: WebhookEventRepository,
   identity: WebhookEventIdentity,
   errorCode: NexiWebhookFailureCode
-) => webhookEvents.markFailed({ ...identity, errorCode }).pipe(Effect.ignore);
+) =>
+  webhookEvents.markFailed({ ...identity, errorCode }).pipe(
+    Effect.tapError((cause) =>
+      Effect.logError("Nexi webhook failed-state marker failed", {
+        identity,
+        errorCode,
+        cause,
+      })
+    ),
+    Effect.ignore
+  );
 
 const failAfterMarkingEvent = (
   webhookEvents: WebhookEventRepository,
@@ -137,8 +138,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                 })
             )
           );
-          const operation = envelope.operation;
-          const providerOrderId = operation.orderId;
+          const providerOrderId = envelope.operation.orderId;
           const { eventId } = deriveNexiWebhookEventIdentity(envelope);
 
           const received = yield* webhookEvents
@@ -150,21 +150,26 @@ export const NexiWebhookServiceLive = Layer.effect(
             })
             .pipe(
               Effect.mapError(
-                toWebhookProcessingError({
-                  errorCode: "nexi_webhook_parse_failed",
-                  eventId,
-                  orderId: providerOrderId,
-                  message: "Nexi webhook event could not be recorded.",
-                })
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_parse_failed",
+                    eventId,
+                    orderId: providerOrderId,
+                    message: "Nexi webhook event could not be recorded.",
+                    cause,
+                  })
               )
             );
 
           if (received.status === "duplicate") {
             if (received.event.state === "processed") {
-              yield* Effect.logInfo("Processed duplicate Nexi webhook ignored", {
-                eventId,
-                providerOrderId,
-              });
+              yield* Effect.logInfo(
+                "Processed duplicate Nexi webhook ignored",
+                {
+                  eventId,
+                  providerOrderId,
+                }
+              );
               return {
                 status: "duplicate" as const,
                 eventId,
@@ -191,24 +196,29 @@ export const NexiWebhookServiceLive = Layer.effect(
               };
             }
 
-            yield* Effect.logInfo("Retrying unprocessed duplicate Nexi webhook", {
-              eventId,
-              providerOrderId,
-              previousState: received.event.state,
-            });
+            yield* Effect.logInfo(
+              "Retrying unprocessed duplicate Nexi webhook",
+              {
+                eventId,
+                providerOrderId,
+                previousState: received.event.state,
+              }
+            );
           }
 
           const attempt = yield* paymentAttempts
             .findByProviderOrderId(providerOrderId)
             .pipe(
               Effect.mapError(
-                toWebhookProcessingError({
-                  errorCode: "nexi_webhook_unknown_order",
-                  eventId,
-                  orderId: providerOrderId,
-                  message:
-                    "Payment attempt could not be loaded for Nexi webhook.",
-                })
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_unknown_order",
+                    eventId,
+                    orderId: providerOrderId,
+                    message:
+                      "Payment attempt could not be loaded for Nexi webhook.",
+                    cause,
+                  })
               )
             );
 
@@ -231,19 +241,31 @@ export const NexiWebhookServiceLive = Layer.effect(
               eventId,
               paymentAttemptId: attempt.id,
             })
-            .pipe(Effect.ignore);
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning("Nexi webhook payment attempt link failed", {
+                  eventId,
+                  paymentAttemptId: attempt.id,
+                  providerOrderId,
+                  cause,
+                })
+              ),
+              Effect.ignore
+            );
 
           const reservation = yield* reservations
             .findById(attempt.workspaceReservationId)
             .pipe(
               Effect.mapError(
-                toWebhookProcessingError({
-                  errorCode: "nexi_webhook_unknown_order",
-                  eventId,
-                  orderId: providerOrderId,
-                  message:
-                    "Workspace reservation could not be loaded for Nexi webhook.",
-                })
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_unknown_order",
+                    eventId,
+                    orderId: providerOrderId,
+                    message:
+                      "Workspace reservation could not be loaded for Nexi webhook.",
+                    cause,
+                  })
               )
             );
 
@@ -293,7 +315,25 @@ export const NexiWebhookServiceLive = Layer.effect(
 
           const currency = yield* Schema.decodeUnknown(NexiCurrencySchema)(
             attempt.currency
-          ).pipe(Effect.orDie);
+          ).pipe(
+            Effect.mapError(
+              (cause) =>
+                new NexiWebhookProcessingError({
+                  errorCode: "nexi_webhook_invalid_currency",
+                  eventId,
+                  orderId: providerOrderId,
+                  message: "Payment attempt has an invalid Nexi currency.",
+                  cause,
+                })
+            ),
+            Effect.catchAll((error) =>
+              failAfterMarkingEvent(
+                webhookEvents,
+                { type: "eventId", eventId },
+                error
+              )
+            )
+          );
           const verification = yield* nexi
             .verifyPaymentOutcome({
               orderId: attempt.providerOrderId,
@@ -304,12 +344,14 @@ export const NexiWebhookServiceLive = Layer.effect(
             })
             .pipe(
               Effect.mapError(
-                toWebhookProcessingError({
-                  errorCode: "nexi_webhook_verification_failed",
-                  eventId,
-                  orderId: providerOrderId,
-                  message: "Nexi provider verification failed.",
-                })
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_verification_failed",
+                    eventId,
+                    orderId: providerOrderId,
+                    message: "Nexi provider verification failed.",
+                    cause,
+                  })
               ),
               Effect.catchAll((error) =>
                 failAfterMarkingEvent(
@@ -343,12 +385,14 @@ export const NexiWebhookServiceLive = Layer.effect(
               .fulfillPaidOrder({ orderId: reservation.id })
               .pipe(
                 Effect.mapError(
-                  toWebhookProcessingError({
-                    errorCode: "nexi_webhook_fulfillment_failed",
-                    eventId,
-                    orderId: providerOrderId,
-                    message: "Paid workspace reservation fulfillment failed.",
-                  })
+                  (cause) =>
+                    new NexiWebhookProcessingError({
+                      errorCode: "nexi_webhook_fulfillment_failed",
+                      eventId,
+                      orderId: providerOrderId,
+                      message: "Paid workspace reservation fulfillment failed.",
+                      cause,
+                    })
                 ),
                 Effect.catchAll((error) =>
                   failAfterMarkingEvent(
@@ -378,7 +422,20 @@ export const NexiWebhookServiceLive = Layer.effect(
             });
             yield* holdCleanup
               .cancelOrderHold({ orderId: reservation.id })
-              .pipe(Effect.ignore);
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Nexi webhook terminal hold cleanup failed",
+                    {
+                      eventId,
+                      orderId: reservation.id,
+                      providerOrderId,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.ignore
+              );
           }
 
           yield* webhookEvents
@@ -389,12 +446,14 @@ export const NexiWebhookServiceLive = Layer.effect(
             })
             .pipe(
               Effect.mapError(
-                toWebhookProcessingError({
-                  errorCode: "nexi_webhook_transition_failed",
-                  eventId,
-                  orderId: providerOrderId,
-                  message: "Nexi webhook event could not be marked processed.",
-                })
+                (cause) =>
+                  new NexiWebhookProcessingError({
+                    errorCode: "nexi_webhook_transition_failed",
+                    eventId,
+                    orderId: providerOrderId,
+                    message: "Nexi webhook event could not be marked processed.",
+                    cause,
+                  })
               )
             );
 

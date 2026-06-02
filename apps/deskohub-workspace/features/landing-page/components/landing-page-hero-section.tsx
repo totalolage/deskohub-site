@@ -23,14 +23,14 @@ import { LandingPageUniverseBackgroundNoise } from "./landing-page-universe-sect
 type LandingPageHeroSectionProps = {
   locale: Locale;
   overviewSectionId: string;
-  pricingHref: string;
+  reservationHref: string;
   eventsHref: string;
 };
 
 export function LandingPageHeroSection({
   locale,
   overviewSectionId,
-  pricingHref,
+  reservationHref,
   eventsHref,
 }: LandingPageHeroSectionProps) {
   const heroHighlights: Array<{
@@ -85,7 +85,7 @@ export function LandingPageHeroSection({
             asChild
             className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
           >
-            <a href={pricingHref}>
+            <a href={reservationHref}>
               <Arrow1
                 height="100"
                 className="absolute bottom-6 right-full pr-4 text-white"

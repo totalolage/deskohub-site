@@ -39,7 +39,6 @@ CREATE TABLE "payment_attempts" (
 	"amount_value" integer NOT NULL,
 	"amount_exponent" integer NOT NULL,
 	"currency" text NOT NULL,
-	"quote_fingerprint" text NOT NULL,
 	"provider_redirect_url" text,
 	"last_webhook_event_id" text,
 	"last_provider_operation_id" text,

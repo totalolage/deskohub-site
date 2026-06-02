@@ -1,17 +1,17 @@
+import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { Effect, Array as EffectArray, Either, Layer, Schema } from "effect";
-import {
-  type CheckoutStatusReturnOutcome,
-  CheckoutStatusService,
-  CheckoutStatusServiceLiveWithDependencies,
-} from "@/features/checkout/backend/checkout-status.service";
+import { recordCheckoutProviderReturn } from "@/features/checkout/backend/checkout-status.server";
+import type { CheckoutStatusReturnOutcome } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
-import { isLocale, locales, m } from "@/features/i18n";
+import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
+  getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
+  type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
 
@@ -19,48 +19,23 @@ export const dynamic = "force-dynamic";
 
 type LocalizedCheckoutPaymentPageProps = {
   params: Promise<{ locale: string; orderId: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<SearchParamsRecord>;
 };
 
-const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
-  Layer.orDie
-);
+const decodeCheckoutPaymentParams = getParamsDecoder({
+  orderId: Schema.NonEmptyString,
+});
 
-const CheckoutPaymentSearchParamsSchema = Schema.transform(
-  Schema.Record({
-    key: Schema.String,
-    value: Schema.UndefinedOr(
-      Schema.Union(Schema.String, Schema.Array(Schema.String))
-    ),
-  }),
+const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
   Schema.Struct({
-    outcome: Schema.Literal("success", "cancelled", "unknown"),
-  }),
-  {
-    strict: true,
-    decode: (searchParams) => {
-      const outcome = EffectArray.ensure(searchParams.outcome)[0];
-      const normalizedOutcome: CheckoutStatusReturnOutcome =
-        outcome === "success" || outcome === "cancelled" ? outcome : "unknown";
-
-      return { outcome: normalizedOutcome };
-    },
-    encode: ({ outcome }) => ({ outcome }),
-  }
-);
-
-const decodeCheckoutPaymentSearchParams = Schema.decodeUnknownEither(
-  CheckoutPaymentSearchParamsSchema
+    outcome: Schema.Literal("success", "cancelled"),
+  })
 );
 
 const recordProviderReturn = (
   orderId: string,
   returnOutcome: CheckoutStatusReturnOutcome
-) =>
-  Effect.gen(function* () {
-    const service = yield* CheckoutStatusService;
-    return yield* service.recordProviderReturn({ orderId, returnOutcome });
-  }).pipe(Effect.provide(checkoutStatusLayer), runWorkspaceEffect);
+) => recordCheckoutProviderReturn({ orderId, returnOutcome });
 
 const getCheckoutStatusRedirectPath = (input: {
   readonly locale: string;
@@ -80,8 +55,8 @@ const getCheckoutStatusRedirectPath = (input: {
 export async function generateMetadata({
   params,
 }: LocalizedCheckoutPaymentPageProps): Promise<Metadata> {
-  const { locale, orderId } = await params;
-  if (!isLocale(locale) || !orderId) notFound();
+  const decodedParams = decodeCheckoutPaymentParams(await params);
+  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 
   return runWithRequestLocale(locale, () => {
     const title = m.checkoutPaymentRetryMetadataTitle({}, { locale });
@@ -126,14 +101,20 @@ export default async function LocalizedCheckoutPaymentPage({
   params,
   searchParams,
 }: LocalizedCheckoutPaymentPageProps) {
-  const { locale, orderId } = await params;
-  if (!isLocale(locale) || !orderId) notFound();
+  const decodedParams = decodeCheckoutPaymentParams(await params);
+  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  const { outcome } = Either.getOrElse(
+  const { outcome } = Option.getOrElse(
     decodeCheckoutPaymentSearchParams(await searchParams),
     () => ({ outcome: "unknown" as const })
   );
 
-  await recordProviderReturn(orderId, outcome).catch(() => undefined);
+  await recordProviderReturn(orderId, outcome).catch(async (cause) => {
+    await Effect.logError("Checkout provider return recording failed", {
+      orderId,
+      outcome,
+      cause,
+    }).pipe(runWorkspaceEffect);
+  });
   redirect(getCheckoutStatusRedirectPath({ locale, orderId, outcome }));
 }

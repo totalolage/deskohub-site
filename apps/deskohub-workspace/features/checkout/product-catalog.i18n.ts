@@ -4,113 +4,109 @@ import type {
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 
-type WorkspaceProductMessageKey = keyof typeof m;
+type WorkspaceProductMessage = (
+  inputs: Record<string, never>,
+  options: { readonly locale: Locale }
+) => string;
 type WorkspaceProductTierPerkMarker = "bullet" | "plus";
 
-type WorkspaceProductTierBulletMessageKeys = {
-  readonly main: readonly WorkspaceProductMessageKey[];
-  readonly perksLabelKey: WorkspaceProductMessageKey;
+type WorkspaceProductTierBulletMessages = {
+  readonly main: readonly WorkspaceProductMessage[];
+  readonly perksLabel: WorkspaceProductMessage;
   readonly perks: readonly {
-    readonly key: WorkspaceProductMessageKey;
+    readonly message: WorkspaceProductMessage;
     readonly highlighted?: boolean;
     readonly marker?: WorkspaceProductTierPerkMarker;
   }[];
 };
 
-export const workspaceProductTierMessageKeys = {
-  basic: {
-    titleKey: "reservationTierBasicTitle",
-    descriptionKey: "reservationTierBasicDescription",
-  },
-  plus: {
-    titleKey: "reservationTierCoworkTitle",
-    descriptionKey: "reservationTierCoworkDescription",
-  },
-  profi: {
-    titleKey: "reservationTierProfiTitle",
-    descriptionKey: "reservationTierProfiDescription",
-  },
-} as const satisfies Record<
+export const workspaceProductTierMessages: Record<
   WorkspaceProductTier,
   {
-    readonly titleKey: WorkspaceProductMessageKey;
-    readonly descriptionKey: WorkspaceProductMessageKey;
+    readonly title: WorkspaceProductMessage;
+    readonly description: WorkspaceProductMessage;
   }
->;
-
-export const workspaceProductTierBulletMessageKeys: Record<
-  WorkspaceProductTier,
-  WorkspaceProductTierBulletMessageKeys
 > = {
   basic: {
-    main: ["reservationTierBasicBulletDesk"],
-    perksLabelKey: "reservationTierPerksLabel",
+    title: m.reservationTierBasicTitle,
+    description: m.reservationTierBasicDescription,
+  },
+  plus: {
+    title: m.reservationTierCoworkTitle,
+    description: m.reservationTierCoworkDescription,
+  },
+  profi: {
+    title: m.reservationTierProfiTitle,
+    description: m.reservationTierProfiDescription,
+  },
+};
+
+export const workspaceProductTierBulletMessages: Record<
+  WorkspaceProductTier,
+  WorkspaceProductTierBulletMessages
+> = {
+  basic: {
+    main: [m.reservationTierBasicBulletDesk],
+    perksLabel: m.reservationTierPerksLabel,
     perks: [
-      { key: "reservationTierBasicPerkWifi" },
-      { key: "reservationTierBasicPerkWater" },
+      { message: m.reservationTierBasicPerkWifi },
+      { message: m.reservationTierBasicPerkWater },
     ],
   },
   plus: {
-    main: ["reservationTierCoworkBulletDesk"],
-    perksLabelKey: "reservationTierPerksLabel",
+    main: [m.reservationTierCoworkBulletDesk],
+    perksLabel: m.reservationTierPerksLabel,
     perks: [
-      { key: "reservationTierPerkAllBasic", highlighted: true },
-      { key: "reservationTierPerkFreeCoffee", marker: "plus" },
+      { message: m.reservationTierPerkAllBasic, highlighted: true },
+      { message: m.reservationTierPerkFreeCoffee, marker: "plus" },
     ],
   },
   profi: {
-    main: ["reservationTierProfiBulletDesk"],
-    perksLabelKey: "reservationTierPerksLabel",
+    main: [m.reservationTierProfiBulletDesk],
+    perksLabel: m.reservationTierPerksLabel,
     perks: [
-      { key: "reservationTierPerkAllCowork", highlighted: true },
-      { key: "reservationTierPerkProSetup", marker: "plus" },
+      { message: m.reservationTierPerkAllCowork, highlighted: true },
+      { message: m.reservationTierPerkProSetup, marker: "plus" },
     ],
   },
 };
 
-export const workspaceProductMonitorMessageKeys = {
-  "2x27-qhd": {
-    titleKey: "reservationMonitor2x27QhdTitle",
-    descriptionKey: "reservationMonitor2x27QhdDescription",
-  },
-  "2x32-qhd": {
-    titleKey: "reservationMonitor2x32QhdTitle",
-    descriptionKey: "reservationMonitor2x32QhdDescription",
-  },
-  "2x27-4k": {
-    titleKey: "reservationMonitor2x27FourKTitle",
-    descriptionKey: "reservationMonitor2x27FourKDescription",
-  },
-  "2x32-4k": {
-    titleKey: "reservationMonitor2x32FourKTitle",
-    descriptionKey: "reservationMonitor2x32FourKDescription",
-  },
-} as const satisfies Record<
+export const workspaceProductMonitorMessages: Record<
   WorkspaceProductMonitorOption,
   {
-    readonly titleKey: WorkspaceProductMessageKey;
-    readonly descriptionKey: WorkspaceProductMessageKey;
+    readonly title: WorkspaceProductMessage;
+    readonly description: WorkspaceProductMessage;
   }
->;
+> = {
+  "2x27-qhd": {
+    title: m.reservationMonitor2x27QhdTitle,
+    description: m.reservationMonitor2x27QhdDescription,
+  },
+  "2x32-qhd": {
+    title: m.reservationMonitor2x32QhdTitle,
+    description: m.reservationMonitor2x32QhdDescription,
+  },
+  "2x27-4k": {
+    title: m.reservationMonitor2x27FourKTitle,
+    description: m.reservationMonitor2x27FourKDescription,
+  },
+  "2x32-4k": {
+    title: m.reservationMonitor2x32FourKTitle,
+    description: m.reservationMonitor2x32FourKDescription,
+  },
+};
 
 export const getWorkspaceProductMessage = (
-  key: WorkspaceProductMessageKey,
+  message: WorkspaceProductMessage,
   locale: Locale
-) => {
-  const message = m[key] as (
-    inputs: object,
-    options: { readonly locale: Locale }
-  ) => string;
-
-  return message({}, { locale });
-};
+) => message({}, { locale });
 
 export const getWorkspaceProductTierTitle = (
   tier: WorkspaceProductTier,
   locale: Locale
 ) =>
   getWorkspaceProductMessage(
-    workspaceProductTierMessageKeys[tier].titleKey,
+    workspaceProductTierMessages[tier].title,
     locale
   );
 
@@ -119,6 +115,6 @@ export const getWorkspaceProductMonitorTitle = (
   locale: Locale
 ) =>
   getWorkspaceProductMessage(
-    workspaceProductMonitorMessageKeys[option].titleKey,
+    workspaceProductMonitorMessages[option].title,
     locale
   );

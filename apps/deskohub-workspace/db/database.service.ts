@@ -39,14 +39,6 @@ export interface RunDbOptions<E> {
   readonly preserveError?: (cause: unknown) => cause is E;
 }
 
-export const hasErrorTag = <Tag extends string>(tag: Tag) => {
-  return (cause: unknown): cause is { readonly _tag: Tag } =>
-    typeof cause === "object" &&
-    cause !== null &&
-    "_tag" in cause &&
-    cause._tag === tag;
-};
-
 export const mapDatabaseError =
   <E>(operation: string, options?: RunDbOptions<E>) =>
   (cause: unknown): DatabaseError | E => {

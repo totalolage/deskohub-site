@@ -1,4 +1,4 @@
-import { Context, Duration, Effect, Layer, Schedule } from "effect";
+import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
 import type {
   EmailMessage,
   EmailProviderConfig,
@@ -75,12 +75,25 @@ export class EmailConfigTag extends Context.Tag("EmailConfig")<
   EmailProviderConfig
 >() {}
 
+export const isRetryableEmailError = (
+  error: EmailServiceError | NetworkError
+) =>
+  Match.value(error).pipe(
+    Match.tag("NetworkError", () => true),
+    Match.orElse(() => false)
+  );
+
+const getEmailRetryPolicyDescription = (
+  error: EmailServiceError | NetworkError
+) =>
+  isRetryableEmailError(error)
+    ? "exponential backoff (1s base, jittered, max 3 attempts)"
+    : "no retry - not a network error";
+
 const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   Schedule.jittered,
   Schedule.intersect(Schedule.recurs(3)),
-  Schedule.whileInput<EmailServiceError | NetworkError>((error) => {
-    return error._tag === "NetworkError";
-  }),
+  Schedule.whileInput<EmailServiceError | NetworkError>(isRetryableEmailError),
   Schedule.tapOutput(([duration, attempt]) =>
     Effect.logInfo(
       `Email retry attempt #${attempt + 1} starting after ${Duration.toMillis(duration)}ms delay`,
@@ -123,15 +136,12 @@ export const EmailServiceLive = Layer.effect(
                 {
                   errorType: error._tag,
                   errorMessage: error.message,
-                  willRetry: error._tag === "NetworkError",
+                  willRetry: isRetryableEmailError(error),
                   recipient: Array.isArray(finalMessage.to)
                     ? finalMessage.to.map((r) => r.email || r)
                     : finalMessage.to.email || finalMessage.to,
                   subject: finalMessage.subject,
-                  retryPolicy:
-                    error._tag === "NetworkError"
-                      ? "exponential backoff (1s base, jittered, max 3 attempts)"
-                      : "no retry - not a network error",
+                  retryPolicy: getEmailRetryPolicyDescription(error),
                 }
               )
             ),
@@ -188,14 +198,11 @@ export const EmailServiceLive = Layer.effect(
                 {
                   errorType: error._tag,
                   errorMessage: error.message,
-                  willRetry: error._tag === "NetworkError",
+                  willRetry: isRetryableEmailError(error),
                   template: template.type,
                   recipient: to.email,
                   subject: message.subject,
-                  retryPolicy:
-                    error._tag === "NetworkError"
-                      ? "exponential backoff (1s base, jittered, max 3 attempts)"
-                      : "no retry - not a network error",
+                  retryPolicy: getEmailRetryPolicyDescription(error),
                 }
               )
             ),

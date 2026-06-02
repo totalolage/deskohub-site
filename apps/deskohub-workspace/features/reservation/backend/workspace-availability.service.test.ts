@@ -105,7 +105,9 @@ const runWithInventory = async <A>(
     ),
     Effect.provide(
       Layer.succeed(DotyposService, {
-        getTables: mock(() => Effect.succeed([...(input.tables ?? defaultTables)])),
+        getTables: mock(() =>
+          Effect.succeed([...(input.tables ?? defaultTables)])
+        ),
         listReservations: mock(() =>
           Effect.succeed([...(input.reservations ?? [])])
         ),
@@ -124,8 +126,8 @@ const getAvailability = (input: {
 }) =>
   runWithInventory(
     Effect.gen(function* () {
-      const availability = yield* Effect.promise(() =>
-        import("./workspace-availability.service")
+      const availability = yield* Effect.promise(
+        () => import("./workspace-availability.service")
       );
       const service = yield* availability.WorkspaceAvailabilityService;
       return yield* service.getAvailability({
@@ -214,8 +216,8 @@ describe("WorkspaceAvailabilityService", () => {
     const result = await runWithInventory(
       Effect.either(
         Effect.gen(function* () {
-          const availability = yield* Effect.promise(() =>
-            import("./workspace-availability.service")
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({

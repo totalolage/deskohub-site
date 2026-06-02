@@ -8,11 +8,9 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
-import {
-  formatWorkspaceMoney,
-  getWorkspaceProductByTier,
-} from "@/features/checkout/product-catalog";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 
 const allDayReservationSeats = 1;
@@ -101,7 +99,7 @@ const formatWorkspaceReservationNote = (
     `Date: ${reservation.date}`,
     `Coffee: ${reservation.coffee ? "yes" : "no"}`,
     reservation.monitorOption ? `Monitor: ${reservation.monitorOption}` : null,
-    `Expected price: ${formatWorkspaceMoney(
+    `Price: ${formatWorkspaceMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
     )}`,
@@ -109,7 +107,7 @@ const formatWorkspaceReservationNote = (
       ? `Customer discount: ${checkoutDetails.payment.customerDiscount.percent}% (${formatWorkspaceMoney(
           checkoutDetails.payment.customerDiscount.amount,
           checkoutDetails.locale
-        )}, ${checkoutDetails.payment.customerDiscount.field})`
+        )})`
       : null,
   ];
 

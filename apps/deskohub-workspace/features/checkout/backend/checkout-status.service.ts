@@ -1,5 +1,4 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -31,12 +30,12 @@ import {
 import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
-  type WorkspaceMoney,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
+import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
 
@@ -185,7 +184,19 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
         const dotyposReservation = yield* dotypos
           .getReservation(reservation.dotyposReservationId)
-          .pipe(Effect.option);
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning(
+                "Checkout status summary reservation load failed",
+                {
+                  reservationId: reservation.id,
+                  dotyposReservationId: reservation.dotyposReservationId,
+                  cause,
+                }
+              )
+            ),
+            Effect.option
+          );
 
         if (dotyposReservation._tag === "None") return undefined;
 
@@ -261,7 +272,18 @@ export const CheckoutStatusServiceLive = Layer.effect(
           if (result === "terminal") {
             yield* holdCleanup
               .cancelOrderHold({ orderId: reservation.id })
-              .pipe(Effect.ignore);
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Checkout status terminal hold cleanup failed",
+                    {
+                      orderId: reservation.id,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.ignore
+              );
           }
 
           return yield* getStatus(input);
@@ -283,10 +305,5 @@ export const CheckoutStatusServiceLiveWithDependencies =
     Layer.provide(
       Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
     ),
-    Layer.provide(
-      Layer.provide(
-        NexiService.Default,
-        Layer.provide(NexiApi.Default, NexiRuntimeConfigLive)
-      )
-    )
+    Layer.provide(NexiServiceLive)
   );
