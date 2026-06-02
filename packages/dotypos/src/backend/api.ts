@@ -13,6 +13,7 @@ import type {
   Table,
   TokenResponse,
   UpdateCustomerRequest,
+  UpdateReservationRequest,
 } from "../generated/types.gen";
 import {
   zCategory,
@@ -238,6 +239,45 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
           },
           catch: (error) =>
             transformErrorResponse(error, "Get reservation", config.apiUrl),
+        });
+      }),
+
+      cancelReservation: Effect.fn("cancelReservation")(function* (params: {
+        path: { cloudId: string; reservationId: string };
+      }) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.cancelReservation(
+              createApiOptions(token, config, client, params)
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Cancel reservation", config.apiUrl),
+        });
+      }),
+
+      updateReservation: Effect.fn("updateReservation")(function* (params: {
+        path: { cloudId: string; reservationId: string };
+        body: UpdateReservationRequest;
+      }) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.updateReservation(
+              createApiOptions(token, config, client, params)
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            return response.data;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Update reservation", config.apiUrl),
         });
       }),
 
