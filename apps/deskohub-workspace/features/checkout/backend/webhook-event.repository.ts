@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { and, eq, ne } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -17,7 +17,7 @@ export class WebhookEventStateError extends Data.TaggedError(
 
 export type InsertWebhookEventResult =
   | { readonly status: "inserted"; readonly event: WebhookEvent }
-  | { readonly status: "duplicate" };
+  | { readonly status: "duplicate"; readonly event: WebhookEvent };
 
 export type WebhookEventIdentity =
   | { readonly type: "id"; readonly id: string }
@@ -27,7 +27,8 @@ export interface WebhookEventRepository {
   readonly insertReceived: (input: {
     readonly id: string;
     readonly eventId: string;
-    readonly paymentOrderId?: string;
+    readonly paymentAttemptId?: string;
+    readonly providerOrderId?: string;
     readonly receivedAt: Date;
   }) => Effect.Effect<InsertWebhookEventResult, DatabaseError>;
   readonly markProcessed: (
@@ -40,6 +41,14 @@ export interface WebhookEventRepository {
       readonly errorCode: string;
     }
   ) => Effect.Effect<void, DatabaseError | WebhookEventStateError>;
+  readonly linkPaymentAttempt: (
+    input: WebhookEventIdentity & {
+      readonly paymentAttemptId: string;
+    }
+  ) => Effect.Effect<void, DatabaseError | WebhookEventStateError>;
+  readonly claimRetry: (
+    input: WebhookEventIdentity
+  ) => Effect.Effect<"claimed" | "processed", DatabaseError>;
 }
 
 export const WebhookEventRepository =
@@ -83,16 +92,24 @@ export const WebhookEventRepositoryLive = Layer.effect(
                 id: input.id,
                 provider: "nexi",
                 eventId: input.eventId,
-                paymentOrderId: input.paymentOrderId,
+                paymentAttemptId: input.paymentAttemptId,
+                providerOrderId: input.providerOrderId,
                 receivedAt: input.receivedAt,
-                status: "received",
+                state: "received",
               })
               .onConflictDoNothing({ target: webhookEvents.eventId })
               .returning();
 
-            return (
-              event ? { status: "inserted", event } : { status: "duplicate" }
-            ) satisfies InsertWebhookEventResult;
+            if (event) return { status: "inserted" as const, event };
+
+            const [existing] = await db
+              .select()
+              .from(webhookEvents)
+              .where(eq(webhookEvents.eventId, input.eventId))
+              .limit(1);
+
+            if (!existing) throw new Error("Webhook event duplicate not found");
+            return { status: "duplicate" as const, event: existing };
           });
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
@@ -104,7 +121,7 @@ export const WebhookEventRepositoryLive = Layer.effect(
             db
               .update(webhookEvents)
               .set({
-                status: "processed",
+                state: "processed",
                 processedAt: input.processedAt,
                 errorCode: null,
               })
@@ -121,16 +138,77 @@ export const WebhookEventRepositoryLive = Layer.effect(
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
 
+      claimRetry: Effect.fn("webhookEvents.claimRetry")(
+        function* (input) {
+          return yield* runDb("webhookEvents.claimRetry", async () => {
+            const [claimed] = await db
+              .update(webhookEvents)
+              .set({
+                state: "received",
+                processedAt: null,
+                errorCode: null,
+              })
+              .where(
+                and(
+                  eventIdentityWhere(input),
+                  ne(webhookEvents.state, "processed")
+                )
+              )
+              .returning({ id: webhookEvents.id });
+
+            if (claimed) return "claimed" as const;
+
+            const [processed] = await db
+              .select({ id: webhookEvents.id })
+              .from(webhookEvents)
+              .where(
+                and(
+                  eventIdentityWhere(input),
+                  eq(webhookEvents.state, "processed")
+                )
+              )
+              .limit(1);
+
+            return processed ? "processed" : "claimed";
+          });
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      linkPaymentAttempt: Effect.fn("webhookEvents.linkPaymentAttempt")(
+        function* (input) {
+          const updated = yield* runDb("webhookEvents.linkPaymentAttempt", () =>
+            db
+              .update(webhookEvents)
+              .set({ paymentAttemptId: input.paymentAttemptId })
+              .where(eventIdentityWhere(input))
+              .returning({ id: webhookEvents.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "webhookEvents.linkPaymentAttempt",
+            eventIdentityLabel(input)
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
       markFailed: Effect.fn("webhookEvents.markFailed")(
         function* (input) {
           const updated = yield* runDb("webhookEvents.markFailed", () =>
             db
               .update(webhookEvents)
               .set({
-                status: "failed",
+                state: "failed",
                 errorCode: input.errorCode,
               })
-              .where(eventIdentityWhere(input))
+              .where(
+                and(
+                  eventIdentityWhere(input),
+                  ne(webhookEvents.state, "processed")
+                )
+              )
               .returning({ id: webhookEvents.id })
           );
 

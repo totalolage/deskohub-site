@@ -1,14 +1,10 @@
 import { relations, sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { paymentOrders } from "./payment-orders";
+import { paymentAttempts } from "./payment-attempts";
 
-export const webhookEventStatuses = [
-  "received",
-  "processed",
-  "failed",
-] as const;
+export const webhookEventStates = ["received", "processed", "failed"] as const;
 
-export type WebhookEventStatus = (typeof webhookEventStatuses)[number];
+export type WebhookEventState = (typeof webhookEventStates)[number];
 
 export const webhookEvents = pgTable(
   "webhook_events",
@@ -16,16 +12,19 @@ export const webhookEvents = pgTable(
     id: text("id").primaryKey(),
     provider: text("provider").notNull().$type<"nexi">(),
     eventId: text("event_id").notNull().unique(),
-    paymentOrderId: text("payment_order_id").references(() => paymentOrders.id),
+    paymentAttemptId: text("payment_attempt_id").references(
+      () => paymentAttempts.id
+    ),
+    providerOrderId: text("provider_order_id"),
     receivedAt: timestamp("received_at", {
       withTimezone: true,
       mode: "date",
     }).notNull(),
-    status: text("status").notNull().$type<WebhookEventStatus>(),
     processedAt: timestamp("processed_at", {
       withTimezone: true,
       mode: "date",
     }),
+    state: text("state").notNull().$type<WebhookEventState>(),
     errorCode: text("error_code"),
     createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
       .notNull()
@@ -37,28 +36,31 @@ export const webhookEvents = pgTable(
   (t) => [
     check("webhook_events_provider_check", sql`${t.provider} in ('nexi')`),
     check(
-      "webhook_events_status_check",
-      sql`${t.status} in ('received', 'processed', 'failed')`
+      "webhook_events_state_check",
+      sql`${t.state} in ('received', 'processed', 'failed')`
     ),
     check(
       "webhook_events_processed_check",
-      sql`${t.status} <> 'processed' or ${t.processedAt} is not null`
+      sql`${t.state} <> 'processed' or ${t.processedAt} is not null`
     ),
     check(
       "webhook_events_failed_check",
-      sql`${t.status} <> 'failed' or ${t.errorCode} is not null`
+      sql`${t.state} <> 'failed' or ${t.errorCode} is not null`
     ),
-    index("webhook_events_payment_order_idx")
-      .on(t.paymentOrderId)
-      .where(sql`${t.paymentOrderId} is not null`),
-    index("webhook_events_status_received_idx").on(t.status, t.receivedAt),
+    index("webhook_events_payment_attempt_idx")
+      .on(t.paymentAttemptId)
+      .where(sql`${t.paymentAttemptId} is not null`),
+    index("webhook_events_provider_order_idx")
+      .on(t.providerOrderId)
+      .where(sql`${t.providerOrderId} is not null`),
+    index("webhook_events_state_received_idx").on(t.state, t.receivedAt),
   ]
 );
 
 export const webhookEventsRelations = relations(webhookEvents, ({ one }) => ({
-  paymentOrder: one(paymentOrders, {
-    fields: [webhookEvents.paymentOrderId],
-    references: [paymentOrders.id],
+  paymentAttempt: one(paymentAttempts, {
+    fields: [webhookEvents.paymentAttemptId],
+    references: [paymentAttempts.id],
   }),
 }));
 

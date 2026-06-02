@@ -3,16 +3,20 @@ import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
-import { PaymentOrderRepositoryLive } from "@/features/checkout/backend/payment-order.repository";
+import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
+import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLive,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { WorkspaceReservationRepositoryLive } from "@/features/checkout/backend/workspace-reservation.repository";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
 const CronReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
-  Layer.provide(PaymentOrderRepositoryLive),
+  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+  Layer.provide(OperationalEventRepositoryLive),
+  Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)),
   Layer.orDie
