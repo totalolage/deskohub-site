@@ -56,10 +56,10 @@ const statusIconWrapperVariants = cva(
 
 const formatReservationDate = (date: string, locale: Locale) => {
   try {
-    return Temporal.PlainDate.from(date).toLocaleString(locale, {
-      calendar: "iso8601",
+    return new Intl.DateTimeFormat(locale, {
       dateStyle: "full",
-    });
+      timeZone: "UTC",
+    }).format(new Date(`${date}T00:00:00.000Z`));
   } catch {
     return date;
   }
@@ -140,38 +140,35 @@ const getSummaryRows = (
   status: CheckoutStatusViewModel,
   locale: Locale
 ): SummaryRow[] => {
-  const details = status.checkoutDetails;
-  if (!details) {
+  const { summary } = status;
+  if (!summary) {
     return [];
   }
 
   const rows: Array<SummaryRow | undefined> = [
     {
       label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
-      value: getWorkspaceProductTierTitle(details.reservation.tier, locale),
+      value: getWorkspaceProductTierTitle(summary.tier, locale),
     },
     {
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
-      value: formatReservationDate(details.reservation.date, locale),
+      value: formatReservationDate(summary.date, locale),
     },
     {
       label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-      value: details.reservation.coffee
+      value: summary.coffee
         ? m.checkoutStatusYes({}, { locale })
         : m.checkoutStatusNo({}, { locale }),
     },
-    details.reservation.monitorOption
+    summary.monitorOption
       ? {
           label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
-          value: getWorkspaceProductMonitorTitle(
-            details.reservation.monitorOption,
-            locale
-          ),
+          value: getWorkspaceProductMonitorTitle(summary.monitorOption, locale),
         }
       : undefined,
     {
       label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
-      value: formatWorkspaceMoney(details.payment.expectedPrice, locale),
+      value: formatWorkspaceMoney(summary.price, locale),
     },
   ];
 
