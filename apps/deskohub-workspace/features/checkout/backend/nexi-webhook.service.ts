@@ -9,6 +9,7 @@ import {
   NexiService,
   type PaymentVerificationResult,
 } from "@deskohub/nexi";
+import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { PaymentOrder } from "@/db/schema";
@@ -22,10 +23,15 @@ import {
   PaymentOrderRepositoryLive,
 } from "@/features/checkout/backend/payment-order.repository";
 import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLive,
+} from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import {
   type WebhookEventIdentity,
   WebhookEventRepository,
   WebhookEventRepositoryLive,
 } from "@/features/checkout/backend/webhook-event.repository";
+import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 
 const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
 
@@ -282,6 +288,7 @@ const markVerifiedPayment: (input: {
   readonly eventId: string;
   readonly verification: PaymentVerificationResult;
   readonly paymentOrders: PaymentOrderRepository;
+  readonly holdCleanup: ReservationHoldCleanupService;
   readonly fulfillment: WorkspacePaidFulfillmentService;
 }) => Effect.Effect<void, NexiWebhookProcessingError> = Effect.fn(
   "nexiWebhook.markVerifiedPayment"
@@ -360,6 +367,15 @@ const markVerifiedPayment: (input: {
           })
         )
       );
+
+      yield* input.holdCleanup.cancelOrderHold({ orderId }).pipe(
+        Effect.catchAll((cause) =>
+          Effect.logError(
+            "Failed to cancel reservation hold after terminal payment",
+            { orderId, cause }
+          )
+        )
+      );
     }
 
     // Pending is a verified no-op state: Nexi can retry/send later updates,
@@ -373,6 +389,7 @@ export const NexiWebhookServiceLive = Layer.effect(
   Effect.gen(function* () {
     const webhookEvents = yield* WebhookEventRepository;
     const paymentOrders = yield* PaymentOrderRepository;
+    const holdCleanup = yield* ReservationHoldCleanupService;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
 
@@ -450,6 +467,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             eventId,
             verification,
             paymentOrders,
+            holdCleanup,
             fulfillment,
           }).pipe(
             Effect.catchAll((error) =>
@@ -489,7 +507,11 @@ export const NexiWebhookServiceLive = Layer.effect(
 export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
     Layer.provide(WebhookEventRepositoryLive),
+    Layer.provide(ReservationHoldCleanupServiceLive),
     Layer.provide(PaymentOrderRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(
+      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
+    ),
     Layer.provide(WorkspacePaidFulfillmentServiceLiveWithDependencies)
   );

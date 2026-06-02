@@ -4,6 +4,7 @@ import { ValidationError as DotyposValidationError } from "@deskohub/dotypos/err
 import { NexiApi, NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import type { PaymentOrder } from "@/db/schema";
 import { env } from "@/env";
 import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
 import {
@@ -13,8 +14,8 @@ import {
 import {
   AmbiguousDotyposCustomerError,
   getConfirmedDotyposCustomerDiscount,
-  splitCustomerName,
 } from "@/features/checkout/backend/dotypos-customer-policy";
+import { createWorkspaceDotyposReservation } from "@/features/checkout/backend/dotypos-reservation.adapter";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
 import {
   openPayState,
@@ -24,6 +25,10 @@ import {
   PaymentOrderRepository,
   PaymentOrderRepositoryLive,
 } from "@/features/checkout/backend/payment-order.repository";
+import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLive,
+} from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import {
   buildWorkspaceCheckoutQuote,
@@ -31,12 +36,22 @@ import {
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import { appendCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
+import {
+  legalEvidenceMapSchema,
+  paymentSubmitLegalEvidenceSource,
+} from "@/features/checkout/schemas/checkout-details";
+import type { LegalEvidenceMap } from "@/features/checkout/types/checkout-details";
+import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import type { Locale } from "@/features/i18n";
 import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
   WorkspaceTableUnavailableError,
 } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceTableAssignmentService,
+  WorkspaceTableAssignmentServiceLive,
+} from "@/features/checkout/backend/workspace-table-assignment.service";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
@@ -45,19 +60,6 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
-
-type CheckoutLegalEvidence = {
-  readonly acceptedAt: string;
-  readonly locale: Locale;
-  readonly source: "workspace-pay-final-submit";
-  readonly documents: ReturnType<typeof toCheckoutLegalDocuments>;
-  readonly acknowledgements: {
-    readonly termsAndConditions: true;
-    readonly operatingRules: true;
-    readonly noRefundAfterPinDelivery: true;
-    readonly privacyPolicy: true;
-  };
-};
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly message: string;
@@ -275,6 +277,9 @@ const getFreshPayUrl: (input: {
 const isActivePaymentStatus = (status: string) =>
   status === "created" || status === "payment_pending";
 
+const isUnsuccessfulTerminalPaymentStatus = (status: string) =>
+  status === "payment_failed" || status === "cancelled" || status === "expired";
+
 const moneyEquals = (
   left: WorkspaceCheckoutQuote["summary"]["total"],
   right: WorkspaceCheckoutQuote["summary"]["total"]
@@ -289,16 +294,83 @@ const getCheckoutLegalEvidence = (input: {
   readonly legalDocuments: Awaited<
     ReturnType<typeof getLegalAcceptanceSnapshot>
   >;
-}): CheckoutLegalEvidence => ({
-  acceptedAt: input.acceptedAt,
+}): LegalEvidenceMap => {
+  const documents = toCheckoutLegalDocuments(input.legalDocuments);
+
+  return legalEvidenceMapSchema.parse({
+    [documents.termsAndConditions.hash]: {
+      documentKey: "termsAndConditions",
+      documentHash: documents.termsAndConditions.hash,
+      accepted: true,
+      acceptedAt: input.acceptedAt,
+      locale: input.locale,
+      source: paymentSubmitLegalEvidenceSource,
+      document: documents.termsAndConditions,
+      acknowledgements: {
+        noRefundAfterPinDelivery: true,
+      },
+    },
+    [documents.operatingRules.hash]: {
+      documentKey: "operatingRules",
+      documentHash: documents.operatingRules.hash,
+      accepted: true,
+      acceptedAt: input.acceptedAt,
+      locale: input.locale,
+      source: paymentSubmitLegalEvidenceSource,
+      document: documents.operatingRules,
+    },
+  });
+};
+
+const buildCheckoutDetailsForPayment = (input: {
+  readonly locale: Locale;
+  readonly data: ReservationOrderData;
+  readonly quote: WorkspaceCheckoutQuote;
+  readonly legalEvidence: LegalEvidenceMap;
+}): Omit<CheckoutDetailsJson, "fulfillment"> => ({
+  schema: "workspace-checkout-details",
+  schemaVersion: 1,
   locale: input.locale,
-  source: "workspace-pay-final-submit",
-  documents: toCheckoutLegalDocuments(input.legalDocuments),
-  acknowledgements: {
-    termsAndConditions: true,
-    operatingRules: true,
-    noRefundAfterPinDelivery: true,
-    privacyPolicy: true,
+  reservation: {
+    tier: input.data.entryTier,
+    date: input.data.date,
+    coffee: input.data.coffee,
+    monitorOption: input.data.monitorOption,
+  },
+  payment: {
+    expectedPrice: input.quote.payment.expectedPrice,
+    quoteFingerprint: input.quote.fingerprint,
+    summary: input.quote.summary,
+    ...(input.quote.payment.customerDiscount && {
+      undiscountedPrice:
+        input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice,
+      customerDiscount: input.quote.payment.customerDiscount,
+    }),
+  },
+  legal: input.legalEvidence,
+});
+
+const buildCheckoutDetailsWithCurrentQuote = (input: {
+  readonly existing: PaymentOrder;
+  readonly data: ReservationOrderData;
+  readonly quote: WorkspaceCheckoutQuote;
+}): Omit<CheckoutDetailsJson, "fulfillment"> => ({
+  ...input.existing.checkoutDetails,
+  reservation: {
+    tier: input.data.entryTier,
+    date: input.data.date,
+    coffee: input.data.coffee,
+    monitorOption: input.data.monitorOption,
+  },
+  payment: {
+    expectedPrice: input.quote.payment.expectedPrice,
+    quoteFingerprint: input.quote.fingerprint,
+    summary: input.quote.summary,
+    ...(input.quote.payment.customerDiscount && {
+      undiscountedPrice:
+        input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice,
+      customerDiscount: input.quote.payment.customerDiscount,
+    }),
   },
 });
 
@@ -356,6 +428,8 @@ export const CheckoutServiceLive = Layer.effect(
     const availability = yield* WorkspaceAvailabilityService;
     const nexi = yield* NexiService;
     const paymentOrders = yield* PaymentOrderRepository;
+    const holdCleanup = yield* ReservationHoldCleanupService;
+    const tableAssignments = yield* WorkspaceTableAssignmentService;
     const checkoutReturnStateTokens = yield* CheckoutReturnStateTokenRepository;
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
@@ -468,6 +542,84 @@ export const CheckoutServiceLive = Layer.effect(
       }
     );
 
+    const ensureNewHold = Effect.fn("checkout.ensureNewHold")(
+      function* (input: {
+        readonly order: PaymentOrder | null;
+      }) {
+        const order = input.order;
+        if (!order) return null;
+
+        if (
+          order.dotyposReservationStatus === "NEW" &&
+          order.dotyposReservationId &&
+          (!order.reservationHoldExpiresAt ||
+            order.reservationHoldExpiresAt > new Date())
+        ) {
+          return order;
+        }
+
+        if (
+          order.dotyposReservationStatus === "NEW" &&
+          order.dotyposReservationId
+        ) {
+          yield* holdCleanup.cancelOrderHold({
+            orderId: order.id,
+            holdExpiredAt: new Date(),
+          });
+        }
+
+        const currentOrder = yield* paymentOrders.findById(order.id);
+        if (!currentOrder) return null;
+        if (
+          currentOrder.dotyposReservationStatus === "NEW" &&
+          currentOrder.dotyposReservationId
+        ) {
+          return currentOrder;
+        }
+        if (currentOrder.dotyposReservationStatus === "cancellation_pending") {
+          return null;
+        }
+
+        const claimed = yield* paymentOrders.claimReservationCreation(
+          currentOrder.id
+        );
+        if (!claimed) return null;
+
+        const reservation = yield* createWorkspaceDotyposReservation({
+          paymentOrderId: currentOrder.id,
+          dotyposCustomerId: currentOrder.dotyposCustomerId,
+          checkoutDetails: currentOrder.checkoutDetails,
+          status: "NEW",
+        }).pipe(
+          Effect.provideService(DotyposService, dotypos),
+          Effect.provideService(WorkspaceTableAssignmentService, tableAssignments),
+          Effect.catchAll((cause) =>
+            paymentOrders.releaseReservationCreation(currentOrder.id).pipe(
+              Effect.ignore,
+              Effect.zipRight(Effect.fail(cause))
+            )
+          )
+        );
+
+        if (!reservation.id) {
+          yield* paymentOrders.releaseReservationCreation(currentOrder.id).pipe(
+            Effect.ignore
+          );
+          return yield* new DotyposValidationError({
+            message: "Dotypos reservation was created without an ID",
+          });
+        }
+
+        yield* paymentOrders.attachNewReservationHold({
+          id: currentOrder.id,
+          dotyposReservationId: reservation.id,
+          reservationCreatedAt: new Date(),
+        });
+
+        return yield* paymentOrders.findById(currentOrder.id);
+      }
+    );
+
     return CheckoutService.of({
       createHostedPaymentCheckout: Effect.fn(
         "checkout.createHostedPaymentCheckout"
@@ -476,6 +628,9 @@ export const CheckoutServiceLive = Layer.effect(
           const correlationId = randomUUID();
 
           yield* Effect.annotateLogsScoped({ correlationId });
+          yield* holdCleanup
+            .sweepExpiredHolds({ now: new Date(), limit: 10 })
+            .pipe(Effect.ignore);
 
           if (input.legalConsent !== true) {
             return yield* Effect.fail(
@@ -506,6 +661,20 @@ export const CheckoutServiceLive = Layer.effect(
               !existingOrder.securityToken &&
               !existingOrder.lastProviderStatus
             ) {
+              if (
+                existingOrder.dotyposReservationStatus !== "NEW" ||
+                !existingOrder.dotyposReservationId
+              ) {
+                return { status: "in_progress" as const };
+              }
+
+              if (
+                existingOrder.reservationHoldExpiresAt &&
+                existingOrder.reservationHoldExpiresAt <= new Date()
+              ) {
+                return { status: "in_progress" as const };
+              }
+
               const customerDiscount =
                 yield* getConfirmedDotyposCustomerDiscount(data).pipe(
                   Effect.provideService(DotyposService, dotypos)
@@ -533,8 +702,16 @@ export const CheckoutServiceLive = Layer.effect(
                   locale,
                   reservation: data,
                   quote,
-                  orderId: randomUUID(),
+                  orderId: existingOrder.id,
                   changedKeys,
+                });
+                yield* paymentOrders.updateCheckoutDetails({
+                  id: existingOrder.id,
+                  checkoutDetails: buildCheckoutDetailsWithCurrentQuote({
+                    existing: existingOrder,
+                    data,
+                    quote,
+                  }),
                 });
 
                 return {
@@ -545,10 +722,22 @@ export const CheckoutServiceLive = Layer.effect(
                 };
               }
 
-              yield* availability.ensureAvailable({
-                date: data.date,
-                entryTier: data.entryTier,
-                monitorOption: data.monitorOption,
+              const acceptedAt = new Date().toISOString();
+              const legalDocuments =
+                yield* getCheckoutLegalAcceptanceSnapshot(locale);
+              const legalEvidence = getCheckoutLegalEvidence({
+                acceptedAt,
+                locale,
+                legalDocuments,
+              });
+              yield* paymentOrders.updateCheckoutDetails({
+                id: existingOrder.id,
+                checkoutDetails: buildCheckoutDetailsForPayment({
+                  locale,
+                  data,
+                  quote,
+                  legalEvidence,
+                }),
               });
 
               return yield* startProviderSession({
@@ -560,7 +749,7 @@ export const CheckoutServiceLive = Layer.effect(
               });
             }
 
-            if (!isActivePaymentStatus(existingOrder.paymentStatus)) {
+            if (isUnsuccessfulTerminalPaymentStatus(existingOrder.paymentStatus)) {
               const customerDiscount =
                 yield* getConfirmedDotyposCustomerDiscount(data).pipe(
                   Effect.provideService(DotyposService, dotypos)
@@ -582,7 +771,7 @@ export const CheckoutServiceLive = Layer.effect(
                   locale,
                   reservation: data,
                   quote,
-                  orderId,
+                  orderId: existingOrder.id,
                   changedKeys,
                 });
 
@@ -602,42 +791,24 @@ export const CheckoutServiceLive = Layer.effect(
                 locale,
                 legalDocuments,
               });
-              const baseCheckoutPrice =
-                quote.payment.undiscountedPrice ?? quote.payment.expectedPrice;
-              const order = yield* paymentOrders.resetUnsuccessfulForRetry({
+              const retryOrder = yield* paymentOrders.resetUnsuccessfulForRetry({
                 id: existingOrder.id,
                 correlationId,
-                checkoutDetails: {
-                  schema: "workspace-checkout-details",
-                  schemaVersion: 1,
+                checkoutDetails: buildCheckoutDetailsForPayment({
                   locale,
-                  reservation: {
-                    tier: data.entryTier,
-                    date: data.date,
-                    coffee: data.coffee,
-                    monitorOption: data.monitorOption,
-                  },
-                  payment: {
-                    expectedPrice: quote.payment.expectedPrice,
-                    quoteFingerprint: quote.fingerprint,
-                    summary: quote.summary,
-                    ...(quote.payment.customerDiscount && {
-                      undiscountedPrice: baseCheckoutPrice,
-                      customerDiscount: quote.payment.customerDiscount,
-                    }),
-                  },
-                  legal: legalEvidence,
-                },
+                  data,
+                  quote,
+                  legalEvidence,
+                }),
               });
+              const heldOrder = yield* ensureNewHold({ order: retryOrder }).pipe(
+                Effect.catchAll(() => Effect.succeed(null))
+              );
 
-              yield* availability.ensureAvailable({
-                date: data.date,
-                entryTier: data.entryTier,
-                monitorOption: data.monitorOption,
-              });
+              if (!heldOrder) return { status: "in_progress" as const };
 
               return yield* startProviderSession({
-                orderId: order.id,
+                orderId: heldOrder.id,
                 correlationId,
                 locale,
                 data,
@@ -645,134 +816,14 @@ export const CheckoutServiceLive = Layer.effect(
               });
             }
 
-            return { status: "in_progress" as const };
-          }
-
-          const customerName = splitCustomerName(data.name);
-          const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
-            data
-          ).pipe(Effect.provideService(DotyposService, dotypos));
-          const quote = buildWorkspaceCheckoutQuote(data, {
-            customerDiscount,
-            currencyOverride: getNexiCheckoutCurrencyOverride(),
-          });
-
-          if (
-            quote.fingerprint !== state.quote.fingerprint ||
-            !moneyEquals(quote.summary.total, state.acceptedTotal)
-          ) {
-            const changedKeys = getCheckoutSummaryChangedKeys(
-              state.quote.summary,
-              quote.summary
-            );
-            const freshPayUrl = yield* getFreshPayUrl({
-              locale,
-              reservation: data,
-              quote,
-              orderId,
-              changedKeys,
-            });
-
-            return {
-              status: "pricing_changed" as const,
-              changedKeys,
-              freshSummary: quote.summary,
-              freshPayUrl,
-            };
-          }
-
-          const acceptedAt = new Date().toISOString();
-          const legalDocuments =
-            yield* getCheckoutLegalAcceptanceSnapshot(locale);
-          const legalEvidence = getCheckoutLegalEvidence({
-            acceptedAt,
-            locale,
-            legalDocuments,
-          });
-
-          yield* availability.ensureAvailable({
-            date: data.date,
-            entryTier: data.entryTier,
-            monitorOption: data.monitorOption,
-          });
-
-          const customer = yield* dotypos.findOrCreateCustomer(
-            {
-              ...customerName,
-              email: data.email,
-              phone: data.phone,
-            },
-            {
-              lookupFields: ["email"],
+            if (!isActivePaymentStatus(existingOrder.paymentStatus)) {
+              return { status: "in_progress" as const };
             }
-          );
-          const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-          const baseCheckoutPrice =
-            quote.payment.undiscountedPrice ?? quote.payment.expectedPrice;
-          const checkoutPrice = quote.payment.expectedPrice;
-          const order = yield* paymentOrders.create({
-            id: orderId,
-            dotyposCustomerId,
-            correlationId,
-            checkoutDetails: {
-              schema: "workspace-checkout-details",
-              schemaVersion: 1,
-              locale,
-              reservation: {
-                tier: data.entryTier,
-                date: data.date,
-                coffee: data.coffee,
-                monitorOption: data.monitorOption,
-              },
-              payment: {
-                expectedPrice: checkoutPrice,
-                quoteFingerprint: quote.fingerprint,
-                summary: quote.summary,
-                ...(quote.payment.customerDiscount && {
-                  undiscountedPrice: baseCheckoutPrice,
-                  customerDiscount: quote.payment.customerDiscount,
-                }),
-              },
-              legal: legalEvidence,
-            },
-          });
 
-          const existingRedirectUrl =
-            order.checkoutDetails.payment.providerRedirectUrl;
-          if (
-            isActivePaymentStatus(order.paymentStatus) &&
-            order.securityToken &&
-            existingRedirectUrl
-          ) {
-            return {
-              status: "redirect" as const,
-              redirectUrl: existingRedirectUrl,
-            };
-          }
-
-          if (
-            order.paymentStatus !== "created" ||
-            order.securityToken ||
-            order.lastProviderStatus
-          ) {
             return { status: "in_progress" as const };
           }
 
-          const result = yield* startProviderSession({
-            orderId: order.id,
-            correlationId,
-            locale,
-            data,
-            total: checkoutPrice,
-          });
-
-          yield* Effect.logInfo("Workspace checkout payment pending", {
-            locale,
-            entryTier: data.entryTier,
-            orderId: order.id,
-          });
-
-          return result;
+          return { status: "in_progress" as const };
         },
         (effect, input, locale) =>
           effect.pipe(
@@ -790,6 +841,8 @@ export const CheckoutServiceLive = Layer.effect(
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(WorkspaceAvailabilityServiceLive),
+  Layer.provide(WorkspaceTableAssignmentServiceLive),
+  Layer.provide(ReservationHoldCleanupServiceLive),
   Layer.provide(CheckoutReturnStateTokenRepositoryLive),
   Layer.provide(PaymentOrderRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),

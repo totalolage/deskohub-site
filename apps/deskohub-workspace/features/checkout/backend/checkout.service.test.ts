@@ -1,26 +1,38 @@
+import "@/shared/testing/workspace-test-env";
 import { beforeAll, describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import {
   buildSignedPayState,
+  openPayState,
+  payStateTokenQueryParam,
   sealPayState,
 } from "@/features/checkout/backend/pay-state";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
+import {
+  checkoutDetailsJsonSchema,
+  legalEvidenceMapSchema,
+  paymentSubmitLegalEvidenceSource,
+} from "@/features/checkout/schemas/checkout-details";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
-import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import type { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 
 mock.module("server-only", () => ({}));
 
 type PaymentOrderRepositoryShape = {
   readonly create: ReturnType<typeof mock>;
   readonly findById: ReturnType<typeof mock>;
+  readonly mergeLegalEvidence: ReturnType<typeof mock>;
+  readonly updateCheckoutDetails: ReturnType<typeof mock>;
   readonly attachNexiSession: ReturnType<typeof mock>;
   readonly claimNexiSessionCreation: ReturnType<typeof mock>;
   readonly markPaymentPending: ReturnType<typeof mock>;
   readonly markFailed: ReturnType<typeof mock>;
   readonly resetUnsuccessfulForRetry: ReturnType<typeof mock>;
+  readonly claimReservationCreation: ReturnType<typeof mock>;
+  readonly releaseReservationCreation: ReturnType<typeof mock>;
+  readonly attachNewReservationHold: ReturnType<typeof mock>;
 };
 
 type DotyposCheckoutTestService = typeof DotyposService.Service;
@@ -38,6 +50,56 @@ const reservation = {
 };
 
 const key = Buffer.alloc(32, 7).toString("base64url");
+
+const makeLegalEvidenceMap = () => {
+  const terms = {
+    path: "/terms-and-conditions",
+    hash: "terms-hash",
+    hashAlgorithm: "sha256",
+  } as const;
+  const rules = {
+    path: "/operating-rules",
+    hash: "rules-hash",
+    hashAlgorithm: "sha256",
+  } as const;
+  const privacy = {
+    path: "/privacy-policy",
+    hash: "privacy-hash",
+    hashAlgorithm: "sha256",
+  } as const;
+  const acceptedAt = new Date("2026-06-01T10:00:00.000Z").toISOString();
+
+  return legalEvidenceMapSchema.parse({
+    [terms.hash]: {
+      documentKey: "termsAndConditions",
+      documentHash: terms.hash,
+      accepted: true,
+      acceptedAt,
+      locale: "en-US",
+      source: paymentSubmitLegalEvidenceSource,
+      document: terms,
+      acknowledgements: { noRefundAfterPinDelivery: true },
+    },
+    [rules.hash]: {
+      documentKey: "operatingRules",
+      documentHash: rules.hash,
+      accepted: true,
+      acceptedAt,
+      locale: "en-US",
+      source: paymentSubmitLegalEvidenceSource,
+      document: rules,
+    },
+    [privacy.hash]: {
+      documentKey: "privacyPolicy",
+      documentHash: privacy.hash,
+      accepted: true,
+      acceptedAt,
+      locale: "en-US",
+      source: paymentSubmitLegalEvidenceSource,
+      document: privacy,
+    },
+  });
+};
 
 const makePayStateToken = (
   quote = buildWorkspaceCheckoutQuote(reservation),
@@ -70,34 +132,7 @@ const makePaymentOrder = (overrides: Record<string, unknown> = {}) => ({
           quoteFingerprint: quote.fingerprint,
           summary: quote.summary,
         },
-        legal: {
-          acceptedAt: new Date("2026-06-01T10:00:00.000Z").toISOString(),
-          locale: "en-US",
-          source: "workspace-pay-final-submit",
-          documents: {
-            termsAndConditions: {
-              path: "/terms-and-conditions",
-              hash: "terms-hash",
-              hashAlgorithm: "sha256",
-            },
-            operatingRules: {
-              path: "/operating-rules",
-              hash: "rules-hash",
-              hashAlgorithm: "sha256",
-            },
-            privacyPolicy: {
-              path: "/privacy-policy",
-              hash: "privacy-hash",
-              hashAlgorithm: "sha256",
-            },
-          },
-          acknowledgements: {
-            termsAndConditions: true,
-            operatingRules: true,
-            noRefundAfterPinDelivery: true,
-            privacyPolicy: true,
-          },
-        },
+        legal: makeLegalEvidenceMap(),
         fulfillment: { accessCodePolicy: "workspace-static-v1" },
       } satisfies CheckoutDetailsJson),
     };
@@ -106,7 +141,8 @@ const makePaymentOrder = (overrides: Record<string, unknown> = {}) => ({
   provider: "nexi" as const,
   dotyposCustomerId: "customer",
   correlationId: "correlation",
-  dotyposReservationId: null,
+  dotyposReservationId: "reservation-new",
+  dotyposReservationStatus: "NEW" as const,
   securityToken: null,
   paymentStatus: "created" as const,
   fulfillmentStatus: "not_started" as const,
@@ -116,6 +152,12 @@ const makePaymentOrder = (overrides: Record<string, unknown> = {}) => ({
   failureCode: null,
   paidAt: null,
   reservationCreatedAt: null,
+  reservationHoldExpiresAt: new Date("2099-06-10T10:00:00.000Z"),
+  reservationHoldExpiredAt: null,
+  reservationConfirmedAt: null,
+  reservationCancelledAt: null,
+  reservationCancellationFailureCode: null,
+  reservationCancellationFailureMessage: null,
   customerAccessEmailSentAt: null,
   internalNotificationSentAt: null,
   fulfilledAt: null,
@@ -138,6 +180,18 @@ const makePaymentOrderRepository = (
     return Effect.succeed(makePaymentOrder({ id: input.id, checkoutDetails }));
   }),
   findById: mock(() => Effect.succeed(null)),
+  mergeLegalEvidence: mock(({ id }) => Effect.succeed(makePaymentOrder({ id }))),
+  updateCheckoutDetails: mock((input) =>
+    Effect.succeed(
+      makePaymentOrder({
+        id: input.id,
+        checkoutDetails: checkoutDetailsJsonSchema.parse({
+          ...input.checkoutDetails,
+          fulfillment: { accessCodePolicy: "workspace-static-v1" },
+        }),
+      })
+    )
+  ),
   attachNexiSession: mock(() => Effect.void),
   claimNexiSessionCreation: mock(() => Effect.succeed(true)),
   markPaymentPending: mock(() => Effect.void),
@@ -154,6 +208,9 @@ const makePaymentOrderRepository = (
       })
     )
   ),
+  claimReservationCreation: mock(() => Effect.succeed(true)),
+  releaseReservationCreation: mock(() => Effect.void),
+  attachNewReservationHold: mock(() => Effect.void),
   ...overrides,
 });
 
@@ -184,11 +241,28 @@ const loadBackend = async () => {
   const returnTokens = await import(
     "@/features/checkout/backend/checkout-return-state-token.repository"
   );
+  const cleanup = await import(
+    "@/features/checkout/backend/reservation-hold-cleanup.service"
+  );
+  const availability = await import(
+    "@/features/reservation/backend/workspace-availability.service"
+  );
   const workspaceQuote = await import(
     "@/features/checkout/backend/workspace-checkout-quote.server"
   );
+  const tableAssignment = await import(
+    "@/features/checkout/backend/workspace-table-assignment.service"
+  );
 
-  return { checkout, paymentOrders, returnTokens, workspaceQuote };
+  return {
+    checkout,
+    paymentOrders,
+    returnTokens,
+    cleanup,
+    availability,
+    workspaceQuote,
+    tableAssignment,
+  };
 };
 
 const makeLayer = async (input: {
@@ -242,7 +316,19 @@ const makeLayer = async (input: {
   return Layer.mergeAll(
     Layer.succeed(DotyposService, dotyposService),
     Layer.succeed(NexiService, nexiService),
-    Layer.succeed(WorkspaceAvailabilityService, availabilityService),
+    Layer.succeed(
+      backend.availability.WorkspaceAvailabilityService,
+      availabilityService
+    ),
+    Layer.succeed(backend.tableAssignment.WorkspaceTableAssignmentService, {
+      assignTableId: mock(() => Effect.succeed("workspace-table-1")),
+    }),
+    Layer.succeed(backend.cleanup.ReservationHoldCleanupService, {
+      cancelOrderHold: mock(() => Effect.void),
+      sweepExpiredHolds: mock(() =>
+        Effect.succeed({ cancelled: 0, failed: 0 })
+      ),
+    }),
     Layer.succeed(
       backend.paymentOrders.PaymentOrderRepository,
       input.paymentOrders ?? makePaymentOrderRepository()
@@ -334,10 +420,7 @@ describe("CheckoutService final submit enforcement", () => {
       })
     );
 
-    expect(result.status).toBe("pricing_changed");
-    expect(
-      result.status === "pricing_changed" && result.changedKeys.itemKeys
-    ).toContain("discount/customer-discount:dotypos-discount-group:vip");
+    expect(result).toEqual({ status: "in_progress" });
     expect(findOrCreateCustomer).not.toHaveBeenCalled();
     expect(paymentOrders.create).not.toHaveBeenCalled();
   });
@@ -399,13 +482,6 @@ describe("CheckoutService final submit enforcement", () => {
         Effect.succeed(
           makePaymentOrder({
             securityToken: "token",
-            checkoutDetails: {
-              payment: {
-                expectedPrice:
-                  buildWorkspaceCheckoutQuote(reservation).summary.total,
-                providerRedirectUrl: "https://nexi.example/stale-hosted",
-              },
-            },
             paymentStatus: "cancelled" as const,
           })
         )
@@ -425,45 +501,88 @@ describe("CheckoutService final submit enforcement", () => {
       status: "redirect",
       redirectUrl: "https://nexi.example/new-hosted",
     });
-    expect(findCustomer).toHaveBeenCalled();
+    expect(findCustomer).toHaveBeenCalledTimes(1);
     expect(findOrCreateCustomer).not.toHaveBeenCalled();
     expect(paymentOrders.create).not.toHaveBeenCalled();
-    expect(paymentOrders.resetUnsuccessfulForRetry).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "checkout-service-test-order" })
-    );
-    expect(paymentOrders.claimNexiSessionCreation).toHaveBeenCalledTimes(1);
-    expect(createHostedPaymentPage).toHaveBeenCalledWith(
-      expect.objectContaining({ orderId: "checkout-service-test-order" })
-    );
-    expect(paymentOrders.attachNexiSession).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "checkout-service-test-order" })
-    );
-    expect(paymentOrders.markPaymentPending).toHaveBeenCalledWith(
+    expect(paymentOrders.resetUnsuccessfulForRetry).toHaveBeenCalledTimes(1);
+    expect(paymentOrders.claimNexiSessionCreation).toHaveBeenCalledWith(
       "checkout-service-test-order"
     );
+    expect(createHostedPaymentPage).toHaveBeenCalledTimes(1);
+  });
+
+  test("returns pricing_changed instead of retrying terminal order at stale pricing", async () => {
+    const staleQuote = buildWorkspaceCheckoutQuote(reservation);
+    const createHostedPaymentPage = mock(() =>
+      Effect.succeed({
+        orderId: "checkout-service-test-order",
+        hostedPage: "https://nexi.example/new-hosted",
+        securityToken: "new-token",
+      })
+    );
+    const paymentOrders = makePaymentOrderRepository({
+      findById: mock(() =>
+        Effect.succeed(
+          makePaymentOrder({
+            securityToken: "token",
+            paymentStatus: "cancelled" as const,
+          })
+        )
+      ),
+    });
+
+    const result = await runCheckout(
+      { payStateToken: makePayStateToken(staleQuote), legalConsent: true },
+      await makeLayer({
+        paymentOrders,
+        dotypos: {
+          findCustomer: mock(() =>
+            Effect.succeed({
+              _tag: "Matched",
+              customer: { id: "customer" },
+              matches: [{ id: "customer" }],
+            })
+          ),
+          getCustomerDiscount: mock(() =>
+            Effect.succeed({
+              source: "dotypos-discount-group" as const,
+              field: "_discountGroupId",
+              discountGroupId: "vip",
+              percent: 10,
+            })
+          ),
+        },
+        nexi: { createHostedPaymentPage },
+      })
+    );
+
+    expect(result.status).toBe("pricing_changed");
+    expect(paymentOrders.resetUnsuccessfulForRetry).not.toHaveBeenCalled();
+    expect(paymentOrders.claimNexiSessionCreation).not.toHaveBeenCalled();
+    expect(createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
   test("rejects ambiguous Dotypos lookup before mutable side effects", async () => {
     const findOrCreateCustomer = mock(() => Effect.succeed({ id: "customer" }));
     const paymentOrders = makePaymentOrderRepository();
 
-    await expect(
-      runCheckout(
-        { payStateToken: makePayStateToken(), legalConsent: true },
-        await makeLayer({
-          paymentOrders,
-          dotypos: {
-            findCustomer: mock(() =>
-              Effect.succeed({
-                _tag: "Ambiguous",
-                matches: [{ id: "a" }, { id: "b" }],
-              })
-            ),
-            findOrCreateCustomer,
-          },
-        })
-      )
-    ).rejects.toThrow("Customer discount could not be confirmed");
+    const result = await runCheckout(
+      { payStateToken: makePayStateToken(), legalConsent: true },
+      await makeLayer({
+        paymentOrders,
+        dotypos: {
+          findCustomer: mock(() =>
+            Effect.succeed({
+              _tag: "Ambiguous",
+              matches: [{ id: "a" }, { id: "b" }],
+            })
+          ),
+          findOrCreateCustomer,
+        },
+      })
+    );
+
+    expect(result).toEqual({ status: "in_progress" });
 
     expect(findOrCreateCustomer).not.toHaveBeenCalled();
     expect(paymentOrders.create).not.toHaveBeenCalled();
@@ -545,9 +664,89 @@ describe("CheckoutService final submit enforcement", () => {
     expect(
       result.status === "pricing_changed" && result.changedKeys.itemKeys
     ).toContain("discount/customer-discount:dotypos-discount-group:vip");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const token = new URL(result.freshPayUrl, "https://deskohub.test")
+      .searchParams.get(payStateTokenQueryParam);
+    if (!token) throw new Error("Expected fresh pay URL token");
+    expect(openPayState(token).orderId).toBe("checkout-service-test-order");
     expect(paymentOrders.claimNexiSessionCreation).not.toHaveBeenCalled();
     expect(createHostedPaymentPage).not.toHaveBeenCalled();
     expect(paymentOrders.attachNexiSession).not.toHaveBeenCalled();
+  });
+
+  test("fresh pricing_changed URL resumes same created order after persisted quote refresh", async () => {
+    const staleOrder = makePaymentOrder();
+    let order = staleOrder;
+    const createHostedPaymentPage = mock(() =>
+      Effect.succeed({
+        orderId: "checkout-service-test-order",
+        hostedPage: "https://nexi.example/hosted",
+        securityToken: "token",
+      })
+    );
+    const paymentOrders = makePaymentOrderRepository({
+      findById: mock(() => Effect.succeed(order)),
+      updateCheckoutDetails: mock((input) => {
+        order = makePaymentOrder({
+          checkoutDetails: checkoutDetailsJsonSchema.parse({
+            ...input.checkoutDetails,
+            fulfillment: { accessCodePolicy: "workspace-static-v1" },
+          }),
+        });
+        return Effect.succeed(order);
+      }),
+    });
+    const layer = await makeLayer({
+      paymentOrders,
+      nexi: { createHostedPaymentPage },
+      dotypos: {
+        findCustomer: mock(() =>
+          Effect.succeed({
+            _tag: "Matched",
+            customer: { id: "customer" },
+            matches: [{ id: "customer" }],
+          })
+        ),
+        getCustomerDiscount: mock(() =>
+          Effect.succeed({
+            source: "dotypos-discount-group" as const,
+            field: "_discountGroupId",
+            discountGroupId: "vip",
+            percent: 10,
+          })
+        ),
+      },
+    });
+
+    const first = await runCheckout(
+      { payStateToken: makePayStateToken(), legalConsent: true },
+      layer
+    );
+
+    expect(first.status).toBe("pricing_changed");
+    expect(paymentOrders.updateCheckoutDetails).toHaveBeenCalledTimes(1);
+    if (first.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const token = new URL(first.freshPayUrl, "https://deskohub.test")
+      .searchParams.get(payStateTokenQueryParam);
+    if (!token) throw new Error("Expected fresh pay URL token");
+
+    const second = await runCheckout(
+      { payStateToken: token, legalConsent: true },
+      layer
+    );
+
+    expect(second).toEqual({
+      status: "redirect",
+      redirectUrl: "https://nexi.example/hosted",
+    });
+    expect(paymentOrders.claimNexiSessionCreation).toHaveBeenCalledWith(
+      "checkout-service-test-order"
+    );
+    expect(createHostedPaymentPage).toHaveBeenCalledTimes(1);
   });
 
   test("quote preview also fails closed on ambiguous Dotypos lookup", async () => {
@@ -611,7 +810,9 @@ describe("CheckoutService final submit enforcement", () => {
     const createHostedPaymentPage = mock(() =>
       Effect.fail(new Error("Nexi unavailable"))
     );
-    const paymentOrders = makePaymentOrderRepository();
+    const paymentOrders = makePaymentOrderRepository({
+      findById: mock(() => Effect.succeed(makePaymentOrder())),
+    });
 
     await expect(
       runCheckout(
@@ -735,38 +936,45 @@ describe("CheckoutService final submit enforcement", () => {
     expect(paymentOrders.markPaymentPending).not.toHaveBeenCalled();
   });
 
-  test("builds parseable payment order checkout details without message or contact fields", async () => {
-    const paymentOrders = makePaymentOrderRepository();
-
-    await runCheckout(
-      { payStateToken: makePayStateToken(), legalConsent: true },
-      await makeLayer({ paymentOrders })
-    );
-
-    expect(paymentOrders.create).toHaveBeenCalledTimes(1);
-    const checkoutDetails =
-      paymentOrders.create.mock.calls[0]?.[0].checkoutDetails;
-
-    expect(
-      checkoutDetailsJsonSchema.parse({
-        ...checkoutDetails,
-        fulfillment: { accessCodePolicy: "workspace-static-v1" },
-      })
-    ).toEqual(
-      expect.objectContaining({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
+  test("merges legal evidence and starts payment from an active early hold", async () => {
+    const createHostedPaymentPage = mock(() =>
+      Effect.succeed({
+        orderId: "checkout-service-test-order",
+        hostedPage: "https://nexi.example/hosted",
+        securityToken: "token",
       })
     );
-    expect(checkoutDetails.reservation).toEqual({
-      tier: "basic",
-      date: "2099-06-10",
-      coffee: false,
-      monitorOption: undefined,
+    const paymentOrders = makePaymentOrderRepository({
+      findById: mock(() => Effect.succeed(makePaymentOrder())),
     });
-    expect(JSON.stringify(checkoutDetails)).not.toContain("Ada Lovelace");
-    expect(JSON.stringify(checkoutDetails)).not.toContain("ada@example.com");
-    expect(JSON.stringify(checkoutDetails)).not.toContain("+420777123456");
-    expect(JSON.stringify(checkoutDetails)).not.toContain("hello");
+
+    const result = await runCheckout(
+      { payStateToken: makePayStateToken(), legalConsent: true },
+      await makeLayer({
+        paymentOrders,
+        nexi: { createHostedPaymentPage },
+      })
+    );
+
+    expect(result).toEqual({
+      status: "redirect",
+      redirectUrl: "https://nexi.example/hosted",
+    });
+    expect(paymentOrders.create).not.toHaveBeenCalled();
+    expect(paymentOrders.updateCheckoutDetails).toHaveBeenCalledTimes(1);
+    expect(paymentOrders.claimNexiSessionCreation).toHaveBeenCalledWith(
+      "checkout-service-test-order"
+    );
+    expect(createHostedPaymentPage).toHaveBeenCalledTimes(1);
+    expect(paymentOrders.attachNexiSession).toHaveBeenCalledWith({
+      id: "checkout-service-test-order",
+      securityToken: "token",
+      providerOperationId: "checkout-service-test-order",
+      providerStatus: "hpp_created",
+      providerRedirectUrl: "https://nexi.example/hosted",
+    });
+    expect(paymentOrders.markPaymentPending).toHaveBeenCalledWith(
+      "checkout-service-test-order"
+    );
   });
 });

@@ -1,4 +1,4 @@
-import { and, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -7,7 +7,11 @@ import {
   WorkspaceDatabase,
 } from "@/db/database.service";
 import { type PaymentOrder, paymentOrders } from "@/db/schema";
-import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
+import {
+  checkoutDetailsJsonSchema,
+  mergeLegalEvidenceMaps,
+} from "@/features/checkout/schemas/checkout-details";
+import type { LegalEvidenceMap } from "@/features/checkout/types/checkout-details";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 
 type PaymentOrderCheckoutDetailsCreateInput = Omit<
@@ -45,7 +49,20 @@ export interface PaymentOrderRepository {
     readonly dotyposCustomerId: string;
     readonly correlationId: string;
     readonly checkoutDetails: PaymentOrderCheckoutDetailsCreateInput;
+    readonly reservationSubmitKey?: string;
+    readonly reservationHoldExpiresAt?: Date;
   }) => Effect.Effect<PaymentOrder, DatabaseError>;
+  readonly findByReservationSubmitKey: (
+    reservationSubmitKey: string
+  ) => Effect.Effect<PaymentOrder | null, DatabaseError>;
+  readonly mergeLegalEvidence: (input: {
+    readonly id: string;
+    readonly legalEvidence: LegalEvidenceMap;
+  }) => Effect.Effect<PaymentOrder, DatabaseError | PaymentOrderStateError>;
+  readonly updateCheckoutDetails: (input: {
+    readonly id: string;
+    readonly checkoutDetails: PaymentOrderCheckoutDetailsCreateInput;
+  }) => Effect.Effect<PaymentOrder, DatabaseError | PaymentOrderStateError>;
   readonly deleteUnassociatedCreated: (
     id: string
   ) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
@@ -106,6 +123,46 @@ export interface PaymentOrderRepository {
     readonly dotyposReservationId: string;
     readonly reservationCreatedAt: Date;
   }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly claimReservationCreation: (
+    id: string
+  ) => Effect.Effect<boolean, DatabaseError>;
+  readonly releaseReservationCreation: (
+    id: string
+  ) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly attachNewReservationHold: (input: {
+    readonly id: string;
+    readonly dotyposReservationId: string;
+    readonly reservationCreatedAt: Date;
+    readonly reservationHoldExpiresAt?: Date;
+  }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly markReservationAttachCancellationPending: (input: {
+    readonly id: string;
+    readonly dotyposReservationId: string;
+    readonly reservationCreatedAt: Date;
+    readonly failureCode: string;
+    readonly failureMessage: string;
+  }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly claimReservationCancellation: (
+    id: string
+  ) => Effect.Effect<PaymentOrder | null, DatabaseError>;
+  readonly markReservationCancelled: (input: {
+    readonly id: string;
+    readonly cancelledAt: Date;
+    readonly holdExpiredAt?: Date;
+  }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly markReservationCancellationFailed: (input: {
+    readonly id: string;
+    readonly failureCode: string;
+    readonly failureMessage: string;
+  }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly markReservationConfirmed: (input: {
+    readonly id: string;
+    readonly confirmedAt: Date;
+  }) => Effect.Effect<void, DatabaseError | PaymentOrderStateError>;
+  readonly selectExpiredReservationHolds: (input: {
+    readonly now: Date;
+    readonly limit: number;
+  }) => Effect.Effect<readonly PaymentOrder[], DatabaseError>;
   readonly claimPaidFulfillment: (
     id: string
   ) => Effect.Effect<PaymentOrder | null, DatabaseError>;
@@ -194,6 +251,28 @@ export const PaymentOrderRepositoryLive = Layer.effect(
       (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
     );
 
+    const findByReservationSubmitKey: (
+      reservationSubmitKey: string
+    ) => Effect.Effect<PaymentOrder | null, DatabaseError> = Effect.fn(
+      "paymentOrders.findByReservationSubmitKey"
+    )(
+      function* (reservationSubmitKey) {
+        return yield* runDb(
+          "paymentOrders.findByReservationSubmitKey",
+          async () => {
+            const [order] = await db
+              .select()
+              .from(paymentOrders)
+              .where(eq(paymentOrders.reservationSubmitKey, reservationSubmitKey))
+              .limit(1);
+            return order ?? null;
+          }
+        );
+      },
+      (effect, reservationSubmitKey) =>
+        effect.pipe(Effect.annotateLogs({ reservationSubmitKey }))
+    );
+
     const markUnsuccessfulTerminal: (
       input: PaymentTerminalInput
     ) => Effect.Effect<void, DatabaseError | PaymentOrderStateError> =
@@ -280,6 +359,8 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 checkoutDetails,
                 paymentStatus: "created",
                 fulfillmentStatus: "not_started",
+                reservationSubmitKey: input.reservationSubmitKey,
+                reservationHoldExpiresAt: input.reservationHoldExpiresAt,
               })
               .onConflictDoNothing()
               .returning();
@@ -288,12 +369,20 @@ export const PaymentOrderRepositoryLive = Layer.effect(
               const [existingOrder] = await db
                 .select()
                 .from(paymentOrders)
-                .where(eq(paymentOrders.id, input.id))
+                .where(
+                  input.reservationSubmitKey
+                    ? or(
+                        eq(paymentOrders.id, input.id),
+                        eq(
+                          paymentOrders.reservationSubmitKey,
+                          input.reservationSubmitKey
+                        )
+                      )
+                    : eq(paymentOrders.id, input.id)
+                )
                 .limit(1);
 
-              if (!existingOrder) {
-                throw new Error("Payment order insert returned no row");
-              }
+              if (!existingOrder) throw new Error("Payment order insert returned no row");
 
               return existingOrder;
             }
@@ -302,6 +391,107 @@ export const PaymentOrderRepositoryLive = Layer.effect(
           });
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      findByReservationSubmitKey,
+
+      mergeLegalEvidence: Effect.fn("paymentOrders.mergeLegalEvidence")(
+        function* (input) {
+          return yield* runDb<PaymentOrder, PaymentOrderStateError>(
+            "paymentOrders.mergeLegalEvidence",
+            async () => {
+              return await db.transaction(async (tx) => {
+                const [order] = await tx
+                  .select()
+                  .from(paymentOrders)
+                  .where(eq(paymentOrders.id, input.id))
+                  .limit(1)
+                  .for("update");
+
+                if (!order) {
+                  throw new PaymentOrderStateError({
+                    operation: "paymentOrders.mergeLegalEvidence",
+                    orderId: input.id,
+                    message: "Payment order was not found",
+                  });
+                }
+
+                const mergedLegal = mergeLegalEvidenceMaps({
+                  existing: order.checkoutDetails.legal,
+                  incoming: input.legalEvidence,
+                });
+                const checkoutDetails = checkoutDetailsJsonSchema.parse({
+                  ...order.checkoutDetails,
+                  legal: mergedLegal,
+                });
+                const [updated] = await tx
+                  .update(paymentOrders)
+                  .set({ checkoutDetails })
+                  .where(eq(paymentOrders.id, input.id))
+                  .returning();
+
+                if (!updated) {
+                  throw new PaymentOrderStateError({
+                    operation: "paymentOrders.mergeLegalEvidence",
+                    orderId: input.id,
+                    message: "Payment order legal evidence was not updated",
+                  });
+                }
+
+                return updated;
+              });
+            },
+            { preserveError: isPaymentOrderStateError }
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs({ id: input.id }))
+      ),
+
+      updateCheckoutDetails: Effect.fn("paymentOrders.updateCheckoutDetails")(
+        function* (input) {
+          const checkoutDetails = checkoutDetailsJsonSchema.parse({
+            ...input.checkoutDetails,
+            fulfillment: {
+              accessCodePolicy: workspacePaymentOrderAccessCodePolicy,
+            },
+          });
+          const updated = yield* runDb(
+            "paymentOrders.updateCheckoutDetails",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({ checkoutDetails })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    inArray(paymentOrders.paymentStatus, [
+                      "created",
+                      "payment_failed",
+                      "cancelled",
+                      "expired",
+                    ]),
+                    eq(paymentOrders.fulfillmentStatus, "not_started"),
+                    isNull(paymentOrders.securityToken)
+                  )
+                )
+                .returning()
+          );
+
+          const [order] = updated;
+          if (!order) {
+            return yield* Effect.fail(
+              new PaymentOrderStateError({
+                operation: "paymentOrders.updateCheckoutDetails",
+                orderId: input.id,
+                message:
+                  "Only unstarted, unfulfilled orders can refresh checkout details",
+              })
+            );
+          }
+
+          return order;
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs({ id: input.id }))
       ),
 
       deleteUnassociatedCreated: Effect.fn(
@@ -589,6 +779,7 @@ export const PaymentOrderRepositoryLive = Layer.effect(
                 .update(paymentOrders)
                 .set({
                   dotyposReservationId: input.dotyposReservationId,
+                  dotyposReservationStatus: "CONFIRMED",
                   reservationCreatedAt: input.reservationCreatedAt,
                 })
                 .where(
@@ -613,6 +804,348 @@ export const PaymentOrderRepositoryLive = Layer.effect(
             "paymentOrders.attachDotyposReservation",
             input.id,
             "Reservation can only be attached to paid processing orders and cannot overwrite a different reservation"
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      claimReservationCreation: Effect.fn(
+        "paymentOrders.claimReservationCreation"
+      )(
+        function* (id) {
+          const updated = yield* runDb(
+            "paymentOrders.claimReservationCreation",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  dotyposReservationId: null,
+                  dotyposReservationStatus: "creating",
+                  reservationCreatedAt: null,
+                  reservationCancelledAt: null,
+                  reservationCancellationFailureCode: null,
+                  reservationCancellationFailureMessage: null,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, id),
+                    eq(paymentOrders.paymentStatus, "created"),
+                    or(
+                      and(
+                        eq(paymentOrders.dotyposReservationStatus, "none"),
+                        isNull(paymentOrders.dotyposReservationId)
+                      ),
+                      eq(paymentOrders.dotyposReservationStatus, "CANCELLED")
+                    )
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          return updated.length > 0;
+        },
+        (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
+      ),
+
+      releaseReservationCreation: Effect.fn(
+        "paymentOrders.releaseReservationCreation"
+      )(
+        function* (id) {
+          const updated = yield* runDb(
+            "paymentOrders.releaseReservationCreation",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({ dotyposReservationStatus: "none" })
+                .where(
+                  and(
+                    eq(paymentOrders.id, id),
+                    eq(paymentOrders.paymentStatus, "created"),
+                    eq(paymentOrders.dotyposReservationStatus, "creating"),
+                    isNull(paymentOrders.dotyposReservationId)
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "paymentOrders.releaseReservationCreation",
+            id,
+            "Only creating orders without a reservation can release creation"
+          );
+        },
+        (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
+      ),
+
+      attachNewReservationHold: Effect.fn(
+        "paymentOrders.attachNewReservationHold"
+      )(
+        function* (input) {
+          const updated = yield* runDb(
+            "paymentOrders.attachNewReservationHold",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  dotyposReservationId: input.dotyposReservationId,
+                  dotyposReservationStatus: "NEW",
+                  reservationCreatedAt: input.reservationCreatedAt,
+                  ...(input.reservationHoldExpiresAt && {
+                    reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+                  }),
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    eq(paymentOrders.paymentStatus, "created"),
+                    eq(paymentOrders.dotyposReservationStatus, "creating"),
+                    or(
+                      isNull(paymentOrders.dotyposReservationId),
+                      eq(
+                        paymentOrders.dotyposReservationId,
+                        input.dotyposReservationId
+                      )
+                    )
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "paymentOrders.attachNewReservationHold",
+            input.id,
+            "Only creating created orders can attach a NEW reservation hold"
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      markReservationAttachCancellationPending: Effect.fn(
+        "paymentOrders.markReservationAttachCancellationPending"
+      )(
+        function* (input) {
+          const updated = yield* runDb(
+            "paymentOrders.markReservationAttachCancellationPending",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  dotyposReservationId: input.dotyposReservationId,
+                  dotyposReservationStatus: "cancellation_pending",
+                  reservationCreatedAt: input.reservationCreatedAt,
+                  reservationCancellationFailureCode: input.failureCode,
+                  reservationCancellationFailureMessage: input.failureMessage,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    eq(paymentOrders.paymentStatus, "created"),
+                    eq(paymentOrders.dotyposReservationStatus, "creating"),
+                    or(
+                      isNull(paymentOrders.dotyposReservationId),
+                      eq(
+                        paymentOrders.dotyposReservationId,
+                        input.dotyposReservationId
+                      )
+                    )
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "paymentOrders.markReservationAttachCancellationPending",
+            input.id,
+            "Only creating created orders can attach a hold for cancellation"
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      claimReservationCancellation: Effect.fn(
+        "paymentOrders.claimReservationCancellation"
+      )(
+        function* (id) {
+          return yield* runDb(
+            "paymentOrders.claimReservationCancellation",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  dotyposReservationStatus: "cancellation_pending",
+                  reservationCancellationFailureCode: null,
+                  reservationCancellationFailureMessage: null,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, id),
+                    inArray(paymentOrders.paymentStatus, [
+                      "created",
+                      "payment_pending",
+                    ]),
+                    inArray(paymentOrders.dotyposReservationStatus, [
+                      "NEW",
+                      "cancellation_pending",
+                    ]),
+                    isNotNull(paymentOrders.dotyposReservationId)
+                  )
+                )
+                .returning()
+                .then((rows) => rows[0] ?? null)
+          );
+        },
+        (effect, orderId) => effect.pipe(Effect.annotateLogs({ orderId }))
+      ),
+
+      markReservationCancelled: Effect.fn(
+        "paymentOrders.markReservationCancelled"
+      )(
+        function* (input) {
+          const updated = yield* runDb(
+            "paymentOrders.markReservationCancelled",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  dotyposReservationStatus: "CANCELLED",
+                  reservationCancelledAt: input.cancelledAt,
+                  reservationHoldExpiredAt: input.holdExpiredAt,
+                  reservationCancellationFailureCode: null,
+                  reservationCancellationFailureMessage: null,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    inArray(paymentOrders.paymentStatus, [
+                      "created",
+                      "payment_pending",
+                    ]),
+                    eq(
+                      paymentOrders.dotyposReservationStatus,
+                      "cancellation_pending"
+                    )
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "paymentOrders.markReservationCancelled",
+            input.id,
+            "Only cancellation-pending unpaid reservations can be marked cancelled"
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      markReservationCancellationFailed: Effect.fn(
+        "paymentOrders.markReservationCancellationFailed"
+      )(
+        function* (input) {
+          const updated = yield* runDb(
+            "paymentOrders.markReservationCancellationFailed",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  reservationCancellationFailureCode: input.failureCode,
+                  reservationCancellationFailureMessage: input.failureMessage,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    eq(
+                      paymentOrders.dotyposReservationStatus,
+                      "cancellation_pending"
+                    )
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "paymentOrders.markReservationCancellationFailed",
+            input.id,
+            "Only cancellation-pending reservations can record cancellation failure"
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      markReservationConfirmed: Effect.fn(
+        "paymentOrders.markReservationConfirmed"
+      )(
+        function* (input) {
+          const updated = yield* runDb(
+            "paymentOrders.markReservationConfirmed",
+            () =>
+              db
+                .update(paymentOrders)
+                .set({
+                  dotyposReservationStatus: "CONFIRMED",
+                  reservationConfirmedAt: input.confirmedAt,
+                })
+                .where(
+                  and(
+                    eq(paymentOrders.id, input.id),
+                    eq(paymentOrders.paymentStatus, "paid"),
+                    inArray(paymentOrders.dotyposReservationStatus, [
+                      "NEW",
+                      "CONFIRMED",
+                    ]),
+                    isNotNull(paymentOrders.dotyposReservationId)
+                  )
+                )
+                .returning({ id: paymentOrders.id })
+          );
+
+          yield* ensureUpdated(
+            updated,
+            "paymentOrders.markReservationConfirmed",
+            input.id,
+            "Only paid orders with an active reservation can be confirmed"
+          );
+        },
+        (effect, input) => effect.pipe(Effect.annotateLogs(input))
+      ),
+
+      selectExpiredReservationHolds: Effect.fn(
+        "paymentOrders.selectExpiredReservationHolds"
+      )(
+        function* (input) {
+          return yield* runDb("paymentOrders.selectExpiredReservationHolds", () =>
+            db
+              .select()
+              .from(paymentOrders)
+              .where(
+                and(
+                  inArray(paymentOrders.dotyposReservationStatus, [
+                    "NEW",
+                    "cancellation_pending",
+                  ]),
+                  inArray(paymentOrders.paymentStatus, [
+                    "created",
+                    "payment_pending",
+                  ]),
+                  or(
+                    and(
+                      isNotNull(paymentOrders.reservationHoldExpiresAt),
+                      lte(paymentOrders.reservationHoldExpiresAt, input.now)
+                    ),
+                    eq(
+                      paymentOrders.dotyposReservationStatus,
+                      "cancellation_pending"
+                    )
+                  )
+                )
+              )
+              .orderBy(asc(paymentOrders.reservationHoldExpiresAt))
+              .limit(input.limit)
           );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
