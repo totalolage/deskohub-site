@@ -1,4 +1,4 @@
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout-status.service";
@@ -27,15 +27,11 @@ type LocalizedCheckoutOrderPageProps = {
 };
 
 const loadProviderReturnStatus = async (orderId: string) => {
-  const [{ WorkspaceDatabaseLive }, checkoutStatus] = await Promise.all([
-    import("@/db/database.service"),
+  const [checkoutStatus] = await Promise.all([
     import("@/features/checkout/backend/checkout-status.service"),
   ]);
   const checkoutStatusLayer =
-    checkoutStatus.CheckoutStatusServiceLiveWithDependencies.pipe(
-      Layer.provide(WorkspaceDatabaseLive),
-      Layer.orDie
-    );
+    checkoutStatus.CheckoutStatusServiceLiveWithDependencies;
 
   return Effect.gen(function* () {
     const service = yield* checkoutStatus.CheckoutStatusService;

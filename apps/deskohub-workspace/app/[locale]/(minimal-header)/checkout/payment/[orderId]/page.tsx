@@ -48,7 +48,6 @@ const checkoutReturnStateTokenLayer =
   );
 
 const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
-  Layer.provide(WorkspaceDatabaseLive),
   Layer.orDie
 );
 
