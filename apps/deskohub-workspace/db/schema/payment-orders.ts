@@ -6,6 +6,7 @@ import {
   pgTable,
   text,
   timestamp,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 
@@ -28,14 +29,31 @@ export const fulfillmentStatuses = [
 export type PaymentStatus = (typeof paymentStatuses)[number];
 export type FulfillmentStatus = (typeof fulfillmentStatuses)[number];
 
+export const dotyposReservationStatuses = [
+  "none",
+  "creating",
+  "NEW",
+  "cancellation_pending",
+  "CANCELLED",
+  "CONFIRMED",
+] as const;
+
+export type DotyposReservationStatus =
+  (typeof dotyposReservationStatuses)[number];
+
 export const paymentOrders = pgTable(
   "payment_orders",
   {
     id: text("id").primaryKey(),
     provider: text("provider").notNull().$type<"nexi">(),
     dotyposCustomerId: text("dotypos_customer_id").notNull(),
+    reservationSubmitKey: text("reservation_submit_key"),
     correlationId: text("correlation_id").notNull().unique(),
     dotyposReservationId: text("dotypos_reservation_id"),
+    dotyposReservationStatus: text("dotypos_reservation_status")
+      .notNull()
+      .$type<DotyposReservationStatus>()
+      .default("none"),
     securityToken: text("security_token"),
     checkoutDetails: jsonb("checkout_details")
       .notNull()
@@ -53,6 +71,28 @@ export const paymentOrders = pgTable(
       withTimezone: true,
       mode: "date",
     }),
+    reservationHoldExpiresAt: timestamp("reservation_hold_expires_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    reservationHoldExpiredAt: timestamp("reservation_hold_expired_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    reservationConfirmedAt: timestamp("reservation_confirmed_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    reservationCancelledAt: timestamp("reservation_cancelled_at", {
+      withTimezone: true,
+      mode: "date",
+    }),
+    reservationCancellationFailureCode: text(
+      "reservation_cancellation_failure_code"
+    ),
+    reservationCancellationFailureMessage: text(
+      "reservation_cancellation_failure_message"
+    ),
     customerAccessEmailSentAt: timestamp("customer_access_email_sent_at", {
       withTimezone: true,
       mode: "date",
@@ -88,6 +128,10 @@ export const paymentOrders = pgTable(
       sql`${t.fulfillmentStatus} in ('not_started', 'processing', 'fulfilled', 'failed')`
     ),
     check(
+      "payment_orders_dotypos_reservation_status_check",
+      sql`${t.dotyposReservationStatus} in ('none', 'creating', 'NEW', 'cancellation_pending', 'CANCELLED', 'CONFIRMED')`
+    ),
+    check(
       "payment_orders_paid_at_check",
       sql`${t.paymentStatus} <> 'paid' or ${t.paidAt} is not null`
     ),
@@ -104,6 +148,14 @@ export const paymentOrders = pgTable(
       t.fulfillmentStatus
     ),
     index("payment_orders_dotypos_customer_idx").on(t.dotyposCustomerId),
+    uniqueIndex("payment_orders_reservation_submit_key_unique_idx")
+      .on(t.reservationSubmitKey)
+      .where(sql`${t.reservationSubmitKey} is not null`),
+    index("payment_orders_expired_reservation_holds_idx")
+      .on(t.reservationHoldExpiresAt)
+      .where(
+        sql`${t.dotyposReservationStatus} = 'NEW' and ${t.reservationHoldExpiresAt} is not null`
+      ),
     index("payment_orders_dotypos_reservation_idx")
       .on(t.dotyposReservationId)
       .where(sql`${t.dotyposReservationId} is not null`),

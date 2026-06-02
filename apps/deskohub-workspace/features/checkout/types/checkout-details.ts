@@ -5,12 +5,28 @@ import type {
   WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import type { Locale } from "@/features/i18n";
+import type { legalDocumentKeys } from "../schemas/checkout-details";
+
+export type LegalDocumentKey = (typeof legalDocumentKeys)[number];
 
 export type LegalDocumentHash = {
   readonly path: string;
   readonly hash: string;
   readonly hashAlgorithm: "sha256";
 };
+
+export type LegalEvidence = {
+  readonly documentKey: LegalDocumentKey;
+  readonly documentHash: string;
+  readonly accepted: boolean;
+  readonly acceptedAt: string;
+  readonly locale: Locale;
+  readonly source: string;
+  readonly document: LegalDocumentHash;
+  readonly acknowledgements?: Record<string, boolean>;
+};
+
+export type LegalEvidenceMap = Record<string, LegalEvidence>;
 
 export type CheckoutDetailsJson = {
   readonly schema: "workspace-checkout-details";
@@ -39,22 +55,7 @@ export type CheckoutDetailsJson = {
       readonly amount: WorkspaceMoney;
     };
   };
-  readonly legal: {
-    readonly acceptedAt: string;
-    readonly locale: Locale;
-    readonly source: "workspace-pay-final-submit";
-    readonly documents: {
-      readonly termsAndConditions: LegalDocumentHash;
-      readonly operatingRules: LegalDocumentHash;
-      readonly privacyPolicy: LegalDocumentHash;
-    };
-    readonly acknowledgements: {
-      readonly termsAndConditions: boolean;
-      readonly operatingRules: boolean;
-      readonly noRefundAfterPinDelivery: boolean;
-      readonly privacyPolicy: boolean;
-    };
-  };
+  readonly legal: LegalEvidenceMap;
   readonly fulfillment: {
     readonly accessCodePolicy: "workspace-static-v1";
   };
