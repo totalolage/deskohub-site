@@ -5,15 +5,21 @@ import {
   NexiCurrencySchema,
   NexiService,
 } from "@deskohub/nexi";
+import { DotyposService } from "@deskohub/dotypos";
 import { Context, Effect, Layer, Schema } from "effect";
-import type { DatabaseError } from "@/db/database.service";
+import { type DatabaseError, WorkspaceDatabaseLive } from "@/db/database.service";
 import type { FulfillmentStatus, PaymentStatus } from "@/db/schema";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
 import {
   PaymentOrderRepository,
   PaymentOrderRepositoryLive,
 } from "@/features/checkout/backend/payment-order.repository";
+import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLive,
+} from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
@@ -89,6 +95,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
   CheckoutStatusService,
   Effect.gen(function* () {
     const paymentOrders = yield* PaymentOrderRepository;
+    const holdCleanup = yield* ReservationHoldCleanupService;
     const nexi = yield* NexiService;
 
     const getStatus = Effect.fn("checkoutStatus.getStatus")(
@@ -175,6 +182,9 @@ export const CheckoutStatusServiceLive = Layer.effect(
                 providerOperationId,
                 providerStatus,
               }).pipe(Effect.orElseSucceed(() => undefined));
+              yield* holdCleanup
+                .cancelOrderHold({ orderId: order.id })
+                .pipe(Effect.ignore);
             }
           }
 
@@ -188,7 +198,12 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
 export const CheckoutStatusServiceLiveWithDependencies =
   CheckoutStatusServiceLive.pipe(
+    Layer.provide(ReservationHoldCleanupServiceLive),
     Layer.provide(PaymentOrderRepositoryLive),
+    Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(
+      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
+    ),
     Layer.provide(
       Layer.provide(
         NexiService.Default,

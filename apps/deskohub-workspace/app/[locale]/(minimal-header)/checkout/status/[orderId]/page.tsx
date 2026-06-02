@@ -1,7 +1,6 @@
 import { Effect, Array as EffectArray, Either, Layer, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
@@ -32,7 +31,6 @@ type LocalizedCheckoutStatusPageProps = {
 };
 
 const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
-  Layer.provide(WorkspaceDatabaseLive),
   Layer.orDie
 );
 
