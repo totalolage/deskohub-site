@@ -16,6 +16,7 @@ export const workspaceServerEnvSchema = z.object({
   EMAIL_API_KEY: z.string().optional(),
   CHECKOUT_PAY_STATE_KEYS: z.string().min(1),
   CHECKOUT_RETURN_STATE_TOKEN_SECRET: z.string().min(32).optional(),
+  CRON_SECRET: z.string().min(1).optional(),
   NEXI_API_KEY: z.string().min(1),
   NEXI_API_ORIGIN: z.url(),
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: z.enum(["EUR"]).optional(),

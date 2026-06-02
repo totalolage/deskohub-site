@@ -1,13 +1,10 @@
+import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
-import {
-  WorkspaceAvailabilityService,
-  WorkspaceAvailabilityServiceLive,
-  WorkspaceTableUnavailableError,
-} from "./workspace-availability.service";
+import type { WorkspaceAvailabilityService } from "./workspace-availability.service";
 
 const testDate = "2099-06-10";
 const testStart = "2099-06-09T22:00:00Z";
@@ -84,15 +81,28 @@ const defaultTables = [
   }),
 ] satisfies readonly Table[];
 
-const runWithInventory = <A>(
+const runWithInventory = async <A>(
   effect: Effect.Effect<A, unknown, WorkspaceAvailabilityService>,
   input: {
     readonly tables?: readonly Table[];
     readonly reservations?: readonly Reservation[];
   } = {}
-) =>
-  effect.pipe(
-    Effect.provide(WorkspaceAvailabilityServiceLive),
+) => {
+  const availability = await import("./workspace-availability.service");
+  const cleanup = await import(
+    "@/features/checkout/backend/reservation-hold-cleanup.service"
+  );
+
+  return effect.pipe(
+    Effect.provide(availability.WorkspaceAvailabilityServiceLive),
+    Effect.provide(
+      Layer.succeed(cleanup.ReservationHoldCleanupService, {
+        cancelOrderHold: mock(() => Effect.void),
+        sweepExpiredHolds: mock(() =>
+          Effect.succeed({ cancelled: 0, failed: 0 })
+        ),
+      })
+    ),
     Effect.provide(
       Layer.succeed(DotyposService, {
         getTables: mock(() => Effect.succeed([...(input.tables ?? defaultTables)])),
@@ -103,6 +113,7 @@ const runWithInventory = <A>(
     ),
     Effect.runPromise
   );
+};
 
 const getAvailability = (input: {
   readonly date?: string;
@@ -113,7 +124,10 @@ const getAvailability = (input: {
 }) =>
   runWithInventory(
     Effect.gen(function* () {
-      const service = yield* WorkspaceAvailabilityService;
+      const availability = yield* Effect.promise(() =>
+        import("./workspace-availability.service")
+      );
+      const service = yield* availability.WorkspaceAvailabilityService;
       return yield* service.getAvailability({
         date: input.date,
         from: testDate,
@@ -200,7 +214,10 @@ describe("WorkspaceAvailabilityService", () => {
     const result = await runWithInventory(
       Effect.either(
         Effect.gen(function* () {
-          const service = yield* WorkspaceAvailabilityService;
+          const availability = yield* Effect.promise(() =>
+            import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
             date: testDate,
             entryTier: "profi",
@@ -217,7 +234,10 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(result._tag).toBe("Left");
     if (result._tag === "Left") {
-      expect(result.left).toBeInstanceOf(WorkspaceTableUnavailableError);
+      const availability = await import("./workspace-availability.service");
+      expect(result.left).toBeInstanceOf(
+        availability.WorkspaceTableUnavailableError
+      );
     }
   });
 });

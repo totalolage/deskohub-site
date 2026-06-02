@@ -16,6 +16,7 @@ import {
   type WorkspaceProductTier,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
+import { ReservationHoldCleanupService } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 
 export type WorkspaceAvailabilityQuery = {
   readonly date?: string;
@@ -71,9 +72,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const holdCleanup = yield* ReservationHoldCleanupService;
 
     const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
       function* () {
+        yield* holdCleanup
+          .sweepExpiredHolds({ now: new Date(), limit: 10 })
+          .pipe(Effect.ignore);
+
         const [tables, reservations] = yield* Effect.all(
           [dotypos.getTables(), dotypos.listReservations()],
           { concurrency: 2 }
