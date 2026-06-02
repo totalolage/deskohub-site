@@ -1,54 +1,53 @@
 "use server";
 
 import { createHmac, randomUUID } from "node:crypto";
-import { DotyposService, ValidationError as DotyposValidationError } from "@deskohub/dotypos";
+import {
+  DotyposService,
+  ValidationError as DotyposValidationError,
+} from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { env } from "@/env";
 import { buildCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
-import {
-  splitCustomerName,
-} from "@/features/checkout/backend/dotypos-customer-policy";
+import { splitCustomerName } from "@/features/checkout/backend/dotypos-customer-policy";
 import { createWorkspaceDotyposReservation } from "@/features/checkout/backend/dotypos-reservation.adapter";
 import {
-  LegalEvidenceAuditRepository,
-  LegalEvidenceAuditRepositoryLive,
-} from "@/features/checkout/backend/legal-evidence-audit.repository";
+  LegalEvidenceEventRepository,
+  LegalEvidenceEventRepositoryLive,
+} from "@/features/checkout/backend/legal-evidence-event.repository";
+import {
+  OperationalEventRepository,
+  OperationalEventRepositoryLive,
+} from "@/features/checkout/backend/operational-event.repository";
+import { payStateDefaultTtlMilliseconds } from "@/features/checkout/backend/pay-state";
 import {
   buildSignedPayState,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/pay-state.server";
-import { payStateDefaultTtlMilliseconds } from "@/features/checkout/backend/pay-state";
-import {
-  PaymentOrderRepository,
-  PaymentOrderRepositoryLive,
-} from "@/features/checkout/backend/payment-order.repository";
-import {
-  ReservationRecoveryRepository,
-  ReservationRecoveryRepositoryLive,
-} from "@/features/checkout/backend/reservation-recovery.repository";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLive,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
+import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import {
-  getWorkspaceProductByTier,
-} from "@/features/checkout/product-catalog";
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/checkout/backend/workspace-reservation.repository";
+import {
+  WorkspaceTableAssignmentService,
+  WorkspaceTableAssignmentServiceLive,
+} from "@/features/checkout/backend/workspace-table-assignment.service";
+import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import {
-  buildAuthoritativeWorkspaceCheckoutQuoteEffect,
-} from "@/features/checkout/backend/workspace-checkout-quote.server";
-import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import {
-  WorkspaceTableAssignmentServiceLive,
-} from "@/features/checkout/backend/workspace-table-assignment.service";
-import { env } from "@/env";
 import { locales, m } from "@/features/i18n";
+import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
@@ -65,7 +64,7 @@ const getPreparePayStateSchema = () =>
     legalConsent: z.boolean().optional(),
   });
 
-const generateOrderId = () =>
+const generateReservationId = () =>
   `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
     .toString(36)
     .toUpperCase()}`;
@@ -85,18 +84,20 @@ const deriveReservationSubmitKey = (input: {
   readonly coffee: boolean;
   readonly monitorOption?: string;
 }) => {
-  const tuple = [
-    normalizeIdempotencyPart(input.name),
-    normalizeIdempotencyPart(input.email),
-    input.phone.replaceAll(/\s+/g, ""),
-    input.date,
-    input.entryTier,
-    input.coffee ? "coffee" : "no-coffee",
-    input.monitorOption ?? "no-monitor",
-  ].join("\u001f");
+  const payload = {
+    schema: "workspace-reservation-submit-key",
+    schemaVersion: 1,
+    name: normalizeIdempotencyPart(input.name),
+    email: normalizeIdempotencyPart(input.email),
+    phone: input.phone.replaceAll(/\s+/g, ""),
+    date: input.date,
+    entryTier: input.entryTier,
+    coffee: input.coffee,
+    monitorOption: input.monitorOption ?? null,
+  };
 
   return createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
-    .update(tuple)
+    .update(JSON.stringify(payload))
     .digest("hex");
 };
 
@@ -179,21 +180,48 @@ const getReservationPrivacyEvidence = Effect.fn(
   });
 });
 
+const toReadyResult = (input: {
+  readonly locale: (typeof locales)[number];
+  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly quote: WorkspaceCheckoutQuote;
+  readonly reservationId: string;
+}) => {
+  const state = buildSignedPayState({
+    locale: input.locale,
+    reservation: input.reservation,
+    quote: input.quote,
+    orderId: input.reservationId,
+  });
+  const sealedState = sealPayStateForUrl(state);
+  const payUrl = buildCheckoutPayPath(input.locale, sealedState);
+
+  if (payUrl.type !== "payPath") {
+    return {
+      status: "error" as const,
+      message: m.checkoutPayStateTooLarge({}, { locale: input.locale }),
+    };
+  }
+
+  return { status: "ready" as const, redirectUrl: payUrl.path };
+};
+
 const EarlyReservationDotyposLive = DotyposService.Default.pipe(
   Layer.provide(DotyposRuntimeConfigLive)
 );
 
-const EarlyReservationPaymentOrderRepositoryLive =
-  PaymentOrderRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
+const EarlyReservationWorkspaceReservationRepositoryLive =
+  WorkspaceReservationRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
 
-const EarlyReservationLegalEvidenceAuditRepositoryLive =
-  LegalEvidenceAuditRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
+const EarlyReservationLegalEvidenceEventRepositoryLive =
+  LegalEvidenceEventRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
 
-const EarlyReservationRecoveryRepositoryLive =
-  ReservationRecoveryRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
+const EarlyReservationOperationalEventRepositoryLive =
+  OperationalEventRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
 
 const EarlyReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
-  Layer.provide(EarlyReservationPaymentOrderRepositoryLive),
+  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+  Layer.provide(EarlyReservationWorkspaceReservationRepositoryLive),
+  Layer.provide(EarlyReservationOperationalEventRepositoryLive),
   Layer.provide(EarlyReservationDotyposLive)
 );
 
@@ -208,9 +236,9 @@ const EarlyReservationTableAssignmentLive =
   );
 
 const EarlyReservationSubmitLive = Layer.mergeAll(
-  EarlyReservationPaymentOrderRepositoryLive,
-  EarlyReservationLegalEvidenceAuditRepositoryLive,
-  EarlyReservationRecoveryRepositoryLive,
+  EarlyReservationWorkspaceReservationRepositoryLive,
+  EarlyReservationLegalEvidenceEventRepositoryLive,
+  EarlyReservationOperationalEventRepositoryLive,
   EarlyReservationHoldCleanupLive,
   EarlyReservationAvailabilityLive,
   EarlyReservationTableAssignmentLive,
@@ -220,276 +248,238 @@ const EarlyReservationSubmitLive = Layer.mergeAll(
 export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
 )(
-      function* (input) {
-        yield* Effect.annotateLogsScoped({ locale: input.locale });
-        yield* Effect.logInfo("Preparing workspace checkout quote");
+  function* (input) {
+    yield* Effect.annotateLogsScoped({ locale: input.locale });
 
-        const reservationSubmitKey = deriveReservationSubmitKey(
-          input.reservation
-        );
-        const acceptedAt = new Date().toISOString();
-        const privacyEvidence = yield* getReservationPrivacyEvidence({
-          locale: input.locale,
-          accepted: input.legalConsent === true,
-          acceptedAt,
-        });
+    const reservationSubmitKey = deriveReservationSubmitKey(input.reservation);
+    const acceptedAt = new Date().toISOString();
+    const privacyEvidence = yield* getReservationPrivacyEvidence({
+      locale: input.locale,
+      accepted: input.legalConsent === true,
+      acceptedAt,
+    });
+    const legalEvents = yield* LegalEvidenceEventRepository;
 
-        if (input.legalConsent !== true) {
-          const audit = yield* LegalEvidenceAuditRepository;
-          for (const evidence of Object.values(privacyEvidence)) {
-            yield* audit.recordRejected({
-              idempotencyKey: reservationSubmitKey,
-              evidence,
-            });
-          }
-
-          return {
-            status: "error" as const,
-            message: m.reservationValidationLegalConsentRequired(),
-          };
-        }
-
-        const paymentOrders = yield* PaymentOrderRepository;
-        const dotypos = yield* DotyposService;
-        let existingOrder = yield* paymentOrders.findByReservationSubmitKey(
-          reservationSubmitKey
-        );
-
-        if (
-          existingOrder?.dotyposReservationStatus === "NEW" &&
-          existingOrder.dotyposReservationId &&
-          existingOrder.reservationHoldExpiresAt &&
-          existingOrder.reservationHoldExpiresAt <= new Date()
-        ) {
-          const holdCleanup = yield* ReservationHoldCleanupService;
-          yield* holdCleanup
-            .cancelOrderHold({
-              orderId: existingOrder.id,
-              holdExpiredAt: new Date(),
-            })
-            .pipe(Effect.ignore);
-          existingOrder = yield* paymentOrders.findById(existingOrder.id);
-        }
-
-        if (
-          existingOrder?.dotyposReservationStatus === "NEW" &&
-          existingOrder.dotyposReservationId &&
-          (!existingOrder.reservationHoldExpiresAt ||
-            existingOrder.reservationHoldExpiresAt > new Date())
-        ) {
-          const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
-            input.reservation
-          ).pipe(Effect.provideService(DotyposService, dotypos));
-          yield* paymentOrders.updateCheckoutDetails({
-            id: existingOrder.id,
-            checkoutDetails: buildReservationCheckoutDetails({
-              locale: input.locale,
-              reservation: input.reservation,
-              quote,
-              legalEvidence: privacyEvidence,
-            }),
-          });
-          const state = buildSignedPayState({
-            locale: input.locale,
-            reservation: input.reservation,
-            quote,
-            orderId: existingOrder.id,
-          });
-          const sealedState = sealPayStateForUrl(state);
-          const payUrl = buildCheckoutPayPath(input.locale, sealedState);
-
-          if (payUrl.type !== "payPath") {
-            return {
-              status: "error" as const,
-              message: m.checkoutPayStateTooLarge({}, { locale: input.locale }),
-            };
-          }
-
-          return { status: "ready" as const, redirectUrl: payUrl.path };
-        }
-
-        const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
-          input.reservation
-        ).pipe(Effect.provideService(DotyposService, dotypos));
-
-        const availability = yield* WorkspaceAvailabilityService;
-        yield* availability.ensureAvailable({
-          date: input.reservation.date,
-          entryTier: input.reservation.entryTier,
-          monitorOption: input.reservation.monitorOption,
-        });
-
-        const checkoutDetails = buildReservationCheckoutDetails({
-          locale: input.locale,
-          reservation: input.reservation,
-          quote,
-          legalEvidence: privacyEvidence,
-        });
-
-        const order = yield* Effect.gen(function* () {
-          if (existingOrder) {
-            if (
-              (existingOrder.dotyposReservationStatus === "CANCELLED" ||
-                (existingOrder.dotyposReservationStatus === "none" &&
-                  !existingOrder.dotyposReservationId)) &&
-              existingOrder.paymentStatus === "created" &&
-              !existingOrder.securityToken &&
-              !existingOrder.lastProviderStatus
-            ) {
-              return yield* paymentOrders.updateCheckoutDetails({
-                id: existingOrder.id,
-                checkoutDetails,
-              });
-            }
-
-            return yield* Effect.fail(
-              new Error("Existing reservation submit is not retryable")
-            );
-          }
-
-          const now = new Date();
-          const customerName = splitCustomerName(input.reservation.name);
-          const customer = yield* dotypos.findOrCreateCustomer(
-            {
-              ...customerName,
-              email: input.reservation.email,
-              phone: input.reservation.phone,
-            },
-            { lookupFields: ["email"] }
-          );
-          const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-
-          return yield* paymentOrders.create({
-            id: generateOrderId(),
-            dotyposCustomerId,
-            correlationId: randomUUID(),
-            reservationSubmitKey,
-            reservationHoldExpiresAt: getReservationHoldExpiresAt(now),
-            checkoutDetails,
-          });
-        }).pipe(
-          Effect.catchAll(() =>
-            Effect.succeed(null)
-          )
-        );
-
-        if (!order) {
-          return { status: "error" as const, message: m.reservationErrorMessage({}, { locale: input.locale }) };
-        }
-
-        const claimed = yield* paymentOrders.claimReservationCreation(order.id);
-        if (!claimed) {
-          return { status: "error" as const, message: m.reservationErrorMessage({}, { locale: input.locale }) };
-        }
-
-        const recovery = yield* ReservationRecoveryRepository;
-        const reservation = yield* createWorkspaceDotyposReservation({
-          paymentOrderId: order.id,
-          dotyposCustomerId: order.dotyposCustomerId,
-          checkoutDetails: order.checkoutDetails,
-          status: "NEW",
-        }).pipe(
-          Effect.provideService(DotyposService, dotypos),
-          Effect.catchAll((cause) =>
-            paymentOrders.releaseReservationCreation(order.id).pipe(
-              Effect.ignore,
-              Effect.zipRight(Effect.fail(cause))
-            )
-          )
-        );
-
-        const reservationId = reservation.id;
-
-        if (!reservationId) {
-          yield* paymentOrders.releaseReservationCreation(order.id).pipe(
-            Effect.ignore
-          );
-          return yield* Effect.fail(
-            new DotyposValidationError({
-              message: "Dotypos reservation was created without an ID",
-            })
-          );
-        }
-
-        yield* paymentOrders
-          .attachNewReservationHold({
-            id: order.id,
-            dotyposReservationId: reservationId,
-            reservationCreatedAt: new Date(),
-            reservationHoldExpiresAt: getReservationHoldExpiresAt(new Date()),
-          })
-          .pipe(
-            Effect.catchAll((cause) =>
-              dotypos.cancelReservation(reservationId).pipe(
-                Effect.matchEffect({
-                  onFailure: (cancelCause) =>
-                    paymentOrders.markReservationAttachCancellationPending({
-                      id: order.id,
-                      dotyposReservationId: reservationId,
-                      reservationCreatedAt: new Date(),
-                      failureCode: "attach_failed_cancel_failed",
-                      failureMessage: String(cancelCause),
-                    }).pipe(
-                      Effect.ignore,
-                      Effect.zipRight(recovery.recordAttachFailure({
-                      orderId: order.id,
-                      reservationSubmitKey,
-                      dotyposCustomerId: order.dotyposCustomerId,
-                      dotyposReservationId: reservationId,
-                      attemptedCancellationResult: "failed",
-                      cancellationAttemptedAt: new Date(),
-                      failureReason: `attach_failed_cancel_failed:${String(cancelCause)}`,
-                    }))
-                    ),
-                  onSuccess: () =>
-                    recovery.recordAttachFailure({
-                      orderId: order.id,
-                      reservationSubmitKey,
-                      dotyposCustomerId: order.dotyposCustomerId,
-                      dotyposReservationId: reservationId,
-                      attemptedCancellationResult: "cancelled",
-                      cancellationAttemptedAt: new Date(),
-                      failureReason: "attach_failed",
-                    }).pipe(
-                      Effect.zipRight(
-                        paymentOrders.releaseReservationCreation(order.id).pipe(
-                          Effect.ignore
-                        )
-                      )
-                    ),
-                }),
-                Effect.zipRight(Effect.fail(cause))
-              )
-            )
-          );
-
-        yield* Effect.logInfo("Workspace checkout quote prepared");
-
-        const state = buildSignedPayState({
-          locale: input.locale,
-          reservation: input.reservation,
-          quote,
-          orderId: order.id,
-        });
-      const sealedState = sealPayStateForUrl(state);
-      const payUrl = buildCheckoutPayPath(input.locale, sealedState);
-
-      if (payUrl.type !== "payPath") {
-        return {
-          status: "error" as const,
-          message: m.checkoutPayStateTooLarge({}, { locale: input.locale }),
-        };
-      }
+    if (input.legalConsent !== true) {
+      yield* legalEvents
+        .recordMany(
+          Object.values(privacyEvidence).map((evidence) => ({
+            idempotencyKey: `${reservationSubmitKey}:privacy:${evidence.documentHash}`,
+            evidence,
+          }))
+        )
+        .pipe(Effect.ignore);
 
       return {
-        status: "ready" as const,
-        redirectUrl: payUrl.path,
+        status: "error" as const,
+        message: m.reservationValidationLegalConsentRequired(),
       };
-    },
+    }
+
+    const reservations = yield* WorkspaceReservationRepository;
+    const dotypos = yield* DotyposService;
+    let existingReservation =
+      yield* reservations.findBySubmitKey(reservationSubmitKey);
+
+    if (
+      existingReservation?.reservationState === "held" &&
+      existingReservation.reservationHoldExpiresAt &&
+      existingReservation.reservationHoldExpiresAt <= new Date()
+    ) {
+      const holdCleanup = yield* ReservationHoldCleanupService;
+      yield* holdCleanup
+        .cancelOrderHold({
+          orderId: existingReservation.id,
+          holdExpiredAt: new Date(),
+        })
+        .pipe(Effect.ignore);
+      existingReservation = yield* reservations.findById(
+        existingReservation.id
+      );
+    }
+
+    const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
+      input.reservation
+    ).pipe(Effect.provideService(DotyposService, dotypos));
+
+    if (
+      existingReservation?.reservationState === "held" &&
+      existingReservation.dotyposReservationId &&
+      (!existingReservation.reservationHoldExpiresAt ||
+        existingReservation.reservationHoldExpiresAt > new Date())
+    ) {
+      yield* reservations.updateProductIntent({
+        id: existingReservation.id,
+        productTier: input.reservation.entryTier,
+        productCoffee: input.reservation.coffee,
+        productMonitorOption: input.reservation.monitorOption,
+        locale: input.locale,
+      });
+      yield* legalEvents.recordMany(
+        Object.values(privacyEvidence).map((evidence) => ({
+          workspaceReservationId: existingReservation.id,
+          idempotencyKey: `${existingReservation.id}:privacy:${evidence.documentHash}`,
+          evidence,
+        }))
+      );
+
+      return toReadyResult({
+        locale: input.locale,
+        reservation: input.reservation,
+        quote,
+        reservationId: existingReservation.id,
+      });
+    }
+
+    const availability = yield* WorkspaceAvailabilityService;
+    yield* availability.ensureAvailable({
+      date: input.reservation.date,
+      entryTier: input.reservation.entryTier,
+      monitorOption: input.reservation.monitorOption,
+    });
+
+    const customerName = splitCustomerName(input.reservation.name);
+    const customer = yield* dotypos.findOrCreateCustomer({
+      ...customerName,
+      email: input.reservation.email,
+      phone: input.reservation.phone,
+    });
+    const dotyposCustomerId = yield* getDotyposCustomerId(customer);
+    const reservationId = generateReservationId();
+    const holdExpiresAt = getReservationHoldExpiresAt(new Date());
+
+    const draft = yield* reservations.createDraft({
+      id: reservationId,
+      reservationSubmitKey,
+      correlationId: randomUUID(),
+      dotyposCustomerId,
+      productTier: input.reservation.entryTier,
+      productCoffee: input.reservation.coffee,
+      productMonitorOption: input.reservation.monitorOption,
+      locale: input.locale,
+      reservationHoldExpiresAt: holdExpiresAt,
+    });
+
+    if (draft.id !== reservationId) {
+      return {
+        status: "error" as const,
+        message: m.reservationErrorMessage({}, { locale: input.locale }),
+      };
+    }
+
+    const claimed = yield* reservations.claimHoldCreation(draft.id);
+    if (!claimed) {
+      return {
+        status: "error" as const,
+        message: m.reservationErrorMessage({}, { locale: input.locale }),
+      };
+    }
+
+    const checkoutDetails = buildReservationCheckoutDetails({
+      locale: input.locale,
+      reservation: input.reservation,
+      quote,
+      legalEvidence: privacyEvidence,
+    });
+    const dotyposReservation = yield* createWorkspaceDotyposReservation({
+      paymentOrderId: reservationId,
+      dotyposCustomerId,
+      checkoutDetails: checkoutDetails as CheckoutDetailsJson,
+      status: "NEW",
+    })
+      .pipe(
+        Effect.provideService(DotyposService, dotypos),
+        Effect.provideService(
+          WorkspaceTableAssignmentService,
+          yield* WorkspaceTableAssignmentService
+        )
+      )
+      .pipe(
+        Effect.tapError(() =>
+          reservations.releaseHoldCreation(draft.id).pipe(Effect.ignore)
+        )
+      );
+
+    if (!dotyposReservation.id) {
+      yield* reservations.releaseHoldCreation(draft.id).pipe(Effect.ignore);
+      return yield* Effect.fail(
+        new DotyposValidationError({
+          message: "Dotypos reservation was created without an ID",
+        })
+      );
+    }
+    const dotyposReservationId = dotyposReservation.id;
+
+    yield* reservations
+      .attachHold({
+        id: draft.id,
+        dotyposReservationId,
+        reservationCreatedAt: new Date(),
+        reservationHoldExpiresAt: holdExpiresAt,
+      })
+      .pipe(
+        Effect.catchAll((cause) =>
+          Effect.gen(function* () {
+            const operationalEvents = yield* OperationalEventRepository;
+            yield* operationalEvents
+              .record({
+                workspaceReservationId: draft.id,
+                eventType: "workspace_reservation_hold_attach_failed",
+                severity: "error",
+                failureCode: "attach_failed_cancel_required",
+                dotyposReservationId,
+                dotyposCustomerId,
+              })
+              .pipe(Effect.ignore);
+
+            yield* dotypos.cancelReservation(dotyposReservationId).pipe(
+              Effect.catchAll((cancelCause) =>
+                Effect.gen(function* () {
+                  yield* reservations.markAttachFailedCancellationRequired({
+                    id: draft.id,
+                    dotyposReservationId,
+                    reservationCreatedAt: new Date(),
+                    failureCode: "attach_failed_cancel_failed",
+                  });
+                  return yield* Effect.fail(cancelCause);
+                })
+              )
+            );
+            yield* reservations
+              .releaseHoldCreation(draft.id)
+              .pipe(Effect.ignore);
+
+            return yield* Effect.fail(cause);
+          })
+        )
+      );
+
+    yield* legalEvents.recordMany(
+      Object.values(privacyEvidence).map((evidence) => ({
+        workspaceReservationId: draft.id,
+        idempotencyKey: `${draft.id}:privacy:${evidence.documentHash}`,
+        evidence,
+      }))
+    );
+
+    return toReadyResult({
+      locale: input.locale,
+      reservation: input.reservation,
+      quote,
+      reservationId: draft.id,
+    });
+  },
   (effect, input) =>
     effect.pipe(
       Effect.scoped,
-      Effect.annotateLogs(input),
+      Effect.annotateLogs({
+        locale: input.locale,
+        reservationDate: input.reservation.date,
+        entryTier: input.reservation.entryTier,
+        coffee: input.reservation.coffee,
+        monitorOption: input.reservation.monitorOption ?? null,
+        legalConsent: input.legalConsent === true,
+      }),
       Effect.mapError(
         (error) =>
           new PublicSafeActionError(

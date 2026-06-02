@@ -5,29 +5,8 @@
     {
       "idx": 0,
       "version": "7",
-      "when": 1779830569488,
-      "tag": "0000_chubby_lucky_pierre",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "7",
-      "when": 1780158902429,
-      "tag": "0001_thin_shadow_king",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "7",
-      "when": 1780351724271,
-      "tag": "0002_thick_blade",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1780354020388,
-      "tag": "0003_early_reservation_lifecycle",
+      "when": 1780391386599,
+      "tag": "0000_free_morgan_stark",
       "breakpoints": true
     }
   ]

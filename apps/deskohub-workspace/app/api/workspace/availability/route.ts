@@ -2,8 +2,10 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { PaymentOrderRepositoryLive } from "@/features/checkout/backend/payment-order.repository";
+import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
+import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import { ReservationHoldCleanupServiceLive } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { WorkspaceReservationRepositoryLive } from "@/features/checkout/backend/workspace-reservation.repository";
 import {
   parseWorkspaceAvailabilityQuery,
   WorkspaceAvailabilityService,
@@ -14,7 +16,9 @@ import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
 const AvailabilityRouteLive = WorkspaceAvailabilityServiceLive.pipe(
   Layer.provide(ReservationHoldCleanupServiceLive),
-  Layer.provide(PaymentOrderRepositoryLive),
+  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+  Layer.provide(OperationalEventRepositoryLive),
+  Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(
     Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)

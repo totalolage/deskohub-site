@@ -1,23 +1,25 @@
-import {
-  classifyNexiFailureStatus,
-  getNexiPaymentMetadata,
-  NexiApi,
-  NexiCurrencySchema,
-  NexiService,
-} from "@deskohub/nexi";
 import { DotyposService } from "@deskohub/dotypos";
-import { Context, Effect, Layer, Schema } from "effect";
-import { type DatabaseError, WorkspaceDatabaseLive } from "@/db/database.service";
-import type { FulfillmentStatus, PaymentStatus } from "@/db/schema";
-import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
+import { NexiApi, NexiService } from "@deskohub/nexi";
+import { Context, Effect, Layer } from "effect";
 import {
-  PaymentOrderRepository,
-  PaymentOrderRepositoryLive,
-} from "@/features/checkout/backend/payment-order.repository";
+  type DatabaseError,
+  WorkspaceDatabaseLive,
+} from "@/db/database.service";
+import type { FulfillmentState, PaymentState } from "@/db/schema";
+import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
+import { PaymentAttemptRepositoryLive } from "@/features/checkout/backend/payment-attempt.repository";
+import {
+  ProviderPaymentFinalizationService,
+  ProviderPaymentFinalizationServiceLiveWithDependencies,
+} from "@/features/checkout/backend/provider-payment-finalization.service";
 import {
   ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLive,
+  ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/checkout/backend/workspace-reservation.repository";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
@@ -39,8 +41,8 @@ export type CheckoutStatusViewModel = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
   readonly status: CheckoutStatusKind;
-  readonly paymentStatus?: PaymentStatus;
-  readonly fulfillmentStatus?: FulfillmentStatus;
+  readonly paymentStatus?: PaymentState;
+  readonly fulfillmentStatus?: FulfillmentState;
   readonly checkoutDetails?: CheckoutDetailsJson;
 };
 
@@ -60,11 +62,11 @@ export const CheckoutStatusService = Context.GenericTag<CheckoutStatusService>(
 );
 
 const toCheckoutStatusKind = (
-  paymentStatus: PaymentStatus,
-  fulfillmentStatus: FulfillmentStatus
+  paymentState: PaymentState,
+  fulfillmentState: FulfillmentState
 ): CheckoutStatusKind => {
-  if (paymentStatus === "paid") {
-    switch (fulfillmentStatus) {
+  if (paymentState === "paid") {
+    switch (fulfillmentState) {
       case "fulfilled":
         return "fulfilled";
       case "failed":
@@ -75,12 +77,12 @@ const toCheckoutStatusKind = (
     }
   }
 
-  switch (paymentStatus) {
-    case "created":
+  switch (paymentState) {
+    case "not_started":
       return "created";
-    case "payment_pending":
+    case "pending":
       return "pending";
-    case "payment_failed":
+    case "failed":
       return "payment_failed";
     case "cancelled":
       return "cancelled";
@@ -89,23 +91,21 @@ const toCheckoutStatusKind = (
   }
 };
 
-const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
-
 export const CheckoutStatusServiceLive = Layer.effect(
   CheckoutStatusService,
   Effect.gen(function* () {
-    const paymentOrders = yield* PaymentOrderRepository;
+    const reservations = yield* WorkspaceReservationRepository;
     const holdCleanup = yield* ReservationHoldCleanupService;
-    const nexi = yield* NexiService;
+    const finalization = yield* ProviderPaymentFinalizationService;
 
     const getStatus = Effect.fn("checkoutStatus.getStatus")(
       function* (input: {
         readonly orderId: string;
         readonly returnOutcome: CheckoutStatusReturnOutcome;
       }) {
-        const order = yield* paymentOrders.findById(input.orderId);
+        const reservation = yield* reservations.findById(input.orderId);
 
-        if (!order) {
+        if (!reservation) {
           return {
             orderId: input.orderId,
             returnOutcome: input.returnOutcome,
@@ -114,15 +114,14 @@ export const CheckoutStatusServiceLive = Layer.effect(
         }
 
         return {
-          orderId: order.id,
+          orderId: reservation.id,
           returnOutcome: input.returnOutcome,
           status: toCheckoutStatusKind(
-            order.paymentStatus,
-            order.fulfillmentStatus
+            reservation.paymentState,
+            reservation.fulfillmentState
           ),
-          paymentStatus: order.paymentStatus,
-          fulfillmentStatus: order.fulfillmentStatus,
-          checkoutDetails: order.checkoutDetails,
+          paymentStatus: reservation.paymentState,
+          fulfillmentStatus: reservation.fulfillmentState,
         } satisfies CheckoutStatusViewModel;
       },
       (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
@@ -132,60 +131,21 @@ export const CheckoutStatusServiceLive = Layer.effect(
       getStatus,
       recordProviderReturn: Effect.fn("checkoutStatus.recordProviderReturn")(
         function* (input) {
-          const order = yield* paymentOrders.findById(input.orderId);
+          const reservation = yield* reservations.findById(input.orderId);
 
-          if (!order) {
-            return {
-              orderId: input.orderId,
-              returnOutcome: input.returnOutcome,
-              status: "not_found",
-            } satisfies CheckoutStatusViewModel;
+          if (!reservation?.activePaymentAttemptId) {
+            return yield* getStatus(input);
           }
 
-          if (
-            ["created", "payment_pending"].includes(order.paymentStatus) &&
-            order.securityToken
-          ) {
-            const expectedAmount = yield* toNexiAmount(
-              order.checkoutDetails.payment.expectedPrice
-            ).pipe(Effect.orDie);
-            const expectedCurrency = yield* Schema.decodeUnknown(
-              NexiCurrencySchema
-            )(expectedAmount.currency).pipe(Effect.orDie);
-            const verification = yield* nexi
-              .verifyPaymentOutcome({
-                orderId: order.id,
-                correlationId: order.correlationId,
-                amount: expectedAmount.amount,
-                currency: expectedCurrency,
-                securityToken: order.securityToken,
-              })
-              .pipe(Effect.orElseSucceed(() => undefined));
+          const result = yield* finalization.finalizePendingProviderPayment({
+            orderId: reservation.id,
+            paymentAttemptId: reservation.activePaymentAttemptId,
+          });
 
-            if (
-              verification?.status === "failure" &&
-              verification.mismatches.length === 0
-            ) {
-              const { providerOperationId, providerStatus } =
-                getNexiPaymentMetadata(verification);
-              const failureKind = classifyNexiFailureStatus(providerStatus);
-              const markTerminal =
-                failureKind === "cancelled"
-                  ? paymentOrders.markCancelled
-                  : failureKind === "expired"
-                    ? paymentOrders.markExpired
-                    : paymentOrders.markFailed;
-
-              yield* markTerminal({
-                id: order.id,
-                failureCode: "nexi_payment_failed",
-                providerOperationId,
-                providerStatus,
-              }).pipe(Effect.orElseSucceed(() => undefined));
-              yield* holdCleanup
-                .cancelOrderHold({ orderId: order.id })
-                .pipe(Effect.ignore);
-            }
+          if (result === "terminal") {
+            yield* holdCleanup
+              .cancelOrderHold({ orderId: reservation.id })
+              .pipe(Effect.ignore);
           }
 
           return yield* getStatus(input);
@@ -198,8 +158,11 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
 export const CheckoutStatusServiceLiveWithDependencies =
   CheckoutStatusServiceLive.pipe(
-    Layer.provide(ReservationHoldCleanupServiceLive),
-    Layer.provide(PaymentOrderRepositoryLive),
+    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+    Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(
       Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
