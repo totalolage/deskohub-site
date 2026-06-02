@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { makeDotyposRuntimeConfigLayer } from "../config";
 import { ExternalAPIError } from "../errors";
-import type { Customer } from "../generated/types.gen";
+import type { Customer, Reservation } from "../generated/types.gen";
 import { DotyposApi } from "./api";
 import { DotyposService } from "./service";
 
@@ -45,6 +45,7 @@ const runWithApi = <A, E>(
 };
 
 const makeApi = (overrides: Partial<DotyposApi> = {}): DotyposApi => ({
+  _tag: "DotyposApi",
   searchCustomers: mock(() => Effect.succeed<Customer[]>([])),
   createCustomer: mock((params) =>
     Effect.succeed(customer({ id: "created-customer-id", ...params.body }))
@@ -55,6 +56,12 @@ const makeApi = (overrides: Partial<DotyposApi> = {}): DotyposApi => ({
   getCustomer: mock(() => Effect.die("getCustomer not mocked")),
   createReservation: mock(() => Effect.die("createReservation not mocked")),
   getReservation: mock(() => Effect.die("getReservation not mocked")),
+  getReservationForUpdate: mock(() =>
+    Effect.die("getReservationForUpdate not mocked")
+  ),
+  cancelReservation: mock(() => Effect.die("cancelReservation not mocked")),
+  updateReservation: mock(() => Effect.die("updateReservation not mocked")),
+  patchReservation: mock(() => Effect.die("patchReservation not mocked")),
   listReservations: mock(() => Effect.die("listReservations not mocked")),
   getTables: mock(() => Effect.die("getTables not mocked")),
   getProducts: mock(() => Effect.die("getProducts not mocked")),
@@ -192,9 +199,12 @@ describe("DotyposService customer lookup", () => {
 
     expect(result).toEqual({ _tag: "NotFound", matches: [] });
     expect(api.searchCustomers).toHaveBeenCalledTimes(1);
-    expect(searchCustomers.mock.calls[0]?.[0].query.filter).toBe(
-      "email|like|ada@example.com"
-    );
+    const firstSearchCall = (
+      searchCustomers.mock.calls as unknown as Array<[
+        { query?: { filter?: string } },
+      ]>
+    )[0]?.[0];
+    expect(firstSearchCall?.query?.filter).toBe("email|like|ada@example.com");
   });
 
   test("findOrCreateCustomer reuses lookup and updates the existing customer", async () => {
@@ -300,5 +310,60 @@ describe("DotyposService customer lookup", () => {
 
     expect(result).toBe(first);
     expect(api.createCustomer).not.toHaveBeenCalled();
+  });
+});
+
+describe("DotyposService reservation confirmation", () => {
+  test("confirms by reading ETag and patching with If-Match", async () => {
+    const reservation = { id: "reservation-id" } as Reservation;
+    const api = makeApi({
+      getReservationForUpdate: mock(() =>
+        Effect.succeed({ reservation, etag: '"reservation-etag"' })
+      ),
+      patchReservation: mock((params) =>
+        Effect.succeed({ ...reservation, ...params.body })
+      ),
+    });
+
+    await runWithApi(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.confirmReservation(" reservation-id ");
+      }),
+      api
+    );
+
+    expect(api.getReservationForUpdate).toHaveBeenCalledWith({
+      path: { cloudId: config.cloudId, reservationId: "reservation-id" },
+    });
+    expect(api.patchReservation).toHaveBeenCalledWith({
+      path: { cloudId: config.cloudId, reservationId: "reservation-id" },
+      headers: { "If-Match": '"reservation-etag"' },
+      body: { status: "CONFIRMED" },
+    });
+    expect(api.updateReservation).not.toHaveBeenCalled();
+  });
+
+  test("fails clearly when Dotypos omits the reservation ETag", async () => {
+    const api = makeApi({
+      getReservationForUpdate: mock(() =>
+        Effect.succeed({
+          reservation: { id: "reservation-id" } as Reservation,
+          etag: undefined,
+        })
+      ),
+      patchReservation: mock(() => Effect.die("patchReservation not expected")),
+    });
+
+    await expect(
+      runWithApi(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.confirmReservation("reservation-id");
+        }),
+        api
+      )
+    ).rejects.toThrow("Reservation ETag header was missing.");
+    expect(api.patchReservation).not.toHaveBeenCalled();
   });
 });

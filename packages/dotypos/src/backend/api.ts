@@ -242,6 +242,31 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         });
       }),
 
+      getReservationForUpdate: Effect.fn("getReservationForUpdate")(function* (
+        params: {
+          path: { cloudId: string; reservationId: string };
+        }
+      ) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.getReservation(
+              createApiOptions(token, config, client, params)
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            return {
+              reservation: response.data,
+              etag: response.response.headers.get("etag") ?? undefined,
+            };
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Get reservation", config.apiUrl),
+        });
+      }),
+
       cancelReservation: Effect.fn("cancelReservation")(function* (params: {
         path: { cloudId: string; reservationId: string };
       }) {
@@ -278,6 +303,28 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
           },
           catch: (error) =>
             transformErrorResponse(error, "Update reservation", config.apiUrl),
+        });
+      }),
+
+      patchReservation: Effect.fn("patchReservation")(function* (params: {
+        path: { cloudId: string; reservationId: string };
+        headers: { "If-Match": string };
+        body: UpdateReservationRequest;
+      }) {
+        const token = yield* getToken();
+
+        return yield* Effect.tryPromise({
+          try: async () => {
+            const response = await generatedApi.patchReservation(
+              createApiOptions(token, config, client, params)
+            );
+
+            if (response.error) throw response.error satisfies ErrorResponse;
+
+            return response.data;
+          },
+          catch: (error) =>
+            transformErrorResponse(error, "Patch reservation", config.apiUrl),
         });
       }),
 
