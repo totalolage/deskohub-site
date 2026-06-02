@@ -147,6 +147,8 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
         const providerSecurityToken =
           executedPaymentOperation?.securityToken ?? order.securityToken;
         const providerOrderId = providerOrder?.orderId ?? order.orderId;
+        const providerOperationId =
+          executedPaymentOperation?.operationId ?? failedOperation?.operationId;
         const mismatches: Writeable<PaymentVerificationResult["mismatches"]> =
           [];
         if (providerOrderId !== input.orderId) mismatches.push("orderId");
@@ -177,6 +179,7 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           status,
           provider: {
             orderId: providerOrderId ?? input.orderId,
+            operationId: providerOperationId,
             amount: providerAmount?.amount,
             currency: providerAmount?.currency,
             orderStatus: providerStatus,

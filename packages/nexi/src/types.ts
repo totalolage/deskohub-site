@@ -169,7 +169,8 @@ export const classifyNexiFailureStatus = (
 export const getNexiPaymentMetadata = (
   verification: PaymentVerificationResult
 ): NexiPaymentMetadata => ({
-  providerOperationId: verification.provider.orderId,
+  providerOperationId:
+    verification.provider.operationId ?? verification.provider.orderId,
   providerStatus:
     verification.provider.orderStatus ??
     (verification.provider.captureExecuted ? "capture_executed" : undefined),
@@ -206,6 +207,7 @@ export type PaymentOutcomeStatus = "success" | "failure" | "pending";
 
 export interface ProviderPaymentFacts {
   readonly orderId: string;
+  readonly operationId?: string;
   readonly amount?: string;
   readonly currency?: string;
   readonly orderStatus?: string;
