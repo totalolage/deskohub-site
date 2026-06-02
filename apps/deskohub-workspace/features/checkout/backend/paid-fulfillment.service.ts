@@ -29,6 +29,7 @@ export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_customer_missing_email"
   | "dotypos_customer_load_failed"
   | "dotypos_reservation_failed"
+  | "dotypos_reservation_unfulfillable"
   | "customer_access_email_failed"
   | "internal_notification_email_failed"
   | "fulfillment_order_load_failed"
@@ -215,7 +216,50 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
       function* (input) {
         const order = yield* reloadClaimedOrder(input);
 
-        if (!order || order.dotyposReservationId) {
+        if (!order) {
+          return;
+        }
+
+        if (order.dotyposReservationId) {
+          if (order.dotyposReservationStatus === "CONFIRMED") return;
+
+          if (order.dotyposReservationStatus !== "NEW") {
+            return yield* failFulfillment({
+              orderId: input.orderId,
+              failureCode: "dotypos_reservation_unfulfillable",
+              message:
+                "Paid order reservation hold is no longer confirmable; manual refund/recovery is required.",
+            });
+          }
+
+          yield* dotypos.confirmReservation(order.dotyposReservationId).pipe(
+            Effect.catchAll((cause) =>
+              failFulfillment({
+                orderId: input.orderId,
+                failureCode: "dotypos_reservation_failed",
+                message: "Dotypos reservation hold could not be confirmed.",
+                cause,
+              })
+            )
+          );
+
+          yield* paymentOrders
+            .markReservationConfirmed({
+              id: order.id,
+              confirmedAt: new Date(),
+            })
+            .pipe(
+              Effect.catchAll((cause) =>
+                failFulfillment({
+                  orderId: input.orderId,
+                  failureCode: "dotypos_reservation_failed",
+                  message:
+                    "Dotypos reservation confirmation marker could not be stored.",
+                  cause,
+                })
+              )
+            );
+
           return;
         }
 
@@ -274,6 +318,20 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 orderId: input.orderId,
                 failureCode: "dotypos_reservation_failed",
                 message: "Dotypos reservation marker could not be stored.",
+                cause,
+              })
+            )
+          );
+
+        yield* paymentOrders
+          .markReservationConfirmed({ id: order.id, confirmedAt: new Date() })
+          .pipe(
+            Effect.catchAll((cause) =>
+              failFulfillment({
+                orderId: input.orderId,
+                failureCode: "dotypos_reservation_failed",
+                message:
+                  "Legacy Dotypos reservation confirmation marker could not be stored.",
                 cause,
               })
             )

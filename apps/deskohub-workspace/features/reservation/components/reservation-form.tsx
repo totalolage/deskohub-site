@@ -37,9 +37,9 @@ import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import {
   getAllowedMonitorOptionsForTier,
-  getReservationOrderSchema,
-  type ReservationOrderData,
-  type ReservationOrderInput,
+  getReservationSchema,
+  type ReservationData,
+  type ReservationInput,
   tierIncludesCourtesyCoffee,
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
@@ -53,6 +53,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Form,
   FormControl,
@@ -228,12 +229,12 @@ export function ReservationForm({
     () => getSanitizedUtmParams(searchParams),
     [searchParams]
   );
-  const schema = useMemo(() => getReservationOrderSchema(), []);
+  const schema = useMemo(() => getReservationSchema(), []);
   const defaultValues = useMemo(
     () => getReservationDefaultValuesFromSearchParams(searchParams),
     [searchParams]
   );
-  const form = useForm<ReservationOrderInput, unknown, ReservationOrderData>({
+  const form = useForm<ReservationInput, unknown, ReservationData>({
     resolver: zodResolver(schema),
     defaultValues,
     mode: "onBlur",
@@ -367,6 +368,7 @@ export function ReservationForm({
     hasTrackedSuccessfulSubmission.current = false;
     await sendReservation({
       locale,
+      legalConsent: data.legalConsent,
       reservation: {
         ...data,
         coffee: tierIncludesCourtesyCoffee(data.entryTier) ? true : data.coffee,
@@ -747,6 +749,43 @@ export function ReservationForm({
               />
             )}
 
+            <FormField
+              control={form.control}
+              name="legalConsent"
+              render={({ field }) => (
+                <FormItem>
+                  <label
+                    htmlFor="reservation-privacy-consent"
+                    className="flex cursor-pointer items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4"
+                  >
+                    <FormControl>
+                      <Checkbox
+                        id="reservation-privacy-consent"
+                        className="mt-1"
+                        checked={field.value}
+                        onCheckedChange={(checked) =>
+                          field.onChange(Boolean(checked))
+                        }
+                        onBlur={field.onBlur}
+                        ref={field.ref}
+                      />
+                    </FormControl>
+                    <span className="text-sm leading-6 text-navy-blue/66">
+                      {m.reservationPrivacyNoteBefore({}, { locale })}{" "}
+                      <Link
+                        href={`/${locale}/privacy-policy`}
+                        className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
+                      >
+                        {m.reservationPrivacyNoteLinkLabel({}, { locale })}
+                      </Link>{" "}
+                      {m.reservationPrivacyNoteAfter({}, { locale })}
+                    </span>
+                  </label>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
             <div className="space-y-3 pt-1">
               <Button
                 type="submit"
@@ -761,17 +800,6 @@ export function ReservationForm({
                 <ArrowRight className="h-4 w-4" />
                 {m.checkoutContinueButton({}, { locale })}
               </Button>
-
-              <p className="text-sm leading-6 text-navy-blue/62">
-                {m.reservationPrivacyNoteBefore({}, { locale })}{" "}
-                <Link
-                  href={`/${locale}/privacy-policy`}
-                  className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
-                >
-                  {m.reservationPrivacyNoteLinkLabel({}, { locale })}
-                </Link>{" "}
-                {m.reservationPrivacyNoteAfter({}, { locale })}
-              </p>
 
               {!!submissionMessage && (
                 <p
@@ -938,7 +966,7 @@ function SkeletonBlock({ className }: { className: string }) {
 }
 
 type TextFieldProps = {
-  control: Control<ReservationOrderInput, unknown, ReservationOrderData>;
+  control: Control<ReservationInput, unknown, ReservationData>;
   name: "name" | "email" | "phone";
   label: string;
   placeholder: string;
