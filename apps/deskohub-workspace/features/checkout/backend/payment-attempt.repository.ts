@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -8,6 +8,7 @@ import {
 } from "@/db/database.service";
 import {
   type PaymentAttempt,
+  type PaymentState,
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
@@ -36,6 +37,11 @@ export interface PaymentAttemptRepository {
   readonly findByProviderOrderId: (
     providerOrderId: string
   ) => Effect.Effect<PaymentAttempt | null, DatabaseError>;
+  readonly findDisplayableForReservation: (input: {
+    readonly workspaceReservationId: string;
+    readonly activePaymentAttemptId?: string;
+    readonly paymentState: PaymentState;
+  }) => Effect.Effect<PaymentAttempt | null, DatabaseError>;
   readonly attachHostedPaymentPage: (input: {
     readonly id: string;
     readonly securityToken: string;
@@ -183,6 +189,52 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
           );
         }
       ),
+      findDisplayableForReservation: Effect.fn(
+        "paymentAttempts.findDisplayableForReservation"
+      )(function* (input) {
+        return yield* runDb(
+          "paymentAttempts.findDisplayableForReservation",
+          async () => {
+            const [attempt] = await db
+              .select()
+              .from(paymentAttempts)
+              .where(
+                and(
+                  eq(
+                    paymentAttempts.workspaceReservationId,
+                    input.workspaceReservationId
+                  ),
+                  or(
+                    and(
+                      eq(
+                        paymentAttempts.id,
+                        input.activePaymentAttemptId ?? ""
+                      ),
+                      inArray(paymentAttempts.state, [
+                        "created",
+                        "pending",
+                        "paid",
+                      ])
+                    ),
+                    input.paymentState === "paid"
+                      ? eq(paymentAttempts.state, "paid")
+                      : sql`false`
+                  )
+                )
+              )
+              .orderBy(
+                sql`case
+                  when ${paymentAttempts.id} = ${input.activePaymentAttemptId ?? ""} then 0
+                  when ${paymentAttempts.state} = 'paid' then 1
+                  else 2
+                end`,
+                desc(paymentAttempts.updatedAt)
+              )
+              .limit(1);
+            return attempt ?? null;
+          }
+        );
+      }),
       attachHostedPaymentPage: Effect.fn(
         "paymentAttempts.attachHostedPaymentPage"
       )(function* (input) {

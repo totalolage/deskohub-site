@@ -5,9 +5,17 @@ import {
   type DatabaseError,
   WorkspaceDatabaseLive,
 } from "@/db/database.service";
-import type { FulfillmentState, PaymentState } from "@/db/schema";
+import type {
+  FulfillmentState,
+  PaymentAttempt,
+  PaymentState,
+  WorkspaceReservation,
+} from "@/db/schema";
 import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
-import { PaymentAttemptRepositoryLive } from "@/features/checkout/backend/payment-attempt.repository";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "@/features/checkout/backend/payment-attempt.repository";
 import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
@@ -20,7 +28,13 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/checkout/backend/workspace-reservation.repository";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import {
+  isWorkspaceProductMonitorOption,
+  isWorkspaceProductTier,
+  type WorkspaceMoney,
+  type WorkspaceProductMonitorOption,
+  type WorkspaceProductTier,
+} from "@/features/checkout/product-catalog";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
 
@@ -37,13 +51,21 @@ export type CheckoutStatusKind =
   | "cancelled"
   | "expired";
 
+export type WorkspaceCheckoutStatusSummary = {
+  readonly tier: WorkspaceProductTier;
+  readonly date: string;
+  readonly coffee: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+  readonly price: WorkspaceMoney;
+};
+
 export type CheckoutStatusViewModel = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
   readonly status: CheckoutStatusKind;
   readonly paymentStatus?: PaymentState;
   readonly fulfillmentStatus?: FulfillmentState;
-  readonly checkoutDetails?: CheckoutDetailsJson;
+  readonly summary?: WorkspaceCheckoutStatusSummary;
 };
 
 export interface CheckoutStatusService {
@@ -91,12 +113,103 @@ const toCheckoutStatusKind = (
   }
 };
 
+const toPragueReservationDate = (startDate: string | number) => {
+  const date =
+    typeof startDate === "number" || /^\d+$/.test(startDate)
+      ? new Date(Number(startDate))
+      : new Date(startDate);
+
+  if (Number.isNaN(date.getTime())) return undefined;
+
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Europe/Prague",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value;
+  const year = getPart("year");
+  const month = getPart("month");
+  const day = getPart("day");
+
+  return year && month && day ? `${year}-${month}-${day}` : undefined;
+};
+
+const canUseAttemptForSummary = (
+  attempt: PaymentAttempt,
+  reservation: WorkspaceReservation
+) => {
+  if (
+    attempt.id === reservation.activePaymentAttemptId &&
+    ["created", "pending", "paid"].includes(attempt.state)
+  ) {
+    return true;
+  }
+
+  return reservation.paymentState === "paid" && attempt.state === "paid";
+};
+
 export const CheckoutStatusServiceLive = Layer.effect(
   CheckoutStatusService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
+    const paymentAttempts = yield* PaymentAttemptRepository;
+    const dotypos = yield* DotyposService;
     const holdCleanup = yield* ReservationHoldCleanupService;
     const finalization = yield* ProviderPaymentFinalizationService;
+
+    const reconstructSummary = Effect.fn("checkoutStatus.reconstructSummary")(
+      function* (reservation: WorkspaceReservation) {
+        const monitorOption = reservation.productMonitorOption ?? undefined;
+
+        if (
+          !reservation.dotyposReservationId ||
+          !isWorkspaceProductTier(reservation.productTier) ||
+          (monitorOption !== undefined &&
+            !isWorkspaceProductMonitorOption(monitorOption))
+        ) {
+          return undefined;
+        }
+
+        const attempt = yield* paymentAttempts.findDisplayableForReservation({
+          workspaceReservationId: reservation.id,
+          activePaymentAttemptId:
+            reservation.activePaymentAttemptId ?? undefined,
+          paymentState: reservation.paymentState,
+        });
+
+        if (!attempt || !canUseAttemptForSummary(attempt, reservation)) {
+          return undefined;
+        }
+
+        const dotyposReservation = yield* dotypos
+          .getReservation(reservation.dotyposReservationId)
+          .pipe(Effect.option);
+
+        if (dotyposReservation._tag === "None") return undefined;
+
+        const date = toPragueReservationDate(
+          dotyposReservation.value.reservation.startDate
+        );
+
+        if (!date) return undefined;
+
+        return {
+          tier: reservation.productTier,
+          date,
+          coffee: reservation.productCoffee,
+          monitorOption,
+          price: {
+            value: attempt.amountValue,
+            exponent: attempt.amountExponent,
+            currency: attempt.currency,
+          },
+        } satisfies WorkspaceCheckoutStatusSummary;
+      },
+      (effect, reservation) =>
+        effect.pipe(Effect.annotateLogs({ reservationId: reservation.id }))
+    );
 
     const getStatus = Effect.fn("checkoutStatus.getStatus")(
       function* (input: {
@@ -113,6 +226,8 @@ export const CheckoutStatusServiceLive = Layer.effect(
           } satisfies CheckoutStatusViewModel;
         }
 
+        const summary = yield* reconstructSummary(reservation);
+
         return {
           orderId: reservation.id,
           returnOutcome: input.returnOutcome,
@@ -122,6 +237,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           ),
           paymentStatus: reservation.paymentState,
           fulfillmentStatus: reservation.fulfillmentState,
+          ...(summary ? { summary } : {}),
         } satisfies CheckoutStatusViewModel;
       },
       (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))

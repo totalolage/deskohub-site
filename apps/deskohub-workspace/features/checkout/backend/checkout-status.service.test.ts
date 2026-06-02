@@ -1,7 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
+import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
+import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
@@ -35,6 +37,45 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const makePaymentAttempt = (overrides: Record<string, unknown> = {}) => ({
+  id: "attempt-provider-return",
+  workspaceReservationId: "reservation-provider-return",
+  provider: "nexi",
+  providerOrderId: "provider-order-id",
+  securityToken: null,
+  state: "paid",
+  amountValue: 55_000,
+  amountExponent: 2,
+  currency: "CZK",
+  quoteFingerprint: "quote-fingerprint",
+  providerRedirectUrl: null,
+  lastWebhookEventId: null,
+  lastProviderOperationId: null,
+  lastProviderStatus: null,
+  failureCode: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+  ...overrides,
+});
+
+const makeDotypos = (overrides: Record<string, unknown> = {}) =>
+  ({
+    getReservation: mock(() =>
+      Effect.succeed({
+        reservation: {
+          id: "dotypos-reservation-id",
+          _customerId: "customer-id",
+          startDate: "2026-06-20T00:00:00.000+02:00",
+          endDate: "2026-06-21T00:00:00.000+02:00",
+          seats: "1",
+          status: "OPEN",
+        },
+        customer: { id: "customer-id" },
+      })
+    ),
+    ...overrides,
+  }) as unknown as typeof DotyposService.Service;
+
 describe("CheckoutStatusService", () => {
   test("finalizes a successful provider return before reading status", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
@@ -42,6 +83,9 @@ describe("CheckoutStatusService", () => {
     );
     const { ProviderPaymentFinalizationService } = await import(
       "./provider-payment-finalization.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
     );
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
@@ -71,6 +115,9 @@ describe("CheckoutStatusService", () => {
         Effect.succeed({ cancelled: 0, failed: 0 })
       ),
     };
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() => Effect.succeed(null)),
+    } as unknown as PaymentAttemptRepositoryType;
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -86,6 +133,8 @@ describe("CheckoutStatusService", () => {
       Effect.provide(
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(Layer.succeed(DotyposService, makeDotypos())),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
       Effect.runPromise
     );
@@ -104,6 +153,9 @@ describe("CheckoutStatusService", () => {
     );
     const { ProviderPaymentFinalizationService } = await import(
       "./provider-payment-finalization.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
     );
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
@@ -126,6 +178,9 @@ describe("CheckoutStatusService", () => {
         Effect.succeed({ cancelled: 0, failed: 0 })
       ),
     };
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() => Effect.succeed(null)),
+    } as unknown as PaymentAttemptRepositoryType;
 
     await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -141,10 +196,252 @@ describe("CheckoutStatusService", () => {
       Effect.provide(
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(Layer.succeed(DotyposService, makeDotypos())),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
       Effect.runPromise
     );
 
     expect(cancelOrderHold).toHaveBeenCalledWith({ orderId });
+  });
+
+  test("reconstructs a paid fulfilled reservation summary without PII", async () => {
+    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
+      "./checkout-status.service"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "./workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            paymentState: "paid",
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(CheckoutStatusServiceLive),
+      Effect.provide(
+        Layer.succeed(ProviderPaymentFinalizationService, finalization)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, reservations)
+      ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(
+        Layer.succeed(
+          DotyposService,
+          makeDotypos({
+            getReservation: mock(() =>
+              Effect.succeed({
+                reservation: {
+                  id: "dotypos-reservation-id",
+                  _customerId: "customer-id",
+                  startDate: "2026-06-19T22:00:00.000Z",
+                  endDate: "2026-06-20T22:00:00.000Z",
+                  seats: "1",
+                  status: "OPEN",
+                },
+                customer: { id: "customer-id" },
+              })
+            ),
+          })
+        )
+      ),
+      Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.runPromise
+    );
+
+    expect(status).toMatchObject({
+      status: "fulfilled",
+      summary: {
+        tier: "profi",
+        date: "2026-06-20",
+        coffee: false,
+        monitorOption: "2x27-qhd",
+        price: { value: 55_000, exponent: 2, currency: "CZK" },
+      },
+    });
+    expect(JSON.stringify(status)).not.toContain("email");
+    expect(JSON.stringify(status)).not.toContain("phone");
+    expect(JSON.stringify(status)).not.toContain("message");
+    expect(paymentAttempts.findDisplayableForReservation).toHaveBeenCalledWith({
+      workspaceReservationId: "reservation-provider-return",
+      activePaymentAttemptId: "attempt-provider-return",
+      paymentState: "paid",
+    });
+  });
+
+  test("omits summary when only a failed payment attempt is available", async () => {
+    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
+      "./checkout-status.service"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "./workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            paymentState: "failed",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(
+          makePaymentAttempt({
+            state: "failed",
+            amountValue: 99_999,
+          })
+        )
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+    const getReservation = mock(() => Effect.die("not used"));
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "cancelled",
+      });
+    }).pipe(
+      Effect.provide(CheckoutStatusServiceLive),
+      Effect.provide(
+        Layer.succeed(ProviderPaymentFinalizationService, finalization)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, reservations)
+      ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(
+        Layer.succeed(DotyposService, makeDotypos({ getReservation }))
+      ),
+      Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.runPromise
+    );
+
+    expect(status.status).toBe("payment_failed");
+    expect(status.summary).toBeUndefined();
+    expect(getReservation).not.toHaveBeenCalled();
+  });
+
+  test("keeps status renderable when Dotypos summary lookup fails", async () => {
+    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
+      "./checkout-status.service"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "./workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            paymentState: "paid",
+            fulfillmentState: "fulfilled",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(CheckoutStatusServiceLive),
+      Effect.provide(
+        Layer.succeed(ProviderPaymentFinalizationService, finalization)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, reservations)
+      ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(
+        Layer.succeed(
+          DotyposService,
+          makeDotypos({ getReservation: mock(() => Effect.fail("down")) })
+        )
+      ),
+      Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.runPromise
+    );
+
+    expect(status.status).toBe("fulfilled");
+    expect(status.summary).toBeUndefined();
   });
 });
