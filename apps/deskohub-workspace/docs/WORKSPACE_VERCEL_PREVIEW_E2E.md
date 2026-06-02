@@ -35,7 +35,7 @@ User-supplied values:
 - `DATABASE_URL`: Postgres connection string for the preview/dev database. No database exists yet, so provision one first.
 - `NEXI_API_KEY`: Nexi API key for the environment under test.
 - `VERCEL_AUTOMATION_BYPASS_SECRET`: required when Vercel deployment protection is enabled and Nexi must call protected preview callback URLs.
-- `DOTYPOS_CLIENT_ID`, `DOTYPOS_CLIENT_SECRET`, `DOTYPOS_REFRESH_TOKEN`, `DOTYPOS_CLOUD_ID`, `DOTYPOS_BRANCH_ID`, `DOTYPOS_EMPLOYEE_ID`: Dotypos credentials and IDs.
+- `DOTYPOS_CLIENT_ID`, `DOTYPOS_CLIENT_SECRET`, `DOTYPOS_REFRESH_TOKEN`, `DOTYPOS_CLOUD_ID`, `DOTYPOS_BRANCH_ID`, `DOTYPOS_EMPLOYEE_ID`: Dotypos credentials and IDs used by the deployed app.
 - `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`: real Workspace email provider settings used by live contact/manual reservation flows.
 - `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: Cloudinary account and webhook signing values.
 - `NEXT_PUBLIC_GTM_ID`: GTM container ID, if enabled for preview.
@@ -57,6 +57,17 @@ Vercel protection notes:
 - For automation, pass either the same query parameter or the `x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET` header when fetching/navigating, whichever is more convenient.
 - Workspace appends `x-vercel-protection-bypass` to Nexi callback URLs only for preview deployments when the secret is present. Workspace-owned post-callback redirects add `x-vercel-set-bypass-cookie=true` so the final result or retry page can render in the same protected deployment without sending that cookie-setting parameter through Nexi.
 - If webhooks appear not to arrive, first confirm the callback URL works through protection with the bypass parameter before debugging Nexi payload handling.
+
+Dotypos manual-verification notes:
+
+- `DOTYPOS_REFRESH_TOKEN` is a secret and is intentionally not available from local `vercel env pull` output. Do not treat an empty pulled value as a missing project configuration.
+- Manual Dotypos SDK checks must load the local secret from `apps/deskohub-workspace/.env.development.local` together with the shared Workspace env files. Follow [`../../../packages/dotypos/docs/MANUAL_API_USAGE.md`](../../../packages/dotypos/docs/MANUAL_API_USAGE.md) and run commands from `apps/deskohub-workspace` with:
+
+```bash
+bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval '<script>'
+```
+
+- Pull Vercel preview env only for preview database/runtime checks. Do not use pulled preview env as the source of Dotypos API secrets for manual tests.
 
 Nexi sandbox notes:
 
@@ -90,6 +101,8 @@ Do not deploy from this checklist automatically. When ready, use Vercel CLI expl
 vercel env pull .env.local --cwd apps/deskohub-workspace
 vercel --cwd apps/deskohub-workspace
 ```
+
+The pulled `.env.local` is useful for Vercel preview runtime values such as `DATABASE_URL`. It is not sufficient for manual Dotypos SDK verification because `DOTYPOS_REFRESH_TOKEN` must come from `.env.development.local`.
 
 If the project is not linked yet, run Vercel's link flow from `apps/deskohub-workspace` and confirm it points at the Workspace project before deploying.
 
