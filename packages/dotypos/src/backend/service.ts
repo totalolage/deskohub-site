@@ -237,6 +237,50 @@ export class DotyposService extends Effect.Service<DotyposService>()(
         (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
       );
 
+      const cancelReservation = Effect.fn("cancelReservation")(
+        function* (reservationId: string) {
+          const id = reservationId.trim();
+
+          if (!id) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Reservation ID is required" })
+            );
+          }
+
+          yield* api
+            .cancelReservation({
+              path: { cloudId: config.cloudId, reservationId: id },
+            })
+            .pipe(Effect.withSpan("dotyposService.cancelReservation"));
+        },
+        (effect, reservationId) =>
+          effect.pipe(Effect.annotateLogs({ reservationId }))
+      );
+
+      const confirmReservation = Effect.fn("confirmReservation")(
+        function* (reservationId: string) {
+          const id = reservationId.trim();
+
+          if (!id) {
+            return yield* Effect.fail(
+              new ValidationError({ message: "Reservation ID is required" })
+            );
+          }
+
+          return yield* api
+            .updateReservation({
+              path: { cloudId: config.cloudId, reservationId: id },
+              body: { status: "CONFIRMED" },
+            })
+            .pipe(
+              Effect.withSpan("dotyposService.confirmReservation"),
+              Effect.retry(retryPolicy)
+            );
+        },
+        (effect, reservationId) =>
+          effect.pipe(Effect.annotateLogs({ reservationId }))
+      );
+
       const getCustomer = Effect.fn("getCustomer")(
         function* (id: string) {
           return yield* api
@@ -631,6 +675,8 @@ export class DotyposService extends Effect.Service<DotyposService>()(
 
       return {
         createReservation,
+        cancelReservation,
+        confirmReservation,
         getReservation,
         getCustomer,
         getCustomerDiscount,
