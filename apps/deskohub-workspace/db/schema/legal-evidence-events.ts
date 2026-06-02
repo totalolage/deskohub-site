@@ -17,7 +17,6 @@ export const legalEvidenceEvents = pgTable(
       () => workspaceReservations.id,
       { onDelete: "set null" }
     ),
-    idempotencyKey: text("idempotency_key").notNull(),
     documentKey: text("document_key").notNull(),
     documentPath: text("document_path").notNull(),
     documentHash: text("document_hash").notNull(),
@@ -40,10 +39,6 @@ export const legalEvidenceEvents = pgTable(
     ),
     index("legal_evidence_events_workspace_reservation_idx").on(
       t.workspaceReservationId
-    ),
-    index("legal_evidence_events_idempotency_document_idx").on(
-      t.idempotencyKey,
-      t.documentHash
     ),
   ]
 );

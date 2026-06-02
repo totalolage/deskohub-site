@@ -7,7 +7,6 @@ describe("workspace checkout customer discounts", () => {
   test("applies customer percent discount and stores discount amount", () => {
     const checkoutPrice = applyWorkspaceCustomerDiscount(price, {
       source: "dotypos-discount-group",
-      field: "_discountGroupId",
       discountGroupId: "5",
       percent: 5,
     });
@@ -16,7 +15,6 @@ describe("workspace checkout customer discounts", () => {
       expectedPrice: { value: 33_250, exponent: 2, currency: "CZK" },
       customerDiscount: {
         source: "dotypos-discount-group",
-        field: "_discountGroupId",
         discountGroupId: "5",
         percent: 5,
         amount: { value: 1750, exponent: 2, currency: "CZK" },
@@ -29,7 +27,6 @@ describe("workspace checkout customer discounts", () => {
       { value: 100, exponent: 2, currency: "CZK" },
       {
         source: "dotypos-discount-group",
-        field: "_discountGroupId",
         discountGroupId: "12.5",
         percent: 12.5,
       }

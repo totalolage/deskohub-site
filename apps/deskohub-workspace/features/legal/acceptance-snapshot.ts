@@ -1,7 +1,7 @@
 "use server";
 
 import { createHash } from "node:crypto";
-import { isValidElement, type ReactNode } from "react";
+import { Children, isValidElement, type ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils";
 import { getLegalDocument, type LegalDocumentContent } from "./content";
@@ -36,7 +36,7 @@ function reactNodeToCanonicalText(node: ReactNode): string {
   }
 
   if (Array.isArray(node)) {
-    return node.map(reactNodeToCanonicalText).join("");
+    return Children.toArray(node).map(reactNodeToCanonicalText).join("");
   }
 
   if (isValidElement<{ children?: ReactNode }>(node)) {

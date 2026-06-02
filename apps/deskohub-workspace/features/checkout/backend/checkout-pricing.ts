@@ -1,9 +1,8 @@
 import type { DotyposCustomerDiscount } from "@deskohub/dotypos";
-import type { WorkspaceMoney } from "@/features/checkout/product-catalog";
+import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 
 export type WorkspaceCustomerDiscount = {
   readonly source: DotyposCustomerDiscount["source"];
-  readonly field: DotyposCustomerDiscount["field"];
   readonly discountGroupId: string;
   readonly percent: number;
   readonly amount: WorkspaceMoney;

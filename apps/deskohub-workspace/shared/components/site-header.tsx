@@ -170,7 +170,7 @@ export function SiteHeader({
         id="site-header-mobile-menu"
         className={cn(
           "overflow-hidden bg-navy-blue/98 transition-[max-height] duration-300 xl:hidden",
-          mobileMenuOpen ? "max-h-[32rem] border-t border-white/10" : "max-h-0"
+          mobileMenuOpen ? "max-h-128 border-t border-white/10" : "max-h-0"
         )}
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-5 sm:px-6 lg:px-8">

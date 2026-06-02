@@ -1,10 +1,8 @@
+import {
+  formatWorkspaceMoney,
+  type WorkspaceMoney,
+} from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
-
-export type WorkspaceMoney = {
-  readonly value: number;
-  readonly exponent: number;
-  readonly currency: string;
-};
 
 export const workspaceProductTiers = ["basic", "plus", "profi"] as const;
 
@@ -19,19 +17,18 @@ export type WorkspaceProductTier = (typeof workspaceProductTiers)[number];
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
 
-export const workspaceProductMonitorOptionTableTags = {
+export const workspaceProductMonitorOptionTableTags: Record<
+  WorkspaceProductMonitorOption,
+  readonly string[]
+> = {
   "2x27-qhd": ["monitor:count:2", "monitor:size:27", "monitor:resolution:qhd"],
   "2x32-qhd": ["monitor:count:2", "monitor:size:32", "monitor:resolution:qhd"],
   "2x27-4k": ["monitor:count:2", "monitor:size:27", "monitor:resolution:4k"],
   "2x32-4k": ["monitor:count:2", "monitor:size:32", "monitor:resolution:4k"],
-} as const satisfies Record<WorkspaceProductMonitorOption, readonly string[]>;
+};
 
 export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceProductTier;
-  readonly productCode:
-    | "workspace-basic"
-    | "workspace-plus"
-    | "workspace-profi";
   readonly label: string;
   readonly price: WorkspaceMoney;
   readonly includesCourtesyCoffee: boolean;
@@ -40,10 +37,9 @@ export type WorkspaceProductCatalogItem = {
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
 };
 
-export const workspaceProductCatalog = [
+export const workspaceProductCatalog: readonly WorkspaceProductCatalogItem[] = [
   {
     tier: "basic",
-    productCode: "workspace-basic",
     label: "Basic Day Pass",
     price: { value: 35_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: false,
@@ -53,7 +49,6 @@ export const workspaceProductCatalog = [
   },
   {
     tier: "plus",
-    productCode: "workspace-plus",
     label: "Cowork Plus",
     price: { value: 49_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: true,
@@ -63,7 +58,6 @@ export const workspaceProductCatalog = [
   },
   {
     tier: "profi",
-    productCode: "workspace-profi",
     label: "Profi Workstation",
     price: { value: 55_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: true,
@@ -71,7 +65,7 @@ export const workspaceProductCatalog = [
     requiresMonitorOption: true,
     allowedMonitorOptions: workspaceProductMonitorOptions,
   },
-] as const satisfies readonly WorkspaceProductCatalogItem[];
+];
 
 export const workspaceProductCoffeePrice: WorkspaceMoney = {
   value: 5000,
@@ -117,19 +111,6 @@ export function isWorkspaceProductMonitorOption(
       value as WorkspaceProductMonitorOption
     )
   );
-}
-
-export function toWorkspaceMoneyMajorAmount(money: WorkspaceMoney) {
-  return money.value / 10 ** money.exponent;
-}
-
-export function formatWorkspaceMoney(money: WorkspaceMoney, locale: Locale) {
-  return new Intl.NumberFormat(locale, {
-    style: "currency",
-    currency: money.currency,
-    minimumFractionDigits: 0,
-    maximumFractionDigits: money.exponent,
-  }).format(toWorkspaceMoneyMajorAmount(money));
 }
 
 export function formatWorkspaceProductCurrencyAmount(

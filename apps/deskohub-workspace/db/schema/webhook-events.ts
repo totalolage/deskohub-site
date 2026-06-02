@@ -1,6 +1,11 @@
 import { relations, sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
-import { paymentAttempts } from "./payment-attempts";
+import {
+  paymentAttempts,
+  paymentProviders,
+  type PaymentProvider,
+} from "./payment-attempts";
+import { quotedSqlList } from "./sql-list";
 
 export const webhookEventStates = ["received", "processed", "failed"] as const;
 
@@ -10,7 +15,7 @@ export const webhookEvents = pgTable(
   "webhook_events",
   {
     id: text("id").primaryKey(),
-    provider: text("provider").notNull().$type<"nexi">(),
+    provider: text("provider").notNull().$type<PaymentProvider>(),
     eventId: text("event_id").notNull().unique(),
     paymentAttemptId: text("payment_attempt_id").references(
       () => paymentAttempts.id
@@ -34,10 +39,13 @@ export const webhookEvents = pgTable(
       .defaultNow(),
   },
   (t) => [
-    check("webhook_events_provider_check", sql`${t.provider} in ('nexi')`),
+    check(
+      "webhook_events_provider_check",
+      sql`${t.provider} in (${quotedSqlList(paymentProviders)})`
+    ),
     check(
       "webhook_events_state_check",
-      sql`${t.state} in ('received', 'processed', 'failed')`
+      sql`${t.state} in (${quotedSqlList(webhookEventStates)})`
     ),
     check(
       "webhook_events_processed_check",

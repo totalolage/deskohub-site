@@ -1,4 +1,4 @@
-import { Effect, Schedule } from "effect";
+import { Effect, Match, Schedule } from "effect";
 import type { Writeable } from "zod/v3";
 import type { ExternalAPIError, NetworkError } from "../errors";
 import type { CreateHostedPaymentPageRequest } from "../generated/types.gen";
@@ -18,10 +18,10 @@ const AUTHORIZATION_OPERATION_TYPE = "AUTHORIZATION";
 const CAPTURE_OPERATION_TYPE = "CAPTURE";
 const EXECUTED_OPERATION_RESULT = "EXECUTED";
 
-const localeToNexiLanguage = {
+const localeToNexiLanguage: Record<Locale, "CZE" | "ENG"> = {
   "cs-CZ": "CZE",
   "en-US": "ENG",
-} as const satisfies Record<Locale, "CZE" | "ENG">;
+};
 
 const failureOperationResults = new Set([
   "DECLINED",
@@ -34,44 +34,20 @@ const failureOperationResults = new Set([
   "REFUNDED",
 ]);
 
+const isRetryableNexiError = (error: ExternalAPIError | NetworkError) =>
+  Match.value(error).pipe(
+    Match.tag("NetworkError", () => true),
+    Match.tag("ExternalAPIError", (apiError) =>
+      Boolean(apiError.statusCode && apiError.statusCode >= 500)
+    ),
+    Match.orElse(() => false)
+  );
+
 const retryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
   Schedule.intersect(Schedule.recurs(3)),
-  Schedule.whileInput<ExternalAPIError | NetworkError>((error) => {
-    if (error._tag === "NetworkError") return true;
-
-    if (
-      error._tag === "ExternalAPIError" &&
-      error.statusCode &&
-      error.statusCode >= 500
-    ) {
-      return true;
-    }
-
-    return false;
-  })
+  Schedule.whileInput<ExternalAPIError | NetworkError>(isRetryableNexiError)
 );
-
-const getUrlOriginForLogs = (url: string) => {
-  try {
-    return new URL(url).origin;
-  } catch {
-    return "invalid-url";
-  }
-};
-
-const getHostedPaymentPageLogAnnotations = (
-  input: CreateHostedPaymentPageInput
-) => ({
-  orderId: input.orderId,
-  correlationId: input.correlationId,
-  amount: input.amount,
-  currency: input.currency,
-  locale: input.locale,
-  resultUrlOrigin: getUrlOriginForLogs(input.resultUrl),
-  cancelUrlOrigin: getUrlOriginForLogs(input.cancelUrl),
-  notificationUrlOrigin: getUrlOriginForLogs(input.notificationUrl),
-});
 
 const getPaymentOutcomeLogAnnotations = (input: VerifyPaymentOutcomeInput) => ({
   orderId: input.orderId,
@@ -117,10 +93,7 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           securityToken: response.securityToken,
         };
       },
-      (effect, input) =>
-        effect.pipe(
-          Effect.annotateLogs(getHostedPaymentPageLogAnnotations(input))
-        )
+      (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
     );
 
     const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(

@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { recordCheckoutProviderReturn } from "@/features/checkout/backend/checkout-status.server";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order-page";
@@ -14,33 +15,19 @@ import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   getSearchParam,
   getWorkspaceLocalizedCanonicalUrl,
+  type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
 
-type CheckoutOrderSearchParams = Record<string, string | string[] | undefined>;
-
 type LocalizedCheckoutOrderPageProps = {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<CheckoutOrderSearchParams>;
+  searchParams: Promise<SearchParamsRecord>;
 };
 
-const loadProviderReturnStatus = async (orderId: string) => {
-  const [checkoutStatus] = await Promise.all([
-    import("@/features/checkout/backend/checkout-status.service"),
-  ]);
-  const checkoutStatusLayer =
-    checkoutStatus.CheckoutStatusServiceLiveWithDependencies;
-
-  return Effect.gen(function* () {
-    const service = yield* checkoutStatus.CheckoutStatusService;
-    return yield* service.recordProviderReturn({
-      orderId,
-      returnOutcome: "unknown",
-    });
-  }).pipe(Effect.provide(checkoutStatusLayer), runWorkspaceEffect);
-};
+const loadProviderReturnStatus = (orderId: string) =>
+  recordCheckoutProviderReturn({ orderId, returnOutcome: "unknown" });
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -52,7 +39,7 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   readonly locale: string;
   readonly orderId: string;
   readonly outcome: "cancelled" | "failed";
-  readonly searchParams: CheckoutOrderSearchParams;
+  readonly searchParams: SearchParamsRecord;
 }) => {
   const url = new URL(
     `/${input.locale}/checkout/payment/${input.orderId}`,
@@ -115,7 +102,13 @@ export default async function LocalizedCheckoutOrderPage({
     getCheckoutReturnStateTokenFromSearchParams(rawSearchParams)
   ) {
     const status = await loadProviderReturnStatus(paymentOrderId).catch(
-      () => undefined
+      async (cause) => {
+        await Effect.logError("Checkout provider return status load failed", {
+          paymentOrderId,
+          cause,
+        }).pipe(runWorkspaceEffect);
+        return undefined;
+      }
     );
     const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 

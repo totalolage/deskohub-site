@@ -17,10 +17,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/shared/components/ui/card";
+import { Input } from "@/shared/components/ui/input";
+import { Label } from "@/shared/components/ui/label";
+import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
-
-const fieldBaseClassName =
-  "w-full rounded-[1.2rem] border border-navy-blue/12 bg-white px-4 py-3 text-base text-navy-blue outline-none transition focus:border-burned-orange focus:ring-4 focus:ring-burned-orange/10";
 
 type ContactFormProps = {
   locale: Locale;
@@ -55,8 +55,8 @@ export function ContactForm({ locale }: ContactFormProps) {
   }, [state.status]);
 
   return (
-    <Card className="relative overflow-hidden rounded-[2rem] border-white/50 bg-white/92 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm">
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-sunset-yellow/70 to-transparent" />
+    <Card className="relative overflow-hidden rounded-4xl border-white/50 bg-white/92 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm">
+      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/70 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
         <CardTitle className="text-3xl sm:text-[2.2rem]">
           {m.contactFormTitle({}, { locale })}
@@ -129,7 +129,7 @@ export function ContactForm({ locale }: ContactFormProps) {
               <p
                 aria-live="polite"
                 className={cn(
-                  "rounded-[1rem] border px-4 py-3 text-sm leading-6",
+                  "rounded-2xl border px-4 py-3 text-sm leading-6",
                   state.status === "success"
                     ? "border-aquamarine-green/30 bg-aquamarine-green/10 text-navy-blue"
                     : "border-burned-orange/20 bg-burned-orange/8 text-navy-blue"
@@ -171,42 +171,38 @@ function Field({
   const inputId = `contact-${name}`;
 
   return (
-    <label htmlFor={inputId} className="block space-y-2">
-      <span
+    <div className="space-y-2">
+      <Label
+        htmlFor={inputId}
         className={cn(
-          "block text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72",
+          "text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72",
           required && "after:content-['_*']"
         )}
       >
         {label}
-      </span>
+      </Label>
       {multiline ? (
-        <textarea
+        <Textarea
           id={inputId}
           name={name}
           rows={7}
           placeholder={placeholder}
           defaultValue={defaultValue}
-          className={cn(
-            fieldBaseClassName,
-            "min-h-40 resize-y",
-            error && "border-burned-orange ring-4 ring-burned-orange/10"
-          )}
+          className="min-h-40 resize-y rounded-[1.2rem]"
+          variant={error ? "error" : "default"}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${name}-error` : undefined}
         />
       ) : (
-        <input
+        <Input
           id={inputId}
           name={name}
           type={type}
           autoComplete={autoComplete}
           placeholder={placeholder}
           defaultValue={defaultValue}
-          className={cn(
-            fieldBaseClassName,
-            error && "border-burned-orange ring-4 ring-burned-orange/10"
-          )}
+          className="rounded-[1.2rem]"
+          variant={error ? "error" : "default"}
           aria-invalid={Boolean(error)}
           aria-describedby={error ? `${name}-error` : undefined}
         />
@@ -216,7 +212,7 @@ function Field({
           {error}
         </span>
       )}
-    </label>
+    </div>
   );
 }
 

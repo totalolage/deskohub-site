@@ -6,6 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
+import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
 import {
   getWorkspaceProductByTier,
   isWorkspaceProductMonitorOption,
@@ -71,8 +72,11 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           const matchingTable = [...tables]
             .filter((table) => isAssignableTable(table, requiredTags))
             .sort(compareTables)[0];
+          const matchingTableId = matchingTable
+            ? getAssignableDotyposTableId(matchingTable)
+            : undefined;
 
-          if (!matchingTable?.id) {
+          if (!matchingTableId) {
             return yield* Effect.fail(
               new ValidationError({
                 message: `No active visible Dotypos workspace table matches tags: ${requiredTags.join(
@@ -82,7 +86,7 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             );
           }
 
-          return matchingTable.id;
+          return matchingTableId;
         },
         (effect, reservation) =>
           effect.pipe(
@@ -102,8 +106,7 @@ const isAssignableTable = (table: Table, requiredTags: readonly string[]) => {
   const tableTags = new Set(table.tags ?? []);
 
   return (
-    typeof table.id === "string" &&
-    table.id.trim().length > 0 &&
+    getAssignableDotyposTableId(table) !== undefined &&
     table.enabled === true &&
     table.display === true &&
     requiredTags.every((tag) => tableTags.has(tag))

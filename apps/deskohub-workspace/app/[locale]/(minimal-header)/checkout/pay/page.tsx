@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -7,8 +8,9 @@ import {
 } from "@/features/checkout/backend/pay-state.server";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
-import { isLocale, locales, m } from "@/features/i18n";
+import { isLocale, locales, m, type Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -20,6 +22,7 @@ import {
 import {
   getSearchParam,
   getWorkspaceLocalizedCanonicalUrl,
+  type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
 
@@ -27,7 +30,7 @@ export const dynamic = "force-dynamic";
 
 type LocalizedCheckoutPayPageProps = {
   params: Promise<{ locale: string }>;
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
+  searchParams: Promise<SearchParamsRecord>;
 };
 
 export async function generateMetadata({
@@ -86,7 +89,14 @@ export default async function LocalizedCheckoutPayPage({
 
   const state = await Promise.resolve()
     .then(() => openPayState(payStateToken))
-    .catch(() => undefined);
+    .catch(async (cause) => {
+      await Effect.logWarning("Checkout pay state token could not be opened", {
+        cause,
+        payStateToken,
+        reason: "openPayStateFailed",
+      }).pipe(runWorkspaceEffect);
+      return undefined;
+    });
 
   if (!state || state.locale !== locale) {
     return runWithRequestLocale(locale, () => (
@@ -109,7 +119,7 @@ export default async function LocalizedCheckoutPayPage({
 function InvalidPayState({
   locale,
 }: {
-  readonly locale: (typeof locales)[number];
+  readonly locale: Locale;
 }) {
   return (
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>

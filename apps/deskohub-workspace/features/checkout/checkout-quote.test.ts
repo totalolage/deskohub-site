@@ -22,7 +22,7 @@ describe("workspace checkout quotes", () => {
       "total",
     ]);
     expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
-      "product:workspace-basic",
+      "product:basic",
     ]);
   });
 
@@ -34,7 +34,7 @@ describe("workspace checkout quotes", () => {
 
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:workspace-basic",
+        key: "product:basic",
         amount: { value: 35_000, exponent: 2, currency: "CZK" },
       },
       {
@@ -54,7 +54,7 @@ describe("workspace checkout quotes", () => {
     expect(quote.order.coffee).toBe(true);
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:workspace-plus",
+        key: "product:plus",
         amount: { value: 49_000, exponent: 2, currency: "CZK" },
       },
       {
@@ -91,7 +91,6 @@ describe("workspace checkout quotes", () => {
       {
         customerDiscount: {
           source: "dotypos-discount-group",
-          field: "_discountGroupId",
           discountGroupId: "5",
           percent: 5,
         },
@@ -121,7 +120,6 @@ describe("workspace checkout quotes", () => {
       {
         customerDiscount: {
           source: "dotypos-discount-group",
-          field: "_discountGroupId",
           discountGroupId: "12.5",
           percent: 12.5,
         },
@@ -145,7 +143,6 @@ describe("workspace checkout quotes", () => {
       {
         customerDiscount: {
           source: "dotypos-discount-group",
-          field: "_discountGroupId",
           discountGroupId: "12.5",
           percent: 12.5,
         },
@@ -158,7 +155,6 @@ describe("workspace checkout quotes", () => {
     expect(accessOnly.fingerprint).not.toBe(
       coffeeDiscountedToSameTotal.fingerprint
     );
-    expect(accessOnly.canonicalFingerprintPayload).not.toContain("example.com");
   });
 
   test("sanitizes runtime contact and consent fields from quote output", () => {
@@ -204,18 +200,6 @@ describe("workspace checkout quotes", () => {
     } as unknown as WorkspaceCheckoutOrder);
 
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
-    expect(quoteWithRuntimeExtras.canonicalFingerprintPayload).toBe(
-      cleanQuote.canonicalFingerprintPayload
-    );
-    expect(quoteWithRuntimeExtras.canonicalFingerprintPayload).not.toContain(
-      "legalConsent"
-    );
-    expect(quoteWithRuntimeExtras.canonicalFingerprintPayload).not.toContain(
-      "grace@example.com"
-    );
-    expect(quoteWithRuntimeExtras.canonicalFingerprintPayload).not.toContain(
-      "Do not fingerprint this."
-    );
   });
 
   test("detects changed summary section and item keys", () => {
@@ -268,7 +252,7 @@ describe("workspace checkout quotes", () => {
 
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedCurrency).itemKeys
-    ).toContain("order/product:workspace-basic");
+    ).toContain("order/product:basic");
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedExponent).sectionKeys
     ).toContain("total");

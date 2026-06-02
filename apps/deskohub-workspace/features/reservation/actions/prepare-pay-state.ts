@@ -5,10 +5,14 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
+import {
+  WorkspaceCheckoutAccessCodeService,
+  WorkspaceCheckoutAccessCodeServiceLive,
+} from "@/features/checkout/backend/access-code.service";
 import { buildCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
 import { splitCustomerName } from "@/features/checkout/backend/dotypos-customer-policy";
 import { createWorkspaceDotyposReservation } from "@/features/checkout/backend/dotypos-reservation.adapter";
@@ -25,11 +29,11 @@ import {
   buildSignedPayState,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/pay-state.server";
+import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLive,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import {
   WorkspaceReservationRepository,
@@ -45,8 +49,9 @@ import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
+import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
-import { locales, m } from "@/features/i18n";
+import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import {
   WorkspaceAvailabilityService,
@@ -101,21 +106,41 @@ const deriveReservationSubmitKey = (input: {
     .digest("hex");
 };
 
-const getDotyposCustomerId = (customer: { readonly id?: string | null }) =>
-  Effect.gen(function* () {
-    if (!customer.id) {
-      return yield* Effect.fail(
-        new DotyposValidationError({
-          message: "Dotypos customer was created without an ID",
-        })
-      );
-    }
+const DotyposEntityWithIdSchema = Schema.Struct({
+  id: Schema.NonEmptyString,
+});
 
-    return customer.id;
-  });
+const decodeDotyposEntityId = Effect.fn(
+  "prepareWorkspacePayState.decodeDotyposEntityId"
+)(function* (input: {
+  readonly value: unknown;
+  readonly missingIdMessage: string;
+}) {
+  const entity = yield* Schema.decodeUnknown(DotyposEntityWithIdSchema)(
+    input.value
+  ).pipe(
+    Effect.mapError(
+      () =>
+        new DotyposValidationError({
+          message: input.missingIdMessage,
+        })
+    )
+  );
+
+  return entity.id;
+});
+
+const getDotyposCustomerId = Effect.fn(
+  "prepareWorkspacePayState.getDotyposCustomerId"
+)((customer: { readonly id?: string | null }) =>
+  decodeDotyposEntityId({
+    value: customer,
+    missingIdMessage: "Dotypos customer was created without an ID",
+  })
+);
 
 const buildReservationCheckoutDetails = (input: {
-  readonly locale: (typeof locales)[number];
+  readonly locale: Locale;
   readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: CheckoutDetailsJson["legal"];
@@ -138,8 +163,7 @@ const buildReservationCheckoutDetails = (input: {
     },
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
-      quoteFingerprint: input.quote.fingerprint,
-      summary: input.quote.summary,
+      summary: checkoutSummarySchema.parse(input.quote.summary),
       ...(input.quote.payment.customerDiscount && {
         undiscountedPrice: baseCheckoutPrice,
         customerDiscount: input.quote.payment.customerDiscount,
@@ -152,7 +176,7 @@ const buildReservationCheckoutDetails = (input: {
 const getReservationPrivacyEvidence = Effect.fn(
   "prepareWorkspacePayState.getReservationPrivacyEvidence"
 )(function* (input: {
-  readonly locale: (typeof locales)[number];
+  readonly locale: Locale;
   readonly accepted: boolean;
   readonly acceptedAt: string;
 }) {
@@ -161,27 +185,25 @@ const getReservationPrivacyEvidence = Effect.fn(
     catch: (cause) =>
       new Error("Legal acceptance snapshot could not be created.", { cause }),
   });
-  const privacyPolicy = documents.privacyPolicy;
-
   return legalEvidenceMapSchema.parse({
-    [privacyPolicy.hash]: {
+    [documents.privacyPolicy.hash]: {
       documentKey: "privacyPolicy",
-      documentHash: privacyPolicy.hash,
+      documentHash: documents.privacyPolicy.hash,
       accepted: input.accepted,
       acceptedAt: input.acceptedAt,
       locale: input.locale,
       source: reservationSubmitLegalEvidenceSource,
       document: {
-        path: privacyPolicy.path,
-        hash: privacyPolicy.hash,
-        hashAlgorithm: privacyPolicy.hashAlgorithm,
+        path: documents.privacyPolicy.path,
+        hash: documents.privacyPolicy.hash,
+        hashAlgorithm: documents.privacyPolicy.hashAlgorithm,
       },
     },
   });
 });
 
 const toReadyResult = (input: {
-  readonly locale: (typeof locales)[number];
+  readonly locale: Locale;
   readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
@@ -193,16 +215,10 @@ const toReadyResult = (input: {
     orderId: input.reservationId,
   });
   const sealedState = sealPayStateForUrl(state);
-  const payUrl = buildCheckoutPayPath(input.locale, sealedState);
-
-  if (payUrl.type !== "payPath") {
-    return {
-      status: "error" as const,
-      message: m.checkoutPayStateTooLarge({}, { locale: input.locale }),
-    };
-  }
-
-  return { status: "ready" as const, redirectUrl: payUrl.path };
+  return {
+    status: "ready" as const,
+    redirectUrl: buildCheckoutPayPath(input.locale, sealedState),
+  };
 };
 
 const EarlyReservationDotyposLive = DotyposService.Default.pipe(
@@ -242,8 +258,9 @@ const EarlyReservationSubmitLive = Layer.mergeAll(
   EarlyReservationHoldCleanupLive,
   EarlyReservationAvailabilityLive,
   EarlyReservationTableAssignmentLive,
+  WorkspaceCheckoutAccessCodeServiceLive,
   EarlyReservationDotyposLive
-).pipe(Layer.orDie);
+);
 
 export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
@@ -264,11 +281,17 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       yield* legalEvents
         .recordMany(
           Object.values(privacyEvidence).map((evidence) => ({
-            idempotencyKey: `${reservationSubmitKey}:privacy:${evidence.documentHash}`,
             evidence,
           }))
         )
-        .pipe(Effect.ignore);
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Reservation legal evidence recording failed", {
+              cause,
+            })
+          ),
+          Effect.ignore
+        );
 
       return {
         status: "error" as const,
@@ -286,16 +309,26 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       existingReservation.reservationHoldExpiresAt &&
       existingReservation.reservationHoldExpiresAt <= new Date()
     ) {
+      const existingReservationId = existingReservation.id;
       const holdCleanup = yield* ReservationHoldCleanupService;
       yield* holdCleanup
         .cancelOrderHold({
-          orderId: existingReservation.id,
+          orderId: existingReservationId,
           holdExpiredAt: new Date(),
         })
-        .pipe(Effect.ignore);
-      existingReservation = yield* reservations.findById(
-        existingReservation.id
-      );
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning(
+              "Expired existing reservation hold cleanup failed",
+              {
+                orderId: existingReservationId,
+                cause,
+              }
+            )
+          ),
+          Effect.ignore
+        );
+      existingReservation = yield* reservations.findById(existingReservationId);
     }
 
     const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
@@ -318,7 +351,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       yield* legalEvents.recordMany(
         Object.values(privacyEvidence).map((evidence) => ({
           workspaceReservationId: existingReservation.id,
-          idempotencyKey: `${existingReservation.id}:privacy:${evidence.documentHash}`,
           evidence,
         }))
       );
@@ -347,12 +379,15 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const dotyposCustomerId = yield* getDotyposCustomerId(customer);
     const reservationId = generateReservationId();
     const holdExpiresAt = getReservationHoldExpiresAt(new Date());
+    const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
+    const customerAccessCode = yield* accessCodes.generateCustomerAccessCode();
 
     const draft = yield* reservations.createDraft({
       id: reservationId,
       reservationSubmitKey,
       correlationId: randomUUID(),
       dotyposCustomerId,
+      customerAccessCode,
       productTier: input.reservation.entryTier,
       productCoffee: input.reservation.coffee,
       productMonitorOption: input.reservation.monitorOption,
@@ -396,19 +431,34 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       )
       .pipe(
         Effect.tapError(() =>
-          reservations.releaseHoldCreation(draft.id).pipe(Effect.ignore)
+          reservations.releaseHoldCreation(draft.id).pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Reservation hold creation release failed", {
+                orderId: draft.id,
+                cause,
+              })
+            ),
+            Effect.ignore
+          )
         )
       );
 
-    if (!dotyposReservation.id) {
-      yield* reservations.releaseHoldCreation(draft.id).pipe(Effect.ignore);
-      return yield* Effect.fail(
-        new DotyposValidationError({
-          message: "Dotypos reservation was created without an ID",
-        })
-      );
-    }
-    const dotyposReservationId = dotyposReservation.id;
+    const dotyposReservationId = yield* decodeDotyposEntityId({
+      value: dotyposReservation,
+      missingIdMessage: "Dotypos reservation was created without an ID",
+    }).pipe(
+      Effect.tapError(() =>
+        reservations.releaseHoldCreation(draft.id).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Reservation hold creation release failed", {
+              orderId: draft.id,
+              cause,
+            })
+          ),
+          Effect.ignore
+        )
+      )
+    );
 
     yield* reservations
       .attachHold({
@@ -430,7 +480,18 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
                 dotyposReservationId,
                 dotyposCustomerId,
               })
-              .pipe(Effect.ignore);
+              .pipe(
+                Effect.tapError((recordCause) =>
+                  Effect.logWarning(
+                    "Reservation hold attach failure event recording failed",
+                    {
+                      orderId: draft.id,
+                      cause: recordCause,
+                    }
+                  )
+                ),
+                Effect.ignore
+              );
 
             yield* dotypos.cancelReservation(dotyposReservationId).pipe(
               Effect.catchAll((cancelCause) =>
@@ -445,9 +506,15 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
                 })
               )
             );
-            yield* reservations
-              .releaseHoldCreation(draft.id)
-              .pipe(Effect.ignore);
+            yield* reservations.releaseHoldCreation(draft.id).pipe(
+              Effect.tapError((releaseCause) =>
+                Effect.logWarning("Reservation hold creation release failed", {
+                  orderId: draft.id,
+                  cause: releaseCause,
+                })
+              ),
+              Effect.ignore
+            );
 
             return yield* Effect.fail(cause);
           })
@@ -457,7 +524,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     yield* legalEvents.recordMany(
       Object.values(privacyEvidence).map((evidence) => ({
         workspaceReservationId: draft.id,
-        idempotencyKey: `${draft.id}:privacy:${evidence.documentHash}`,
         evidence,
       }))
     );
@@ -482,10 +548,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       }),
       Effect.mapError(
         (error) =>
-          new PublicSafeActionError(
-            m.reservationErrorMessage({}, { locale: input.locale }),
-            { cause: error }
-          )
+          new PublicSafeActionError({
+            message: m.reservationErrorMessage({}, { locale: input.locale }),
+            cause: error,
+          })
       )
     )
 );

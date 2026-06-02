@@ -6,6 +6,7 @@ import {
   type EmailProvider,
   EmailProviderTag,
   EmailServiceError,
+  isRetryableEmailError,
 } from "../service";
 
 interface ResendConfig {
@@ -149,7 +150,7 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
               {
                 errorTag: error._tag,
                 errorMessage: error.message,
-                willRetry: error._tag === "NetworkError",
+                willRetry: isRetryableEmailError(error),
               }
             )
           )

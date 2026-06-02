@@ -6,7 +6,6 @@ const siteHeaderSectionIds = {
   ttrpg: "ttrpg",
   events: "events",
   cowork: "cowork",
-  pricing: "pricing",
   privateOffice: "private-office",
   faqContact: "faq-contact",
 } as const;
@@ -32,10 +31,6 @@ export function getSiteHeaderConfig(locale: Locale) {
       {
         label: m.landingNavGallery({}, { locale }),
         href: `${localePath}/gallery`,
-      },
-      {
-        label: m.landingNavPricing({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.pricing}`),
       },
       {
         label: m.landingNavFaqContact({}, { locale }),

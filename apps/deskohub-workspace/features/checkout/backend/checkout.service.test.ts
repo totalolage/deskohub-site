@@ -88,7 +88,6 @@ describe("CheckoutService", () => {
           amountValue: 35_000,
           amountExponent: 2,
           currency: "CZK",
-          quoteFingerprint: "test-fingerprint",
           securityToken: null,
           providerRedirectUrl: null,
           lastWebhookEventId: null,

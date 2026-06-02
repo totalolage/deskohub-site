@@ -15,7 +15,6 @@ import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
 import {
-  formatWorkspaceMoney,
   formatWorkspaceProductCurrencyAmount,
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceProductMonitorOption,
@@ -26,11 +25,12 @@ import {
   workspaceProductCatalog,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceProductMessage,
-  workspaceProductMonitorMessageKeys,
-  workspaceProductTierBulletMessageKeys,
-  workspaceProductTierMessageKeys,
+  workspaceProductMonitorMessages,
+  workspaceProductTierBulletMessages,
+  workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
@@ -100,7 +100,10 @@ const getObjectProperty = (value: unknown, key: string): unknown => {
   return Object.getOwnPropertyDescriptor(value, key)?.value;
 };
 
-const getStringArrayProperty = (value: unknown, key: string): readonly string[] => {
+const getStringArrayProperty = (
+  value: unknown,
+  key: string
+): readonly string[] => {
   const property = getObjectProperty(value, key);
 
   if (!Array.isArray(property)) {
@@ -135,27 +138,25 @@ type UtmKey = (typeof utmKeys)[number];
 
 type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
-const tierOptions = workspaceProductCatalog.map((product) => ({
-  product,
-  value: product.tier,
-  ...workspaceProductTierMessageKeys[product.tier],
-})) satisfies ReadonlyArray<{
+const tierOptions: ReadonlyArray<{
   product: WorkspaceProductCatalogItem;
   value: WorkspaceProductTier;
-  titleKey: keyof typeof m;
-  descriptionKey: keyof typeof m;
-}>;
+  title: Parameters<typeof getWorkspaceProductMessage>[0];
+  description: Parameters<typeof getWorkspaceProductMessage>[0];
+}> = workspaceProductCatalog.map((product) => ({
+  product,
+  value: product.tier,
+  ...workspaceProductTierMessages[product.tier],
+}));
 
-const tierBulletContent = workspaceProductTierBulletMessageKeys;
-
-const monitorOptions = workspaceProductMonitorOptions.map((option) => ({
-  value: option,
-  ...workspaceProductMonitorMessageKeys[option],
-})) satisfies ReadonlyArray<{
+const monitorOptions: ReadonlyArray<{
   value: WorkspaceProductMonitorOption;
-  titleKey: keyof typeof m;
-  descriptionKey: keyof typeof m;
-}>;
+  title: Parameters<typeof getWorkspaceProductMessage>[0];
+  description: Parameters<typeof getWorkspaceProductMessage>[0];
+}> = workspaceProductMonitorOptions.map((option) => ({
+  value: option,
+  ...workspaceProductMonitorMessages[option],
+}));
 
 const reservationFormCardClassName =
   "relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm";
@@ -265,7 +266,8 @@ export function ReservationForm({
   );
   const isSelectedTierUnavailable = unavailableTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
-    selectedMonitorOption && unavailableMonitorOptions.has(selectedMonitorOption)
+    selectedMonitorOption &&
+      unavailableMonitorOptions.has(selectedMonitorOption)
   );
   const isSelectedDateUnavailable = Boolean(
     selectedDate && unavailableDates.has(selectedDate)
@@ -347,6 +349,10 @@ export function ReservationForm({
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
+        console.error("Workspace availability request failed", {
+          error,
+          params: Object.fromEntries(params),
+        });
         setAvailability(null);
       })
       .finally(() => {
@@ -382,7 +388,7 @@ export function ReservationForm({
   return (
     <Card className={reservationFormCardClassName}>
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      {showIntro ? (
+      {showIntro && (
         <CardHeader className="space-y-3 pb-6">
           <CardTitle className="text-3xl sm:text-[2.35rem]">
             {m.reservationFormTitle({}, { locale })}
@@ -391,9 +397,9 @@ export function ReservationForm({
             {m.reservationFormDescription({}, { locale })}
           </CardDescription>
         </CardHeader>
-      ) : null}
+      )}
 
-      <CardContent className={showIntro ? undefined : "pt-6"}>
+      <CardContent className={cn(!showIntro && "pt-6")}>
         <Form {...form}>
           <form onSubmit={handleSubmit} className="space-y-7">
             <FormField
@@ -411,10 +417,11 @@ export function ReservationForm({
                     <div className="grid gap-3 lg:grid-cols-3 lg:gap-x-3 lg:gap-y-3">
                       {tierOptions.map((option) => {
                         const isSelected = field.value === option.value;
-                        const bulletContent = tierBulletContent[option.value];
+                        const bulletContent =
+                          workspaceProductTierBulletMessages[option.value];
                         const inputId = `reservation-entry-tier-${option.value}`;
                         const optionTitle = getWorkspaceProductMessage(
-                          option.titleKey,
+                          option.title,
                           locale
                         );
                         const isUnavailable = unavailableTiers.has(
@@ -465,9 +472,9 @@ export function ReservationForm({
                             </span>
                             <div className="text-sm leading-5 text-navy-blue/62">
                               <ul className="list-disc space-y-0.5 pl-4">
-                                {bulletContent.main.map((key) => (
-                                  <li key={key}>
-                                    {getWorkspaceProductMessage(key, locale)}
+                                {bulletContent.main.map((message, index) => (
+                                  <li key={index}>
+                                    {getWorkspaceProductMessage(message, locale)}
                                   </li>
                                 ))}
                               </ul>
@@ -475,14 +482,14 @@ export function ReservationForm({
                             <div className="space-y-1 text-sm leading-5 text-navy-blue/62">
                               <span className="block font-semibold leading-5 text-navy-blue/72">
                                 {getWorkspaceProductMessage(
-                                  bulletContent.perksLabelKey,
+                                  bulletContent.perksLabel,
                                   locale
                                 )}
                               </span>
                               <ul className="space-y-0.5">
-                                {bulletContent.perks.map((perk) => (
+                                {bulletContent.perks.map((perk, index) => (
                                   <li
-                                    key={perk.key}
+                                    key={index}
                                     className={cn(
                                       "flex gap-1.5 leading-5",
                                       perk.highlighted && "text-burned-orange"
@@ -496,7 +503,7 @@ export function ReservationForm({
                                     </span>
                                     <span>
                                       {getWorkspaceProductMessage(
-                                        perk.key,
+                                        perk.message,
                                         locale
                                       )}
                                     </span>
@@ -520,7 +527,8 @@ export function ReservationForm({
                                 value={option.value}
                                 disabled={isUnavailable}
                                 onChange={() => {
-                                  if (!isUnavailable) field.onChange(option.value);
+                                  if (!isUnavailable)
+                                    field.onChange(option.value);
                                 }}
                                 onBlur={field.onBlur}
                                 ref={field.ref}
@@ -701,8 +709,9 @@ export function ReservationForm({
                           )
                           .map((option) => {
                             const isSelected = field.value === option.value;
-                            const isUnavailable =
-                              unavailableMonitorOptions.has(option.value);
+                            const isUnavailable = unavailableMonitorOptions.has(
+                              option.value
+                            );
 
                             return (
                               <label
@@ -723,18 +732,19 @@ export function ReservationForm({
                                   value={option.value}
                                   disabled={isUnavailable}
                                   onChange={() => {
-                                    if (!isUnavailable) field.onChange(option.value);
+                                    if (!isUnavailable)
+                                      field.onChange(option.value);
                                   }}
                                 />
                                 <span className="block font-semibold text-navy-blue">
                                   {getWorkspaceProductMessage(
-                                    option.titleKey,
+                                    option.title,
                                     locale
                                   )}
                                 </span>
                                 <span className="mt-1 block text-sm leading-5 text-navy-blue/60">
                                   {getWorkspaceProductMessage(
-                                    option.descriptionKey,
+                                    option.description,
                                     locale
                                   )}
                                 </span>
@@ -813,7 +823,7 @@ export function ReservationForm({
                   <span>{submissionMessage.text}</span>
                 </p>
               )}
-              {isSelectedReservationUnavailable && !submissionMessage ? (
+              {isSelectedReservationUnavailable && !submissionMessage && (
                 <p
                   aria-live="polite"
                   className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue"
@@ -823,15 +833,15 @@ export function ReservationForm({
                     {m.reservationAvailabilityUnavailable({}, { locale })}
                   </span>
                 </p>
-              ) : null}
-              {isAvailabilityLoading && !submissionMessage ? (
+              )}
+              {isAvailabilityLoading && !submissionMessage && (
                 <p
                   aria-live="polite"
                   className="text-sm leading-6 text-navy-blue/62"
                 >
                   {m.reservationAvailabilityLoading({}, { locale })}
                 </p>
-              ) : null}
+              )}
             </div>
           </form>
         </Form>
@@ -853,7 +863,7 @@ export function ReservationFormFallback({
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
 
-      {showIntro ? (
+      {showIntro && (
         <CardHeader className="space-y-3 pb-6">
           <SkeletonBlock className="h-10 w-4/5 max-w-xl sm:h-11" />
           <div className="max-w-2xl space-y-2">
@@ -861,9 +871,9 @@ export function ReservationFormFallback({
             <SkeletonBlock className="h-4 w-5/6" />
           </div>
         </CardHeader>
-      ) : null}
+      )}
 
-      <CardContent className={showIntro ? undefined : "pt-6"}>
+      <CardContent className={cn(!showIntro && "pt-6")}>
         <div aria-hidden="true" className="space-y-7">
           <div className="space-y-2">
             <SkeletonBlock className="h-4 w-28" />
@@ -910,10 +920,10 @@ export function ReservationFormFallback({
 
           <div className="space-y-2">
             <SkeletonBlock className="h-4 w-36" />
-            <SkeletonBlock className="h-[8.5rem] w-full rounded-[1.1rem]" />
+            <SkeletonBlock className="h-34 w-full rounded-[1.1rem]" />
           </div>
 
-          {showMonitorOption ? <SkeletonMonitorOptionField /> : null}
+          {showMonitorOption && <SkeletonMonitorOptionField />}
 
           <div className="space-y-3 pt-1">
             <SkeletonBlock className="h-13 w-full rounded-full bg-burned-orange/18" />

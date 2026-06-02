@@ -83,9 +83,7 @@ export function LandingPageWorkspaceSection({
                     >
                       <card.icon className="h-6 w-6" />
                     </div>
-                    <CardTitle
-                      className={index === 1 ? undefined : "text-white"}
-                    >
+                    <CardTitle className={cn(index !== 1 && "text-white")}>
                       {card.title}
                     </CardTitle>
                     <CardDescription

@@ -88,31 +88,31 @@ export function CheckoutPayPage({
     <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
-        {orderId ? (
+        {!!orderId && (
           <div className="w-fit rounded-full border border-burned-orange/20 bg-burned-orange/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-burned-orange">
             {orderId}
           </div>
-        ) : null}
+        )}
         <CardTitle className="text-3xl sm:text-[2.35rem]">{title}</CardTitle>
-        {lead ? (
+        {!!lead && (
           <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
             {lead}
           </CardDescription>
-        ) : null}
+        )}
       </CardHeader>
 
       <CardContent className="space-y-6">
-        {retryOutcome ? (
+        {!!retryOutcome && (
           <Banner>
             {retryOutcome === "cancelled"
               ? m.checkoutPaymentRetryCancelledBanner({}, { locale })
               : m.checkoutPaymentRetryFailedBanner({}, { locale })}
           </Banner>
-        ) : null}
+        )}
 
-        {isPricingChanged ? (
+        {isPricingChanged && (
           <Banner>{m.checkoutPayPricingChangedBanner({}, { locale })}</Banner>
-        ) : null}
+        )}
 
         <CheckoutSummary
           changedKeys={changedKeys}

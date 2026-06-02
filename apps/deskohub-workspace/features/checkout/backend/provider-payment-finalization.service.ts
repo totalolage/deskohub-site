@@ -2,7 +2,6 @@ import { DotyposService } from "@deskohub/dotypos";
 import {
   classifyNexiFailureStatus,
   getNexiPaymentMetadata,
-  NexiApi,
   NexiCurrencySchema,
   NexiService,
 } from "@deskohub/nexi";
@@ -21,7 +20,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/checkout/backend/workspace-reservation.repository";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { NexiRuntimeConfigLive } from "@/shared/backend/config/nexi.config";
+import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 
 export type ProviderPaymentFinalizationResult =
   | "not_found"
@@ -57,9 +56,15 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
       finalizePendingProviderPayment: Effect.fn(
         "providerPaymentFinalization.finalizePendingProviderPayment"
       )(function* (input) {
-        const reservation = yield* reservations
-          .findById(input.orderId)
-          .pipe(Effect.orElseSucceed(() => null));
+        const reservation = yield* reservations.findById(input.orderId).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("Payment finalization reservation lookup failed", {
+              orderId: input.orderId,
+              cause,
+            })
+          ),
+          Effect.orElseSucceed(() => null)
+        );
         const paymentAttemptId =
           input.paymentAttemptId ?? reservation?.activePaymentAttemptId;
 
@@ -71,21 +76,51 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           ) {
             yield* fulfillment
               .fulfillPaidOrder({ orderId: reservation.id })
-              .pipe(Effect.ignore);
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logError(
+                    "Paid order fulfillment failed during finalization",
+                    {
+                      orderId: reservation.id,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.ignore
+              );
             return "paid";
           }
 
           return "not_pending";
         }
 
-        const attempt = yield* paymentAttempts
-          .findById(paymentAttemptId)
-          .pipe(Effect.orElseSucceed(() => null));
+        const attempt = yield* paymentAttempts.findById(paymentAttemptId).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("Payment finalization attempt lookup failed", {
+              orderId: reservation.id,
+              paymentAttemptId,
+              cause,
+            })
+          ),
+          Effect.orElseSucceed(() => null)
+        );
         if (!attempt?.securityToken) return "not_verifiable";
 
         const currency = yield* Schema.decodeUnknown(NexiCurrencySchema)(
           attempt.currency
-        ).pipe(Effect.orDie);
+        ).pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("Payment finalization currency decode failed", {
+              input,
+              reservation,
+              attempt,
+              cause,
+            })
+          ),
+          Effect.orElseSucceed(() => undefined)
+        );
+        if (!currency) return "not_verifiable";
+
         const verification = yield* nexi
           .verifyPaymentOutcome({
             orderId: attempt.providerOrderId,
@@ -94,7 +129,17 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             currency,
             securityToken: attempt.securityToken,
           })
-          .pipe(Effect.orElseSucceed(() => undefined));
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("Nexi payment outcome verification failed", {
+                orderId: reservation.id,
+                paymentAttemptId: attempt.id,
+                providerOrderId: attempt.providerOrderId,
+                cause,
+              })
+            ),
+            Effect.orElseSucceed(() => undefined)
+          );
 
         if (!verification) return "not_verifiable";
         if (verification.mismatches.length > 0) return "verification_mismatch";
@@ -116,9 +161,19 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 
           if (paid._tag === "Left") return "not_pending";
 
-          yield* fulfillment
-            .fulfillPaidOrder({ orderId: reservation.id })
-            .pipe(Effect.ignore);
+          yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id }).pipe(
+            Effect.tapError((cause) =>
+              Effect.logError(
+                "Paid order fulfillment failed during finalization",
+                {
+                  orderId: reservation.id,
+                  paymentAttemptId: attempt.id,
+                  cause,
+                }
+              )
+            ),
+            Effect.ignore
+          );
           return "paid";
         }
 
@@ -161,10 +216,5 @@ export const ProviderPaymentFinalizationServiceLiveWithDependencies =
       Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
     ),
     Layer.provide(WorkspacePaidFulfillmentServiceLiveWithDependencies),
-    Layer.provide(
-      Layer.provide(
-        NexiService.Default,
-        Layer.provide(NexiApi.Default, NexiRuntimeConfigLive)
-      )
-    )
+    Layer.provide(NexiServiceLive)
   );

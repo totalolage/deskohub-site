@@ -8,6 +8,7 @@ import {
 import { getLocale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { Button } from "@/shared/components/ui/button";
+import { Checkbox } from "@/shared/components/ui/checkbox";
 
 const consentCategories: ConsentCategory[] = [
   "necessary",
@@ -135,6 +136,7 @@ function CookieCategoryCard({
   onToggle,
 }: CookieCategoryCardProps) {
   const messages = categoryMessageGetters[category];
+  const checkboxId = `cookie-category-${category}`;
 
   return (
     <article className="flex flex-col gap-5 rounded-[1.5rem] border border-navy-blue/10 bg-[#f8f6f1] p-5 sm:flex-row sm:items-start sm:justify-between sm:p-6">
@@ -147,18 +149,19 @@ function CookieCategoryCard({
         </p>
       </div>
 
-      <label className="inline-flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue">
-        <input
-          type="checkbox"
+      <div className="inline-flex items-center gap-3 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue">
+        <Checkbox
+          id={checkboxId}
           checked={checked}
-          onChange={onToggle}
+          onCheckedChange={onToggle}
           disabled={category === "necessary"}
-          className="h-5 w-5 rounded border border-navy-blue/20 accent-burned-orange"
         />
-        {checked
-          ? m.cookieSettingsToggleEnabled({}, { locale })
-          : m.cookieSettingsToggleDisabled({}, { locale })}
-      </label>
+        <label htmlFor={checkboxId} className="cursor-pointer">
+          {checked
+            ? m.cookieSettingsToggleEnabled({}, { locale })
+            : m.cookieSettingsToggleDisabled({}, { locale })}
+        </label>
+      </div>
     </article>
   );
 }

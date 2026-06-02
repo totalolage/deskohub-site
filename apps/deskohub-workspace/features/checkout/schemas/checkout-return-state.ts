@@ -82,3 +82,7 @@ export const checkoutReturnStateJsonSchema = z.object({
   schemaVersion: z.literal(1),
   reservation: checkoutReturnStateReservationSchema,
 });
+
+export type CheckoutReturnStateJson = z.output<
+  typeof checkoutReturnStateJsonSchema
+>;

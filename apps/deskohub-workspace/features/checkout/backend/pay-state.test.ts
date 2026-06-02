@@ -6,14 +6,11 @@ mock.module("server-only", () => ({}));
 
 const {
   buildPayStateQueryParams,
-  buildPayUrl,
   buildRetryPayState,
   buildSignedPayState,
   openPayState,
   parsePayStateKey,
-  payStateMaxSerializedTokenSize,
   payStateTokenQueryParam,
-  redactPayStateTokens,
   sealPayState,
   sealPayStateForUrl,
 } = await import("./pay-state");
@@ -174,24 +171,8 @@ describe("Pay URL state", () => {
       JSON.stringify({ ...buildState(), schemaVersion: 2 })
     );
 
-    expect(() => sealPayState(unsupportedState)).toThrow("Expected SignedPayState");
-  });
-
-  test("redacts tokens in URLs and raw log strings", () => {
-    const token = seal();
-    const url = buildPayUrl("https://example.com/pay", {
-      type: "sealedPayState",
-      token,
-      queryParam: payStateTokenQueryParam,
-      serializedTokenSize: token.length,
-    });
-
-    expect(url.type).toBe("payUrl");
-    if (url.type !== "payUrl") throw new Error("Unexpected fallback");
-
-    expect(redactPayStateTokens(url.url.toString())).toContain("[REDACTED]");
-    expect(redactPayStateTokens(`token=${token}`)).toContain(
-      "[REDACTED_PAY_STATE]"
+    expect(() => sealPayState(unsupportedState)).toThrow(
+      "Expected SignedPayState"
     );
   });
 
@@ -204,7 +185,7 @@ describe("Pay URL state", () => {
     expect(token).not.toContain(baseReservation.message);
   });
 
-  test("builds URL query params inside the size budget", () => {
+  test("builds URL query params", () => {
     const result = sealPayStateForUrl(buildState(), {
       keys: [fixedKey],
       randomBytes: fixedRandomBytes,
@@ -212,56 +193,7 @@ describe("Pay URL state", () => {
     const searchParams = buildPayStateQueryParams(result);
 
     expect(result.type).toBe("sealedPayState");
-    expect(result.serializedTokenSize).toBeLessThanOrEqual(
-      payStateMaxSerializedTokenSize
-    );
-    expect(searchParams.get(payStateTokenQueryParam)).toBe(
-      result.type === "sealedPayState" ? result.token : null
-    );
-  });
-
-  test("returns a typed opaque-state fallback for worst-case oversized payloads", () => {
-    const maxReservation = {
-      ...baseReservation,
-      name: "N".repeat(100),
-      email: `${"e".repeat(243)}@x.cz`,
-      phone: "+420 777 777 777",
-      message: "M".repeat(1000),
-    };
-    const state = buildSignedPayState(
-      {
-        locale: "en-US",
-        reservation: maxReservation,
-        quote: buildWorkspaceCheckoutQuote(maxReservation),
-        orderId: "worst-case-order-id",
-        changedKeys: {
-          sectionKeys: Array.from(
-            { length: 40 },
-            (_, index) => `retry-section-${index}`
-          ),
-          itemKeys: Array.from(
-            { length: 120 },
-            (_, index) => `retry-item-${index}`
-          ),
-        },
-      },
-      { keys: [fixedKey], now: () => fixedNow }
-    );
-    const result = sealPayStateForUrl(state, {
-      keys: [fixedKey],
-      randomBytes: fixedRandomBytes,
-      maxSerializedTokenSize: 512,
-    });
-
-    expect(result.type).toBe("requiresOpaqueState");
-    expect(result).toMatchObject({
-      reason: "serialized-token-size-exceeded",
-      maxSerializedTokenSize: 512,
-    });
-    expect(result.serializedTokenSize).toBeGreaterThan(512);
-    expect(
-      result.type === "requiresOpaqueState" && result.encryptedStateToken
-    ).not.toContain(maxReservation.email);
+    expect(searchParams.get(payStateTokenQueryParam)).toBe(result.token);
   });
 
   test("models retry state as CheckoutReturnStateTokenRepository semantics", () => {

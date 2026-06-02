@@ -2,7 +2,6 @@ import { and, eq, inArray, lte, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
-  hasErrorTag,
   runDb,
   WorkspaceDatabase,
 } from "@/db/database.service";
@@ -25,6 +24,7 @@ export interface CreateWorkspaceReservationInput {
   readonly reservationSubmitKey: string;
   readonly correlationId: string;
   readonly dotyposCustomerId: string;
+  readonly customerAccessCode: string;
   readonly productTier: string;
   readonly productCoffee: boolean;
   readonly productMonitorOption?: string;
@@ -111,7 +111,6 @@ export interface WorkspaceReservationRepository {
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
   readonly selectExpiredHolds: (input: {
     readonly now: Date;
-    readonly limit: number;
   }) => Effect.Effect<readonly WorkspaceReservation[], DatabaseError>;
 }
 
@@ -119,11 +118,6 @@ export const WorkspaceReservationRepository =
   Context.GenericTag<WorkspaceReservationRepository>(
     "WorkspaceReservationRepository"
   );
-
-const isWorkspaceReservationStateError = (
-  cause: unknown
-): cause is WorkspaceReservationStateError =>
-  hasErrorTag("WorkspaceReservationStateError")(cause);
 
 const ensureUpdated = (
   updated: readonly Pick<WorkspaceReservation, "id">[],
@@ -169,6 +163,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             reservationSubmitKey: input.reservationSubmitKey,
             correlationId: input.correlationId,
             dotyposCustomerId: input.dotyposCustomerId,
+            customerAccessCode: input.customerAccessCode,
             reservationState: "draft",
             paymentState: "not_started",
             fulfillmentState: "not_started",
@@ -239,10 +234,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       updateProductIntent: Effect.fn(
         "workspaceReservations.updateProductIntent"
       )(function* (input) {
-        const updated = yield* runDb<
-          WorkspaceReservation[],
-          WorkspaceReservationStateError
-        >(
+        const updated = yield* runDb(
           "workspaceReservations.updateProductIntent",
           () =>
             db
@@ -263,8 +255,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   ])
                 )
               )
-              .returning(),
-          { preserveError: isWorkspaceReservationStateError }
+              .returning()
         );
         if (!updated[0]) {
           return yield* Effect.fail(
@@ -596,9 +587,9 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       )(function* (input) {
         const updated = yield* runDb(
           "workspaceReservations.markFulfillmentFailed",
-            () =>
-              db
-                .update(workspaceReservations)
+          () =>
+            db
+              .update(workspaceReservations)
               .set({
                 fulfillmentState: "failed",
                 fulfillmentFailedAt: input.failedAt,
@@ -626,9 +617,9 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       )(function* (input) {
         const updated = yield* runDb(
           "workspaceReservations.markReservationConfirmed",
-            () =>
-              db
-                .update(workspaceReservations)
+          () =>
+            db
+              .update(workspaceReservations)
               .set({
                 reservationState: "confirmed",
                 reservationConfirmedAt: input.confirmedAt,
@@ -664,7 +655,6 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   lte(workspaceReservations.reservationHoldExpiresAt, input.now)
                 )
               )
-              .limit(input.limit)
           );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))

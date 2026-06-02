@@ -1,11 +1,10 @@
-import { Effect, Array as EffectArray, Either, Layer, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import {
-  type CheckoutStatusReturnOutcome,
-  CheckoutStatusService,
-  CheckoutStatusServiceLiveWithDependencies,
-  type CheckoutStatusViewModel,
+import { getCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
+import type {
+  CheckoutStatusReturnOutcome,
+  CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
@@ -15,73 +14,36 @@ import {
 } from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
+  getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
+  type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
 
-type CheckoutStatusSearchParams = Record<string, string | string[] | undefined>;
-
 type LocalizedCheckoutStatusPageProps = {
   params: Promise<{ locale: string; orderId: string }>;
-  searchParams: Promise<CheckoutStatusSearchParams>;
+  searchParams: Promise<SearchParamsRecord>;
 };
 
-const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
-  Layer.orDie
-);
-
-const CheckoutStatusRouteParamsSchema = Schema.Struct({
-  locale: Schema.Literal(...locales),
+const decodeCheckoutStatusParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
 
-const NextSearchParamsSchema = Schema.Record({
-  key: Schema.String,
-  value: Schema.UndefinedOr(
-    Schema.Union(Schema.String, Schema.Array(Schema.String))
-  ),
-});
-
-const CheckoutStatusSearchParamsSchema = Schema.transform(
-  NextSearchParamsSchema,
+const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
   Schema.Struct({
-    outcome: Schema.Literal("success", "cancelled", "unknown"),
-  }),
-  {
-    strict: true,
-    decode: (searchParams) => {
-      const outcome = EffectArray.ensure(searchParams.outcome)[0];
-      const normalizedOutcome: CheckoutStatusReturnOutcome =
-        outcome === "success" || outcome === "cancelled" ? outcome : "unknown";
-
-      return {
-        outcome: normalizedOutcome,
-      };
-    },
-    encode: ({ outcome }) => ({ outcome }),
-  }
-);
-
-const decodeCheckoutStatusParams = Schema.decodeUnknownEither(
-  CheckoutStatusRouteParamsSchema
-);
-
-const decodeCheckoutStatusSearchParams = Schema.decodeUnknownEither(
-  CheckoutStatusSearchParamsSchema
+    outcome: Schema.Literal("success", "cancelled"),
+  })
 );
 
 const loadCheckoutStatus = (
   orderId: string,
   returnOutcome: CheckoutStatusReturnOutcome
-) =>
-  Effect.gen(function* () {
-    const service = yield* CheckoutStatusService;
-    return yield* service.getStatus({ orderId, returnOutcome });
-  }).pipe(Effect.provide(checkoutStatusLayer), runWorkspaceEffect);
+) => getCheckoutStatus({ orderId, returnOutcome });
 
 const getFallbackStatus = (
   orderId: string,
@@ -102,7 +64,7 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   readonly locale: string;
   readonly orderId: string;
   readonly outcome: "cancelled" | "failed";
-  readonly searchParams: CheckoutStatusSearchParams;
+  readonly searchParams: SearchParamsRecord;
 }) => {
   const url = new URL(
     `/${input.locale}/checkout/payment/${input.orderId}`,
@@ -119,9 +81,7 @@ export async function generateMetadata({
   params,
 }: LocalizedCheckoutStatusPageProps): Promise<Metadata> {
   const decodedParams = decodeCheckoutStatusParams(await params);
-  if (Either.isLeft(decodedParams)) notFound();
-
-  const { locale, orderId } = decodedParams.right;
+  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 
   return runWithRequestLocale(locale, () => {
     const title = m.checkoutStatusMetadataTitle({}, { locale });
@@ -164,17 +124,22 @@ export default async function LocalizedCheckoutStatusPage({
   searchParams,
 }: LocalizedCheckoutStatusPageProps) {
   const decodedParams = decodeCheckoutStatusParams(await params);
-  if (Either.isLeft(decodedParams)) notFound();
-
-  const { locale, orderId } = decodedParams.right;
+  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 
   const rawSearchParams = await searchParams;
-  const { outcome: returnOutcome } = Either.getOrElse(
+  const { outcome: returnOutcome } = Option.getOrElse(
     decodeCheckoutStatusSearchParams(rawSearchParams),
     () => ({ outcome: "unknown" as const })
   );
-  const status = await loadCheckoutStatus(orderId, returnOutcome).catch(() =>
-    getFallbackStatus(orderId, returnOutcome)
+  const status = await loadCheckoutStatus(orderId, returnOutcome).catch(
+    async (cause) => {
+      await Effect.logError("Checkout status load failed", {
+        orderId,
+        returnOutcome,
+        cause,
+      }).pipe(runWorkspaceEffect);
+      return getFallbackStatus(orderId, returnOutcome);
+    }
   );
   const retryOutcome = getRetryOutcome(status.status);
 

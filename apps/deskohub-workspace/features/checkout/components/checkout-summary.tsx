@@ -2,14 +2,12 @@ import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-quote";
-import {
-  formatWorkspaceMoney,
-  isWorkspaceProductMonitorOption,
-} from "@/features/checkout/product-catalog";
+import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { cn } from "@/shared/utils";
 

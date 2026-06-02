@@ -1,4 +1,4 @@
-import { Effect, Either, Layer, Schema } from "effect";
+import { Effect, Option, Ref, Schema } from "effect";
 import { notFound, redirect } from "next/navigation";
 import {
   CheckoutStatusService,
@@ -7,55 +7,71 @@ import {
 } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
-import { locales } from "@/features/i18n";
+import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import type { SearchParamsRecord } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 45;
 
-type CheckoutResultSearchParams = Record<string, string | string[] | undefined>;
-
 type LocalizedCheckoutResultPageProps = {
   params: Promise<{ locale: string; orderId: string }>;
-  searchParams: Promise<CheckoutResultSearchParams>;
+  searchParams: Promise<SearchParamsRecord>;
 };
 
-const checkoutStatusLayer = CheckoutStatusServiceLiveWithDependencies.pipe(
-  Layer.orDie
-);
-
-const CheckoutResultRouteParamsSchema = Schema.Struct({
-  locale: Schema.Literal(...locales),
+const decodeCheckoutResultParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
 
-const decodeCheckoutResultParams = Schema.decodeUnknownEither(
-  CheckoutResultRouteParamsSchema
-);
-
-const sleep = (milliseconds: number) =>
-  new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-const loadProviderReturnStatus = (orderId: string) =>
+const loadProviderReturnStatusEffect = (orderId: string) =>
   Effect.gen(function* () {
     const service = yield* CheckoutStatusService;
     return yield* service.recordProviderReturn({
       orderId,
       returnOutcome: "unknown",
     });
-  }).pipe(Effect.provide(checkoutStatusLayer), runWorkspaceEffect);
+  });
+
+const isResolvedProviderReturnStatus = (
+  status: CheckoutStatusViewModel | undefined
+) =>
+  status !== undefined &&
+  status.status !== "created" &&
+  status.status !== "pending";
+
+const loadProviderReturnStatusAttempt = (
+  orderId: string,
+  attempts: Ref.Ref<number>
+) =>
+  Effect.gen(function* () {
+    const attempt = yield* Ref.updateAndGet(attempts, (value) => value + 1);
+    if (attempt > 1) yield* Effect.sleep("1500 millis");
+
+    return yield* loadProviderReturnStatusEffect(orderId).pipe(
+      Effect.catchAllCause((cause) =>
+        Effect.logWarning("Checkout provider return status retry failed", {
+          orderId,
+          attempt,
+          cause,
+        }).pipe(Effect.as(undefined))
+      )
+    );
+  });
 
 const loadProviderReturnStatusWithBriefRetry = async (orderId: string) => {
-  let status: CheckoutStatusViewModel | undefined;
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    status = await loadProviderReturnStatus(orderId).catch(() => undefined);
-    if (status && status.status !== "created" && status.status !== "pending") {
-      return status;
-    }
-
-    if (attempt < 3) await sleep(1500);
-  }
+  const status = Effect.gen(function* () {
+    const attempts = yield* Ref.make(0);
+    return yield* loadProviderReturnStatusAttempt(orderId, attempts).pipe(
+      Effect.repeat({
+        times: 3,
+        while: (attemptStatus) =>
+          !isResolvedProviderReturnStatus(attemptStatus),
+      })
+    );
+  }).pipe(
+    Effect.provide(CheckoutStatusServiceLiveWithDependencies),
+    runWorkspaceEffect
+  );
 
   return status;
 };
@@ -70,7 +86,7 @@ const getCheckoutPaymentRetryRedirectPath = (input: {
   readonly locale: string;
   readonly orderId: string;
   readonly outcome: "cancelled" | "failed";
-  readonly searchParams: CheckoutResultSearchParams;
+  readonly searchParams: SearchParamsRecord;
 }) => {
   const url = new URL(
     `/${input.locale}/checkout/payment/${input.orderId}`,
@@ -101,9 +117,7 @@ export default async function LocalizedCheckoutResultPage({
   searchParams,
 }: LocalizedCheckoutResultPageProps) {
   const decodedParams = decodeCheckoutResultParams(await params);
-  if (Either.isLeft(decodedParams)) notFound();
-
-  const { locale, orderId } = decodedParams.right;
+  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
   const rawSearchParams = await searchParams;
   const status = await loadProviderReturnStatusWithBriefRetry(orderId);
   const retryOutcome = status ? getRetryOutcome(status.status) : undefined;

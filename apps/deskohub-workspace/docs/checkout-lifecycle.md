@@ -108,7 +108,6 @@ One row per Nexi HPP/session creation attempt. Retries create new attempts inste
 | `amount_value` | integer | yes | Expected payment amount in scaled integer form. |
 | `amount_exponent` | integer | yes | Currency exponent used for amount verification. |
 | `currency` | text | yes | Uppercase ISO currency code. |
-| `quote_fingerprint` | text | yes | Non-PII server quote fingerprint for verification/retry diagnostics. |
 | `provider_redirect_url` | text | no | Nexi hosted page URL, if needed to resume redirect before expiry. |
 | `last_webhook_event_id` | text | no | Last normalized webhook event applied to this attempt. |
 | `last_provider_operation_id` | text | no | Last provider operation ID observed. |

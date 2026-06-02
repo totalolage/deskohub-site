@@ -1,29 +1,14 @@
 import { NexiAmountSchema, nexiMinorUnitExponent } from "@deskohub/nexi";
 import { Effect, ParseResult, Schema } from "effect";
-import type { WorkspaceMoney } from "@/features/checkout/product-catalog";
-
-export const WorkspaceMoneySchema: Schema.Schema<WorkspaceMoney> =
-  Schema.Struct({
-    value: Schema.Number.pipe(Schema.int(), Schema.positive()),
-    exponent: Schema.Number.pipe(Schema.int(), Schema.positive()),
-    currency: Schema.String.pipe(
-      Schema.pattern(/^[A-Z]{3}$/, {
-        description: "ISO 4217 uppercase alphabetic currency code.",
-      })
-    ),
-  }).annotations({
-    identifier: "WorkspaceMoney",
-    description:
-      "Workspace money amount stored as a scaled integer value, decimal exponent, and ISO currency code.",
-  });
+import { positiveWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 
 export const NexiAmountFromWorkspaceMoney = Schema.transformOrFail(
   NexiAmountSchema,
-  WorkspaceMoneySchema,
+  positiveWorkspaceMoneyEffectSchema,
   {
     strict: true,
     decode: (nexiAmount, options, ast) =>
-      Schema.decode(WorkspaceMoneySchema)(
+      Schema.decode(positiveWorkspaceMoneyEffectSchema)(
         {
           value: Number(nexiAmount.amount),
           exponent: nexiMinorUnitExponent,

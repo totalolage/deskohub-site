@@ -39,13 +39,18 @@ const submitReservationAction = createEffectSafeAction(
       effect.pipe(
         Effect.scoped,
         Effect.annotateLogs(input),
-        Effect.mapError((error) =>
-          new PublicSafeActionError(
-            error.message === "workspace_table_unavailable"
-              ? m.reservationAvailabilityUnavailable({}, { locale: input.locale })
-              : m.reservationErrorMessage({}, { locale: input.locale }),
-            { cause: error }
-          )
+        Effect.mapError(
+          (error) =>
+            new PublicSafeActionError({
+              message:
+                error.message === "workspace_table_unavailable"
+                  ? m.reservationAvailabilityUnavailable(
+                      {},
+                      { locale: input.locale }
+                    )
+                  : m.reservationErrorMessage({}, { locale: input.locale }),
+              cause: error,
+            })
         )
       )
   ),

@@ -2,8 +2,8 @@ import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
   getWorkspaceProductByTier,
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
+  workspaceProductMonitorOptions,
+  workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import {
   isTodayOrFuturePragueDate,
@@ -32,11 +32,27 @@ export type ReservationCheckoutQueryValues = Pick<
   ReservationCheckoutQueryField
 >;
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const queryBooleanSchema = z
+  .enum(["true", "false"])
+  .transform((value) => value === "true");
+const queryDateSchema = z.iso.date().refine(isTodayOrFuturePragueDate);
+const queryTierSchema = z.enum(workspaceProductTiers);
+const queryMonitorOptionSchema = z.enum(workspaceProductMonitorOptions);
+const queryNameSchema = z
+  .string()
+  .min(RESERVATION_VALIDATION.name.min)
+  .max(RESERVATION_VALIDATION.name.max);
 const queryEmailSchema = z
   .string()
   .max(RESERVATION_VALIDATION.email.max)
   .pipe(z.email());
+const queryPhoneSchema = z
+  .string()
+  .max(RESERVATION_VALIDATION.phone.max)
+  .refine((phone) => isValidPhoneNumber(phone, "CZ"));
+const queryMessageSchema = z
+  .string()
+  .max(RESERVATION_VALIDATION.message.max);
 
 const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,
@@ -46,36 +62,10 @@ const getTrimmedSearchParam = (
   return value || undefined;
 };
 
-const decodeBooleanParam = (value: string | undefined) => {
-  if (value === "true") return true;
-  if (value === "false") return false;
-  return undefined;
+const decodeQueryParam = <T>(schema: z.ZodType<T>, value: string | undefined) => {
+  const parsed = schema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 };
-
-const isSafeDateParam = (value: string | undefined) => {
-  if (!value || !datePattern.test(value)) return false;
-
-  const parsed = new Date(`${value}T12:00:00Z`);
-  return (
-    !Number.isNaN(parsed.getTime()) &&
-    value === parsed.toISOString().slice(0, 10) &&
-    isTodayOrFuturePragueDate(value)
-  );
-};
-
-const isValidNameParam = (value: string) =>
-  value.length >= RESERVATION_VALIDATION.name.min &&
-  value.length <= RESERVATION_VALIDATION.name.max;
-
-const isValidEmailParam = (value: string) =>
-  queryEmailSchema.safeParse(value).success;
-
-const isValidPhoneParam = (value: string) =>
-  value.length <= RESERVATION_VALIDATION.phone.max &&
-  isValidPhoneNumber(value, "CZ");
-
-const isValidMessageParam = (value: string) =>
-  value.length <= RESERVATION_VALIDATION.message.max;
 
 export const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams
@@ -85,44 +75,64 @@ export const decodeReservationCheckoutQuery = (
     getTrimmedSearchParam(searchParams, "entryTier") ??
     getTrimmedSearchParam(searchParams, "tier");
 
-  if (isWorkspaceProductTier(requestedTier)) {
-    decoded.entryTier = requestedTier;
+  const entryTier = decodeQueryParam(queryTierSchema, requestedTier);
+  if (entryTier !== undefined) {
+    decoded.entryTier = entryTier;
   }
 
-  const date = getTrimmedSearchParam(searchParams, "date");
-  if (isSafeDateParam(date)) {
+  const date = decodeQueryParam(
+    queryDateSchema,
+    getTrimmedSearchParam(searchParams, "date")
+  );
+  if (date !== undefined) {
     decoded.date = date;
   }
 
-  const coffee = decodeBooleanParam(
+  const coffee = decodeQueryParam(
+    queryBooleanSchema,
     getTrimmedSearchParam(searchParams, "coffee")
   );
   if (coffee !== undefined) {
     decoded.coffee = coffee;
   }
 
-  const monitorOption = getTrimmedSearchParam(searchParams, "monitorOption");
-  if (isWorkspaceProductMonitorOption(monitorOption)) {
+  const monitorOption = decodeQueryParam(
+    queryMonitorOptionSchema,
+    getTrimmedSearchParam(searchParams, "monitorOption")
+  );
+  if (monitorOption !== undefined) {
     decoded.monitorOption = monitorOption;
   }
 
-  const name = getTrimmedSearchParam(searchParams, "name");
-  if (name !== undefined && isValidNameParam(name)) {
+  const name = decodeQueryParam(
+    queryNameSchema,
+    getTrimmedSearchParam(searchParams, "name")
+  );
+  if (name !== undefined) {
     decoded.name = name;
   }
 
-  const email = getTrimmedSearchParam(searchParams, "email");
-  if (email !== undefined && isValidEmailParam(email)) {
+  const email = decodeQueryParam(
+    queryEmailSchema,
+    getTrimmedSearchParam(searchParams, "email")
+  );
+  if (email !== undefined) {
     decoded.email = email;
   }
 
-  const phone = getTrimmedSearchParam(searchParams, "phone");
-  if (phone !== undefined && isValidPhoneParam(phone)) {
+  const phone = decodeQueryParam(
+    queryPhoneSchema,
+    getTrimmedSearchParam(searchParams, "phone")
+  );
+  if (phone !== undefined) {
     decoded.phone = phone;
   }
 
-  const message = getTrimmedSearchParam(searchParams, "message");
-  if (message !== undefined && isValidMessageParam(message)) {
+  const message = decodeQueryParam(
+    queryMessageSchema,
+    getTrimmedSearchParam(searchParams, "message")
+  );
+  if (message !== undefined) {
     decoded.message = message;
   }
 
@@ -132,11 +142,11 @@ export const decodeReservationCheckoutQuery = (
 export const getReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams
 ): ReservationInput => {
-  const values = {
+  const values: ReservationInput = {
     ...reservationDefaultValues,
     ...decodeReservationCheckoutQuery(searchParams),
     legalConsent: false,
-  } satisfies ReservationInput;
+  };
 
   if (
     values.entryTier &&

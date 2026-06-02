@@ -4,7 +4,7 @@ import {
 } from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
-import { baseLocale, type Locale, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import {
   type EmailDetailRow,
   MultilineEmailText,
@@ -21,13 +21,13 @@ export interface ContactSubmission {
   phone?: string;
   message: string;
   submittedAt: string;
-  locale?: Locale;
+  locale: Locale;
 }
 
 export interface ContactService {
   readonly submit: (
-    data: Omit<ContactSubmission, "submittedAt">,
-    locale?: Locale
+    data: Omit<ContactSubmission, "submittedAt" | "locale">,
+    locale: Locale
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
 
@@ -39,7 +39,7 @@ const workspaceRecipient = {
   name: workspaceSiteConstants.brand.name,
 } as const;
 
-const formatSubmissionDate = (submittedAt: string, locale?: Locale) =>
+const formatSubmissionDate = (submittedAt: string, locale: Locale) =>
   new Date(submittedAt).toLocaleString(locale, {
     dateStyle: "full",
     timeStyle: "short",
@@ -51,13 +51,6 @@ const getBusinessSubject = (name: string, locale: Locale) =>
 
 const getConfirmationSubject = (locale: Locale) =>
   m.contactEmailConfirmationSubject({}, { locale });
-
-const messageBlockStyle = {
-  background: "#f4f1ea",
-  borderRadius: "16px",
-  padding: "16px",
-  whiteSpace: "normal",
-} as const;
 
 const createDetailRows = (
   submission: ContactSubmission,
@@ -89,47 +82,46 @@ export const ContactServiceLive = Layer.effect(
     return ContactService.of({
       submit: Effect.fn("workspaceContactSubmit")(
         function* (data, locale) {
-          const emailLocale = locale ?? baseLocale;
           const submission: ContactSubmission = {
             ...data,
             submittedAt: new Date().toISOString(),
-            locale: emailLocale,
+            locale,
           };
 
           const formattedDate = formatSubmissionDate(
             submission.submittedAt,
-            emailLocale
+            locale
           );
-          const rows = createDetailRows(submission, formattedDate, emailLocale);
+          const rows = createDetailRows(submission, formattedDate, locale);
           const businessHeading = m.contactEmailBusinessHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const messageHeading = m.contactEmailMessageHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const messageTextHeading = m.contactEmailMessageTextHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const confirmationHeading = m.contactEmailCustomerHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const confirmationBody = m.contactEmailCustomerBody(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const confirmationFollowUp = m.contactEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
-            { locale: emailLocale }
+            { locale }
           );
 
           const businessEmailMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
             to: workspaceRecipient,
-            subject: getBusinessSubject(data.name, emailLocale),
+            subject: getBusinessSubject(data.name, locale),
             html: renderWorkspaceEmailHtml(
               <div
                 style={{
@@ -154,7 +146,14 @@ export const ContactServiceLive = Layer.effect(
                 <h3 style={{ marginTop: "24px", color: "#0b1848" }}>
                   {messageHeading}
                 </h3>
-                <div style={messageBlockStyle}>
+                <div
+                  style={{
+                    background: "#f4f1ea",
+                    borderRadius: "16px",
+                    padding: "16px",
+                    whiteSpace: "normal",
+                  }}
+                >
                   <MultilineEmailText value={data.message} />
                 </div>
               </div>
@@ -184,7 +183,7 @@ export const ContactServiceLive = Layer.effect(
             Effect.mapError(
               (error) =>
                 new StorageError({
-                  message: m.contactEmailSendError({}, { locale: emailLocale }),
+                  message: m.contactEmailSendError({}, { locale }),
                   operation: "workspace.contact.submit",
                   cause: error,
                 })
@@ -197,7 +196,7 @@ export const ContactServiceLive = Layer.effect(
               email: data.email,
               name: data.name,
             },
-            subject: getConfirmationSubject(emailLocale),
+            subject: getConfirmationSubject(locale),
             html: renderWorkspaceEmailHtml(
               <div
                 style={{
@@ -209,7 +208,15 @@ export const ContactServiceLive = Layer.effect(
               >
                 <h2 style={{ color: "#0b1848" }}>{confirmationHeading}</h2>
                 <p>{confirmationBody}</p>
-                <div style={{ ...messageBlockStyle, marginTop: "16px" }}>
+                <div
+                  style={{
+                    background: "#f4f1ea",
+                    borderRadius: "16px",
+                    marginTop: "16px",
+                    padding: "16px",
+                    whiteSpace: "normal",
+                  }}
+                >
                   <MultilineEmailText value={data.message} />
                 </div>
                 <p style={{ marginTop: "20px" }}>{confirmationFollowUp}</p>
@@ -227,9 +234,14 @@ export const ContactServiceLive = Layer.effect(
             tags: ["workspace-contact-confirmation"],
           };
 
-          yield* emailService
-            .send(confirmationMessage)
-            .pipe(Effect.catchAll(() => Effect.void));
+          yield* emailService.send(confirmationMessage).pipe(
+            Effect.catchAll((error) =>
+              Effect.logWarning("Contact confirmation email delivery failed", {
+                errorType: error._tag,
+                errorMessage: error.message,
+              })
+            )
+          );
 
           return submission;
         },
@@ -237,7 +249,8 @@ export const ContactServiceLive = Layer.effect(
           effect.pipe(
             Effect.annotateLogs({
               locale,
-              ...data,
+              hasPhone: Boolean(data.phone),
+              hasMessage: data.message.length > 0,
             })
           )
       ),

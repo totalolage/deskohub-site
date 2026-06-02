@@ -12,11 +12,11 @@ import type {
   CheckoutStatusKind,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
-import { formatWorkspaceMoney } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -154,12 +154,14 @@ const getSummaryRows = (
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
       value: formatReservationDate(summary.date, locale),
     },
-    {
-      label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-      value: summary.coffee
-        ? m.checkoutStatusYes({}, { locale })
-        : m.checkoutStatusNo({}, { locale }),
-    },
+    summary.coffee
+      ? {
+          label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+          value: summary.coffee
+            ? m.checkoutStatusYes({}, { locale })
+            : m.checkoutStatusNo({}, { locale }),
+        }
+      : undefined,
     summary.monitorOption
       ? {
           label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
@@ -172,7 +174,7 @@ const getSummaryRows = (
     },
   ];
 
-  return rows.filter((row): row is SummaryRow => row !== undefined);
+  return rows.filter(Boolean);
 };
 
 export function CheckoutStatusPage({

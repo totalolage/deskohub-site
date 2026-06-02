@@ -47,7 +47,6 @@ const makePaymentAttempt = (overrides: Record<string, unknown> = {}) => ({
   amountValue: 55_000,
   amountExponent: 2,
   currency: "CZK",
-  quoteFingerprint: "quote-fingerprint",
   providerRedirectUrl: null,
   lastWebhookEventId: null,
   lastProviderOperationId: null,

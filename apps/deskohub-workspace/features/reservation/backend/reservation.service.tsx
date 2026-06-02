@@ -23,13 +23,13 @@ import { workspaceSiteConstants } from "@/shared/utils";
 
 export interface ReservationSubmission extends ReservationData {
   submittedAt: string;
-  locale?: Locale;
+  locale: Locale;
 }
 
 export interface ReservationService {
   readonly submit: (
     data: ReservationData,
-    locale?: Locale
+    locale: Locale
   ) => Effect.Effect<ReservationSubmission, StorageError>;
 }
 
@@ -41,14 +41,14 @@ const workspaceRecipient = {
   name: workspaceSiteConstants.brand.name,
 } as const;
 
-const formatSubmissionDate = (submittedAt: string, locale?: Locale) =>
+const formatSubmissionDate = (submittedAt: string, locale: Locale) =>
   new Date(submittedAt).toLocaleString(locale, {
     dateStyle: "full",
     timeStyle: "short",
     timeZone: "Europe/Prague",
   });
 
-const formatReservationDate = (date: string, locale?: Locale) =>
+const formatReservationDate = (date: string, locale: Locale) =>
   new Date(`${date}T12:00:00+01:00`).toLocaleDateString(locale, {
     dateStyle: "full",
     timeZone: "Europe/Prague",
@@ -57,58 +57,30 @@ const formatReservationDate = (date: string, locale?: Locale) =>
 const getTierLabel = (tier: WorkspaceProductTier) =>
   getWorkspaceProductByTier(tier).label;
 
-const getMessage = (key: keyof typeof m, locale: Locale) => {
-  const message = m[key] as (
-    inputs: object,
-    options: { locale: Locale }
-  ) => string;
-
-  return message({}, { locale });
-};
-
-const getMessageWithParams = <TInput extends object>(
-  key: keyof typeof m,
-  input: TInput,
-  locale: Locale
-) => {
-  const message = m[key] as (
-    inputs: TInput,
-    options: { locale: Locale }
-  ) => string;
-
-  return message(input, { locale });
-};
+type ReservationEmailMessage = (
+  inputs: Record<string, never>,
+  options: { readonly locale: Locale }
+) => string;
 
 const getMonitorLabel = (
   monitor: WorkspaceProductMonitorOption,
   locale: Locale
 ) => {
-  const labels = {
-    "2x27-qhd": "reservationEmailMonitor2x27QhdLabel",
-    "2x32-qhd": "reservationEmailMonitor2x32QhdLabel",
-    "2x27-4k": "reservationEmailMonitor2x27FourKLabel",
-    "2x32-4k": "reservationEmailMonitor2x32FourKLabel",
-  } satisfies Record<WorkspaceProductMonitorOption, keyof typeof m>;
+  const labels: Record<WorkspaceProductMonitorOption, ReservationEmailMessage> = {
+    "2x27-qhd": m.reservationEmailMonitor2x27QhdLabel,
+    "2x32-qhd": m.reservationEmailMonitor2x32QhdLabel,
+    "2x27-4k": m.reservationEmailMonitor2x27FourKLabel,
+    "2x32-4k": m.reservationEmailMonitor2x32FourKLabel,
+  };
 
-  return getMessage(labels[monitor], locale);
+  return labels[monitor]({}, { locale });
 };
 
 const getBusinessSubject = (name: string, date: string, locale: Locale) =>
-  getMessageWithParams(
-    "reservationEmailBusinessSubject",
-    { name, date },
-    locale
-  );
+  m.reservationEmailBusinessSubject({ name, date }, { locale });
 
 const getConfirmationSubject = (locale: Locale) =>
   m.reservationEmailConfirmationSubject({}, { locale });
-
-const messageBlockStyle = {
-  background: "#f4f1ea",
-  borderRadius: "16px",
-  padding: "16px",
-  whiteSpace: "normal",
-} as const;
 
 const createDetailRows = (
   submission: ReservationSubmission,
@@ -158,36 +130,35 @@ export const ReservationServiceLive = Layer.effect(
     return ReservationService.of({
       submit: Effect.fn("workspaceReservationSubmit")(
         function* (data, locale) {
-          const emailLocale = locale ?? "en-US";
           const submission: ReservationSubmission = {
             ...data,
             submittedAt: new Date().toISOString(),
-            locale: emailLocale,
+            locale,
           };
-          const rows = createDetailRows(submission, emailLocale);
+          const rows = createDetailRows(submission, locale);
           const intro = m.reservationEmailBusinessIntro(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const messageHeading = m.reservationEmailMessageHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const messageTextHeading = m.reservationEmailMessageTextHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const confirmationHeading = m.reservationEmailCustomerHeading(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const confirmationBody = m.reservationEmailCustomerBody(
             {},
-            { locale: emailLocale }
+            { locale }
           );
           const confirmationFollowUp = m.reservationEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
-            { locale: emailLocale }
+            { locale }
           );
 
           const businessEmailMessage: EmailMessage = {
@@ -195,8 +166,8 @@ export const ReservationServiceLive = Layer.effect(
             to: workspaceRecipient,
             subject: getBusinessSubject(
               data.name,
-              formatReservationDate(data.date, emailLocale),
-              emailLocale
+              formatReservationDate(data.date, locale),
+              locale
             ),
             html: renderWorkspaceEmailHtml(
               <div
@@ -219,16 +190,23 @@ export const ReservationServiceLive = Layer.effect(
                     <WorkspaceEmailRows rows={rows} />
                   </tbody>
                 </table>
-                {submission.message ? (
+                {!!submission.message && (
                   <>
                     <h3 style={{ marginTop: "24px", color: "#0b1848" }}>
                       {messageHeading}
                     </h3>
-                    <div style={messageBlockStyle}>
+                    <div
+                      style={{
+                        background: "#f4f1ea",
+                        borderRadius: "16px",
+                        padding: "16px",
+                        whiteSpace: "normal",
+                      }}
+                    >
                       <MultilineEmailText value={submission.message} />
                     </div>
                   </>
-                ) : null}
+                )}
               </div>
             ),
             text: [
@@ -260,7 +238,7 @@ export const ReservationServiceLive = Layer.effect(
                 new StorageError({
                   message: m.reservationEmailSendError(
                     {},
-                    { locale: emailLocale }
+                    { locale }
                   ),
                   operation: "workspace.reservation.submit",
                   cause: error,
@@ -274,7 +252,7 @@ export const ReservationServiceLive = Layer.effect(
               email: data.email,
               name: data.name,
             },
-            subject: getConfirmationSubject(emailLocale),
+            subject: getConfirmationSubject(locale),
             html: renderWorkspaceEmailHtml(
               <div
                 style={{
@@ -312,9 +290,17 @@ export const ReservationServiceLive = Layer.effect(
             tags: ["workspace-reservation-confirmation"],
           };
 
-          yield* emailService
-            .send(confirmationMessage)
-            .pipe(Effect.catchAll(() => Effect.void));
+          yield* emailService.send(confirmationMessage).pipe(
+            Effect.catchAll((error) =>
+              Effect.logWarning(
+                "Reservation confirmation email delivery failed",
+                {
+                  errorType: error._tag,
+                  errorMessage: error.message,
+                }
+              )
+            )
+          );
 
           return submission;
         },
@@ -322,7 +308,12 @@ export const ReservationServiceLive = Layer.effect(
           effect.pipe(
             Effect.annotateLogs({
               locale,
-              ...data,
+              reservationDate: data.date,
+              entryTier: data.entryTier,
+              coffee: data.coffee,
+              monitorOption: data.monitorOption ?? null,
+              hasPhone: Boolean(data.phone),
+              hasMessage: Boolean(data.message),
             })
           )
       ),

@@ -47,53 +47,53 @@ export type PricingContent = {
 };
 
 type PricingTariffMessageKeys = {
-  name: keyof typeof m;
-  description: keyof typeof m;
-  includes: readonly (keyof typeof m)[];
+  name: PricingMessage;
+  description: PricingMessage;
+  includes: readonly PricingMessage[];
   featured: boolean;
 };
 
-const pricingTariffMessageKeys = {
+type PricingMessage = (
+  inputs: Record<string, never>,
+  options: { locale: Locale }
+) => string;
+
+const pricingTariffMessageKeys: Record<
+  WorkspaceProductTier,
+  PricingTariffMessageKeys
+> = {
   basic: {
-    name: "pricingTariffBasicName",
-    description: "pricingTariffBasicDescription",
+    name: m.pricingTariffBasicName,
+    description: m.pricingTariffBasicDescription,
     includes: [
-      "pricingTariffBasicIncludeCowork",
-      "pricingTariffBasicIncludeCommonAreas",
+      m.pricingTariffBasicIncludeCowork,
+      m.pricingTariffBasicIncludeCommonAreas,
     ],
     featured: false,
   },
   plus: {
-    name: "pricingTariffCoworkName",
-    description: "pricingTariffCoworkDescription",
+    name: m.pricingTariffCoworkName,
+    description: m.pricingTariffCoworkDescription,
     includes: [
-      "pricingTariffCoworkIncludeBasic",
-      "pricingTariffCoworkIncludeRefreshments",
+      m.pricingTariffCoworkIncludeBasic,
+      m.pricingTariffCoworkIncludeRefreshments,
     ],
     featured: false,
   },
   profi: {
-    name: "pricingTariffProfiName",
-    description: "pricingTariffProfiDescription",
+    name: m.pricingTariffProfiName,
+    description: m.pricingTariffProfiDescription,
     includes: [
-      "pricingTariffProfiIncludePlus",
-      "pricingTariffProfiIncludeWorkstation",
-      "pricingTariffProfiIncludeEquipment",
+      m.pricingTariffProfiIncludePlus,
+      m.pricingTariffProfiIncludeWorkstation,
+      m.pricingTariffProfiIncludeEquipment,
     ],
-    featured: false,
+    featured: true,
   },
-} as const satisfies Record<WorkspaceProductTier, PricingTariffMessageKeys>;
-
-const getMessage = (key: keyof typeof m, locale: Locale) => {
-  const message = m[key] as (
-    inputs: object,
-    options: { locale: Locale }
-  ) => string;
-  return message({}, { locale }) as string;
 };
 
-const getMessages = (keys: readonly (keyof typeof m)[], locale: Locale) =>
-  keys.map((key) => getMessage(key, locale));
+const getMessages = (messages: readonly PricingMessage[], locale: Locale) =>
+  messages.map((message) => message({}, { locale }));
 
 const formatTariffPrice = (
   product: ReturnType<typeof getWorkspaceProductByTier>,
@@ -131,9 +131,9 @@ export function getPricingContent(locale: Locale): PricingContent {
       return {
         id: catalogProduct.tier,
         reservationTier: catalogProduct.tier,
-        name: getMessage(tariffMessages.name, locale),
+        name: tariffMessages.name({}, { locale }),
         price: formatTariffPrice(catalogProduct, locale),
-        description: getMessage(tariffMessages.description, locale),
+        description: tariffMessages.description({}, { locale }),
         includes: getMessages(tariffMessages.includes, locale),
         featured: tariffMessages.featured,
       };

@@ -1,14 +1,8 @@
 import { z } from "zod/v4";
-
-export const workspaceMoneySchema = z.object({
-  value: z.int(),
-  exponent: z.int().nonnegative(),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-});
-
-export const nonNegativeWorkspaceMoneySchema = workspaceMoneySchema.extend({
-  value: z.int().nonnegative(),
-});
+import {
+  nonNegativeWorkspaceMoneySchema,
+  workspaceMoneySchema,
+} from "@/features/checkout/workspace-money";
 
 export const checkoutSummaryItemSchema = z.object({
   key: z.string().min(1),

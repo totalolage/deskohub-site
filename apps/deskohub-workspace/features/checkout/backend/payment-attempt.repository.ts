@@ -2,7 +2,6 @@ import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
-  hasErrorTag,
   runDb,
   WorkspaceDatabase,
 } from "@/db/database.service";
@@ -21,6 +20,18 @@ export class PaymentAttemptStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+type PaymentAttemptStateFailure = {
+  readonly _tag: "PaymentAttemptStateFailure";
+  readonly error: PaymentAttemptStateError;
+};
+
+const paymentAttemptStateFailure = (
+  error: PaymentAttemptStateError
+): PaymentAttemptStateFailure => ({
+  _tag: "PaymentAttemptStateFailure",
+  error,
+});
+
 export interface PaymentAttemptRepository {
   readonly create: (input: {
     readonly id: string;
@@ -29,7 +40,6 @@ export interface PaymentAttemptRepository {
     readonly amountValue: number;
     readonly amountExponent: number;
     readonly currency: string;
-    readonly quoteFingerprint: string;
   }) => Effect.Effect<PaymentAttempt, DatabaseError | PaymentAttemptStateError>;
   readonly findById: (
     id: string
@@ -86,18 +96,7 @@ export const PaymentAttemptRepository =
 const isPaymentAttemptStateError = (
   cause: unknown
 ): cause is PaymentAttemptStateError =>
-  hasErrorTag("PaymentAttemptStateError")(cause);
-
-const paymentAttemptStateError = (
-  operation: string,
-  paymentAttemptId: string,
-  message: string
-) =>
-  new PaymentAttemptStateError({
-    operation,
-    paymentAttemptId,
-    message,
-  });
+  cause instanceof PaymentAttemptStateError;
 
 export const PaymentAttemptRepositoryLive = Layer.effect(
   PaymentAttemptRepository,
@@ -106,10 +105,11 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
     return PaymentAttemptRepository.of({
       create: Effect.fn("paymentAttempts.create")(function* (input) {
-        return yield* runDb(
-          "paymentAttempts.create",
-          async () => {
-            return await db.transaction(async (tx) => {
+        const result = yield* runDb("paymentAttempts.create", async () => {
+          return await db.transaction(
+            async (
+              tx
+            ): Promise<PaymentAttempt | PaymentAttemptStateFailure> => {
               const [linked] = await tx
                 .update(workspaceReservations)
                 .set({
@@ -132,12 +132,14 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                 .returning({ id: workspaceReservations.id });
 
               if (!linked) {
-                throw new PaymentAttemptStateError({
-                  operation: "paymentAttempts.create",
-                  paymentAttemptId: input.id,
-                  message:
-                    "Payment attempts can only be created for held unpaid reservations.",
-                });
+                return paymentAttemptStateFailure(
+                  new PaymentAttemptStateError({
+                    operation: "paymentAttempts.create",
+                    paymentAttemptId: input.id,
+                    message:
+                      "Payment attempts can only be created for held unpaid reservations.",
+                  })
+                );
               }
 
               const [attempt] = await tx
@@ -151,7 +153,6 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                   amountValue: input.amountValue,
                   amountExponent: input.amountExponent,
                   currency: input.currency,
-                  quoteFingerprint: input.quoteFingerprint,
                 })
                 .returning();
 
@@ -159,10 +160,15 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                 throw new Error("Payment attempt insert returned no row");
 
               return attempt;
-            });
-          },
-          { preserveError: isPaymentAttemptStateError }
-        );
+            }
+          );
+        });
+
+        if ("_tag" in result) {
+          return yield* Effect.fail(result.error);
+        }
+
+        return result;
       }),
       findById: Effect.fn("paymentAttempts.findById")(function* (id) {
         return yield* runDb("paymentAttempts.findById", async () => {
@@ -238,10 +244,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
       attachHostedPaymentPage: Effect.fn(
         "paymentAttempts.attachHostedPaymentPage"
       )(function* (input) {
-        const updated = yield* runDb<
-          Pick<PaymentAttempt, "id">[],
-          PaymentAttemptStateError
-        >(
+        const updated = yield* runDb(
           "paymentAttempts.attachHostedPaymentPage",
           () =>
             db
@@ -258,8 +261,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                   eq(paymentAttempts.state, "created")
                 )
               )
-              .returning({ id: paymentAttempts.id }),
-          { preserveError: isPaymentAttemptStateError }
+              .returning({ id: paymentAttempts.id })
         );
 
         if (updated.length === 0) {
@@ -274,30 +276,24 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
         }
       }),
       markPaid: Effect.fn("paymentAttempts.markPaid")(function* (input) {
-        const updated = yield* runDb<
-          Pick<PaymentAttempt, "id">[],
-          PaymentAttemptStateError
-        >(
-          "paymentAttempts.markPaid",
-          () =>
-            db
-              .update(paymentAttempts)
-              .set({
-                state: "paid",
-                lastWebhookEventId: input.webhookEventId,
-                lastProviderOperationId: input.providerOperationId,
-                lastProviderStatus: input.providerStatus,
-                failureCode: null,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(paymentAttempts.id, input.id),
-                  eq(paymentAttempts.state, "pending")
-                )
+        const updated = yield* runDb("paymentAttempts.markPaid", () =>
+          db
+            .update(paymentAttempts)
+            .set({
+              state: "paid",
+              lastWebhookEventId: input.webhookEventId,
+              lastProviderOperationId: input.providerOperationId,
+              lastProviderStatus: input.providerStatus,
+              failureCode: null,
+              updatedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(paymentAttempts.id, input.id),
+                eq(paymentAttempts.state, "pending")
               )
-              .returning({ id: paymentAttempts.id }),
-          { preserveError: isPaymentAttemptStateError }
+            )
+            .returning({ id: paymentAttempts.id })
         );
 
         if (updated.length === 0) {
@@ -312,30 +308,24 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
       }),
       markTerminal: Effect.fn("paymentAttempts.markTerminal")(
         function* (input) {
-          const updated = yield* runDb<
-            Pick<PaymentAttempt, "id">[],
-            PaymentAttemptStateError
-          >(
-            "paymentAttempts.markTerminal",
-            () =>
-              db
-                .update(paymentAttempts)
-                .set({
-                  state: input.state,
-                  failureCode: input.failureCode,
-                  lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
-                  lastProviderStatus: input.providerStatus,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(paymentAttempts.id, input.id),
-                    inArray(paymentAttempts.state, ["created", "pending"])
-                  )
+          const updated = yield* runDb("paymentAttempts.markTerminal", () =>
+            db
+              .update(paymentAttempts)
+              .set({
+                state: input.state,
+                failureCode: input.failureCode,
+                lastWebhookEventId: input.webhookEventId,
+                lastProviderOperationId: input.providerOperationId,
+                lastProviderStatus: input.providerStatus,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(paymentAttempts.id, input.id),
+                  inArray(paymentAttempts.state, ["created", "pending"])
                 )
-                .returning({ id: paymentAttempts.id }),
-            { preserveError: isPaymentAttemptStateError }
+              )
+              .returning({ id: paymentAttempts.id })
           );
 
           if (updated.length === 0) {
@@ -353,167 +343,207 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
       markPaidForReservation: Effect.fn(
         "paymentAttempts.markPaidForReservation"
       )(function* (input) {
-        yield* runDb<void, PaymentAttemptStateError>(
+        const result = yield* runDb<
+          void | PaymentAttemptStateFailure,
+          PaymentAttemptStateError
+        >(
           "paymentAttempts.markPaidForReservation",
           async () => {
-            await db.transaction(async (tx) => {
-              const [attempt] = await tx
-                .update(paymentAttempts)
-                .set({
-                  state: "paid",
-                  lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
-                  lastProviderStatus: input.providerStatus,
-                  failureCode: null,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(paymentAttempts.id, input.id),
-                    eq(
-                      paymentAttempts.workspaceReservationId,
-                      input.workspaceReservationId
-                    ),
-                    inArray(paymentAttempts.state, ["pending", "paid"])
+            return await db.transaction(
+              async (tx): Promise<void | PaymentAttemptStateFailure> => {
+                const [attempt] = await tx
+                  .update(paymentAttempts)
+                  .set({
+                    state: "paid",
+                    lastWebhookEventId: input.webhookEventId,
+                    lastProviderOperationId: input.providerOperationId,
+                    lastProviderStatus: input.providerStatus,
+                    failureCode: null,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, input.id),
+                      eq(
+                        paymentAttempts.workspaceReservationId,
+                        input.workspaceReservationId
+                      ),
+                      inArray(paymentAttempts.state, ["pending", "paid"])
+                    )
                   )
-                )
-                .returning({ id: paymentAttempts.id });
+                  .returning({ id: paymentAttempts.id });
 
-              if (!attempt) {
-                throw paymentAttemptStateError(
-                  "paymentAttempts.markPaidForReservation",
-                  input.id,
-                  "Only pending or already-paid payment attempts can mark a reservation paid."
-                );
+                if (!attempt) {
+                  return paymentAttemptStateFailure(
+                    new PaymentAttemptStateError({
+                      operation: "paymentAttempts.markPaidForReservation",
+                      paymentAttemptId: input.id,
+                      message:
+                        "Only pending or already-paid payment attempts can mark a reservation paid.",
+                    })
+                  );
+                }
+
+                const [reservation] = await tx
+                  .update(workspaceReservations)
+                  .set({
+                    paymentState: "paid",
+                    paidAt: input.paidAt,
+                    failureCode: null,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.reservationState, "held"),
+                      eq(workspaceReservations.paymentState, "pending"),
+                      eq(workspaceReservations.activePaymentAttemptId, input.id)
+                    )
+                  )
+                  .returning({ id: workspaceReservations.id });
+
+                if (reservation) return;
+
+                const [consistent] = await tx
+                  .select({ id: workspaceReservations.id })
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.paymentState, "paid"),
+                      eq(workspaceReservations.activePaymentAttemptId, input.id)
+                    )
+                  )
+                  .limit(1);
+
+                if (consistent) return;
+
+                // Intentionally reject the transaction to roll back the payment-attempt update above.
+                throw new PaymentAttemptStateError({
+                  operation: "paymentAttempts.markPaidForReservation",
+                  paymentAttemptId: input.id,
+                  message:
+                    "Only the active pending attempt on a held reservation can mark payment paid.",
+                });
               }
-
-              const [reservation] = await tx
-                .update(workspaceReservations)
-                .set({
-                  paymentState: "paid",
-                  paidAt: input.paidAt,
-                  failureCode: null,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .returning({ id: workspaceReservations.id });
-
-              if (reservation) return;
-
-              const [consistent] = await tx
-                .select({ id: workspaceReservations.id })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.paymentState, "paid"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .limit(1);
-
-              if (consistent) return;
-
-              throw paymentAttemptStateError(
-                "paymentAttempts.markPaidForReservation",
-                input.id,
-                "Only the active pending attempt on a held reservation can mark payment paid."
-              );
-            });
+            );
           },
           { preserveError: isPaymentAttemptStateError }
         );
+
+        if (result?._tag === "PaymentAttemptStateFailure") {
+          return yield* Effect.fail(result.error);
+        }
       }),
       markTerminalForReservation: Effect.fn(
         "paymentAttempts.markTerminalForReservation"
       )(function* (input) {
-        yield* runDb<void, PaymentAttemptStateError>(
+        const result = yield* runDb<
+          void | PaymentAttemptStateFailure,
+          PaymentAttemptStateError
+        >(
           "paymentAttempts.markTerminalForReservation",
           async () => {
-            await db.transaction(async (tx) => {
-              const [attempt] = await tx
-                .update(paymentAttempts)
-                .set({
-                  state: input.state,
-                  failureCode: input.failureCode,
-                  lastWebhookEventId: input.webhookEventId,
-                  lastProviderOperationId: input.providerOperationId,
-                  lastProviderStatus: input.providerStatus,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(paymentAttempts.id, input.id),
-                    eq(
-                      paymentAttempts.workspaceReservationId,
-                      input.workspaceReservationId
-                    ),
-                    inArray(paymentAttempts.state, [
-                      "created",
-                      "pending",
-                      input.state,
-                    ])
+            return await db.transaction(
+              async (tx): Promise<void | PaymentAttemptStateFailure> => {
+                const [attempt] = await tx
+                  .update(paymentAttempts)
+                  .set({
+                    state: input.state,
+                    failureCode: input.failureCode,
+                    lastWebhookEventId: input.webhookEventId,
+                    lastProviderOperationId: input.providerOperationId,
+                    lastProviderStatus: input.providerStatus,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(paymentAttempts.id, input.id),
+                      eq(
+                        paymentAttempts.workspaceReservationId,
+                        input.workspaceReservationId
+                      ),
+                      inArray(paymentAttempts.state, [
+                        "created",
+                        "pending",
+                        input.state,
+                      ])
+                    )
                   )
-                )
-                .returning({ id: paymentAttempts.id });
+                  .returning({ id: paymentAttempts.id });
 
-              if (!attempt) {
-                throw paymentAttemptStateError(
-                  "paymentAttempts.markTerminalForReservation",
-                  input.id,
-                  "Only non-terminal or matching terminal payment attempts can mark a reservation terminal."
-                );
+                if (!attempt) {
+                  return paymentAttemptStateFailure(
+                    new PaymentAttemptStateError({
+                      operation: "paymentAttempts.markTerminalForReservation",
+                      paymentAttemptId: input.id,
+                      message:
+                        "Only non-terminal or matching terminal payment attempts can mark a reservation terminal.",
+                    })
+                  );
+                }
+
+                const [reservation] = await tx
+                  .update(workspaceReservations)
+                  .set({
+                    paymentState: input.state,
+                    failureCode: input.failureCode,
+                    updatedAt: new Date(),
+                  })
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.reservationState, "held"),
+                      eq(workspaceReservations.paymentState, "pending"),
+                      eq(workspaceReservations.activePaymentAttemptId, input.id)
+                    )
+                  )
+                  .returning({ id: workspaceReservations.id });
+
+                if (reservation) return;
+
+                const [consistent] = await tx
+                  .select({ id: workspaceReservations.id })
+                  .from(workspaceReservations)
+                  .where(
+                    and(
+                      eq(
+                        workspaceReservations.id,
+                        input.workspaceReservationId
+                      ),
+                      eq(workspaceReservations.paymentState, input.state),
+                      eq(workspaceReservations.activePaymentAttemptId, input.id)
+                    )
+                  )
+                  .limit(1);
+
+                if (consistent) return;
+
+                // Intentionally reject the transaction to roll back the payment-attempt update above.
+                throw new PaymentAttemptStateError({
+                  operation: "paymentAttempts.markTerminalForReservation",
+                  paymentAttemptId: input.id,
+                  message:
+                    "Only the active pending attempt on a held reservation can mark payment terminal.",
+                });
               }
-
-              const [reservation] = await tx
-                .update(workspaceReservations)
-                .set({
-                  paymentState: input.state,
-                  failureCode: input.failureCode,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .returning({ id: workspaceReservations.id });
-
-              if (reservation) return;
-
-              const [consistent] = await tx
-                .select({ id: workspaceReservations.id })
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.workspaceReservationId),
-                    eq(workspaceReservations.paymentState, input.state),
-                    eq(workspaceReservations.activePaymentAttemptId, input.id)
-                  )
-                )
-                .limit(1);
-
-              if (consistent) return;
-
-              throw paymentAttemptStateError(
-                "paymentAttempts.markTerminalForReservation",
-                input.id,
-                "Only the active pending attempt on a held reservation can mark payment terminal."
-              );
-            });
+            );
           },
           { preserveError: isPaymentAttemptStateError }
         );
+
+        if (result?._tag === "PaymentAttemptStateFailure") {
+          return yield* Effect.fail(result.error);
+        }
       }),
     });
   })

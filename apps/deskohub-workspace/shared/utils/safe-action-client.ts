@@ -1,18 +1,16 @@
+import { Data } from "effect";
 import {
   createSafeActionClient,
   DEFAULT_SERVER_ERROR_MESSAGE,
 } from "next-safe-action";
 import { localeMiddleware } from "./action-middleware/locale";
 
-export class PublicSafeActionError extends Error {
-  constructor(
-    message: string,
-    errorOptions?: ErrorOptions
-  ) {
-    super(message, errorOptions);
-    this.name = "PublicSafeActionError";
-  }
-}
+export class PublicSafeActionError extends Data.TaggedError(
+  "PublicSafeActionError"
+)<{
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
 
 export const actionClient = createSafeActionClient({
   handleServerError(error) {

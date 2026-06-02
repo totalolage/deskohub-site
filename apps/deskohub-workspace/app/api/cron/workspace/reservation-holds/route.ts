@@ -18,8 +18,7 @@ const CronReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
   Layer.provide(OperationalEventRepositoryLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
-  Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)),
-  Layer.orDie
+  Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive))
 );
 
 const cronBatchLimit = 25;
@@ -30,34 +29,47 @@ const isAuthorizedCronRequest = (request: Request) => {
   return request.headers.get("authorization") === `Bearer ${env.CRON_SECRET}`;
 };
 
+const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
+  function* () {
+    const cleanup = yield* ReservationHoldCleanupService;
+    const result = yield* cleanup.sweepExpiredHolds({
+      now: new Date(),
+      limit: cronBatchLimit,
+    });
+
+    return NextResponse.json(result);
+  },
+  (effect) =>
+    effect.pipe(
+      Effect.annotateLogs({
+        method: "GET",
+        operation: "reservationHoldCleanupCron",
+      })
+    )
+);
+
+const handleReservationHoldCleanupCronError = Effect.fn(
+  "handleReservationHoldCleanupCronError"
+)(function* (cause: unknown) {
+  yield* Effect.logError("Reservation hold cleanup cron failed", {
+    cause,
+  });
+
+  return NextResponse.json(
+    { error: "Reservation hold cleanup failed" },
+    { status: 500 }
+  );
+});
+
 export async function GET(request: Request): Promise<NextResponse> {
   if (!isAuthorizedCronRequest(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   return runWorkspaceEffect(
-    Effect.gen(function* () {
-      const cleanup = yield* ReservationHoldCleanupService;
-      const result = yield* cleanup.sweepExpiredHolds({
-        now: new Date(),
-        limit: cronBatchLimit,
-      });
-
-      return NextResponse.json(result);
-    }).pipe(
+    sweepExpiredReservationHolds().pipe(
       Effect.provide(CronReservationHoldCleanupLive),
-      Effect.catchAll((cause) =>
-        Effect.gen(function* () {
-          yield* Effect.logError("Reservation hold cleanup cron failed", {
-            cause,
-          });
-
-          return NextResponse.json(
-            { error: "Reservation hold cleanup failed" },
-            { status: 500 }
-          );
-        })
-      )
+      Effect.catchAll(handleReservationHoldCleanupCronError)
     )
   );
 }

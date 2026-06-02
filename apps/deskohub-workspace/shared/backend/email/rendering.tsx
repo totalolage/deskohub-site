@@ -11,11 +11,6 @@ const { renderToString } =
 
 export type EmailDetailRow = readonly [label: string, value: string];
 
-const emailRowCellStyle = {
-  padding: "8px 0",
-  borderBottom: "1px solid #e6e9f3",
-} as const;
-
 export const renderWorkspaceEmailHtml = (children: ReactNode): string =>
   renderToString(children);
 
@@ -30,7 +25,7 @@ export const MultilineEmailText = ({ value }: { readonly value: string }) => {
     <>
       {lines.map(({ line, key, hasBreakBefore }) => (
         <Fragment key={key}>
-          {hasBreakBefore ? <br /> : null}
+          {hasBreakBefore && <br />}
           {line}
         </Fragment>
       ))}
@@ -62,10 +57,12 @@ export const WorkspaceEmailRow = ({
   readonly value: string;
 }) => (
   <tr>
-    <td style={emailRowCellStyle}>
+    <td style={{ borderBottom: "1px solid #e6e9f3", padding: "8px 0" }}>
       <strong>{label}:</strong>
     </td>
-    <td style={emailRowCellStyle}>{value}</td>
+    <td style={{ borderBottom: "1px solid #e6e9f3", padding: "8px 0" }}>
+      {value}
+    </td>
   </tr>
 );
 

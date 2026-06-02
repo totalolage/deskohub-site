@@ -125,12 +125,8 @@
           "name": "legal_evidence_events_workspace_reservation_id_workspace_reservations_id_fk",
           "tableFrom": "legal_evidence_events",
           "tableTo": "workspace_reservations",
-          "columnsFrom": [
-            "workspace_reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -297,12 +293,8 @@
           "name": "operational_events_workspace_reservation_id_workspace_reservations_id_fk",
           "tableFrom": "operational_events",
           "tableTo": "workspace_reservations",
-          "columnsFrom": [
-            "workspace_reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -310,12 +302,8 @@
           "name": "operational_events_payment_attempt_id_payment_attempts_id_fk",
           "tableFrom": "operational_events",
           "tableTo": "payment_attempts",
-          "columnsFrom": [
-            "payment_attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -385,12 +373,6 @@
         },
         "currency": {
           "name": "currency",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "quote_fingerprint": {
-          "name": "quote_fingerprint",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -504,12 +486,8 @@
           "name": "payment_attempts_workspace_reservation_id_workspace_reservations_id_fk",
           "tableFrom": "payment_attempts",
           "tableTo": "workspace_reservations",
-          "columnsFrom": [
-            "workspace_reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -674,12 +652,8 @@
           "name": "webhook_events_payment_attempt_id_payment_attempts_id_fk",
           "tableFrom": "webhook_events",
           "tableTo": "payment_attempts",
-          "columnsFrom": [
-            "payment_attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -689,9 +663,7 @@
         "webhook_events_event_id_unique": {
           "name": "webhook_events_event_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "event_id"
-          ]
+          "columns": ["event_id"]
         }
       },
       "policies": {},
@@ -969,9 +941,7 @@
         "workspace_reservations_correlation_id_unique": {
           "name": "workspace_reservations_correlation_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "correlation_id"
-          ]
+          "columns": ["correlation_id"]
         }
       },
       "policies": {},
