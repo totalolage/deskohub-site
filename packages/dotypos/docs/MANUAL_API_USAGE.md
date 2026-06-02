@@ -12,6 +12,8 @@ bun --env-file=.env.development --env-file=.env.local --env-file=.env.developmen
 
 Do not print env values. Check only whether required keys are present.
 
+`DOTYPOS_REFRESH_TOKEN` is a secret. Do not expect it to be available from `vercel env pull`, including preview pulls used during E2E tests. For local manual API checks, load it from `apps/deskohub-workspace/.env.development.local` using the layered `bun --env-file` command above. If a pulled preview env file has an empty `DOTYPOS_REFRESH_TOKEN`, that is expected and should not block manual Dotypos verification; use the local layered env files instead.
+
 ## Import Generated SDK
 
 Import the generated Dotypos SDK from the workspace package instead of copying generated files or writing temporary scripts:
