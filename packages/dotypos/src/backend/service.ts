@@ -234,7 +234,15 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               Effect.retry(retryPolicy)
             );
         },
-        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+        (effect, input) =>
+          effect.pipe(
+            Effect.annotateLogs({
+              customerId: input.customerId,
+              tableId: input.tableId,
+              status: input.status,
+              seats: input.seats,
+            })
+          )
       );
 
       const cancelReservation = Effect.fn("cancelReservation")(
@@ -267,9 +275,29 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             );
           }
 
-          return yield* api
-            .updateReservation({
+          const { etag } = yield* api
+            .getReservationForUpdate({
               path: { cloudId: config.cloudId, reservationId: id },
+            })
+            .pipe(
+              Effect.withSpan("dotyposService.confirmReservation.getEtag"),
+              Effect.retry(retryPolicy)
+            );
+
+          if (!etag) {
+            return yield* Effect.fail(
+              new ExternalAPIError({
+                service: "Dotypos",
+                operation: "Get reservation",
+                message: "Reservation ETag header was missing.",
+              })
+            );
+          }
+
+          return yield* api
+            .patchReservation({
+              path: { cloudId: config.cloudId, reservationId: id },
+              headers: { "If-Match": etag },
               body: { status: "CONFIRMED" },
             })
             .pipe(
