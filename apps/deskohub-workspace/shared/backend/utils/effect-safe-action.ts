@@ -5,6 +5,7 @@ import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { formatEffectError } from "@/shared/utils/error-formatting";
 import {
   actionClient,
+  getPublicSafeActionErrorMessage,
   PublicSafeActionError,
 } from "@/shared/utils/safe-action-client";
 
@@ -55,8 +56,13 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
           Logger.withMinimumLogLevel(program, LogLevel.All)
         );
       } catch (error: unknown) {
-        if (error instanceof PublicSafeActionError) {
-          throw error;
+        const publicErrorMessage = getPublicSafeActionErrorMessage(error);
+
+        if (publicErrorMessage) {
+          throw new PublicSafeActionError({
+            message: publicErrorMessage,
+            cause: error,
+          });
         }
 
         const formatted = formatEffectError(error);

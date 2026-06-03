@@ -25,13 +25,13 @@ import {
   workspaceProductCatalog,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceProductMessage,
   workspaceProductMonitorMessages,
   workspaceProductTierBulletMessages,
   workspaceProductTierMessages,
 } from "@/features/checkout/product-catalog.i18n";
+import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
@@ -277,40 +277,44 @@ export function ReservationForm({
     isSelectedMonitorUnavailable ||
     isSelectedDateUnavailable;
 
-  const { executeAsync: sendReservation } = useAction(preparePayState, {
-    onSuccess: ({ data }) => {
-      if (data?.status === "error") {
+  const { executeAsync: sendReservation, isExecuting: isSendingReservation } =
+    useAction(preparePayState, {
+      onSuccess: ({ data }) => {
+        if (data?.status === "error") {
+          setSubmissionMessage({
+            status: "error",
+            text: data.message,
+          });
+          return;
+        }
+
+        const redirectUrl = data?.redirectUrl;
+
+        if (!redirectUrl) {
+          setSubmissionMessage({
+            status: "error",
+            text: m.reservationErrorMessage({}, { locale }),
+          });
+          return;
+        }
+
+        if (
+          !hasTrackedSuccessfulSubmission.current &&
+          isAccepted("analytics")
+        ) {
+          hasTrackedSuccessfulSubmission.current = true;
+          track("workspace_checkout_started", sanitizedUtmParams);
+        }
+
+        router.push(redirectUrl);
+      },
+      onError: ({ error }) => {
         setSubmissionMessage({
           status: "error",
-          text: data.message,
+          text: error.serverError || m.reservationErrorMessage({}, { locale }),
         });
-        return;
-      }
-
-      const redirectUrl = data?.redirectUrl;
-
-      if (!redirectUrl) {
-        setSubmissionMessage({
-          status: "error",
-          text: m.reservationErrorMessage({}, { locale }),
-        });
-        return;
-      }
-
-      if (!hasTrackedSuccessfulSubmission.current && isAccepted("analytics")) {
-        hasTrackedSuccessfulSubmission.current = true;
-        track("workspace_checkout_started", sanitizedUtmParams);
-      }
-
-      router.push(redirectUrl);
-    },
-    onError: ({ error }) => {
-      setSubmissionMessage({
-        status: "error",
-        text: error.serverError || m.reservationErrorMessage({}, { locale }),
-      });
-    },
-  });
+      },
+    });
 
   useEffect(() => {
     if (shouldShowMonitors) {
@@ -472,11 +476,14 @@ export function ReservationForm({
                             </span>
                             <div className="text-sm leading-5 text-navy-blue/62">
                               <ul className="list-disc space-y-0.5 pl-4">
-                                {bulletContent.main.map((message, index) => (
-                                  <li key={index}>
-                                    {getWorkspaceProductMessage(message, locale)}
-                                  </li>
-                                ))}
+                                {bulletContent.main.map((message) => {
+                                  const text = getWorkspaceProductMessage(
+                                    message,
+                                    locale
+                                  );
+
+                                  return <li key={text}>{text}</li>;
+                                })}
                               </ul>
                             </div>
                             <div className="space-y-1 text-sm leading-5 text-navy-blue/62">
@@ -487,28 +494,32 @@ export function ReservationForm({
                                 )}
                               </span>
                               <ul className="space-y-0.5">
-                                {bulletContent.perks.map((perk, index) => (
-                                  <li
-                                    key={index}
-                                    className={cn(
-                                      "flex gap-1.5 leading-5",
-                                      perk.highlighted && "text-burned-orange"
-                                    )}
-                                  >
-                                    <span
-                                      aria-hidden="true"
-                                      className="w-3 shrink-0 text-center"
-                                    >
-                                      {perk.marker === "plus" ? "+" : "\u2022"}
-                                    </span>
-                                    <span>
-                                      {getWorkspaceProductMessage(
-                                        perk.message,
-                                        locale
+                                {bulletContent.perks.map((perk) => {
+                                  const text = getWorkspaceProductMessage(
+                                    perk.message,
+                                    locale
+                                  );
+
+                                  return (
+                                    <li
+                                      key={`${perk.marker ?? "bullet"}-${text}`}
+                                      className={cn(
+                                        "flex gap-1.5 leading-5",
+                                        perk.highlighted && "text-burned-orange"
                                       )}
-                                    </span>
-                                  </li>
-                                ))}
+                                    >
+                                      <span
+                                        aria-hidden="true"
+                                        className="w-3 shrink-0 text-center"
+                                      >
+                                        {perk.marker === "plus"
+                                          ? "+"
+                                          : "\u2022"}
+                                      </span>
+                                      <span>{text}</span>
+                                    </li>
+                                  );
+                                })}
                               </ul>
                             </div>
                             <label
@@ -802,7 +813,7 @@ export function ReservationForm({
                 className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
                 disabled={
                   form.formState.isSubmitting ||
-                  form.formState.isSubmitSuccessful ||
+                  isSendingReservation ||
                   isSelectedReservationUnavailable ||
                   isAvailabilityLoading
                 }
