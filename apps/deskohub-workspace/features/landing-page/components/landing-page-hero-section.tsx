@@ -85,12 +85,12 @@ export function LandingPageHeroSection({
             asChild
             className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
           >
-            <a href={reservationHref}>
+            <a href={eventsHref}>
               <Arrow1
                 height="100"
                 className="absolute bottom-6 right-full pr-4 text-white"
               />
-              {m.landingHeroPrimaryCta({}, { locale })}
+              {m.landingHeroSecondaryCta({}, { locale })}
               <Understroke1
                 width="100%"
                 className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
@@ -102,13 +102,13 @@ export function LandingPageHeroSection({
             variant="secondary"
             className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
           >
-            <a href={eventsHref}>
+            <a href={reservationHref}>
               <CornerAccent
                 width={40}
                 className="absolute -left-4 -top-5"
                 style={{ strokeWidth: "40px" }}
               />
-              {m.landingHeroSecondaryCta({}, { locale })}
+              {m.landingHeroPrimaryCta({}, { locale })}
               <Understroke2
                 width="80%"
                 className="absolute top-full mt-2 right-0"
