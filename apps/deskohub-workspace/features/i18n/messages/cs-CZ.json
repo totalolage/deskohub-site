@@ -455,7 +455,6 @@
   "contactValidationPhoneRequired": "Telefon je povinný.",
   "contactValidationMessageMinimum": "Zpráva musí mít alespoň {min} znaků.",
   "contactValidationMessageMaximum": "Zpráva může mít maximálně {max} znaků.",
-  "statusUnderConstruction": "Ve výstavbě",
   "galleryMetadataTitle": "Galerie | Deskohub Workspace",
   "galleryMetadataDescription": "Fotogalerie z Deskohub Workspace.",
   "gallerySrTitle": "Galerie Workspace",

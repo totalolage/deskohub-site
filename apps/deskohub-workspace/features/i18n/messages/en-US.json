@@ -455,7 +455,6 @@
   "contactValidationPhoneRequired": "Phone is required.",
   "contactValidationMessageMinimum": "Message must be at least {min} characters.",
   "contactValidationMessageMaximum": "Message can be at most {max} characters.",
-  "statusUnderConstruction": "Under Construction",
   "galleryMetadataTitle": "Gallery | Deskohub Workspace",
   "galleryMetadataDescription": "Photo gallery from Deskohub Workspace.",
   "gallerySrTitle": "Workspace gallery",
