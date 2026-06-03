@@ -8,6 +8,7 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
 
@@ -35,7 +36,7 @@ const paymentAttemptStatesRequiringFailureCode = [
 export const paymentAttempts = pgTable(
   "payment_attempts",
   {
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().default(postgresUuidV7),
     workspaceReservationId: text("workspace_reservation_id")
       .notNull()
       .references(() => workspaceReservations.id, { onDelete: "cascade" }),

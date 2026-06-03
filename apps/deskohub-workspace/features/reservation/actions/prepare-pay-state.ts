@@ -1,6 +1,6 @@
 "use server";
 
-import { createHmac, randomUUID } from "node:crypto";
+import { createHmac } from "node:crypto";
 import {
   DotyposService,
   ValidationError as DotyposValidationError,
@@ -68,11 +68,6 @@ const getPreparePayStateSchema = () =>
     reservation: getReservationOrderSchema(),
     legalConsent: z.boolean().optional(),
   });
-
-const generateReservationId = () =>
-  `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
-    .toString(36)
-    .toUpperCase()}`;
 
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
@@ -377,15 +372,12 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       phone: input.reservation.phone,
     });
     const dotyposCustomerId = yield* getDotyposCustomerId(customer);
-    const reservationId = generateReservationId();
     const holdExpiresAt = getReservationHoldExpiresAt(new Date());
     const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
     const customerAccessCode = yield* accessCodes.generateCustomerAccessCode();
 
     const draft = yield* reservations.createDraft({
-      id: reservationId,
       reservationSubmitKey,
-      correlationId: randomUUID(),
       dotyposCustomerId,
       customerAccessCode,
       productTier: input.reservation.entryTier,
@@ -394,13 +386,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
-
-    if (draft.id !== reservationId) {
-      return {
-        status: "error" as const,
-        message: m.reservationErrorMessage({}, { locale: input.locale }),
-      };
-    }
 
     const claimed = yield* reservations.claimHoldCreation(draft.id);
     if (!claimed) {
@@ -417,7 +402,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       legalEvidence: privacyEvidence,
     });
     const dotyposReservation = yield* createWorkspaceDotyposReservation({
-      paymentOrderId: reservationId,
+      paymentOrderId: draft.id,
       dotyposCustomerId,
       checkoutDetails: checkoutDetails as CheckoutDetailsJson,
       status: "NEW",

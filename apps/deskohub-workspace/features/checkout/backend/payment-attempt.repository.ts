@@ -11,6 +11,7 @@ import {
   paymentAttempts,
   workspaceReservations,
 } from "@/db/schema";
+import { postgresUuidV7 } from "@/db/uuid-v7";
 
 export class PaymentAttemptStateError extends Data.TaggedError(
   "PaymentAttemptStateError"
@@ -34,7 +35,6 @@ const paymentAttemptStateFailure = (
 
 export interface PaymentAttemptRepository {
   readonly create: (input: {
-    readonly id: string;
     readonly workspaceReservationId: string;
     readonly providerOrderId: string;
     readonly amountValue: number;
@@ -105,15 +105,31 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
     return PaymentAttemptRepository.of({
       create: Effect.fn("paymentAttempts.create")(function* (input) {
-        const result = yield* runDb("paymentAttempts.create", async () => {
-          return await db.transaction(
-            async (
-              tx
-            ): Promise<PaymentAttempt | PaymentAttemptStateFailure> => {
+        const result = yield* runDb<PaymentAttempt, PaymentAttemptStateError>(
+          "paymentAttempts.create",
+          async () => {
+            return await db.transaction(async (tx): Promise<PaymentAttempt> => {
+              const [attempt] = await tx
+                .insert(paymentAttempts)
+                .values({
+                  id: postgresUuidV7,
+                  workspaceReservationId: input.workspaceReservationId,
+                  provider: "nexi",
+                  providerOrderId: input.providerOrderId,
+                  state: "created",
+                  amountValue: input.amountValue,
+                  amountExponent: input.amountExponent,
+                  currency: input.currency,
+                })
+                .returning();
+
+              if (!attempt)
+                throw new Error("Payment attempt insert returned no row");
+
               const [linked] = await tx
                 .update(workspaceReservations)
                 .set({
-                  activePaymentAttemptId: input.id,
+                  activePaymentAttemptId: attempt.id,
                   paymentState: "pending",
                   updatedAt: new Date(),
                 })
@@ -132,41 +148,19 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                 .returning({ id: workspaceReservations.id });
 
               if (!linked) {
-                return paymentAttemptStateFailure(
-                  new PaymentAttemptStateError({
-                    operation: "paymentAttempts.create",
-                    paymentAttemptId: input.id,
-                    message:
-                      "Payment attempts can only be created for held unpaid reservations.",
-                  })
-                );
+                throw new PaymentAttemptStateError({
+                  operation: "paymentAttempts.create",
+                  paymentAttemptId: attempt.id,
+                  message:
+                    "Payment attempts can only be created for held unpaid reservations.",
+                });
               }
 
-              const [attempt] = await tx
-                .insert(paymentAttempts)
-                .values({
-                  id: input.id,
-                  workspaceReservationId: input.workspaceReservationId,
-                  provider: "nexi",
-                  providerOrderId: input.providerOrderId,
-                  state: "created",
-                  amountValue: input.amountValue,
-                  amountExponent: input.amountExponent,
-                  currency: input.currency,
-                })
-                .returning();
-
-              if (!attempt)
-                throw new Error("Payment attempt insert returned no row");
-
               return attempt;
-            }
-          );
-        });
-
-        if ("_tag" in result) {
-          return yield* Effect.fail(result.error);
-        }
+            });
+          },
+          { preserveError: isPaymentAttemptStateError }
+        );
 
         return result;
       }),
@@ -344,13 +338,13 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
         "paymentAttempts.markPaidForReservation"
       )(function* (input) {
         const result = yield* runDb<
-          void | PaymentAttemptStateFailure,
+          undefined | PaymentAttemptStateFailure,
           PaymentAttemptStateError
         >(
           "paymentAttempts.markPaidForReservation",
           async () => {
             return await db.transaction(
-              async (tx): Promise<void | PaymentAttemptStateFailure> => {
+              async (tx): Promise<undefined | PaymentAttemptStateFailure> => {
                 const [attempt] = await tx
                   .update(paymentAttempts)
                   .set({
@@ -445,13 +439,13 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
         "paymentAttempts.markTerminalForReservation"
       )(function* (input) {
         const result = yield* runDb<
-          void | PaymentAttemptStateFailure,
+          undefined | PaymentAttemptStateFailure,
           PaymentAttemptStateError
         >(
           "paymentAttempts.markTerminalForReservation",
           async () => {
             return await db.transaction(
-              async (tx): Promise<void | PaymentAttemptStateFailure> => {
+              async (tx): Promise<undefined | PaymentAttemptStateFailure> => {
                 const [attempt] = await tx
                   .update(paymentAttempts)
                   .set({

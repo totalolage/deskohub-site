@@ -5,11 +5,8 @@ import {
   runDb,
   WorkspaceDatabase,
 } from "@/db/database.service";
-import {
-  type NewWorkspaceReservation,
-  type WorkspaceReservation,
-  workspaceReservations,
-} from "@/db/schema";
+import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
+import { postgresUuidV7 } from "@/db/uuid-v7";
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -20,9 +17,7 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
 }> {}
 
 export interface CreateWorkspaceReservationInput {
-  readonly id: string;
   readonly reservationSubmitKey: string;
-  readonly correlationId: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
   readonly productTier: string;
@@ -158,15 +153,15 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
     return WorkspaceReservationRepository.of({
       createDraft: Effect.fn("workspaceReservations.createDraft")(
         function* (input) {
-          const row: NewWorkspaceReservation = {
-            id: input.id,
+          const row = {
+            id: postgresUuidV7,
             reservationSubmitKey: input.reservationSubmitKey,
-            correlationId: input.correlationId,
+            correlationId: postgresUuidV7,
             dotyposCustomerId: input.dotyposCustomerId,
             customerAccessCode: input.customerAccessCode,
-            reservationState: "draft",
-            paymentState: "not_started",
-            fulfillmentState: "not_started",
+            reservationState: "draft" as const,
+            paymentState: "not_started" as const,
+            fulfillmentState: "not_started" as const,
             productTier: input.productTier,
             productCoffee: input.productCoffee,
             productMonitorOption: input.productMonitorOption,
@@ -202,7 +197,6 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         (effect, input) =>
           effect.pipe(
             Effect.annotateLogs({
-              reservationId: input.id,
               reservationSubmitKey: input.reservationSubmitKey,
               dotyposCustomerId: input.dotyposCustomerId,
             })

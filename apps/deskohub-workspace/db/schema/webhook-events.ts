@@ -1,9 +1,10 @@
 import { relations, sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { postgresUuidV7 } from "../uuid-v7";
 import {
+  type PaymentProvider,
   paymentAttempts,
   paymentProviders,
-  type PaymentProvider,
 } from "./payment-attempts";
 import { quotedSqlList } from "./sql-list";
 
@@ -14,7 +15,7 @@ export type WebhookEventState = (typeof webhookEventStates)[number];
 export const webhookEvents = pgTable(
   "webhook_events",
   {
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().default(postgresUuidV7),
     provider: text("provider").notNull().$type<PaymentProvider>(),
     eventId: text("event_id").notNull().unique(),
     paymentAttemptId: text("payment_attempt_id").references(

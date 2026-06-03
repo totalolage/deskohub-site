@@ -7,12 +7,13 @@ import {
   text,
   timestamp,
 } from "drizzle-orm/pg-core";
+import { postgresUuidV7 } from "../uuid-v7";
 import { workspaceReservations } from "./workspace-reservations";
 
 export const legalEvidenceEvents = pgTable(
   "legal_evidence_events",
   {
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().default(postgresUuidV7),
     workspaceReservationId: text("workspace_reservation_id").references(
       () => workspaceReservations.id,
       { onDelete: "set null" }

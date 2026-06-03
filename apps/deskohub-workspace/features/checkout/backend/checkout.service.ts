@@ -352,7 +352,6 @@ export const CheckoutServiceLive = Layer.effect(
           )
         );
         const attempt = yield* paymentAttempts.create({
-          id: randomUUID(),
           workspaceReservationId: input.workspaceReservationId,
           providerOrderId: generateNexiOrderId(),
           amountValue: input.total.value,
@@ -422,9 +421,6 @@ export const CheckoutServiceLive = Layer.effect(
         "checkout.createHostedPaymentCheckout"
       )(
         function* (input, locale) {
-          const correlationId = randomUUID();
-          yield* Effect.annotateLogsScoped({ correlationId });
-
           yield* holdCleanup
             .sweepExpiredHolds({ now: new Date(), limit: 10 })
             .pipe(
@@ -451,6 +447,10 @@ export const CheckoutServiceLive = Layer.effect(
           if (!reservation || reservation.paymentState === "paid") {
             return { status: "in_progress" as const };
           }
+
+          yield* Effect.annotateLogsScoped({
+            correlationId: reservation.correlationId,
+          });
 
           if (reservation.reservationState !== "held") {
             return { status: "in_progress" as const };
@@ -559,7 +559,7 @@ export const CheckoutServiceLive = Layer.effect(
 
           return yield* startProviderSession({
             workspaceReservationId: reservation.id,
-            correlationId,
+            correlationId: reservation.correlationId,
             locale,
             total: quote.payment.expectedPrice,
           });

@@ -13,6 +13,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { locales } from "@/features/i18n";
+import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 
 export const reservationStates = [
@@ -59,9 +60,12 @@ const reservationStatesRequiringDotyposReservationId = [
 export const workspaceReservations = pgTable(
   "workspace_reservations",
   {
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().default(postgresUuidV7),
     reservationSubmitKey: text("reservation_submit_key").notNull(),
-    correlationId: text("correlation_id").notNull().unique(),
+    correlationId: text("correlation_id")
+      .notNull()
+      .unique()
+      .default(postgresUuidV7),
     dotyposCustomerId: text("dotypos_customer_id").notNull(),
     dotyposReservationId: text("dotypos_reservation_id"),
     customerAccessCode: text("customer_access_code").notNull(),

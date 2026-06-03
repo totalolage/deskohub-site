@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import {
   checkNexiWebhookSecurityToken,
@@ -143,7 +142,6 @@ export const NexiWebhookServiceLive = Layer.effect(
 
           const received = yield* webhookEvents
             .insertReceived({
-              id: randomUUID(),
               eventId,
               providerOrderId,
               receivedAt: new Date(),
@@ -451,7 +449,8 @@ export const NexiWebhookServiceLive = Layer.effect(
                     errorCode: "nexi_webhook_transition_failed",
                     eventId,
                     orderId: providerOrderId,
-                    message: "Nexi webhook event could not be marked processed.",
+                    message:
+                      "Nexi webhook event could not be marked processed.",
                     cause,
                   })
               )

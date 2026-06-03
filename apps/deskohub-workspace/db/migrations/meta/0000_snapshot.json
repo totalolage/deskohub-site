@@ -12,19 +12,14 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
         },
         "workspace_reservation_id": {
           "name": "workspace_reservation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
-        },
-        "idempotency_key": {
-          "name": "idempotency_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         },
         "document_key": {
           "name": "document_key",
@@ -97,27 +92,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "legal_evidence_events_idempotency_document_idx": {
-          "name": "legal_evidence_events_idempotency_document_idx",
-          "columns": [
-            {
-              "expression": "idempotency_key",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "document_hash",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -150,7 +124,8 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
         },
         "workspace_reservation_id": {
           "name": "workspace_reservation_id",
@@ -327,7 +302,8 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
         },
         "workspace_reservation_id": {
           "name": "workspace_reservation_id",
@@ -504,10 +480,6 @@
           "name": "payment_attempts_state_check",
           "value": "\"payment_attempts\".\"state\" in ('created', 'pending', 'paid', 'failed', 'cancelled', 'expired')"
         },
-        "payment_attempts_amount_exponent_check": {
-          "name": "payment_attempts_amount_exponent_check",
-          "value": "\"payment_attempts\".\"amount_exponent\" >= 0 and \"payment_attempts\".\"amount_exponent\" <= 20"
-        },
         "payment_attempts_currency_check": {
           "name": "payment_attempts_currency_check",
           "value": "\"payment_attempts\".\"currency\" ~ '^[A-Z]{3}$'"
@@ -527,7 +499,8 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
         },
         "provider": {
           "name": "provider",
@@ -695,7 +668,8 @@
           "name": "id",
           "type": "text",
           "primaryKey": true,
-          "notNull": true
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
         },
         "reservation_submit_key": {
           "name": "reservation_submit_key",
@@ -707,7 +681,8 @@
           "name": "correlation_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
         },
         "dotypos_customer_id": {
           "name": "dotypos_customer_id",
@@ -720,6 +695,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "customer_access_code": {
+          "name": "customer_access_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
         },
         "reservation_state": {
           "name": "reservation_state",

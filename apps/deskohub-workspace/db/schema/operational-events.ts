@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { postgresUuidV7 } from "../uuid-v7";
 import { paymentAttempts } from "./payment-attempts";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
@@ -12,7 +13,7 @@ export type OperationalEventSeverity =
 export const operationalEvents = pgTable(
   "operational_events",
   {
-    id: text("id").primaryKey(),
+    id: text("id").primaryKey().default(postgresUuidV7),
     workspaceReservationId: text("workspace_reservation_id").references(
       () => workspaceReservations.id,
       { onDelete: "set null" }

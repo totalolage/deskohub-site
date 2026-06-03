@@ -1,7 +1,8 @@
+CREATE EXTENSION IF NOT EXISTS "pg_uuidv7";
+--> statement-breakpoint
 CREATE TABLE "legal_evidence_events" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text DEFAULT uuid_generate_v7()::text PRIMARY KEY NOT NULL,
 	"workspace_reservation_id" text,
-	"idempotency_key" text NOT NULL,
 	"document_key" text NOT NULL,
 	"document_path" text NOT NULL,
 	"document_hash" text NOT NULL,
@@ -15,7 +16,7 @@ CREATE TABLE "legal_evidence_events" (
 );
 --> statement-breakpoint
 CREATE TABLE "operational_events" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text DEFAULT uuid_generate_v7()::text PRIMARY KEY NOT NULL,
 	"workspace_reservation_id" text,
 	"payment_attempt_id" text,
 	"event_type" text NOT NULL,
@@ -30,7 +31,7 @@ CREATE TABLE "operational_events" (
 );
 --> statement-breakpoint
 CREATE TABLE "payment_attempts" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text DEFAULT uuid_generate_v7()::text PRIMARY KEY NOT NULL,
 	"workspace_reservation_id" text NOT NULL,
 	"provider" text NOT NULL,
 	"provider_order_id" text NOT NULL,
@@ -48,13 +49,12 @@ CREATE TABLE "payment_attempts" (
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "payment_attempts_provider_check" CHECK ("payment_attempts"."provider" in ('nexi')),
 	CONSTRAINT "payment_attempts_state_check" CHECK ("payment_attempts"."state" in ('created', 'pending', 'paid', 'failed', 'cancelled', 'expired')),
-	CONSTRAINT "payment_attempts_amount_exponent_check" CHECK ("payment_attempts"."amount_exponent" >= 0 and "payment_attempts"."amount_exponent" <= 20),
 	CONSTRAINT "payment_attempts_currency_check" CHECK ("payment_attempts"."currency" ~ '^[A-Z]{3}$'),
 	CONSTRAINT "payment_attempts_failure_code_check" CHECK ("payment_attempts"."state" not in ('failed', 'cancelled', 'expired') or "payment_attempts"."failure_code" is not null)
 );
 --> statement-breakpoint
 CREATE TABLE "webhook_events" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text DEFAULT uuid_generate_v7()::text PRIMARY KEY NOT NULL,
 	"provider" text NOT NULL,
 	"event_id" text NOT NULL,
 	"payment_attempt_id" text,
@@ -73,11 +73,12 @@ CREATE TABLE "webhook_events" (
 );
 --> statement-breakpoint
 CREATE TABLE "workspace_reservations" (
-	"id" text PRIMARY KEY NOT NULL,
+	"id" text DEFAULT uuid_generate_v7()::text PRIMARY KEY NOT NULL,
 	"reservation_submit_key" text NOT NULL,
-	"correlation_id" text NOT NULL,
+	"correlation_id" text DEFAULT uuid_generate_v7()::text NOT NULL,
 	"dotypos_customer_id" text NOT NULL,
 	"dotypos_reservation_id" text,
+	"customer_access_code" text NOT NULL,
 	"reservation_state" text NOT NULL,
 	"payment_state" text NOT NULL,
 	"fulfillment_state" text NOT NULL,
@@ -117,7 +118,6 @@ ALTER TABLE "operational_events" ADD CONSTRAINT "operational_events_payment_atte
 ALTER TABLE "payment_attempts" ADD CONSTRAINT "payment_attempts_workspace_reservation_id_workspace_reservations_id_fk" FOREIGN KEY ("workspace_reservation_id") REFERENCES "public"."workspace_reservations"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "webhook_events" ADD CONSTRAINT "webhook_events_payment_attempt_id_payment_attempts_id_fk" FOREIGN KEY ("payment_attempt_id") REFERENCES "public"."payment_attempts"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "legal_evidence_events_workspace_reservation_idx" ON "legal_evidence_events" USING btree ("workspace_reservation_id");--> statement-breakpoint
-CREATE INDEX "legal_evidence_events_idempotency_document_idx" ON "legal_evidence_events" USING btree ("idempotency_key","document_hash");--> statement-breakpoint
 CREATE INDEX "operational_events_workspace_reservation_idx" ON "operational_events" USING btree ("workspace_reservation_id");--> statement-breakpoint
 CREATE INDEX "operational_events_payment_attempt_idx" ON "operational_events" USING btree ("payment_attempt_id");--> statement-breakpoint
 CREATE INDEX "operational_events_type_created_idx" ON "operational_events" USING btree ("event_type","created_at");--> statement-breakpoint
