@@ -10,8 +10,7 @@
     "./translatable": "./src/translatable.ts",
     "./next": "./src/next.ts",
     "./effect": "./src/effect.ts",
-    "./action": "./src/action.ts",
-    "./api": "./src/api.ts"
+    "./action": "./src/action.ts"
   },
   "dependencies": {
     "effect": "^3.17.2",
