@@ -66,15 +66,6 @@ export const WorkspaceEmailRow = ({
   </tr>
 );
 
-export const renderWorkspaceEmailRowsHtml = (
-  rows: readonly EmailDetailRow[]
-): string =>
-  rows
-    .map(([label, value]) =>
-      renderToString(<WorkspaceEmailRow label={label} value={value} />)
-    )
-    .join("");
-
 export const renderEmailRowsText = (
   rows: readonly EmailDetailRow[]
 ): readonly string[] => rows.map(([label, value]) => `${label}: ${value}`);

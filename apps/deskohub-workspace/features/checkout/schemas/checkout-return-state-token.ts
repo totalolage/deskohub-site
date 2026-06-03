@@ -1,4 +1,4 @@
-import { Data, Effect, Option, Schema } from "effect";
+import { Option, Schema } from "effect";
 import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
 export const checkoutReturnStateTokenQueryParam = "checkoutToken";
@@ -23,10 +23,6 @@ export const CheckoutReturnStateTokenSchema = Schema.transform(
   description: "URL-safe checkout return-state token query parameter.",
 });
 
-export type CheckoutReturnStateToken = Schema.Schema.Type<
-  typeof CheckoutReturnStateTokenSchema
->;
-
 export const parseCheckoutReturnStateToken = (
   value: string | undefined
 ): string | undefined => {
@@ -42,28 +38,6 @@ export const getCheckoutReturnStateTokenFromSearchParams = (
   parseCheckoutReturnStateToken(
     getSearchParam(searchParams, checkoutReturnStateTokenQueryParam)
   );
-
-export class CheckoutReturnStateTokenError extends Data.TaggedError(
-  "CheckoutReturnStateTokenError"
-)<{ readonly message: string }> {}
-
-export const appendCheckoutReturnStateTokenEffect = Effect.fn(
-  "appendCheckoutReturnStateToken"
-)(function* (url: URL, token: string) {
-  const parsedToken = parseCheckoutReturnStateToken(token);
-  if (!parsedToken) {
-    return yield* Effect.fail(
-      new CheckoutReturnStateTokenError({
-        message: "Invalid checkout return-state token",
-      })
-    );
-  }
-
-  url.searchParams.set(checkoutReturnStateTokenQueryParam, parsedToken);
-});
-
-export const appendCheckoutReturnStateToken = (url: URL, token: string) =>
-  Effect.runSync(appendCheckoutReturnStateTokenEffect(url, token));
 
 export const appendExistingCheckoutReturnStateToken = (
   url: URL,

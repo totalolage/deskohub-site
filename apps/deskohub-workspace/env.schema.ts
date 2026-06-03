@@ -33,8 +33,3 @@ export const workspaceClientEnvSchema = z.object({
 
 export type WorkspaceServerEnv = z.infer<typeof workspaceServerEnvSchema>;
 export type WorkspaceClientEnv = z.infer<typeof workspaceClientEnvSchema>;
-
-export type WorkspaceEnvContract = {
-  server: WorkspaceServerEnv;
-  client: WorkspaceClientEnv;
-};
