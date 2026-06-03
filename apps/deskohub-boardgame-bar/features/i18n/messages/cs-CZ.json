@@ -320,11 +320,11 @@
     "contactInfo": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci",
     "backToHome": "Zpět domů",
     "makeAnother": "Vytvořit další rezervaci",
-    "bookingId": "ID rezervace: {id}"
+    "bookingId": "Číslo rezervace: {id}"
   },
   "errors": {
     "bookingNotFound": "Rezervace nenalezena",
-    "bookingNotFoundDescription": "Nemohli jsme najít rezervaci s tímto ID. Rezervace možná vypršela nebo odkaz je nesprávný.",
+    "bookingNotFoundDescription": "Tuto rezervaci se nepodařilo najít. Možná vypršela nebo je odkaz nesprávný.",
     "pageNotFound": "Stránka nenalezena",
     "pageNotFoundDescription": "Stránka, kterou hledáte, neexistuje.",
     "goHome": "Zpět domů",
@@ -408,7 +408,7 @@
   "labels": {
     "email": "E-mail",
     "phone": "Telefon",
-    "bookingId": "ID rezervace"
+    "bookingId": "Číslo rezervace"
   },
   "reservationMetadata": {
     "title": "Potvrzení rezervace | Deskohub",
@@ -664,7 +664,7 @@
     "confirmation": {
       "title": "Rezervace odeslána",
       "message": "Vaše rezervace školící místnosti byla úspěšně odeslána. Zkontrolujeme ji a do 24 hodin vás budeme kontaktovat.",
-      "noIdMessage": "Nebylo poskytnuto ID rezervace. Zkontrolujte prosím svůj e-mail pro více informací."
+      "noIdMessage": "Podrobnosti rezervace zde nejsou dostupné. Potvrzení prosím najdete ve svém e-mailu."
     },
     "nextSteps": "Co bude následovat?",
     "nextStepsDescription": "Obdržíte potvrzující email do 24 hodin. Náš tým Vás bude kontaktovat pro potvrzení dostupnosti a dokončení rezervace školící místnosti.",
@@ -966,7 +966,7 @@
         },
         "preferences": {
           "title": "Preferenční cookies",
-          "description": "Tyto cookies umožňují webu zapamatovat si volby, které jste v minulosti provedli, například jaký jazyk preferujete nebo jaké jsou vaše přihlašovací údaje, abyste se mohli automaticky přihlásit."
+          "description": "Tyto cookies umožňují webu zapamatovat si vaše volby, například jazykové nastavení."
         }
       }
     }

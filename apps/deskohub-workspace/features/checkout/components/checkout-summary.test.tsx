@@ -19,4 +19,18 @@ describe("CheckoutSummary", () => {
     expect(markup).toContain("Coffee");
     expect(markup).toContain("CZK");
   });
+
+  test("localizes product summary item keys", () => {
+    const quote = buildWorkspaceCheckoutQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+
+    const markup = renderToStaticMarkup(
+      <CheckoutSummary locale="cs-CZ" summary={quote.summary} />
+    );
+
+    expect(markup).toContain("Basic Day Pass");
+    expect(markup).not.toContain("product:basic");
+  });
 });

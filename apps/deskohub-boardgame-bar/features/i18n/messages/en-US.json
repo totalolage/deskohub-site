@@ -310,11 +310,11 @@
     "contactInfo": "Feel free to contact us if you need to modify your reservation",
     "backToHome": "Back to Home",
     "makeAnother": "Make Another Reservation",
-    "bookingId": "Booking ID: {id}"
+    "bookingId": "Booking reference: {id}"
   },
   "errors": {
     "bookingNotFound": "Booking Not Found",
-    "bookingNotFoundDescription": "We couldn't find a reservation with this ID. The booking may have expired or the link may be incorrect.",
+    "bookingNotFoundDescription": "We couldn't find this reservation. It may have expired or the link may be incorrect.",
     "pageNotFound": "Page Not Found",
     "pageNotFoundDescription": "The page you are looking for doesn't exist.",
     "goHome": "Go Home",
@@ -391,7 +391,7 @@
   "labels": {
     "email": "Email",
     "phone": "Phone",
-    "bookingId": "Booking ID"
+    "bookingId": "Booking reference"
   },
   "reservationMetadata": {
     "title": "Reservation Confirmation | Deskohub",
@@ -642,7 +642,7 @@
     "confirmation": {
       "title": "Reservation Submitted",
       "message": "Your training room reservation has been successfully submitted. We will review it and contact you within 24 hours.",
-      "noIdMessage": "No reservation ID provided. Please check your email for details."
+      "noIdMessage": "Reservation details are not available here. Please check your email for confirmation."
     },
     "details": {
       "title": "Reservation Details",
@@ -941,7 +941,7 @@
         },
         "preferences": {
           "title": "Preference Cookies",
-          "description": "These cookies allow the website to remember choices you have made in the past, like what language you prefer, or what your user name and password are so you can automatically log in."
+          "description": "These cookies allow the website to remember choices you have made, such as your language preference."
         }
       }
     }
