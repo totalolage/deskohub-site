@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { recordCheckoutProviderReturn } from "@/features/checkout/backend/checkout-status.server";
+import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
 import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order-page";
@@ -26,8 +26,8 @@ type LocalizedCheckoutOrderPageProps = {
   searchParams: Promise<SearchParamsRecord>;
 };
 
-const loadProviderReturnStatus = (orderId: string) =>
-  recordCheckoutProviderReturn({ orderId, returnOutcome: "unknown" });
+const loadCheckoutStatus = (orderId: string) =>
+  refreshCheckoutStatus({ orderId, returnOutcome: "unknown" });
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -101,9 +101,9 @@ export default async function LocalizedCheckoutOrderPage({
     paymentOrderId &&
     getCheckoutReturnStateTokenFromSearchParams(rawSearchParams)
   ) {
-    const status = await loadProviderReturnStatus(paymentOrderId).catch(
+    const status = await loadCheckoutStatus(paymentOrderId).catch(
       async (cause) => {
-        await Effect.logError("Checkout provider return status load failed", {
+        await Effect.logError("Checkout status refresh failed", {
           paymentOrderId,
           cause,
         }).pipe(runWorkspaceEffect);

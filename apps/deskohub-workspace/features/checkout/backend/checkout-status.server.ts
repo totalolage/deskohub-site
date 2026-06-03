@@ -24,8 +24,7 @@ export const getCheckoutStatus = (input: {
   readonly returnOutcome: CheckoutStatusReturnOutcome;
 }) => runCheckoutStatusService((service) => service.getStatus(input));
 
-export const recordCheckoutProviderReturn = (input: {
+export const refreshCheckoutStatus = (input: {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
-}) =>
-  runCheckoutStatusService((service) => service.recordProviderReturn(input));
+}) => runCheckoutStatusService((service) => service.refreshStatus(input));
