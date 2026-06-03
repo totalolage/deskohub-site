@@ -1,12 +1,10 @@
-import { Data, Effect } from "effect";
+import { Data } from "effect";
 import { z } from "zod/v4";
 import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
-import {
-  checkoutSummarySectionSchema,
-} from "@/features/checkout/schemas/checkout-summary";
+import { checkoutSummarySectionSchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
 
@@ -17,12 +15,6 @@ export const legalDocumentKeys = [
 ] as const;
 
 export type LegalDocumentKey = (typeof legalDocumentKeys)[number];
-
-export const workspacePrivacyPolicyLegalDocumentKey = "privacyPolicy";
-export const workspacePaymentTermsLegalDocumentKeys = [
-  "termsAndConditions",
-  "operatingRules",
-] as const;
 
 export const legalEvidenceSources = [
   "reservation_submit",
@@ -86,69 +78,6 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export const mergeLegalEvidenceMapsEffect = Effect.fn(
-  "mergeLegalEvidenceMaps"
-)(function* (input: {
-  readonly existing: unknown;
-  readonly incoming: unknown;
-}) {
-  const existing = yield* Effect.try({
-    try: () => legalEvidenceMapSchema.parse(input.existing),
-    catch: (cause) =>
-      new CheckoutDetailsError({
-        message: "Invalid existing legal evidence map.",
-        cause,
-      }),
-  });
-  const incoming = yield* Effect.try({
-    try: () => legalEvidenceMapSchema.parse(input.incoming),
-    catch: (cause) =>
-      new CheckoutDetailsError({
-        message: "Invalid incoming legal evidence map.",
-        cause,
-      }),
-  });
-  const merged = yield* Effect.try({
-    try: () => legalEvidenceMapSchema.parse(existing),
-    catch: (cause) =>
-      new CheckoutDetailsError({
-        message: "Invalid merged legal evidence map.",
-        cause,
-      }),
-  });
-
-  for (const [documentHash, nextEvidence] of Object.entries(incoming)) {
-    const currentEvidence = merged[documentHash];
-
-    if (
-      currentEvidence &&
-      currentEvidence.documentHash !== nextEvidence.documentHash
-    ) {
-      return yield* Effect.fail(
-        new CheckoutDetailsError({
-          message: "Legal evidence collision for mismatched document hash.",
-        })
-      );
-    }
-
-    merged[documentHash] = nextEvidence;
-  }
-
-  return yield* Effect.try({
-    try: () => legalEvidenceMapSchema.parse(merged),
-    catch: (cause) =>
-      new CheckoutDetailsError({
-        message: "Invalid merged legal evidence map.",
-        cause,
-      }),
-  });
-});
-
-export const mergeLegalEvidenceMaps = (input: {
-  readonly existing: unknown;
-  readonly incoming: unknown;
-}): LegalEvidenceMap => Effect.runSync(mergeLegalEvidenceMapsEffect(input));
-
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
 // added here or as local database columns.
@@ -186,6 +115,3 @@ export const checkoutDetailsJsonSchema = z.object({
 });
 
 export type CheckoutDetailsJson = z.output<typeof checkoutDetailsJsonSchema>;
-export type CheckoutDetailsJsonInput = z.input<
-  typeof checkoutDetailsJsonSchema
->;

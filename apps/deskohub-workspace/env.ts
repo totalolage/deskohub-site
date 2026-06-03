@@ -1,7 +1,5 @@
 import { createEnv } from "@t3-oss/env-nextjs";
 import {
-  type WorkspaceClientEnv,
-  type WorkspaceServerEnv,
   workspaceClientEnvSchema,
   workspaceServerEnvSchema,
 } from "./env.schema";
@@ -54,10 +52,3 @@ export const env = createEnv({
     );
   },
 });
-
-export type WorkspaceEnv = WorkspaceServerEnv & WorkspaceClientEnv;
-
-export const publicEnv = {
-  NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-  NEXT_PUBLIC_GTM_ID: env.NEXT_PUBLIC_GTM_ID,
-} as const;

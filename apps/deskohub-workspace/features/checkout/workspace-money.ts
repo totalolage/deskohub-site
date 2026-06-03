@@ -97,28 +97,6 @@ export const addWorkspaceMoneyEffect = Effect.fn("addWorkspaceMoney")(
   }
 );
 
-export const addWorkspaceMoney = (amounts: readonly WorkspaceMoney[]) => {
-  const [first, ...rest] = amounts;
-  if (!first) {
-    throw new WorkspaceMoneyError({
-      message: "Cannot total an empty list of workspace money amounts.",
-    });
-  }
-
-  return rest.reduce((total, amount) => {
-    if (
-      total.currency !== amount.currency ||
-      total.exponent !== amount.exponent
-    ) {
-      throw new WorkspaceMoneyError({
-        message: "Workspace quote cannot mix currencies or exponents.",
-      });
-    }
-
-    return workspaceMoneyWithValue(total.value + amount.value, total);
-  }, first);
-};
-
 export const workspaceMoneyEquals = (
   left: WorkspaceMoney | undefined,
   right: WorkspaceMoney | undefined

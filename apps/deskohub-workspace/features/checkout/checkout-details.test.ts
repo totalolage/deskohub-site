@@ -3,7 +3,6 @@ import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote"
 import {
   checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,
-  mergeLegalEvidenceMaps,
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
@@ -163,33 +162,5 @@ describe("checkout details persistence", () => {
     expect(paymentSubmitLegalEvidenceSource).toBe("payment_submit");
     expect(reservationSubmitLegalEvidenceSource).toBe("reservation_submit");
     expect(parsed[document.hash]?.source).toBe("migration_backfill");
-  });
-
-  test("merges by document hash and replaces only the same document hash", () => {
-    const nextDocument = { ...document, hash: "newHash" };
-    const merged = mergeLegalEvidenceMaps({
-      existing: legalEvidenceMap,
-      incoming: {
-        [document.hash]: legalEvidence({ source: "retry_submit" }),
-        [nextDocument.hash]: {
-          ...legalEvidence({ documentHash: nextDocument.hash }),
-          document: nextDocument,
-        },
-      },
-    });
-
-    expect(merged[document.hash]?.source).toBe("retry_submit");
-    expect(merged[nextDocument.hash]?.documentHash).toBe(nextDocument.hash);
-  });
-
-  test("merge rejects incoming key/hash collisions", () => {
-    expect(() =>
-      mergeLegalEvidenceMaps({
-        existing: legalEvidenceMap,
-        incoming: {
-          wrongHash: legalEvidence(),
-        },
-      })
-    ).toThrow();
   });
 });

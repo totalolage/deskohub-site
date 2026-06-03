@@ -4,7 +4,6 @@ import { getConfirmedDotyposCustomerDiscount } from "@/features/checkout/backend
 import { buildWorkspaceCheckoutQuoteEffect } from "@/features/checkout/checkout-quote";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { getNexiCheckoutCurrencyOverride } from "./checkout.service";
 
 export const WorkspaceCheckoutQuoteLive = Layer.provide(
@@ -23,11 +22,3 @@ export const buildAuthoritativeWorkspaceCheckoutQuoteEffect = Effect.fn(
     currencyOverride: getNexiCheckoutCurrencyOverride(),
   });
 });
-
-export const buildAuthoritativeWorkspaceCheckoutQuote = (
-  reservation: ReservationOrderData
-) =>
-  buildAuthoritativeWorkspaceCheckoutQuoteEffect(reservation).pipe(
-    Effect.provide(WorkspaceCheckoutQuoteLive),
-    runWorkspaceEffect
-  );

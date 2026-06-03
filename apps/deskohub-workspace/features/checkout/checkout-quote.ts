@@ -107,11 +107,6 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   return normalizedOrder;
 });
 
-export const normalizeWorkspaceCheckoutOrder = (
-  order: WorkspaceCheckoutOrder
-): WorkspaceCheckoutOrder =>
-  Effect.runSync(normalizeWorkspaceCheckoutOrderEffect(order));
-
 const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
   amount: item.amount.value,
