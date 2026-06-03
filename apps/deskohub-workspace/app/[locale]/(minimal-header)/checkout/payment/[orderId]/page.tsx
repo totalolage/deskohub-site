@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { recordCheckoutProviderReturn } from "@/features/checkout/backend/checkout-status.server";
+import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
 import type { CheckoutStatusReturnOutcome } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import { locales, m } from "@/features/i18n";
@@ -32,10 +32,10 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
   })
 );
 
-const recordProviderReturn = (
+const refreshStatus = (
   orderId: string,
   returnOutcome: CheckoutStatusReturnOutcome
-) => recordCheckoutProviderReturn({ orderId, returnOutcome });
+) => refreshCheckoutStatus({ orderId, returnOutcome });
 
 const getCheckoutStatusRedirectPath = (input: {
   readonly locale: string;
@@ -109,8 +109,8 @@ export default async function LocalizedCheckoutPaymentPage({
     () => ({ outcome: "unknown" as const })
   );
 
-  await recordProviderReturn(orderId, outcome).catch(async (cause) => {
-    await Effect.logError("Checkout provider return recording failed", {
+  await refreshStatus(orderId, outcome).catch(async (cause) => {
+    await Effect.logError("Checkout status refresh failed", {
       orderId,
       outcome,
       cause,

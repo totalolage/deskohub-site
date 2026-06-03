@@ -72,7 +72,7 @@ export interface CheckoutStatusService {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, DatabaseError>;
-  readonly recordProviderReturn: (input: {
+  readonly refreshStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
   }) => Effect.Effect<CheckoutStatusViewModel, DatabaseError>;
@@ -256,7 +256,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
     return CheckoutStatusService.of({
       getStatus,
-      recordProviderReturn: Effect.fn("checkoutStatus.recordProviderReturn")(
+      refreshStatus: Effect.fn("checkoutStatus.refreshStatus")(
         function* (input) {
           const reservation = yield* reservations.findById(input.orderId);
 

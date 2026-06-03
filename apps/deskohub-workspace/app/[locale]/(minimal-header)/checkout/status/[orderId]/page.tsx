@@ -1,7 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { recordCheckoutProviderReturn } from "@/features/checkout/backend/checkout-status.server";
+import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
 import type {
   CheckoutStatusReturnOutcome,
   CheckoutStatusViewModel,
@@ -45,7 +45,7 @@ const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
 const loadCheckoutStatus = (
   orderId: string,
   returnOutcome: CheckoutStatusReturnOutcome
-) => recordCheckoutProviderReturn({ orderId, returnOutcome });
+) => refreshCheckoutStatus({ orderId, returnOutcome });
 
 const getFallbackStatus = (
   orderId: string,

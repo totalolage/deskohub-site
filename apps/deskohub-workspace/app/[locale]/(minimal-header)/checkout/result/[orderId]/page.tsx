@@ -23,23 +23,23 @@ const decodeCheckoutResultParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
 
-const loadProviderReturnStatusEffect = (orderId: string) =>
+const loadCheckoutStatusEffect = (orderId: string) =>
   Effect.gen(function* () {
     const service = yield* CheckoutStatusService;
-    return yield* service.recordProviderReturn({
+    return yield* service.refreshStatus({
       orderId,
       returnOutcome: "unknown",
     });
   });
 
-const isResolvedProviderReturnStatus = (
+const isResolvedCheckoutStatus = (
   status: CheckoutStatusViewModel | undefined
 ) =>
   status !== undefined &&
   status.status !== "created" &&
   status.status !== "pending";
 
-const loadProviderReturnStatusAttempt = (
+const loadCheckoutStatusAttempt = (
   orderId: string,
   attempts: Ref.Ref<number>
 ) =>
@@ -47,9 +47,9 @@ const loadProviderReturnStatusAttempt = (
     const attempt = yield* Ref.updateAndGet(attempts, (value) => value + 1);
     if (attempt > 1) yield* Effect.sleep("1500 millis");
 
-    return yield* loadProviderReturnStatusEffect(orderId).pipe(
+    return yield* loadCheckoutStatusEffect(orderId).pipe(
       Effect.catchAllCause((cause) =>
-        Effect.logWarning("Checkout provider return status retry failed", {
+        Effect.logWarning("Checkout status refresh retry failed", {
           orderId,
           attempt,
           cause,
@@ -58,14 +58,13 @@ const loadProviderReturnStatusAttempt = (
     );
   });
 
-const loadProviderReturnStatusWithBriefRetry = async (orderId: string) => {
+const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
   const status = Effect.gen(function* () {
     const attempts = yield* Ref.make(0);
-    return yield* loadProviderReturnStatusAttempt(orderId, attempts).pipe(
+    return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
       Effect.repeat({
         times: 3,
-        while: (attemptStatus) =>
-          !isResolvedProviderReturnStatus(attemptStatus),
+        while: (attemptStatus) => !isResolvedCheckoutStatus(attemptStatus),
       })
     );
   }).pipe(
@@ -119,7 +118,7 @@ export default async function LocalizedCheckoutResultPage({
   const decodedParams = decodeCheckoutResultParams(await params);
   const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
   const rawSearchParams = await searchParams;
-  const status = await loadProviderReturnStatusWithBriefRetry(orderId);
+  const status = await loadCheckoutStatusWithBriefRetry(orderId);
   const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 
   if (retryOutcome) {

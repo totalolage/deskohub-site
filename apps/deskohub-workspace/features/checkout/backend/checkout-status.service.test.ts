@@ -76,7 +76,7 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
   }) as unknown as typeof DotyposService.Service;
 
 describe("CheckoutStatusService", () => {
-  test("finalizes a successful provider return before reading status", async () => {
+  test("refreshes successful payment status before reading status", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
       "./checkout-status.service"
     );
@@ -120,7 +120,7 @@ describe("CheckoutStatusService", () => {
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
-      return yield* service.recordProviderReturn({
+      return yield* service.refreshStatus({
         orderId,
         returnOutcome: "success",
       });
@@ -146,7 +146,7 @@ describe("CheckoutStatusService", () => {
     expect(holdCleanup.cancelOrderHold).not.toHaveBeenCalled();
   });
 
-  test("cancels the hold after provider return finalizes terminal payment", async () => {
+  test("cancels the hold after refresh finds terminal payment", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
       "./checkout-status.service"
     );
@@ -183,7 +183,7 @@ describe("CheckoutStatusService", () => {
 
     await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
-      return yield* service.recordProviderReturn({
+      return yield* service.refreshStatus({
         orderId,
         returnOutcome: "cancelled",
       });
