@@ -1,6 +1,5 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
 import { Context, Data, Effect, Layer } from "effect";
 import { z } from "zod/v4";
 import {
@@ -9,6 +8,7 @@ import {
   WorkspaceDatabase,
 } from "@/db/database.service";
 import { type OperationalEvent, operationalEvents } from "@/db/schema";
+import { postgresUuidV7 } from "@/db/uuid-v7";
 
 export const operationalEventMessages = {
   workspaceReservationHoldAttachFailedCancelRetryRequired:
@@ -109,7 +109,7 @@ export const parseOperationalEventInput = (input: OperationalEventInput) =>
   operationalEventInputSchema.parse(input);
 
 const toDbEvent = (event: ParsedOperationalEventInput) => ({
-  id: randomUUID(),
+  id: postgresUuidV7,
   workspaceReservationId: event.workspaceReservationId,
   paymentAttemptId: event.paymentAttemptId,
   eventType: event.eventType,

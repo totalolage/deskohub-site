@@ -6,6 +6,7 @@ import {
   WorkspaceDatabase,
 } from "@/db/database.service";
 import { type WebhookEvent, webhookEvents } from "@/db/schema";
+import { postgresUuidV7 } from "@/db/uuid-v7";
 
 export class WebhookEventStateError extends Data.TaggedError(
   "WebhookEventStateError"
@@ -25,7 +26,6 @@ export type WebhookEventIdentity =
 
 export interface WebhookEventRepository {
   readonly insertReceived: (input: {
-    readonly id: string;
     readonly eventId: string;
     readonly paymentAttemptId?: string;
     readonly providerOrderId?: string;
@@ -89,7 +89,7 @@ export const WebhookEventRepositoryLive = Layer.effect(
             const [event] = await db
               .insert(webhookEvents)
               .values({
-                id: input.id,
+                id: postgresUuidV7,
                 provider: "nexi",
                 eventId: input.eventId,
                 paymentAttemptId: input.paymentAttemptId,

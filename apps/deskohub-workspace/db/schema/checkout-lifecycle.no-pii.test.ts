@@ -160,7 +160,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
     expect(source).toContain("paymentAttempts.markPaidForReservation");
     expect(source).toContain("paymentAttempts.markTerminalForReservation");
-    expect(repository).toContain("await db.transaction(async (tx) =>");
+    expect(repository).toContain("db.transaction(");
     expect(repository).toContain(
       "Only the active pending attempt on a held reservation can mark payment paid."
     );

@@ -1,6 +1,5 @@
 import "server-only";
 
-import { randomUUID } from "node:crypto";
 import { Context, Data, Effect, Layer } from "effect";
 import { z } from "zod/v4";
 import {
@@ -9,6 +8,7 @@ import {
   WorkspaceDatabase,
 } from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
+import { postgresUuidV7 } from "@/db/uuid-v7";
 import { legalEvidenceSchema } from "@/features/checkout/schemas/checkout-details";
 
 const legalEvidenceEventInputSchema = z.object({
@@ -81,7 +81,7 @@ export const LegalEvidenceEventRepositoryLive = Layer.effect(
         const [inserted] = yield* runDb("legalEvidenceEvents.record", () =>
           db
             .insert(legalEvidenceEvents)
-            .values({ id: randomUUID(), ...event })
+            .values({ id: postgresUuidV7, ...event })
             .returning()
         );
 
