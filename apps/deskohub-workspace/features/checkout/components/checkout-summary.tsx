@@ -18,6 +18,9 @@ type CheckoutSummaryProps = {
 };
 
 const productItemTiers = {
+  "product:basic": "basic",
+  "product:plus": "plus",
+  "product:profi": "profi",
   "product:workspace-basic": "basic",
   "product:workspace-plus": "plus",
   "product:workspace-profi": "profi",
