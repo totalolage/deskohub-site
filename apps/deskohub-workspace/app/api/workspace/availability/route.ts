@@ -1,4 +1,4 @@
-import { DotyposService } from "@deskohub/dotypos";
+import { DotyposService, ValidationError } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
@@ -44,6 +44,10 @@ const loadWorkspaceAvailability = Effect.fn("loadWorkspaceAvailability")(
 
 const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
   function* (cause: unknown) {
+    if (cause instanceof ValidationError) {
+      return NextResponse.json({ error: cause.message }, { status: 400 });
+    }
+
     yield* Effect.logError("Workspace availability route failed", { cause });
 
     return NextResponse.json(
