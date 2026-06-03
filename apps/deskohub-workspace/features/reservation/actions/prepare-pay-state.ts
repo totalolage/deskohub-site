@@ -8,6 +8,7 @@ import {
 import { Effect, Layer, Schema } from "effect";
 import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
 import {
   WorkspaceCheckoutAccessCodeService,
@@ -261,18 +262,28 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
 )(
   function* (input) {
-    yield* Effect.annotateLogsScoped({ locale: input.locale });
-
     const reservationSubmitKey = deriveReservationSubmitKey(input.reservation);
+    yield* Effect.annotateLogsScoped({
+      locale: input.locale,
+      input,
+      reservationSubmitKey,
+    });
+    yield* Effect.logInfo("Workspace reservation submit started");
+
     const acceptedAt = new Date().toISOString();
     const privacyEvidence = yield* getReservationPrivacyEvidence({
       locale: input.locale,
       accepted: input.legalConsent === true,
       acceptedAt,
     });
+    yield* Effect.annotateLogsScoped({ privacyEvidence });
     const legalEvents = yield* LegalEvidenceEventRepository;
 
     if (input.legalConsent !== true) {
+      yield* Effect.logWarning(
+        "Workspace reservation submit rejected: missing legal consent"
+      );
+
       yield* legalEvents
         .recordMany(
           Object.values(privacyEvidence).map((evidence) => ({
@@ -298,12 +309,18 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const dotypos = yield* DotyposService;
     let existingReservation =
       yield* reservations.findBySubmitKey(reservationSubmitKey);
+    yield* Effect.annotateLogsScoped({ existingReservation });
+    yield* Effect.logDebug("Workspace reservation submit key lookup completed");
 
     if (
       existingReservation?.reservationState === "held" &&
       existingReservation.reservationHoldExpiresAt &&
       existingReservation.reservationHoldExpiresAt <= new Date()
     ) {
+      yield* Effect.logInfo(
+        "Expired existing workspace reservation hold detected before checkout prep"
+      );
+
       const existingReservationId = existingReservation.id;
       const holdCleanup = yield* ReservationHoldCleanupService;
       yield* holdCleanup
@@ -316,7 +333,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
             Effect.logWarning(
               "Expired existing reservation hold cleanup failed",
               {
-                orderId: existingReservationId,
                 cause,
               }
             )
@@ -324,11 +340,17 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           Effect.ignore
         );
       existingReservation = yield* reservations.findById(existingReservationId);
+      yield* Effect.annotateLogsScoped({ existingReservation });
+      yield* Effect.logInfo(
+        "Expired existing workspace reservation hold cleanup completed"
+      );
     }
 
     const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
       input.reservation
     ).pipe(Effect.provideService(DotyposService, dotypos));
+    yield* Effect.annotateLogsScoped({ quote });
+    yield* Effect.logDebug("Workspace reservation quote built");
 
     if (
       existingReservation?.reservationState === "held" &&
@@ -336,6 +358,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       (!existingReservation.reservationHoldExpiresAt ||
         existingReservation.reservationHoldExpiresAt > new Date())
     ) {
+      yield* Effect.logInfo(
+        "Existing workspace reservation hold reused for checkout prep"
+      );
+
       yield* reservations.updateProductIntent({
         id: existingReservation.id,
         productTier: input.reservation.entryTier,
@@ -349,6 +375,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           evidence,
         }))
       );
+      yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
       return toReadyResult({
         locale: input.locale,
@@ -364,6 +391,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       entryTier: input.reservation.entryTier,
       monitorOption: input.reservation.monitorOption,
     });
+    yield* Effect.logDebug("Workspace reservation availability confirmed");
 
     const customerName = splitCustomerName(input.reservation.name);
     const customer = yield* dotypos.findOrCreateCustomer({
@@ -371,12 +399,16 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       email: input.reservation.email,
       phone: input.reservation.phone,
     });
+    yield* Effect.annotateLogsScoped({ customer });
     const dotyposCustomerId = yield* getDotyposCustomerId(customer);
+    yield* Effect.annotateLogsScoped({ dotyposCustomerId });
+    yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
+
     const holdExpiresAt = getReservationHoldExpiresAt(new Date());
     const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
     const customerAccessCode = yield* accessCodes.generateCustomerAccessCode();
 
-    const draft = yield* reservations.createDraft({
+    const reservationDraft = yield* reservations.createDraft({
       reservationSubmitKey,
       dotyposCustomerId,
       customerAccessCode,
@@ -386,14 +418,21 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
+    yield* Effect.annotateLogsScoped({ reservationDraft });
+    yield* Effect.logInfo("Workspace reservation draft ready");
 
-    const claimed = yield* reservations.claimHoldCreation(draft.id);
+    const claimed = yield* reservations.claimHoldCreation(reservationDraft.id);
     if (!claimed) {
+      yield* Effect.logWarning(
+        "Workspace reservation hold creation claim failed"
+      );
+
       return {
         status: "error" as const,
         message: m.reservationErrorMessage({}, { locale: input.locale }),
       };
     }
+    yield* Effect.logDebug("Workspace reservation hold creation claimed");
 
     const checkoutDetails = buildReservationCheckoutDetails({
       locale: input.locale,
@@ -401,8 +440,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       quote,
       legalEvidence: privacyEvidence,
     });
+    yield* Effect.annotateLogsScoped({ checkoutDetails });
     const dotyposReservation = yield* createWorkspaceDotyposReservation({
-      paymentOrderId: draft.id,
+      paymentOrderId: reservationDraft.id,
       dotyposCustomerId,
       checkoutDetails: checkoutDetails as CheckoutDetailsJson,
       status: "NEW",
@@ -415,50 +455,76 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       )
       .pipe(
-        Effect.tapError(() =>
-          reservations.releaseHoldCreation(draft.id).pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning("Reservation hold creation release failed", {
-                orderId: draft.id,
+        Effect.tapError((cause) =>
+          Effect.gen(function* () {
+            yield* Effect.logWarning(
+              "Workspace Dotypos reservation hold creation failed",
+              {
                 cause,
-              })
-            ),
-            Effect.ignore
-          )
+              }
+            );
+
+            yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
+              Effect.tapError((releaseCause) =>
+                Effect.logWarning("Reservation hold creation release failed", {
+                  cause: releaseCause,
+                })
+              ),
+              Effect.ignore
+            );
+          })
         )
       );
+    yield* Effect.annotateLogsScoped({ dotyposReservation });
 
     const dotyposReservationId = yield* decodeDotyposEntityId({
       value: dotyposReservation,
       missingIdMessage: "Dotypos reservation was created without an ID",
     }).pipe(
-      Effect.tapError(() =>
-        reservations.releaseHoldCreation(draft.id).pipe(
-          Effect.tapError((cause) =>
-            Effect.logWarning("Reservation hold creation release failed", {
-              orderId: draft.id,
+      Effect.tapError(
+        Effect.fn(function* (cause) {
+          yield* Effect.logWarning(
+            "Workspace Dotypos reservation hold was created without an ID",
+            {
               cause,
-            })
-          ),
-          Effect.ignore
-        )
+            }
+          );
+
+          yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
+            Effect.tapError((releaseCause) =>
+              Effect.logWarning("Reservation hold creation release failed", {
+                cause: releaseCause,
+              })
+            ),
+            Effect.ignore
+          );
+        })
       )
     );
+    yield* Effect.annotateLogsScoped({ dotyposReservationId });
+    yield* Effect.logInfo("Workspace Dotypos reservation hold created");
 
     yield* reservations
       .attachHold({
-        id: draft.id,
+        id: reservationDraft.id,
         dotyposReservationId,
         reservationCreatedAt: new Date(),
         reservationHoldExpiresAt: holdExpiresAt,
       })
       .pipe(
-        Effect.catchAll((cause) =>
-          Effect.gen(function* () {
+        Effect.catchAll(
+          Effect.fn(function* (cause) {
+            yield* Effect.logError(
+              "Workspace reservation hold attach failed; cancelling Dotypos hold",
+              {
+                cause,
+              }
+            );
+
             const operationalEvents = yield* OperationalEventRepository;
             yield* operationalEvents
               .record({
-                workspaceReservationId: draft.id,
+                workspaceReservationId: reservationDraft.id,
                 eventType: "workspace_reservation_hold_attach_failed",
                 severity: "error",
                 failureCode: "attach_failed_cancel_required",
@@ -470,7 +536,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
                   Effect.logWarning(
                     "Reservation hold attach failure event recording failed",
                     {
-                      orderId: draft.id,
                       cause: recordCause,
                     }
                   )
@@ -482,7 +547,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
               Effect.catchAll((cancelCause) =>
                 Effect.gen(function* () {
                   yield* reservations.markAttachFailedCancellationRequired({
-                    id: draft.id,
+                    id: reservationDraft.id,
                     dotyposReservationId,
                     reservationCreatedAt: new Date(),
                     failureCode: "attach_failed_cancel_failed",
@@ -491,10 +556,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
                 })
               )
             );
-            yield* reservations.releaseHoldCreation(draft.id).pipe(
+            yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
               Effect.tapError((releaseCause) =>
                 Effect.logWarning("Reservation hold creation release failed", {
-                  orderId: draft.id,
                   cause: releaseCause,
                 })
               ),
@@ -505,31 +569,29 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           })
         )
       );
+    yield* Effect.logInfo("Workspace reservation hold attached");
 
     yield* legalEvents.recordMany(
       Object.values(privacyEvidence).map((evidence) => ({
-        workspaceReservationId: draft.id,
+        workspaceReservationId: reservationDraft.id,
         evidence,
       }))
     );
+
+    yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
     return toReadyResult({
       locale: input.locale,
       reservation: input.reservation,
       quote,
-      reservationId: draft.id,
+      reservationId: reservationDraft.id,
     });
   },
   (effect, input) =>
     effect.pipe(
       Effect.scoped,
       Effect.annotateLogs({
-        locale: input.locale,
-        reservationDate: input.reservation.date,
-        entryTier: input.reservation.entryTier,
-        coffee: input.reservation.coffee,
-        monitorOption: input.reservation.monitorOption ?? null,
-        legalConsent: input.legalConsent === true,
+        input,
       }),
       Effect.mapError(
         (error) =>

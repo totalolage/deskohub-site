@@ -23,13 +23,12 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
     .inputSchema(schema)
     .action(async ({ parsedInput, ctx }) => {
       const program = Effect.gen(function* () {
-        yield* Effect.logDebug("Safe action executed", {
-          locale: ctx.locale,
-          inputKeys:
-            parsedInput && typeof parsedInput === "object"
-              ? Object.keys(parsedInput)
-              : [],
-        });
+        yield* Effect.logDebug("Safe action executed").pipe(
+          Effect.annotateLogs({
+            locale: ctx.locale,
+            input: parsedInput,
+          })
+        );
 
         const result = yield* handler(parsedInput, {
           locale: ctx.locale,
@@ -38,7 +37,9 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
         yield* Effect.logDebug("Action completed successfully");
         return result;
       }).pipe(
-        Effect.tapError((error) => Effect.logError("Action failed", error)),
+        Effect.tapError((error) =>
+          Effect.logError("Action failed").pipe(Effect.annotateLogs({ error }))
+        ),
         Effect.withSpan("safeAction", {
           attributes: {
             "action.locale": ctx.locale,
