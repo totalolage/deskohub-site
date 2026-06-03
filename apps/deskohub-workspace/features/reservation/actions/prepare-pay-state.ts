@@ -455,8 +455,8 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       )
       .pipe(
-        Effect.tapError((cause) =>
-          Effect.gen(function* () {
+        Effect.tapError(
+          Effect.fn(function* (cause) {
             yield* Effect.logWarning(
               "Workspace Dotypos reservation hold creation failed",
               {
