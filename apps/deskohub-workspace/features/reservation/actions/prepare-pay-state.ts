@@ -280,7 +280,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const legalEvents = yield* LegalEvidenceEventRepository;
 
     if (input.legalConsent !== true) {
-      yield* Effect.logWarning(
+      yield* Effect.logError(
         "Workspace reservation submit rejected: missing legal consent"
       );
 
@@ -292,7 +292,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
         .pipe(
           Effect.tapError((cause) =>
-            Effect.logWarning("Reservation legal evidence recording failed", {
+            Effect.logError("Reservation legal evidence recording failed", {
               cause,
             })
           ),
@@ -330,7 +330,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         })
         .pipe(
           Effect.tapError((cause) =>
-            Effect.logWarning(
+            Effect.logError(
               "Expired existing reservation hold cleanup failed",
               {
                 cause,
@@ -423,7 +423,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
     const claimed = yield* reservations.claimHoldCreation(reservationDraft.id);
     if (!claimed) {
-      yield* Effect.logWarning(
+      yield* Effect.logError(
         "Workspace reservation hold creation claim failed"
       );
 
@@ -457,7 +457,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       .pipe(
         Effect.tapError(
           Effect.fn(function* (cause) {
-            yield* Effect.logWarning(
+            yield* Effect.logError(
               "Workspace Dotypos reservation hold creation failed",
               {
                 cause,
@@ -466,7 +466,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
             yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
               Effect.tapError((releaseCause) =>
-                Effect.logWarning("Reservation hold creation release failed", {
+                Effect.logError("Reservation hold creation release failed", {
                   cause: releaseCause,
                 })
               ),
@@ -483,7 +483,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     }).pipe(
       Effect.tapError(
         Effect.fn(function* (cause) {
-          yield* Effect.logWarning(
+          yield* Effect.logError(
             "Workspace Dotypos reservation hold was created without an ID",
             {
               cause,
@@ -492,7 +492,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
           yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
             Effect.tapError((releaseCause) =>
-              Effect.logWarning("Reservation hold creation release failed", {
+              Effect.logError("Reservation hold creation release failed", {
                 cause: releaseCause,
               })
             ),
@@ -533,7 +533,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
               })
               .pipe(
                 Effect.tapError((recordCause) =>
-                  Effect.logWarning(
+                  Effect.logError(
                     "Reservation hold attach failure event recording failed",
                     {
                       cause: recordCause,
@@ -558,7 +558,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
             );
             yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
               Effect.tapError((releaseCause) =>
-                Effect.logWarning("Reservation hold creation release failed", {
+                Effect.logError("Reservation hold creation release failed", {
                   cause: releaseCause,
                 })
               ),
