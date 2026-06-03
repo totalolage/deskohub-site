@@ -1,7 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
+import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import "@/shared/polyfills/temporal";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import {
   WorkspaceTableAssignmentService,
@@ -32,9 +33,24 @@ const makeTable = (input: {
   ...input,
 });
 
+const makeDotyposReservation = (input: {
+  readonly tableId: string;
+  readonly status: Reservation["status"];
+  readonly startDate?: string;
+  readonly endDate?: string;
+}): Reservation => ({
+  _branchId: "branch",
+  _cloudId: "cloud",
+  _tableId: input.tableId,
+  startDate: input.startDate ?? "2099-06-09T22:00:00Z",
+  endDate: input.endDate ?? "2099-06-10T22:00:00Z",
+  status: input.status,
+});
+
 const assignTableId = (
   reservation: CheckoutDetailsJson["reservation"],
-  tables: readonly Table[]
+  tables: readonly Table[],
+  dotyposReservations: readonly Reservation[] = []
 ) => {
   const dotyposService: DotyposAssignmentTestService = {
     createReservation: mock(() => Effect.die("createReservation not mocked")),
@@ -48,7 +64,7 @@ const assignTableId = (
       Effect.die("getCustomerDiscount not mocked")
     ),
     getTables: mock(() => Effect.succeed([...tables])),
-    listReservations: mock(() => Effect.die("listReservations not mocked")),
+    listReservations: mock(() => Effect.succeed([...dotyposReservations])),
     getProducts: mock(() => Effect.die("getProducts not mocked")),
     getCategories: mock(() => Effect.die("getCategories not mocked")),
   };
@@ -146,6 +162,19 @@ describe("WorkspaceTableAssignmentService", () => {
         makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
       ])
     ).resolves.toBe("plus-5");
+  });
+
+  test("skips an occupied matching table and assigns the next free matching table", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        [
+          makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
+          makeTable({ id: "basic-2", name: "2", tags: ["tier:basic"] }),
+        ],
+        [makeDotyposReservation({ tableId: "basic-1", status: "NEW" })]
+      )
+    ).resolves.toBe("basic-2");
   });
 
   test("ignores hidden, disabled, missing-id, inactive-flag, and unlabeled active visible virtual tables", async () => {

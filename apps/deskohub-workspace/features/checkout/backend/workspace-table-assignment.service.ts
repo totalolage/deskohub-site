@@ -4,7 +4,7 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
+import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
 import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
 import {
@@ -68,18 +68,40 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             );
           }
 
-          const tables = yield* dotypos.getTables();
-          const matchingTable = [...tables]
+          const [tables, reservations] = yield* Effect.all(
+            [dotypos.getTables(), dotypos.listReservations()],
+            { concurrency: 2 }
+          );
+          const occupiedTableIds = yield* getOccupiedTableIds(
+            reservations,
+            reservation.date
+          );
+          const matchingTables = [...tables]
             .filter((table) => isAssignableTable(table, requiredTags))
-            .sort(compareTables)[0];
+            .sort(compareTables);
+
+          const matchingTable = matchingTables.find((table) => {
+            const tableId = getAssignableDotyposTableId(table);
+            return tableId && !occupiedTableIds.has(tableId);
+          });
           const matchingTableId = matchingTable
             ? getAssignableDotyposTableId(matchingTable)
             : undefined;
 
-          if (!matchingTableId) {
+          if (matchingTables.length === 0) {
             return yield* Effect.fail(
               new ValidationError({
                 message: `No active visible Dotypos workspace table matches tags: ${requiredTags.join(
+                  ", "
+                )}`,
+              })
+            );
+          }
+
+          if (!matchingTableId) {
+            return yield* Effect.fail(
+              new ValidationError({
+                message: `No available Dotypos workspace table matches tags: ${requiredTags.join(
                   ", "
                 )}`,
               })
@@ -119,4 +141,58 @@ const compareTables = (left: Table, right: Table) => {
   if (nameComparison !== 0) return nameComparison;
 
   return (left.id ?? "").localeCompare(right.id ?? "");
+};
+
+const getOccupiedTableIds = (
+  reservations: readonly Reservation[],
+  date: string
+): Effect.Effect<Set<string>, ValidationError> =>
+  Effect.gen(function* () {
+    const day = yield* Effect.try({
+      try: () => Temporal.PlainDate.from(date),
+      catch: () =>
+        new ValidationError({
+          message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
+        }),
+    });
+    const dayRange = getPragueDayRange(day);
+    const occupied = new Set<string>();
+
+    for (const reservation of reservations) {
+      if (reservation.status === "CANCELLED") continue;
+      if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
+        continue;
+      }
+      if (!reservation._tableId) continue;
+
+      const reservationStart = Date.parse(reservation.startDate);
+      const reservationEnd = Date.parse(reservation.endDate);
+      if (
+        !Number.isFinite(reservationStart) ||
+        !Number.isFinite(reservationEnd)
+      ) {
+        continue;
+      }
+
+      if (
+        reservationStart < dayRange.endMs &&
+        reservationEnd > dayRange.startMs
+      ) {
+        occupied.add(reservation._tableId);
+      }
+    }
+
+    return occupied;
+  });
+
+const getPragueDayRange = (date: Temporal.PlainDate) => {
+  const startMs = date
+    .toZonedDateTime({ timeZone: "Europe/Prague" })
+    .toInstant().epochMilliseconds;
+  const endMs = date
+    .add({ days: 1 })
+    .toZonedDateTime({ timeZone: "Europe/Prague" })
+    .toInstant().epochMilliseconds;
+
+  return { startMs, endMs };
 };
