@@ -17,7 +17,7 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
 }> {}
 
 export interface CreateWorkspaceReservationInput {
-  readonly reservationSubmitKey: string;
+  readonly reservationIntentKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
   readonly productTier: string;
@@ -34,8 +34,8 @@ export interface WorkspaceReservationRepository {
   readonly findById: (
     id: string
   ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
-  readonly findBySubmitKey: (
-    reservationSubmitKey: string
+  readonly findByIntentKey: (
+    reservationIntentKey: string
   ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
   readonly updateProductIntent: (input: {
     readonly id: string;
@@ -155,7 +155,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         function* (input) {
           const row = {
             id: postgresUuidV7,
-            reservationSubmitKey: input.reservationSubmitKey,
+            reservationIntentKey: input.reservationIntentKey,
             correlationId: postgresUuidV7,
             dotyposCustomerId: input.dotyposCustomerId,
             customerAccessCode: input.customerAccessCode,
@@ -183,8 +183,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .from(workspaceReservations)
               .where(
                 eq(
-                  workspaceReservations.reservationSubmitKey,
-                  input.reservationSubmitKey
+                  workspaceReservations.reservationIntentKey,
+                  input.reservationIntentKey
                 )
               )
               .limit(1);
@@ -197,24 +197,24 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         (effect, input) =>
           effect.pipe(
             Effect.annotateLogs({
-              reservationSubmitKey: input.reservationSubmitKey,
+              reservationIntentKey: input.reservationIntentKey,
               dotyposCustomerId: input.dotyposCustomerId,
             })
           )
       ),
       findById,
-      findBySubmitKey: Effect.fn("workspaceReservations.findBySubmitKey")(
-        function* (reservationSubmitKey) {
+      findByIntentKey: Effect.fn("workspaceReservations.findByIntentKey")(
+        function* (reservationIntentKey) {
           return yield* runDb(
-            "workspaceReservations.findBySubmitKey",
+            "workspaceReservations.findByIntentKey",
             async () => {
               const [reservation] = await db
                 .select()
                 .from(workspaceReservations)
                 .where(
                   eq(
-                    workspaceReservations.reservationSubmitKey,
-                    reservationSubmitKey
+                    workspaceReservations.reservationIntentKey,
+                    reservationIntentKey
                   )
                 )
                 .limit(1);
@@ -222,8 +222,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             }
           );
         },
-        (effect, reservationSubmitKey) =>
-          effect.pipe(Effect.annotateLogs({ reservationSubmitKey }))
+        (effect, reservationIntentKey) =>
+          effect.pipe(Effect.annotateLogs({ reservationIntentKey }))
       ),
       updateProductIntent: Effect.fn(
         "workspaceReservations.updateProductIntent"

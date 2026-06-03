@@ -74,7 +74,7 @@ CREATE TABLE "webhook_events" (
 --> statement-breakpoint
 CREATE TABLE "workspace_reservations" (
 	"id" text DEFAULT uuid_generate_v7()::text PRIMARY KEY NOT NULL,
-	"reservation_submit_key" text NOT NULL,
+	"reservation_intent_key" text NOT NULL,
 	"correlation_id" text DEFAULT uuid_generate_v7()::text NOT NULL,
 	"dotypos_customer_id" text NOT NULL,
 	"dotypos_reservation_id" text,
@@ -128,7 +128,7 @@ CREATE INDEX "payment_attempts_state_created_idx" ON "payment_attempts" USING bt
 CREATE INDEX "webhook_events_payment_attempt_idx" ON "webhook_events" USING btree ("payment_attempt_id") WHERE "webhook_events"."payment_attempt_id" is not null;--> statement-breakpoint
 CREATE INDEX "webhook_events_provider_order_idx" ON "webhook_events" USING btree ("provider_order_id") WHERE "webhook_events"."provider_order_id" is not null;--> statement-breakpoint
 CREATE INDEX "webhook_events_state_received_idx" ON "webhook_events" USING btree ("state","received_at");--> statement-breakpoint
-CREATE UNIQUE INDEX "workspace_reservations_submit_key_unique_idx" ON "workspace_reservations" USING btree ("reservation_submit_key");--> statement-breakpoint
+CREATE UNIQUE INDEX "workspace_reservations_intent_key_unique_idx" ON "workspace_reservations" USING btree ("reservation_intent_key");--> statement-breakpoint
 CREATE UNIQUE INDEX "workspace_reservations_dotypos_reservation_unique_idx" ON "workspace_reservations" USING btree ("dotypos_reservation_id") WHERE "workspace_reservations"."dotypos_reservation_id" is not null;--> statement-breakpoint
 CREATE INDEX "workspace_reservations_states_idx" ON "workspace_reservations" USING btree ("reservation_state","payment_state","fulfillment_state");--> statement-breakpoint
 CREATE INDEX "workspace_reservations_expired_holds_idx" ON "workspace_reservations" USING btree ("reservation_hold_expires_at") WHERE "workspace_reservations"."reservation_state" = 'held';--> statement-breakpoint

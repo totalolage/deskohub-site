@@ -216,6 +216,10 @@ const getSanitizedUtmParams = (
   return sanitizedParams;
 };
 
+const createReservationIntentId = () =>
+  globalThis.crypto?.randomUUID?.() ??
+  `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export function ReservationForm({
   locale,
   showIntro = true,
@@ -224,6 +228,7 @@ export function ReservationForm({
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
+  const [reservationIntentId] = useState(createReservationIntentId);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
   const sanitizedUtmParams = useMemo(
@@ -378,6 +383,7 @@ export function ReservationForm({
     hasTrackedSuccessfulSubmission.current = false;
     await sendReservation({
       locale,
+      reservationIntentId,
       legalConsent: data.legalConsent,
       reservation: {
         ...data,

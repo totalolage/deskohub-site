@@ -10,7 +10,7 @@ import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryTy
 
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   id: "reservation-provider-return",
-  reservationSubmitKey: "submit-key",
+  reservationIntentKey: "intent-key",
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "dotypos-reservation-id",

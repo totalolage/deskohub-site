@@ -110,7 +110,7 @@ describe("CheckoutService", () => {
       findById: mock(() =>
         Effect.succeed({
           id: orderId,
-          reservationSubmitKey: "submit-key",
+          reservationIntentKey: "intent-key",
           dotyposCustomerId: "customer-id",
           dotyposReservationId: "dotypos-reservation-id",
           productTier: reservationData.entryTier,

@@ -5,7 +5,7 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
-import { Effect, Layer, Schema } from "effect";
+import { Data, Duration, Effect, Layer, Schedule, Schema } from "effect";
 import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
@@ -66,6 +66,7 @@ import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 const getPreparePayStateSchema = () =>
   z.object({
     locale: z.enum(locales),
+    reservationIntentId: z.string().min(1),
     reservation: getReservationOrderSchema(),
     legalConsent: z.boolean().optional(),
   });
@@ -76,25 +77,29 @@ const getReservationHoldExpiresAt = (now: Date) =>
 const normalizeIdempotencyPart = (value: string) =>
   value.trim().toLocaleLowerCase("en-US");
 
-const deriveReservationSubmitKey = (input: {
-  readonly name: string;
-  readonly email: string;
-  readonly phone: string;
-  readonly date: string;
-  readonly entryTier: string;
-  readonly coffee: boolean;
-  readonly monitorOption?: string;
+const deriveReservationIntentKey = (input: {
+  readonly reservationIntentId: string;
+  readonly reservation: {
+    readonly name: string;
+    readonly email: string;
+    readonly phone: string;
+    readonly date: string;
+    readonly entryTier: string;
+    readonly coffee: boolean;
+    readonly monitorOption?: string;
+  };
 }) => {
   const payload = {
-    schema: "workspace-reservation-submit-key",
-    schemaVersion: 1,
-    name: normalizeIdempotencyPart(input.name),
-    email: normalizeIdempotencyPart(input.email),
-    phone: input.phone.replaceAll(/\s+/g, ""),
-    date: input.date,
-    entryTier: input.entryTier,
-    coffee: input.coffee,
-    monitorOption: input.monitorOption ?? null,
+    schema: "workspace-reservation-intent-key",
+    schemaVersion: 2,
+    reservationIntentId: input.reservationIntentId,
+    name: normalizeIdempotencyPart(input.reservation.name),
+    email: normalizeIdempotencyPart(input.reservation.email),
+    phone: input.reservation.phone.replaceAll(/\s+/g, ""),
+    date: input.reservation.date,
+    entryTier: input.reservation.entryTier,
+    coffee: input.reservation.coffee,
+    monitorOption: input.reservation.monitorOption ?? null,
   };
 
   return createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
@@ -217,6 +222,67 @@ const toReadyResult = (input: {
   };
 };
 
+const isReusableHeldReservation = (reservation: WorkspaceReservation) =>
+  reservation.reservationState === "held" &&
+  reservation.paymentState === "not_started" &&
+  Boolean(reservation.dotyposReservationId) &&
+  (!reservation.reservationHoldExpiresAt ||
+    reservation.reservationHoldExpiresAt > new Date());
+
+const canUseExistingReservationForNewHold = (
+  reservation: WorkspaceReservation
+) =>
+  reservation.reservationState === "draft" ||
+  isReusableHeldReservation(reservation);
+
+const getExistingReservationSubmitMessage = (
+  reservation: WorkspaceReservation,
+  locale: Locale
+) =>
+  reservation.paymentState === "paid"
+    ? m.reservationAlreadyPaidMessage({}, { locale })
+    : m.reservationErrorMessage({}, { locale });
+
+class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
+  readonly reservation: WorkspaceReservation;
+}> {}
+
+const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
+  Schedule.modifyDelay((_, delay) => Duration.min(delay, Duration.seconds(5))),
+  Schedule.upTo("40 seconds"),
+  Schedule.whileInput((error: unknown) => error instanceof PendingHoldCreation)
+);
+
+const waitForPendingHoldCreation = Effect.fn(
+  "prepareWorkspacePayState.waitForPendingHoldCreation"
+)(function* (input: {
+  readonly reservations: WorkspaceReservationRepository;
+  readonly reservationId: string;
+}) {
+  const findSettledReservation = input.reservations
+    .findById(input.reservationId)
+    .pipe(
+      Effect.flatMap((reservation) => {
+        if (reservation?.reservationState !== "creating_hold") {
+          return Effect.succeed(reservation);
+        }
+
+        return Effect.logDebug(
+          "Waiting for in-flight workspace reservation hold creation"
+        ).pipe(
+          Effect.zipRight(Effect.fail(new PendingHoldCreation({ reservation })))
+        );
+      })
+    );
+
+  return yield* findSettledReservation.pipe(
+    Effect.retry(pendingHoldCreationRetryPolicy),
+    Effect.catchTag("PendingHoldCreation", (error) =>
+      Effect.succeed(error.reservation)
+    )
+  );
+});
+
 const EarlyReservationDotyposLive = DotyposService.Default.pipe(
   Layer.provide(DotyposRuntimeConfigLive)
 );
@@ -262,11 +328,14 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
 )(
   function* (input) {
-    const reservationSubmitKey = deriveReservationSubmitKey(input.reservation);
+    const reservationIntentKey = deriveReservationIntentKey({
+      reservationIntentId: input.reservationIntentId,
+      reservation: input.reservation,
+    });
     yield* Effect.annotateLogsScoped({
       locale: input.locale,
       input,
-      reservationSubmitKey,
+      reservationIntentKey,
     });
     yield* Effect.logInfo("Workspace reservation submit started");
 
@@ -308,12 +377,13 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
     let existingReservation =
-      yield* reservations.findBySubmitKey(reservationSubmitKey);
+      yield* reservations.findByIntentKey(reservationIntentKey);
     yield* Effect.annotateLogsScoped({ existingReservation });
-    yield* Effect.logDebug("Workspace reservation submit key lookup completed");
+    yield* Effect.logDebug("Workspace reservation intent key lookup completed");
 
     if (
       existingReservation?.reservationState === "held" &&
+      existingReservation.paymentState === "not_started" &&
       existingReservation.reservationHoldExpiresAt &&
       existingReservation.reservationHoldExpiresAt <= new Date()
     ) {
@@ -346,18 +416,54 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       );
     }
 
+    if (existingReservation?.reservationState === "creating_hold") {
+      existingReservation = yield* waitForPendingHoldCreation({
+        reservations,
+        reservationId: existingReservation.id,
+      });
+      yield* Effect.annotateLogsScoped({ existingReservation });
+    }
+
+    if (
+      existingReservation &&
+      !canUseExistingReservationForNewHold(existingReservation)
+    ) {
+      yield* Effect.logWarning(
+        "Workspace reservation submit rejected: intent key belongs to a non-reusable reservation"
+      );
+
+      yield* legalEvents
+        .recordMany(
+          Object.values(privacyEvidence).map((evidence) => ({
+            workspaceReservationId: existingReservation.id,
+            evidence,
+          }))
+        )
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logError("Reservation legal evidence recording failed", {
+              cause,
+            })
+          ),
+          Effect.ignore
+        );
+
+      return {
+        status: "error" as const,
+        message: getExistingReservationSubmitMessage(
+          existingReservation,
+          input.locale
+        ),
+      };
+    }
+
     const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
       input.reservation
     ).pipe(Effect.provideService(DotyposService, dotypos));
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logDebug("Workspace reservation quote built");
 
-    if (
-      existingReservation?.reservationState === "held" &&
-      existingReservation.dotyposReservationId &&
-      (!existingReservation.reservationHoldExpiresAt ||
-        existingReservation.reservationHoldExpiresAt > new Date())
-    ) {
+    if (existingReservation && isReusableHeldReservation(existingReservation)) {
       yield* Effect.logInfo(
         "Existing workspace reservation hold reused for checkout prep"
       );
@@ -409,7 +515,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const customerAccessCode = yield* accessCodes.generateCustomerAccessCode();
 
     const reservationDraft = yield* reservations.createDraft({
-      reservationSubmitKey,
+      reservationIntentKey,
       dotyposCustomerId,
       customerAccessCode,
       productTier: input.reservation.entryTier,
@@ -423,6 +529,43 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
     const claimed = yield* reservations.claimHoldCreation(reservationDraft.id);
     if (!claimed) {
+      const claimConflictReservation = yield* waitForPendingHoldCreation({
+        reservations,
+        reservationId: reservationDraft.id,
+      });
+      yield* Effect.annotateLogsScoped({ claimConflictReservation });
+
+      if (
+        claimConflictReservation &&
+        isReusableHeldReservation(claimConflictReservation)
+      ) {
+        yield* Effect.logInfo(
+          "Existing workspace reservation hold reused after concurrent hold creation"
+        );
+
+        yield* reservations.updateProductIntent({
+          id: claimConflictReservation.id,
+          productTier: input.reservation.entryTier,
+          productCoffee: input.reservation.coffee,
+          productMonitorOption: input.reservation.monitorOption,
+          locale: input.locale,
+        });
+        yield* legalEvents.recordMany(
+          Object.values(privacyEvidence).map((evidence) => ({
+            workspaceReservationId: claimConflictReservation.id,
+            evidence,
+          }))
+        );
+        yield* Effect.logInfo("Workspace reservation checkout prep ready");
+
+        return toReadyResult({
+          locale: input.locale,
+          reservation: input.reservation,
+          quote,
+          reservationId: claimConflictReservation.id,
+        });
+      }
+
       yield* Effect.logError(
         "Workspace reservation hold creation claim failed"
       );

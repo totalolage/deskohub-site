@@ -46,12 +46,13 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     }
   });
 
-  test("submit key uses JSON.stringify payload and does not use tuple delimiter", async () => {
+  test("intent key uses JSON.stringify payload and does not use tuple delimiter", async () => {
     const source = await Bun.file(
       "apps/deskohub-workspace/features/reservation/actions/prepare-pay-state.ts"
     ).text();
 
-    expect(source).toContain('schema: "workspace-reservation-submit-key"');
+    expect(source).toContain('schema: "workspace-reservation-intent-key"');
+    expect(source).toContain("reservationIntentId");
     expect(source).toContain(".update(JSON.stringify(payload))");
     expect(source).not.toContain('.join("\\u001f")');
     expect(source).not.toContain("Effect.annotateLogs(input)");
