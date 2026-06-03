@@ -23,12 +23,26 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(
           cause,
         }),
     });
+    yield* Effect.annotateLogsScoped({
+      payload,
+      request: {
+        headers: Object.fromEntries(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+    });
+    yield* Effect.logInfo("Nexi webhook request body parsed");
 
     const webhooks = yield* NexiWebhookService;
-    return yield* webhooks.processNotification(payload);
+    const result = yield* webhooks.processNotification(payload);
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logInfo("Nexi webhook request processed");
+
+    return result;
   },
   (effect) =>
     effect.pipe(
+      Effect.scoped,
       Effect.annotateLogs({
         method: "POST",
         operation: "nexiWebhook",
@@ -57,6 +71,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
           return yield* Effect.fail(error);
         })
+      ),
+      Effect.tap((result) =>
+        Effect.logInfo("Nexi webhook response ready", { result })
       ),
       Effect.map((result) =>
         NextResponse.json({
