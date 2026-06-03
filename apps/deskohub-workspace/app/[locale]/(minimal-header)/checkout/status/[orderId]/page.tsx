@@ -1,12 +1,13 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { getCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
+import { recordCheckoutProviderReturn } from "@/features/checkout/backend/checkout-status.server";
 import type {
   CheckoutStatusReturnOutcome,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
+import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import {
   appendExistingCheckoutReturnStateToken,
@@ -24,6 +25,7 @@ import {
 } from "@/shared/utils";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 15;
 
 type LocalizedCheckoutStatusPageProps = {
   params: Promise<{ locale: string; orderId: string }>;
@@ -43,7 +45,7 @@ const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
 const loadCheckoutStatus = (
   orderId: string,
   returnOutcome: CheckoutStatusReturnOutcome
-) => getCheckoutStatus({ orderId, returnOutcome });
+) => recordCheckoutProviderReturn({ orderId, returnOutcome });
 
 const getFallbackStatus = (
   orderId: string,
@@ -158,6 +160,9 @@ export default async function LocalizedCheckoutStatusPage({
   }
 
   return runWithRequestLocale(locale, () => (
-    <CheckoutStatusPage locale={locale} status={status} />
+    <>
+      <CheckoutStatusAutoRefresh enabled={status.status === "pending"} />
+      <CheckoutStatusPage locale={locale} status={status} />
+    </>
   ));
 }
