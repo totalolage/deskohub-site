@@ -55,7 +55,7 @@ Use Nexi's test cards only in the sandbox environment.
 | Mastercard | `5100 9908 1789 6004` | `04/2027` | `301` | OK |
 | Visa | `4349 9401 9999 7007` | `12/2028` | `829` | KO |
 
-The public CEE test merchant and cards are currency-sensitive. The OK cards have been verified with the published implicit direct API key using `EUR`. The same card path can return provider-side `AUTHORIZATION FAILED` with `CZK`, even when request signing and HPP creation are otherwise correct. When debugging a Workspace payment failure in sandbox, first reproduce with `EUR` before treating a `CZK` authorization failure as an application bug.
+The public CEE test merchant and cards are currency-sensitive. The OK cards have been verified with the published implicit direct API key using `EUR`. The same card path can return provider-side `AUTHORIZATION FAILED` with `CZK`, even when request signing and HPP creation are otherwise correct. When debugging a Workspace payment failure in sandbox, first reproduce with `EUR` before treating a `CZK` authorization failure as an application bug. In Workspace preview E2E this means `EUR` payment amounts are expected for the public sandbox merchant; live Workspace payments still use the real catalog currency such as `CZK`.
 
 For 3DS sandbox challenges, choose the successful authentication option in the Nexi stub to complete the OK-card path.
 
@@ -66,6 +66,8 @@ For Workspace checkout E2E, use the OK cards to verify successful completion and
 For the Workspace HPP flow, include `paymentSession.actionType=PAY`. Send a stable local order ID as `order.orderId`; this is the ID returned in webhooks and used for `GET /orders/{orderId}` verification.
 
 `paymentSession.notificationUrl` and `paymentSession.resultUrl` must be public HTTPS URLs reachable by Nexi. Localhost callbacks are not suitable unless they are exposed through a real HTTPS tunnel.
+
+The hosted payment page itself is Nexi-owned. Deskohub tests should not classify provider-side HPP UI mechanics, focus/keyboard behavior, button wording, 3DS stub screens, or abort/cancel control placement as Deskohub application bugs. Deskohub-owned assertions start before redirect, at webhook receipt, and after the browser returns to a Deskohub result/payment/status URL.
 
 ## Workspace Preview E2E
 
@@ -78,6 +80,8 @@ If Workspace catalog prices are `CZK` while validating against the public Nexi C
 ```env
 NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR
 ```
+
+Workspace applies this override only for non-production deployments using the Nexi sandbox origin. Do not use it with the live Nexi origin or production Vercel environment.
 
 Then test both paths:
 

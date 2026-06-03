@@ -43,7 +43,7 @@ User-supplied values:
 Known/defaultable values:
 
 - `NEXI_API_ORIGIN`: `https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp` for Nexi sandbox. See [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md) for test keys, accounting terminal behavior, and test cards.
-- `NEXI_CHECKOUT_CURRENCY_OVERRIDE`: optional. Use `EUR` only in non-production deployments against Nexi sandbox when validating the public Nexi CEE test merchant/cards. Leave unset for production and for any test merchant that supports the product catalog currency directly.
+- `NEXI_CHECKOUT_CURRENCY_OVERRIDE`: optional, but expected for the current public Nexi sandbox E2E setup. Use `EUR` only in non-production deployments against Nexi sandbox when validating the public Nexi CEE test merchant/cards. Leave unset for production and for any test merchant that supports the product catalog currency directly. The Workspace code ignores this override in production and when `NEXI_API_ORIGIN` is not the Nexi sandbox origin, so live payments remain in the catalog currency such as `CZK`.
 - `DOTYPOS_API_URL`: Dotypos API origin for the configured account.
 - `DOTYPOS_API_TIMEOUT`: `30000` unless a different timeout is required.
 - Dotypos Workspace tables must be active, visible, and tagged for fulfillment: `tier:basic`, `tier:plus`, or `tier:profi`; Profi monitor tables also need `monitor:count:2`, `monitor:size:27|32`, and `monitor:resolution:qhd|4k`.
@@ -73,8 +73,13 @@ Nexi sandbox notes:
 
 - Use the published CEE implicit-accounting direct API key for the normal hosted checkout happy path.
 - The public CEE OK cards have been verified with `EUR`. They can return provider-side `AUTHORIZATION FAILED` with `CZK`, even when HPP creation and callback handling are correct.
-- For Workspace catalog prices in `CZK`, use `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on sandbox preview only when the goal is to validate the app payment/webhook path against the public Nexi test merchant.
+- For Workspace catalog prices in `CZK`, use `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on sandbox preview when the goal is to validate the app payment/webhook path against the public Nexi test merchant. Seeing `EUR` on Nexi HPP, payment attempts, and checkout/status summaries in this sandbox setup is expected and is not a bug. The app only applies this override for non-production Nexi sandbox traffic; production Nexi traffic uses the real catalog currency.
 - A successful implicit-accounting CEE payment may verify as `operationType=AUTHORIZATION`, `operationResult=EXECUTED`, with both authorized and captured amounts set. This is a successful paid state for Workspace.
+
+Provider-owned HPP notes:
+
+- The Nexi hosted payment page is provider-owned. Validate that Workspace creates a correct HPP request, redirects to the provider URL, receives the provider return/webhook, and records the verified outcome. Do not treat Nexi HPP UI mechanics, wording, focus behavior, keyboard requirements, 3DS stub behavior, or the exact placement/availability of provider-side abort/cancel controls as Workspace bugs.
+- Workspace-owned behavior resumes when Nexi returns to a Workspace `/checkout/result/*`, `/checkout/payment/*`, or `/checkout/status/*` URL, or when Nexi calls the Workspace webhook. From that point, verify Workspace state transitions, retry/restart affordances, Dotypos reservation state, and no-PII/raw-payload rules.
 
 Email notes:
 
@@ -130,7 +135,7 @@ Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi H
 
 1. Deploy the Vercel preview first.
 2. Confirm the preview environment uses the Nexi sandbox origin and sandbox API key from [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
-3. If validating Workspace catalog prices that are still `CZK` against the public Nexi CEE sandbox merchant/cards, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on the preview environment only.
+3. If validating Workspace catalog prices that are still `CZK` against the public Nexi CEE sandbox merchant/cards, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on the preview environment only. Treat resulting `EUR` payment amounts as expected sandbox behavior, not a currency bug.
 4. Open the deployed preview URL and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values.
 5. Complete one payment with an OK sandbox card and the successful 3DS stub option.
 6. Start a second checkout and exercise the cancellation or failure path with the documented KO card or a user cancellation from HPP.
@@ -141,7 +146,7 @@ Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi H
 Validate the payment and notification path first:
 
 - Checkout initiation creates a `payment_orders` row with `payment_status=created` or `payment_pending` and stores only safe checkout metadata.
-- Browser redirects to the Nexi HPP URL.
+- Browser redirects to the Nexi HPP URL. Once the browser is on Nexi HPP, the UI is provider-owned; test observations there should be limited to provider result selection and whether the user can complete, fail, or cancel through a documented sandbox path.
 - HPP request includes `paymentSession.actionType=PAY`, a public HTTPS `notificationUrl`, and a public HTTPS `resultUrl`.
 - For Nexi sandbox OK-card testing, complete the 3DS stub with the successful authentication option.
 - Nexi notification webhook records a `webhook_events` row without logging raw payloads or secrets.
@@ -163,7 +168,7 @@ Database checks for a successful sandbox payment:
 - `payment_orders.last_provider_status = 'EXECUTED'`.
 - `payment_orders.last_provider_operation_id` is set when Nexi returned an operation ID.
 - `payment_orders.paid_at` is set.
-- `payment_orders.checkout_details.payment.expectedPrice.currency` reflects the actual currency sent to Nexi. With the sandbox override enabled, this should be `EUR` even if the product catalog/UI remains `CZK`.
+- `payment_orders.checkout_details.payment.expectedPrice.currency` reflects the actual currency sent to Nexi. With the sandbox override enabled, this should be `EUR` even if the product catalog/UI remains `CZK`. In production, the override is disabled by code and the expected currency is the real catalog currency.
 - `webhook_events.status = 'processed'` for the applied event identity.
 
 Expected fulfillment boundary:
