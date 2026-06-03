@@ -282,6 +282,7 @@
   "reservationPrivacyNoteAfter": "and understand that we use your details to process the reservation, send confirmation, and prevent abuse.",
   "reservationSuccessMessage": "Your reservation request has been sent. We will confirm the next step soon.",
   "reservationErrorMessage": "Checkout could not be started. Please check your details and try again.",
+  "reservationAlreadyPaidMessage": "A paid reservation already exists for these details. Change the reservation details or contact us if you need help.",
   "reservationAvailabilityUnavailable": "This workspace setup is already booked for the selected date. Please choose a different monitor setup, tier, or date.",
   "reservationAvailabilityLoading": "Checking workspace availability...",
   "reservationValidationLegalConsentRequired": "Please accept the payment and legal terms before continuing.",

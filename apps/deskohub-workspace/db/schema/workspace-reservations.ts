@@ -61,7 +61,7 @@ export const workspaceReservations = pgTable(
   "workspace_reservations",
   {
     id: text("id").primaryKey().default(postgresUuidV7),
-    reservationSubmitKey: text("reservation_submit_key").notNull(),
+    reservationIntentKey: text("reservation_intent_key").notNull(),
     correlationId: text("correlation_id")
       .notNull()
       .unique()
@@ -160,8 +160,8 @@ export const workspaceReservations = pgTable(
       "workspace_reservations_fulfillment_failed_check",
       sql`${t.fulfillmentState} <> 'failed' or (${t.fulfillmentFailedAt} is not null and ${t.fulfillmentFailureCode} is not null)`
     ),
-    uniqueIndex("workspace_reservations_submit_key_unique_idx").on(
-      t.reservationSubmitKey
+    uniqueIndex("workspace_reservations_intent_key_unique_idx").on(
+      t.reservationIntentKey
     ),
     uniqueIndex("workspace_reservations_dotypos_reservation_unique_idx")
       .on(t.dotyposReservationId)

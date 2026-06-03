@@ -282,6 +282,7 @@
   "reservationPrivacyNoteAfter": "a rozumíš tomu, že údaje použijeme pro vyřízení rezervace, zaslání potvrzení a ochranu před zneužitím.",
   "reservationSuccessMessage": "Rezervační poptávka je odeslaná. Brzy potvrdíme další krok.",
   "reservationErrorMessage": "Platbu se nepodařilo spustit. Zkontroluj prosím údaje a zkus to znovu.",
+  "reservationAlreadyPaidMessage": "Pro tyto údaje už existuje zaplacená rezervace. Změň prosím údaje rezervace nebo nás kontaktuj.",
   "reservationAvailabilityUnavailable": "Tahle pracovní konfigurace je pro vybraný den už obsazená. Vyber prosím jiný monitor, tarif nebo datum.",
   "reservationAvailabilityLoading": "Kontrolujeme dostupnost workspace...",
   "reservationValidationLegalConsentRequired": "Před pokračováním prosím potvrď platební a právní podmínky.",

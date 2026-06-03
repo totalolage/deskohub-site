@@ -671,8 +671,8 @@
           "notNull": true,
           "default": "uuid_generate_v7()::text"
         },
-        "reservation_submit_key": {
-          "name": "reservation_submit_key",
+        "reservation_intent_key": {
+          "name": "reservation_intent_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -826,11 +826,11 @@
         }
       },
       "indexes": {
-        "workspace_reservations_submit_key_unique_idx": {
-          "name": "workspace_reservations_submit_key_unique_idx",
+        "workspace_reservations_intent_key_unique_idx": {
+          "name": "workspace_reservations_intent_key_unique_idx",
           "columns": [
             {
-              "expression": "reservation_submit_key",
+              "expression": "reservation_intent_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
