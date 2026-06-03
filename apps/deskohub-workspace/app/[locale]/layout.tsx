@@ -7,10 +7,6 @@ import { env } from "@/env";
 import { ConsentAwareAnalytics } from "@/features/cookie-consent/components/consent-aware-analytics";
 import { CookieConsentProvider } from "@/features/cookie-consent/components/cookie-consent-provider";
 import { isLocale, locales } from "@/features/i18n";
-import {
-  UnderConstructionRibbon,
-  underConstructionRibbonViewportStyle,
-} from "@/shared/components/under-construction-ribbon";
 import "../globals.css";
 
 const sculpin = localFont({
@@ -65,16 +61,12 @@ export default async function LocaleLayout({
       {env.NEXT_PUBLIC_GTM_ID && (
         <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />
       )}
-      <body
-        className="sm:[--under-construction-ribbon-corner-size:13rem] sm:[--under-construction-ribbon-band-height:2.75rem]"
-        style={underConstructionRibbonViewportStyle as CSSProperties}
-      >
+      <body>
         <CookieConsentProvider locale={locale} />
         <ConsentAwareAnalytics />
         <div className="min-h-screen pb-[calc(var(--under-construction-ribbon-safe-area-block)+env(safe-area-inset-bottom))]">
           {children}
         </div>
-        <UnderConstructionRibbon locale={locale} />
       </body>
     </html>
   );
