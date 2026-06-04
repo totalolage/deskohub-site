@@ -162,6 +162,9 @@ export class DotyposService extends Effect.Service<DotyposService>()(
 
       const createReservation = Effect.fn("createReservation")(
         function* (input: CreateDotyposReservationInput) {
+          yield* Effect.annotateLogsScoped({ input });
+          yield* Effect.logInfo("Dotypos reservation request build started");
+
           const customerId = input.customerId.trim();
           const tableId = input.tableId.trim();
 
@@ -219,15 +222,28 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             ...(config.employeeId && { _employeeId: config.employeeId }),
           };
 
-          return yield* api
+          yield* Effect.annotateLogsScoped({ requestBody: request });
+          yield* Effect.logInfo("Dotypos reservation API call started");
+
+          const reservation = yield* api
             .createReservation({
               path: { cloudId: config.cloudId },
               body: request,
             })
             .pipe(
               Effect.withSpan("dotyposService.createReservation"),
-              Effect.retry(retryPolicy)
+              Effect.retry(retryPolicy),
+              Effect.tapError((error) =>
+                Effect.logError("Dotypos reservation creation failed", {
+                  error,
+                })
+              )
             );
+
+          yield* Effect.annotateLogsScoped({ reservation });
+          yield* Effect.logInfo("Dotypos reservation created successfully");
+
+          return reservation;
         },
         (effect, input) =>
           effect.pipe(
@@ -236,12 +252,14 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               tableId: input.tableId,
               status: input.status,
               seats: input.seats,
-            })
+            }),
+            Effect.scoped
           )
       );
 
       const cancelReservation = Effect.fn("cancelReservation")(
         function* (reservationId: string) {
+          yield* Effect.annotateLogsScoped({ reservationId });
           const id = reservationId.trim();
 
           if (!id) {
@@ -250,14 +268,25 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             );
           }
 
+          yield* Effect.logInfo("Dotypos reservation cancellation started");
+
           yield* api
             .cancelReservation({
               path: { cloudId: config.cloudId, reservationId: id },
             })
-            .pipe(Effect.withSpan("dotyposService.cancelReservation"));
+            .pipe(
+              Effect.withSpan("dotyposService.cancelReservation"),
+              Effect.tapError((error) =>
+                Effect.logError("Dotypos reservation cancellation failed", {
+                  error,
+                })
+              )
+            );
+
+          yield* Effect.logInfo("Dotypos reservation cancellation succeeded");
         },
         (effect, reservationId) =>
-          effect.pipe(Effect.annotateLogs({ reservationId }))
+          effect.pipe(Effect.annotateLogs({ reservationId }), Effect.scoped)
       );
 
       const confirmReservation = Effect.fn("confirmReservation")(
@@ -270,6 +299,8 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             );
           }
 
+          yield* Effect.logInfo("Dotypos reservation ETag load started");
+
           const { etag } = yield* api
             .getReservationForUpdate({
               path: { cloudId: config.cloudId, reservationId: id },
@@ -279,7 +310,15 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               Effect.retry(retryPolicy)
             );
 
+          yield* Effect.logDebug("Dotypos reservation ETag load succeeded", {
+            etag,
+          });
+
           if (!etag) {
+            yield* Effect.logWarning(
+              "Dotypos reservation ETag missing before confirmation failure"
+            );
+
             return yield* Effect.fail(
               new ExternalAPIError({
                 service: "Dotypos",
@@ -289,7 +328,11 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             );
           }
 
-          return yield* api
+          yield* Effect.logInfo(
+            "Dotypos reservation confirmation patch started"
+          );
+
+          const reservation = yield* api
             .patchReservation({
               path: { cloudId: config.cloudId, reservationId: id },
               headers: { "If-Match": etag },
@@ -297,8 +340,17 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             })
             .pipe(
               Effect.withSpan("dotyposService.confirmReservation"),
-              Effect.retry(retryPolicy)
+              Effect.retry(retryPolicy),
+              Effect.tapError((error) =>
+                Effect.logError("Dotypos reservation confirmation failed", {
+                  error,
+                })
+              )
             );
+
+          yield* Effect.logInfo("Dotypos reservation confirmation succeeded");
+
+          return reservation;
         },
         (effect, reservationId) =>
           effect.pipe(Effect.annotateLogs({ reservationId }))
@@ -501,7 +553,13 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           customerData: DotyposCustomerLookupData,
           options?: FindCustomerOptions
         ) {
+          yield* Effect.annotateLogsScoped({ input: customerData });
+          yield* Effect.logInfo("Dotypos customer lookup started");
+
           const lookup = yield* lookupCustomer(customerData, options);
+
+          yield* Effect.logDebug("Dotypos customer lookup result", { lookup });
+
           const normalizedCustomerData = lookup.normalizedCustomerData;
           const existingCustomer = lookup.matches[0];
 
@@ -512,6 +570,12 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               (normalizedCustomerData.firstName &&
                 !existingCustomer.firstName) ||
               (normalizedCustomerData.lastName && !existingCustomer.lastName);
+
+            yield* Effect.logDebug("Dotypos customer update-needed decision", {
+              needsUpdate,
+              existingCustomer,
+              normalizedCustomerData,
+            });
 
             if (needsUpdate) {
               const updateRequest: UpdateCustomerRequest = {};
@@ -566,8 +630,16 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                   Effect.orElse(() => Effect.succeed(existingCustomer!))
                 );
 
+              yield* Effect.logDebug("Dotypos existing customer result", {
+                customer: updatedCustomer,
+              });
+
               return updatedCustomer;
             }
+
+            yield* Effect.logDebug("Dotypos existing customer result", {
+              customer: existingCustomer,
+            });
 
             return existingCustomer;
           }
@@ -584,23 +656,32 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             );
           }
 
-          return yield* api
+          const createRequest = {
+            _cloudId: config.cloudId,
+            firstName: normalizedCustomerData.firstName,
+            lastName: normalizedCustomerData.lastName,
+            email: normalizedCustomerData.email,
+            phone: normalizedCustomerData.phone,
+            expireDate: Date.now() + 365 * 24 * 60 * 60 * 1000,
+          };
+
+          yield* Effect.annotateLogsScoped({ createRequest });
+
+          const customer = yield* api
             .createCustomer({
               path: { cloudId: config.cloudId },
-              body: {
-                _cloudId: config.cloudId,
-                firstName: normalizedCustomerData.firstName,
-                lastName: normalizedCustomerData.lastName,
-                email: normalizedCustomerData.email,
-                phone: normalizedCustomerData.phone,
-                expireDate: Date.now() + 365 * 24 * 60 * 60 * 1000,
-              },
+              body: createRequest,
             })
             .pipe(Effect.retry(retryPolicy));
+
+          yield* Effect.logInfo("Dotypos customer created", { customer });
+
+          return customer;
         },
         (effect, _input, options) =>
           effect.pipe(
-            Effect.annotateLogs(getCustomerLookupLogAnnotations(options))
+            Effect.annotateLogs(getCustomerLookupLogAnnotations(options)),
+            Effect.scoped
           )
       );
 

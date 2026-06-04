@@ -114,12 +114,18 @@ export const EmailServiceLive = Layer.effect(
     const config = yield* EmailConfigTag;
 
     return {
-      send: (message: EmailMessage) =>
-        Effect.gen(function* () {
+      send: Effect.fn("email.send")(
+        function* (message: EmailMessage) {
+          yield* Effect.annotateLogsScoped({ message });
+          yield* Effect.logInfo("Email send started", {
+            provider: provider.name,
+          });
+
           const finalMessage = {
             ...message,
             from: message.from || config.defaultFrom,
           };
+          yield* Effect.annotateLogsScoped({ finalMessage });
 
           yield* Effect.logInfo("Sending email", {
             to: Array.isArray(finalMessage.to)
@@ -147,13 +153,16 @@ export const EmailServiceLive = Layer.effect(
             ),
             Effect.retry(emailRetryPolicy),
             Effect.tap((sendResult) =>
-              Effect.logInfo("Email sent successfully", {
-                id: sendResult.id,
-                provider: sendResult.provider,
-                recipient: Array.isArray(finalMessage.to)
-                  ? finalMessage.to.map((r) => r.email || r)
-                  : finalMessage.to.email || finalMessage.to,
-                subject: finalMessage.subject,
+              Effect.gen(function* () {
+                yield* Effect.annotateLogsScoped({ result: sendResult });
+                yield* Effect.logInfo("Email sent successfully", {
+                  id: sendResult.id,
+                  provider: sendResult.provider,
+                  recipient: Array.isArray(finalMessage.to)
+                    ? finalMessage.to.map((r) => r.email || r)
+                    : finalMessage.to.email || finalMessage.to,
+                  subject: finalMessage.subject,
+                });
               })
             ),
             Effect.tapError((error) =>
@@ -171,11 +180,28 @@ export const EmailServiceLive = Layer.effect(
           );
 
           return result;
-        }),
+        },
+        (effect, message) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.annotateLogs({ provider: provider.name, message })
+          )
+      ),
 
-      sendTemplate: (recipient, template) =>
-        Effect.gen(function* () {
+      sendTemplate: Effect.fn("email.sendTemplate")(
+        function* (recipient, template) {
+          yield* Effect.annotateLogsScoped({ recipient, template });
+          yield* Effect.logInfo("Template email send started", {
+            provider: provider.name,
+            template: template.type,
+          });
+
           const rendered = yield* templateService.render(template);
+          yield* Effect.annotateLogsScoped({ rendered });
+          yield* Effect.logDebug("Template email rendered", {
+            template: template.type,
+          });
+
           const to =
             typeof recipient === "string" ? { email: recipient } : recipient;
 
@@ -190,6 +216,7 @@ export const EmailServiceLive = Layer.effect(
               templateType: template.type,
             },
           };
+          yield* Effect.annotateLogsScoped({ message });
 
           return yield* provider.send(message).pipe(
             Effect.tapError((error) =>
@@ -208,11 +235,14 @@ export const EmailServiceLive = Layer.effect(
             ),
             Effect.retry(emailRetryPolicy),
             Effect.tap((sendResult) =>
-              Effect.logInfo("Template email sent successfully", {
-                id: sendResult.id,
-                template: template.type,
-                recipient: to.email,
-                subject: message.subject,
+              Effect.gen(function* () {
+                yield* Effect.annotateLogsScoped({ result: sendResult });
+                yield* Effect.logInfo("Template email sent successfully", {
+                  id: sendResult.id,
+                  template: template.type,
+                  recipient: to.email,
+                  subject: message.subject,
+                });
               })
             ),
             Effect.tapError((error) =>
@@ -226,26 +256,59 @@ export const EmailServiceLive = Layer.effect(
               })
             )
           );
-        }),
+        },
+        (effect, recipient, template) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.annotateLogs({
+              provider: provider.name,
+              recipient,
+              template,
+            })
+          )
+      ),
 
-      verify: () =>
-        Effect.gen(function* () {
-          yield* Effect.logInfo("Verifying email service configuration");
+      verify: Effect.fn("email.verify")(
+        function* () {
+          yield* Effect.logInfo("Verifying email service configuration", {
+            provider: provider.name,
+          });
 
           const isValid = yield* provider.verify().pipe(
             Effect.tap((valid) =>
-              valid
-                ? Effect.logInfo("Email service verified successfully", {
+              Effect.gen(function* () {
+                yield* Effect.annotateLogsScoped({ result: valid });
+                if (valid) {
+                  yield* Effect.logInfo("Email service verified successfully", {
                     provider: provider.name,
-                  })
-                : Effect.logWarning("Email service verification failed", {
-                    provider: provider.name,
-                  })
+                  });
+                } else {
+                  yield* Effect.logWarning(
+                    "Email service verification failed",
+                    {
+                      provider: provider.name,
+                    }
+                  );
+                }
+              })
+            ),
+            Effect.tapError((error) =>
+              Effect.logError("Email service verification failed", {
+                provider: provider.name,
+                errorType: error._tag,
+                errorMessage: error.message,
+              })
             )
           );
 
           return isValid;
-        }),
+        },
+        (effect) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.annotateLogs({ provider: provider.name })
+          )
+      ),
     };
   })
 );

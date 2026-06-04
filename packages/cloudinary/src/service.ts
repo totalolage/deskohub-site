@@ -130,42 +130,83 @@ function createSearchExecutor(config: CloudinaryConfig) {
     return search;
   };
 
-  return (
-    expression: string,
-    options?: SearchOptions
-  ): Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError> =>
-    pipe(
-      decodeSearchOptions(options, expression),
-      Effect.flatMap((decodedOptions) =>
-        Effect.tryPromise({
-          try: () =>
-            buildSearchExpression(expression, decodedOptions).execute(),
-          catch: (error) =>
-            new CloudinarySearchError({
-              message: stringifyUnknownError(error),
+  return Effect.fn("cloudinary.search")(
+    function* (expression: string, options?: SearchOptions) {
+      yield* Effect.annotateLogsScoped({ expression, options });
+      yield* Effect.logInfo("Cloudinary search started", {
+        expression,
+        options,
+      });
+
+      return yield* pipe(
+        decodeSearchOptions(options, expression),
+        Effect.tap((decodedOptions) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ decodedOptions });
+            yield* Effect.logDebug("Cloudinary search options decoded", {
+              decodedOptions,
+            });
+          })
+        ),
+        Effect.flatMap((decodedOptions) =>
+          Effect.tryPromise({
+            try: () =>
+              buildSearchExpression(expression, decodedOptions).execute(),
+            catch: (error) =>
+              new CloudinarySearchError({
+                message: stringifyUnknownError(error),
+                expression,
+                httpCode: readCloudinaryHttpCode(error),
+              }),
+          })
+        ),
+        Effect.tap((rawResult) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ rawResult });
+            yield* Effect.logDebug("Cloudinary provider response received", {
+              rawResult,
+            });
+          })
+        ),
+        Effect.flatMap((result) => decodeSearchResponse(result, expression)),
+        Effect.tap((response) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ response });
+            yield* Effect.logDebug("Cloudinary search response decoded", {
+              response,
+            });
+          })
+        ),
+        Effect.map((response) => response.resources),
+        Effect.tap((assets) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ result: assets });
+            if (assets.length === 0) {
+              yield* Effect.logWarning("Cloudinary search returned no assets", {
+                expression,
+                options,
+              });
+            }
+            yield* Effect.logInfo("Cloudinary search completed", {
               expression,
-              httpCode: readCloudinaryHttpCode(error),
-            }),
-        })
-      ),
-      Effect.flatMap((result) => decodeSearchResponse(result, expression)),
-      Effect.map((response) => response.resources),
-      Effect.tap((assets) =>
-        Effect.log("Cloudinary search completed", {
-          expression,
-          resultCount: assets.length,
-          options,
-        })
-      ),
-      Effect.tapError((error) =>
-        Effect.logError("Cloudinary search failed", {
-          expression,
-          errorMessage: error.message,
-          httpCode: error.httpCode,
-        })
-      ),
-      Effect.retry(cloudinaryRetryPolicy)
-    );
+              resultCount: assets.length,
+              options,
+            });
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary search failed", {
+            expression,
+            errorMessage: error.message,
+            httpCode: error.httpCode,
+          })
+        ),
+        Effect.retry(cloudinaryRetryPolicy)
+      );
+    },
+    (effect, expression, options) =>
+      effect.pipe(Effect.scoped, Effect.annotateLogs({ expression, options }))
+  );
 }
 
 export function makeCloudinaryService(config: CloudinaryConfig) {
@@ -193,6 +234,9 @@ export function makeCloudinaryService(config: CloudinaryConfig) {
       options
     ) =>
       Effect.gen(function* () {
+        yield* Effect.annotateLogsScoped({ folder, options });
+        yield* Effect.logInfo("Cloudinary folder search started", { folder });
+
         const expressions = [`folder=${folder}`, `folder:${folder}`];
 
         for (const expression of expressions) {
@@ -202,12 +246,33 @@ export function makeCloudinaryService(config: CloudinaryConfig) {
           );
 
           if (assets.length > 0) {
+            yield* Effect.annotateLogsScoped({ result: assets });
+            yield* Effect.logInfo("Cloudinary folder search completed", {
+              folder,
+              expression,
+              resultCount: assets.length,
+            });
             return assets;
           }
+
+          yield* Effect.logWarning(
+            "Cloudinary folder search expression returned no assets",
+            {
+              folder,
+              expression,
+            }
+          );
         }
 
+        yield* Effect.annotateLogsScoped({ result: [] });
+        yield* Effect.logWarning(
+          "Cloudinary folder search completed with no assets",
+          {
+            folder,
+          }
+        );
         return [];
-      });
+      }).pipe(Effect.scoped, Effect.annotateLogs({ folder, options }));
 
     const searchAll: CloudinaryService["searchAll"] = (options) =>
       executeSearch("resource_type:image", options);
@@ -242,10 +307,48 @@ export function makeCloudinaryServiceLive(config: CloudinaryConfig) {
   return Layer.effect(CloudinaryService, makeCloudinaryService(config));
 }
 
-export const getGalleryImages = Effect.fn("getGalleryImages")(function* <
-  Tag extends string,
->(tags: CnfExpression<Tag>, options?: SearchOptions) {
-  const service = yield* CloudinaryService;
+export const getGalleryImages = Effect.fn("getGalleryImages")(
+  function* <Tag extends string>(
+    tags: CnfExpression<Tag>,
+    options?: SearchOptions
+  ) {
+    yield* Effect.annotateLogsScoped({ tags, options });
+    yield* Effect.logInfo("Cloudinary gallery images lookup started", {
+      tags,
+      options,
+    });
 
-  return yield* service.searchWithTags(tags, options);
-});
+    const service = yield* CloudinaryService;
+
+    const result = yield* service.searchWithTags(tags, options).pipe(
+      Effect.tapError((error) =>
+        Effect.logError("Cloudinary gallery images lookup failed", {
+          tags,
+          options,
+          errorMessage: error.message,
+          httpCode: error.httpCode,
+        })
+      )
+    );
+
+    yield* Effect.annotateLogsScoped({ result });
+    if (result.length === 0) {
+      yield* Effect.logWarning(
+        "Cloudinary gallery images lookup returned no assets",
+        {
+          tags,
+          options,
+        }
+      );
+    }
+    yield* Effect.logInfo("Cloudinary gallery images lookup completed", {
+      tags,
+      options,
+      resultCount: result.length,
+    });
+
+    return result;
+  },
+  (effect, tags, options) =>
+    effect.pipe(Effect.scoped, Effect.annotateLogs({ tags, options }))
+);

@@ -36,19 +36,36 @@ function readRequiredCloudinaryHeaders(request: Request) {
   const timestampHeader = request.headers.get("x-cld-timestamp");
 
   if (!signature || !timestampHeader) {
-    return Effect.fail(
-      new CloudinaryWebhookAuthError({
-        message: "Missing signature or timestamp",
-      })
-    );
+    return Effect.gen(function* () {
+      yield* Effect.logWarning(
+        "Cloudinary webhook auth rejected: missing headers",
+        {
+          hasSignature: !!signature,
+          hasTimestamp: !!timestampHeader,
+        }
+      );
+      return yield* Effect.fail(
+        new CloudinaryWebhookAuthError({
+          message: "Missing signature or timestamp",
+        })
+      );
+    });
   }
 
   const timestamp = Number(timestampHeader);
 
   if (!Number.isFinite(timestamp) || !Number.isInteger(timestamp)) {
-    return Effect.fail(
-      new CloudinaryWebhookAuthError({ message: "Invalid timestamp" })
-    );
+    return Effect.gen(function* () {
+      yield* Effect.logWarning(
+        "Cloudinary webhook auth rejected: invalid timestamp",
+        {
+          timestampHeader,
+        }
+      );
+      return yield* Effect.fail(
+        new CloudinaryWebhookAuthError({ message: "Invalid timestamp" })
+      );
+    });
   }
 
   return Effect.succeed({ signature, timestamp });
@@ -63,11 +80,22 @@ function validateCloudinaryTimestampFreshness(
   const timestampSkewMagnitudeSeconds = Math.abs(timestampSkewSeconds);
 
   if (timestampSkewMagnitudeSeconds > timestampToleranceSeconds) {
-    return Effect.fail(
-      new CloudinaryWebhookAuthError({
-        message: "Webhook timestamp is outside the allowed freshness window",
-      })
-    );
+    return Effect.gen(function* () {
+      yield* Effect.logWarning(
+        "Cloudinary webhook auth rejected: stale timestamp",
+        {
+          timestamp,
+          timestampToleranceSeconds,
+          timestampSkewSeconds,
+          timestampSkewMagnitudeSeconds,
+        }
+      );
+      return yield* Effect.fail(
+        new CloudinaryWebhookAuthError({
+          message: "Webhook timestamp is outside the allowed freshness window",
+        })
+      );
+    });
   }
 
   return Effect.void;
@@ -106,9 +134,18 @@ function verifyCloudinarySignature(
       signature
     )
   ) {
-    return Effect.fail(
-      new CloudinaryWebhookAuthError({ message: "Invalid signature" })
-    );
+    return Effect.gen(function* () {
+      yield* Effect.logWarning(
+        "Cloudinary webhook auth rejected: invalid signature",
+        {
+          timestamp,
+          signature,
+        }
+      );
+      return yield* Effect.fail(
+        new CloudinaryWebhookAuthError({ message: "Invalid signature" })
+      );
+    });
   }
 
   return Effect.void;
@@ -133,28 +170,71 @@ export function verifyCloudinaryWebhookRequest(
   CloudinaryWebhookAuthError | CloudinaryWebhookValidationError
 > {
   return Effect.gen(function* () {
-    const { signature, timestamp } = yield* readRequiredCloudinaryHeaders(request);
+    yield* Effect.annotateLogsScoped({ config });
+    yield* Effect.logInfo("Cloudinary webhook verification started", {
+      serviceName: config.serviceName,
+      cloudName: config.cloudName,
+    });
+
+    const { signature, timestamp } =
+      yield* readRequiredCloudinaryHeaders(request);
+    yield* Effect.annotateLogsScoped({ signature, timestamp });
+    yield* Effect.logDebug("Cloudinary webhook headers validated", {
+      timestamp,
+    });
+
     yield* validateCloudinaryTimestampFreshness(
       timestamp,
       config.timestampToleranceSeconds
     );
+    yield* Effect.logDebug("Cloudinary webhook timestamp validated", {
+      timestamp,
+      timestampToleranceSeconds: config.timestampToleranceSeconds,
+    });
+
     yield* configureCloudinary(config);
 
     const bodyText = yield* readCloudinaryWebhookBody(request);
+    yield* Effect.annotateLogsScoped({ bodyText });
+    yield* Effect.logDebug("Cloudinary webhook body read", {
+      bodyLength: bodyText.length,
+    });
 
     yield* verifyCloudinarySignature(bodyText, timestamp, signature);
+    yield* Effect.logInfo("Cloudinary webhook signature verified", {
+      timestamp,
+    });
 
     const payload = yield* parseCloudinaryWebhookPayload(bodyText);
+    yield* Effect.annotateLogsScoped({ payload });
 
+    const result = {
+      payload,
+      timestamp,
+    } satisfies VerifiedCloudinaryWebhook;
+
+    yield* Effect.annotateLogsScoped({ result });
     yield* Effect.logDebug("Cloudinary webhook verified", {
       serviceName: config.serviceName,
       cloudName: config.cloudName,
       timestamp,
     });
-
-    return {
-      payload,
+    yield* Effect.logInfo("Cloudinary webhook verification succeeded", {
+      serviceName: config.serviceName,
+      cloudName: config.cloudName,
       timestamp,
-    } satisfies VerifiedCloudinaryWebhook;
-  });
+    });
+
+    return result;
+  }).pipe(
+    Effect.scoped,
+    Effect.tapError((error) =>
+      Effect.logError("Cloudinary webhook verification failed", {
+        serviceName: config.serviceName,
+        cloudName: config.cloudName,
+        errorType: error._tag,
+        errorMessage: error.message,
+      })
+    )
+  );
 }
