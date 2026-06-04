@@ -3,6 +3,8 @@ import { EmailConfigTag } from "@deskohub/email";
 import { Config, Layer } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils";
 
+const defaultFromEmail = "reservations@workspace.deskohub.cz";
+
 const emailConfig = Config.all({
   provider: Config.withDefault(
     Config.literal(
@@ -13,14 +15,6 @@ const emailConfig = Config.all({
       "console"
     )("EMAIL_PROVIDER"),
     "console" as const
-  ),
-  defaultFromEmail: Config.withDefault(
-    Config.string("EMAIL_FROM_ADDRESS"),
-    "noreply@mail.deskohub.cz"
-  ),
-  defaultFromName: Config.withDefault(
-    Config.string("EMAIL_FROM_NAME"),
-    workspaceSiteConstants.brand.name
   ),
   apiKey: Config.option(Config.string("EMAIL_API_KEY")),
   smtpHost: Config.option(Config.string("EMAIL_SMTP_HOST")),
@@ -38,8 +32,8 @@ export const EmailConfigLayer = Layer.effect(
       const providerConfig: EmailProviderConfig = {
         provider: config.provider,
         defaultFrom: {
-          email: config.defaultFromEmail,
-          name: config.defaultFromName,
+          email: defaultFromEmail,
+          name: workspaceSiteConstants.brand.name,
         },
         apiKey: config.apiKey._tag === "Some" ? config.apiKey.value : undefined,
         smtpHost:
