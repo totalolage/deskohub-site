@@ -80,7 +80,8 @@ const getStatusChangeType = (status: number): WebhookStatusChange => {
  */
 const processWebhook = Effect.fn("processWebhook")(
   function* (payload: unknown) {
-    yield* Effect.log("Processing webhook");
+    yield* Effect.annotateLogsScoped({ payload });
+    yield* Effect.logInfo("Reservation webhook processing started");
 
     // Validate and parse the payload
     const validatedPayload = yield* Schema.decodeUnknown(
@@ -94,15 +95,24 @@ const processWebhook = Effect.fn("processWebhook")(
           })
       )
     );
+    yield* Effect.annotateLogsScoped({ validatedPayload });
+    yield* Effect.logInfo("Reservation webhook payload decoded");
 
     // Extract the first (and only) item
     const reservation = validatedPayload[0];
+    yield* Effect.annotateLogsScoped({ reservation });
 
     // Determine the type of status change
     const statusChange = getStatusChangeType(reservation.status);
+    yield* Effect.annotateLogsScoped({ statusChange });
 
     // Skip if unknown status or deleted
     if (statusChange === "unknown" || reservation.deleted === 1) {
+      yield* Effect.logWarning("Reservation webhook skipped", {
+        reservation,
+        statusChange,
+      });
+
       return {
         skipped: true,
         message: "Webhook processed (no action taken)",
@@ -115,16 +125,24 @@ const processWebhook = Effect.fn("processWebhook")(
     const fullReservation = yield* dotypos.getReservation(
       String(reservation.reservationid)
     );
+    yield* Effect.annotateLogsScoped({ fullReservation });
+    yield* Effect.logInfo("Reservation webhook Dotypos reservation loaded");
 
     // Parse the note to extract metadata including locale
     const parsedNote = parseNoteData(fullReservation.reservation.note);
 
     const locale: Locale = parsedNote?.locale || getLocale();
+    yield* Effect.annotateLogsScoped({ parsedNote, locale });
 
     // Send appropriate emails based on status change
     let emailSent = false;
 
     if (fullReservation.customer.email) {
+      yield* Effect.logInfo("Reservation webhook email decision accepted", {
+        statusChange,
+        customer: fullReservation.customer,
+      });
+
       switch (statusChange) {
         case "created":
           // Send confirmation email to customer
@@ -162,6 +180,11 @@ const processWebhook = Effect.fn("processWebhook")(
           emailSent = true;
           break;
       }
+    } else {
+      yield* Effect.logWarning("Reservation webhook email skipped", {
+        reason: "missing_customer_email",
+        customer: fullReservation.customer,
+      });
     }
 
     // Invalidate cache for this reservation
@@ -174,6 +197,8 @@ const processWebhook = Effect.fn("processWebhook")(
       dotyposTags.reservation.byId(reservationIdStr),
       dotyposTags.reservation.byCustomer(customerIdStr),
     ];
+    yield* Effect.annotateLogsScoped({ tagsToInvalidate });
+    yield* Effect.logInfo("Reservation webhook cache invalidation started");
 
     for (const tag of tagsToInvalidate) {
       revalidateTag(tag, "max");
@@ -192,11 +217,14 @@ const processWebhook = Effect.fn("processWebhook")(
       emailSent,
       customerEmail: fullReservation.customer.email || null,
     };
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logDebug("Reservation webhook processing completed");
 
     return { skipped: false, data: result };
   },
   (effect, input) =>
     effect.pipe(
+      Effect.scoped,
       Effect.annotateLogs({
         operation: "processWebhook",
         input,
@@ -214,7 +242,14 @@ const processWebhook = Effect.fn("processWebhook")(
  */
 export async function POST(request: Request): Promise<NextResponse> {
   const program = Effect.gen(function* () {
-    yield* Effect.log("Webhook invoked");
+    yield* Effect.annotateLogsScoped({
+      request: {
+        headers: Object.fromEntries(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+    });
+    yield* Effect.logInfo("Reservation webhook invoked");
 
     // Validate webhook security using UUID
     const url = new URL(request.url);
@@ -232,9 +267,13 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Failed to parse request body",
         }),
     });
+    yield* Effect.annotateLogsScoped({ payload });
+    yield* Effect.logInfo("Reservation webhook request body parsed");
 
     // Process the webhook
     const result = yield* processWebhook(payload);
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logInfo("Reservation webhook route processing completed");
 
     return result;
   }).pipe(
@@ -243,6 +282,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         yield* Effect.logError(error);
       })
     ),
+    Effect.scoped,
     Effect.annotateLogs({
       method: "POST",
       operation: "webhook",
@@ -288,6 +328,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const result = await Effect.runPromise(program);
+    await Effect.runPromise(
+      Effect.logInfo("Reservation webhook response ready", { result })
+    );
 
     // Handle different result types
     if ("status" in result) {
@@ -305,7 +348,10 @@ export async function POST(request: Request): Promise<NextResponse> {
       success: true,
       data: result.data,
     });
-  } catch (_error) {
+  } catch (error) {
+    await Effect.runPromise(
+      Effect.logError("Reservation webhook outer catch failed", { error })
+    );
     // This should rarely happen as we catch all errors in the Effect pipeline
     // IMPORTANT: Return 200 to prevent Dotypos from retrying
     return NextResponse.json(

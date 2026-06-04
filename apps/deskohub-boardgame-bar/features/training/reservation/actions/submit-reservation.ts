@@ -15,8 +15,23 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
   reservationSchema,
   (input, { locale }) =>
     Effect.gen(function* () {
+      yield* Effect.annotateLogsScoped({ input, locale });
+      yield* Effect.logInfo("Training room reservation action started");
+
       const service = yield* TrainingReservationService;
-      const submission = yield* service.submit(input, locale);
+      const submission = yield* service.submit(input, locale).pipe(
+        Effect.tapError((error) =>
+          Effect.logError(
+            "Training room reservation action service submit failed",
+            {
+              error,
+              input,
+              locale,
+            }
+          )
+        )
+      );
+      yield* Effect.annotateLogsScoped({ submission });
 
       yield* Effect.logInfo(
         `Training room reservation submitted: ${submission.submittedAt} for locale: ${locale}`
@@ -54,7 +69,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
       const queryString = params.toString();
       const redirectUrl = `/training-room/reservation/confirmation?${queryString}`;
 
-      return {
+      const result = {
         success: true,
         message:
           locale === "cs-CZ"
@@ -63,7 +78,19 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
         submissionId: submission.submittedAt,
         redirectUrl,
       };
+      yield* Effect.annotateLogsScoped({ result });
+      yield* Effect.logDebug("Training room reservation action completed");
+
+      return result;
     }).pipe(
+      Effect.scoped,
+      Effect.tapError((error) =>
+        Effect.logError("Training room reservation action failed", {
+          error,
+          input,
+          locale,
+        })
+      ),
       Effect.withSpan("submitTrainingRoomReservation", {
         attributes: {
           locale,

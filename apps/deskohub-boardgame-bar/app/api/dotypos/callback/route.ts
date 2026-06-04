@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
 
 /**
@@ -8,47 +9,76 @@ import { type NextRequest, NextResponse } from "next/server";
  */
 export async function GET(request: NextRequest): Promise<NextResponse> {
   try {
-    const searchParams = request.nextUrl.searchParams;
+    return await Effect.runPromise(
+      Effect.gen(function* () {
+        const searchParams = request.nextUrl.searchParams;
+        yield* Effect.annotateLogsScoped({
+          request: {
+            headers: Object.fromEntries(request.headers.entries()),
+            method: request.method,
+            searchParams: Object.fromEntries(searchParams),
+            url: request.url,
+          },
+        });
+        yield* Effect.logInfo("Dotypos callback received");
 
-    // Extract parameters from Dotypos redirect
-    const token = searchParams.get("token");
-    const cloudId = searchParams.get("cloudid");
-    const state = searchParams.get("state");
+        // Extract parameters from Dotypos redirect
+        const token = searchParams.get("token");
+        const cloudId = searchParams.get("cloudid");
+        const state = searchParams.get("state");
 
-    // Validate required parameters
-    if (!token || !cloudId) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: "Missing required parameters",
-          message: "Token or Cloud ID not provided in callback",
-        },
-        { status: 400 }
-      );
-    }
+        // Validate required parameters
+        if (!token || !cloudId) {
+          yield* Effect.logWarning("Dotypos callback missing required params", {
+            cloudId,
+            state,
+            token,
+          });
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Missing required parameters",
+              message: "Token or Cloud ID not provided in callback",
+            },
+            { status: 400 }
+          );
+        }
 
-    // Dotypos callback received with token and cloudId
+        // Dotypos callback received with token and cloudId
 
-    // Redirect back to the setup page with the tokens
-    // The setup page will display them for manual configuration
-    // Include locale in the redirect (default to en-US)
-    const redirectUrl = new URL("/en-US/admin/dotypos-setup", request.url);
-    redirectUrl.searchParams.set("token", token);
-    redirectUrl.searchParams.set("cloudid", cloudId);
-    if (state) {
-      redirectUrl.searchParams.set("state", state);
-    }
+        // Redirect back to the setup page with the tokens
+        // The setup page will display them for manual configuration
+        // Include locale in the redirect (default to en-US)
+        const redirectUrl = new URL("/en-US/admin/dotypos-setup", request.url);
+        redirectUrl.searchParams.set("token", token);
+        redirectUrl.searchParams.set("cloudid", cloudId);
+        if (state) {
+          redirectUrl.searchParams.set("state", state);
+        }
+        yield* Effect.annotateLogsScoped({
+          cloudId,
+          redirectUrl: redirectUrl.toString(),
+          state,
+          token,
+        });
+        yield* Effect.logInfo("Dotypos callback redirect URL built");
 
-    return NextResponse.redirect(redirectUrl);
+        return NextResponse.redirect(redirectUrl);
+      }).pipe(Effect.scoped)
+    );
   } catch (error) {
-    // Error handling - error details are logged by monitoring
-
     // Redirect to setup page with error
     const errorUrl = new URL("/en-US/admin/dotypos-setup", request.url);
     errorUrl.searchParams.set("error", "callback_failed");
     errorUrl.searchParams.set(
       "message",
       error instanceof Error ? error.message : "Unknown error"
+    );
+    await Effect.runPromise(
+      Effect.logError("Dotypos callback route failed", {
+        error,
+        errorUrl: errorUrl.toString(),
+      })
     );
 
     return NextResponse.redirect(errorUrl);

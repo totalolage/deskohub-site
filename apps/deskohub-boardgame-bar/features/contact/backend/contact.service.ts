@@ -33,13 +33,17 @@ export const ContactServiceLive = Layer.effect(
     const emailService = yield* EmailServiceTag;
 
     return ContactService.of({
-      submit: (data, locale) =>
-        Effect.gen(function* () {
+      submit: Effect.fn("contact.submit")(
+        function* (data, locale) {
+          yield* Effect.annotateLogsScoped({ data, locale });
+          yield* Effect.logInfo("Contact form submission service started");
+
           const submission: ContactSubmission = {
             ...data,
             submittedAt: new Date().toISOString(),
             locale,
           };
+          yield* Effect.annotateLogsScoped({ submission });
 
           yield* Effect.logInfo("Processing contact form submission", {
             email: data.email,
@@ -108,6 +112,8 @@ Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu D
               submittedAt: submission.submittedAt,
             },
           };
+          yield* Effect.annotateLogsScoped({ businessEmailMessage });
+          yield* Effect.logInfo("Contact form business email prepared");
 
           // Send the email to business - this must succeed
           yield* emailService.send(businessEmailMessage).pipe(
@@ -120,6 +126,7 @@ Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu D
             Effect.tapError((error) =>
               Effect.logError("Failed to send contact form email to business", {
                 error,
+                businessEmailMessage,
                 customerEmail: data.email,
               })
             ),
@@ -154,6 +161,7 @@ Tato zpráva byla automaticky vygenerována z kontaktního formuláře na webu D
               locale,
               message: data.message,
             }),
+            // biome-ignore format: Preserve plaintext email indentation.
             text:
               locale === "cs-CZ"
                 ? `
@@ -186,6 +194,8 @@ Your space for work and creativity
                 `.trim(),
             tags: ["contact-confirmation"],
           };
+          yield* Effect.annotateLogsScoped({ confirmationMessage });
+          yield* Effect.logInfo("Contact form confirmation email prepared");
 
           // Send confirmation email to customer (don't fail if this fails)
           yield* emailService.send(confirmationMessage).pipe(
@@ -199,6 +209,7 @@ Your space for work and creativity
                 "Failed to send confirmation email to customer",
                 {
                   error,
+                  confirmationMessage,
                   customerEmail: data.email,
                 }
               )
@@ -206,16 +217,22 @@ Your space for work and creativity
             Effect.catchAll(() => Effect.void)
           );
 
+          yield* Effect.logDebug("Contact form submission service completed");
+
           return submission;
-        }).pipe(
-          Effect.withSpan("submitContactForm", {
-            attributes: {
-              "contact.name": data.name,
-              "contact.email": data.email,
-              "contact.hasPhone": !!data.phone,
-            },
-          })
-        ),
+        },
+        (effect, data) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.withSpan("submitContactForm", {
+              attributes: {
+                "contact.name": data.name,
+                "contact.email": data.email,
+                "contact.hasPhone": !!data.phone,
+              },
+            })
+          )
+      ),
     });
   })
 );

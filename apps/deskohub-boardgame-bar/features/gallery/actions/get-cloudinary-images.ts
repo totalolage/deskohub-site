@@ -34,9 +34,43 @@ export async function getCloudinaryImages(
   const normalizedTags = normalizeExpression(tags);
 
   const getImagesEffect = Effect.provide(
-    getGalleryImages(normalizedTags, {
-      maxResults,
-    }),
+    Effect.gen(function* () {
+      yield* Effect.annotateLogsScoped({ options, normalizedTags });
+      yield* Effect.logInfo(
+        "Boardgame gallery Cloudinary image lookup started",
+        {
+          tags,
+          maxResults,
+        }
+      );
+
+      const result = yield* getGalleryImages(normalizedTags, {
+        maxResults,
+      });
+
+      yield* Effect.annotateLogsScoped({ result });
+      if (result.length === 0) {
+        yield* Effect.logWarning(
+          "Boardgame gallery Cloudinary image lookup returned no assets",
+          {
+            tags,
+            normalizedTags,
+            maxResults,
+          }
+        );
+      }
+      yield* Effect.logInfo(
+        "Boardgame gallery Cloudinary image lookup completed",
+        {
+          tags,
+          normalizedTags,
+          maxResults,
+          resultCount: result.length,
+        }
+      );
+
+      return result;
+    }).pipe(Effect.scoped, Effect.annotateLogs({ options, normalizedTags })),
     CloudinaryServiceLive
   ).pipe(
     Effect.tapError(
@@ -44,7 +78,21 @@ export async function getCloudinaryImages(
         yield* Effect.logError("Cloudinary search failed", error);
       })
     ),
-    Effect.orElseSucceed(() => [])
+    Effect.catchAll((error) =>
+      Effect.gen(function* () {
+        yield* Effect.logWarning(
+          "Boardgame gallery Cloudinary image lookup fell back to empty result",
+          {
+            tags,
+            normalizedTags,
+            maxResults,
+            error,
+          }
+        );
+
+        return [] as readonly CloudinaryAsset[];
+      })
+    )
   );
 
   return Effect.runPromise(getImagesEffect);

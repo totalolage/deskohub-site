@@ -142,7 +142,8 @@ const getProductOperation = (
  */
 const processWebhook = Effect.fn("processWebhook")(
   function* (payload: unknown) {
-    yield* Effect.log("Processing webhook");
+    yield* Effect.annotateLogsScoped({ payload });
+    yield* Effect.logInfo("Product webhook processing started");
 
     // Validate and parse the payload
     const validatedPayload = yield* Schema.decodeUnknown(DotyposProductPayload)(
@@ -156,6 +157,8 @@ const processWebhook = Effect.fn("processWebhook")(
           })
       )
     );
+    yield* Effect.annotateLogsScoped({ validatedPayload });
+    yield* Effect.logInfo("Product webhook payload decoded");
 
     // Process each product in the payload
     const operations = validatedPayload.map((product) => ({
@@ -165,6 +168,7 @@ const processWebhook = Effect.fn("processWebhook")(
       categoryId: product.categoryid,
       deleted: product.deleted === 1,
     }));
+    yield* Effect.annotateLogsScoped({ operations });
 
     // Log the operations for monitoring
     yield* Effect.logInfo("Processing product webhook", {
@@ -180,6 +184,7 @@ const processWebhook = Effect.fn("processWebhook")(
     const categoryIds = new Set(
       operations.map((op) => String(op.categoryId)).filter(Boolean)
     );
+    yield* Effect.annotateLogsScoped({ categoryIds: Array.from(categoryIds) });
 
     // Invalidate all relevant caches
     const tagsToInvalidate = [
@@ -189,6 +194,8 @@ const processWebhook = Effect.fn("processWebhook")(
         dotyposTags.menu.byProduct(String(op.productId))
       ),
     ];
+    yield* Effect.annotateLogsScoped({ tagsToInvalidate });
+    yield* Effect.logInfo("Product webhook cache invalidation started");
 
     // Invalidate cache tags
     for (const tag of tagsToInvalidate) {
@@ -200,7 +207,7 @@ const processWebhook = Effect.fn("processWebhook")(
       categoryCount: categoryIds.size,
     });
 
-    return {
+    const result = {
       success: true as const,
       message: "Product webhook processed successfully",
       data: {
@@ -209,9 +216,14 @@ const processWebhook = Effect.fn("processWebhook")(
         invalidatedTags: tagsToInvalidate,
       },
     };
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logDebug("Product webhook processing completed");
+
+    return result;
   },
   (effect, input) =>
     effect.pipe(
+      Effect.scoped,
       Effect.annotateLogs({
         operation: "processWebhook",
         input,
@@ -230,7 +242,14 @@ const processWebhook = Effect.fn("processWebhook")(
  */
 export async function POST(request: Request): Promise<NextResponse> {
   const program = Effect.gen(function* () {
-    yield* Effect.log("Webhook invoked");
+    yield* Effect.annotateLogsScoped({
+      request: {
+        headers: Object.fromEntries(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+    });
+    yield* Effect.logInfo("Product webhook invoked");
 
     // Validate webhook security using UUID
     const url = new URL(request.url);
@@ -248,14 +267,18 @@ export async function POST(request: Request): Promise<NextResponse> {
           message: "Failed to parse request body",
         }),
     });
+    yield* Effect.annotateLogsScoped({ payload });
+    yield* Effect.logInfo("Product webhook request body parsed");
 
     // Log raw payload for debugging schema mismatches
     yield* Effect.logInfo("Received product webhook payload", {
-      payload: JSON.stringify(payload, null, 2),
+      payload,
     });
 
     // Process the webhook
     const result = yield* processWebhook(payload);
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logInfo("Product webhook route processing completed");
 
     return result;
   }).pipe(
@@ -269,6 +292,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       operation: "webhook",
       request,
     }),
+    Effect.scoped,
     Effect.catchTags({
       WebhookAuthError: (error) =>
         Effect.succeed(
@@ -304,6 +328,9 @@ export async function POST(request: Request): Promise<NextResponse> {
 
   try {
     const result = await Effect.runPromise(program);
+    await Effect.runPromise(
+      Effect.logInfo("Product webhook response ready", { result })
+    );
 
     // Handle different result types
     if ("status" in result) {
@@ -311,7 +338,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     }
 
     return NextResponse.json(result);
-  } catch (_error) {
+  } catch (error) {
+    await Effect.runPromise(
+      Effect.logError("Product webhook outer catch failed", { error })
+    );
     // This should rarely happen as we catch all errors in the Effect pipeline
     // IMPORTANT: Return 200 to prevent Dotypos from retrying
     return NextResponse.json(
