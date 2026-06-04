@@ -1,5 +1,12 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Duration, Effect, type Layer, Logger, LogLevel } from "effect";
+import {
+  type ConfigError,
+  Duration,
+  Effect,
+  type Layer,
+  Logger,
+  LogLevel,
+} from "effect";
 import type { Locale } from "@/features/i18n";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { formatEffectError } from "@/shared/utils/error-formatting";
@@ -17,7 +24,7 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
     input: ParsedInput<S>,
     context: { locale: Locale }
   ) => Effect.Effect<O, E, R>,
-  layers: Layer.Layer<R, never, never>
+  layers: Layer.Layer<R, ConfigError.ConfigError, never>
 ) {
   return actionClient
     .inputSchema(schema)
