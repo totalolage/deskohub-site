@@ -52,33 +52,44 @@ export async function submitContactForm(
   const locale = getLocale();
   const submittedValues = getSubmittedContactValues(formData);
 
-  const parsedInput = getContactSchema().safeParse(submittedValues);
-
-  if (!parsedInput.success) {
-    const flattened = z.flattenError(parsedInput.error).fieldErrors;
-
-    return {
-      status: "error",
-      message: m.contactValidationReviewMessage({}, { locale }),
-      values: submittedValues,
-      fieldErrors: {
-        name: flattened.name?.[0],
-        email: flattened.email?.[0],
-        phone: flattened.phone?.[0],
-        message: flattened.message?.[0],
-      },
-    };
-  }
-
   const program = Effect.gen(function* () {
+    yield* Effect.annotateLogsScoped({ submittedValues, locale });
+    yield* Effect.logInfo("Workspace contact form action received");
+
+    const parsedInput = getContactSchema().safeParse(submittedValues);
+    yield* Effect.annotateLogsScoped({ parsedInput });
+
+    if (!parsedInput.success) {
+      const flattened = z.flattenError(parsedInput.error).fieldErrors;
+      yield* Effect.logWarning("Workspace contact form validation failed", {
+        flattened,
+      });
+
+      return {
+        status: "error" as const,
+        message: m.contactValidationReviewMessage({}, { locale }),
+        values: submittedValues,
+        fieldErrors: {
+          name: flattened.name?.[0],
+          email: flattened.email?.[0],
+          phone: flattened.phone?.[0],
+          message: flattened.message?.[0],
+        },
+      };
+    }
+
+    yield* Effect.logInfo("Workspace contact form validation passed");
+
     const service = yield* ContactService;
     yield* service.submit(parsedInput.data, locale);
+    yield* Effect.logInfo("Workspace contact form submit completed");
 
     return {
       status: "success" as const,
       message: m.contactSuccessMessage({}, { locale }),
     };
   }).pipe(
+    Effect.scoped,
     Effect.provide(
       Layer.provideMerge(
         ContactServiceLive,
@@ -87,7 +98,8 @@ export async function submitContactForm(
     ),
     Effect.catchAll((error) =>
       Effect.logError("Workspace contact form submission failed", {
-        errorMessage: error.message,
+        error,
+        submittedValues,
       }).pipe(
         Effect.as({
           status: "error" as const,
