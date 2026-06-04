@@ -39,8 +39,9 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
   return {
     name: "resend",
 
-    send: (message: EmailMessage) =>
-      Effect.gen(function* () {
+    send: Effect.fn("resend.send")(
+      function* (message: EmailMessage) {
+        yield* Effect.annotateLogsScoped({ message });
         yield* Effect.logInfo("Sending email via Resend", {
           to: message.to,
           subject: message.subject,
@@ -139,9 +140,15 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           },
         }).pipe(
           Effect.tap((response) =>
-            Effect.logInfo("Resend tryPromise succeeded", {
-              hasData: !!response.data,
-              id: response.data?.id,
+            Effect.gen(function* () {
+              yield* Effect.annotateLogsScoped({ response });
+              yield* Effect.logDebug("Resend provider response received", {
+                response,
+              });
+              yield* Effect.logInfo("Resend tryPromise succeeded", {
+                hasData: !!response.data,
+                id: response.data?.id,
+              });
             })
           ),
           Effect.tapError((error) =>
@@ -156,24 +163,37 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
           )
         );
 
+        const sendResult = {
+          id: result.data?.id || `resend-${Date.now()}`,
+          provider: "resend",
+          timestamp: new Date(),
+        } as EmailSendResult;
+
+        yield* Effect.annotateLogsScoped({ result: sendResult });
+        yield* Effect.logDebug("Resend email send result created", {
+          result: sendResult,
+        });
         yield* Effect.logInfo("Email sent successfully via Resend", {
           id: result.data?.id,
           response: result,
         });
 
-        return {
-          id: result.data?.id || `resend-${Date.now()}`,
-          provider: "resend",
-          timestamp: new Date(),
-        } as EmailSendResult;
-      }),
+        return sendResult;
+      },
+      (effect, message) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.annotateLogs({ provider: "resend", message })
+        )
+    ),
 
-    verify: () =>
-      Effect.gen(function* () {
+    verify: Effect.fn("resend.verify")(
+      function* () {
+        yield* Effect.logInfo("Resend API key verification started");
+
         return yield* Effect.tryPromise({
           try: async () => {
-            await resend.domains.list();
-            return true;
+            return await resend.domains.list();
           },
           catch: (error) => {
             return new EmailServiceError(
@@ -182,13 +202,39 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
             );
           },
         }).pipe(
+          Effect.tap((response) =>
+            Effect.gen(function* () {
+              yield* Effect.annotateLogsScoped({ response });
+              yield* Effect.logDebug(
+                "Resend verify provider response received",
+                {
+                  response,
+                }
+              );
+            })
+          ),
+          Effect.as(true),
           Effect.tap((success) =>
-            success
-              ? Effect.logInfo("Resend API key verified successfully")
-              : Effect.logWarning("Resend API key verification failed")
+            Effect.gen(function* () {
+              yield* Effect.annotateLogsScoped({ result: success });
+              if (success) {
+                yield* Effect.logInfo("Resend API key verified successfully");
+              } else {
+                yield* Effect.logWarning("Resend API key verification failed");
+              }
+            })
+          ),
+          Effect.tapError((error) =>
+            Effect.logError("Resend API key verification failed", {
+              errorType: error._tag,
+              errorMessage: error.message,
+            })
           )
         );
-      }),
+      },
+      (effect) =>
+        effect.pipe(Effect.scoped, Effect.annotateLogs({ provider: "resend" }))
+    ),
   };
 };
 

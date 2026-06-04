@@ -62,6 +62,8 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
 
     const createHostedPaymentPage = Effect.fn("createHostedPaymentPage")(
       function* (input: CreateHostedPaymentPageInput) {
+        yield* Effect.annotateLogsScoped({ input });
+
         const request: CreateHostedPaymentPageRequest = {
           order: {
             orderId: input.orderId,
@@ -80,30 +82,57 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           },
         };
 
+        yield* Effect.annotateLogsScoped({ requestBody: request });
+        yield* Effect.logInfo("Nexi hosted payment page request started");
+
         const response = yield* api
           .createHostedPaymentPage({
             body: request,
             headers: { "Correlation-Id": input.correlationId },
           })
-          .pipe(Effect.retry(retryPolicy));
+          .pipe(
+            Effect.retry(retryPolicy),
+            Effect.tapError((error) =>
+              Effect.logError("Nexi hosted payment page request failed", {
+                error,
+              })
+            )
+          );
 
-        return {
+        yield* Effect.annotateLogsScoped({ providerResponse: response });
+
+        const result = {
           orderId: response.orderId ?? input.orderId,
           hostedPage: response.hostedPage,
           securityToken: response.securityToken,
         };
+
+        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.logInfo("Nexi hosted payment page request completed");
+
+        return result;
       },
-      (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+      (effect, input) =>
+        effect.pipe(Effect.annotateLogs({ ...input }), Effect.scoped)
     );
 
     const verifyPaymentOutcome = Effect.fn("verifyPaymentOutcome")(
       function* (input: VerifyPaymentOutcomeInput) {
+        yield* Effect.logInfo("Nexi order lookup started");
+
         const order = yield* api
           .getOrder({
             path: { orderId: input.orderId },
             headers: { "Correlation-Id": input.correlationId },
           })
-          .pipe(Effect.retry(retryPolicy));
+          .pipe(
+            Effect.retry(retryPolicy),
+            Effect.tapError((error) =>
+              Effect.logError("Nexi order lookup failed", { error })
+            )
+          );
+
+        yield* Effect.logDebug("Nexi order lookup result", { order });
 
         const providerOrder = order.orderStatus?.order;
         const operations = order.operations ?? [];
@@ -122,6 +151,12 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
         const providerOrderId = providerOrder?.orderId ?? order.orderId;
         const providerOperationId =
           executedPaymentOperation?.operationId ?? failedOperation?.operationId;
+
+        yield* Effect.logDebug("Nexi selected payment operations", {
+          executedPaymentOperation,
+          failedOperation,
+        });
+
         const mismatches: Writeable<PaymentVerificationResult["mismatches"]> =
           [];
         if (providerOrderId !== input.orderId) mismatches.push("orderId");
@@ -148,7 +183,13 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           return "pending";
         })();
 
-        return {
+        yield* Effect.logDebug("Nexi payment outcome status resolved", {
+          mismatches,
+          providerStatus,
+          status,
+        });
+
+        const result = {
           status,
           provider: {
             orderId: providerOrderId ?? input.orderId,
@@ -160,9 +201,17 @@ export class NexiService extends Effect.Service<NexiService>()("NexiService", {
           },
           mismatches,
         };
+
+        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.logInfo("Nexi payment outcome verification completed");
+
+        return result;
       },
       (effect, input) =>
-        effect.pipe(Effect.annotateLogs(getPaymentOutcomeLogAnnotations(input)))
+        effect.pipe(
+          Effect.annotateLogs(getPaymentOutcomeLogAnnotations(input)),
+          Effect.scoped
+        )
     );
 
     return {
