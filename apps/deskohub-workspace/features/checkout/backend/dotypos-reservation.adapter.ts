@@ -30,6 +30,11 @@ export const createWorkspaceDotyposReservation: (
   DotyposService | WorkspaceTableAssignmentService
 > = Effect.fn("createWorkspaceDotyposReservation")(
   function* (input) {
+    yield* Effect.annotateLogsScoped({ input });
+    yield* Effect.logInfo(
+      "Workspace Dotypos reservation creation input received"
+    );
+
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
     const { startDate, endDate } = yield* getPragueAllDayRange(
@@ -48,11 +53,24 @@ export const createWorkspaceDotyposReservation: (
       status: input.status,
       note: formatWorkspaceReservationNote(input),
     };
+    yield* Effect.annotateLogsScoped({ reservationInput });
+    yield* Effect.logInfo("Workspace Dotypos reservation input built");
 
-    return yield* dotypos.createReservation(reservationInput);
+    yield* Effect.logInfo("Workspace Dotypos reservation creation started");
+    const reservation = yield* dotypos.createReservation(reservationInput);
+    yield* Effect.annotateLogsScoped({ reservation });
+    yield* Effect.logInfo("Workspace Dotypos reservation creation completed");
+
+    return reservation;
   },
   (effect, input) =>
     effect.pipe(
+      Effect.scoped,
+      Effect.tapError((cause) =>
+        Effect.logError("Workspace Dotypos reservation creation failed", {
+          cause,
+        })
+      ),
       Effect.annotateLogs({
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,

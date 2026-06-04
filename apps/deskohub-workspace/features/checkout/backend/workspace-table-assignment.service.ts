@@ -38,10 +38,18 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
     return WorkspaceTableAssignmentService.of({
       assignTableId: Effect.fn("workspaceTableAssignment.assignTableId")(
         function* (reservation) {
+          yield* Effect.annotateLogsScoped({ reservation });
+          yield* Effect.logInfo("Workspace table assignment started");
+
           const product = getWorkspaceProductByTier(reservation.tier);
           const requiredTags = [`tier:${reservation.tier}`];
+          yield* Effect.annotateLogsScoped({ product, requiredTags });
 
           if (product.requiresMonitorOption && !reservation.monitorOption) {
+            yield* Effect.logWarning(
+              "Workspace table assignment rejected: missing monitor option"
+            );
+
             return yield* Effect.fail(
               new ValidationError({
                 message: `Workspace reservation tier ${reservation.tier} requires a monitor option for Dotypos table assignment`,
@@ -53,6 +61,10 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             reservation.monitorOption &&
             !isWorkspaceProductMonitorOption(reservation.monitorOption)
           ) {
+            yield* Effect.logWarning(
+              "Workspace table assignment rejected: unsupported monitor option"
+            );
+
             return yield* Effect.fail(
               new ValidationError({
                 message: `Workspace reservation monitor option is not supported for Dotypos table assignment: ${reservation.monitorOption}`,
@@ -66,19 +78,28 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
                 reservation.monitorOption
               ]
             );
+            yield* Effect.annotateLogsScoped({ requiredTags });
           }
 
           const [tables, reservations] = yield* Effect.all(
             [dotypos.getTables(), dotypos.listReservations()],
             { concurrency: 2 }
           );
+          yield* Effect.annotateLogsScoped({ tables, reservations });
+          yield* Effect.logInfo("Workspace table assignment inventory loaded");
+
           const occupiedTableIds = yield* getOccupiedTableIds(
             reservations,
             reservation.date
           );
+          yield* Effect.annotateLogsScoped({
+            occupiedTableIds: Array.from(occupiedTableIds),
+          });
+
           const matchingTables = [...tables]
             .filter((table) => isAssignableTable(table, requiredTags))
             .sort(compareTables);
+          yield* Effect.annotateLogsScoped({ matchingTables });
 
           const matchingTable = matchingTables.find((table) => {
             const tableId = getAssignableDotyposTableId(table);
@@ -89,6 +110,10 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             : undefined;
 
           if (matchingTables.length === 0) {
+            yield* Effect.logWarning(
+              "Workspace table assignment rejected: no matching table"
+            );
+
             return yield* Effect.fail(
               new ValidationError({
                 message: `No active visible Dotypos workspace table matches tags: ${requiredTags.join(
@@ -99,6 +124,10 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           }
 
           if (!matchingTableId) {
+            yield* Effect.logWarning(
+              "Workspace table assignment rejected: no available table"
+            );
+
             return yield* Effect.fail(
               new ValidationError({
                 message: `No available Dotypos workspace table matches tags: ${requiredTags.join(
@@ -108,10 +137,14 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             );
           }
 
+          yield* Effect.annotateLogsScoped({ matchingTable, matchingTableId });
+          yield* Effect.logDebug("Workspace table assigned");
+
           return matchingTableId;
         },
         (effect, reservation) =>
           effect.pipe(
+            Effect.scoped,
             Effect.annotateLogs({
               tier: reservation.tier,
               date: reservation.date,

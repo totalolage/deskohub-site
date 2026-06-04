@@ -160,14 +160,34 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
     const reconstructSummary = Effect.fn("checkoutStatus.reconstructSummary")(
       function* (reservation: WorkspaceReservation) {
+        yield* Effect.annotateLogsScoped({ reservation });
+        yield* Effect.logDebug(
+          "Checkout status summary reconstruction started"
+        );
+
         const monitorOption = reservation.productMonitorOption ?? undefined;
 
+        if (!reservation.dotyposReservationId) {
+          yield* Effect.logWarning(
+            "Checkout status summary missing Dotypos reservation id"
+          );
+          return undefined;
+        }
+
+        if (!isWorkspaceProductTier(reservation.productTier)) {
+          yield* Effect.logWarning(
+            "Checkout status summary invalid product tier"
+          );
+          return undefined;
+        }
+
         if (
-          !reservation.dotyposReservationId ||
-          !isWorkspaceProductTier(reservation.productTier) ||
-          (monitorOption !== undefined &&
-            !isWorkspaceProductMonitorOption(monitorOption))
+          monitorOption !== undefined &&
+          !isWorkspaceProductMonitorOption(monitorOption)
         ) {
+          yield* Effect.logWarning(
+            "Checkout status summary invalid monitor option"
+          );
           return undefined;
         }
 
@@ -177,8 +197,22 @@ export const CheckoutStatusServiceLive = Layer.effect(
             reservation.activePaymentAttemptId ?? undefined,
           paymentState: reservation.paymentState,
         });
+        yield* Effect.annotateLogsScoped({ attempt });
+        yield* Effect.logDebug(
+          "Checkout status summary attempt lookup completed"
+        );
 
-        if (!attempt || !canUseAttemptForSummary(attempt, reservation)) {
+        if (!attempt) {
+          yield* Effect.logWarning(
+            "Checkout status summary missing payment attempt"
+          );
+          return undefined;
+        }
+
+        if (!canUseAttemptForSummary(attempt, reservation)) {
+          yield* Effect.logWarning(
+            "Checkout status summary unusable payment attempt"
+          );
           return undefined;
         }
 
@@ -198,15 +232,29 @@ export const CheckoutStatusServiceLive = Layer.effect(
             Effect.option
           );
 
-        if (dotyposReservation._tag === "None") return undefined;
+        if (dotyposReservation._tag === "None") {
+          yield* Effect.logWarning(
+            "Checkout status summary missing Dotypos reservation"
+          );
+          return undefined;
+        }
+        yield* Effect.annotateLogsScoped({ dotyposReservation });
+        yield* Effect.logDebug(
+          "Checkout status summary Dotypos reservation loaded"
+        );
 
         const date = toPragueReservationDate(
           dotyposReservation.value.reservation.startDate
         );
 
-        if (!date) return undefined;
+        if (!date) {
+          yield* Effect.logWarning(
+            "Checkout status summary invalid reservation date"
+          );
+          return undefined;
+        }
 
-        return {
+        const summary = {
           tier: reservation.productTier,
           date,
           coffee: reservation.productCoffee,
@@ -217,9 +265,17 @@ export const CheckoutStatusServiceLive = Layer.effect(
             currency: attempt.currency,
           },
         } satisfies WorkspaceCheckoutStatusSummary;
+
+        yield* Effect.annotateLogsScoped({ summary });
+        yield* Effect.logDebug("Checkout status summary reconstructed");
+
+        return summary;
       },
       (effect, reservation) =>
-        effect.pipe(Effect.annotateLogs({ reservationId: reservation.id }))
+        effect.pipe(
+          Effect.scoped,
+          Effect.annotateLogs({ reservationId: reservation.id })
+        )
     );
 
     const getStatus = Effect.fn("checkoutStatus.getStatus")(
@@ -227,19 +283,29 @@ export const CheckoutStatusServiceLive = Layer.effect(
         readonly orderId: string;
         readonly returnOutcome: CheckoutStatusReturnOutcome;
       }) {
+        yield* Effect.annotateLogsScoped({ input });
+        yield* Effect.logInfo("Checkout status lookup started");
+
         const reservation = yield* reservations.findById(input.orderId);
+        yield* Effect.annotateLogsScoped({ reservation });
+        yield* Effect.logDebug("Checkout status reservation lookup completed");
 
         if (!reservation) {
-          return {
+          const result = {
             orderId: input.orderId,
             returnOutcome: input.returnOutcome,
             status: "not_found",
           } satisfies CheckoutStatusViewModel;
+
+          yield* Effect.annotateLogsScoped({ result });
+          yield* Effect.logInfo("Checkout status lookup completed");
+
+          return result;
         }
 
         const summary = yield* reconstructSummary(reservation);
 
-        return {
+        const result = {
           orderId: reservation.id,
           returnOutcome: input.returnOutcome,
           status: toCheckoutStatusKind(
@@ -250,17 +316,39 @@ export const CheckoutStatusServiceLive = Layer.effect(
           fulfillmentStatus: reservation.fulfillmentState,
           ...(summary ? { summary } : {}),
         } satisfies CheckoutStatusViewModel;
+
+        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.logInfo("Checkout status lookup completed");
+
+        return result;
       },
-      (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+      (effect, input) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.tapError((cause) =>
+            Effect.logError("Checkout status lookup failed", { cause })
+          ),
+          Effect.annotateLogs({ ...input })
+        )
     );
 
     return CheckoutStatusService.of({
       getStatus,
       refreshStatus: Effect.fn("checkoutStatus.refreshStatus")(
         function* (input) {
+          yield* Effect.annotateLogsScoped({ input });
+          yield* Effect.logInfo("Checkout status refresh started");
+
           const reservation = yield* reservations.findById(input.orderId);
+          yield* Effect.annotateLogsScoped({ reservation });
+          yield* Effect.logDebug(
+            "Checkout status refresh reservation lookup completed"
+          );
 
           if (!reservation?.activePaymentAttemptId) {
+            yield* Effect.logWarning(
+              "Checkout status refresh skipped: no active payment attempt"
+            );
             return yield* getStatus(input);
           }
 
@@ -268,8 +356,15 @@ export const CheckoutStatusServiceLive = Layer.effect(
             orderId: reservation.id,
             paymentAttemptId: reservation.activePaymentAttemptId,
           });
+          yield* Effect.annotateLogsScoped({ result });
+          yield* Effect.logInfo(
+            "Checkout status refresh finalization completed"
+          );
 
           if (result === "terminal") {
+            yield* Effect.logWarning(
+              "Checkout status refresh terminal hold cleanup invoked"
+            );
             yield* holdCleanup
               .cancelOrderHold({ orderId: reservation.id })
               .pipe(
@@ -284,11 +379,30 @@ export const CheckoutStatusServiceLive = Layer.effect(
                 ),
                 Effect.ignore
               );
+            yield* Effect.logWarning(
+              "Checkout status refresh terminal hold cleanup completed"
+            );
+          } else {
+            yield* Effect.logWarning(
+              "Checkout status refresh finalization returned non-terminal",
+              { result }
+            );
           }
 
-          return yield* getStatus(input);
+          const status = yield* getStatus(input);
+          yield* Effect.annotateLogsScoped({ status });
+          yield* Effect.logInfo("Checkout status refresh completed");
+
+          return status;
         },
-        (effect, input) => effect.pipe(Effect.annotateLogs({ ...input }))
+        (effect, input) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.tapError((cause) =>
+              Effect.logError("Checkout status refresh failed", { cause })
+            ),
+            Effect.annotateLogs({ ...input })
+          )
       ),
     });
   })
