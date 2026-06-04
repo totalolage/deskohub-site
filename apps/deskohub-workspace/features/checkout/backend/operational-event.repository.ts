@@ -21,6 +21,7 @@ export const operationalEventMessages = {
     "Paid reservation hold is no longer confirmable; manual recovery is required.",
   dotyposReservationHoldConfirmFailed:
     "Dotypos reservation hold could not be confirmed.",
+  paidReservationEmailSendFailed: "Paid reservation email could not be sent.",
   paidReservationMarkFulfilledFailed:
     "Paid reservation could not be marked fulfilled.",
   paymentOutcomeCouldNotBeConfirmed:
@@ -41,6 +42,7 @@ const eventMessageKeys = {
     "paidReservationNoLongerConfirmable",
   workspace_paid_fulfillment_confirm_failed:
     "dotyposReservationHoldConfirmFailed",
+  workspace_paid_fulfillment_email_failed: "paidReservationEmailSendFailed",
   workspace_paid_fulfillment_mark_fulfilled_failed:
     "paidReservationMarkFulfilledFailed",
   workspace_payment_outcome_unconfirmed_before_cleanup:

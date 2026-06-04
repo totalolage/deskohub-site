@@ -36,7 +36,7 @@ User-supplied values:
 - `NEXI_API_KEY`: Nexi API key for the environment under test.
 - `VERCEL_AUTOMATION_BYPASS_SECRET`: required when Vercel deployment protection is enabled and Nexi must call protected preview callback URLs.
 - `DOTYPOS_CLIENT_ID`, `DOTYPOS_CLIENT_SECRET`, `DOTYPOS_REFRESH_TOKEN`, `DOTYPOS_CLOUD_ID`, `DOTYPOS_BRANCH_ID`, `DOTYPOS_EMPLOYEE_ID`: Dotypos credentials and IDs used by the deployed app.
-- `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM_ADDRESS`, `EMAIL_FROM_NAME`: real Workspace email provider settings used by live contact/manual reservation flows.
+- `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM_NAME`: real Workspace email provider settings used by live contact/manual reservation flows. The from address is fixed in code as `reservations@workspace.deskohub.cz`.
 - `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: Cloudinary account and webhook signing values.
 - `NEXT_PUBLIC_GTM_ID`: GTM container ID, if enabled for preview.
 
