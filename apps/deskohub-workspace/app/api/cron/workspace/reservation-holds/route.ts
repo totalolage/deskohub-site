@@ -32,15 +32,22 @@ const isAuthorizedCronRequest = (request: Request) => {
 const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
   function* () {
     const cleanup = yield* ReservationHoldCleanupService;
-    const result = yield* cleanup.sweepExpiredHolds({
+    const input = {
       now: new Date(),
       limit: cronBatchLimit,
-    });
+    };
+    yield* Effect.annotateLogsScoped({ input });
+    yield* Effect.logInfo("Reservation hold cleanup sweep started");
+
+    const result = yield* cleanup.sweepExpiredHolds(input);
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logInfo("Reservation hold cleanup sweep completed");
 
     return NextResponse.json(result);
   },
   (effect) =>
     effect.pipe(
+      Effect.scoped,
       Effect.annotateLogs({
         method: "GET",
         operation: "reservationHoldCleanupCron",
@@ -63,6 +70,21 @@ const handleReservationHoldCleanupCronError = Effect.fn(
 
 export async function GET(request: Request): Promise<NextResponse> {
   if (!isAuthorizedCronRequest(request)) {
+    await runWorkspaceEffect(
+      Effect.logWarning("Unauthorized reservation hold cleanup cron request", {
+        request: {
+          headers: Object.fromEntries(request.headers.entries()),
+          method: request.method,
+          url: request.url,
+        },
+      }).pipe(
+        Effect.annotateLogs({
+          method: "GET",
+          operation: "reservationHoldCleanupCron",
+        })
+      )
+    );
+
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 

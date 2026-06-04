@@ -30,11 +30,27 @@ const getAvailabilityRequest = (request: Request) => {
 
 const loadWorkspaceAvailability = Effect.fn("loadWorkspaceAvailability")(
   function* (request: Request) {
+    const query = getAvailabilityRequest(request);
+    yield* Effect.annotateLogsScoped({
+      query,
+      request: {
+        headers: Object.fromEntries(request.headers.entries()),
+        method: request.method,
+        url: request.url,
+      },
+    });
+    yield* Effect.logInfo("Workspace availability request parsed");
+
     const availability = yield* WorkspaceAvailabilityService;
-    return yield* availability.getAvailability(getAvailabilityRequest(request));
+    const result = yield* availability.getAvailability(query);
+    yield* Effect.annotateLogsScoped({ result });
+    yield* Effect.logInfo("Workspace availability loaded");
+
+    return result;
   },
   (effect) =>
     effect.pipe(
+      Effect.scoped,
       Effect.annotateLogs({
         method: "GET",
         operation: "workspaceAvailability",
@@ -61,6 +77,9 @@ export async function GET(request: Request): Promise<NextResponse> {
   return runWorkspaceEffect(
     loadWorkspaceAvailability(request).pipe(
       Effect.provide(AvailabilityRouteLive),
+      Effect.tap((result) =>
+        Effect.logInfo("Workspace availability response ready", { result })
+      ),
       Effect.map((result) => NextResponse.json(result)),
       Effect.catchAll(handleAvailabilityRouteError)
     )

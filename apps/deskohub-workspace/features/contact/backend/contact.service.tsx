@@ -82,25 +82,24 @@ export const ContactServiceLive = Layer.effect(
     return ContactService.of({
       submit: Effect.fn("workspaceContactSubmit")(
         function* (data, locale) {
+          yield* Effect.annotateLogsScoped({ data, locale });
+          yield* Effect.logInfo("Workspace contact submission started");
+
           const submission: ContactSubmission = {
             ...data,
             submittedAt: new Date().toISOString(),
             locale,
           };
+          yield* Effect.annotateLogsScoped({ submission });
+          yield* Effect.logInfo("Workspace contact submission prepared");
 
           const formattedDate = formatSubmissionDate(
             submission.submittedAt,
             locale
           );
           const rows = createDetailRows(submission, formattedDate, locale);
-          const businessHeading = m.contactEmailBusinessHeading(
-            {},
-            { locale }
-          );
-          const messageHeading = m.contactEmailMessageHeading(
-            {},
-            { locale }
-          );
+          const businessHeading = m.contactEmailBusinessHeading({}, { locale });
+          const messageHeading = m.contactEmailMessageHeading({}, { locale });
           const messageTextHeading = m.contactEmailMessageTextHeading(
             {},
             { locale }
@@ -109,10 +108,7 @@ export const ContactServiceLive = Layer.effect(
             {},
             { locale }
           );
-          const confirmationBody = m.contactEmailCustomerBody(
-            {},
-            { locale }
-          );
+          const confirmationBody = m.contactEmailCustomerBody({}, { locale });
           const confirmationFollowUp = m.contactEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
             { locale }
@@ -178,8 +174,22 @@ export const ContactServiceLive = Layer.effect(
               submittedAt: submission.submittedAt,
             },
           };
+          yield* Effect.annotateLogsScoped({ businessEmailMessage });
+          yield* Effect.logInfo(
+            "Workspace contact business email send started"
+          );
 
           yield* emailService.send(businessEmailMessage).pipe(
+            Effect.tapError((cause) =>
+              Effect.logError(
+                "Workspace contact business email delivery failed",
+                {
+                  cause,
+                  businessEmailMessage,
+                  submission,
+                }
+              )
+            ),
             Effect.mapError(
               (error) =>
                 new StorageError({
@@ -189,6 +199,9 @@ export const ContactServiceLive = Layer.effect(
                 })
             )
           );
+          yield* Effect.logInfo(
+            "Workspace contact business email send succeeded"
+          );
 
           const confirmationMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
@@ -196,6 +209,7 @@ export const ContactServiceLive = Layer.effect(
               email: data.email,
               name: data.name,
             },
+            replyTo: workspaceRecipient,
             subject: getConfirmationSubject(locale),
             html: renderWorkspaceEmailHtml(
               <div
@@ -233,12 +247,24 @@ export const ContactServiceLive = Layer.effect(
             ].join("\n"),
             tags: ["workspace-contact-confirmation"],
           };
+          yield* Effect.annotateLogsScoped({ confirmationMessage });
+          yield* Effect.logInfo(
+            "Workspace contact confirmation email send started"
+          );
 
           yield* emailService.send(confirmationMessage).pipe(
+            Effect.tap(() =>
+              Effect.logInfo(
+                "Workspace contact confirmation email send succeeded"
+              )
+            ),
             Effect.catchAll((error) =>
               Effect.logWarning("Contact confirmation email delivery failed", {
+                error,
                 errorType: error._tag,
                 errorMessage: error.message,
+                confirmationMessage,
+                submission,
               })
             )
           );
@@ -247,6 +273,7 @@ export const ContactServiceLive = Layer.effect(
         },
         (effect, data, locale) =>
           effect.pipe(
+            Effect.scoped,
             Effect.annotateLogs({
               locale,
               hasPhone: Boolean(data.phone),

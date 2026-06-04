@@ -77,7 +77,9 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
 
     const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
       function* () {
-        yield* holdCleanup
+        yield* Effect.logInfo("Workspace availability inventory load started");
+
+        const sweepResult = yield* holdCleanup
           .sweepExpiredHolds({ now: new Date(), limit: 10 })
           .pipe(
             Effect.tapError((cause) =>
@@ -85,22 +87,44 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
                 cause,
               })
             ),
-            Effect.ignore
+            Effect.either
           );
+        yield* Effect.annotateLogsScoped({ sweepResult });
+        yield* Effect.logInfo(
+          "Workspace availability expired hold sweep completed"
+        );
 
         const [tables, reservations] = yield* Effect.all(
           [dotypos.getTables(), dotypos.listReservations()],
           { concurrency: 2 }
         );
+        yield* Effect.annotateLogsScoped({ tables, reservations });
+        yield* Effect.logInfo(
+          "Workspace availability inventory load completed"
+        );
 
         return { tables, reservations };
-      }
+      },
+      (effect) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.tapError((cause) =>
+            Effect.logError("Workspace availability inventory load failed", {
+              cause,
+            })
+          )
+        )
     );
 
     const getAvailability = Effect.fn("workspaceAvailability.getAvailability")(
       function* (query: WorkspaceAvailabilityQuery) {
+        yield* Effect.annotateLogsScoped({ query });
+        yield* Effect.logInfo("Workspace availability computation started");
+
         const dates = yield* getDateRange(query.from, query.to);
         const date = query.date ? yield* parsePlainDate(query.date) : undefined;
+        yield* Effect.annotateLogsScoped({ dates, date });
+
         const { tables, reservations } = yield* loadInventory();
         const occupiedTableIdsByDate = new Map<string, Set<string>>();
 
@@ -126,7 +150,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           ? getOccupiedTableIds(reservations, date)
           : new Set<string>();
 
-        return {
+        const result = {
           date: query.date,
           from: query.from,
           to: query.to,
@@ -146,9 +170,20 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
               )
             : [],
         } satisfies WorkspaceAvailability;
+
+        yield* Effect.annotateLogsScoped({ result });
+        yield* Effect.logInfo("Workspace availability computed");
+
+        return result;
       },
       (effect, query) =>
         effect.pipe(
+          Effect.scoped,
+          Effect.tapError((cause) =>
+            Effect.logError("Workspace availability computation failed", {
+              cause,
+            })
+          ),
           Effect.annotateLogs({
             date: query.date,
             from: query.from,
@@ -165,6 +200,9 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         readonly entryTier: WorkspaceProductTier;
         readonly monitorOption?: WorkspaceProductMonitorOption;
       }) {
+        yield* Effect.annotateLogsScoped({ query });
+        yield* Effect.logInfo("Workspace availability assurance started");
+
         const availability = yield* getAvailability({
           date: query.date,
           from: query.date,
@@ -172,15 +210,22 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           entryTier: query.entryTier,
           monitorOption: query.monitorOption,
         });
+        yield* Effect.annotateLogsScoped({ availability });
 
-        if (!availability.unavailableDates.includes(query.date)) return;
+        if (!availability.unavailableDates.includes(query.date)) {
+          yield* Effect.logDebug("Workspace availability assurance passed");
+          return;
+        }
+
+        yield* Effect.logWarning("Workspace availability assurance failed");
 
         return yield* new WorkspaceTableUnavailableError({
           date: query.date,
           tier: query.entryTier,
           monitorOption: query.monitorOption,
         });
-      }
+      },
+      (effect) => effect.pipe(Effect.scoped)
     );
 
     return WorkspaceAvailabilityService.of({
