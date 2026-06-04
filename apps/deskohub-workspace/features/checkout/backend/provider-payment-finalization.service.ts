@@ -55,25 +55,186 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
     return ProviderPaymentFinalizationService.of({
       finalizePendingProviderPayment: Effect.fn(
         "providerPaymentFinalization.finalizePendingProviderPayment"
-      )(function* (input) {
-        const reservation = yield* reservations.findById(input.orderId).pipe(
-          Effect.tapError((cause) =>
-            Effect.logError("Payment finalization reservation lookup failed", {
-              orderId: input.orderId,
-              cause,
-            })
-          ),
-          Effect.orElseSucceed(() => null)
-        );
-        const paymentAttemptId =
-          input.paymentAttemptId ?? reservation?.activePaymentAttemptId;
+      )(
+        function* (input) {
+          yield* Effect.annotateLogsScoped({ input });
+          yield* Effect.logInfo("Provider payment finalization started");
 
-        if (!reservation || !paymentAttemptId) return "not_found";
-        if (reservation.paymentState !== "pending") {
-          if (
-            reservation.paymentState === "paid" &&
-            reservation.fulfillmentState !== "fulfilled"
-          ) {
+          const reservation = yield* reservations.findById(input.orderId).pipe(
+            Effect.tapError((cause) =>
+              Effect.logError(
+                "Payment finalization reservation lookup failed",
+                {
+                  orderId: input.orderId,
+                  cause,
+                }
+              )
+            ),
+            Effect.orElseSucceed(() => null)
+          );
+          const paymentAttemptId =
+            input.paymentAttemptId ?? reservation?.activePaymentAttemptId;
+          yield* Effect.annotateLogsScoped({ reservation, paymentAttemptId });
+          yield* Effect.logDebug(
+            "Payment finalization reservation lookup completed"
+          );
+
+          if (!reservation || !paymentAttemptId) {
+            yield* Effect.logWarning("Payment finalization returned not_found");
+            return "not_found";
+          }
+          if (reservation.paymentState !== "pending") {
+            if (
+              reservation.paymentState === "paid" &&
+              reservation.fulfillmentState !== "fulfilled"
+            ) {
+              yield* Effect.logInfo(
+                "Payment finalization invoking fulfillment for already-paid reservation"
+              );
+              yield* fulfillment
+                .fulfillPaidOrder({ orderId: reservation.id })
+                .pipe(
+                  Effect.tapError((cause) =>
+                    Effect.logError(
+                      "Paid order fulfillment failed during finalization",
+                      {
+                        orderId: reservation.id,
+                        cause,
+                      }
+                    )
+                  ),
+                  Effect.ignore
+                );
+              yield* Effect.logInfo(
+                "Payment finalization fulfillment completed for already-paid reservation"
+              );
+              return "paid";
+            }
+
+            yield* Effect.logWarning(
+              "Payment finalization returned not_pending"
+            );
+            return "not_pending";
+          }
+
+          const attempt = yield* paymentAttempts
+            .findById(paymentAttemptId)
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Payment finalization attempt lookup failed", {
+                  orderId: reservation.id,
+                  paymentAttemptId,
+                  cause,
+                })
+              ),
+              Effect.orElseSucceed(() => null)
+            );
+          yield* Effect.annotateLogsScoped({ attempt });
+          yield* Effect.logDebug(
+            "Payment finalization attempt lookup completed"
+          );
+          if (!attempt?.securityToken) {
+            yield* Effect.logWarning(
+              "Payment finalization returned not_verifiable"
+            );
+            return "not_verifiable";
+          }
+
+          const currency = yield* Schema.decodeUnknown(NexiCurrencySchema)(
+            attempt.currency
+          ).pipe(
+            Effect.tapError((cause) =>
+              Effect.logError("Payment finalization currency decode failed", {
+                input,
+                reservation,
+                attempt,
+                cause,
+              })
+            ),
+            Effect.orElseSucceed(() => undefined)
+          );
+          yield* Effect.annotateLogsScoped({ currency });
+          yield* Effect.logDebug("Payment finalization currency decoded");
+          if (!currency) {
+            yield* Effect.logWarning(
+              "Payment finalization returned not_verifiable"
+            );
+            return "not_verifiable";
+          }
+
+          yield* Effect.logInfo(
+            "Payment finalization provider verification started"
+          );
+          const verification = yield* nexi
+            .verifyPaymentOutcome({
+              orderId: attempt.providerOrderId,
+              correlationId: reservation.correlationId,
+              amount: String(attempt.amountValue),
+              currency,
+              securityToken: attempt.securityToken,
+            })
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logError("Nexi payment outcome verification failed", {
+                  orderId: reservation.id,
+                  paymentAttemptId: attempt.id,
+                  providerOrderId: attempt.providerOrderId,
+                  cause,
+                })
+              ),
+              Effect.orElseSucceed(() => undefined)
+            );
+
+          yield* Effect.annotateLogsScoped({ verification });
+          yield* Effect.logInfo(
+            "Payment finalization provider verification completed"
+          );
+
+          if (!verification) {
+            yield* Effect.logWarning(
+              "Payment finalization returned not_verifiable"
+            );
+            return "not_verifiable";
+          }
+          if (verification.mismatches.length > 0) {
+            yield* Effect.logWarning(
+              "Payment finalization returned verification_mismatch"
+            );
+            return "verification_mismatch";
+          }
+
+          const { providerOperationId, providerStatus } =
+            getNexiPaymentMetadata(verification);
+          yield* Effect.annotateLogsScoped({
+            providerMetadata: { providerOperationId, providerStatus },
+          });
+          yield* Effect.logDebug(
+            "Payment finalization provider metadata resolved"
+          );
+
+          if (verification.status === "success") {
+            yield* Effect.logInfo("Payment finalization mark paid started");
+            const paid = yield* paymentAttempts
+              .markPaidForReservation({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                webhookEventId: input.webhookEventId,
+                providerOperationId,
+                providerStatus,
+                paidAt: new Date(),
+              })
+              .pipe(Effect.either);
+
+            if (paid._tag === "Left") {
+              yield* Effect.logWarning(
+                "Payment finalization mark paid returned not_pending",
+                { paid }
+              );
+              return "not_pending";
+            }
+            yield* Effect.logDebug("Payment finalization mark paid completed");
+
+            yield* Effect.logInfo("Payment finalization fulfillment invoked");
             yield* fulfillment
               .fulfillPaidOrder({ orderId: reservation.id })
               .pipe(
@@ -82,127 +243,68 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                     "Paid order fulfillment failed during finalization",
                     {
                       orderId: reservation.id,
+                      paymentAttemptId: attempt.id,
                       cause,
                     }
                   )
                 ),
                 Effect.ignore
               );
+            yield* Effect.logInfo("Payment finalization fulfillment completed");
             return "paid";
           }
 
-          return "not_pending";
-        }
+          if (verification.status === "failure") {
+            const failureKind = classifyNexiFailureStatus(providerStatus);
+            const terminalState =
+              failureKind === "cancelled"
+                ? "cancelled"
+                : failureKind === "expired"
+                  ? "expired"
+                  : "failed";
+            yield* Effect.annotateLogsScoped({ failureKind, terminalState });
 
-        const attempt = yield* paymentAttempts.findById(paymentAttemptId).pipe(
-          Effect.tapError((cause) =>
-            Effect.logError("Payment finalization attempt lookup failed", {
-              orderId: reservation.id,
-              paymentAttemptId,
-              cause,
-            })
-          ),
-          Effect.orElseSucceed(() => null)
-        );
-        if (!attempt?.securityToken) return "not_verifiable";
+            yield* Effect.logInfo("Payment finalization mark terminal started");
+            const terminal = yield* paymentAttempts
+              .markTerminalForReservation({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                state: terminalState,
+                failureCode: "nexi_payment_failed",
+                webhookEventId: input.webhookEventId,
+                providerOperationId,
+                providerStatus,
+              })
+              .pipe(Effect.either);
 
-        const currency = yield* Schema.decodeUnknown(NexiCurrencySchema)(
-          attempt.currency
-        ).pipe(
-          Effect.tapError((cause) =>
-            Effect.logError("Payment finalization currency decode failed", {
-              input,
-              reservation,
-              attempt,
-              cause,
-            })
-          ),
-          Effect.orElseSucceed(() => undefined)
-        );
-        if (!currency) return "not_verifiable";
+            if (terminal._tag === "Left") {
+              yield* Effect.logWarning(
+                "Payment finalization mark terminal returned not_pending",
+                { terminal }
+              );
+              return "not_pending";
+            }
+            yield* Effect.logDebug(
+              "Payment finalization mark terminal completed"
+            );
 
-        const verification = yield* nexi
-          .verifyPaymentOutcome({
-            orderId: attempt.providerOrderId,
-            correlationId: reservation.correlationId,
-            amount: String(attempt.amountValue),
-            currency,
-            securityToken: attempt.securityToken,
-          })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logError("Nexi payment outcome verification failed", {
-                orderId: reservation.id,
-                paymentAttemptId: attempt.id,
-                providerOrderId: attempt.providerOrderId,
-                cause,
+            return "terminal";
+          }
+
+          yield* Effect.logWarning("Payment finalization returned pending");
+          return "pending";
+        },
+        (effect, input) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.tap((result) =>
+              Effect.logInfo("Provider payment finalization completed", {
+                result,
               })
             ),
-            Effect.orElseSucceed(() => undefined)
-          );
-
-        if (!verification) return "not_verifiable";
-        if (verification.mismatches.length > 0) return "verification_mismatch";
-
-        const { providerOperationId, providerStatus } =
-          getNexiPaymentMetadata(verification);
-
-        if (verification.status === "success") {
-          const paid = yield* paymentAttempts
-            .markPaidForReservation({
-              id: attempt.id,
-              workspaceReservationId: reservation.id,
-              webhookEventId: input.webhookEventId,
-              providerOperationId,
-              providerStatus,
-              paidAt: new Date(),
-            })
-            .pipe(Effect.either);
-
-          if (paid._tag === "Left") return "not_pending";
-
-          yield* fulfillment.fulfillPaidOrder({ orderId: reservation.id }).pipe(
-            Effect.tapError((cause) =>
-              Effect.logError(
-                "Paid order fulfillment failed during finalization",
-                {
-                  orderId: reservation.id,
-                  paymentAttemptId: attempt.id,
-                  cause,
-                }
-              )
-            ),
-            Effect.ignore
-          );
-          return "paid";
-        }
-
-        if (verification.status === "failure") {
-          const failureKind = classifyNexiFailureStatus(providerStatus);
-          const terminalState =
-            failureKind === "cancelled"
-              ? "cancelled"
-              : failureKind === "expired"
-                ? "expired"
-                : "failed";
-
-          const terminal = yield* paymentAttempts
-            .markTerminalForReservation({
-              id: attempt.id,
-              workspaceReservationId: reservation.id,
-              state: terminalState,
-              failureCode: "nexi_payment_failed",
-              webhookEventId: input.webhookEventId,
-              providerOperationId,
-              providerStatus,
-            })
-            .pipe(Effect.either);
-
-          return terminal._tag === "Right" ? "terminal" : "not_pending";
-        }
-
-        return "pending";
-      }),
+            Effect.annotateLogs({ input })
+          )
+      ),
     });
   })
 );
