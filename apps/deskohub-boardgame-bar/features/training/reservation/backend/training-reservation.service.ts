@@ -39,13 +39,19 @@ export const TrainingReservationServiceLive = Layer.effect(
     const emailService = yield* EmailServiceTag;
 
     return TrainingReservationService.of({
-      submit: (data, locale) =>
-        Effect.gen(function* () {
+      submit: Effect.fn("trainingReservation.submit")(
+        function* (data, locale) {
+          yield* Effect.annotateLogsScoped({ data, locale });
+          yield* Effect.logInfo(
+            "Training room reservation submission service started"
+          );
+
           const reservation: TrainingRoomReservation = {
             ...data,
             submittedAt: new Date().toISOString(),
             locale,
           };
+          yield* Effect.annotateLogsScoped({ reservation });
 
           yield* Effect.logInfo(
             "Processing training room reservation submission",
@@ -140,6 +146,8 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
               submittedAt: reservation.submittedAt,
             },
           };
+          yield* Effect.annotateLogsScoped({ businessEmailMessage });
+          yield* Effect.logInfo("Training room business email prepared");
 
           // Send the email to business - this must succeed
           yield* emailService.send(businessEmailMessage).pipe(
@@ -157,6 +165,7 @@ Tato zpráva byla automaticky vygenerována z formuláře na webu DeskoHub.
                 "Failed to send training room reservation email to business",
                 {
                   error,
+                  businessEmailMessage,
                   customerEmail: data.email,
                 }
               )
@@ -242,6 +251,8 @@ Your space for work and creativity
               submittedAt: reservation.submittedAt,
             },
           };
+          yield* Effect.annotateLogsScoped({ confirmationMessage });
+          yield* Effect.logInfo("Training room confirmation email prepared");
 
           // Send confirmation email to customer (don't fail if this fails)
           yield* emailService.send(confirmationMessage).pipe(
@@ -255,6 +266,7 @@ Your space for work and creativity
                 "Failed to send confirmation email to customer",
                 {
                   error,
+                  confirmationMessage,
                   customerEmail: data.email,
                 }
               )
@@ -262,21 +274,29 @@ Your space for work and creativity
             Effect.catchAll(() => Effect.void)
           );
 
+          yield* Effect.logDebug(
+            "Training room reservation submission service completed"
+          );
+
           return reservation;
-        }).pipe(
-          Effect.withSpan("submitTrainingRoomReservation", {
-            attributes: {
-              "reservation.firstName": data.firstName,
-              "reservation.lastName": data.lastName,
-              "reservation.company": data.company,
-              "reservation.role": data.role,
-              "reservation.email": data.email,
-              "reservation.date": data.date.toISOString(),
-              "reservation.time": data.time,
-              "reservation.duration": data.duration,
-            },
-          })
-        ),
+        },
+        (effect, data) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.withSpan("submitTrainingRoomReservation", {
+              attributes: {
+                "reservation.firstName": data.firstName,
+                "reservation.lastName": data.lastName,
+                "reservation.company": data.company,
+                "reservation.role": data.role,
+                "reservation.email": data.email,
+                "reservation.date": data.date.toISOString(),
+                "reservation.time": data.time,
+                "reservation.duration": data.duration,
+              },
+            })
+          )
+      ),
     });
   })
 );

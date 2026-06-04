@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
 import { env } from "@/env";
 
@@ -49,101 +50,157 @@ function isTokenResponse(data: unknown): data is {
 }
 
 export async function POST(request: NextRequest) {
-  try {
-    const body: unknown = await request.json();
+  return Effect.runPromise(
+    Effect.gen(function* () {
+      yield* Effect.annotateLogsScoped({
+        request: {
+          headers: Object.fromEntries(request.headers.entries()),
+          method: request.method,
+          searchParams: Object.fromEntries(request.nextUrl.searchParams),
+          url: request.url,
+        },
+      });
+      yield* Effect.logInfo("Dotypos token request received");
+      yield* Effect.logDebug("Dotypos token request body parse started");
+      const body: unknown = yield* Effect.tryPromise({
+        try: () => request.json() as Promise<unknown>,
+        catch: (cause) => cause,
+      });
+      yield* Effect.annotateLogsScoped({ body });
+      yield* Effect.logInfo("Dotypos token request body parsed");
 
-    if (!isTokenRequest(body)) {
-      return NextResponse.json(
-        { error: "Invalid request body - authorization code is required" },
-        { status: 400 }
-      );
-    }
+      if (!isTokenRequest(body)) {
+        yield* Effect.logWarning("Invalid Dotypos token request body");
+        return NextResponse.json(
+          { error: "Invalid request body - authorization code is required" },
+          { status: 400 }
+        );
+      }
 
-    const { code } = body;
+      const { code } = body;
 
-    // Token exchange API called with authorization code
+      // Token exchange API called with authorization code
 
-    if (!code) {
-      // No authorization code provided
-      return NextResponse.json(
-        { error: "Authorization code is required" },
-        { status: 400 }
-      );
-    }
+      if (!code) {
+        yield* Effect.logWarning("Dotypos token request missing code");
+        return NextResponse.json(
+          { error: "Authorization code is required" },
+          { status: 400 }
+        );
+      }
 
-    const clientId = env.DOTYPOS_CLIENT_ID;
-    const clientSecret = env.DOTYPOS_CLIENT_SECRET;
-    const locale = resolveLocale(body, request);
-    const origin = resolveRequestOrigin(request);
-    const redirectUrl = new URL(
-      `/${locale}/admin/dotypos/callback`,
-      origin
-    ).toString();
+      const clientId = env.DOTYPOS_CLIENT_ID;
+      const clientSecret = env.DOTYPOS_CLIENT_SECRET;
+      const locale = resolveLocale(body, request);
+      const origin = resolveRequestOrigin(request);
+      const redirectUrl = new URL(
+        `/${locale}/admin/dotypos/callback`,
+        origin
+      ).toString();
+      yield* Effect.annotateLogsScoped({
+        locale,
+        origin: origin.toString(),
+        redirectUrl,
+      });
+      yield* Effect.logInfo("Dotypos token redirect URL resolved");
 
-    // Using configured OAuth2 credentials
+      // Using configured OAuth2 credentials
 
-    if (!clientId || !clientSecret) {
-      return NextResponse.json(
-        { error: "Missing Dotypos configuration" },
-        { status: 500 }
-      );
-    }
+      if (!clientId || !clientSecret) {
+        yield* Effect.logWarning("Missing Dotypos configuration");
+        return NextResponse.json(
+          { error: "Missing Dotypos configuration" },
+          { status: 500 }
+        );
+      }
 
-    // Exchange authorization code for tokens
-    const tokenUrl = "https://api.dotykacka.cz/v2/oauth/token";
-    const tokenParams = new URLSearchParams({
-      grant_type: "authorization_code",
-      code,
-      client_id: clientId,
-      client_secret: clientSecret,
-      redirect_uri: redirectUrl,
-    });
+      // Exchange authorization code for tokens
+      const tokenUrl = "https://api.dotykacka.cz/v2/oauth/token";
+      const tokenParams = new URLSearchParams({
+        grant_type: "authorization_code",
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: redirectUrl,
+      });
+      yield* Effect.annotateLogsScoped({
+        tokenParams: Object.fromEntries(tokenParams),
+        tokenUrl,
+      });
 
-    // Sending token exchange request to Dotypos
+      // Sending token exchange request to Dotypos
+      yield* Effect.logInfo("Dotypos token exchange request started");
 
-    const tokenResponse = await fetch(tokenUrl, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: tokenParams,
-    });
+      const tokenResponse = yield* Effect.tryPromise({
+        try: () =>
+          fetch(tokenUrl, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body: tokenParams,
+          }),
+        catch: (cause) => cause,
+      });
 
-    // Received token response from Dotypos
+      // Received token response from Dotypos
 
-    if (!tokenResponse.ok) {
-      const errorData = await tokenResponse.text();
-      // Token exchange failed - returning error to client
-      return NextResponse.json(
-        { error: "Token exchange failed", details: errorData },
-        { status: tokenResponse.status }
-      );
-    }
+      if (!tokenResponse.ok) {
+        const errorData = yield* Effect.tryPromise({
+          try: () => tokenResponse.text(),
+          catch: (cause) => cause,
+        });
+        yield* Effect.logWarning("Dotypos token exchange failed", {
+          errorData,
+          status: tokenResponse.status,
+          statusText: tokenResponse.statusText,
+        });
+        return NextResponse.json(
+          { error: "Token exchange failed", details: errorData },
+          { status: tokenResponse.status }
+        );
+      }
 
-    const tokenData: unknown = await tokenResponse.json();
+      const tokenData: unknown = yield* Effect.tryPromise({
+        try: () => tokenResponse.json() as Promise<unknown>,
+        catch: (cause) => cause,
+      });
+      yield* Effect.annotateLogsScoped({ tokenData });
+      yield* Effect.logInfo("Dotypos token response received");
 
-    if (!isTokenResponse(tokenData)) {
-      return NextResponse.json(
-        { error: "Invalid token response format" },
-        { status: 500 }
-      );
-    }
+      if (!isTokenResponse(tokenData)) {
+        yield* Effect.logWarning("Invalid Dotypos token response");
+        return NextResponse.json(
+          { error: "Invalid token response format" },
+          { status: 500 }
+        );
+      }
 
-    // Token exchange successful
+      // Token exchange successful
+      yield* Effect.logInfo("Dotypos token exchange succeeded");
 
-    // In production, you would save these tokens securely
-    // For now, we'll return them to display in the UI
-    return NextResponse.json({
-      accessToken: tokenData.access_token,
-      refreshToken: tokenData.refresh_token,
-      expiresIn: tokenData.expires_in,
-      tokenType: tokenData.token_type,
-    });
-  } catch (_error) {
-    // Internal error during token exchange
-    return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
-    );
-  }
+      // In production, you would save these tokens securely
+      // For now, we'll return them to display in the UI
+      const response = NextResponse.json({
+        accessToken: tokenData.access_token,
+        refreshToken: tokenData.refresh_token,
+        expiresIn: tokenData.expires_in,
+        tokenType: tokenData.token_type,
+      });
+      yield* Effect.logInfo("Dotypos token response ready");
+      return response;
+    }).pipe(
+      Effect.scoped,
+      Effect.catchAll((error) =>
+        Effect.logError("Dotypos token route failed", { error }).pipe(
+          Effect.as(
+            NextResponse.json(
+              { error: "Internal server error" },
+              { status: 500 }
+            )
+          )
+        )
+      )
+    )
+  );
 }
