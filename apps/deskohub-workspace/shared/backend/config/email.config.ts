@@ -1,6 +1,6 @@
 import type { EmailProviderConfig } from "@deskohub/email";
 import { EmailConfigTag } from "@deskohub/email";
-import { Config, Layer } from "effect";
+import { Config, Layer, Option } from "effect";
 import { workspaceSiteConstants } from "@/shared/utils";
 
 const defaultFromEmail = "reservations@workspace.deskohub.cz";
@@ -35,17 +35,11 @@ export const EmailConfigLayer = Layer.effect(
           email: defaultFromEmail,
           name: workspaceSiteConstants.brand.name,
         },
-        apiKey: config.apiKey._tag === "Some" ? config.apiKey.value : undefined,
-        smtpHost:
-          config.smtpHost._tag === "Some" ? config.smtpHost.value : undefined,
-        smtpPort:
-          config.smtpPort._tag === "Some" ? config.smtpPort.value : undefined,
-        smtpUser:
-          config.smtpUser._tag === "Some" ? config.smtpUser.value : undefined,
-        smtpPassword:
-          config.smtpPassword._tag === "Some"
-            ? config.smtpPassword.value
-            : undefined,
+        apiKey: Option.getOrUndefined(config.apiKey),
+        smtpHost: Option.getOrUndefined(config.smtpHost),
+        smtpPort: Option.getOrUndefined(config.smtpPort),
+        smtpUser: Option.getOrUndefined(config.smtpUser),
+        smtpPassword: Option.getOrUndefined(config.smtpPassword),
         smtpSecure: config.smtpSecure,
         testMode: config.testMode,
       };
