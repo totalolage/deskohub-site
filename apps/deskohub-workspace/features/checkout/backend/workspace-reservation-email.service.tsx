@@ -32,6 +32,7 @@ export interface WorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
     readonly reservation: WorkspaceReservation;
     readonly customer: Customer;
+    readonly tableName?: string;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
@@ -68,10 +69,11 @@ const formatReservationDate = (
     timeZone: "Europe/Prague",
   });
 
-const createReservationRows = (
+export const createReservationRows = (
   reservation: WorkspaceReservation,
   customer: Customer,
-  locale: Locale
+  locale: Locale,
+  options?: { readonly includeAccessCode?: boolean }
 ): EmailDetailRow[] => {
   const monitorOption = reservation.productMonitorOption ?? undefined;
   const rows: EmailDetailRow[] = [
@@ -92,11 +94,14 @@ const createReservationRows = (
         ? m.checkoutStatusYes({}, { locale })
         : m.checkoutStatusNo({}, { locale }),
     ],
-    [
+  ];
+
+  if (options?.includeAccessCode) {
+    rows.push([
       m.checkoutEmailAccessCodeLabel({}, { locale }),
       reservation.customerAccessCode,
-    ],
-  ];
+    ]);
+  }
 
   if (customer.phone?.trim()) {
     rows.splice(1, 0, [
@@ -126,7 +131,10 @@ const createReservationRows = (
 
 const createEmailHtml = (input: {
   readonly heading: string;
-  readonly body: string;
+  readonly body?: string;
+  readonly locale: Locale;
+  readonly accessCode?: string;
+  readonly tableName?: string;
   readonly rows: readonly EmailDetailRow[];
   readonly followUp?: string;
 }) =>
@@ -136,11 +144,88 @@ const createEmailHtml = (input: {
         fontFamily: "Arial, sans-serif",
         maxWidth: "600px",
         margin: "0 auto",
-        color: "#0b1848",
+        color: "#00024f",
       }}
     >
-      <h2 style={{ color: "#0b1848" }}>{input.heading}</h2>
-      <p>{input.body}</p>
+      <h2 style={{ color: "#00024f" }}>{input.heading}</h2>
+      {input.body ? <p>{input.body}</p> : null}
+      {input.accessCode ? (
+        <div
+          style={{
+            margin: "24px 0 18px",
+            background: "#f4f1ea",
+            border: "1px solid #e6ded2",
+            borderRadius: "24px",
+            overflow: "hidden",
+            boxShadow: "0 18px 40px rgba(0, 2, 79, 0.12)",
+          }}
+        >
+          <div
+            style={{
+              background:
+                "linear-gradient(135deg, #00024f 0%, #06145f 58%, #004f66 100%)",
+              color: "#f4f1ea",
+              padding: "22px 24px",
+              textAlign: "center",
+            }}
+          >
+            <div
+              style={{
+                fontSize: "12px",
+                fontWeight: 700,
+                letterSpacing: "0.18em",
+                textTransform: "uppercase",
+              }}
+            >
+              {m.checkoutEmailAccessCodeLabel({}, { locale: input.locale })}
+            </div>
+            <div
+              style={{
+                fontSize: "64px",
+                lineHeight: "1",
+                fontWeight: 800,
+                letterSpacing: "0.08em",
+                marginTop: "10px",
+              }}
+            >
+              {input.accessCode}
+            </div>
+          </div>
+          {input.tableName ? (
+            <div
+              style={{
+                background: "#e9fff6",
+                borderTop: "4px solid #00df99",
+                color: "#00024f",
+                padding: "20px 24px 24px",
+                textAlign: "center",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "12px",
+                  fontWeight: 800,
+                  letterSpacing: "0.18em",
+                  textTransform: "uppercase",
+                  color: "#00024f",
+                }}
+              >
+                {m.checkoutEmailTableNumberLabel({}, { locale: input.locale })}
+              </div>
+              <div
+                style={{
+                  fontSize: "56px",
+                  lineHeight: "1",
+                  fontWeight: 800,
+                  marginTop: "8px",
+                }}
+              >
+                {input.tableName}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
       <table
         style={{
           width: "100%",
@@ -160,18 +245,53 @@ const createEmailHtml = (input: {
 
 const createEmailText = (input: {
   readonly heading: string;
-  readonly body: string;
+  readonly body?: string;
+  readonly locale: Locale;
+  readonly accessCode?: string;
+  readonly tableName?: string;
   readonly rows: readonly EmailDetailRow[];
   readonly followUp?: string;
 }) =>
   [
     input.heading,
-    "",
-    input.body,
+    ...(input.body ? ["", input.body] : []),
+    ...(input.accessCode
+      ? [
+          "",
+          `${m.checkoutEmailAccessCodeLabel({}, { locale: input.locale })}: ${input.accessCode}`,
+        ]
+      : []),
+    ...(input.tableName
+      ? [
+          "",
+          `${m.checkoutEmailTableNumberLabel({}, { locale: input.locale })}: ${input.tableName}`,
+        ]
+      : []),
     "",
     ...renderEmailRowsText(input.rows),
     ...(input.followUp ? ["", input.followUp] : []),
   ].join("\n");
+
+export const createWorkspaceReservationCustomerEmailPreviewHtml = (input: {
+  readonly reservation: WorkspaceReservation;
+  readonly customer: Customer;
+  readonly tableName: string;
+}) => {
+  const locale = getReservationLocale(input.reservation.locale);
+  const rows = createReservationRows(input.reservation, input.customer, locale);
+
+  return createEmailHtml({
+    heading: m.checkoutEmailCustomerAccessHeading({}, { locale }),
+    locale,
+    accessCode: input.reservation.customerAccessCode,
+    tableName: input.tableName,
+    rows,
+    followUp: m.reservationEmailCustomerFollowUp(
+      { email: workspaceSiteConstants.contact.infoEmail },
+      { locale }
+    ),
+  });
+};
 
 export const WorkspaceReservationEmailServiceLive = Layer.effect(
   WorkspaceReservationEmailService,
@@ -182,11 +302,23 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
     return WorkspaceReservationEmailService.of({
       sendPaidReservationEmails: Effect.fn(
         "workspaceReservationEmail.sendPaidReservationEmails"
-      )(function* ({ reservation, customer }) {
+      )(function* ({ reservation, customer, tableName }) {
         const locale = getReservationLocale(reservation.locale);
         const customerName = getCustomerName(customer);
         const customerEmail = customer.email?.trim();
-        const rows = createReservationRows(reservation, customer, locale);
+        const customerRows = createReservationRows(
+          reservation,
+          customer,
+          locale
+        );
+        const internalRows = createReservationRows(
+          reservation,
+          customer,
+          locale,
+          {
+            includeAccessCode: true,
+          }
+        );
         const metadata = {
           source: "workspace-paid-fulfillment",
           workspaceReservationId: reservation.id,
@@ -197,7 +329,6 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
 
         if (customerEmail) {
           const heading = m.checkoutEmailCustomerAccessHeading({}, { locale });
-          const body = m.checkoutEmailCustomerAccessBody({}, { locale });
           const followUp = m.reservationEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
             { locale }
@@ -207,8 +338,22 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
             to: { email: customerEmail, name: customerName },
             replyTo: workspaceRecipient,
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
-            html: createEmailHtml({ heading, body, rows, followUp }),
-            text: createEmailText({ heading, body, rows, followUp }),
+            html: createEmailHtml({
+              heading,
+              locale,
+              accessCode: reservation.customerAccessCode,
+              tableName,
+              rows: customerRows,
+              followUp,
+            }),
+            text: createEmailText({
+              heading,
+              locale,
+              accessCode: reservation.customerAccessCode,
+              tableName,
+              rows: customerRows,
+              followUp,
+            }),
             tags: ["workspace-paid-reservation-access"],
             metadata,
           };
@@ -255,12 +400,14 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           html: createEmailHtml({
             heading: internalHeading,
             body: internalBody,
-            rows,
+            locale,
+            rows: internalRows,
           }),
           text: createEmailText({
             heading: internalHeading,
             body: internalBody,
-            rows,
+            locale,
+            rows: internalRows,
           }),
           tags: ["workspace-paid-reservation-internal"],
           metadata,

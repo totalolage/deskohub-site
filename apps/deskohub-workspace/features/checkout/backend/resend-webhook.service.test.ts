@@ -7,7 +7,13 @@ import type {
   EmailSendResult,
 } from "@deskohub/email";
 import type { EmailService } from "@deskohub/email/backend/service";
+import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer } from "effect";
+import { m } from "@/features/i18n";
+import {
+  registerWorkspaceComponentTestEnv,
+  unregisterWorkspaceComponentTestEnv,
+} from "@/shared/testing/workspace-component-test-env";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "./operational-event.repository";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "./workspace-reservation.repository";
@@ -57,6 +63,13 @@ const sentResult = (id: string): EmailSendResult => ({
   provider: "test",
   timestamp: new Date(),
 });
+
+const renderEmailHtml = (html: string) => {
+  const container = document.createElement("div");
+  container.innerHTML = html;
+
+  return getQueriesForElement(container);
+};
 
 const customerWebhookPayload = (
   type: "email.delivered" | "email.failed" | "email.bounced"
@@ -387,6 +400,7 @@ describe("ResendWebhookService", () => {
           companyName: null,
           phone: "123456789",
         } as never,
+        tableName: "12",
       });
     }).pipe(
       Effect.provide(WorkspaceReservationEmailServiceLive),
@@ -408,6 +422,35 @@ describe("ResendWebhookService", () => {
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
     });
+    const customerEmail = sentMessages[0];
+    if (!customerEmail) {
+      throw new Error("Customer email was not sent.");
+    }
+
+    registerWorkspaceComponentTestEnv();
+    try {
+      const emailView = renderEmailHtml(customerEmail.html);
+      const locale = "cs-CZ";
+      const accessCodeLabel = emailView.getByText(
+        m.checkoutEmailAccessCodeLabel({}, { locale })
+      );
+      const tableLabel = emailView.getByText(
+        m.checkoutEmailTableNumberLabel({}, { locale })
+      );
+
+      expect(emailView.getByRole("heading", { level: 2 }).textContent).toBe(
+        m.checkoutEmailCustomerAccessHeading({}, { locale })
+      );
+      expect(accessCodeLabel.nextElementSibling?.textContent).toBe(
+        "ACCESS-123"
+      );
+      expect(tableLabel.nextElementSibling?.textContent).toBe("12");
+      expect(
+        emailView.queryByText(m.checkoutEmailCustomerAccessBody({}, { locale }))
+      ).toBeNull();
+    } finally {
+      unregisterWorkspaceComponentTestEnv();
+    }
   });
 
   test("leaves paid fulfillment processing until Resend confirms delivery", async () => {
@@ -449,8 +492,14 @@ describe("ResendWebhookService", () => {
       markFulfilled,
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {
-      getCustomer: mock(() =>
-        Effect.succeed({ email: "customer@example.com" } as never)
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: { _tableId: "table-id" },
+          customer: { email: "customer@example.com" },
+        } as never)
+      ),
+      getTables: mock(() =>
+        Effect.succeed([{ id: "table-id", name: "12" }] as never)
       ),
       confirmReservation: mock(() =>
         Effect.die("reservation is already confirmed")
@@ -487,6 +536,7 @@ describe("ResendWebhookService", () => {
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
       reservation: claimedReservation,
       customer: { email: "customer@example.com" },
+      tableName: "12",
     });
     expect(markFulfilled).not.toHaveBeenCalled();
     expect(operationalEvents.record).not.toHaveBeenCalled();

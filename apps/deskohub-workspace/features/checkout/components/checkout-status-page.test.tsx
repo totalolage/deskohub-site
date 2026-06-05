@@ -59,6 +59,9 @@ describe("CheckoutStatusPage", () => {
     expect(
       view.queryByText("We will send the reservation details by email.")
     ).toBeNull();
+    expect(
+      view.container.querySelector("[class*='bg-aquamarine-green/10']")
+    ).toBeNull();
   });
 
   test("renders fallback copy without a reconstructed summary", () => {
@@ -95,7 +98,7 @@ describe("CheckoutStatusPage", () => {
     );
 
     const link = view.getByRole("link", {
-      name: "Contact us about this order",
+      name: "Send support request",
     });
     const href = link.getAttribute("href");
     expect(href?.startsWith("/en-US/contact?")).toBe(true);

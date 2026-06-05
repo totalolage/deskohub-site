@@ -157,13 +157,8 @@ export function CheckoutPayPage({
                       {},
                       { locale }
                     )}
-                  />{" "}
-                  {m.reservationLegalConsentAnd({}, { locale })}{" "}
-                  <LegalLink
-                    href={`/${locale}/privacy-policy`}
-                    label={m.reservationLegalConsentPrivacyLink({}, { locale })}
                   />
-                  . {m.reservationLegalConsentNoRefund({}, { locale })}
+                  {"."} {m.reservationLegalConsentNoRefund({}, { locale })}
                 </span>
               </span>
             </label>

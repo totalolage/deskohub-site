@@ -1,4 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
+import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
@@ -48,6 +49,20 @@ export const WorkspacePaidFulfillmentService =
   Context.GenericTag<WorkspacePaidFulfillmentService>(
     "WorkspacePaidFulfillmentService"
   );
+
+const getReservationTableName = (
+  reservation: Reservation,
+  tables: readonly Table[]
+) => {
+  const tableId = reservation._tableId?.trim();
+  if (!tableId) return undefined;
+
+  const tableName = tables
+    .find((table) => table.id?.trim() === tableId)
+    ?.name?.trim();
+
+  return tableName || tableId;
+};
 
 export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
   WorkspacePaidFulfillmentService,
@@ -287,11 +302,21 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           }
 
           yield* Effect.logInfo("Paid reservation email flow started");
-          yield* dotypos.getCustomer(claimed.dotyposCustomerId).pipe(
-            Effect.flatMap((customer) =>
+          yield* Effect.all(
+            [
+              dotypos.getReservation(claimed.dotyposReservationId),
+              dotypos.getTables(),
+            ],
+            { concurrency: 2 }
+          ).pipe(
+            Effect.flatMap(([dotyposReservationDetails, tables]) =>
               reservationEmails.sendPaidReservationEmails({
                 reservation: claimed,
-                customer,
+                customer: dotyposReservationDetails.customer,
+                tableName: getReservationTableName(
+                  dotyposReservationDetails.reservation,
+                  tables
+                ),
               })
             ),
             Effect.tapError((cause) =>
