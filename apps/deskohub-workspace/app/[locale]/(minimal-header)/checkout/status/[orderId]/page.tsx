@@ -7,6 +7,7 @@ import type {
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
+import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";
 import {
@@ -161,7 +162,9 @@ export default async function LocalizedCheckoutStatusPage({
 
   return runWithRequestLocale(locale, () => (
     <>
-      <CheckoutStatusAutoRefresh enabled={status.status === "pending"} />
+      <CheckoutStatusAutoRefresh
+        enabled={shouldAutoRefreshCheckoutStatus(status.status)}
+      />
       <CheckoutStatusPage locale={locale} status={status} />
     </>
   ));

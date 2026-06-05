@@ -233,6 +233,7 @@ function LegalLink({
   return (
     <Link
       href={href}
+      prefetch={false}
       target="_blank"
       rel="noreferrer"
       className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"

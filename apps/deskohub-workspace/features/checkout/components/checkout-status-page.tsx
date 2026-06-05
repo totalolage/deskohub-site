@@ -88,7 +88,7 @@ const getStatusCopy = (
       return {
         title: m.checkoutStatusPaidWaitingFulfillmentTitle({}, { locale }),
         lead: m.checkoutStatusPaidWaitingFulfillmentLead({}, { locale }),
-        tone: "success",
+        tone: "pending",
         Icon: MailCheck,
       };
     case "fulfilled":
@@ -177,12 +177,61 @@ const getSummaryRows = (
   return rows.filter(Boolean);
 };
 
+const getStatusNote = (status: CheckoutStatusKind, locale: Locale) => {
+  if (status === "paid_waiting_fulfillment") {
+    return m.checkoutStatusPaidWaitingFulfillmentNote({}, { locale });
+  }
+
+  if (status === "fulfillment_failed") {
+    return m.checkoutStatusFulfillmentFailedNote({}, { locale });
+  }
+
+  return m.checkoutStatusEmailAccessNote({}, { locale });
+};
+
+const getFulfillmentFailedContactMessage = (
+  status: CheckoutStatusViewModel,
+  locale: Locale
+) => {
+  const tier = status.summary
+    ? getWorkspaceProductTierTitle(status.summary.tier, locale)
+    : m.checkoutStatusMissingSummary({}, { locale });
+  const date = status.summary
+    ? formatReservationDate(status.summary.date, locale)
+    : m.checkoutStatusMissingSummary({}, { locale });
+
+  return m.checkoutStatusFulfillmentFailedContactMessage(
+    { orderId: status.orderId, tier, date },
+    { locale }
+  );
+};
+
+const getFulfillmentFailedContactHref = (
+  status: CheckoutStatusViewModel,
+  locale: Locale
+) => {
+  if (status.status !== "fulfillment_failed") return undefined;
+
+  const url = new URL(`/${locale}/contact`, "https://deskohub.local");
+  const prefill = status.supportContactPrefill;
+  if (prefill?.name) url.searchParams.set("name", prefill.name);
+  if (prefill?.email) url.searchParams.set("email", prefill.email);
+  if (prefill?.phone) url.searchParams.set("phone", prefill.phone);
+  url.searchParams.set(
+    "message",
+    getFulfillmentFailedContactMessage(status, locale)
+  );
+
+  return `${url.pathname}${url.search}`;
+};
+
 export function CheckoutStatusPage({
   locale,
   status,
 }: CheckoutStatusPageProps) {
   const copy = getStatusCopy(status.status, locale);
   const summaryRows = getSummaryRows(status, locale);
+  const supportContactHref = getFulfillmentFailedContactHref(status, locale);
   const Icon = copy.Icon;
 
   return (
@@ -243,10 +292,17 @@ export function CheckoutStatusPage({
         </div>
 
         <p className="mt-8 rounded-[1.15rem] border border-aquamarine-green/18 bg-aquamarine-green/10 px-4 py-3 text-sm leading-6 text-navy-blue/70">
-          {m.checkoutStatusEmailAccessNote({}, { locale })}
+          {getStatusNote(status.status, locale)}
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+          {supportContactHref && (
+            <Button asChild className="h-12 px-6">
+              <Link href={supportContactHref}>
+                {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
+              </Link>
+            </Button>
+          )}
           <Button asChild className="h-12 px-6">
             <Link href={`/${locale}/checkout/order`}>
               {m.checkoutStatusReserveAgain({}, { locale })}

@@ -1,4 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
+import type { Customer } from "@deskohub/dotypos/generated/types.gen";
 import { Context, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -58,6 +59,12 @@ export type WorkspaceCheckoutStatusSummary = {
   readonly price: WorkspaceMoney;
 };
 
+export type WorkspaceCheckoutStatusContactPrefill = {
+  readonly name?: string;
+  readonly email?: string;
+  readonly phone?: string;
+};
+
 export type CheckoutStatusViewModel = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
@@ -65,6 +72,12 @@ export type CheckoutStatusViewModel = {
   readonly paymentStatus?: PaymentState;
   readonly fulfillmentStatus?: FulfillmentState;
   readonly summary?: WorkspaceCheckoutStatusSummary;
+  readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
+};
+
+type CheckoutStatusReconstruction = {
+  readonly summary?: WorkspaceCheckoutStatusSummary;
+  readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
 
 export interface CheckoutStatusService {
@@ -149,6 +162,29 @@ const canUseAttemptForSummary = (
   return reservation.paymentState === "paid" && attempt.state === "paid";
 };
 
+const toOptionalString = (value: string | null | undefined) => {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
+};
+
+const getCustomerContactName = (customer: Customer) =>
+  [customer.firstName, customer.lastName]
+    .map(toOptionalString)
+    .filter((part): part is string => Boolean(part))
+    .join(" ") || toOptionalString(customer.companyName);
+
+const getSupportContactPrefill = (
+  customer: Customer
+): WorkspaceCheckoutStatusContactPrefill | undefined => {
+  const prefill = {
+    name: getCustomerContactName(customer),
+    email: toOptionalString(customer.email),
+    phone: toOptionalString(customer.phone),
+  } satisfies WorkspaceCheckoutStatusContactPrefill;
+
+  return prefill.name || prefill.email || prefill.phone ? prefill : undefined;
+};
+
 export const CheckoutStatusServiceLive = Layer.effect(
   CheckoutStatusService,
   Effect.gen(function* () {
@@ -171,14 +207,14 @@ export const CheckoutStatusServiceLive = Layer.effect(
           yield* Effect.logWarning(
             "Checkout status summary missing Dotypos reservation id"
           );
-          return undefined;
+          return {} satisfies CheckoutStatusReconstruction;
         }
 
         if (!isWorkspaceProductTier(reservation.productTier)) {
           yield* Effect.logWarning(
             "Checkout status summary invalid product tier"
           );
-          return undefined;
+          return {} satisfies CheckoutStatusReconstruction;
         }
 
         if (
@@ -188,7 +224,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           yield* Effect.logWarning(
             "Checkout status summary invalid monitor option"
           );
-          return undefined;
+          return {} satisfies CheckoutStatusReconstruction;
         }
 
         const attempt = yield* paymentAttempts.findDisplayableForReservation({
@@ -206,14 +242,14 @@ export const CheckoutStatusServiceLive = Layer.effect(
           yield* Effect.logWarning(
             "Checkout status summary missing payment attempt"
           );
-          return undefined;
+          return {} satisfies CheckoutStatusReconstruction;
         }
 
         if (!canUseAttemptForSummary(attempt, reservation)) {
           yield* Effect.logWarning(
             "Checkout status summary unusable payment attempt"
           );
-          return undefined;
+          return {} satisfies CheckoutStatusReconstruction;
         }
 
         const dotyposReservation = yield* dotypos
@@ -236,7 +272,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           yield* Effect.logWarning(
             "Checkout status summary missing Dotypos reservation"
           );
-          return undefined;
+          return {} satisfies CheckoutStatusReconstruction;
         }
         yield* Effect.annotateLogsScoped({ dotyposReservation });
         yield* Effect.logDebug(
@@ -251,7 +287,11 @@ export const CheckoutStatusServiceLive = Layer.effect(
           yield* Effect.logWarning(
             "Checkout status summary invalid reservation date"
           );
-          return undefined;
+          return {
+            supportContactPrefill: getSupportContactPrefill(
+              dotyposReservation.value.customer
+            ),
+          } satisfies CheckoutStatusReconstruction;
         }
 
         const summary = {
@@ -269,7 +309,12 @@ export const CheckoutStatusServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ summary });
         yield* Effect.logDebug("Checkout status summary reconstructed");
 
-        return summary;
+        return {
+          summary,
+          supportContactPrefill: getSupportContactPrefill(
+            dotyposReservation.value.customer
+          ),
+        } satisfies CheckoutStatusReconstruction;
       },
       (effect, reservation) =>
         effect.pipe(
@@ -303,18 +348,25 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return result;
         }
 
-        const summary = yield* reconstructSummary(reservation);
+        const reconstruction = yield* reconstructSummary(reservation);
+        const statusKind = toCheckoutStatusKind(
+          reservation.paymentState,
+          reservation.fulfillmentState
+        );
 
         const result = {
           orderId: reservation.id,
           returnOutcome: input.returnOutcome,
-          status: toCheckoutStatusKind(
-            reservation.paymentState,
-            reservation.fulfillmentState
-          ),
+          status: statusKind,
           paymentStatus: reservation.paymentState,
           fulfillmentStatus: reservation.fulfillmentState,
-          ...(summary ? { summary } : {}),
+          ...(reconstruction.summary
+            ? { summary: reconstruction.summary }
+            : {}),
+          ...(statusKind === "fulfillment_failed" &&
+          reconstruction.supportContactPrefill
+            ? { supportContactPrefill: reconstruction.supportContactPrefill }
+            : {}),
         } satisfies CheckoutStatusViewModel;
 
         yield* Effect.annotateLogsScoped({ result });

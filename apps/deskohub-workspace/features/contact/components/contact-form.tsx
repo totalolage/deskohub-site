@@ -6,6 +6,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import {
   type ContactFormState,
+  type ContactFormValues,
   submitContactForm,
 } from "@/features/contact/actions/contact";
 import { type Locale, m } from "@/features/i18n";
@@ -24,25 +25,33 @@ import { cn } from "@/shared/utils";
 
 type ContactFormProps = {
   locale: Locale;
+  initialValues?: ContactFormInitialValues;
 };
+
+export type ContactFormInitialValues = Partial<ContactFormValues>;
 
 const initialContactFormState: ContactFormState = {
   status: "idle",
 };
 
-export function ContactForm({ locale }: ContactFormProps) {
+export function ContactForm({ locale, initialValues }: ContactFormProps) {
   const [state, formAction] = useActionState(
     submitContactForm,
     initialContactFormState
   );
   const formRef = useRef<HTMLFormElement>(null);
-  const fieldValues = state.status === "error" ? state.values : undefined;
+  const fieldValues =
+    state.status === "success"
+      ? undefined
+      : state.status === "error"
+        ? state.values
+        : initialValues;
   const fieldRemountKey = fieldValues
     ? [
-        fieldValues.name,
-        fieldValues.email,
-        fieldValues.phone,
-        fieldValues.message,
+        fieldValues.name ?? "",
+        fieldValues.email ?? "",
+        fieldValues.phone ?? "",
+        fieldValues.message ?? "",
       ]
         .map((value) => `${value.length}:${value}`)
         .join("|")
@@ -118,6 +127,7 @@ export function ContactForm({ locale }: ContactFormProps) {
               {m.contactPrivacyNoteBefore({}, { locale })}{" "}
               <Link
                 href={`/${locale}/privacy-policy`}
+                prefetch={false}
                 className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
               >
                 {m.contactPrivacyNoteLinkLabel({}, { locale })}
@@ -216,7 +226,7 @@ function Field({
   );
 }
 
-function SubmitButton({ locale }: ContactFormProps) {
+function SubmitButton({ locale }: Pick<ContactFormProps, "locale">) {
   const { pending } = useFormStatus();
 
   return (

@@ -55,30 +55,35 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
             >
               <Link
                 href={`${localePath}/privacy-policy`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerPrivacyLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/terms-and-conditions`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerTermsLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/operating-rules`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerOperatingRulesLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/cookie-policy`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerCookiePolicyLink({}, { locale })}
               </Link>
               <Link
                 href={`${localePath}/cookie-settings`}
+                prefetch={false}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerCookieSettingsLink({}, { locale })}
