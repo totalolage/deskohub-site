@@ -1,5 +1,5 @@
-import { DotyposService, ValidationError } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { DotyposService, type ValidationError } from "@deskohub/dotypos";
+import { Effect, Layer, Predicate } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
@@ -58,9 +58,13 @@ const loadWorkspaceAvailability = Effect.fn("loadWorkspaceAvailability")(
     )
 );
 
+const isValidationError = (cause: unknown): cause is ValidationError =>
+  Predicate.isTagged(cause, "ValidationError") &&
+  typeof (cause as { message?: unknown }).message === "string";
+
 const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
   function* (cause: unknown) {
-    if (cause instanceof ValidationError) {
+    if (isValidationError(cause)) {
       return NextResponse.json({ error: cause.message }, { status: 400 });
     }
 

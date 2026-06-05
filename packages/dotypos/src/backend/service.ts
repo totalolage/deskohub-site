@@ -1,6 +1,18 @@
-import { Data, Effect, Option, Schedule, Schema } from "effect";
+import {
+  Data,
+  Effect,
+  Match,
+  Option,
+  Predicate,
+  Schedule,
+  Schema,
+} from "effect";
 import { DotyposRuntimeConfig } from "../config";
-import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
+import {
+  ExternalAPIError,
+  type NetworkError,
+  ValidationError,
+} from "../errors";
 import type {
   CreateReservationRequest,
   Customer,
@@ -10,17 +22,46 @@ import type { CreateDotyposReservationInput } from "../types";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import { DotyposApi } from "./api";
 
+type DotyposError = ValidationError | ExternalAPIError | NetworkError;
+
+const isDotyposError = (error: unknown): error is DotyposError =>
+  Predicate.isTagged(error, "ValidationError") ||
+  Predicate.isTagged(error, "ExternalAPIError") ||
+  Predicate.isTagged(error, "NetworkError");
+
+const isRetryableDotyposError = (error: DotyposError) =>
+  Match.value(error).pipe(
+    Match.tag("NetworkError", () => true),
+    Match.tag("ExternalAPIError", (apiError) =>
+      Boolean(apiError.statusCode && apiError.statusCode >= 500)
+    ),
+    Match.orElse(() => false)
+  );
+
 const retryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
   Schedule.intersect(Schedule.recurs(3)),
-  Schedule.whileInput((error: unknown) => {
-    if (error instanceof ValidationError) return false;
-    if (error instanceof ExternalAPIError)
-      return Boolean(error.statusCode && error.statusCode >= 500);
-
-    return error instanceof NetworkError;
-  })
+  Schedule.whileInput<DotyposError>(isRetryableDotyposError)
 );
+
+const searchCustomerRetryPolicy = Schedule.exponential("100 millis").pipe(
+  Schedule.jittered,
+  Schedule.intersect(Schedule.recurs(2)),
+  Schedule.whileInput<DotyposError>(isRetryableDotyposError)
+);
+
+const catchUnexpectedDotyposError = (operation: string) =>
+  Effect.catchAll((error: unknown) =>
+    isDotyposError(error)
+      ? Effect.fail(error)
+      : Effect.fail(
+          new ExternalAPIError({
+            service: "Dotypos",
+            operation,
+            cause: error,
+          })
+        )
+  );
 
 export type CustomerLookupField = "email" | "phone";
 
@@ -120,15 +161,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
             })
             .pipe(
               Effect.retry(retryPolicy),
-              Effect.catchIf(
-                (error) => !(error instanceof Data.TaggedError),
-                (error) =>
-                  new ExternalAPIError({
-                    service: "Dotypos",
-                    operation: "getReservation",
-                    cause: error,
-                  })
-              )
+              catchUnexpectedDotyposError("getReservation")
             );
 
           const reservation = {
@@ -367,21 +400,15 @@ export class DotyposService extends Effect.Service<DotyposService>()(
               Effect.catchIf(
                 (error) => !error,
                 (error) =>
-                  new ExternalAPIError({
-                    service: "Dotypos",
-                    operation: "getCustomer",
-                    cause: `\`${error}' value thrown`,
-                  })
+                  Effect.fail(
+                    new ExternalAPIError({
+                      service: "Dotypos",
+                      operation: "getCustomer",
+                      cause: `\`${error}' value thrown`,
+                    })
+                  )
               ),
-              Effect.catchIf(
-                (error) => !(error instanceof Data.TaggedError),
-                (error) =>
-                  new ExternalAPIError({
-                    service: "Dotypos",
-                    operation: "getCustomer",
-                    cause: error,
-                  })
-              )
+              catchUnexpectedDotyposError("getCustomer")
             );
         },
         (effect, customerId) =>
@@ -417,25 +444,12 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                   },
                 })
                 .pipe(
-                  Effect.catchIf(
-                    (error) =>
-                      error instanceof ExternalAPIError &&
-                      error.statusCode === 404,
-                    () => Effect.succeed<Customer[]>([])
+                  Effect.catchTag("ExternalAPIError", (error) =>
+                    error.statusCode === 404
+                      ? Effect.succeed<Customer[]>([])
+                      : Effect.fail(error)
                   ),
-                  Effect.retry(
-                    Schedule.exponential("100 millis").pipe(
-                      Schedule.jittered,
-                      Schedule.intersect(Schedule.recurs(2)),
-                      Schedule.whileInput(
-                        (error) =>
-                          !(
-                            error instanceof ExternalAPIError &&
-                            error.statusCode === 404
-                          )
-                      )
-                    )
-                  )
+                  Effect.retry(searchCustomerRetryPolicy)
                 );
             });
 
@@ -720,15 +734,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           })
           .pipe(
             Effect.retry(retryPolicy),
-            Effect.catchIf(
-              (error) => !(error instanceof Data.TaggedError),
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "getTables",
-                  cause: error,
-                })
-            )
+            catchUnexpectedDotyposError("getTables")
           );
       });
 
@@ -740,15 +746,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
           })
           .pipe(
             Effect.retry(retryPolicy),
-            Effect.catchIf(
-              (error) => !(error instanceof Data.TaggedError),
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "listReservations",
-                  cause: error,
-                })
-            )
+            catchUnexpectedDotyposError("listReservations")
           );
       });
 
@@ -773,15 +771,7 @@ export class DotyposService extends Effect.Service<DotyposService>()(
                 : products.filter((product) => !product.deleted)
             ),
             Effect.retry(retryPolicy),
-            Effect.catchIf(
-              (error) => !(error instanceof Data.TaggedError),
-              (error) =>
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "getProducts",
-                  cause: error,
-                })
-            )
+            catchUnexpectedDotyposError("getProducts")
           );
       });
 

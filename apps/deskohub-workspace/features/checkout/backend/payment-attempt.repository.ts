@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Predicate } from "effect";
 import {
   type DatabaseError,
   runDb,
@@ -96,7 +96,7 @@ export const PaymentAttemptRepository =
 const isPaymentAttemptStateError = (
   cause: unknown
 ): cause is PaymentAttemptStateError =>
-  cause instanceof PaymentAttemptStateError;
+  Predicate.isTagged(cause, "PaymentAttemptStateError");
 
 export const PaymentAttemptRepositoryLive = Layer.effect(
   PaymentAttemptRepository,

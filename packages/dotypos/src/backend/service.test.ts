@@ -396,3 +396,34 @@ describe("DotyposService reservation confirmation", () => {
     expect(api.patchReservation).not.toHaveBeenCalled();
   });
 });
+
+describe("DotyposService reservation listing", () => {
+  test("preserves typed Dotypos API errors", async () => {
+    const apiError = new ExternalAPIError({
+      service: "Dotypos",
+      operation: "List reservations",
+      statusCode: 403,
+    });
+    const api = makeApi({
+      listReservations: mock(() => Effect.fail(apiError)),
+    });
+
+    const result = await runWithApi(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations().pipe(Effect.either);
+      }),
+      api
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left).toMatchObject({
+        _tag: "ExternalAPIError",
+        service: "Dotypos",
+        operation: "List reservations",
+        statusCode: 403,
+      });
+    }
+  });
+});

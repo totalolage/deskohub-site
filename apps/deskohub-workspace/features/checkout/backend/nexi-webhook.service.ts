@@ -9,7 +9,7 @@ import {
   NexiService,
   type PaymentVerificationResult,
 } from "@deskohub/nexi";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
 import {
@@ -548,7 +548,7 @@ export const NexiWebhookServiceLive = Layer.effect(
           effect.pipe(
             Effect.scoped,
             Effect.mapError((cause) =>
-              cause instanceof NexiWebhookProcessingError
+              Predicate.isTagged(cause, "NexiWebhookProcessingError")
                 ? cause
                 : new NexiWebhookProcessingError({
                     errorCode: "nexi_webhook_transition_failed",

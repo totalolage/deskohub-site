@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
-import { Context, Data, Effect, Layer, Schema } from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
 import {
-  AmbiguousDotyposCustomerError,
+  type AmbiguousDotyposCustomerError,
   getConfirmedDotyposCustomerDiscount,
 } from "@/features/checkout/backend/dotypos-customer-policy";
 import {
@@ -49,7 +49,7 @@ import type {
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
+import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
@@ -307,14 +307,38 @@ const getFreshPayUrl: (input: {
   (input) => Effect.succeed(buildFreshCheckoutPayPath(input))
 );
 
+type MappableCheckoutFailure =
+  | CheckoutError
+  | AmbiguousDotyposCustomerError
+  | WorkspaceTableUnavailableError;
+
+const isMappableCheckoutFailure = (
+  cause: unknown
+): cause is MappableCheckoutFailure =>
+  Predicate.isTagged(cause, "CheckoutError") ||
+  Predicate.isTagged(cause, "AmbiguousDotyposCustomerError") ||
+  Predicate.isTagged(cause, "WorkspaceTableUnavailableError");
+
 const mapCheckoutFailure = (cause: unknown) => {
-  if (cause instanceof CheckoutError) return cause;
-  if (cause instanceof AmbiguousDotyposCustomerError) {
-    return new CheckoutError({ message: cause.message, cause });
+  if (isMappableCheckoutFailure(cause)) {
+    return Match.value(cause).pipe(
+      Match.tag("CheckoutError", (error) => error),
+      Match.tag(
+        "AmbiguousDotyposCustomerError",
+        (error) => new CheckoutError({ message: error.message, cause: error })
+      ),
+      Match.tag(
+        "WorkspaceTableUnavailableError",
+        (error) =>
+          new CheckoutError({
+            message: "workspace_table_unavailable",
+            cause: error,
+          })
+      ),
+      Match.exhaustive
+    );
   }
-  if (cause instanceof WorkspaceTableUnavailableError) {
-    return new CheckoutError({ message: "workspace_table_unavailable", cause });
-  }
+
   return new CheckoutError({
     message:
       "Payment checkout could not be started. Please review your details and try again.",
