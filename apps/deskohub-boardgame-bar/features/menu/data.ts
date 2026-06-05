@@ -12,7 +12,7 @@ export class MenuData extends Effect.Service<MenuData>()("MenuData", {
   effect: Effect.gen(function* () {
     const dotypos = yield* DotyposService;
 
-    yield* Effect.log("Generating menu props");
+    yield* Effect.logInfo("Generating menu props");
 
     const { products, categories } = yield* dotypos.getMenuItems();
     yield* Effect.logDebug("Menu items fetched", {

@@ -359,7 +359,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const legalEvents = yield* LegalEvidenceEventRepository;
 
     if (input.legalConsent !== true) {
-      yield* Effect.logError(
+      yield* Effect.logInfo(
         "Workspace reservation submit rejected: missing legal consent"
       );
 
@@ -438,7 +438,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       existingReservation &&
       !canUseExistingReservationForNewHold(existingReservation)
     ) {
-      yield* Effect.logWarning(
+      yield* Effect.logInfo(
         "Workspace reservation submit rejected: intent key belongs to a non-reusable reservation"
       );
 
@@ -699,12 +699,34 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
             yield* dotypos.cancelReservation(dotyposReservationId).pipe(
               Effect.catchAll((cancelCause) =>
                 Effect.gen(function* () {
-                  yield* reservations.markAttachFailedCancellationRequired({
-                    id: reservationDraft.id,
-                    dotyposReservationId,
-                    reservationCreatedAt: new Date(),
-                    failureCode: "attach_failed_cancel_failed",
-                  });
+                  yield* Effect.logFatal(
+                    "Workspace reservation hold attach cleanup failed",
+                    {
+                      reservationDraftId: reservationDraft.id,
+                      dotyposReservationId,
+                      cause: cancelCause,
+                    }
+                  );
+
+                  yield* reservations
+                    .markAttachFailedCancellationRequired({
+                      id: reservationDraft.id,
+                      dotyposReservationId,
+                      reservationCreatedAt: new Date(),
+                      failureCode: "attach_failed_cancel_failed",
+                    })
+                    .pipe(
+                      Effect.tapError((markerCause) =>
+                        Effect.logFatal(
+                          "Workspace reservation hold attach cleanup marker failed",
+                          {
+                            reservationDraftId: reservationDraft.id,
+                            dotyposReservationId,
+                            cause: markerCause,
+                          }
+                        )
+                      )
+                    );
                   return yield* Effect.fail(cancelCause);
                 })
               )

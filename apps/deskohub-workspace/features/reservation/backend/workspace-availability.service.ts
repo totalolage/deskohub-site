@@ -217,7 +217,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           return;
         }
 
-        yield* Effect.logWarning("Workspace availability assurance failed");
+        yield* Effect.logInfo("Workspace availability assurance failed");
 
         return yield* new WorkspaceTableUnavailableError({
           date: query.date,

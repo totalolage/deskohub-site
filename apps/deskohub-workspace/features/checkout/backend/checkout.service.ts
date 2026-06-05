@@ -484,7 +484,7 @@ export const CheckoutServiceLive = Layer.effect(
             );
 
           if (input.legalConsent !== true) {
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Hosted payment checkout rejected: missing legal consent"
             );
 
@@ -512,9 +512,17 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout reservation lookup completed"
           );
 
-          if (!reservation || reservation.paymentState === "paid") {
+          if (!reservation) {
             yield* Effect.logWarning(
-              "Hosted payment checkout returned in_progress: reservation missing or paid"
+              "Hosted payment checkout returned in_progress: reservation missing"
+            );
+
+            return { status: "in_progress" as const };
+          }
+
+          if (reservation.paymentState === "paid") {
+            yield* Effect.logInfo(
+              "Hosted payment checkout returned in_progress: reservation already paid"
             );
 
             return { status: "in_progress" as const };
@@ -525,7 +533,7 @@ export const CheckoutServiceLive = Layer.effect(
           });
 
           if (reservation.reservationState !== "held") {
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Hosted payment checkout returned in_progress: reservation not held"
             );
 
@@ -553,7 +561,7 @@ export const CheckoutServiceLive = Layer.effect(
                 ),
                 Effect.ignore
               );
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Hosted payment checkout returned in_progress: reservation hold expired"
             );
 
@@ -615,7 +623,7 @@ export const CheckoutServiceLive = Layer.effect(
               acceptedQuote: state.quote,
               acceptedTotal: state.acceptedTotal,
             });
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Hosted payment checkout returned pricing_changed"
             );
 

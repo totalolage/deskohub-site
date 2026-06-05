@@ -129,7 +129,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             Effect.ignore
           );
         yield* Effect.logInfo("Paid fulfillment failure event recorded");
-        yield* Effect.logInfo("Paid fulfillment failure handling completed");
+        yield* Effect.logFatal("Paid fulfillment failure handling completed");
 
         return yield* Effect.fail(
           new WorkspacePaidFulfillmentError({
@@ -183,7 +183,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           }
 
           if (reservation.fulfillmentState === "fulfilled") {
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Paid fulfillment skipped: already fulfilled",
               {
                 reason: "already_fulfilled",
@@ -193,7 +193,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           }
 
           if (reservation.fulfillmentState === "processing") {
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Paid fulfillment skipped: already processing",
               {
                 reason: "already_processing",

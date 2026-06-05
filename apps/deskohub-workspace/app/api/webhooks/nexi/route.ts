@@ -62,12 +62,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       Effect.catchTag(
         "NexiWebhookProcessingError",
         Effect.fn("logNexiWebhookProcessingError")(function* (error) {
-          yield* Effect.logError("Nexi webhook processing failed", {
+          const details = {
             errorCode: error.errorCode,
             eventId: error.eventId,
             orderId: error.orderId,
             cause: error.cause,
-          });
+          };
+
+          if (
+            error.errorCode === "nexi_webhook_fulfillment_failed" ||
+            error.errorCode === "nexi_webhook_transition_failed"
+          ) {
+            yield* Effect.logFatal("Nexi webhook processing failed", details);
+          } else {
+            yield* Effect.logError("Nexi webhook processing failed", details);
+          }
 
           return yield* Effect.fail(error);
         })

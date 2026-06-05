@@ -80,7 +80,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           );
 
           if (!reservation || !paymentAttemptId) {
-            yield* Effect.logWarning("Payment finalization returned not_found");
+            yield* Effect.logInfo("Payment finalization returned not_found");
             return "not_found";
           }
           if (reservation.paymentState !== "pending") {
@@ -95,7 +95,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 .fulfillPaidOrder({ orderId: reservation.id })
                 .pipe(
                   Effect.tapError((cause) =>
-                    Effect.logError(
+                    Effect.logFatal(
                       "Paid order fulfillment failed during finalization",
                       {
                         orderId: reservation.id,
@@ -111,9 +111,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               return "paid";
             }
 
-            yield* Effect.logWarning(
-              "Payment finalization returned not_pending"
-            );
+            yield* Effect.logInfo("Payment finalization returned not_pending");
             return "not_pending";
           }
 
@@ -239,7 +237,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               .fulfillPaidOrder({ orderId: reservation.id })
               .pipe(
                 Effect.tapError((cause) =>
-                  Effect.logError(
+                  Effect.logFatal(
                     "Paid order fulfillment failed during finalization",
                     {
                       orderId: reservation.id,
@@ -291,7 +289,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             return "terminal";
           }
 
-          yield* Effect.logWarning("Payment finalization returned pending");
+          yield* Effect.logInfo("Payment finalization returned pending");
           return "pending";
         },
         (effect, input) =>
