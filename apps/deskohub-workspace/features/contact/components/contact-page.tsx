@@ -1,13 +1,14 @@
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
-import { ContactForm } from "./contact-form";
+import { ContactForm, type ContactFormInitialValues } from "./contact-form";
 
 type ContactPageProps = {
   locale: Locale;
+  initialValues?: ContactFormInitialValues;
 };
 
-export function ContactPage({ locale }: ContactPageProps) {
+export function ContactPage({ locale, initialValues }: ContactPageProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
       <section className="relative isolate overflow-hidden pb-20 pt-28 sm:pb-24 sm:pt-36">
@@ -28,7 +29,7 @@ export function ContactPage({ locale }: ContactPageProps) {
           </div>
 
           <div className="mx-auto mt-14 max-w-3xl">
-            <ContactForm locale={locale} />
+            <ContactForm locale={locale} initialValues={initialValues} />
           </div>
         </Container>
       </section>

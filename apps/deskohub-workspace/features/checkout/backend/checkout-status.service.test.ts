@@ -303,6 +303,103 @@ describe("CheckoutStatusService", () => {
     });
   });
 
+  test("includes support contact prefill only after fulfillment fails", async () => {
+    const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
+      "./checkout-status.service"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "./workspace-reservation.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({
+            paymentState: "paid",
+            fulfillmentState: "failed",
+            fulfillmentFailedAt: new Date("2026-06-20T10:00:00.000Z"),
+            fulfillmentFailureCode: "fulfillment_email_failed",
+          })
+        )
+      ),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const paymentAttempts = {
+      findDisplayableForReservation: mock(() =>
+        Effect.succeed(makePaymentAttempt())
+      ),
+    } as unknown as PaymentAttemptRepositoryType;
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.die("not used")),
+    };
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold: mock(() => Effect.die("not used")),
+      sweepExpiredHolds: mock(() => Effect.die("not used")),
+    };
+
+    const status = await Effect.gen(function* () {
+      const service = yield* CheckoutStatusService;
+      return yield* service.getStatus({
+        orderId: "reservation-provider-return",
+        returnOutcome: "success",
+      });
+    }).pipe(
+      Effect.provide(CheckoutStatusServiceLive),
+      Effect.provide(
+        Layer.succeed(ProviderPaymentFinalizationService, finalization)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, reservations)
+      ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(
+        Layer.succeed(
+          DotyposService,
+          makeDotypos({
+            getReservation: mock(() =>
+              Effect.succeed({
+                reservation: {
+                  id: "dotypos-reservation-id",
+                  _customerId: "customer-id",
+                  startDate: "2026-06-19T22:00:00.000Z",
+                  endDate: "2026-06-20T22:00:00.000Z",
+                  seats: "1",
+                  status: "OPEN",
+                },
+                customer: {
+                  id: "customer-id",
+                  firstName: "Ada",
+                  lastName: "Lovelace",
+                  email: "ada@example.com",
+                  phone: "+420777777777",
+                },
+              })
+            ),
+          })
+        )
+      ),
+      Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.runPromise
+    );
+
+    expect(status).toMatchObject({
+      status: "fulfillment_failed",
+      supportContactPrefill: {
+        name: "Ada Lovelace",
+        email: "ada@example.com",
+        phone: "+420777777777",
+      },
+    });
+  });
+
   test("omits summary when only a failed payment attempt is available", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
       "./checkout-status.service"
