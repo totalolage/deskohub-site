@@ -20,6 +20,7 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
+import { cn } from "@/shared/utils";
 
 type CheckoutStatusPageProps = {
   readonly locale: Locale;
@@ -232,6 +233,7 @@ export function CheckoutStatusPage({
   const copy = getStatusCopy(status.status, locale);
   const summaryRows = getSummaryRows(status, locale);
   const supportContactHref = getFulfillmentFailedContactHref(status, locale);
+  const showSupportButton = !!supportContactHref;
   const Icon = copy.Icon;
 
   return (
@@ -249,11 +251,24 @@ export function CheckoutStatusPage({
             <h1 className="mt-4 text-balance text-4xl leading-none sm:text-5xl">
               {copy.title}
             </h1>
-            <p className="mt-5 text-lg leading-8 text-navy-blue/70">
+            <p
+              className={cn(
+                "mt-5 text-lg leading-8 text-navy-blue/70",
+                showSupportButton && "after:content-['_↴'] after:text-4xl after:leading-0"
+              )}
+            >
               {copy.lead}
             </p>
           </div>
         </div>
+
+        {showSupportButton && (
+          <Button asChild className="h-12 px-6 mt-6 w-full">
+            <Link href={supportContactHref}>
+              {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
+            </Link>
+          </Button>
+        )}
 
         <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
           <h2 className="text-xl text-navy-blue">
@@ -296,13 +311,6 @@ export function CheckoutStatusPage({
         </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
-          {supportContactHref && (
-            <Button asChild className="h-12 px-6">
-              <Link href={supportContactHref}>
-                {m.checkoutStatusFulfillmentFailedContactButton({}, { locale })}
-              </Link>
-            </Button>
-          )}
           <Button asChild className="h-12 px-6">
             <Link href={`/${locale}/checkout/order`}>
               {m.checkoutStatusReserveAgain({}, { locale })}
