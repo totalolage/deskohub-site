@@ -3,13 +3,12 @@
 import { Menu, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { Suspense, useState, useTransition } from "react";
+import { Suspense, useState } from "react";
 import {
   type Locale,
   locales,
   withLocalePrefixAndSearch,
 } from "@/features/i18n";
-import { sendWorkspaceTestEmail } from "@/shared/actions/send-workspace-test-email";
 import { HorizontalLogo } from "@/shared/components/logo";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
@@ -96,22 +95,8 @@ export function SiteHeader({
   contactHref,
 }: SiteHeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const [isSendingTestEmail, startSendTestEmailTransition] = useTransition();
 
   const closeMenu = () => setMobileMenuOpen(false);
-  const sendTestEmail = () => {
-    startSendTestEmailTransition(async () => {
-      const result = await sendWorkspaceTestEmail();
-
-      if (result.status === "error") {
-        console.error("Workspace test email failed", result);
-        return;
-      }
-
-      // biome-ignore lint/suspicious/noConsole: This temporary test button confirms the provider result in the browser console.
-      console.info("Workspace test email sent", result);
-    });
-  };
 
   return (
     <header className="fixed inset-x-0 top-0 z-50 h-(--site-header-height) border-b border-white/10 bg-navy-blue/92 text-white backdrop-blur-md">
@@ -140,17 +125,6 @@ export function SiteHeader({
         </nav>
 
         <div className="flex items-center gap-2 sm:gap-3 xl:gap-3">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            disabled={isSendingTestEmail}
-            onClick={sendTestEmail}
-            className="hidden rounded-full border-white/20 bg-white/8 px-3 py-2 text-[0.62rem] font-semibold uppercase tracking-[0.12em] text-white hover:bg-white/16 hover:text-white sm:inline-flex"
-          >
-            {isSendingTestEmail ? "Sending" : "Test email"}
-          </Button>
-
           <Link
             href={contactHref}
             className="rounded-full border border-white/12 bg-white px-3 py-2 text-center text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-navy-blue transition-colors hover:bg-sunset-yellow sm:px-4 sm:text-xs sm:tracking-[0.14em]"
@@ -223,16 +197,6 @@ export function SiteHeader({
               />
             </Suspense>
           </div>
-
-          <Button
-            type="button"
-            variant="ghost"
-            disabled={isSendingTestEmail}
-            onClick={sendTestEmail}
-            className="rounded-2xl border-white/12 bg-white/8 px-4 py-3 text-xs font-semibold uppercase tracking-[0.14em] text-white hover:bg-white/14 hover:text-white"
-          >
-            {isSendingTestEmail ? "Sending test email" : "Send test email"}
-          </Button>
         </div>
       </div>
     </header>
