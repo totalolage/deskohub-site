@@ -399,6 +399,8 @@
   "checkoutEmailCustomerAccessBody": "Payment is confirmed and your workspace reservation is prepared. Use this access code when you arrive.",
   "checkoutEmailAccessCodeLabel": "Access code",
   "checkoutEmailTableNumberLabel": "Table",
+  "checkoutEmailLocationHeading": "Where to go",
+  "checkoutEmailLocationMapLink": "Open route in Google Maps",
   "checkoutEmailDotyposReservationIdLabel": "Reservation reference",
   "checkoutEmailInternalPaidReservationSubject": "Paid Workspace reservation - {orderId}",
   "checkoutEmailInternalPaidReservationHeading": "Paid workspace reservation",

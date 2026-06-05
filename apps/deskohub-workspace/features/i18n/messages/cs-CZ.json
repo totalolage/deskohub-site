@@ -399,6 +399,8 @@
   "checkoutEmailCustomerAccessBody": "Platba je potvrzená a rezervace workspace je připravená. Při příchodu použij tento přístupový kód.",
   "checkoutEmailAccessCodeLabel": "Přístupový kód",
   "checkoutEmailTableNumberLabel": "Stůl",
+  "checkoutEmailLocationHeading": "Kam přijít",
+  "checkoutEmailLocationMapLink": "Otevřít trasu v Google Maps",
   "checkoutEmailDotyposReservationIdLabel": "Číslo rezervace",
   "checkoutEmailInternalPaidReservationSubject": "Zaplacená Workspace rezervace - {orderId}",
   "checkoutEmailInternalPaidReservationHeading": "Zaplacená workspace rezervace",

@@ -14,6 +14,7 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
+import { workspaceSiteConstants } from "@/shared/utils";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "./operational-event.repository";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "./workspace-reservation.repository";
@@ -40,6 +41,13 @@ const verifyWebhook = mock(
     return verifiedPayload;
   }
 );
+
+const locationMapImage = Buffer.from("workspace-location-map");
+const generateStaticMapImage = mock(async () => locationMapImage);
+
+mock.module("osm", () => ({
+  generateStaticMapImage,
+}));
 
 mock.module("resend", () => ({
   Resend: class {
@@ -173,6 +181,7 @@ describe("ResendWebhookService", () => {
     verifyWebhook.mockClear();
     sendEmail.mockClear();
     constructResend.mockClear();
+    generateStaticMapImage.mockClear();
   });
 
   test("marks delivered customer reservation access emails fulfilled", async () => {
@@ -437,6 +446,12 @@ describe("ResendWebhookService", () => {
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
+      const mapImage = emailView.getByRole("img", {
+        name: m.checkoutEmailLocationHeading({}, { locale }),
+      });
+      const mapLink = emailView.getByRole("link", {
+        name: m.checkoutEmailLocationMapLink({}, { locale }),
+      });
 
       expect(emailView.getByRole("heading", { level: 2 }).textContent).toBe(
         m.checkoutEmailCustomerAccessHeading({}, { locale })
@@ -445,6 +460,28 @@ describe("ResendWebhookService", () => {
         "ACCESS-123"
       );
       expect(tableLabel.nextElementSibling?.textContent).toBe("12");
+      expect(mapImage.getAttribute("src")).toBe("cid:workspace-location-map");
+      expect(mapLink.getAttribute("href")).toBe(
+        `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`
+      );
+      expect(mapLink.getAttribute("style")).toContain("margin-top:-24px");
+      expect(customerEmail.attachments).toHaveLength(1);
+      expect(customerEmail.attachments?.[0]).toMatchObject({
+        contentId: "workspace-location-map",
+        contentType: "image/jpeg",
+        filename: "workspace-location-map.jpeg",
+      });
+      expect(customerEmail.attachments?.[0]?.content).toEqual(locationMapImage);
+      expect(generateStaticMapImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          height: 640,
+          lat: workspaceSiteConstants.contact.coordinates.lat,
+          lng: workspaceSiteConstants.contact.coordinates.lng,
+          quality: 84,
+          width: 1200,
+          zoom: 16,
+        })
+      );
       expect(
         emailView.queryByText(m.checkoutEmailCustomerAccessBody({}, { locale }))
       ).toBeNull();
@@ -561,6 +598,14 @@ describe("ResendWebhookService", () => {
         subject: "Reservation access",
         html: "<p>Access code</p>",
         text: "Access code",
+        attachments: [
+          {
+            content: locationMapImage,
+            contentId: "workspace-location-map",
+            contentType: "image/jpeg",
+            filename: "workspace-location-map.jpeg",
+          },
+        ],
         headers: {
           "X-Entity-Ref-ID": "reservation-id",
         },
@@ -579,6 +624,14 @@ describe("ResendWebhookService", () => {
       headers: {
         "X-Entity-Ref-ID": "reservation-id",
       },
+      attachments: [
+        {
+          content: locationMapImage,
+          contentId: "workspace-location-map",
+          contentType: "image/jpeg",
+          filename: "workspace-location-map.jpeg",
+        },
+      ],
       tags: [
         { name: "category", value: "workspace-paid-reservation-access" },
         { name: "source", value: "workspace-paid-fulfillment" },

@@ -18,6 +18,11 @@ const ConsoleEmailProvider: EmailProvider = {
         subject: message.subject,
         hasHtml: !!message.html,
         hasText: !!message.text,
+        attachments: message.attachments?.map((attachment) => ({
+          filename: attachment.filename,
+          contentType: attachment.contentType,
+          contentId: attachment.contentId,
+        })),
         tags: message.tags,
         metadata: message.metadata,
       });

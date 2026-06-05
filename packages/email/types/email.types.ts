@@ -19,6 +19,7 @@ export interface EmailAttachment {
   filename: string;
   content: Buffer | string;
   contentType?: string;
+  contentId?: string;
   encoding?: string;
 }
 

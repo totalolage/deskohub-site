@@ -12,6 +12,7 @@ export {
 export { StandaloneEmailServiceLayer } from "./backend/standalone-email-service";
 
 export type {
+  EmailAttachment,
   EmailMessage,
   EmailProviderConfig,
   EmailRecipient,

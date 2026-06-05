@@ -12,6 +12,10 @@ export const workspaceSiteConstants = {
       city: "Praha 8",
       postalCode: "180 00",
     },
+    coordinates: {
+      lat: 50.103277,
+      lng: 14.479023,
+    },
   },
   company: {
     identificationNumber: "24531596",
