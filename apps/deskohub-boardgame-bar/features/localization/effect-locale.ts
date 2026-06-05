@@ -38,7 +38,7 @@ class MiddlewarePropsError extends Data.TaggedError("MiddlewarePropsError")<{
 
 const ParseMiddlewareProps = Effect.fn("ParseMiddlewareProps")(
   function* <A>(props: unknown, schema: Schema.Schema<A>) {
-    yield* Effect.log("Parsing middleware props");
+    yield* Effect.logDebug("Parsing middleware props");
 
     const [{ params: paramsPromise }] =
       yield* Schema.decodeUnknown(ArgsSchema)(props);
@@ -77,7 +77,7 @@ export const LocaleMiddlewareLive = Layer.succeed(
   LocaleMiddleware.of(
     Effect.fn("LocaleMiddlewareLive")(
       function* ({ props, next }) {
-        yield* Effect.log("LocaleMiddlewareLive");
+        yield* Effect.logDebug("LocaleMiddlewareLive");
 
         const { locale } = yield* ParseMiddlewareProps(props, ParamsSchema);
 

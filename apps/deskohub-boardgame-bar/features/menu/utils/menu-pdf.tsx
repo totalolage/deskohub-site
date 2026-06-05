@@ -5,7 +5,7 @@ import { MenuPDFDocument } from "../components/menu-pdf-document";
 import { MenuData } from "../data";
 
 export const generateMenuPdf = Effect.gen(function* () {
-  yield* Effect.log("Generating menu PDF response");
+  yield* Effect.logInfo("Generating menu PDF response");
 
   const { categories, products } = yield* MenuData;
   const locale = yield* LocaleValue;

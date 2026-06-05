@@ -229,7 +229,7 @@ export function verifyCloudinaryWebhookRequest(
   }).pipe(
     Effect.scoped,
     Effect.tapError((error) =>
-      Effect.logError("Cloudinary webhook verification failed", {
+      Effect.logWarning("Cloudinary webhook verification failed", {
         serviceName: config.serviceName,
         cloudName: config.cloudName,
         errorType: error._tag,

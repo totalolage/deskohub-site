@@ -271,7 +271,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     yield* Effect.logInfo("Product webhook request body parsed");
 
     // Log raw payload for debugging schema mismatches
-    yield* Effect.logInfo("Received product webhook payload", {
+    yield* Effect.logDebug("Received product webhook payload", {
       payload,
     });
 

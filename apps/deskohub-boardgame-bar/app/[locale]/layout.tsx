@@ -11,7 +11,7 @@ export async function generateStaticParams() {
 export default LocalizedNextComponent.build(
   Effect.fn("LocalizedLayout")(
     function* ({ children }) {
-      yield* Effect.log("Building");
+      yield* Effect.logDebug("Building");
       return <RootLayout locale={getLocale()}>{children}</RootLayout>;
     },
     (effect) =>

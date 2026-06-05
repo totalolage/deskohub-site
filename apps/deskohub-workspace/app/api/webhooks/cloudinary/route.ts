@@ -94,9 +94,6 @@ export async function POST(request: Request): Promise<NextResponse> {
           return yield* Effect.fail(error);
         })
       ),
-      Effect.tapError((cause) =>
-        Effect.logError("Cloudinary webhook route failed", { cause })
-      ),
       Effect.catchTags({
         CloudinaryWebhookAuthError: (error) =>
           Effect.succeed(

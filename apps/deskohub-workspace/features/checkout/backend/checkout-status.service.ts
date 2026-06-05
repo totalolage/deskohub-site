@@ -398,7 +398,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           );
 
           if (!reservation?.activePaymentAttemptId) {
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Checkout status refresh skipped: no active payment attempt"
             );
             return yield* getStatus(input);
@@ -414,7 +414,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           );
 
           if (result === "terminal") {
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Checkout status refresh terminal hold cleanup invoked"
             );
             yield* holdCleanup
@@ -431,14 +431,24 @@ export const CheckoutStatusServiceLive = Layer.effect(
                 ),
                 Effect.ignore
               );
-            yield* Effect.logWarning(
+            yield* Effect.logInfo(
               "Checkout status refresh terminal hold cleanup completed"
             );
           } else {
-            yield* Effect.logWarning(
-              "Checkout status refresh finalization returned non-terminal",
-              { result }
-            );
+            if (
+              result === "not_verifiable" ||
+              result === "verification_mismatch"
+            ) {
+              yield* Effect.logWarning(
+                "Checkout status refresh finalization returned non-terminal",
+                { result }
+              );
+            } else {
+              yield* Effect.logInfo(
+                "Checkout status refresh finalization returned non-terminal",
+                { result }
+              );
+            }
           }
 
           const status = yield* getStatus(input);

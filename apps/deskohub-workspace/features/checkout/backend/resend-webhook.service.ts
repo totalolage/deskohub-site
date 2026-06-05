@@ -213,6 +213,11 @@ export const ResendWebhookServiceLive = Layer.effect(
             );
 
           if (!reservation) {
+            yield* Effect.logWarning(
+              "Resend webhook referenced unknown workspace reservation",
+              { eventId: id, workspaceReservationId }
+            );
+
             return ignored("reservation_not_found");
           }
 
@@ -226,10 +231,24 @@ export const ResendWebhookServiceLive = Layer.effect(
             }
 
             if (reservation.fulfillmentState === "failed") {
+              yield* Effect.logInfo(
+                "Resend delivery success ignored: reservation already failed",
+                { eventId: id, workspaceReservationId }
+              );
+
               return ignored("reservation_already_failed");
             }
 
             if (reservation.fulfillmentState !== "processing") {
+              yield* Effect.logInfo(
+                "Resend delivery success ignored: reservation not processing",
+                {
+                  eventId: id,
+                  workspaceReservationId,
+                  fulfillmentState: reservation.fulfillmentState,
+                }
+              );
+
               return ignored("reservation_not_processing");
             }
 
