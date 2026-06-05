@@ -268,12 +268,12 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
 
         yield* emailService.send(internalMessage).pipe(
           Effect.tapError((cause) =>
-            Effect.logError("Workspace reservation internal email failed", {
+            Effect.logWarning("Workspace reservation internal email failed", {
               cause,
               workspaceReservationId: reservation.id,
             })
           ),
-          Effect.asVoid
+          Effect.ignore
         );
       }),
     });

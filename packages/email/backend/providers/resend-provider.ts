@@ -13,6 +13,26 @@ interface ResendConfig {
   apiKey: string;
 }
 
+const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
+
+const toResendTags = (message: EmailMessage) => {
+  const tags: { name: string; value: string }[] = [];
+
+  for (const tag of message.tags ?? []) {
+    if (resendTagPattern.test(tag)) {
+      tags.push({ name: "category", value: tag });
+    }
+  }
+
+  for (const [name, value] of Object.entries(message.metadata ?? {})) {
+    if (typeof value !== "string") continue;
+    if (!resendTagPattern.test(name) || !resendTagPattern.test(value)) continue;
+    tags.push({ name, value });
+  }
+
+  return tags.length > 0 ? tags : undefined;
+};
+
 class ResendConfigTag extends Context.Tag("ResendConfig")<
   ResendConfigTag,
   ResendConfig
@@ -73,6 +93,8 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                   ? message.replyTo
                   : message.replyTo.email
                 : undefined,
+              headers: message.headers,
+              tags: toResendTags(message),
             });
 
             if (response.error) {

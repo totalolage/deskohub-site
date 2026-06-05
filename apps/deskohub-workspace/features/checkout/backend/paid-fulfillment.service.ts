@@ -311,30 +311,9 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             )
           );
           yield* Effect.logInfo("Paid reservation email flow succeeded");
-
-          yield* Effect.logInfo("Paid fulfillment marker started");
-          yield* reservations
-            .markFulfilled({
-              id: claimed.id,
-              fulfilledAt: new Date(),
-            })
-            .pipe(
-              Effect.tapError((cause) =>
-                Effect.logError("Paid fulfillment marker failed", {
-                  claimed,
-                  cause,
-                })
-              ),
-              Effect.catchAll((cause) =>
-                failFulfillment({
-                  orderId: input.orderId,
-                  failureCode: "fulfillment_completion_failed",
-                  eventType: "workspace_paid_fulfillment_mark_fulfilled_failed",
-                  cause,
-                })
-              )
-            );
-          yield* Effect.logInfo("Paid fulfillment marker succeeded");
+          yield* Effect.logInfo(
+            "Paid fulfillment is awaiting Resend delivery webhook"
+          );
         },
         (effect, input) =>
           effect.pipe(
