@@ -236,30 +236,30 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         });
       }),
 
-      getReservationForUpdate: Effect.fn("getReservationForUpdate")(function* (
-        params: {
+      getReservationForUpdate: Effect.fn("getReservationForUpdate")(
+        function* (params: {
           path: { cloudId: string; reservationId: string };
+        }) {
+          const token = yield* getToken();
+
+          return yield* Effect.tryPromise({
+            try: async () => {
+              const response = await generatedApi.getReservation(
+                createApiOptions(token, config, client, params)
+              );
+
+              if (response.error) throw response.error satisfies ErrorResponse;
+
+              return {
+                reservation: response.data,
+                etag: response.response.headers.get("etag") ?? undefined,
+              };
+            },
+            catch: (error) =>
+              transformErrorResponse(error, "Get reservation", config.apiUrl),
+          });
         }
-      ) {
-        const token = yield* getToken();
-
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const response = await generatedApi.getReservation(
-              createApiOptions(token, config, client, params)
-            );
-
-            if (response.error) throw response.error satisfies ErrorResponse;
-
-            return {
-              reservation: response.data,
-              etag: response.response.headers.get("etag") ?? undefined,
-            };
-          },
-          catch: (error) =>
-            transformErrorResponse(error, "Get reservation", config.apiUrl),
-        });
-      }),
+      ),
 
       cancelReservation: Effect.fn("cancelReservation")(function* (params: {
         path: { cloudId: string; reservationId: string };
@@ -568,13 +568,10 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               )}`,
               config.apiUrl.endsWith("/") ? config.apiUrl : `${config.apiUrl}/`
             );
-            const response = await fetch(
-              url,
-              {
-                headers: { Authorization: `Bearer ${token}` },
-                signal: AbortSignal.timeout(config.apiTimeout),
-              }
-            );
+            const response = await fetch(url, {
+              headers: { Authorization: `Bearer ${token}` },
+              signal: AbortSignal.timeout(config.apiTimeout),
+            });
 
             if (!response.ok) {
               throw await readResponseError(response);
@@ -610,6 +607,7 @@ const ErrorResponseSchema = Schema.Struct({
   error: Schema.optional(Schema.String),
   error_description: Schema.optional(Schema.String),
   code: Schema.optional(Schema.Int),
+  status: Schema.optional(Schema.Union(Schema.Int, Schema.NumberFromString)),
 });
 
 const transformErrorResponse = (
@@ -632,11 +630,11 @@ const transformErrorResponse = (
 
   const parseResult = Schema.decodeUnknownOption(ErrorResponseSchema)(error);
   if (parseResult._tag === "Some") {
-    const { error, error_description, code } = parseResult.value;
+    const { error, error_description, code, status } = parseResult.value;
     return new ExternalAPIError({
       service: "Dotypos",
       operation,
-      statusCode: code ?? 500,
+      statusCode: code ?? status ?? 500,
       message: error_description,
       cause: error,
     });
@@ -689,7 +687,9 @@ const DiscountGroupPropertiesSchema = Schema.Struct({
 
 const parseArrayPageData = <T>(
   data: unknown,
-  parse: (value: unknown) =>
+  parse: (
+    value: unknown
+  ) =>
     | { readonly success: true; readonly data: T }
     | { readonly success: false }
 ) => {

@@ -35,6 +35,8 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("set_cookie")).toBe(true);
     expect(isSensitiveLogKey("set.cookie")).toBe(true);
     expect(isSensitiveLogKey("session")).toBe(true);
+    expect(isSensitiveLogKey("name")).toBe(true);
+    expect(isSensitiveLogKey("message")).toBe(true);
     expect(isSensitiveLogKey("email")).toBe(true);
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
@@ -66,7 +68,7 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("tokenizedLabel")).toBe(false);
     expect(isSensitiveLogKey("sessionDuration")).toBe(false);
     expect(isSensitiveLogKey("userSessionCount")).toBe(false);
-    expect(isSensitiveLogKey("apiKeyDisplayName")).toBe(false);
+    expect(isSensitiveLogKey("apiKeyDisplayName")).toBe(true);
     expect(isSensitiveLogKey("authorizationHeaderLabel")).toBe(false);
   });
 });
@@ -82,6 +84,8 @@ describe("censorLogValue", () => {
         userRefreshToken: "secret-user-refresh-token",
         oauthClientSecret: "secret-oauth-client-secret",
         requestAuthorization: "Bearer secret",
+        name: "Ada Lovelace",
+        message: "private form message",
         visible: "safe",
         email: "ada@example.com",
         phone: "+420777123456",
@@ -104,6 +108,8 @@ describe("censorLogValue", () => {
         userRefreshToken: CENSORED_LOG_VALUE,
         oauthClientSecret: CENSORED_LOG_VALUE,
         requestAuthorization: CENSORED_LOG_VALUE,
+        name: CENSORED_LOG_VALUE,
+        message: CENSORED_LOG_VALUE,
         visible: "safe",
         email: CENSORED_LOG_VALUE,
         phone: CENSORED_LOG_VALUE,
@@ -112,7 +118,7 @@ describe("censorLogValue", () => {
         sessionDuration: 123,
         userSessionCount: 2,
       },
-      credentials: [{ password: CENSORED_LOG_VALUE, name: "Ada" }],
+      credentials: [{ password: CENSORED_LOG_VALUE, name: CENSORED_LOG_VALUE }],
     });
     expect(input.nested.apiKey).toBe("secret-api-key");
     expect(input.credentials[0]?.password).toBe("secret-password");
@@ -139,11 +145,11 @@ describe("censorLogValue", () => {
     const custom = new CustomValue("secret");
     const promise = Promise.resolve("secret");
 
-    const input = { error, date, set, custom, promise };
+    const input = { thrown: error, date, set, custom, promise };
     const censored = censorLogValue(input) as typeof input;
 
     expect(censored).toEqual(input);
-    expect(censored.error).toBe(error);
+    expect(censored.thrown).toBe(error);
     expect(censored.date).toBe(date);
     expect(censored.set).toBe(set);
     expect(censored.custom).toBe(custom);
@@ -208,6 +214,14 @@ describe("censorLogValue", () => {
       censorLogValue("checkout/pay?PayState=secret&CHECKOUTTOKEN=token")
     ).toBe(
       `checkout/pay?PayState=${encodeURIComponent(CENSORED_LOG_VALUE)}&CHECKOUTTOKEN=${encodeURIComponent(CENSORED_LOG_VALUE)}`
+    );
+  });
+
+  test("redacts production-observed name and message URL query params", () => {
+    expect(
+      censorLogValue("contact?name=Ada&message=Private&visible=safe")
+    ).toBe(
+      `contact?name=${encodeURIComponent(CENSORED_LOG_VALUE)}&message=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe`
     );
   });
 

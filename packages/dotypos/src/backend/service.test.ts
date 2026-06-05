@@ -177,6 +177,35 @@ describe("DotyposService customer lookup", () => {
     expect(result).toEqual({ _tag: "NotFound", matches: [] });
   });
 
+  test("403 search failure is not retried", async () => {
+    const api = makeApi({
+      searchCustomers: mock(() =>
+        Effect.fail(
+          new ExternalAPIError({
+            service: "Dotypos",
+            operation: "Search customers",
+            statusCode: 403,
+          })
+        )
+      ),
+    });
+
+    await expect(
+      runWithApi(
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.findCustomer({
+            firstName: "Ada",
+            email: "ada@example.com",
+          });
+        }),
+        api
+      )
+    ).rejects.toThrow();
+
+    expect(api.searchCustomers).toHaveBeenCalledTimes(1);
+  });
+
   test('workspace-style lookupFields:["email"] does not match by phone', async () => {
     const phoneMatch = customer({ id: "phone-match", phone: "+420777777777" });
     const searchCustomers = mock(() => Effect.succeed([phoneMatch]));
@@ -200,9 +229,9 @@ describe("DotyposService customer lookup", () => {
     expect(result).toEqual({ _tag: "NotFound", matches: [] });
     expect(api.searchCustomers).toHaveBeenCalledTimes(1);
     const firstSearchCall = (
-      searchCustomers.mock.calls as unknown as Array<[
-        { query?: { filter?: string } },
-      ]>
+      searchCustomers.mock.calls as unknown as Array<
+        [{ query?: { filter?: string } }]
+      >
     )[0]?.[0];
     expect(firstSearchCall?.query?.filter).toBe("email|like|ada@example.com");
   });
