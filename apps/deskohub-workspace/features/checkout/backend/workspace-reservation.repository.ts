@@ -100,6 +100,11 @@ export interface WorkspaceReservationRepository {
     readonly failureCode: string;
     readonly failedAt: Date;
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  readonly markFulfillmentDeliveryFailed: (input: {
+    readonly id: string;
+    readonly failureCode: string;
+    readonly failedAt: Date;
+  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
   readonly markReservationConfirmed: (input: {
     readonly id: string;
     readonly confirmedAt: Date;
@@ -604,6 +609,40 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           "workspaceReservations.markFulfillmentFailed",
           input.id,
           "Only processing paid reservations can be marked fulfillment failed."
+        );
+      }),
+      markFulfillmentDeliveryFailed: Effect.fn(
+        "workspaceReservations.markFulfillmentDeliveryFailed"
+      )(function* (input) {
+        const updated = yield* runDb(
+          "workspaceReservations.markFulfillmentDeliveryFailed",
+          () =>
+            db
+              .update(workspaceReservations)
+              .set({
+                fulfillmentState: "failed",
+                fulfilledAt: null,
+                fulfillmentFailedAt: input.failedAt,
+                fulfillmentFailureCode: input.failureCode,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  eq(workspaceReservations.paymentState, "paid"),
+                  inArray(workspaceReservations.fulfillmentState, [
+                    "processing",
+                    "fulfilled",
+                  ])
+                )
+              )
+              .returning({ id: workspaceReservations.id })
+        );
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.markFulfillmentDeliveryFailed",
+          input.id,
+          "Only processing or fulfilled paid reservations can be marked delivery failed."
         );
       }),
       markReservationConfirmed: Effect.fn(
