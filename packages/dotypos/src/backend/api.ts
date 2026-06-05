@@ -8,7 +8,6 @@ import type {
   Customer,
   ErrorResponse,
   Product,
-  Reservation,
   TokenResponse,
   UpdateCustomerRequest,
   UpdateReservationRequest,
@@ -32,15 +31,10 @@ interface TokenCache {
   expiresAt: number;
 }
 
-interface ApiErrorWithViolations {
-  error?: string;
-  error_description?: string;
-  code?: number;
-  violations?: Array<{
-    path?: string[];
-    message: string;
-  }>;
-}
+type ApiErrorViolation = {
+  readonly path?: readonly string[];
+  readonly message: string;
+};
 
 type TokenResult =
   | { readonly ok: true; readonly data: TokenResponse }
@@ -50,6 +44,13 @@ type TokenResult =
       readonly statusText?: string;
       readonly error: unknown;
     };
+
+type GeneratedErrorResponse = {
+  readonly error: ErrorResponse;
+  readonly response: Pick<Response, "status" | "statusText">;
+};
+
+type ErrorResponseWithStatus = ErrorResponse & { readonly status: number };
 
 const fetchUsingRequestInit: typeof fetch = Object.assign(
   async (
@@ -190,15 +191,14 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
                 errorMessage = `Validation failed: ${violationMessages}`;
               }
 
-              throw {
-                ...response.error,
+              throw withResponseStatus(response, {
                 error_description: [
                   response.error.error_description,
                   errorMessage,
                 ]
                   .filter(Boolean)
                   .join("\n"),
-              } satisfies ErrorResponse;
+              });
             }
 
             const reservations = response.data;
@@ -227,7 +227,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               createApiOptions(token, config, client, params)
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             return response.data;
           },
@@ -248,7 +248,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
                 createApiOptions(token, config, client, params)
               );
 
-              if (response.error) throw response.error satisfies ErrorResponse;
+              if (response.error) throw withResponseStatus(response);
 
               return {
                 reservation: response.data,
@@ -272,7 +272,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               createApiOptions(token, config, client, params)
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
           },
           catch: (error) =>
             transformErrorResponse(error, "Cancel reservation", config.apiUrl),
@@ -291,7 +291,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               createApiOptions(token, config, client, params)
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             return response.data;
           },
@@ -313,7 +313,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               createApiOptions(token, config, client, params)
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             return response.data;
           },
@@ -329,7 +329,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
         const token = yield* getToken();
 
         return yield* Effect.tryPromise({
-          try: async (): Promise<Reservation[]> => {
+          try: async () => {
             const response = await generatedApi.listReservations(
               createApiOptions(token, config, client, {
                 path: params.path,
@@ -337,16 +337,12 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               })
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) {
+              if (response.response.status === 404) return [];
+              throw withResponseStatus(response);
+            }
 
-            const responseData: unknown = response.data;
-
-            if (isReservationArray(responseData)) return responseData;
-
-            const pageData = getObjectProperty(responseData, "data");
-            if (isReservationArray(pageData)) return pageData;
-
-            return [];
+            return response.data.data ?? [];
           },
           catch: (error) =>
             transformErrorResponse(error, "List reservations", config.apiUrl),
@@ -367,7 +363,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
 
             if (response.error) {
               if (response.response.status === 404) return [];
-              throw response.error satisfies ErrorResponse;
+              throw withResponseStatus(response);
             }
 
             return response.data.data || [];
@@ -404,7 +400,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               })
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             const customers = response.data;
             if (!customers.length) {
@@ -451,8 +447,17 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
                 })
               );
 
-              if (!response.data || response.error) {
-                throw response.error satisfies ErrorResponse;
+              if (response.error) {
+                throw withResponseStatus(response);
+              }
+
+              if (!response.data) {
+                throw {
+                  code: 502,
+                  error: "Unexpected response format from customer API",
+                  error_description:
+                    "getCustomer endpoint returned no customer",
+                } satisfies ErrorResponse;
               }
 
               const parsedCustomer = zCustomer.safeParse(response.data);
@@ -481,7 +486,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
                 })
               );
 
-              if (response.error) throw response.error satisfies ErrorResponse;
+              if (response.error) throw withResponseStatus(response);
 
               return response.data;
             },
@@ -502,7 +507,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               })
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             return parseArrayPageData(response.data, zTable.safeParse);
           },
@@ -523,7 +528,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               })
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             return response.data.data || [];
           },
@@ -544,7 +549,7 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
               })
             );
 
-            if (response.error) throw response.error satisfies ErrorResponse;
+            if (response.error) throw withResponseStatus(response);
 
             return parseArrayPageData(response.data, zCategory.safeParse);
           },
@@ -587,21 +592,42 @@ export class DotyposApi extends Effect.Service<DotyposApi>()("DotyposApi", {
   }),
 }) {}
 
-const readResponseError = async (response: Response) => {
-  // Best-effort diagnostics: response bodies can be absent or already consumed.
+const readResponseError = async (
+  response: Response
+): Promise<ErrorResponseWithStatus> => {
   const body = await response.json().catch(() => undefined);
+  const parsedBody = Option.getOrUndefined(
+    Schema.decodeUnknownOption(ErrorResponseSchema)(body)
+  );
 
-  if (body && typeof body === "object") {
-    return body;
+  if (parsedBody) {
+    return {
+      ...parsedBody,
+      code: parsedBody.code ?? response.status,
+      status: parsedBody.status ?? response.status,
+    };
   }
 
   return {
     code: response.status,
+    status: response.status,
     error: response.statusText,
     // Best-effort fallback detail; the status fields above remain authoritative.
     error_description: await response.text().catch(() => undefined),
-  } satisfies ErrorResponse;
+  };
 };
+
+const withResponseStatus = (
+  response: GeneratedErrorResponse,
+  overrides: ErrorResponse = {}
+): ErrorResponseWithStatus => ({
+  ...response.error,
+  ...overrides,
+  error:
+    overrides.error ?? response.error.error ?? response.response.statusText,
+  code: overrides.code ?? response.error.code ?? response.response.status,
+  status: response.response.status,
+});
 
 const ErrorResponseSchema = Schema.Struct({
   error: Schema.optional(Schema.String),
@@ -634,7 +660,7 @@ const transformErrorResponse = (
     return new ExternalAPIError({
       service: "Dotypos",
       operation,
-      statusCode: code ?? status ?? 500,
+      statusCode: status ?? code ?? 500,
       message: error_description,
       cause: error,
     });
@@ -647,30 +673,26 @@ const transformErrorResponse = (
   });
 };
 
-const getViolations = (
-  error: unknown
-): NonNullable<ApiErrorWithViolations["violations"]> => {
-  const violations = getObjectProperty(error, "violations");
-  if (!Array.isArray(violations)) return [];
+const ApiErrorViolationSchema = Schema.Struct({
+  path: Schema.optional(Schema.Array(Schema.String)),
+  message: Schema.String,
+});
 
-  return violations.flatMap((violation) => {
-    const message = getObjectProperty(violation, "message");
-    if (typeof message !== "string") return [];
+const ApiErrorViolationsSchema = Schema.Struct({
+  violations: Schema.optional(Schema.Array(ApiErrorViolationSchema)),
+});
 
-    const path = getObjectProperty(violation, "path");
-    return {
-      message,
-      path: Array.isArray(path)
-        ? path.filter((part): part is string => typeof part === "string")
-        : undefined,
-    };
-  });
+const getViolations = (error: unknown): readonly ApiErrorViolation[] => {
+  const parsedError = Option.getOrUndefined(
+    Schema.decodeUnknownOption(ApiErrorViolationsSchema)(error)
+  );
+
+  return parsedError?.violations ?? [];
 };
 
-const getObjectProperty = (value: unknown, key: string) => {
-  if (!value || typeof value !== "object") return undefined;
-  return Object.getOwnPropertyDescriptor(value, key)?.value;
-};
+const ArrayPageDataSchema = Schema.Struct({
+  data: Schema.Array(Schema.Unknown),
+});
 
 const DiscountGroupIdSchema = Schema.Union(Schema.String, Schema.Number);
 
@@ -693,10 +715,12 @@ const parseArrayPageData = <T>(
     | { readonly success: true; readonly data: T }
     | { readonly success: false }
 ) => {
-  const pageData = getObjectProperty(data, "data");
-  if (!Array.isArray(pageData)) return [];
+  const page = Option.getOrUndefined(
+    Schema.decodeUnknownOption(ArrayPageDataSchema)(data)
+  );
+  if (!page) return [];
 
-  return pageData.flatMap((item) => {
+  return page.data.flatMap((item) => {
     const parsedItem = parse(item);
     return parsedItem.success ? [parsedItem.data] : [];
   });
@@ -722,16 +746,6 @@ const parseDiscountGroup = (value: unknown): DiscountGroup => {
     ...(discountPercent !== undefined ? { discountPercent } : {}),
   };
 };
-
-const isReservationArray = (value: unknown): value is Reservation[] =>
-  Array.isArray(value) && value.every(isReservation);
-
-const isReservation = (value: unknown): value is Reservation =>
-  Boolean(value) &&
-  typeof value === "object" &&
-  typeof getObjectProperty(value, "startDate") === "string" &&
-  typeof getObjectProperty(value, "endDate") === "string" &&
-  typeof getObjectProperty(value, "seats") === "string";
 
 type ApiCallOptions = {
   path?: Record<string, string>;
