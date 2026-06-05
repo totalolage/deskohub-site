@@ -86,7 +86,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           if (reservation.paymentState !== "pending") {
             if (
               reservation.paymentState === "paid" &&
-              reservation.fulfillmentState !== "fulfilled"
+              reservation.fulfillmentState === "not_started"
             ) {
               yield* Effect.logInfo(
                 "Payment finalization invoking fulfillment for already-paid reservation"
