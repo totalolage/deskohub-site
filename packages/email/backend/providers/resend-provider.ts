@@ -98,19 +98,10 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                 normalizedErrorMessage.includes("forbidden") ||
                 normalizedErrorMessage.includes("not verified")
               ) {
-                throw Object.assign(
-                  new Error(`CLIENT_ERROR: ${errorMessage}`),
-                  {
-                    code: resendError.name ?? resendError.error,
-                    statusCode: resendError.statusCode,
-                  }
-                );
+                throw new Error(`CLIENT_ERROR: ${errorMessage}`);
               }
 
-              throw Object.assign(new Error(`API_ERROR: ${errorMessage}`), {
-                code: resendError.name ?? resendError.error,
-                statusCode: resendError.statusCode,
-              });
+              throw new Error(`API_ERROR: ${errorMessage}`);
             }
 
             return response;
