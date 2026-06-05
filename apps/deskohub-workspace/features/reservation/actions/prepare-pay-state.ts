@@ -5,7 +5,15 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
-import { Data, Duration, Effect, Layer, Schedule, Schema } from "effect";
+import {
+  Data,
+  Duration,
+  Effect,
+  Layer,
+  Predicate,
+  Schedule,
+  Schema,
+} from "effect";
 import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
@@ -250,7 +258,9 @@ class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
 const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
   Schedule.modifyDelay((_, delay) => Duration.min(delay, Duration.seconds(5))),
   Schedule.upTo("40 seconds"),
-  Schedule.whileInput((error: unknown) => error instanceof PendingHoldCreation)
+  Schedule.whileInput((error: unknown) =>
+    Predicate.isTagged(error, "PendingHoldCreation")
+  )
 );
 
 const waitForPendingHoldCreation = Effect.fn(

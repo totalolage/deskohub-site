@@ -13,10 +13,6 @@ export class PublicSafeActionError extends Data.TaggedError(
 }> {}
 
 export function getPublicSafeActionErrorMessage(error: unknown): string | null {
-  if (error instanceof PublicSafeActionError) {
-    return error.message;
-  }
-
   if (!error || typeof error !== "object") {
     return null;
   }

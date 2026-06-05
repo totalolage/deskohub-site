@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   OperationalEventRepository,
@@ -9,7 +9,7 @@ import {
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
-  WorkspaceReservationStateError,
+  type WorkspaceReservationStateError,
 } from "@/features/checkout/backend/workspace-reservation.repository";
 import {
   WorkspaceReservationEmailService,
@@ -319,8 +319,8 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           effect.pipe(
             Effect.scoped,
             Effect.mapError((cause) =>
-              cause instanceof WorkspacePaidFulfillmentError ||
-              cause instanceof WorkspaceReservationStateError
+              Predicate.isTagged(cause, "WorkspacePaidFulfillmentError") ||
+              Predicate.isTagged(cause, "WorkspaceReservationStateError")
                 ? cause
                 : new WorkspacePaidFulfillmentError({
                     orderId: input.orderId,

@@ -236,10 +236,7 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(result._tag).toBe("Left");
     if (result._tag === "Left") {
-      const availability = await import("./workspace-availability.service");
-      expect(result.left).toBeInstanceOf(
-        availability.WorkspaceTableUnavailableError
-      );
+      expect(result.left._tag).toBe("WorkspaceTableUnavailableError");
     }
   });
 });
