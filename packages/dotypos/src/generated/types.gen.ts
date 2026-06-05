@@ -895,6 +895,10 @@ export type ListReservationsErrors = {
      * Unauthorized
      */
     401: ErrorResponse;
+    /**
+     * Dotypos returns Not Found, sometimes with an empty body, when the cloud has no reservations.
+     */
+    404: ErrorResponse;
 };
 
 export type ListReservationsError = ListReservationsErrors[keyof ListReservationsErrors];
