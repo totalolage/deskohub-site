@@ -1,4 +1,3 @@
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
@@ -49,20 +48,6 @@ const createMockReservation = (locale: string): WorkspaceReservation => ({
   updatedAt: mockDate,
 });
 
-const mockCustomer: Customer = {
-  id: "987654321",
-  _cloudId: "preview-cloud",
-  firstName: "Jana",
-  lastName: "Novakova",
-  companyName: null,
-  email: "jana.novakova@example.com",
-  phone: "+420 777 123 456",
-  points: null,
-  flags: "0",
-  display: true,
-  deleted: false,
-};
-
 export default async function WorkspaceReservationEmailPreviewPage({
   params,
 }: WorkspaceReservationEmailPreviewPageProps) {
@@ -72,7 +57,6 @@ export default async function WorkspaceReservationEmailPreviewPage({
   const html = await runWithRequestLocale(locale, () =>
     createWorkspaceReservationCustomerEmailPreviewHtml({
       reservation: createMockReservation(locale),
-      customer: mockCustomer,
       tableName: "12",
     })
   );

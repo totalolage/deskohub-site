@@ -96,7 +96,7 @@ const createAttributionSvg = (width: number, height: number) =>
   Buffer.from(`
     <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <rect x="${width - 196}" y="${height - 23}" width="196" height="23" fill="rgba(255,255,255,0.88)"/>
-      <text x="${width - 188}" y="${height - 7}" font-family="Arial, sans-serif" font-size="12" fill="#00024f">© OpenStreetMap contributors</text>
+      <text x="${width - 188}" y="${height - 7}" font-family="Arial, sans-serif" font-size="12" fill="#00024f">&#169; OpenStreetMap contributors</text>
     </svg>
   `);
 
@@ -142,7 +142,7 @@ export async function generateStaticMapImage(options: StaticMapImageOptions) {
   const baseHeight = (endTileY - startTileY + 1) * tileSize;
   const extractLeft = Math.round(left - startTileX * tileSize);
   const extractTop = Math.round(top - startTileY * tileSize);
-  return sharp({
+  const tiledMap = await sharp({
     create: {
       width: baseWidth,
       height: baseHeight,
@@ -151,6 +151,10 @@ export async function generateStaticMapImage(options: StaticMapImageOptions) {
     },
   })
     .composite(composites)
+    .png()
+    .toBuffer();
+
+  return sharp(tiledMap)
     .extract({
       left: extractLeft,
       top: extractTop,

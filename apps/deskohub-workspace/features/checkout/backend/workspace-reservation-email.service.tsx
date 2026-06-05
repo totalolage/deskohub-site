@@ -104,14 +104,12 @@ const createWorkspaceLocationMapAttachment = (): Effect.Effect<
       ),
   });
 
-const createReservationCoreRows = (
+const createReservationDetailRows = (
   reservation: WorkspaceReservation,
-  customer: Customer,
   locale: Locale
 ): EmailDetailRow[] => {
   const monitorOption = reservation.productMonitorOption ?? undefined;
   const rows: EmailDetailRow[] = [
-    [m.reservationEmailNameLabel({}, { locale }), getCustomerName(customer)],
     [
       m.reservationEmailDateLabel({}, { locale }),
       formatReservationDate(reservation, locale),
@@ -130,15 +128,8 @@ const createReservationCoreRows = (
     ],
   ];
 
-  if (customer.phone?.trim()) {
-    rows.splice(1, 0, [
-      m.reservationEmailPhoneLabel({}, { locale }),
-      customer.phone,
-    ]);
-  }
-
   if (isWorkspaceProductMonitorOption(monitorOption)) {
-    rows.splice(4, 0, [
+    rows.splice(2, 0, [
       m.reservationEmailMonitorsLabel({}, { locale }),
       getWorkspaceProductMonitorTitle(monitorOption, locale),
     ]);
@@ -164,10 +155,9 @@ const appendReservationReferenceRows = (
 
 export const createReservationRows = (
   reservation: WorkspaceReservation,
-  customer: Customer,
   locale: Locale
 ): EmailDetailRow[] => {
-  const rows = createReservationCoreRows(reservation, customer, locale);
+  const rows = createReservationDetailRows(reservation, locale);
 
   appendReservationReferenceRows(rows, reservation, locale);
 
@@ -179,7 +169,15 @@ const createInternalReservationRows = (
   customer: Customer,
   locale: Locale
 ): EmailDetailRow[] => {
-  const rows = createReservationCoreRows(reservation, customer, locale);
+  const rows: EmailDetailRow[] = [
+    [m.reservationEmailNameLabel({}, { locale }), getCustomerName(customer)],
+  ];
+
+  if (customer.phone?.trim()) {
+    rows.push([m.reservationEmailPhoneLabel({}, { locale }), customer.phone]);
+  }
+
+  rows.push(...createReservationDetailRows(reservation, locale));
 
   rows.push([
     m.checkoutEmailAccessCodeLabel({}, { locale }),
@@ -235,16 +233,21 @@ const createEmailHtml = (input: {
             >
               {m.checkoutEmailLocationHeading({}, { locale: input.locale })}
             </div>
-            <div
+            <a
+              href={workspaceMapUrl}
+              rel="noopener noreferrer"
               style={{
                 color: "#00024f",
+                display: "inline-block",
                 fontSize: "17px",
                 fontWeight: 700,
                 lineHeight: "1.45",
+                textDecoration: "none",
               }}
+              target="_blank"
             >
               {workspaceAddress}
-            </div>
+            </a>
           </div>
           {input.locationMapContentId ? (
             <>
@@ -431,11 +434,10 @@ const createEmailText = (input: {
 
 export const createWorkspaceReservationCustomerEmailPreviewHtml = (input: {
   readonly reservation: WorkspaceReservation;
-  readonly customer: Customer;
   readonly tableName: string;
 }) => {
   const locale = getReservationLocale(input.reservation.locale);
-  const rows = createReservationRows(input.reservation, input.customer, locale);
+  const rows = createReservationRows(input.reservation, locale);
 
   return createEmailHtml({
     heading: m.checkoutEmailCustomerAccessHeading({}, { locale }),
@@ -464,11 +466,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         const locale = getReservationLocale(reservation.locale);
         const customerName = getCustomerName(customer);
         const customerEmail = customer.email?.trim();
-        const customerRows = createReservationRows(
-          reservation,
-          customer,
-          locale
-        );
+        const customerRows = createReservationRows(reservation, locale);
         const internalRows = createInternalReservationRows(
           reservation,
           customer,
@@ -479,7 +477,6 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           workspaceReservationId: reservation.id,
           dotyposReservationId: reservation.dotyposReservationId,
           dotyposCustomerId: reservation.dotyposCustomerId,
-          customerEmail,
         };
 
         if (customerEmail) {
@@ -502,7 +499,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           );
           const customerMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
-            to: { email: customerEmail, name: customerName },
+            to: { email: customerEmail },
             replyTo: workspaceRecipient,
             subject: m.checkoutEmailCustomerAccessSubject({}, { locale }),
             html: createEmailHtml({

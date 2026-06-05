@@ -435,10 +435,25 @@ describe("ResendWebhookService", () => {
     if (!customerEmail) {
       throw new Error("Customer email was not sent.");
     }
+    const customerHtml = customerEmail.html ?? "";
+    const customerText = customerEmail.text ?? "";
+
+    expect(customerEmail.to).toEqual({ email: "customer@example.com" });
+    expect(Object.hasOwn(customerEmail.metadata ?? {}, "customerEmail")).toBe(
+      false
+    );
+    expect(customerHtml).not.toContain("Ada");
+    expect(customerHtml).not.toContain("Lovelace");
+    expect(customerHtml).not.toContain("customer@example.com");
+    expect(customerHtml).not.toContain("123456789");
+    expect(customerText).not.toContain("Ada");
+    expect(customerText).not.toContain("Lovelace");
+    expect(customerText).not.toContain("customer@example.com");
+    expect(customerText).not.toContain("123456789");
 
     registerWorkspaceComponentTestEnv();
     try {
-      const emailView = renderEmailHtml(customerEmail.html);
+      const emailView = renderEmailHtml(customerHtml);
       const locale = "cs-CZ";
       const accessCodeLabel = emailView.getByText(
         m.checkoutEmailAccessCodeLabel({}, { locale })
@@ -452,18 +467,31 @@ describe("ResendWebhookService", () => {
       const mapLink = emailView.getByRole("link", {
         name: m.checkoutEmailLocationMapLink({}, { locale }),
       });
+      const addressLink = emailView.getByRole("link", {
+        name: `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`,
+      });
+      const expectedMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
 
       expect(emailView.getByRole("heading", { level: 2 }).textContent).toBe(
         m.checkoutEmailCustomerAccessHeading({}, { locale })
       );
+      expect(
+        emailView.queryByText(m.reservationEmailNameLabel({}, { locale }))
+      ).toBeNull();
+      expect(
+        emailView.queryByText(m.reservationEmailPhoneLabel({}, { locale }))
+      ).toBeNull();
+      expect(emailView.queryByText("Ada Lovelace")).toBeNull();
+      expect(emailView.queryByText("123456789")).toBeNull();
       expect(accessCodeLabel.nextElementSibling?.textContent).toBe(
         "ACCESS-123"
       );
       expect(tableLabel.nextElementSibling?.textContent).toBe("12");
+      expect(emailView.getByText("dotypos-reservation-id")).toBeTruthy();
+      expect(emailView.getByText("reservation-id")).toBeTruthy();
       expect(mapImage.getAttribute("src")).toBe("cid:workspace-location-map");
-      expect(mapLink.getAttribute("href")).toBe(
-        `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`
-      );
+      expect(addressLink.getAttribute("href")).toBe(expectedMapUrl);
+      expect(mapLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("style")).toContain("margin-top:-24px");
       expect(customerEmail.attachments).toHaveLength(1);
       expect(customerEmail.attachments?.[0]).toMatchObject({
