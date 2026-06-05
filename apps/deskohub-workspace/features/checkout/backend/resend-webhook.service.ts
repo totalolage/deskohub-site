@@ -1,4 +1,4 @@
-import { Config, Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { Resend } from "resend";
 import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
@@ -6,10 +6,12 @@ import {
   OperationalEventRepository,
   OperationalEventRepositoryLive,
 } from "@/features/checkout/backend/operational-event.repository";
+import { ResendWebhookRuntimeConfig } from "@/features/checkout/backend/resend-webhook.config";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/checkout/backend/workspace-reservation.repository";
+import { ResendWebhookRuntimeConfigLive } from "@/shared/backend/config/resend-webhook.config";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";
 const customerAccessCategory = "workspace-paid-reservation-access";
@@ -50,6 +52,7 @@ export class ResendWebhookProcessingError extends Data.TaggedError(
 )<{
   readonly errorCode:
     | "resend_webhook_headers_missing"
+    | "resend_webhook_api_key_missing"
     | "resend_webhook_secret_missing"
     | "resend_webhook_verification_failed"
     | "resend_webhook_payload_invalid"
@@ -106,10 +109,7 @@ export const ResendWebhookServiceLive = Layer.effect(
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
     const operationalEvents = yield* OperationalEventRepository;
-    const webhookSecret = yield* Config.string("RESEND_WEBHOOK_SECRET").pipe(
-      Config.withDefault("")
-    );
-    const resend = new Resend();
+    const config = yield* ResendWebhookRuntimeConfig;
 
     return ResendWebhookService.of({
       processWebhook: Effect.fn("resendWebhook.processWebhook")(
@@ -124,6 +124,9 @@ export const ResendWebhookServiceLive = Layer.effect(
             );
           }
 
+          const webhookSecret = config.webhookSecret;
+          const apiKey = config.apiKey;
+
           if (!webhookSecret) {
             return yield* Effect.fail(
               new ResendWebhookProcessingError({
@@ -133,6 +136,18 @@ export const ResendWebhookServiceLive = Layer.effect(
               })
             );
           }
+
+          if (!apiKey) {
+            return yield* Effect.fail(
+              new ResendWebhookProcessingError({
+                errorCode: "resend_webhook_api_key_missing",
+                message: "EMAIL_API_KEY is not configured.",
+                eventId: id,
+              })
+            );
+          }
+
+          const resend = new Resend(apiKey);
 
           const verifiedPayload = yield* Effect.try({
             try: () =>
@@ -301,6 +316,7 @@ export const ResendWebhookServiceLive = Layer.effect(
 
 export const ResendWebhookServiceLiveWithDependencies =
   ResendWebhookServiceLive.pipe(
+    Layer.provide(ResendWebhookRuntimeConfigLive),
     Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive)
