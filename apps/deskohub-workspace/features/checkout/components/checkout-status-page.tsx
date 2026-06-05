@@ -19,8 +19,8 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
-import { CheckoutFlowLayout } from "./checkout-flow-layout";
 import { cn } from "@/shared/utils";
+import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
 type CheckoutStatusPageProps = {
   readonly locale: Locale;
@@ -178,18 +178,6 @@ const getSummaryRows = (
   return rows.filter(Boolean);
 };
 
-const getStatusNote = (status: CheckoutStatusKind, locale: Locale) => {
-  if (status === "paid_waiting_fulfillment") {
-    return m.checkoutStatusPaidWaitingFulfillmentNote({}, { locale });
-  }
-
-  if (status === "fulfillment_failed") {
-    return m.checkoutStatusFulfillmentFailedNote({}, { locale });
-  }
-
-  return m.checkoutStatusEmailAccessNote({}, { locale });
-};
-
 const getFulfillmentFailedContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale
@@ -254,7 +242,8 @@ export function CheckoutStatusPage({
             <p
               className={cn(
                 "mt-5 text-lg leading-8 text-navy-blue/70",
-                showSupportButton && "after:content-['_↴'] after:text-4xl after:leading-0"
+                showSupportButton &&
+                  "after:content-['_↴'] after:text-4xl after:leading-0"
               )}
             >
               {copy.lead}
@@ -305,10 +294,6 @@ export function CheckoutStatusPage({
             </p>
           )}
         </div>
-
-        <p className="mt-8 rounded-[1.15rem] border border-aquamarine-green/18 bg-aquamarine-green/10 px-4 py-3 text-sm leading-6 text-navy-blue/70">
-          {getStatusNote(status.status, locale)}
-        </p>
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
