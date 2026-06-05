@@ -18,6 +18,8 @@ const sensitiveLogKeyFragments = [
   "cookie",
   "set cookie",
   "session",
+  "name",
+  "message",
   "email",
   "phone",
   "first name",
@@ -32,6 +34,8 @@ const sensitiveLogUrlSearchParams = new Set([
   "token",
   "state",
   "secret",
+  "name",
+  "message",
 ]);
 
 const isSensitiveLogUrlSearchParam = (key: string): boolean =>
