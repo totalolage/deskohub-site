@@ -88,6 +88,12 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
               subject: message.subject,
               html: message.html,
               text: message.text || "",
+              attachments: message.attachments?.map((attachment) => ({
+                content: attachment.content,
+                contentId: attachment.contentId,
+                contentType: attachment.contentType,
+                filename: attachment.filename,
+              })),
               replyTo: message.replyTo
                 ? typeof message.replyTo === "string"
                   ? message.replyTo

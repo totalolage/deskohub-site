@@ -6,10 +6,12 @@ import {
   EmailServiceTag,
 } from "@deskohub/email/backend/service";
 import type {
+  EmailAttachment,
   EmailMessage,
   EmailRecipient,
 } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
+import { generateStaticMapImage } from "osm";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
 import {
   isWorkspaceProductMonitorOption,
@@ -69,11 +71,43 @@ const formatReservationDate = (
     timeZone: "Europe/Prague",
   });
 
-export const createReservationRows = (
+const workspaceAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
+
+const workspaceMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
+
+const workspaceLocationMapContentId = "workspace-location-map";
+const workspaceLocationMapWidth = 1200;
+const workspaceLocationMapHeight = 640;
+
+const createWorkspaceLocationMapAttachment = (): Effect.Effect<
+  EmailAttachment,
+  EmailServiceError
+> =>
+  Effect.tryPromise({
+    try: async () => ({
+      content: await generateStaticMapImage({
+        lat: workspaceSiteConstants.contact.coordinates.lat,
+        lng: workspaceSiteConstants.contact.coordinates.lng,
+        width: workspaceLocationMapWidth,
+        height: workspaceLocationMapHeight,
+        zoom: 16,
+        quality: 84,
+      }),
+      contentId: workspaceLocationMapContentId,
+      contentType: "image/jpeg",
+      filename: "workspace-location-map.jpeg",
+    }),
+    catch: (cause) =>
+      new EmailServiceError(
+        "Workspace reservation location map could not be generated.",
+        cause
+      ),
+  });
+
+const createReservationCoreRows = (
   reservation: WorkspaceReservation,
   customer: Customer,
-  locale: Locale,
-  options?: { readonly includeAccessCode?: boolean }
+  locale: Locale
 ): EmailDetailRow[] => {
   const monitorOption = reservation.productMonitorOption ?? undefined;
   const rows: EmailDetailRow[] = [
@@ -96,13 +130,6 @@ export const createReservationRows = (
     ],
   ];
 
-  if (options?.includeAccessCode) {
-    rows.push([
-      m.checkoutEmailAccessCodeLabel({}, { locale }),
-      reservation.customerAccessCode,
-    ]);
-  }
-
   if (customer.phone?.trim()) {
     rows.splice(1, 0, [
       m.reservationEmailPhoneLabel({}, { locale }),
@@ -117,6 +144,14 @@ export const createReservationRows = (
     ]);
   }
 
+  return rows;
+};
+
+const appendReservationReferenceRows = (
+  rows: EmailDetailRow[],
+  reservation: WorkspaceReservation,
+  locale: Locale
+) => {
   if (reservation.dotyposReservationId) {
     rows.push([
       m.checkoutEmailDotyposReservationIdLabel({}, { locale }),
@@ -125,6 +160,33 @@ export const createReservationRows = (
   }
 
   rows.push([m.checkoutStatusOrderIdLabel({}, { locale }), reservation.id]);
+};
+
+export const createReservationRows = (
+  reservation: WorkspaceReservation,
+  customer: Customer,
+  locale: Locale
+): EmailDetailRow[] => {
+  const rows = createReservationCoreRows(reservation, customer, locale);
+
+  appendReservationReferenceRows(rows, reservation, locale);
+
+  return rows;
+};
+
+const createInternalReservationRows = (
+  reservation: WorkspaceReservation,
+  customer: Customer,
+  locale: Locale
+): EmailDetailRow[] => {
+  const rows = createReservationCoreRows(reservation, customer, locale);
+
+  rows.push([
+    m.checkoutEmailAccessCodeLabel({}, { locale }),
+    reservation.customerAccessCode,
+  ]);
+
+  appendReservationReferenceRows(rows, reservation, locale);
 
   return rows;
 };
@@ -135,6 +197,7 @@ const createEmailHtml = (input: {
   readonly locale: Locale;
   readonly accessCode?: string;
   readonly tableName?: string;
+  readonly locationMapContentId?: string;
   readonly rows: readonly EmailDetailRow[];
   readonly followUp?: string;
 }) =>
@@ -149,6 +212,92 @@ const createEmailHtml = (input: {
     >
       <h2 style={{ color: "#00024f" }}>{input.heading}</h2>
       {input.body ? <p>{input.body}</p> : null}
+      {input.accessCode ? (
+        <div
+          style={{
+            margin: "18px 0 22px",
+            background: "#f4f1ea",
+            border: "1px solid #e6ded2",
+            borderRadius: "20px",
+            overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "18px 20px" }}>
+            <div
+              style={{
+                color: "#006b55",
+                fontSize: "12px",
+                fontWeight: 800,
+                letterSpacing: "0.16em",
+                textTransform: "uppercase",
+                marginBottom: "7px",
+              }}
+            >
+              {m.checkoutEmailLocationHeading({}, { locale: input.locale })}
+            </div>
+            <div
+              style={{
+                color: "#00024f",
+                fontSize: "17px",
+                fontWeight: 700,
+                lineHeight: "1.45",
+              }}
+            >
+              {workspaceAddress}
+            </div>
+          </div>
+          {input.locationMapContentId ? (
+            <>
+              {/* biome-ignore lint/performance/noImgElement: Email HTML needs a plain image tag. */}
+              <img
+                alt={m.checkoutEmailLocationHeading(
+                  {},
+                  { locale: input.locale }
+                )}
+                src={`cid:${input.locationMapContentId}`}
+                style={{
+                  border: 0,
+                  display: "block",
+                  height: "auto",
+                  width: "100%",
+                }}
+                width="560"
+              />
+            </>
+          ) : null}
+          <div
+            style={{
+              background: "#f4f1ea",
+              padding: "0 20px 22px",
+              textAlign: "center",
+            }}
+          >
+            <a
+              href={workspaceMapUrl}
+              rel="noopener noreferrer"
+              style={{
+                background: "#00024f",
+                border: "1px solid #00024f",
+                borderRadius: "999px",
+                color: "#f4f1ea",
+                display: "inline-block",
+                fontSize: "15px",
+                fontWeight: 800,
+                lineHeight: "20px",
+                marginTop: "-24px",
+                padding: "14px 28px",
+                position: "relative",
+                textAlign: "center",
+                textDecoration: "none",
+                zIndex: 1,
+              }}
+              target="_blank"
+            >
+              {m.checkoutEmailLocationMapLink({}, { locale: input.locale })}
+            </a>
+          </div>
+        </div>
+      ) : null}
       {input.accessCode ? (
         <div
           style={{
@@ -258,6 +407,14 @@ const createEmailText = (input: {
     ...(input.accessCode
       ? [
           "",
+          m.checkoutEmailLocationHeading({}, { locale: input.locale }),
+          workspaceAddress,
+          workspaceMapUrl,
+        ]
+      : []),
+    ...(input.accessCode
+      ? [
+          "",
           `${m.checkoutEmailAccessCodeLabel({}, { locale: input.locale })}: ${input.accessCode}`,
         ]
       : []),
@@ -285,6 +442,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml = (input: {
     locale,
     accessCode: input.reservation.customerAccessCode,
     tableName: input.tableName,
+    locationMapContentId: workspaceLocationMapContentId,
     rows,
     followUp: m.reservationEmailCustomerFollowUp(
       { email: workspaceSiteConstants.contact.infoEmail },
@@ -311,13 +469,10 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           customer,
           locale
         );
-        const internalRows = createReservationRows(
+        const internalRows = createInternalReservationRows(
           reservation,
           customer,
-          locale,
-          {
-            includeAccessCode: true,
-          }
+          locale
         );
         const metadata = {
           source: "workspace-paid-fulfillment",
@@ -328,6 +483,18 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         };
 
         if (customerEmail) {
+          const locationMapAttachment =
+            yield* createWorkspaceLocationMapAttachment().pipe(
+              Effect.catchAll((cause) =>
+                Effect.logWarning(
+                  "Workspace reservation location map attachment skipped",
+                  {
+                    cause,
+                    workspaceReservationId: reservation.id,
+                  }
+                ).pipe(Effect.as(undefined))
+              )
+            );
           const heading = m.checkoutEmailCustomerAccessHeading({}, { locale });
           const followUp = m.reservationEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
@@ -343,6 +510,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               locale,
               accessCode: reservation.customerAccessCode,
               tableName,
+              locationMapContentId: locationMapAttachment?.contentId,
               rows: customerRows,
               followUp,
             }),
@@ -354,6 +522,9 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               rows: customerRows,
               followUp,
             }),
+            attachments: locationMapAttachment
+              ? [locationMapAttachment]
+              : undefined,
             tags: ["workspace-paid-reservation-access"],
             metadata,
           };
