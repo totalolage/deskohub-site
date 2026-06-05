@@ -9,9 +9,12 @@ import type {
 import type { EmailService } from "@deskohub/email/backend/service";
 import { Effect, Layer } from "effect";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "./operational-event.repository";
+import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "./workspace-reservation.repository";
 
 let verifiedPayload: unknown;
+
+const constructResend = mock((_apiKey?: string) => undefined);
 
 const sendEmail = mock(async () => ({
   data: { id: "resend-email-id" },
@@ -34,6 +37,10 @@ const verifyWebhook = mock(
 
 mock.module("resend", () => ({
   Resend: class {
+    constructor(apiKey?: string) {
+      constructResend(apiKey);
+    }
+
     emails = {
       send: sendEmail,
     };
@@ -86,9 +93,31 @@ const internalFailurePayload = {
 const processWebhook = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly operationalEvents: OperationalEventRepositoryType;
+  readonly config?: ResendWebhookRuntimeConfigObj;
+}) => {
+  const effect = await processWebhookEffect(input);
+  return Effect.runPromise(effect);
+};
+
+const processWebhookError = async (input: {
+  readonly reservations: WorkspaceReservationRepositoryType;
+  readonly operationalEvents: OperationalEventRepositoryType;
+  readonly config?: ResendWebhookRuntimeConfigObj;
+}) => {
+  const effect = await processWebhookEffect(input);
+  return Effect.runPromise(Effect.flip(effect));
+};
+
+const processWebhookEffect = async (input: {
+  readonly reservations: WorkspaceReservationRepositoryType;
+  readonly operationalEvents: OperationalEventRepositoryType;
+  readonly config?: ResendWebhookRuntimeConfigObj;
 }) => {
   const { ResendWebhookService, ResendWebhookServiceLive } = await import(
     "./resend-webhook.service"
+  );
+  const { ResendWebhookRuntimeConfig } = await import(
+    "./resend-webhook.config"
   );
   const { OperationalEventRepository } = await import(
     "./operational-event.repository"
@@ -96,6 +125,11 @@ const processWebhook = async (input: {
   const { WorkspaceReservationRepository } = await import(
     "./workspace-reservation.repository"
   );
+
+  const config = input.config ?? {
+    apiKey: "re_test",
+    webhookSecret: "whsec_test",
+  };
 
   return Effect.gen(function* () {
     const service = yield* ResendWebhookService;
@@ -115,17 +149,17 @@ const processWebhook = async (input: {
     Effect.provide(
       Layer.succeed(OperationalEventRepository, input.operationalEvents)
     ),
-    Effect.runPromise
+    Effect.provide(Layer.succeed(ResendWebhookRuntimeConfig, config))
   );
 };
 
 describe("ResendWebhookService", () => {
   beforeEach(() => {
-    process.env.RESEND_WEBHOOK_SECRET = "whsec_test";
     process.env.EMAIL_API_KEY = "re_test";
     verifiedPayload = undefined;
     verifyWebhook.mockClear();
     sendEmail.mockClear();
+    constructResend.mockClear();
   });
 
   test("marks delivered customer reservation access emails fulfilled", async () => {
@@ -155,6 +189,7 @@ describe("ResendWebhookService", () => {
     });
 
     expect(result).toEqual({ status: "processed" });
+    expect(constructResend).toHaveBeenCalledWith("re_test");
     expect(reservations.findById).toHaveBeenCalledWith("reservation-id");
     expect(record).not.toHaveBeenCalled();
     expect(markFulfillmentDeliveryFailed).not.toHaveBeenCalled();
@@ -162,6 +197,32 @@ describe("ResendWebhookService", () => {
     const [updateInput] = markFulfilled.mock.calls[0] ?? [];
     expect(updateInput).toMatchObject({ id: "reservation-id" });
     expect(updateInput.fulfilledAt).toBeInstanceOf(Date);
+  });
+
+  test("fails Resend webhook processing without an API key", async () => {
+    verifiedPayload = customerDeliveredPayload;
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const operationalEvents = {
+      record: mock(() => Effect.die("should not record")),
+    } as unknown as OperationalEventRepositoryType;
+
+    const error = await processWebhookError({
+      reservations,
+      operationalEvents,
+      config: { webhookSecret: "whsec_test" },
+    });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_api_key_missing",
+      eventId: "webhook-event-id",
+    });
+    expect(constructResend).not.toHaveBeenCalled();
+    expect(verifyWebhook).not.toHaveBeenCalled();
+    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(operationalEvents.record).not.toHaveBeenCalled();
   });
 
   test("marks customer reservation access delivery failures failed", async () => {
