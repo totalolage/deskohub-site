@@ -27,6 +27,9 @@
     },
     "dev": {
       "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
+    },
+    "typecheck": {
+      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
     }
   }
 }
