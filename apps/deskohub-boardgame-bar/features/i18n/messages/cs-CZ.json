@@ -162,10 +162,6 @@
     "pageTitle": "Rezervace stolu",
     "pageDescription": "Rezervujte si stůl v Deskohub baru s deskovými hrami. Vyberte si preferované datum, čas a typ stolu pro dokonalý herní zážitek."
   },
-  "reservationConfirmation": {
-    "pageTitle": "Rezervace potvrzena",
-    "pageDescription": "Vaše rezervace stolu v Deskohub byla úspěšně potvrzena. Zkontrolujte detaily vaší rezervace a potvrzení."
-  },
   "tableReservation": {
     "pageTitle": "Rezervace stolu",
     "pageDescription": "Rezervujte si své ideální místo v Deskohub. Vyberte si datum, čas a preference pro nezapomenutelný zážitek s deskovými hrami.",
@@ -319,17 +315,13 @@
     "questions": "Potřebujete provést změny?",
     "contactInfo": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci",
     "backToHome": "Zpět domů",
-    "makeAnother": "Vytvořit další rezervaci",
     "bookingId": "Číslo rezervace: {id}"
   },
   "errors": {
-    "bookingNotFound": "Rezervace nenalezena",
-    "bookingNotFoundDescription": "Tuto rezervaci se nepodařilo najít. Možná vypršela nebo je odkaz nesprávný.",
     "pageNotFound": "Stránka nenalezena",
     "pageNotFoundDescription": "Stránka, kterou hledáte, neexistuje.",
     "goHome": "Zpět domů",
-    "submissionError": "Při odesílání vaší rezervace došlo k chybě",
-    "contactError": "Pokud si myslíte, že se jedná o chybu, kontaktujte nás prosím s údaji o vaší rezervaci."
+    "submissionError": "Při odesílání vaší zprávy došlo k chybě"
   },
   "altText": {
     "boardGames": "Deskové hry",

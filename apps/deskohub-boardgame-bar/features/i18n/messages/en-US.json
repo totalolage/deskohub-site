@@ -158,10 +158,6 @@
     "pageTitle": "Table Reservation",
     "pageDescription": "Reserve your table at Deskohub board game bar. Choose your preferred date, time, and table type for the perfect gaming experience."
   },
-  "reservationConfirmation": {
-    "pageTitle": "Reservation Confirmed",
-    "pageDescription": "Your table reservation at Deskohub has been successfully confirmed. Check your booking details and confirmation."
-  },
   "tableReservation": {
     "pageTitle": "Book a Table",
     "pageDescription": "Reserve your perfect spot at Deskohub. Choose your date, time, and preferences for an unforgettable board game experience.",
@@ -309,17 +305,13 @@
     "questions": "Need to Make Changes?",
     "contactInfo": "Feel free to contact us if you need to modify your reservation",
     "backToHome": "Back to Home",
-    "makeAnother": "Make Another Reservation",
     "bookingId": "Booking reference: {id}"
   },
   "errors": {
-    "bookingNotFound": "Booking Not Found",
-    "bookingNotFoundDescription": "We couldn't find this reservation. It may have expired or the link may be incorrect.",
     "pageNotFound": "Page Not Found",
     "pageNotFoundDescription": "The page you are looking for doesn't exist.",
     "goHome": "Go Home",
-    "submissionError": "An error occurred while submitting your booking",
-    "contactError": "If you believe this is an error, please contact us with your booking details."
+    "submissionError": "An error occurred while submitting your message"
   },
   "altText": {
     "boardGames": "Board games",

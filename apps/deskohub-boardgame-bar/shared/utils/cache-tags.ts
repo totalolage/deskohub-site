@@ -16,9 +16,6 @@ import { cacheTag } from "next/cache";
  */
 const NAMESPACES = {
   cloudinary: "cdn",
-  reservation: "res",
-  customer: "cust",
-  table: "tbl",
   menu: "menu",
 } as const;
 
@@ -48,46 +45,6 @@ export const cloudinaryTags = createCloudinaryCacheTags({
  * Dotypos API cache tags
  */
 export const dotyposTags = {
-  // Reservation tags
-  reservation: {
-    all: () => `${NAMESPACES.reservation}:all`,
-    byId: (id: string) => `${NAMESPACES.reservation}:${id}`,
-    byCustomer: (customerId: string) =>
-      `${NAMESPACES.reservation}:cust:${customerId}`,
-
-    getTags: (reservationId?: string, customerId?: string) => {
-      const tags = [dotyposTags.reservation.all()];
-      if (reservationId) tags.push(dotyposTags.reservation.byId(reservationId));
-      if (customerId) tags.push(dotyposTags.reservation.byCustomer(customerId));
-      return tags;
-    },
-  },
-
-  // Customer tags
-  customer: {
-    all: () => `${NAMESPACES.customer}:all`,
-    byId: (id: string) => `${NAMESPACES.customer}:${id}`,
-    byEmail: (email: string) => `${NAMESPACES.customer}:email:${email}`,
-    byPhone: (phone: string) => `${NAMESPACES.customer}:phone:${phone}`,
-
-    getTags: (customerId?: string, email?: string, phone?: string) => {
-      const tags = [dotyposTags.customer.all()];
-      if (customerId) tags.push(dotyposTags.customer.byId(customerId));
-      if (email) tags.push(dotyposTags.customer.byEmail(email));
-      if (phone) tags.push(dotyposTags.customer.byPhone(phone));
-      return tags;
-    },
-  },
-
-  // Table tags
-  tables: {
-    all: () => `${NAMESPACES.table}:all`,
-
-    getTags: () => {
-      return [dotyposTags.tables.all()];
-    },
-  },
-
   // Menu/Product tags
   menu: {
     all: () => `${NAMESPACES.menu}:all`,
