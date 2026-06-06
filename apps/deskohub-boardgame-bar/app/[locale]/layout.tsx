@@ -1,3 +1,5 @@
+import "../globals.css";
+
 import { Effect } from "effect";
 import { getLocale, locales } from "@/features/i18n";
 import { LocalizedNextComponent } from "@/features/localization/localized-next-component";
