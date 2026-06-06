@@ -24,18 +24,24 @@ const makeTable = (input: {
   readonly id?: string;
   readonly name: string;
   readonly tags?: string[];
+  readonly seats?: string;
+  readonly positionX?: string;
+  readonly positionY?: string;
+  readonly locationName?: string;
   readonly display?: boolean;
   readonly enabled?: boolean;
 }): Table => ({
   _cloudId: "cloud",
   display: true,
   enabled: true,
+  seats: "1",
   ...input,
 });
 
 const makeDotyposReservation = (input: {
   readonly tableId: string;
   readonly status: Reservation["status"];
+  readonly seats?: string;
   readonly startDate?: string;
   readonly endDate?: string;
 }): Reservation => ({
@@ -44,6 +50,7 @@ const makeDotyposReservation = (input: {
   _tableId: input.tableId,
   startDate: input.startDate ?? "2099-06-09T22:00:00Z",
   endDate: input.endDate ?? "2099-06-10T22:00:00Z",
+  seats: input.seats ?? "1",
   status: input.status,
 });
 
@@ -175,6 +182,143 @@ describe("WorkspaceTableAssignmentService", () => {
         [makeDotyposReservation({ tableId: "basic-1", status: "NEW" })]
       )
     ).resolves.toBe("basic-2");
+  });
+
+  test("assigns a matching table when existing reservations leave enough capacity", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        [
+          makeTable({
+            id: "basic-1",
+            name: "1",
+            tags: ["tier:basic"],
+            seats: "2",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "basic-1",
+            status: "NEW",
+            seats: "1",
+          }),
+        ]
+      )
+    ).resolves.toBe("basic-1");
+  });
+
+  test("chooses the highest-scoring matching table with capacity", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        [
+          makeTable({
+            id: "occupied",
+            name: "1",
+            tags: ["tier:basic"],
+            positionX: "0",
+            positionY: "0",
+          }),
+          makeTable({
+            id: "near",
+            name: "2",
+            tags: ["tier:basic"],
+            positionX: "1",
+            positionY: "0",
+          }),
+          makeTable({
+            id: "far",
+            name: "3",
+            tags: ["tier:basic"],
+            positionX: "10",
+            positionY: "0",
+          }),
+        ],
+        [makeDotyposReservation({ tableId: "occupied", status: "CONFIRMED" })]
+      )
+    ).resolves.toBe("far");
+  });
+
+  test("scores against non-matching same-room workspace tables", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        [
+          makeTable({
+            id: "occupied-plus",
+            name: "1",
+            tags: ["tier:plus"],
+            positionX: "0",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "near-basic",
+            name: "2",
+            tags: ["tier:basic"],
+            positionX: "1",
+            positionY: "0",
+            locationName: "main",
+          }),
+          makeTable({
+            id: "far-basic",
+            name: "3",
+            tags: ["tier:basic"],
+            positionX: "10",
+            positionY: "0",
+            locationName: "main",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "occupied-plus",
+            status: "CONFIRMED",
+          }),
+        ]
+      )
+    ).resolves.toBe("far-basic");
+  });
+
+  test("chooses an unoccupied table over a farther partially occupied table", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        [
+          makeTable({
+            id: "occupied-reference",
+            name: "1",
+            tags: ["tier:basic"],
+            positionX: "0",
+            positionY: "0",
+          }),
+          makeTable({
+            id: "near-unoccupied",
+            name: "2",
+            tags: ["tier:basic"],
+            positionX: "0",
+            positionY: "0",
+          }),
+          makeTable({
+            id: "far-partially-occupied",
+            name: "3",
+            tags: ["tier:basic"],
+            seats: "2",
+            positionX: "10",
+            positionY: "0",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "occupied-reference",
+            status: "CONFIRMED",
+          }),
+          makeDotyposReservation({
+            tableId: "far-partially-occupied",
+            status: "CONFIRMED",
+          }),
+        ]
+      )
+    ).resolves.toBe("near-unoccupied");
   });
 
   test("ignores hidden, disabled, missing-id, inactive-flag, and unlabeled active visible virtual tables", async () => {
