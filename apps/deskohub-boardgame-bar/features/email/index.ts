@@ -25,12 +25,4 @@ export type {
   EmailSendResult,
   EmailTemplateData,
   EmailTemplateType,
-  ReservationConfirmationData,
 } from "@deskohub/email/types/email.types";
-// Direct email sending functions (used by webhooks)
-export { sendNewReservationNotification } from "./backend/send-reservation-notification";
-export {
-  sendReservationConfirmedEmail,
-  sendReservationCreatedEmail,
-  sendReservationDeclinedEmail,
-} from "./backend/send-reservation-status-email";
