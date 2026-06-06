@@ -18,6 +18,7 @@ import {
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
+import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -54,17 +55,6 @@ const statusIconWrapperVariants = cva(
     },
   }
 );
-
-const formatReservationDate = (date: string, locale: Locale) => {
-  try {
-    return new Intl.DateTimeFormat(locale, {
-      dateStyle: "full",
-      timeZone: "UTC",
-    }).format(new Date(`${date}T00:00:00.000Z`));
-  } catch {
-    return date;
-  }
-};
 
 const getStatusCopy = (
   status: CheckoutStatusKind,
@@ -153,7 +143,7 @@ const getSummaryRows = (
     },
     {
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
-      value: formatReservationDate(summary.date, locale),
+      value: formatReservationDisplayDate(summary.date, locale),
     },
     summary.coffee
       ? {
@@ -186,7 +176,7 @@ const getFulfillmentFailedContactMessage = (
     ? getWorkspaceProductTierTitle(status.summary.tier, locale)
     : m.checkoutStatusMissingSummary({}, { locale });
   const date = status.summary
-    ? formatReservationDate(status.summary.date, locale)
+    ? formatReservationDisplayDate(status.summary.date, locale)
     : m.checkoutStatusMissingSummary({}, { locale });
 
   return m.checkoutStatusFulfillmentFailedContactMessage(

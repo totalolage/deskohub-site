@@ -22,6 +22,7 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
@@ -60,16 +61,8 @@ const getCustomerName = (customer: Customer) =>
   customer.email?.trim() ||
   "Workspace customer";
 
-const formatReservationDate = (
-  reservation: WorkspaceReservation,
-  locale: Locale
-) =>
-  (
-    reservation.reservationCreatedAt ?? reservation.createdAt
-  ).toLocaleDateString(locale, {
-    dateStyle: "full",
-    timeZone: "Europe/Prague",
-  });
+const getReservationDisplayDate = (reservation: WorkspaceReservation) =>
+  reservation.reservationCreatedAt ?? reservation.createdAt;
 
 const workspaceAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
 
@@ -112,7 +105,10 @@ const createReservationDetailRows = (
   const rows: EmailDetailRow[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
-      formatReservationDate(reservation, locale),
+      formatReservationDisplayDate(
+        getReservationDisplayDate(reservation),
+        locale
+      ),
     ],
     [
       m.reservationEmailTierLabel({}, { locale }),
