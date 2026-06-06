@@ -35,6 +35,11 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import {
+  formatReservationDisplayDate,
+  parseReservationInputDate,
+} from "@/features/reservation/reservation-date";
 import {
   getAllowedMonitorOptionsForTier,
   getReservationSchema,
@@ -177,26 +182,12 @@ const formatDateForInput = (date: Date) => {
 const addMonthsToInputDate = (date: string, months: number) =>
   Temporal.PlainDate.from(date).add({ months }).toString();
 
-const parseInputDate = (date: string) => {
-  if (!date) {
-    return undefined;
-  }
-
-  return new Date(`${date}T12:00:00`);
-};
-
-const formatDisplayDate = (date: string, locale: Locale) => {
-  const parsedDate = parseInputDate(date);
-
-  if (!parsedDate) {
-    return m.reservationDatePlaceholder({}, { locale });
-  }
-
-  return parsedDate.toLocaleDateString(locale, {
-    dateStyle: "full",
-    timeZone: "Europe/Prague",
-  });
-};
+const formatDisplayDate = (date: string, locale: Locale) =>
+  formatReservationDisplayDate(
+    date,
+    locale,
+    m.reservationDatePlaceholder({}, { locale })
+  );
 
 const getSanitizedUtmParams = (
   searchParams: URLSearchParams
@@ -281,6 +272,13 @@ export function ReservationForm({
     isSelectedTierUnavailable ||
     isSelectedMonitorUnavailable ||
     isSelectedDateUnavailable;
+  const selectedReservationUnavailableMessage =
+    getReservationAvailabilityUnavailableMessage({
+      date: selectedDate,
+      dateFallback: m.reservationDatePlaceholder({}, { locale }),
+      locale,
+      tier: selectedTier,
+    });
 
   const { executeAsync: sendReservation, isExecuting: isSendingReservation } =
     useAction(preparePayState, {
@@ -376,7 +374,7 @@ export function ReservationForm({
     if (isSelectedReservationUnavailable) {
       setSubmissionMessage({
         status: "error",
-        text: m.reservationAvailabilityUnavailable({}, { locale }),
+        text: selectedReservationUnavailableMessage,
       });
       return;
     }
@@ -592,7 +590,7 @@ export function ReservationForm({
                       <PopoverContent align="start" className="w-auto p-3">
                         <Calendar
                           mode="single"
-                          selected={parseInputDate(field.value)}
+                          selected={parseReservationInputDate(field.value)}
                           onSelect={(date) => {
                             if (!date) {
                               return;
@@ -847,9 +845,7 @@ export function ReservationForm({
                   className="flex items-start gap-2 rounded-2xl border border-burned-orange/20 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue"
                 >
                   <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-burned-orange" />
-                  <span>
-                    {m.reservationAvailabilityUnavailable({}, { locale })}
-                  </span>
+                  <span>{selectedReservationUnavailableMessage}</span>
                 </p>
               )}
               {isAvailabilityLoading && !submissionMessage && (

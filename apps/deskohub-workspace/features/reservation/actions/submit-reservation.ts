@@ -5,13 +5,37 @@ import {
   CheckoutService,
   CheckoutServiceLiveWithDependencies,
 } from "@/features/checkout/backend/checkout.service";
+import { openPayState } from "@/features/checkout/backend/pay-state.server";
 import { m } from "@/features/i18n";
 import {
   getSubmitReservationCheckoutLocale,
   getSubmitReservationSchema,
+  type SubmitReservationInput,
 } from "@/features/reservation/actions/submit-reservation-input";
+import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+
+const getSubmitReservationErrorMessage = (
+  error: { readonly message: string },
+  input: SubmitReservationInput
+) => {
+  if (error.message !== "workspace_table_unavailable") {
+    return m.reservationErrorMessage({}, { locale: input.locale });
+  }
+
+  try {
+    const payState = openPayState(input.payStateToken);
+
+    return getReservationAvailabilityUnavailableMessage({
+      date: payState.reservation.date,
+      locale: input.locale,
+      tier: payState.reservation.entryTier,
+    });
+  } catch {
+    return m.reservationErrorMessage({}, { locale: input.locale });
+  }
+};
 
 const submitReservationAction = createEffectSafeAction(
   getSubmitReservationSchema(),
@@ -42,13 +66,7 @@ const submitReservationAction = createEffectSafeAction(
         Effect.mapError(
           (error) =>
             new PublicSafeActionError({
-              message:
-                error.message === "workspace_table_unavailable"
-                  ? m.reservationAvailabilityUnavailable(
-                      {},
-                      { locale: input.locale }
-                    )
-                  : m.reservationErrorMessage({}, { locale: input.locale }),
+              message: getSubmitReservationErrorMessage(error, input),
               cause: error,
             })
         )
