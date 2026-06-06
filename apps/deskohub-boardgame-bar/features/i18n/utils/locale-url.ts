@@ -24,6 +24,16 @@ export function pathnameHasLocale(pathname: string): boolean {
   return pathnameHasLocaleShared(pathname, locales);
 }
 
+export function getLocalizedHref(href: string, locale: Locale): string {
+  if (!href.startsWith("/") || href.startsWith("//")) return href;
+
+  const suffixIndex = href.search(/[?#]/);
+  const pathname = suffixIndex === -1 ? href : href.slice(0, suffixIndex);
+  const suffix = suffixIndex === -1 ? "" : href.slice(suffixIndex);
+
+  return `${setLocaleInPathname(pathname, locale)}${suffix}`;
+}
+
 export function getAllLocalizedPaths(pathname: string) {
   return getLocalizedPathVariants(pathname, locales);
 }

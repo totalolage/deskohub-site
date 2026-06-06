@@ -1,10 +1,9 @@
 "use client";
 
 import Image from "next/image";
-import Link from "next/link";
 import { useEffect } from "react";
 import logoImage from "@/assets/images/logo/for-dark-bg.png";
-import { LanguageSwitcher, m, setLocale } from "@/features/i18n";
+import { LanguageSwitcher, LocalizedLink, m, setLocale } from "@/features/i18n";
 import { useLocale } from "@/features/i18n/utils/use-locale";
 import { MobileMenu } from "./mobile-menu";
 import { ReservationButton } from "./reservation-button";
@@ -26,7 +25,7 @@ export function Header() {
   return (
     <header className="bg-gray-900 text-white px-6 sticky top-0 z-20 safe-padding-top flex items-center justify-center">
       <div className="flex items-center justify-between max-w-7xl w-full gap-x-8 min-h-[var(--header-height)]">
-        <Link href="/">
+        <LocalizedLink href="/">
           <Image
             src={logoImage}
             alt={m["altText.deskohub"]()}
@@ -34,38 +33,44 @@ export function Header() {
             height={80}
             priority
           />
-        </Link>
+        </LocalizedLink>
         <nav className="hidden xl:flex space-x-8">
-          <Link href="/" className="hover:text-green-400 transition-colors">
+          <LocalizedLink
+            href="/"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.home"]()}
-          </Link>
-          <Link
+          </LocalizedLink>
+          <LocalizedLink
             href="/board-games"
             className="hover:text-green-400 transition-colors"
           >
             {m["nav.boardGames"]()}
-          </Link>
-          <Link
+          </LocalizedLink>
+          <LocalizedLink
             href="/gallery"
             className="hover:text-green-400 transition-colors"
           >
             {m["nav.gallery"]()}
-          </Link>
-          <Link href="/menu" className="hover:text-green-400 transition-colors">
+          </LocalizedLink>
+          <LocalizedLink
+            href="/menu"
+            className="hover:text-green-400 transition-colors"
+          >
             {m["nav.menu"]()}
-          </Link>
-          <Link
+          </LocalizedLink>
+          <LocalizedLink
             href="/training-room"
             className="hover:text-green-400 transition-colors"
           >
             {m["nav.trainingRoom"]()}
-          </Link>
-          <Link
+          </LocalizedLink>
+          <LocalizedLink
             href="/contact"
             className="hover:text-green-400 transition-colors"
           >
             {m["nav.contact"]()}
-          </Link>
+          </LocalizedLink>
         </nav>
         <div className="flex items-center space-x-4">
           <div className="hidden xl:flex items-center space-x-4">

@@ -2,10 +2,9 @@
 
 import { Menu } from "lucide-react";
 import Image from "next/image";
-import Link from "next/link";
 import { useState } from "react";
 import logoImage from "@/assets/images/logo/for-dark-bg.png";
-import { LanguageSwitcher, m, setLocale } from "@/features/i18n";
+import { LanguageSwitcher, LocalizedLink, m, setLocale } from "@/features/i18n";
 import { useLocale } from "@/features/i18n/utils/use-locale";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -80,14 +79,14 @@ export function MobileMenu() {
 
           <nav className="flex flex-col gap-2 mt-6">
             {navigationItems.map((item) => (
-              <Link
+              <LocalizedLink
                 key={item.label}
                 href={item.href}
                 className="flex items-center px-4 py-3 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors duration-200 font-medium"
                 onClick={() => setIsOpen(false)}
               >
                 {item.text()}
-              </Link>
+              </LocalizedLink>
             ))}
           </nav>
 

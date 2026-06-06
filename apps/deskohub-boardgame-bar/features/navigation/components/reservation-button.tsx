@@ -1,9 +1,8 @@
 "use client";
 
 import { Calendar } from "lucide-react";
-import Link from "next/link";
 import type { ComponentProps } from "react";
-import { m } from "@/features/i18n";
+import { LocalizedLink, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import { siteConstants } from "@/shared/utils/constants";
 
@@ -33,11 +32,11 @@ export function ReservationButton({
       : `bg-green-500 hover:bg-green-600 text-white ${className}`;
 
   return (
-    <Link href="/reservation">
+    <LocalizedLink href="/reservation">
       <Button size={size} className={buttonClasses} onClick={onClick}>
         {showIcon && <Calendar className="h-4 w-4 mr-2" />}
         {m["buttons.reservation"]()}
       </Button>
-    </Link>
+    </LocalizedLink>
   );
 }
