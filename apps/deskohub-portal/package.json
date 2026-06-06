@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "astro build",
+    "vercel-build": "turbo build",
     "i18n:compile": "bunx @inlang/paraglide-js compile --project ./project.inlang --outdir ./features/i18n/paraglide",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
     "dev:site": "astro dev --host 127.0.0.1 --port 4321 --strictPort",
