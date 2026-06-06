@@ -7,24 +7,6 @@
     "packages/*"
   ],
   "type": "module",
-  "scripts": {
-    "build:boardgame": "turbo run build --filter=deskohub-boardgame-bar",
-    "build:portal": "turbo run build --filter=deskohub-portal",
-    "build:workspace": "turbo run build --filter=deskohub-workspace",
-    "dev:boardgame": "turbo run dev --filter=deskohub-boardgame-bar",
-    "dev:portal": "turbo run dev --filter=deskohub-portal",
-    "dev:workspace": "turbo run dev --filter=deskohub-workspace",
-    "lint:boardgame": "turbo run lint --filter=deskohub-boardgame-bar",
-    "lint:portal": "turbo run lint --filter=deskohub-portal",
-    "lint:workspace": "turbo run lint --filter=deskohub-workspace",
-    "start:portal": "turbo run start --filter=deskohub-portal",
-    "typecheck:boardgame": "turbo run typecheck --filter=deskohub-boardgame-bar",
-    "typecheck:portal": "turbo run typecheck --filter=deskohub-portal",
-    "typecheck:workspace": "turbo run typecheck --filter=deskohub-workspace",
-    "format": "bunx biome check --write --unsafe .",
-    "generate:dotypos": "turbo run generate --filter=@deskohub/dotypos",
-    "generate:nexi": "turbo run generate --filter=@deskohub/nexi"
-  },
   "devDependencies": {
     "@biomejs/biome": "^2.3.10",
     "@types/bun": "^1.3.4",
