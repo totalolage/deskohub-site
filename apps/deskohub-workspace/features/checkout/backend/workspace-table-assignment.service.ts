@@ -4,20 +4,22 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
 import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
+import {
+  getWorkspaceTableOccupancyById,
+  workspaceBookingGuestCount,
+} from "@/features/checkout/backend/workspace-table-occupancy";
+import {
+  getWorkspaceTableCandidates,
+  selectWorkspaceTableFromCandidates,
+} from "@/features/checkout/backend/workspace-table-selection";
 import {
   getWorkspaceProductByTier,
   isWorkspaceProductMonitorOption,
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
-
-const tableNameCollator = new Intl.Collator("en", {
-  numeric: true,
-  sensitivity: "base",
-});
 
 export interface WorkspaceTableAssignmentService {
   readonly assignTableId: (
@@ -88,23 +90,33 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ tables, reservations });
           yield* Effect.logInfo("Workspace table assignment inventory loaded");
 
-          const occupiedTableIds = yield* getOccupiedTableIds(
+          const day = yield* Effect.try({
+            try: () => Temporal.PlainDate.from(reservation.date),
+            catch: () =>
+              new ValidationError({
+                message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${reservation.date}`,
+              }),
+          });
+          const occupancyByTableId = getWorkspaceTableOccupancyById(
             reservations,
-            reservation.date
+            day
           );
           yield* Effect.annotateLogsScoped({
-            occupiedTableIds: Array.from(occupiedTableIds),
+            occupancyByTableId: Object.fromEntries(occupancyByTableId),
           });
 
-          const matchingTables = [...tables]
-            .filter((table) => isAssignableTable(table, requiredTags))
-            .sort(compareTables);
+          const matchingTables = getWorkspaceTableCandidates(
+            tables,
+            requiredTags
+          );
           yield* Effect.annotateLogsScoped({ matchingTables });
 
-          const matchingTable = matchingTables.find((table) => {
-            const tableId = getAssignableDotyposTableId(table);
-            return tableId && !occupiedTableIds.has(tableId);
-          });
+          const matchingTable = selectWorkspaceTableFromCandidates(
+            matchingTables,
+            tables,
+            occupancyByTableId,
+            workspaceBookingGuestCount
+          );
           const matchingTableId = matchingTable
             ? getAssignableDotyposTableId(matchingTable)
             : undefined;
@@ -156,76 +168,3 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
     });
   })
 );
-
-const isAssignableTable = (table: Table, requiredTags: readonly string[]) => {
-  const tableTags = new Set(table.tags ?? []);
-
-  return (
-    getAssignableDotyposTableId(table) !== undefined &&
-    table.enabled === true &&
-    table.display === true &&
-    requiredTags.every((tag) => tableTags.has(tag))
-  );
-};
-
-const compareTables = (left: Table, right: Table) => {
-  const nameComparison = tableNameCollator.compare(left.name, right.name);
-
-  if (nameComparison !== 0) return nameComparison;
-
-  return (left.id ?? "").localeCompare(right.id ?? "");
-};
-
-const getOccupiedTableIds = (
-  reservations: readonly Reservation[],
-  date: string
-): Effect.Effect<Set<string>, ValidationError> =>
-  Effect.gen(function* () {
-    const day = yield* Effect.try({
-      try: () => Temporal.PlainDate.from(date),
-      catch: () =>
-        new ValidationError({
-          message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
-        }),
-    });
-    const dayRange = getPragueDayRange(day);
-    const occupied = new Set<string>();
-
-    for (const reservation of reservations) {
-      if (reservation.status === "CANCELLED") continue;
-      if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
-        continue;
-      }
-      if (!reservation._tableId) continue;
-
-      const reservationStart = Date.parse(reservation.startDate);
-      const reservationEnd = Date.parse(reservation.endDate);
-      if (
-        !Number.isFinite(reservationStart) ||
-        !Number.isFinite(reservationEnd)
-      ) {
-        continue;
-      }
-
-      if (
-        reservationStart < dayRange.endMs &&
-        reservationEnd > dayRange.startMs
-      ) {
-        occupied.add(reservation._tableId);
-      }
-    }
-
-    return occupied;
-  });
-
-const getPragueDayRange = (date: Temporal.PlainDate) => {
-  const startMs = date
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-  const endMs = date
-    .add({ days: 1 })
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-
-  return { startMs, endMs };
-};

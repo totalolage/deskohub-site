@@ -14,6 +14,7 @@ const makeTable = (input: {
   readonly id: string;
   readonly tags: readonly string[];
   readonly name?: string;
+  readonly seats?: string;
   readonly display?: boolean;
   readonly enabled?: boolean;
 }): Table => ({
@@ -21,6 +22,7 @@ const makeTable = (input: {
   display: true,
   enabled: true,
   name: input.name ?? input.id,
+  seats: "1",
   ...input,
   tags: [...input.tags],
 });
@@ -28,6 +30,7 @@ const makeTable = (input: {
 const makeReservation = (input: {
   readonly tableId: string;
   readonly status: Reservation["status"];
+  readonly seats?: string;
   readonly startDate?: string;
   readonly endDate?: string;
 }): Reservation => ({
@@ -36,6 +39,7 @@ const makeReservation = (input: {
   _tableId: input.tableId,
   startDate: input.startDate ?? testStart,
   endDate: input.endDate ?? testEnd,
+  seats: input.seats ?? "1",
   status: input.status,
 });
 
@@ -197,6 +201,37 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(allBasicOccupied.unavailableTiers).toContain("basic");
+  });
+
+  test("keeps a table available until overlapping reservation seats reach capacity", async () => {
+    const partiallyOccupied = await getAvailability({
+      date: testDate,
+      entryTier: "basic",
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"], seats: "2" })],
+      reservations: [
+        makeReservation({ tableId: "basic-1", status: "NEW", seats: "1" }),
+      ],
+    });
+
+    expect(partiallyOccupied.unavailableDates).not.toContain(testDate);
+    expect(partiallyOccupied.unavailableTiers).not.toContain("basic");
+
+    const fullyOccupied = await getAvailability({
+      date: testDate,
+      entryTier: "basic",
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"], seats: "2" })],
+      reservations: [
+        makeReservation({ tableId: "basic-1", status: "NEW", seats: "1" }),
+        makeReservation({
+          tableId: "basic-1",
+          status: "CONFIRMED",
+          seats: "1",
+        }),
+      ],
+    });
+
+    expect(fullyOccupied.unavailableDates).toContain(testDate);
+    expect(fullyOccupied.unavailableTiers).toContain("basic");
   });
 
   test("ignores inactive, hidden, and untagged tables", async () => {

@@ -4,10 +4,14 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
+import type { Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer } from "effect";
-import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
 import { ReservationHoldCleanupService } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import {
+  getWorkspaceTableOccupancyById,
+  workspaceBookingGuestCount,
+} from "@/features/checkout/backend/workspace-table-occupancy";
+import { hasAvailableWorkspaceTableCandidate } from "@/features/checkout/backend/workspace-table-selection";
 import {
   getWorkspaceProductByTier,
   isWorkspaceProductMonitorOption,
@@ -126,12 +130,12 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ dates, date });
 
         const { tables, reservations } = yield* loadInventory();
-        const occupiedTableIdsByDate = new Map<string, Set<string>>();
+        const occupancyByDate = new Map<string, Map<string, number>>();
 
         for (const day of dates) {
-          occupiedTableIdsByDate.set(
+          occupancyByDate.set(
             plainDateToString(day),
-            getOccupiedTableIds(reservations, day)
+            getWorkspaceTableOccupancyById(reservations, day)
           );
         }
 
@@ -139,16 +143,16 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           .filter((day) =>
             isUnavailableForSelection(
               tables,
-              occupiedTableIdsByDate.get(plainDateToString(day)) ?? new Set(),
+              occupancyByDate.get(plainDateToString(day)) ?? new Map(),
               query.entryTier,
               query.monitorOption
             )
           )
           .map(plainDateToString);
 
-        const selectedDateOccupiedIds = date
-          ? getOccupiedTableIds(reservations, date)
-          : new Set<string>();
+        const selectedDateOccupancy = date
+          ? getWorkspaceTableOccupancyById(reservations, date)
+          : new Map<string, number>();
 
         const result = {
           date: query.date,
@@ -157,14 +161,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           unavailableDates,
           unavailableTiers: date
             ? workspaceProductTiers.filter((tier) =>
-                isTierUnavailable(tables, selectedDateOccupiedIds, tier)
+                isTierUnavailable(tables, selectedDateOccupancy, tier)
               )
             : [],
           unavailableMonitorOptions: date
             ? workspaceProductMonitorOptions.filter((option) =>
                 isMonitorOptionUnavailable(
                   tables,
-                  selectedDateOccupiedIds,
+                  selectedDateOccupancy,
                   option
                 )
               )
@@ -237,125 +241,66 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
 
 const isUnavailableForSelection = (
   tables: readonly Table[],
-  occupiedTableIds: ReadonlySet<string>,
+  occupancyByTableId: ReadonlyMap<string, number>,
   tier?: WorkspaceProductTier,
   monitorOption?: WorkspaceProductMonitorOption
 ) => {
   if (!tier) {
     return workspaceProductTiers.every((candidateTier) =>
-      isTierUnavailable(tables, occupiedTableIds, candidateTier)
+      isTierUnavailable(tables, occupancyByTableId, candidateTier)
     );
   }
 
   const product = getWorkspaceProductByTier(tier);
   if (!product.requiresMonitorOption) {
-    return isTierUnavailable(tables, occupiedTableIds, tier);
+    return isTierUnavailable(tables, occupancyByTableId, tier);
   }
 
   if (monitorOption) {
-    return isMonitorOptionUnavailable(tables, occupiedTableIds, monitorOption);
+    return isMonitorOptionUnavailable(
+      tables,
+      occupancyByTableId,
+      monitorOption
+    );
   }
 
   return product.allowedMonitorOptions.every((option) =>
-    isMonitorOptionUnavailable(tables, occupiedTableIds, option)
+    isMonitorOptionUnavailable(tables, occupancyByTableId, option)
   );
 };
 
 const isTierUnavailable = (
   tables: readonly Table[],
-  occupiedTableIds: ReadonlySet<string>,
+  occupancyByTableId: ReadonlyMap<string, number>,
   tier: WorkspaceProductTier
 ) => {
   const product = getWorkspaceProductByTier(tier);
 
   if (product.requiresMonitorOption) {
     return product.allowedMonitorOptions.every((option) =>
-      isMonitorOptionUnavailable(tables, occupiedTableIds, option)
+      isMonitorOptionUnavailable(tables, occupancyByTableId, option)
     );
   }
 
-  return !hasAvailableTable(tables, occupiedTableIds, [`tier:${tier}`]);
+  return !hasAvailableWorkspaceTableCandidate(
+    tables,
+    [`tier:${tier}`],
+    occupancyByTableId,
+    workspaceBookingGuestCount
+  );
 };
 
 const isMonitorOptionUnavailable = (
   tables: readonly Table[],
-  occupiedTableIds: ReadonlySet<string>,
+  occupancyByTableId: ReadonlyMap<string, number>,
   monitorOption: WorkspaceProductMonitorOption
 ) =>
-  !hasAvailableTable(tables, occupiedTableIds, [
-    "tier:profi",
-    ...workspaceProductMonitorOptionTableTags[monitorOption],
-  ]);
-
-const hasAvailableTable = (
-  tables: readonly Table[],
-  occupiedTableIds: ReadonlySet<string>,
-  requiredTags: readonly string[]
-) =>
-  tables.some((table) => {
-    const tableId = getAssignableTableId(table, requiredTags);
-    return Boolean(tableId && !occupiedTableIds.has(tableId));
-  });
-
-const getAssignableTableId = (
-  table: Table,
-  requiredTags: readonly string[]
-) => {
-  const tableId = getAssignableDotyposTableId(table);
-  if (!tableId) return undefined;
-  if (table.enabled !== true || table.display !== true) return undefined;
-
-  const tableTags = new Set(table.tags ?? []);
-  if (!requiredTags.every((tag) => tableTags.has(tag))) return undefined;
-
-  return tableId;
-};
-
-const getOccupiedTableIds = (
-  reservations: readonly Reservation[],
-  day: Temporal.PlainDate
-) => {
-  const occupied = new Set<string>();
-  const dayRange = getPragueDayRange(day);
-
-  for (const reservation of reservations) {
-    if (reservation.status === "CANCELLED") continue;
-    if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
-      continue;
-    }
-    if (!reservation._tableId) continue;
-
-    const reservationStart = Date.parse(reservation.startDate);
-    const reservationEnd = Date.parse(reservation.endDate);
-    if (
-      !Number.isFinite(reservationStart) ||
-      !Number.isFinite(reservationEnd)
-    ) {
-      continue;
-    }
-
-    if (
-      reservationStart < dayRange.endMs &&
-      reservationEnd > dayRange.startMs
-    ) {
-      occupied.add(reservation._tableId);
-    }
-  }
-
-  return occupied;
-};
-
-const getPragueDayRange = (date: Temporal.PlainDate) => {
-  const startMs = date
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-  const endMs = date
-    .add({ days: 1 })
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-
-  return { startMs, endMs };
-};
+  !hasAvailableWorkspaceTableCandidate(
+    tables,
+    ["tier:profi", ...workspaceProductMonitorOptionTableTags[monitorOption]],
+    occupancyByTableId,
+    workspaceBookingGuestCount
+  );
 
 const getDateRange = (from: string, to: string) =>
   Effect.gen(function* () {
