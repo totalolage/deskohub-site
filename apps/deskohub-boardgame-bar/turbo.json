@@ -23,7 +23,13 @@
         "CLOUDINARY_API_SECRET",
         "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
         "NEXT_PUBLIC_GTM_ID"
+      ],
+      "passThroughEnv": [
+        "FORM_DATA_ENC_SECRET"
       ]
+    },
+    "i18n:compile": {
+      "passThroughEnv": ["DOTYPOS_WEBHOOK_SECRET", "FORM_DATA_ENC_SECRET"]
     },
     "dev": {
       "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]

@@ -1,6 +1,13 @@
+import { createRequire } from "node:module";
 import type { CSSProperties, ReactNode } from "react";
 import { Fragment } from "react";
-import { renderToString } from "react-dom/server";
+
+// Turbopack rejects a static `react-dom/server` import when this module is
+// pulled into the app-route/server-component graph. Keep it behind require so
+// email rendering can stay server-only without breaking the Vercel build.
+const require = createRequire(import.meta.url);
+const { renderToString } =
+  require("react-dom/server") as typeof import("react-dom/server");
 
 export type EmailDetailRow = readonly [label: string, value: ReactNode];
 
