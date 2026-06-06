@@ -15,10 +15,6 @@
         "VERCEL_URL"
       ]
     },
-    "build:vercel": {
-      "dependsOn": ["db:migrate", "build"],
-      "cache": false
-    },
     "db:migrate": {
       "cache": false,
       "env": ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]
