@@ -4,7 +4,10 @@ import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../route";
 
-const choiceQrLocale = (locale: Locale) => (locale === "cs-CZ" ? "cz" : "en");
+const choiceQrLocale: Record<Locale, string> = {
+  "cs-CZ": "cs",
+  "en-US": "en",
+};
 
 export const generateMetadata = metadata({
   title: m["reservation.pageTitle"](),
@@ -20,13 +23,10 @@ export default async function ReservationPage({ params }: RouteProps_locale) {
   }
 
   return (
-    <div className="container py-8 px-4 xl:max-w-5xl">
-      <iframe
-        className="mx-auto h-[620px] w-full max-w-[360px] rounded-lg border-0"
-        src={`https://embed.choiceqr.com/booking/deskohub?lang=${choiceQrLocale(locale)}`}
-        style={{ border: "none" }}
-        title={m["tableReservation.pageTitle"]()}
-      />
-    </div>
+    <iframe
+      className="h-full w-full min-h-[calc(100dvh-var(--header-height))] "
+      src={`https://embed.choiceqr.com/booking/deskohub?lang=${choiceQrLocale[locale]}`}
+      title={m["tableReservation.pageTitle"]()}
+    />
   );
 }
