@@ -4,6 +4,7 @@ import { withBotId } from "botid/next/config";
 const nextConfig = {
   transpilePackages: [
     "@deskohub/cloudinary",
+    "@deskohub/cloudinary-image",
     "@deskohub/dotypos",
     "@deskohub/email",
     "@deskohub/reservation",

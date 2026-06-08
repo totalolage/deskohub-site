@@ -1,8 +1,8 @@
 import type { UnnormalizedLogicalExpression } from "@deskohub/cloudinary";
+import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { cva, type VariantProps } from "class-variance-authority";
 import type { ReactNode } from "react";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
-import { CloudinaryImage } from "@/features/gallery/components/cloudinary-image";
 import type { CloudinaryTag } from "@/features/gallery/types/cloudinary-tag";
 import { generateBlurDataUrl } from "@/features/gallery/utils/generate-blur-data-url";
 import { cn } from "@/shared/utils";

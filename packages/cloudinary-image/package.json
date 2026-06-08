@@ -1,0 +1,15 @@
+{
+  "name": "@deskohub/cloudinary-image",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./cloudinary-image": "./src/cloudinary-image.tsx"
+  },
+  "dependencies": {
+    "@deskohub/cloudinary": "workspace:*",
+    "next-cloudinary": "^6.16.0",
+    "react": "^19.1.0"
+  }
+}

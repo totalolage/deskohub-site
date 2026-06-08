@@ -1,5 +1,6 @@
 "use client";
 
+import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { track } from "@vercel/analytics";
 import { use, useState } from "react";
 import Lightbox from "yet-another-react-lightbox";
@@ -7,7 +8,6 @@ import { Card } from "@/shared/components/ui/card";
 import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
-import { CloudinaryImage } from "./cloudinary-image";
 
 interface ClientGalleryProps {
   imagesPromise: Promise<readonly CloudinaryAsset[]>;
