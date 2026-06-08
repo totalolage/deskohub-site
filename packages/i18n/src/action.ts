@@ -11,7 +11,7 @@ export function createLocaleActionMiddleware<Locale extends string>({
   fallbackLocale,
   setLocale,
 }: CreateLocaleActionMiddlewareOptions<Locale>) {
-  return createMiddleware<{ ctx: {} }>().define<{ locale: Locale }>(
+  return createMiddleware<{ ctx: object }>().define<{ locale: Locale }>(
     async ({ next }) => {
       const locale = (await resolveLocale()) ?? fallbackLocale;
       setLocale(locale);

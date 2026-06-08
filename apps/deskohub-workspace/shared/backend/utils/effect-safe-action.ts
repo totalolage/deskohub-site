@@ -29,16 +29,18 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
   return actionClient
     .inputSchema(schema)
     .action(async ({ parsedInput, ctx }) => {
+      const { locale } = ctx as { locale: Locale };
+
       const program = Effect.gen(function* () {
         yield* Effect.logDebug("Safe action executed").pipe(
           Effect.annotateLogs({
-            locale: ctx.locale,
+            locale,
             input: parsedInput,
           })
         );
 
         const result = yield* handler(parsedInput, {
-          locale: ctx.locale,
+          locale,
         });
 
         yield* Effect.logDebug("Action completed successfully");
@@ -49,7 +51,7 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
         ),
         Effect.withSpan("safeAction", {
           attributes: {
-            "action.locale": ctx.locale,
+            "action.locale": locale,
           },
         }),
         Effect.provide(layers),
