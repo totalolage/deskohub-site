@@ -6,6 +6,7 @@ import CornerAccent from "@/shared/components/icons/corner-accent";
 import Understroke1 from "@/shared/components/icons/understroke-1";
 import Understroke2 from "@/shared/components/icons/understroke-2";
 import { Button } from "@/shared/components/ui/button";
+import type { VariableStyle } from "@/shared/utils";
 import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
@@ -18,6 +19,11 @@ type LandingPageHeroSectionProps = {
   reservationHref: string;
   eventsHref: string;
 };
+
+export const landingPageHeroVars: VariableStyle<"hero-bottom-section-height"> =
+  {
+    "--hero-bottom-section-height": "16rem",
+  };
 
 export function LandingPageHeroSection({
   locale,
@@ -81,7 +87,7 @@ export function LandingPageHeroSection({
   );
 
   const orangeMaskSection = (
-    <div className="relative min-h-[var(--hero-bottom-section-height)]">
+    <div className="relative min-h-(--hero-bottom-section-height)">
       <div className="absolute inset-0 top-8">
         <div
           className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
@@ -112,7 +118,7 @@ export function LandingPageHeroSection({
     <LandingPageHeroScrollScene
       background={<Background />}
       bottomSection={orangeMaskSection}
-      className="relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white [--hero-bottom-section-height:16rem]"
+      className="relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white"
       id={overviewSectionId}
     >
       {heroContent}
@@ -128,13 +134,13 @@ function Background() {
         alt="Deskohub workspace interior"
         fill
         priority
-        className="object-cover object-center"
+        className="object-cover object-right"
       />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_bottom_center,rgba(0,2,79,0.2)_20%,rgba(0,2,79,0.8)_50%,rgba(0,2,79,0.8)_100%)]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_16%_18%,rgba(255,255,255,0.08),transparent_22%),radial-gradient(circle_at_88%_20%,rgba(236,164,35,0.34),transparent_18%),radial-gradient(circle_at_64%_80%,rgba(221,72,10,0.22),transparent_22%)]" />
       <div className="absolute right-0 top-28 h-56 w-56 translate-x-1/4 rotate-45 rounded-[2.75rem] border border-white/10 bg-burned-orange/50 shadow-[0_20px_80px_-20px_rgba(221,72,10,0.95)]" />
       <div className="absolute right-28 top-30 h-20 w-20 rotate-45 rounded-[1.25rem] border border-white/12 bg-burned-orange/50" />
-      <div className="absolute left-[-4.5rem] top-[55%] h-30 w-40 -translate-y-1/2 text-sunset-yellow/60">
+      <div className="absolute -left-18 top-[55%] h-30 w-40 -translate-y-1/2 text-sunset-yellow/60">
         <LandingPageHexagon />
       </div>
       {/* <div className="absolute inset-x-0 bottom-0 h-32 bg-[linear-gradient(180deg,transparent_0%,rgb(245,124,0)_100%)]" /> */}
