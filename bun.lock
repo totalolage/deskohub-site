@@ -225,6 +225,8 @@
       "version": "0.1.0",
       "dependencies": {
         "effect": "^3.17.2",
+      },
+      "peerDependencies": {
         "next": "^16.2.6",
         "next-safe-action": "^8.0.7",
       },

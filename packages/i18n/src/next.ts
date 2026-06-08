@@ -14,6 +14,15 @@ import {
 type LocaleList<Locale extends string> = readonly Locale[];
 
 type RequestHeadersLike = Pick<Headers, "get">;
+type RequestPathnameLike = { nextUrl: { pathname: string } };
+type RequestCookiesLike = {
+  cookies: { get: (name: string) => { value: string } | undefined };
+};
+type ResponseCookiesLike = {
+  cookies: {
+    set: (name: string, value: string, options?: LocaleCookieOptions) => void;
+  };
+};
 
 export const PATHNAME_HEADER_NAME = "x-pathname";
 
@@ -48,14 +57,14 @@ export function createMiddlewareChain(
 }
 
 export function getLocaleFromRequestPathname<Locale extends string>(
-  request: Pick<NextRequest, "nextUrl">,
+  request: RequestPathnameLike,
   locales: LocaleList<Locale>
 ): Locale | undefined {
   return getLocaleFromPathname(request.nextUrl.pathname, locales);
 }
 
 export function readLocaleCookie(
-  request: Pick<NextRequest, "cookies">,
+  request: RequestCookiesLike,
   cookieName: string
 ): string | undefined {
   return request.cookies.get(cookieName)?.value;
@@ -67,7 +76,7 @@ type LocaleCookieOptions = {
 };
 
 export function setLocaleCookie<Locale extends string>(
-  response: Pick<NextResponse, "cookies">,
+  response: ResponseCookiesLike,
   cookieName: string,
   locale: Locale,
   options: LocaleCookieOptions = {}
@@ -79,7 +88,8 @@ export function setLocaleCookie<Locale extends string>(
 }
 
 type ResolveRequestLocaleOptions<Locale extends string> = {
-  request: Pick<NextRequest, "nextUrl" | "headers" | "cookies">;
+  request: RequestPathnameLike &
+    RequestCookiesLike & { headers: RequestHeadersLike };
   localeConfig: LocaleConfig<Locale>;
   localeCookieName: string;
 };
