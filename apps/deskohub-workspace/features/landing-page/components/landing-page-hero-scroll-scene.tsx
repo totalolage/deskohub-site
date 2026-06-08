@@ -38,7 +38,7 @@ export function LandingPageHeroScrollScene({
   return (
     <section className={className} id={id} ref={sectionRef}>
       <motion.div
-        className="absolute inset-x-0 -top-[24vh] -bottom-[32vh] -z-1 will-change-transform"
+        className="absolute inset-x-0 -top-[24dvh] -bottom-[32dvh] -z-1 will-change-transform"
         style={
           shouldReduceMotion
             ? undefined
@@ -48,7 +48,7 @@ export function LandingPageHeroScrollScene({
         {background}
       </motion.div>
 
-      <Container className="mx-auto flex min-h-[calc(100vh-var(--site-header-height)-var(--hero-bottom-section-height))] w-full flex-col items-center justify-center pb-28 text-center">
+      <Container className="mx-auto flex min-h-[calc(100dvh-var(--site-header-height)-var(--hero-bottom-section-height))] w-full flex-col items-center justify-center pb-28 text-center">
         <motion.div
           className="relative z-1 flex flex-col items-center text-center"
           style={
