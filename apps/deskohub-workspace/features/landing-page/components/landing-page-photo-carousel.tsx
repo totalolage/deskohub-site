@@ -122,7 +122,7 @@ const getSlideZIndex = (offset: SlideOffset) => {
   return 0;
 };
 
-const AUTO_PLAY_INTERVAL = 10000;
+const AUTO_PLAY_INTERVAL = 3600;
 export function LandingPagePhotoCarousel({
   imagesPromise,
   className,
