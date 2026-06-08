@@ -18,7 +18,7 @@ import { cn } from "@/shared/utils";
 import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
 import { LandingPageHexagon } from "./landing-page-hexagon";
-import { LandingPageUniverseBackgroundNoise } from "./landing-page-universe-section";
+import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
 type LandingPageHeroSectionProps = {
   locale: Locale;
@@ -148,10 +148,10 @@ export function LandingPageHeroSection({
               maskSize: "cover",
             }}
           >
-            <LandingPageUniverseBackgroundNoise className="bg-bottom" />
+            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
           </div>
           <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
-            <LandingPageUniverseBackgroundNoise className="bg-bottom" />
+            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
           </div>
           <div
             className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
@@ -160,7 +160,7 @@ export function LandingPageHeroSection({
               maskSize: "cover",
             }}
           >
-            <LandingPageUniverseBackgroundNoise className="bg-bottom" />
+            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
           </div>
         </div>
       </div>

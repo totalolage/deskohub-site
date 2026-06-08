@@ -4,8 +4,8 @@ import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageExperiencesSection } from "./landing-page-experiences-section";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
 import { LandingPageHeroSection } from "./landing-page-hero-section";
+import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
-import { LandingPageUniverseSection } from "./landing-page-universe-section";
 import { LandingPageWorkspaceSection } from "./landing-page-workspace-section";
 
 type LandingPageProps = {
@@ -29,7 +29,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         eventsHref={localizedHash(`#${siteHeaderSectionIds.events}`)}
       />
 
-      <LandingPageUniverseSection locale={locale} />
+      <LandingPagePhotoCarouselSection />
 
       <LandingPageWorkspaceSection
         locale={locale}
