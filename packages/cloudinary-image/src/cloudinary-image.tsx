@@ -2,7 +2,6 @@
 
 import type { CloudinaryAsset } from "@deskohub/cloudinary";
 import { CldImage, type CldImageProps } from "next-cloudinary";
-import type { CSSProperties } from "react";
 
 type ImageSize = number | "fill";
 type CloudinaryImageVariant = "hero" | "gallery" | "thumbnail" | "full";
@@ -88,7 +87,7 @@ export function CloudinaryImage({
     finalProps = { ...restConfig, fill: true };
   }
 
-  const positioningStyle: CSSProperties = {
+  const positioningStyle: CldImageProps["style"] = {
     backgroundSize: config.crop === "fill" ? "cover" : "contain",
     objectFit: config.crop === "fill" ? "cover" : "contain",
     ...style,
