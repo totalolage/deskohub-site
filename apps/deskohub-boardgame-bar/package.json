@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@deskohub/cloudinary": "workspace:*",
+    "@deskohub/cloudinary-image": "workspace:*",
     "@deskohub/dotypos": "workspace:*",
     "@deskohub/email": "workspace:*",
     "@deskohub/i18n": "workspace:*",

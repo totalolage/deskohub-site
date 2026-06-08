@@ -1,9 +1,9 @@
 "use client";
 
+import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { use, useEffect, useRef, useState } from "react";
 import { cn } from "@/shared/utils";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
-import { CloudinaryImage } from "./cloudinary-image";
 
 interface GalleryHeaderProps {
   imagesPromise: Promise<readonly CloudinaryAsset[]>;
