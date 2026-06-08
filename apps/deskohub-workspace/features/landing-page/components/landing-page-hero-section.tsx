@@ -1,4 +1,3 @@
-import { DoorOpen, type LucideIcon, MapPin, Sparkles } from "lucide-react";
 import Image, { getImageProps } from "next/image";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
@@ -7,13 +6,6 @@ import CornerAccent from "@/shared/components/icons/corner-accent";
 import Understroke1 from "@/shared/components/icons/understroke-1";
 import Understroke2 from "@/shared/components/icons/understroke-2";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
-import { cn } from "@/shared/utils";
 import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
@@ -33,28 +25,6 @@ export function LandingPageHeroSection({
   reservationHref,
   eventsHref,
 }: LandingPageHeroSectionProps) {
-  const heroHighlights: Array<{
-    icon: LucideIcon;
-    label: string;
-    text: string;
-  }> = [
-    {
-      icon: DoorOpen,
-      label: m.landingHeroStatOneLabel({}, { locale }),
-      text: m.landingHeroStatOneValue({}, { locale }),
-    },
-    {
-      icon: Sparkles,
-      label: m.landingHeroStatTwoLabel({}, { locale }),
-      text: m.landingHeroStatTwoValue({}, { locale }),
-    },
-    {
-      icon: MapPin,
-      label: m.landingHeroStatThreeLabel({}, { locale }),
-      text: m.landingHeroStatThreeValue({}, { locale }),
-    },
-  ];
-
   const { props: cornerMaskProps } = getImageProps({
     ...cornerMask,
     width: 128,
@@ -110,29 +80,8 @@ export function LandingPageHeroSection({
     </>
   );
 
-  const statsPeek = (
-    <div className="relative min-h-[var(--stats-peek-height)]">
-      <Card className="relative z-10 mx-auto bg-navy-blue max-w-fit">
-        <CardHeader>
-          <CardTitle className="text-white text-center">
-            {m.landingUiHeroStatsTitle({}, { locale })}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="flex flex-col md:flex-row gap-4 justify-around">
-          {heroHighlights.map((highlight) => (
-            <div key={highlight.label} className="px-4 py-4">
-              <div className="flex items-center gap-2 text-sm leading-6 text-white/84">
-                <highlight.icon className="h-5 w-5 shrink-0 text-sunset-yellow" />
-                <p>{highlight.label}</p>
-              </div>
-              <p className="mt-3 text-xl font-medium leading-tight text-white">
-                {highlight.text}
-              </p>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
+  const orangeMaskSection = (
+    <div className="relative min-h-[var(--hero-bottom-section-height)]">
       <div className="absolute inset-0 top-8">
         <div
           className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
@@ -162,12 +111,9 @@ export function LandingPageHeroSection({
   return (
     <LandingPageHeroScrollScene
       background={<Background />}
-      className={cn(
-        "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white",
-        "[--stats-peek-height:16rem]"
-      )}
+      bottomSection={orangeMaskSection}
+      className="relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white [--hero-bottom-section-height:16rem]"
       id={overviewSectionId}
-      statsPeek={statsPeek}
     >
       {heroContent}
     </LandingPageHeroScrollScene>
