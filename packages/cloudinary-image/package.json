@@ -9,7 +9,9 @@
   },
   "dependencies": {
     "@deskohub/cloudinary": "workspace:*",
-    "next-cloudinary": "^6.16.0",
-    "react": "^19.2.7"
+    "next-cloudinary": "^6.16.0"
+  },
+  "peerDependencies": {
+    "react": "^19.1.0"
   }
 }
