@@ -1,7 +1,7 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { motion, type Transition } from "motion/react";
+import { motion, type Transition, useReducedMotion } from "motion/react";
 import { use, useEffect, useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
@@ -52,6 +52,10 @@ const dotTransition: Transition = {
   type: "spring",
   stiffness: 420,
   damping: 32,
+};
+
+const instantTransition: Transition = {
+  duration: 0,
 };
 
 const getSlideMotion = (offset: SlideOffset) => {
@@ -124,21 +128,31 @@ export function LandingPagePhotoCarousel({
   className,
 }: LandingPagePhotoCarouselProps) {
   const images = use(imagesPromise);
+  const shouldReduceMotion = useReducedMotion();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isPointerOver, setIsPointerOver] = useState(false);
   const [isFocusWithin, setIsFocusWithin] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
   const isPaused = isPointerOver || isFocusWithin;
+  const activeSlideTransition = shouldReduceMotion
+    ? instantTransition
+    : slideTransition;
+  const activeDotTransition = shouldReduceMotion
+    ? instantTransition
+    : dotTransition;
+  const lightboxAnimation = shouldReduceMotion
+    ? { fade: 0, navigation: 0, swipe: 0 }
+    : undefined;
 
   useEffect(() => {
-    if (images.length <= 1 || isPaused) return;
+    if (images.length <= 1 || isPaused || shouldReduceMotion) return;
 
     const interval = setInterval(() => {
       setCurrentIndex((index) => index + 1);
     }, AUTO_PLAY_INTERVAL);
 
     return () => clearInterval(interval);
-  }, [images.length, isPaused]);
+  }, [images.length, isPaused, shouldReduceMotion]);
 
   const hasImages = images.length > 0;
   const currentLogicalIndex = hasImages
@@ -173,28 +187,6 @@ export function LandingPagePhotoCarousel({
       virtualIndex,
     };
   });
-
-  useEffect(() => {
-    logCarouselDebug("render-state", {
-      currentIndex,
-      currentLogicalIndex,
-      direction,
-      isPaused,
-      visibleSlides: visibleSlides.map(({ image, offset, virtualIndex }) => ({
-        logicalIndex: wrapIndex(virtualIndex, images.length),
-        offset,
-        publicId: image.public_id,
-        virtualIndex,
-      })),
-    });
-  }, [
-    currentIndex,
-    currentLogicalIndex,
-    direction,
-    images.length,
-    isPaused,
-    visibleSlides,
-  ]);
 
   if (!hasImages) return null;
 
@@ -240,7 +232,7 @@ export function LandingPagePhotoCarousel({
                     : "pointer-events-none"
               )}
               disabled={!isVisible}
-              initial={getSlideMotion(offset)}
+              initial={shouldReduceMotion ? false : getSlideMotion(offset)}
               key={virtualIndex}
               onClick={() => {
                 const logicalIndex = wrapIndex(virtualIndex, images.length);
@@ -253,13 +245,18 @@ export function LandingPagePhotoCarousel({
                 if (isVisibleSide) moveToVirtualIndex(virtualIndex);
               }}
               tabIndex={isVisible ? undefined : -1}
-              transition={slideTransition}
+              transition={activeSlideTransition}
               type="button"
-              data-carousel-slide={virtualIndex}
               whileHover={
-                isVisibleSide ? { filter: "brightness(0.96)" } : undefined
+                isVisibleSide && !shouldReduceMotion
+                  ? { filter: "brightness(0.96)" }
+                  : undefined
               }
-              whileTap={isVisibleSide ? { opacity: 0.72 } : undefined}
+              whileTap={
+                isVisibleSide && !shouldReduceMotion
+                  ? { opacity: 0.72 }
+                  : undefined
+              }
             >
               <div className="relative h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
                 <CloudinaryImage
@@ -291,13 +288,14 @@ export function LandingPagePhotoCarousel({
                   getClosestVirtualIndex(index, currentIndex, images.length)
                 )
               }
-              transition={dotTransition}
+              transition={activeDotTransition}
               type="button"
             />
           ))}
         </div>
       )}
       <Lightbox
+        animation={lightboxAnimation}
         close={() => setLightboxIndex(-1)}
         index={lightboxIndex}
         open={lightboxIndex >= 0}
