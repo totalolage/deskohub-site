@@ -2,7 +2,6 @@ import { DoorOpen, type LucideIcon, MapPin, Sparkles } from "lucide-react";
 import Image, { getImageProps } from "next/image";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
-import { Container } from "@/shared/components/container";
 import Arrow1 from "@/shared/components/icons/arrow-1";
 import CornerAccent from "@/shared/components/icons/corner-accent";
 import Understroke1 from "@/shared/components/icons/understroke-1";
@@ -17,6 +16,7 @@ import {
 import { cn } from "@/shared/utils";
 import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
+import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
@@ -62,115 +62,121 @@ export function LandingPageHeroSection({
     priority: true,
   });
 
-  return (
-    <section
-      id={overviewSectionId}
-      className={cn(
-        "relative isolate min-h-screen mt-[var(--site-header-height)] overflow-hidden bg-navy-blue pt-24 text-white",
-        "[--stats-peek-height:16rem]"
-      )}
-    >
-      <Background />
+  const heroContent = (
+    <>
+      <h1 className="text-5xl leading-[0.95] text-balance sm:text-6xl lg:text-7xl">
+        {m.landingHeroTitle({}, { locale })}
+      </h1>
+      <p className="mt-6 max-w-xl text-lg leading-8 text-white/82 sm:text-xl">
+        {m.landingHeroSubtitle({}, { locale })}
+      </p>
 
-      <Container className="mx-auto flex min-h-[calc(100vh-var(--site-header-height)-var(--stats-peek-height))] w-full flex-col items-center justify-center pb-28 text-center">
-        <h1 className="z-1 text-5xl leading-[0.95] text-balance sm:text-6xl lg:text-7xl">
-          {m.landingHeroTitle({}, { locale })}
-        </h1>
-        <p className="z-1 mt-6 max-w-xl text-lg leading-8 text-white/82 sm:text-xl">
-          {m.landingHeroSubtitle({}, { locale })}
-        </p>
+      <div className="sm:mt-9 mt-20 flex w-full flex-col items-center justify-center gap-x-8 gap-y-16 sm:flex-row">
+        <Button
+          asChild
+          className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
+        >
+          <a href={eventsHref}>
+            <Arrow1
+              height="100"
+              className="absolute bottom-6 right-full pr-4 text-white"
+            />
+            {m.landingHeroSecondaryCta({}, { locale })}
+            <Understroke1
+              width="100%"
+              className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
+            />
+          </a>
+        </Button>
+        <Button
+          asChild
+          variant="secondary"
+          className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
+        >
+          <a href={reservationHref}>
+            <CornerAccent
+              width={40}
+              className="absolute -left-4 -top-5"
+              style={{ strokeWidth: "40px" }}
+            />
+            {m.landingHeroPrimaryCta({}, { locale })}
+            <Understroke2
+              width="80%"
+              className="absolute top-full mt-2 right-0"
+            />
+          </a>
+        </Button>
+      </div>
+    </>
+  );
 
-        <div className="sm:mt-9 mt-20 flex w-full flex-col items-center justify-center gap-x-8 gap-y-16 sm:flex-row">
-          <Button
-            asChild
-            className="relative h-14 rounded-lg bg-burned-orange px-8 text-base uppercase tracking-[0.08em] hover:bg-burned-orange/90"
-          >
-            <a href={eventsHref}>
-              <Arrow1
-                height="100"
-                className="absolute bottom-6 right-full pr-4 text-white"
-              />
-              {m.landingHeroSecondaryCta({}, { locale })}
-              <Understroke1
-                width="100%"
-                className="absolute top-full mt-2 left-1/2 -translate-x-1/2 rotate-x-180 text-white"
-              />
-            </a>
-          </Button>
-          <Button
-            asChild
-            variant="secondary"
-            className="relative h-14 rounded-lg border-burned-orange bg-white/92 px-8 text-base uppercase tracking-[0.08em] text-burned-orange hover:bg-white"
-          >
-            <a href={reservationHref}>
-              <CornerAccent
-                width={40}
-                className="absolute -left-4 -top-5"
-                style={{ strokeWidth: "40px" }}
-              />
-              {m.landingHeroPrimaryCta({}, { locale })}
-              <Understroke2
-                width="80%"
-                className="absolute top-full mt-2 right-0"
-              />
-            </a>
-          </Button>
-        </div>
-      </Container>
-
-      <div className="relative min-h-[var(--stats-peek-height)]">
-        <Card className="relative z-10 mx-auto bg-navy-blue max-w-fit">
-          <CardHeader>
-            <CardTitle className="text-white text-center">
-              {m.landingUiHeroStatsTitle({}, { locale })}
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col md:flex-row gap-4 justify-around">
-            {heroHighlights.map((highlight) => (
-              <div key={highlight.label} className="px-4 py-4">
-                <div className="flex items-center gap-2 text-sm leading-6 text-white/84">
-                  <highlight.icon className="h-5 w-5 shrink-0 text-sunset-yellow" />
-                  <p>{highlight.label}</p>
-                </div>
-                <p className="mt-3 text-xl font-medium leading-tight text-white">
-                  {highlight.text}
-                </p>
+  const statsPeek = (
+    <div className="relative min-h-[var(--stats-peek-height)]">
+      <Card className="relative z-10 mx-auto bg-navy-blue max-w-fit">
+        <CardHeader>
+          <CardTitle className="text-white text-center">
+            {m.landingUiHeroStatsTitle({}, { locale })}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-col md:flex-row gap-4 justify-around">
+          {heroHighlights.map((highlight) => (
+            <div key={highlight.label} className="px-4 py-4">
+              <div className="flex items-center gap-2 text-sm leading-6 text-white/84">
+                <highlight.icon className="h-5 w-5 shrink-0 text-sunset-yellow" />
+                <p>{highlight.label}</p>
               </div>
-            ))}
-          </CardContent>
-        </Card>
+              <p className="mt-3 text-xl font-medium leading-tight text-white">
+                {highlight.text}
+              </p>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
 
-        <div className="absolute inset-0 top-8">
-          <div
-            className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
-            style={{
-              maskImage: `url(${cornerMaskProps.src})`,
-              maskSize: "cover",
-            }}
-          >
-            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
-          </div>
-          <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
-            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
-          </div>
-          <div
-            className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
-            style={{
-              maskImage: `url(${cornerMaskProps.src})`,
-              maskSize: "cover",
-            }}
-          >
-            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
-          </div>
+      <div className="absolute inset-0 top-8">
+        <div
+          className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
+          style={{
+            maskImage: `url(${cornerMaskProps.src})`,
+            maskSize: "cover",
+          }}
+        >
+          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+        </div>
+        <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
+          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+        </div>
+        <div
+          className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
+          style={{
+            maskImage: `url(${cornerMaskProps.src})`,
+            maskSize: "cover",
+          }}
+        >
+          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
         </div>
       </div>
-    </section>
+    </div>
+  );
+
+  return (
+    <LandingPageHeroScrollScene
+      background={<Background />}
+      className={cn(
+        "relative isolate min-h-screen overflow-hidden bg-navy-blue pt-[calc(var(--site-header-height)+6rem)] text-white",
+        "[--stats-peek-height:16rem]"
+      )}
+      id={overviewSectionId}
+      statsPeek={statsPeek}
+    >
+      {heroContent}
+    </LandingPageHeroScrollScene>
   );
 }
 
 function Background() {
   return (
-    <div className="-z-1">
+    <div className="absolute inset-0">
       <Image
         src={heroImage}
         alt="Deskohub workspace interior"
