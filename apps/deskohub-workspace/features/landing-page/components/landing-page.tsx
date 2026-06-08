@@ -3,7 +3,7 @@ import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageExperiencesSection } from "./landing-page-experiences-section";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
-import { LandingPageHeroSection } from "./landing-page-hero-section";
+import { LandingPageHeroSection, landingPageHeroVars } from "./landing-page-hero-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 import { LandingPageWorkspaceSection } from "./landing-page-workspace-section";
@@ -21,7 +21,7 @@ export function LandingPage({ locale }: LandingPageProps) {
   const contactEmail = workspaceSiteConstants.contact.infoEmail;
 
   return (
-    <main className="overflow-x-clip bg-navy-blue">
+    <main className="overflow-x-clip bg-navy-blue" style={landingPageHeroVars}>
       <LandingPageHeroSection
         locale={locale}
         overviewSectionId={siteHeaderSectionIds.overview}
