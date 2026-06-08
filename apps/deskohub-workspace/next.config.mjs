@@ -5,7 +5,7 @@ const nextConfig = {
   experimental: {
     useCache: true,
   },
-  transpilePackages: ["@deskohub/cloudinary"],
+  transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
   async redirects() {
     return [
       {

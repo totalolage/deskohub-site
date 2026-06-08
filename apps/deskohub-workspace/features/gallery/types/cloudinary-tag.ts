@@ -1,3 +1,7 @@
-type BaseCloudinaryTag = "Workspace gallery" | "workspace" | "gallery";
+type BaseCloudinaryTag =
+  | "Workspace gallery"
+  | "workspace"
+  | "gallery"
+  | "landing-carousel";
 
 export type CloudinaryTag = BaseCloudinaryTag | `!${BaseCloudinaryTag}`;
