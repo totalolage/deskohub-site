@@ -273,6 +273,7 @@
   "reservationAlreadyPaidMessage": "Pro tyto údaje už existuje zaplacená rezervace. Změň prosím údaje rezervace nebo nás kontaktuj.",
   "reservationAvailabilityUnavailable": "Pro tarif {tier} už na {date} nemáme volné místo. Zkus prosím jiný tarif, datum nebo monitorový setup!",
   "reservationAvailabilityLoading": "Kontrolujeme dostupnost workspace...",
+  "reservationAvailabilityPartialNotice": "Od {startsAt} do {endsAt} může být workspace vytíženější než obvykle.",
   "reservationValidationLegalConsentRequired": "Před pokračováním prosím potvrď platební a právní podmínky.",
   "reservationConfirmationYes": "Ano",
   "reservationConfirmationNo": "Ne",

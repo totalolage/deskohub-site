@@ -1,4 +1,5 @@
 import { DotyposService, type ValidationError } from "@deskohub/dotypos";
+import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Effect, Layer, Predicate } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
@@ -6,13 +7,24 @@ import { OperationalEventRepositoryLive } from "@/features/checkout/backend/oper
 import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import { ReservationHoldCleanupServiceLive } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { WorkspaceReservationRepositoryLive } from "@/features/checkout/backend/workspace-reservation.repository";
+import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
 import {
   parseWorkspaceAvailabilityQuery,
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
 } from "@/features/reservation/backend/workspace-availability.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+
+const GoogleCalendarLive = GoogleCalendarService.Live.pipe(
+  Layer.provide(GoogleCalendarRuntimeConfigLive)
+);
+
+const GoogleCalendarWorkspaceLimitationsLive =
+  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
+    Layer.provide(GoogleCalendarLive)
+  );
 
 const AvailabilityRouteLive = WorkspaceAvailabilityServiceLive.pipe(
   Layer.provide(ReservationHoldCleanupServiceLive),
@@ -20,6 +32,7 @@ const AvailabilityRouteLive = WorkspaceAvailabilityServiceLive.pipe(
   Layer.provide(OperationalEventRepositoryLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
+  Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
   Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive))
 );
 
