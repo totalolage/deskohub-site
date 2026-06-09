@@ -60,79 +60,66 @@ const dotTransition: Transition = {
 };
 
 const swipeDistanceThreshold = 48;
+const swipeTimelineThreshold = 0.32;
 const swipeVelocityThreshold = 520;
 const swipeClickSuppressionDistance = 8;
 const clickSuppressionAfterSwipeMs = 180;
+const swipeTimelineOffsetLimit = 1.15;
 
 const instantTransition: Transition = {
   duration: 0,
 };
 
-const getSlideMotion = (offset: SlideOffset) => {
-  if (offset <= -2) {
-    return {
-      filter: "brightness(0.7)",
-      opacity: 0,
-      rotate: -2.5,
-      scale: 0.68,
-      x: "-132%",
-      y: "-50%",
-      zIndex: getSlideZIndex(offset),
-    };
-  }
-  if (offset < 0) {
-    return {
-      filter: "brightness(0.82)",
-      opacity: 0.86,
-      rotate: -1.5,
-      scale: 0.72,
-      x: "-82%",
-      y: "-50%",
-      zIndex: getSlideZIndex(offset),
-    };
-  }
-  if (offset >= 2) {
-    return {
-      filter: "brightness(0.7)",
-      opacity: 0,
-      rotate: 2.5,
-      scale: 0.68,
-      x: "32%",
-      y: "-50%",
-      zIndex: getSlideZIndex(offset),
-    };
-  }
-  if (offset > 0) {
-    return {
-      filter: "brightness(0.82)",
-      opacity: 0.86,
-      rotate: 1.5,
-      scale: 0.72,
-      x: "-18%",
-      y: "-50%",
-      zIndex: getSlideZIndex(offset),
-    };
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const interpolateAnchoredValue = (
+  offset: number,
+  values: readonly number[]
+) => {
+  const clampedOffset = clamp(offset, slideOffsets[0], slideOffsets.at(-1)!);
+
+  for (let index = 0; index < slideOffsets.length - 1; index++) {
+    const startOffset = slideOffsets[index]!;
+    const endOffset = slideOffsets[index + 1]!;
+
+    if (clampedOffset > endOffset) continue;
+
+    const progress = (clampedOffset - startOffset) / (endOffset - startOffset);
+    return values[index]! + (values[index + 1]! - values[index]!) * progress;
   }
 
+  return values.at(-1)!;
+};
+
+const getSlideMotion = (offset: number) => {
+  const brightness = interpolateAnchoredValue(
+    offset,
+    [0.7, 0.82, 1, 0.82, 0.7]
+  );
+
   return {
-    filter: "brightness(1)",
-    opacity: 1,
-    rotate: 0,
-    scale: 1,
-    x: "-50%",
+    filter: `brightness(${brightness})`,
+    opacity: interpolateAnchoredValue(offset, [0, 0.86, 1, 0.86, 0]),
+    rotate: interpolateAnchoredValue(offset, [-2.5, -1.5, 0, 1.5, 2.5]),
+    scale: interpolateAnchoredValue(offset, [0.68, 0.72, 1, 0.72, 0.68]),
+    x: `${interpolateAnchoredValue(offset, [-132, -82, -50, -18, 32])}%`,
     y: "-50%",
     zIndex: getSlideZIndex(offset),
   };
 };
 
-const getSlideZIndex = (offset: SlideOffset) => {
-  if (offset === 0) return 20;
-  if (Math.abs(offset) === 1) return 10;
+const getSlideZIndex = (offset: number) => {
+  if (Math.abs(offset) < 0.5) return 20;
+  if (Math.abs(offset) < 1.5) return 10;
 
   return 0;
 };
 
-const getSwipeStep = ({ offset, velocity }: PanInfo) => {
+const getSwipeStep = (
+  { offset, velocity }: PanInfo,
+  timelineOffset: number
+) => {
   const absX = Math.abs(offset.x);
   const absY = Math.abs(offset.y);
   const isHorizontalSwipe = absX > absY * 1.2;
@@ -140,6 +127,7 @@ const getSwipeStep = ({ offset, velocity }: PanInfo) => {
   if (!isHorizontalSwipe) return 0;
 
   if (
+    timelineOffset >= swipeTimelineThreshold ||
     offset.x <= -swipeDistanceThreshold ||
     velocity.x <= -swipeVelocityThreshold
   ) {
@@ -147,6 +135,7 @@ const getSwipeStep = ({ offset, velocity }: PanInfo) => {
   }
 
   if (
+    timelineOffset <= -swipeTimelineThreshold ||
     offset.x >= swipeDistanceThreshold ||
     velocity.x >= swipeVelocityThreshold
   ) {
@@ -163,15 +152,20 @@ export function LandingPagePhotoCarousel({
 }: LandingPagePhotoCarouselProps) {
   const images = use(imagesPromise);
   const shouldReduceMotion = useReducedMotion();
-  const [animationIndex, setAnimationIndex] = useState(0);
+  const [animationTimelineIndex, setAnimationTimelineIndex] = useState(0);
+  const [swipeTimelineOffset, setSwipeTimelineOffset] = useState(0);
   const [isPointerOver, setIsPointerOver] = useState(false);
   const [isFocusWithin, setIsFocusWithin] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const stageRef = useRef<HTMLDivElement>(null);
   const lastSwipeAtRef = useRef(0);
   const isPaused = isPointerOver || isFocusWithin;
+  const isSwiping = swipeTimelineOffset !== 0;
   const activeSlideTransition = shouldReduceMotion
     ? instantTransition
-    : slideTransition;
+    : isSwiping
+      ? instantTransition
+      : slideTransition;
   const activeDotTransition = shouldReduceMotion
     ? instantTransition
     : dotTransition;
@@ -183,24 +177,53 @@ export function LandingPagePhotoCarousel({
     if (images.length <= 1 || isPaused || shouldReduceMotion) return;
 
     const interval = setInterval(() => {
-      setAnimationIndex((index) => index + 1);
+      setAnimationTimelineIndex((index) => index + 1);
     }, AUTO_PLAY_INTERVAL);
 
     return () => clearInterval(interval);
   }, [images.length, isPaused, shouldReduceMotion]);
 
   const hasImages = images.length > 0;
+  const visibleTimelineIndex = animationTimelineIndex + swipeTimelineOffset;
   const currentLogicalIndex = hasImages
-    ? wrapIndex(animationIndex, images.length)
+    ? wrapIndex(Math.round(visibleTimelineIndex), images.length)
     : 0;
   const moveToAnimationIndex = (nextIndex: number) => {
-    setAnimationIndex(nextIndex);
+    setAnimationTimelineIndex(nextIndex);
+    setSwipeTimelineOffset(0);
   };
   const moveByAnimationStep = (step: number) => {
-    setAnimationIndex((index) => index + step);
+    setAnimationTimelineIndex((index) => index + step);
+    setSwipeTimelineOffset(0);
   };
   const openLightbox = (index: number) => {
     setLightboxIndex(index);
+  };
+  const getSwipeTimelineOffset = (info: PanInfo) => {
+    const absX = Math.abs(info.offset.x);
+    const absY = Math.abs(info.offset.y);
+
+    if (absX <= absY) return 0;
+
+    const stageWidth = stageRef.current?.clientWidth ?? 0;
+    const swipeTimelineDistance = Math.max(
+      96,
+      Math.min(stageWidth * 0.28, 260)
+    );
+
+    return clamp(
+      -info.offset.x / swipeTimelineDistance,
+      -swipeTimelineOffsetLimit,
+      swipeTimelineOffsetLimit
+    );
+  };
+  const handleSwipeMove = (
+    _: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    if (images.length <= 1) return;
+
+    setSwipeTimelineOffset(getSwipeTimelineOffset(info));
   };
   const handleSwipeEnd = (
     _: MouseEvent | TouchEvent | PointerEvent,
@@ -208,14 +231,18 @@ export function LandingPagePhotoCarousel({
   ) => {
     if (images.length <= 1) return;
 
+    const timelineOffset = getSwipeTimelineOffset(info);
     const isHorizontalDrag =
       Math.abs(info.offset.x) >= swipeClickSuppressionDistance &&
       Math.abs(info.offset.x) > Math.abs(info.offset.y);
-    const swipeStep = getSwipeStep(info);
+    const swipeStep = getSwipeStep(info, timelineOffset);
 
     if (isHorizontalDrag) lastSwipeAtRef.current = Date.now();
 
-    if (swipeStep === 0) return;
+    if (swipeStep === 0) {
+      setSwipeTimelineOffset(0);
+      return;
+    }
 
     moveByAnimationStep(swipeStep);
   };
@@ -236,11 +263,11 @@ export function LandingPagePhotoCarousel({
   const visibleOffsets: readonly SlideOffset[] =
     images.length === 0 ? [] : images.length === 1 ? [0] : slideOffsets;
   const visibleSlides = visibleOffsets.map((offset) => {
-    const virtualIndex = animationIndex + offset;
+    const virtualIndex = animationTimelineIndex + offset;
     return {
       image: images[wrapIndex(virtualIndex, images.length)]!,
       isCurrent: offset === 0,
-      offset,
+      offset: virtualIndex - visibleTimelineIndex,
       virtualIndex,
     };
   });
@@ -268,9 +295,14 @@ export function LandingPagePhotoCarousel({
       <motion.div
         className="relative mx-auto h-72 max-w-6xl touch-pan-y @container-[size] sm:h-112 lg:h-136"
         onPanEnd={handleSwipeEnd}
+        onPanStart={() => setSwipeTimelineOffset(0)}
+        onPan={handleSwipeMove}
+        ref={stageRef}
       >
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
-          const isVisibleSide = Math.abs(offset) === 1;
+          const baseOffset = virtualIndex - animationTimelineIndex;
+          const logicalIndex = wrapIndex(virtualIndex, images.length);
+          const isVisibleSide = Math.abs(baseOffset) === 1;
           const isVisible = isCurrent || isVisibleSide;
 
           return (
@@ -280,11 +312,11 @@ export function LandingPagePhotoCarousel({
               aria-hidden={isVisible ? undefined : true}
               aria-label={
                 isCurrent
-                  ? `Open current carousel photo ${currentLogicalIndex + 1} in lightbox`
-                  : `Show carousel photo ${wrapIndex(virtualIndex, images.length) + 1}`
+                  ? `Open current carousel photo ${logicalIndex + 1} in lightbox`
+                  : `Show carousel photo ${logicalIndex + 1}`
               }
               className={cn(
-                "absolute left-1/2 top-1/2 aspect-16/10 w-[min(78cqw,160cqh)] overflow-hidden rounded-[1.8rem] border border-white/35 bg-white/18 p-2 text-left shadow-[0_30px_90px_-48px_rgba(0,2,79,0.95)] backdrop-blur-sm focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-white sm:rounded-[2.5rem] sm:p-3",
+                "absolute left-1/2 top-1/2 aspect-16/10 w-[min(78cqw,160cqh)] select-none overflow-hidden rounded-[1.8rem] border border-white/35 bg-white/18 p-2 text-left shadow-[0_30px_90px_-48px_rgba(0,2,79,0.95)] backdrop-blur-sm focus-visible:outline focus-visible:outline-offset-4 focus-visible:outline-white sm:rounded-[2.5rem] sm:p-3",
                 isCurrent
                   ? "cursor-zoom-in"
                   : isVisibleSide
@@ -292,12 +324,11 @@ export function LandingPagePhotoCarousel({
                     : "pointer-events-none"
               )}
               disabled={!isVisible}
+              draggable={false}
               initial={shouldReduceMotion ? false : getSlideMotion(offset)}
               key={virtualIndex}
               onClick={() => {
                 if (shouldSuppressClickAfterSwipe()) return;
-
-                const logicalIndex = wrapIndex(virtualIndex, images.length);
 
                 if (isCurrent) {
                   openLightbox(logicalIndex);
@@ -347,7 +378,11 @@ export function LandingPagePhotoCarousel({
               key={image.public_id}
               onClick={() =>
                 moveToAnimationIndex(
-                  getClosestVirtualIndex(index, animationIndex, images.length)
+                  getClosestVirtualIndex(
+                    index,
+                    animationTimelineIndex,
+                    images.length
+                  )
                 )
               }
               transition={activeDotTransition}
