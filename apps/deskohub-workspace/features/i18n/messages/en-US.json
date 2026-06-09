@@ -273,6 +273,7 @@
   "reservationAlreadyPaidMessage": "A paid reservation already exists for these details. Change the reservation details or contact us if you need help.",
   "reservationAvailabilityUnavailable": "We are all out of space for {tier} tier on {date}. Please try a different tier or date (or monitor setup)!",
   "reservationAvailabilityLoading": "Checking workspace availability...",
+  "reservationAvailabilityPartialNotice": "From {startsAt} to {endsAt}, the workspace may be busier than usual.",
   "reservationValidationLegalConsentRequired": "Please accept the payment and legal terms before continuing.",
   "reservationConfirmationYes": "Yes",
   "reservationConfirmationNo": "No",

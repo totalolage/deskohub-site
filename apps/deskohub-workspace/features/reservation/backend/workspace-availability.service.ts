@@ -5,6 +5,7 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
+import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
 import { ReservationHoldCleanupService } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import {
@@ -22,6 +23,10 @@ import {
   workspaceProductMonitorOptionTableTags,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
+import {
+  GoogleCalendarWorkspaceLimitationsService,
+  type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
+} from "./google-calendar-workspace-limitations.service";
 
 export type WorkspaceAvailabilityQuery = {
   readonly date?: string;
@@ -31,6 +36,13 @@ export type WorkspaceAvailabilityQuery = {
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
 
+export type WorkspaceAvailabilityNotice = {
+  readonly date: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+  readonly summary?: string;
+};
+
 export type WorkspaceAvailability = {
   readonly date?: string;
   readonly from: string;
@@ -38,7 +50,14 @@ export type WorkspaceAvailability = {
   readonly unavailableDates: readonly string[];
   readonly unavailableTiers: readonly WorkspaceProductTier[];
   readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
+  readonly notices: readonly WorkspaceAvailabilityNotice[];
 };
+
+type WorkspaceAvailabilityError =
+  | ExternalAPIError
+  | GoogleCalendarError
+  | NetworkError
+  | ValidationError;
 
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
@@ -51,20 +70,14 @@ export class WorkspaceTableUnavailableError extends Data.TaggedError(
 export interface WorkspaceAvailabilityService {
   readonly getAvailability: (
     query: WorkspaceAvailabilityQuery
-  ) => Effect.Effect<
-    WorkspaceAvailability,
-    ExternalAPIError | NetworkError | ValidationError
-  >;
+  ) => Effect.Effect<WorkspaceAvailability, WorkspaceAvailabilityError>;
   readonly ensureAvailable: (query: {
     readonly date: string;
     readonly entryTier: WorkspaceProductTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   }) => Effect.Effect<
     void,
-    | ExternalAPIError
-    | NetworkError
-    | ValidationError
-    | WorkspaceTableUnavailableError
+    WorkspaceAvailabilityError | WorkspaceTableUnavailableError
   >;
 }
 
@@ -77,10 +90,12 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const calendarLimitations =
+      yield* GoogleCalendarWorkspaceLimitationsService;
     const holdCleanup = yield* ReservationHoldCleanupService;
 
     const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
-      function* () {
+      function* (query: Pick<WorkspaceAvailabilityQuery, "from" | "to">) {
         yield* Effect.logInfo("Workspace availability inventory load started");
 
         const sweepResult = yield* holdCleanup
@@ -98,16 +113,23 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           "Workspace availability expired hold sweep completed"
         );
 
-        const [tables, reservations] = yield* Effect.all(
-          [dotypos.getTables(), dotypos.listReservations()],
-          { concurrency: 2 }
+        const [tables, reservations, limitations] = yield* Effect.all(
+          [
+            dotypos.getTables(),
+            dotypos.listReservations(),
+            calendarLimitations.listLimitations({
+              from: query.from,
+              to: query.to,
+            }),
+          ],
+          { concurrency: 3 }
         );
-        yield* Effect.annotateLogsScoped({ tables, reservations });
+        yield* Effect.annotateLogsScoped({ tables, reservations, limitations });
         yield* Effect.logInfo(
           "Workspace availability inventory load completed"
         );
 
-        return { tables, reservations };
+        return { tables, reservations, limitations };
       },
       (effect) =>
         effect.pipe(
@@ -129,7 +151,11 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         const date = query.date ? yield* parsePlainDate(query.date) : undefined;
         yield* Effect.annotateLogsScoped({ dates, date });
 
-        const { tables, reservations } = yield* loadInventory();
+        const { tables, reservations, limitations } = yield* loadInventory({
+          from: query.from,
+          to: query.to,
+        });
+        const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
         const occupancyByDate = new Map<string, Map<string, number>>();
 
         for (const day of dates) {
@@ -140,15 +166,17 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         }
 
         const unavailableDates = dates
-          .filter((day) =>
-            isUnavailableForSelection(
-              tables,
-              occupancyByDate.get(plainDateToString(day)) ?? new Map(),
-              query.entryTier,
-              query.monitorOption
-            )
-          )
-          .map(plainDateToString);
+          .map(plainDateToString)
+          .filter(
+            (day) =>
+              fullyOccupiedDates.has(day) ||
+              isUnavailableForSelection(
+                tables,
+                occupancyByDate.get(day) ?? new Map(),
+                query.entryTier,
+                query.monitorOption
+              )
+          );
 
         const selectedDateOccupancy = date
           ? getWorkspaceTableOccupancyById(reservations, date)
@@ -173,6 +201,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
                 )
               )
             : [],
+          notices: getCalendarNotices(limitations),
         } satisfies WorkspaceAvailability;
 
         yield* Effect.annotateLogsScoped({ result });
@@ -238,6 +267,37 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
     });
   })
 );
+
+const getFullyOccupiedCalendarDates = (
+  limitations: readonly WorkspaceCalendarLimitationType[]
+) =>
+  new Set(
+    limitations.flatMap((limitation) =>
+      limitation._tag === "FullyOccupied" ? [limitation.date] : []
+    )
+  );
+
+const getCalendarNotices = (
+  limitations: readonly WorkspaceCalendarLimitationType[]
+): readonly WorkspaceAvailabilityNotice[] =>
+  limitations
+    .flatMap((limitation) =>
+      limitation._tag === "PartiallyOccupied"
+        ? [
+            {
+              date: limitation.date,
+              startsAt: limitation.startsAt,
+              endsAt: limitation.endsAt,
+              ...(limitation.summary && { summary: limitation.summary }),
+            },
+          ]
+        : []
+    )
+    .sort((a, b) =>
+      a.date === b.date
+        ? a.startsAt.localeCompare(b.startsAt)
+        : a.date.localeCompare(b.date)
+    );
 
 const isUnavailableForSelection = (
   tables: readonly Table[],

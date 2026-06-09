@@ -5,6 +5,7 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
+import { GoogleCalendarService } from "@deskohub/google-calendar";
 import {
   Data,
   Duration,
@@ -62,12 +63,14 @@ import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summ
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
 import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
 } from "@/features/reservation/backend/workspace-availability.service";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
@@ -297,6 +300,15 @@ const EarlyReservationDotyposLive = DotyposService.Default.pipe(
   Layer.provide(DotyposRuntimeConfigLive)
 );
 
+const EarlyReservationGoogleCalendarLive = GoogleCalendarService.Live.pipe(
+  Layer.provide(GoogleCalendarRuntimeConfigLive)
+);
+
+const EarlyReservationGoogleCalendarWorkspaceLimitationsLive =
+  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
+    Layer.provide(EarlyReservationGoogleCalendarLive)
+  );
+
 const EarlyReservationWorkspaceReservationRepositoryLive =
   WorkspaceReservationRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
 
@@ -315,6 +327,7 @@ const EarlyReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
 
 const EarlyReservationAvailabilityLive = WorkspaceAvailabilityServiceLive.pipe(
   Layer.provide(EarlyReservationHoldCleanupLive),
+  Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
   Layer.provide(EarlyReservationDotyposLive)
 );
 
@@ -331,6 +344,7 @@ const EarlyReservationSubmitLive = Layer.mergeAll(
   EarlyReservationAvailabilityLive,
   EarlyReservationTableAssignmentLive,
   WorkspaceCheckoutAccessCodeServiceLive,
+  EarlyReservationGoogleCalendarWorkspaceLimitationsLive,
   EarlyReservationDotyposLive
 );
 

@@ -91,10 +91,17 @@ type SubmissionMessage = {
   text: string;
 };
 
+type WorkspaceAvailabilityNotice = {
+  readonly date: string;
+  readonly startsAt: string;
+  readonly endsAt: string;
+};
+
 type WorkspaceAvailability = {
   readonly unavailableDates: readonly string[];
   readonly unavailableTiers: readonly WorkspaceProductTier[];
   readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
+  readonly notices: readonly WorkspaceAvailabilityNotice[];
 };
 
 const getObjectProperty = (value: unknown, key: string): unknown => {
@@ -118,6 +125,25 @@ const getStringArrayProperty = (
   return property.filter((item): item is string => typeof item === "string");
 };
 
+const isWorkspaceAvailabilityNotice = (
+  value: unknown
+): value is WorkspaceAvailabilityNotice =>
+  typeof getObjectProperty(value, "date") === "string" &&
+  typeof getObjectProperty(value, "startsAt") === "string" &&
+  typeof getObjectProperty(value, "endsAt") === "string";
+
+const getWorkspaceAvailabilityNotices = (
+  value: unknown
+): readonly WorkspaceAvailabilityNotice[] => {
+  const property = getObjectProperty(value, "notices");
+
+  if (!Array.isArray(property)) {
+    return [];
+  }
+
+  return property.filter(isWorkspaceAvailabilityNotice);
+};
+
 const parseWorkspaceAvailabilityResponse = (
   value: unknown
 ): WorkspaceAvailability => ({
@@ -129,6 +155,7 @@ const parseWorkspaceAvailabilityResponse = (
     value,
     "unavailableMonitorOptions"
   ).filter(isWorkspaceProductMonitorOption),
+  notices: getWorkspaceAvailabilityNotices(value),
 });
 
 const utmKeys = [
@@ -259,6 +286,13 @@ export function ReservationForm({
   const unavailableMonitorOptions = useMemo(
     () => new Set(availability?.unavailableMonitorOptions ?? []),
     [availability]
+  );
+  const selectedDateNotices = useMemo(
+    () =>
+      (availability?.notices ?? []).filter(
+        (notice) => notice.date === selectedDate
+      ),
+    [availability, selectedDate]
   );
   const isSelectedTierUnavailable = unavailableTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
@@ -848,6 +882,24 @@ export function ReservationForm({
                   <span>{selectedReservationUnavailableMessage}</span>
                 </p>
               )}
+              {selectedDateNotices.map((notice) => (
+                <p
+                  key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
+                  aria-live="polite"
+                  className="flex items-start gap-2 rounded-2xl border border-aquamarine-green/25 bg-aquamarine-green/8 px-4 py-3 text-sm leading-6 text-navy-blue"
+                >
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-aquamarine-green" />
+                  <span>
+                    {m.reservationAvailabilityPartialNotice(
+                      {
+                        startsAt: notice.startsAt,
+                        endsAt: notice.endsAt,
+                      },
+                      { locale }
+                    )}
+                  </span>
+                </p>
+              ))}
               {isAvailabilityLoading && !submissionMessage && (
                 <p
                   aria-live="polite"
