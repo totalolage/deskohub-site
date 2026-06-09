@@ -24,7 +24,7 @@ const CronReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
 const cronBatchLimit = 25;
 
 const isAuthorizedCronRequest = (request: Request) => {
-  if (!env.CRON_SECRET) return env.VERCEL_ENV !== "production";
+  if (!env.CRON_SECRET) return env.VERCEL_ENV === "development";
 
   return request.headers.get("authorization") === `Bearer ${env.CRON_SECRET}`;
 };
