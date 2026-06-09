@@ -593,97 +593,124 @@ export function ReservationForm({
               )}
             />
 
-            <div className="grid gap-5 md:grid-cols-2">
-              <FormField
-                control={form.control}
-                name="date"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel
-                      className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
-                      required
-                    >
-                      {m.reservationDateLabel({}, { locale })}
-                    </FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            type="button"
-                            variant="secondary"
-                            className={cn(
-                              "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-                              !field.value && "text-navy-blue/44"
-                            )}
-                          >
-                            <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                            {formatDisplayDate(field.value, locale)}
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent align="start" className="w-auto p-3">
-                        <Calendar
-                          mode="single"
-                          selected={parseReservationInputDate(field.value)}
-                          onSelect={(date) => {
-                            if (!date) {
-                              return;
-                            }
+            <div className="grid gap-5 [grid-template-areas:'date'_'notice'_'coffee'] md:grid-cols-2 md:[grid-template-areas:'date_coffee'_'notice_notice']">
+              <div className="[grid-area:date]">
+                <FormField
+                  control={form.control}
+                  name="date"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel
+                        className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                        required
+                      >
+                        {m.reservationDateLabel({}, { locale })}
+                      </FormLabel>
+                      <Popover>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              className={cn(
+                                "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                                !field.value && "text-navy-blue/44"
+                              )}
+                            >
+                              <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                              {formatDisplayDate(field.value, locale)}
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent align="start" className="w-auto p-3">
+                          <Calendar
+                            mode="single"
+                            selected={parseReservationInputDate(field.value)}
+                            onSelect={(date) => {
+                              if (!date) {
+                                return;
+                              }
 
-                            field.onChange(formatDateForInput(date));
-                          }}
-                          disabled={[
-                            { before: new Date() },
-                            (date) =>
-                              unavailableDates.has(formatDateForInput(date)),
-                          ]}
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="coffee"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
-                      {m.reservationCoffeeLabel({}, { locale })}
-                    </FormLabel>
-                    <FormLabel
-                      className={cn(
-                        "flex h-13 items-center justify-between gap-3 rounded-[1.1rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white px-4 py-3 text-navy-blue transition",
-                        !courtesyCoffeeIncluded &&
-                          "cursor-pointer hover:border-burned-orange/30",
-                        courtesyCoffeeIncluded && "cursor-default"
-                      )}
-                    >
-                      <span className="flex items-center gap-3">
-                        <Coffee className="h-5 w-5 shrink-0 text-burned-orange" />
-                        <FormControl>
-                          <Switch
-                            checked={
-                              courtesyCoffeeIncluded ? true : field.value
-                            }
-                            disabled={courtesyCoffeeIncluded}
-                            onBlur={field.onBlur}
-                            onCheckedChange={(checked) =>
-                              field.onChange(Boolean(checked))
-                            }
+                              field.onChange(formatDateForInput(date));
+                            }}
+                            disabled={[
+                              { before: new Date() },
+                              (date) =>
+                                unavailableDates.has(formatDateForInput(date)),
+                            ]}
                           />
-                        </FormControl>
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+
+              {selectedDateNotices.length > 0 && (
+                <div className="space-y-3 [grid-area:notice]">
+                  {selectedDateNotices.map((notice) => (
+                    <p
+                      key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
+                      aria-live="polite"
+                      className="flex items-start gap-2 rounded-2xl border border-dashed border-sunset-yellow/45 bg-sunset-yellow/14 px-4 py-3 text-sm leading-6 text-navy-blue/50"
+                    >
+                      <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-chilean-fire" />
+                      <span>
+                        {m.reservationAvailabilityPartialNotice(
+                          {
+                            startsAt: notice.startsAt,
+                            endsAt: notice.endsAt,
+                          },
+                          { locale }
+                        )}
                       </span>
-                      <span className="text-sm font-semibold text-navy-blue before:content-['+']">
-                        {coffeePriceLabel}
-                      </span>
-                    </FormLabel>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
+                    </p>
+                  ))}
+                </div>
+              )}
+
+              <div className="[grid-area:coffee]">
+                <FormField
+                  control={form.control}
+                  name="coffee"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
+                        {m.reservationCoffeeLabel({}, { locale })}
+                      </FormLabel>
+                      <FormLabel
+                        className={cn(
+                          "flex h-13 items-center justify-between gap-3 rounded-[1.1rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/18 to-white px-4 py-3 text-navy-blue transition",
+                          !courtesyCoffeeIncluded &&
+                            "cursor-pointer hover:border-burned-orange/30",
+                          courtesyCoffeeIncluded && "cursor-default"
+                        )}
+                      >
+                        <span className="flex items-center gap-3">
+                          <Coffee className="h-5 w-5 shrink-0 text-burned-orange" />
+                          <FormControl>
+                            <Switch
+                              checked={
+                                courtesyCoffeeIncluded ? true : field.value
+                              }
+                              disabled={courtesyCoffeeIncluded}
+                              onBlur={field.onBlur}
+                              onCheckedChange={(checked) =>
+                                field.onChange(Boolean(checked))
+                              }
+                            />
+                          </FormControl>
+                        </span>
+                        <span className="text-sm font-semibold text-navy-blue before:content-['+']">
+                          {coffeePriceLabel}
+                        </span>
+                      </FormLabel>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
             </div>
 
             <div className="grid gap-5 md:grid-cols-2">
@@ -882,24 +909,6 @@ export function ReservationForm({
                   <span>{selectedReservationUnavailableMessage}</span>
                 </p>
               )}
-              {selectedDateNotices.map((notice) => (
-                <p
-                  key={`${notice.date}-${notice.startsAt}-${notice.endsAt}`}
-                  aria-live="polite"
-                  className="flex items-start gap-2 rounded-2xl border border-aquamarine-green/25 bg-aquamarine-green/8 px-4 py-3 text-sm leading-6 text-navy-blue"
-                >
-                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-aquamarine-green" />
-                  <span>
-                    {m.reservationAvailabilityPartialNotice(
-                      {
-                        startsAt: notice.startsAt,
-                        endsAt: notice.endsAt,
-                      },
-                      { locale }
-                    )}
-                  </span>
-                </p>
-              ))}
               {isAvailabilityLoading && !submissionMessage && (
                 <p
                   aria-live="polite"
