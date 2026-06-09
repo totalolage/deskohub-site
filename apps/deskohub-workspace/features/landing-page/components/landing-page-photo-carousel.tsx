@@ -1,8 +1,13 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import { motion, type Transition, useReducedMotion } from "motion/react";
-import { use, useEffect, useMemo, useState } from "react";
+import {
+  motion,
+  type PanInfo,
+  type Transition,
+  useReducedMotion,
+} from "motion/react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { cn } from "@/shared/utils";
@@ -19,16 +24,16 @@ const wrapIndex = (index: number, length: number) =>
 
 const getClosestVirtualIndex = (
   targetIndex: number,
-  currentIndex: number,
+  currentAnimationIndex: number,
   length: number
 ) => {
-  const currentLogicalIndex = wrapIndex(currentIndex, length);
+  const currentLogicalIndex = wrapIndex(currentAnimationIndex, length);
   let delta = targetIndex - currentLogicalIndex;
 
   if (delta > length / 2) delta -= length;
   if (delta < -length / 2) delta += length;
 
-  return currentIndex + delta;
+  return currentAnimationIndex + delta;
 };
 
 const slideOffsets = [-2, -1, 0, 1, 2] as const;
@@ -53,6 +58,11 @@ const dotTransition: Transition = {
   stiffness: 420,
   damping: 32,
 };
+
+const swipeDistanceThreshold = 48;
+const swipeVelocityThreshold = 520;
+const swipeClickSuppressionDistance = 8;
+const clickSuppressionAfterSwipeMs = 180;
 
 const instantTransition: Transition = {
   duration: 0,
@@ -122,6 +132,30 @@ const getSlideZIndex = (offset: SlideOffset) => {
   return 0;
 };
 
+const getSwipeStep = ({ offset, velocity }: PanInfo) => {
+  const absX = Math.abs(offset.x);
+  const absY = Math.abs(offset.y);
+  const isHorizontalSwipe = absX > absY * 1.2;
+
+  if (!isHorizontalSwipe) return 0;
+
+  if (
+    offset.x <= -swipeDistanceThreshold ||
+    velocity.x <= -swipeVelocityThreshold
+  ) {
+    return 1;
+  }
+
+  if (
+    offset.x >= swipeDistanceThreshold ||
+    velocity.x >= swipeVelocityThreshold
+  ) {
+    return -1;
+  }
+
+  return 0;
+};
+
 const AUTO_PLAY_INTERVAL = 3600;
 export function LandingPagePhotoCarousel({
   imagesPromise,
@@ -129,10 +163,11 @@ export function LandingPagePhotoCarousel({
 }: LandingPagePhotoCarouselProps) {
   const images = use(imagesPromise);
   const shouldReduceMotion = useReducedMotion();
-  const [currentIndex, setCurrentIndex] = useState(0);
+  const [animationIndex, setAnimationIndex] = useState(0);
   const [isPointerOver, setIsPointerOver] = useState(false);
   const [isFocusWithin, setIsFocusWithin] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const lastSwipeAtRef = useRef(0);
   const isPaused = isPointerOver || isFocusWithin;
   const activeSlideTransition = shouldReduceMotion
     ? instantTransition
@@ -148,7 +183,7 @@ export function LandingPagePhotoCarousel({
     if (images.length <= 1 || isPaused || shouldReduceMotion) return;
 
     const interval = setInterval(() => {
-      setCurrentIndex((index) => index + 1);
+      setAnimationIndex((index) => index + 1);
     }, AUTO_PLAY_INTERVAL);
 
     return () => clearInterval(interval);
@@ -156,14 +191,36 @@ export function LandingPagePhotoCarousel({
 
   const hasImages = images.length > 0;
   const currentLogicalIndex = hasImages
-    ? wrapIndex(currentIndex, images.length)
+    ? wrapIndex(animationIndex, images.length)
     : 0;
-  const moveToVirtualIndex = (nextIndex: number) => {
-    setCurrentIndex(nextIndex);
+  const moveToAnimationIndex = (nextIndex: number) => {
+    setAnimationIndex(nextIndex);
+  };
+  const moveByAnimationStep = (step: number) => {
+    setAnimationIndex((index) => index + step);
   };
   const openLightbox = (index: number) => {
     setLightboxIndex(index);
   };
+  const handleSwipeEnd = (
+    _: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    if (images.length <= 1) return;
+
+    const isHorizontalDrag =
+      Math.abs(info.offset.x) >= swipeClickSuppressionDistance &&
+      Math.abs(info.offset.x) > Math.abs(info.offset.y);
+    const swipeStep = getSwipeStep(info);
+
+    if (isHorizontalDrag) lastSwipeAtRef.current = Date.now();
+
+    if (swipeStep === 0) return;
+
+    moveByAnimationStep(swipeStep);
+  };
+  const shouldSuppressClickAfterSwipe = () =>
+    Date.now() - lastSwipeAtRef.current < clickSuppressionAfterSwipeMs;
   const lightboxSlides: SlideImage[] = useMemo(
     () =>
       images.map((image) => ({
@@ -179,7 +236,7 @@ export function LandingPagePhotoCarousel({
   const visibleOffsets: readonly SlideOffset[] =
     images.length === 0 ? [] : images.length === 1 ? [0] : slideOffsets;
   const visibleSlides = visibleOffsets.map((offset) => {
-    const virtualIndex = currentIndex + offset;
+    const virtualIndex = animationIndex + offset;
     return {
       image: images[wrapIndex(virtualIndex, images.length)]!,
       isCurrent: offset === 0,
@@ -208,7 +265,10 @@ export function LandingPagePhotoCarousel({
       onPointerEnter={() => setIsPointerOver(true)}
       onPointerLeave={() => setIsPointerOver(false)}
     >
-      <div className="relative mx-auto h-72 max-w-6xl @container-[size] sm:h-112 lg:h-136">
+      <motion.div
+        className="relative mx-auto h-72 max-w-6xl touch-pan-y @container-[size] sm:h-112 lg:h-136"
+        onPanEnd={handleSwipeEnd}
+      >
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
           const isVisibleSide = Math.abs(offset) === 1;
           const isVisible = isCurrent || isVisibleSide;
@@ -235,6 +295,8 @@ export function LandingPagePhotoCarousel({
               initial={shouldReduceMotion ? false : getSlideMotion(offset)}
               key={virtualIndex}
               onClick={() => {
+                if (shouldSuppressClickAfterSwipe()) return;
+
                 const logicalIndex = wrapIndex(virtualIndex, images.length);
 
                 if (isCurrent) {
@@ -242,7 +304,7 @@ export function LandingPagePhotoCarousel({
                   return;
                 }
 
-                if (isVisibleSide) moveToVirtualIndex(virtualIndex);
+                if (isVisibleSide) moveToAnimationIndex(virtualIndex);
               }}
               tabIndex={isVisible ? undefined : -1}
               transition={activeSlideTransition}
@@ -271,7 +333,7 @@ export function LandingPagePhotoCarousel({
             </motion.button>
           );
         })}
-      </div>
+      </motion.div>
       {images.length > 1 && (
         <div className="flex justify-center gap-2 px-4">
           {images.map((image, index) => (
@@ -284,8 +346,8 @@ export function LandingPagePhotoCarousel({
               )}
               key={image.public_id}
               onClick={() =>
-                moveToVirtualIndex(
-                  getClosestVirtualIndex(index, currentIndex, images.length)
+                moveToAnimationIndex(
+                  getClosestVirtualIndex(index, animationIndex, images.length)
                 )
               }
               transition={activeDotTransition}
