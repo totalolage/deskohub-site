@@ -4,6 +4,11 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
+import {
+  GoogleCalendarWorkspaceLimitationsService,
+  WorkspaceCalendarLimitation,
+  type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
+} from "./google-calendar-workspace-limitations.service";
 import type { WorkspaceAvailabilityService } from "./workspace-availability.service";
 
 const testDate = "2099-06-10";
@@ -90,6 +95,7 @@ const runWithInventory = async <A>(
   input: {
     readonly tables?: readonly Table[];
     readonly reservations?: readonly Reservation[];
+    readonly limitations?: readonly WorkspaceCalendarLimitationType[];
   } = {}
 ) => {
   const availability = await import("./workspace-availability.service");
@@ -117,6 +123,13 @@ const runWithInventory = async <A>(
         ),
       })
     ),
+    Effect.provide(
+      Layer.succeed(GoogleCalendarWorkspaceLimitationsService, {
+        listLimitations: mock(() =>
+          Effect.succeed([...(input.limitations ?? [])])
+        ),
+      })
+    ),
     Effect.runPromise
   );
 };
@@ -127,6 +140,7 @@ const getAvailability = (input: {
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
   readonly reservations?: readonly Reservation[];
+  readonly limitations?: readonly WorkspaceCalendarLimitationType[];
 }) =>
   runWithInventory(
     Effect.gen(function* () {
@@ -247,6 +261,46 @@ describe("WorkspaceAvailabilityService", () => {
     expect(availability.unavailableTiers).toContain("basic");
   });
 
+  test("marks calendar fully occupied dates unavailable", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      limitations: [
+        WorkspaceCalendarLimitation.FullyOccupied({
+          date: testDate,
+          sourceEventId: "calendar-full",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.notices).toEqual([]);
+  });
+
+  test("returns calendar partial occupancy notices without blocking reservations", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      limitations: [
+        WorkspaceCalendarLimitation.PartiallyOccupied({
+          date: testDate,
+          startsAt: "14:00",
+          endsAt: "17:00",
+          sourceEventId: "calendar-partial",
+          summary: "Community meetup [workspace:partial]",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.notices).toEqual([
+      {
+        date: testDate,
+        startsAt: "14:00",
+        endsAt: "17:00",
+        summary: "Community meetup [workspace:partial]",
+      },
+    ]);
+  });
+
   test("fails ensureAvailable when selected setup is occupied", async () => {
     const result = await runWithInventory(
       Effect.either(
@@ -265,6 +319,36 @@ describe("WorkspaceAvailabilityService", () => {
       {
         reservations: [
           makeReservation({ tableId: "profi-27-qhd", status: "NEW" }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Left");
+    if (result._tag === "Left") {
+      expect(result.left._tag).toBe("WorkspaceTableUnavailableError");
+    }
+  });
+
+  test("fails ensureAvailable when calendar marks the date fully occupied", async () => {
+    const result = await runWithInventory(
+      Effect.either(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            date: testDate,
+            entryTier: "basic",
+          });
+        })
+      ),
+      {
+        limitations: [
+          WorkspaceCalendarLimitation.FullyOccupied({
+            date: testDate,
+            sourceEventId: "calendar-full",
+          }),
         ],
       }
     );
