@@ -22,6 +22,7 @@
     "@deskohub/cloudinary-image": "workspace:*",
     "@deskohub/dotypos": "workspace:*",
     "@deskohub/email": "workspace:*",
+    "@deskohub/google-calendar": "workspace:*",
     "@deskohub/i18n": "workspace:*",
     "@deskohub/nexi": "workspace:*",
     "@effect/schema": "^0.75.5",
