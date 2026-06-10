@@ -363,6 +363,11 @@ describe("ResendWebhookService", () => {
       "@deskohub/email/backend/service"
     );
     const {
+      createWorkspaceCheckoutWifiQrPayload,
+      WorkspaceCheckoutNetworkDetailsService,
+      workspaceCheckoutPlaceholderNetworkDetails,
+    } = await import("./network-details.service");
+    const {
       WorkspaceReservationEmailService,
       WorkspaceReservationEmailServiceLive,
     } = await import("./workspace-reservation-email.service");
@@ -415,6 +420,7 @@ describe("ResendWebhookService", () => {
       Effect.provide(WorkspaceReservationEmailServiceLive),
       Effect.provide(Layer.succeed(EmailServiceTag, emailService)),
       Effect.provide(Layer.succeed(EmailConfigTag, emailConfig)),
+      Effect.provide(WorkspaceCheckoutNetworkDetailsService.Live),
       Effect.runPromise
     );
 
@@ -461,6 +467,12 @@ describe("ResendWebhookService", () => {
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
+      const networkHeading = emailView.getByText(
+        m.checkoutEmailNetworkHeading({}, { locale })
+      );
+      const networkQrImage = emailView.getByRole("img", {
+        name: m.checkoutEmailNetworkHeading({}, { locale }),
+      });
       const mapImage = emailView.getByRole("img", {
         name: m.checkoutEmailLocationHeading({}, { locale }),
       });
@@ -486,6 +498,14 @@ describe("ResendWebhookService", () => {
       expect(accessCodeLabel.nextElementSibling?.textContent).toBe(
         "ACCESS-123"
       );
+      expect(networkHeading).toBeTruthy();
+      expect(
+        emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.ssid)
+      ).toBeTruthy();
+      expect(
+        emailView.getByText(workspaceCheckoutPlaceholderNetworkDetails.password)
+      ).toBeTruthy();
+      expect(networkQrImage.getAttribute("src")).toBe("cid:workspace-wifi-qr");
       expect(tableLabel.nextElementSibling?.textContent).toBe("12");
       expect(emailView.getByText("dotypos-reservation-id")).toBeTruthy();
       expect(emailView.getByText("reservation-id")).toBeTruthy();
@@ -493,13 +513,25 @@ describe("ResendWebhookService", () => {
       expect(addressLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("style")).toContain("margin-top:-24px");
-      expect(customerEmail.attachments).toHaveLength(1);
+      expect(customerEmail.attachments).toHaveLength(2);
       expect(customerEmail.attachments?.[0]).toMatchObject({
         contentId: "workspace-location-map",
         contentType: "image/jpeg",
         filename: "workspace-location-map.jpeg",
       });
       expect(customerEmail.attachments?.[0]?.content).toEqual(locationMapImage);
+      expect(customerEmail.attachments?.[1]).toMatchObject({
+        contentId: "workspace-wifi-qr",
+        contentType: "image/svg+xml",
+        filename: "workspace-wifi-qr.svg",
+      });
+      expect(customerEmail.attachments?.[1]?.content).toContain("<svg");
+      expect(customerEmail.attachments?.[1]?.content).toContain("</svg>");
+      expect(
+        createWorkspaceCheckoutWifiQrPayload(
+          workspaceCheckoutPlaceholderNetworkDetails
+        )
+      ).toBe("WIFI:T:WPA;S:O2-Internet_6BE;P:95502205;;");
       expect(generateStaticMapImage).toHaveBeenCalledWith(
         expect.objectContaining({
           height: 640,
@@ -516,6 +548,13 @@ describe("ResendWebhookService", () => {
     } finally {
       unregisterWorkspaceComponentTestEnv();
     }
+
+    const internalEmail = sentMessages[1];
+    if (!internalEmail) {
+      throw new Error("Internal email was not sent.");
+    }
+    expect(internalEmail.html).toContain("customer@example.com");
+    expect(internalEmail.text).toContain("customer@example.com");
   });
 
   test("leaves paid fulfillment processing until Resend confirms delivery", async () => {

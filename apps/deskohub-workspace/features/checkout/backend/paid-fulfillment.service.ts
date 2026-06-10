@@ -3,6 +3,7 @@ import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/network-details.service";
 import {
   OperationalEventRepository,
   OperationalEventRepositoryLive,
@@ -366,7 +367,10 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     Layer.provide(
       Layer.provideMerge(
         WorkspaceReservationEmailServiceLive,
-        Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
+        Layer.mergeAll(
+          Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer),
+          WorkspaceCheckoutNetworkDetailsService.Live
+        )
       )
     ),
     Layer.provide(OperationalEventRepositoryLive),

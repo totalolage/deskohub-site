@@ -10,9 +10,16 @@ import type {
   EmailMessage,
   EmailRecipient,
 } from "@deskohub/email/types/email.types";
+import { generateQrCodeSvg } from "@deskohub/qr-code";
 import { Context, Effect, Layer } from "effect";
 import { generateStaticMapImage } from "osm";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
+import {
+  createWorkspaceCheckoutWifiQrPayload,
+  type WorkspaceCheckoutNetworkDetails,
+  WorkspaceCheckoutNetworkDetailsService,
+  workspaceCheckoutPlaceholderNetworkDetails,
+} from "@/features/checkout/backend/network-details.service";
 import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
@@ -71,6 +78,7 @@ const workspaceMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${wo
 const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
+const workspaceNetworkQrContentId = "workspace-wifi-qr";
 
 const createWorkspaceLocationMapAttachment = (): Effect.Effect<
   EmailAttachment,
@@ -93,6 +101,30 @@ const createWorkspaceLocationMapAttachment = (): Effect.Effect<
     catch: (cause) =>
       new EmailServiceError(
         "Workspace reservation location map could not be generated.",
+        cause
+      ),
+  });
+
+const createWorkspaceNetworkQrAttachment = (
+  networkDetails: WorkspaceCheckoutNetworkDetails
+): Effect.Effect<EmailAttachment, EmailServiceError> =>
+  Effect.tryPromise({
+    try: async () => ({
+      content: await generateQrCodeSvg(
+        createWorkspaceCheckoutWifiQrPayload(networkDetails),
+        {
+          errorCorrectionLevel: "M",
+          margin: 2,
+          width: 280,
+        }
+      ),
+      contentId: workspaceNetworkQrContentId,
+      contentType: "image/svg+xml",
+      filename: "workspace-wifi-qr.svg",
+    }),
+    catch: (cause) =>
+      new EmailServiceError(
+        "Workspace reservation Wi-Fi QR code could not be generated.",
         cause
       ),
   });
@@ -165,9 +197,14 @@ const createInternalReservationRows = (
   customer: Customer,
   locale: Locale
 ): EmailDetailRow[] => {
+  const customerEmail = customer.email?.trim();
   const rows: EmailDetailRow[] = [
     [m.reservationEmailNameLabel({}, { locale }), getCustomerName(customer)],
   ];
+
+  if (customerEmail) {
+    rows.push([m.reservationEmailEmailLabel({}, { locale }), customerEmail]);
+  }
 
   if (customer.phone?.trim()) {
     rows.push([m.reservationEmailPhoneLabel({}, { locale }), customer.phone]);
@@ -190,6 +227,8 @@ const createEmailHtml = (input: {
   readonly body?: string;
   readonly locale: Locale;
   readonly accessCode?: string;
+  readonly networkDetails?: WorkspaceCheckoutNetworkDetails;
+  readonly networkQrImageSrc?: string;
   readonly tableName?: string;
   readonly locationMapContentId?: string;
   readonly rows: readonly EmailDetailRow[];
@@ -205,8 +244,8 @@ const createEmailHtml = (input: {
       }}
     >
       <h2 style={{ color: "#00024f" }}>{input.heading}</h2>
-      {input.body ? <p>{input.body}</p> : null}
-      {input.accessCode ? (
+      {input.body && <p>{input.body}</p>}
+      {input.accessCode && (
         <div
           style={{
             margin: "18px 0 22px",
@@ -245,7 +284,7 @@ const createEmailHtml = (input: {
               {workspaceAddress}
             </a>
           </div>
-          {input.locationMapContentId ? (
+          {input.locationMapContentId && (
             <>
               {/* biome-ignore lint/performance/noImgElement: Email HTML needs a plain image tag. */}
               <img
@@ -263,7 +302,7 @@ const createEmailHtml = (input: {
                 width="560"
               />
             </>
-          ) : null}
+          )}
           <div
             style={{
               background: "#f4f1ea",
@@ -296,8 +335,8 @@ const createEmailHtml = (input: {
             </a>
           </div>
         </div>
-      ) : null}
-      {input.accessCode ? (
+      )}
+      {input.accessCode && (
         <div
           style={{
             margin: "24px 0 18px",
@@ -339,7 +378,7 @@ const createEmailHtml = (input: {
               {input.accessCode}
             </div>
           </div>
-          {input.tableName ? (
+          {input.tableName && (
             <div
               style={{
                 background: "#e9fff6",
@@ -371,9 +410,113 @@ const createEmailHtml = (input: {
                 {input.tableName}
               </div>
             </div>
-          ) : null}
+          )}
         </div>
-      ) : null}
+      )}
+      {input.networkDetails && (
+        <div
+          style={{
+            margin: "18px 0 22px",
+            background: "#eef8ff",
+            border: "1px solid #cfe6f8",
+            borderRadius: "20px",
+            padding: "18px 20px",
+          }}
+        >
+          <table
+            role="presentation"
+            style={{ borderCollapse: "collapse", width: "100%" }}
+          >
+            <tbody>
+              <tr>
+                <td
+                  style={{
+                    padding: input.networkQrImageSrc ? "0 18px 10px 0" : 0,
+                    verticalAlign: "top",
+                  }}
+                >
+                  <div
+                    style={{
+                      color: "#006b55",
+                      fontSize: "12px",
+                      fontWeight: 800,
+                      letterSpacing: "0.16em",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    {m.checkoutEmailNetworkHeading(
+                      {},
+                      { locale: input.locale }
+                    )}
+                  </div>
+                </td>
+                {input.networkQrImageSrc && (
+                  <td
+                    rowSpan={2}
+                    style={{
+                      paddingLeft: "18px",
+                      textAlign: "right",
+                      verticalAlign: "middle",
+                      width: "170px",
+                    }}
+                  >
+                    {/* biome-ignore lint/performance/noImgElement: Email HTML needs a plain image tag. */}
+                    <img
+                      alt={m.checkoutEmailNetworkHeading(
+                        {},
+                        { locale: input.locale }
+                      )}
+                      src={input.networkQrImageSrc}
+                      style={{
+                        background: "#ffffff",
+                        border: "1px solid #d8edf8",
+                        borderRadius: "18px",
+                        display: "inline-block",
+                        height: "auto",
+                        padding: "10px",
+                        width: "148px",
+                      }}
+                      width="148"
+                    />
+                  </td>
+                )}
+              </tr>
+              <tr>
+                <td
+                  style={{
+                    color: "#00024f",
+                    fontSize: "16px",
+                    lineHeight: 1.6,
+                    paddingRight: input.networkQrImageSrc ? "18px" : 0,
+                    verticalAlign: "top",
+                  }}
+                >
+                  <div>
+                    <strong>
+                      {m.checkoutEmailNetworkSsidLabel(
+                        {},
+                        { locale: input.locale }
+                      )}
+                      :
+                    </strong>{" "}
+                    {input.networkDetails.ssid}
+                  </div>
+                  <div>
+                    <strong>
+                      {m.checkoutEmailNetworkPasswordLabel(
+                        {},
+                        { locale: input.locale }
+                      )}
+                      :
+                    </strong>{" "}
+                    {input.networkDetails.password}
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      )}
       <table
         style={{
           width: "100%",
@@ -385,9 +528,7 @@ const createEmailHtml = (input: {
           <WorkspaceEmailRows rows={input.rows} />
         </tbody>
       </table>
-      {input.followUp ? (
-        <p style={{ marginTop: "20px" }}>{input.followUp}</p>
-      ) : null}
+      {input.followUp && <p style={{ marginTop: "20px" }}>{input.followUp}</p>}
     </div>
   );
 
@@ -396,6 +537,7 @@ const createEmailText = (input: {
   readonly body?: string;
   readonly locale: Locale;
   readonly accessCode?: string;
+  readonly networkDetails?: WorkspaceCheckoutNetworkDetails;
   readonly tableName?: string;
   readonly rows: readonly EmailDetailRow[];
   readonly followUp?: string;
@@ -417,6 +559,14 @@ const createEmailText = (input: {
           `${m.checkoutEmailAccessCodeLabel({}, { locale: input.locale })}: ${input.accessCode}`,
         ]
       : []),
+    ...(input.networkDetails
+      ? [
+          "",
+          m.checkoutEmailNetworkHeading({}, { locale: input.locale }),
+          `${m.checkoutEmailNetworkSsidLabel({}, { locale: input.locale })}: ${input.networkDetails.ssid}`,
+          `${m.checkoutEmailNetworkPasswordLabel({}, { locale: input.locale })}: ${input.networkDetails.password}`,
+        ]
+      : []),
     ...(input.tableName
       ? [
           "",
@@ -428,23 +578,54 @@ const createEmailText = (input: {
     ...(input.followUp ? ["", input.followUp] : []),
   ].join("\n");
 
-export const createWorkspaceReservationCustomerEmailPreviewHtml = (input: {
+export const createWorkspaceReservationCustomerEmailPreviewHtml =
+  async (input: {
+    readonly reservation: WorkspaceReservation;
+    readonly tableName: string;
+  }) => {
+    const locale = getReservationLocale(input.reservation.locale);
+    const rows = createReservationRows(input.reservation, locale);
+    const networkQrSvg = await generateQrCodeSvg(
+      createWorkspaceCheckoutWifiQrPayload(
+        workspaceCheckoutPlaceholderNetworkDetails
+      ),
+      {
+        errorCorrectionLevel: "M",
+        margin: 2,
+        width: 280,
+      }
+    );
+
+    return createEmailHtml({
+      heading: m.checkoutEmailCustomerAccessHeading({}, { locale }),
+      locale,
+      accessCode: input.reservation.customerAccessCode,
+      networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
+      networkQrImageSrc: `data:image/svg+xml;utf8,${encodeURIComponent(networkQrSvg)}`,
+      tableName: input.tableName,
+      locationMapContentId: workspaceLocationMapContentId,
+      rows,
+      followUp: m.reservationEmailCustomerFollowUp(
+        { email: workspaceSiteConstants.contact.infoEmail },
+        { locale }
+      ),
+    });
+  };
+
+export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
   readonly reservation: WorkspaceReservation;
-  readonly tableName: string;
+  readonly customer: Customer;
 }) => {
   const locale = getReservationLocale(input.reservation.locale);
-  const rows = createReservationRows(input.reservation, locale);
 
   return createEmailHtml({
-    heading: m.checkoutEmailCustomerAccessHeading({}, { locale }),
+    heading: m.checkoutEmailInternalPaidReservationHeading({}, { locale }),
+    body: m.checkoutEmailInternalPaidReservationBody({}, { locale }),
     locale,
-    accessCode: input.reservation.customerAccessCode,
-    tableName: input.tableName,
-    locationMapContentId: workspaceLocationMapContentId,
-    rows,
-    followUp: m.reservationEmailCustomerFollowUp(
-      { email: workspaceSiteConstants.contact.infoEmail },
-      { locale }
+    rows: createInternalReservationRows(
+      input.reservation,
+      input.customer,
+      locale
     ),
   });
 };
@@ -454,6 +635,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
   Effect.gen(function* () {
     const emailService = yield* EmailServiceTag;
     const emailConfig = yield* EmailConfigTag;
+    const networkDetailsService = yield* WorkspaceCheckoutNetworkDetailsService;
 
     return WorkspaceReservationEmailService.of({
       sendPaidReservationEmails: Effect.fn(
@@ -462,6 +644,10 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         const locale = getReservationLocale(reservation.locale);
         const customerName = getCustomerName(customer);
         const customerEmail = customer.email?.trim();
+        const networkDetails =
+          yield* networkDetailsService.resolveCustomerNetworkDetails({
+            reservation,
+          });
         const customerRows = createReservationRows(reservation, locale);
         const internalRows = createInternalReservationRows(
           reservation,
@@ -488,6 +674,19 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
                 ).pipe(Effect.as(undefined))
               )
             );
+          const networkQrAttachment = yield* createWorkspaceNetworkQrAttachment(
+            networkDetails
+          ).pipe(
+            Effect.catchAll((cause) =>
+              Effect.logWarning(
+                "Workspace reservation Wi-Fi QR attachment skipped",
+                {
+                  cause,
+                  workspaceReservationId: reservation.id,
+                }
+              ).pipe(Effect.as(undefined))
+            )
+          );
           const heading = m.checkoutEmailCustomerAccessHeading({}, { locale });
           const followUp = m.reservationEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
@@ -502,6 +701,10 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               heading,
               locale,
               accessCode: reservation.customerAccessCode,
+              networkDetails,
+              networkQrImageSrc: networkQrAttachment
+                ? `cid:${networkQrAttachment.contentId}`
+                : undefined,
               tableName,
               locationMapContentId: locationMapAttachment?.contentId,
               rows: customerRows,
@@ -511,13 +714,14 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               heading,
               locale,
               accessCode: reservation.customerAccessCode,
+              networkDetails,
               tableName,
               rows: customerRows,
               followUp,
             }),
-            attachments: locationMapAttachment
-              ? [locationMapAttachment]
-              : undefined,
+            attachments: [locationMapAttachment, networkQrAttachment].filter(
+              (attachment): attachment is EmailAttachment => Boolean(attachment)
+            ),
             tags: ["workspace-paid-reservation-access"],
             metadata,
           };
