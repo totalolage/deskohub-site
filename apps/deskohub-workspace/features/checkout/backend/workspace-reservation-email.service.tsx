@@ -81,6 +81,7 @@ const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const internalTestingSubjectPrefix = "[TESTING]";
+const internalNotificationLocale: Locale = "cs-CZ";
 
 const customerAccessHeadingDateFormatOptions = {
   weekday: "long",
@@ -108,12 +109,11 @@ const createCustomerAccessHeading = (
   );
 
 const createInternalReservationSubject = (
-  reservation: WorkspaceReservation,
-  locale: Locale
+  reservation: WorkspaceReservation
 ) => {
   const subject = m.checkoutEmailInternalPaidReservationSubject(
     { orderId: reservation.id },
-    { locale }
+    { locale: internalNotificationLocale }
   );
 
   if (env.VERCEL_ENV === "production") {
@@ -254,11 +254,6 @@ const createInternalReservationRows = (
   }
 
   rows.push(...createReservationDetailRows(reservation, locale));
-
-  rows.push([
-    m.checkoutEmailAccessCodeLabel({}, { locale }),
-    reservation.customerAccessCode,
-  ]);
 
   appendReservationReferenceRows(rows, reservation, locale);
 
@@ -659,16 +654,20 @@ export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
   readonly reservation: WorkspaceReservation;
   readonly customer: Customer;
 }) => {
-  const locale = getReservationLocale(input.reservation.locale);
-
   return createEmailHtml({
-    heading: m.checkoutEmailInternalPaidReservationHeading({}, { locale }),
-    body: m.checkoutEmailInternalPaidReservationBody({}, { locale }),
-    locale,
+    heading: m.checkoutEmailInternalPaidReservationHeading(
+      {},
+      { locale: internalNotificationLocale }
+    ),
+    body: m.checkoutEmailInternalPaidReservationBody(
+      {},
+      { locale: internalNotificationLocale }
+    ),
+    locale: internalNotificationLocale,
     rows: createInternalReservationRows(
       input.reservation,
       input.customer,
-      locale
+      internalNotificationLocale
     ),
   });
 };
@@ -695,7 +694,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         const internalRows = createInternalReservationRows(
           reservation,
           customer,
-          locale
+          internalNotificationLocale
         );
         const metadata = {
           source: "workspace-paid-fulfillment",
@@ -792,11 +791,11 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
 
         const internalHeading = m.checkoutEmailInternalPaidReservationHeading(
           {},
-          { locale }
+          { locale: internalNotificationLocale }
         );
         const internalBody = m.checkoutEmailInternalPaidReservationBody(
           {},
-          { locale }
+          { locale: internalNotificationLocale }
         );
         const internalMessage: EmailMessage = {
           from: emailConfig.defaultFrom,
@@ -804,17 +803,17 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           replyTo: customerEmail
             ? { email: customerEmail, name: customerName }
             : undefined,
-          subject: createInternalReservationSubject(reservation, locale),
+          subject: createInternalReservationSubject(reservation),
           html: createEmailHtml({
             heading: internalHeading,
             body: internalBody,
-            locale,
+            locale: internalNotificationLocale,
             rows: internalRows,
           }),
           text: createEmailText({
             heading: internalHeading,
             body: internalBody,
-            locale,
+            locale: internalNotificationLocale,
             rows: internalRows,
           }),
           tags: ["workspace-paid-reservation-internal"],
