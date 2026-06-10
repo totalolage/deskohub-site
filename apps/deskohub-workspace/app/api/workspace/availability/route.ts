@@ -1,47 +1,21 @@
-import { DotyposService, type ValidationError } from "@deskohub/dotypos";
-import { GoogleCalendarService } from "@deskohub/google-calendar";
-import { Effect, Layer, Predicate } from "effect";
+import type { ValidationError } from "@deskohub/dotypos";
+import { Effect, Predicate } from "effect";
 import { NextResponse } from "next/server";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
-import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
-import { ReservationHoldCleanupServiceLive } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { WorkspaceReservationRepositoryLive } from "@/features/checkout/backend/workspace-reservation.repository";
-import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
 import {
-  parseWorkspaceAvailabilityQuery,
   WorkspaceAvailabilityService,
-  WorkspaceAvailabilityServiceLive,
+  WorkspaceAvailabilityServiceLiveWithDependencies,
 } from "@/features/reservation/backend/workspace-availability.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
+import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/schemas/workspace-availability";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
-
-const GoogleCalendarLive = GoogleCalendarService.Live.pipe(
-  Layer.provide(GoogleCalendarRuntimeConfigLive)
-);
-
-const GoogleCalendarWorkspaceLimitationsLive =
-  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(GoogleCalendarLive)
-  );
-
-const AvailabilityRouteLive = WorkspaceAvailabilityServiceLive.pipe(
-  Layer.provide(ReservationHoldCleanupServiceLive),
-  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-  Layer.provide(OperationalEventRepositoryLive),
-  Layer.provide(WorkspaceReservationRepositoryLive),
-  Layer.provide(WorkspaceDatabaseLive),
-  Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
-  Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive))
-);
 
 const getAvailabilityRequest = (request: Request) => {
   const { searchParams } = new URL(request.url);
   return parseWorkspaceAvailabilityQuery(searchParams);
 };
 
-const loadWorkspaceAvailability = Effect.fn("loadWorkspaceAvailability")(
+const loadWorkspaceAvailabilityRequest = Effect.fn(
+  "loadWorkspaceAvailabilityRequest"
+)(
   function* (request: Request) {
     const query = getAvailabilityRequest(request);
     yield* Effect.annotateLogsScoped({
@@ -54,12 +28,8 @@ const loadWorkspaceAvailability = Effect.fn("loadWorkspaceAvailability")(
     });
     yield* Effect.logInfo("Workspace availability request parsed");
 
-    const availability = yield* WorkspaceAvailabilityService;
-    const result = yield* availability.getAvailability(query);
-    yield* Effect.annotateLogsScoped({ result });
-    yield* Effect.logInfo("Workspace availability loaded");
-
-    return result;
+    const service = yield* WorkspaceAvailabilityService;
+    return yield* service.getAvailability(query);
   },
   (effect) =>
     effect.pipe(
@@ -92,8 +62,8 @@ const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
 
 export async function GET(request: Request): Promise<NextResponse> {
   return runWorkspaceEffect(
-    loadWorkspaceAvailability(request).pipe(
-      Effect.provide(AvailabilityRouteLive),
+    loadWorkspaceAvailabilityRequest(request).pipe(
+      Effect.provide(WorkspaceAvailabilityServiceLiveWithDependencies),
       Effect.tap((result) =>
         Effect.logInfo("Workspace availability response ready", { result })
       ),

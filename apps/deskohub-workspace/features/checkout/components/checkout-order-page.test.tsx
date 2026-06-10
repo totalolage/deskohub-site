@@ -7,11 +7,30 @@ mock.module("@/features/reservation/components/reservation-form", () => ({
   ReservationFormFallback: () => null,
 }));
 
+const initialAvailabilityQuery = {
+  from: "2026-01-01",
+  to: "2026-07-01",
+  entryTier: "basic",
+} as const;
+
+const initialAvailability = {
+  from: initialAvailabilityQuery.from,
+  to: initialAvailabilityQuery.to,
+  unavailableDates: [],
+  unavailableTiers: [],
+  unavailableMonitorOptions: [],
+  notices: [],
+} as const;
+
 const getFallbackProps = async (
   searchParams: Record<string, string | undefined>
 ) => {
   const { CheckoutOrderPage } = await import("./checkout-order-page");
-  const page = CheckoutOrderPage({ locale: "en-US", searchParams });
+  const page = CheckoutOrderPage({
+    initialAvailability,
+    locale: "en-US",
+    searchParams,
+  });
 
   if (!isValidElement(page)) {
     throw new Error("CheckoutOrderPage did not return a React element");

@@ -6,15 +6,18 @@ import {
 } from "@/features/reservation/components/reservation-form";
 import { tierRequiresMonitorOption } from "@/features/reservation/schemas/reservation";
 import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
+import type { WorkspaceAvailability } from "@/features/reservation/schemas/workspace-availability";
 import type { SupportedSearchParams } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
 type CheckoutOrderPageProps = {
+  initialAvailability: WorkspaceAvailability;
   locale: Locale;
   searchParams: SupportedSearchParams;
 };
 
 export function CheckoutOrderPage({
+  initialAvailability,
   locale,
   searchParams,
 }: CheckoutOrderPageProps) {
@@ -36,7 +39,11 @@ export function CheckoutOrderPage({
           />
         }
       >
-        <ReservationForm locale={locale} showIntro={false} />
+        <ReservationForm
+          initialAvailability={initialAvailability}
+          locale={locale}
+          showIntro={false}
+        />
       </Suspense>
     </CheckoutFlowLayout>
   );

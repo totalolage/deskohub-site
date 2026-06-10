@@ -5,9 +5,19 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
-import type { GoogleCalendarError } from "@deskohub/google-calendar";
+import {
+  type GoogleCalendarError,
+  GoogleCalendarService,
+} from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
-import { ReservationHoldCleanupService } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
+import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
+import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLive,
+} from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { WorkspaceReservationRepositoryLive } from "@/features/checkout/backend/workspace-reservation.repository";
 import {
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
@@ -15,43 +25,23 @@ import {
 import { hasAvailableWorkspaceTableCandidate } from "@/features/checkout/backend/workspace-table-selection";
 import {
   getWorkspaceProductByTier,
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
+import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
+import type {
+  WorkspaceAvailability,
+  WorkspaceAvailabilityNotice,
+  WorkspaceAvailabilityQuery,
+} from "../schemas/workspace-availability";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
 } from "./google-calendar-workspace-limitations.service";
-
-export type WorkspaceAvailabilityQuery = {
-  readonly date?: string;
-  readonly from: string;
-  readonly to: string;
-  readonly entryTier?: WorkspaceProductTier;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
-};
-
-export type WorkspaceAvailabilityNotice = {
-  readonly date: string;
-  readonly startsAt: string;
-  readonly endsAt: string;
-  readonly summary?: string;
-};
-
-export type WorkspaceAvailability = {
-  readonly date?: string;
-  readonly from: string;
-  readonly to: string;
-  readonly unavailableDates: readonly string[];
-  readonly unavailableTiers: readonly WorkspaceProductTier[];
-  readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
-  readonly notices: readonly WorkspaceAvailabilityNotice[];
-};
 
 type WorkspaceAvailabilityError =
   | ExternalAPIError
@@ -268,6 +258,28 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   })
 );
 
+const GoogleCalendarLive = GoogleCalendarService.Live.pipe(
+  Layer.provide(GoogleCalendarRuntimeConfigLive)
+);
+
+const GoogleCalendarWorkspaceLimitationsLive =
+  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
+    Layer.provide(GoogleCalendarLive)
+  );
+
+export const WorkspaceAvailabilityServiceLiveWithDependencies =
+  WorkspaceAvailabilityServiceLive.pipe(
+    Layer.provide(ReservationHoldCleanupServiceLive),
+    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+    Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(WorkspaceReservationRepositoryLive),
+    Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
+    Layer.provide(
+      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
+    )
+  );
+
 const getFullyOccupiedCalendarDates = (
   limitations: readonly WorkspaceCalendarLimitationType[]
 ) =>
@@ -395,60 +407,3 @@ const parsePlainDate = (date: string) =>
   });
 
 const plainDateToString = (date: Temporal.PlainDate) => date.toString();
-
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-
-const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Prague",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-const getCurrentPragueDate = (date: Date) => {
-  const dateParts = Object.fromEntries(
-    pragueDateFormatter
-      .formatToParts(date)
-      .map((part) => [part.type, part.value])
-  );
-
-  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
-};
-
-const getDateParam = (searchParams: URLSearchParams, key: string) => {
-  const value = searchParams.get(key)?.trim();
-  if (!value || !datePattern.test(value)) return undefined;
-  return value;
-};
-
-export const parseWorkspaceAvailabilityQuery = (
-  searchParams: URLSearchParams,
-  now = new Date()
-): WorkspaceAvailabilityQuery => {
-  const today = getCurrentPragueDate(now);
-  const from = getDateParam(searchParams, "from") ?? today;
-  const to =
-    getDateParam(searchParams, "to") ??
-    Temporal.PlainDate.from(today).add({ months: 6 }).toString();
-  const date = getDateParam(searchParams, "date");
-  const entryTier = getTierParam(searchParams.get("entryTier"));
-  const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
-
-  return {
-    from,
-    to,
-    ...(date && { date }),
-    ...(entryTier && { entryTier }),
-    ...(monitorOption && { monitorOption }),
-  };
-};
-
-const getTierParam = (value: string | null) => {
-  const normalized = value?.trim();
-  return isWorkspaceProductTier(normalized) ? normalized : undefined;
-};
-
-const getMonitorParam = (value: string | null) => {
-  const normalized = value?.trim();
-  return isWorkspaceProductMonitorOption(normalized) ? normalized : undefined;
-};

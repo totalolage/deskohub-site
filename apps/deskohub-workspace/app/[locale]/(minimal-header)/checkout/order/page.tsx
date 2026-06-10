@@ -11,6 +11,8 @@ import {
 } from "@/features/checkout/schemas/checkout-return-state-token";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import { loadWorkspaceAvailability } from "@/features/reservation/backend/workspace-availability.server";
+import { getWorkspaceAvailabilityQueryFromReservationSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   getSearchParam,
@@ -124,7 +126,17 @@ export default async function LocalizedCheckoutOrderPage({
     }
   }
 
+  const initialAvailabilityQuery =
+    getWorkspaceAvailabilityQueryFromReservationSearchParams(rawSearchParams);
+  const initialAvailability = await loadWorkspaceAvailability(
+    initialAvailabilityQuery
+  );
+
   return runWithRequestLocale(locale, () => (
-    <CheckoutOrderPage locale={locale} searchParams={rawSearchParams} />
+    <CheckoutOrderPage
+      initialAvailability={initialAvailability}
+      locale={locale}
+      searchParams={rawSearchParams}
+    />
   ));
 }
