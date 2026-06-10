@@ -14,6 +14,7 @@ import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer } from "effect";
 import { generateStaticMapImage } from "osm";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
+import { env } from "@/env";
 import {
   createWorkspaceCheckoutWifiQrPayload,
   type WorkspaceCheckoutNetworkDetails,
@@ -79,6 +80,7 @@ const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
+const internalTestingSubjectPrefix = "[TESTING]";
 
 const customerAccessHeadingDateFormatOptions = {
   weekday: "long",
@@ -104,6 +106,22 @@ const createCustomerAccessHeading = (
     { date: formatCustomerAccessHeadingDate(reservation, locale) },
     { locale }
   );
+
+const createInternalReservationSubject = (
+  reservation: WorkspaceReservation,
+  locale: Locale
+) => {
+  const subject = m.checkoutEmailInternalPaidReservationSubject(
+    { orderId: reservation.id },
+    { locale }
+  );
+
+  if (env.VERCEL_ENV === "production") {
+    return subject;
+  }
+
+  return `${internalTestingSubjectPrefix} ${subject}`;
+};
 
 const createWorkspaceLocationMapAttachment = (): Effect.Effect<
   EmailAttachment,
@@ -786,10 +804,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           replyTo: customerEmail
             ? { email: customerEmail, name: customerName }
             : undefined,
-          subject: m.checkoutEmailInternalPaidReservationSubject(
-            { orderId: reservation.id },
-            { locale }
-          ),
+          subject: createInternalReservationSubject(reservation, locale),
           html: createEmailHtml({
             heading: internalHeading,
             body: internalBody,

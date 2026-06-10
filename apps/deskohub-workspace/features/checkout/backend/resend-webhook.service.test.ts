@@ -567,6 +567,12 @@ describe("ResendWebhookService", () => {
     if (!internalEmail) {
       throw new Error("Internal email was not sent.");
     }
+    expect(internalEmail.subject).toBe(
+      `[TESTING] ${m.checkoutEmailInternalPaidReservationSubject(
+        { orderId: "reservation-id" },
+        { locale: "cs-CZ" }
+      )}`
+    );
     expect(internalEmail.html).toContain("customer@example.com");
     expect(internalEmail.text).toContain("customer@example.com");
   });
