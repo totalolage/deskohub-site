@@ -25,6 +25,7 @@
     "@deskohub/google-calendar": "workspace:*",
     "@deskohub/i18n": "workspace:*",
     "@deskohub/nexi": "workspace:*",
+    "@deskohub/qr-code": "workspace:*",
     "@effect/schema": "^0.75.5",
     "@hookform/resolvers": "^5.2.2",
     "@inlang/paraglide-js": "^2.2.0",
