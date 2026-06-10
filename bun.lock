@@ -118,6 +118,7 @@
         "@deskohub/i18n": "workspace:*",
         "@deskohub/nexi": "workspace:*",
         "@deskohub/qr-code": "workspace:*",
+        "@deskohub/standard-schema": "workspace:*",
         "@effect/schema": "^0.75.5",
         "@hookform/resolvers": "^5.2.2",
         "@inlang/paraglide-js": "^2.2.0",
@@ -283,6 +284,16 @@
       "name": "@deskohub/reservation",
       "version": "0.1.0",
     },
+    "packages/standard-schema": {
+      "name": "@deskohub/standard-schema",
+      "version": "0.1.0",
+      "dependencies": {
+        "@standard-schema/spec": "^1.1.0",
+      },
+      "devDependencies": {
+        "typescript": "^5",
+      },
+    },
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -382,6 +393,8 @@
     "@deskohub/qr-code": ["@deskohub/qr-code@workspace:packages/qr-code"],
 
     "@deskohub/reservation": ["@deskohub/reservation@workspace:packages/reservation"],
+
+    "@deskohub/standard-schema": ["@deskohub/standard-schema@workspace:packages/standard-schema"],
 
     "@doist/react-interpolate": ["@doist/react-interpolate@2.2.2", "", { "peerDependencies": { "prop-types": "15.8.1", "react": ">=17.0.2", "react-dom": ">=17.0.2" } }, "sha512-Gu+E9WSn4LDpB3pB+X+6WDQzs0vFVGoRiUX3TsYMIRHbmS+Vf0dA1Ot7qk5WbK7uPOdXbUwKBA/IP+Hezo72og=="],
 
