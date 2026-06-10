@@ -5,6 +5,8 @@ import {
   motion,
   type PanInfo,
   type Transition,
+  useDragControls,
+  useMotionValue,
   useReducedMotion,
 } from "motion/react";
 import { use, useEffect, useMemo, useRef, useState } from "react";
@@ -59,12 +61,10 @@ const dotTransition: Transition = {
   damping: 32,
 };
 
-const swipeDistanceThreshold = 48;
 const swipeTimelineThreshold = 0.32;
 const swipeVelocityThreshold = 520;
 const swipeClickSuppressionDistance = 8;
 const clickSuppressionAfterSwipeMs = 180;
-const swipeTimelineOffsetLimit = 1.15;
 
 const instantTransition: Transition = {
   duration: 0,
@@ -72,6 +72,9 @@ const instantTransition: Transition = {
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
+
+const truncateTowardZero = (value: number) =>
+  value < 0 ? Math.ceil(value) : Math.floor(value);
 
 const interpolateAnchoredValue = (
   offset: number,
@@ -116,35 +119,6 @@ const getSlideZIndex = (offset: number) => {
   return 0;
 };
 
-const getSwipeStep = (
-  { offset, velocity }: PanInfo,
-  timelineOffset: number
-) => {
-  const absX = Math.abs(offset.x);
-  const absY = Math.abs(offset.y);
-  const isHorizontalSwipe = absX > absY * 1.2;
-
-  if (!isHorizontalSwipe) return 0;
-
-  if (
-    timelineOffset >= swipeTimelineThreshold ||
-    offset.x <= -swipeDistanceThreshold ||
-    velocity.x <= -swipeVelocityThreshold
-  ) {
-    return 1;
-  }
-
-  if (
-    timelineOffset <= -swipeTimelineThreshold ||
-    offset.x >= swipeDistanceThreshold ||
-    velocity.x >= swipeVelocityThreshold
-  ) {
-    return -1;
-  }
-
-  return 0;
-};
-
 const AUTO_PLAY_INTERVAL = 3600;
 export function LandingPagePhotoCarousel({
   imagesPromise,
@@ -156,10 +130,15 @@ export function LandingPagePhotoCarousel({
   const [swipeTimelineOffset, setSwipeTimelineOffset] = useState(0);
   const [isPointerOver, setIsPointerOver] = useState(false);
   const [isFocusWithin, setIsFocusWithin] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const dragControls = useDragControls();
+  const dragX = useMotionValue(0);
   const stageRef = useRef<HTMLDivElement>(null);
+  const animationTimelineIndexRef = useRef(animationTimelineIndex);
+  const dragStartAnimationTimelineIndexRef = useRef(animationTimelineIndex);
   const lastSwipeAtRef = useRef(0);
-  const isPaused = isPointerOver || isFocusWithin;
+  const isPaused = isPointerOver || isFocusWithin || isDragging;
   const isSwiping = swipeTimelineOffset !== 0;
   const activeSlideTransition = shouldReduceMotion
     ? instantTransition
@@ -174,10 +153,20 @@ export function LandingPagePhotoCarousel({
     : undefined;
 
   useEffect(() => {
+    animationTimelineIndexRef.current = animationTimelineIndex;
+  }, [animationTimelineIndex]);
+
+  useEffect(() => {
     if (images.length <= 1 || isPaused || shouldReduceMotion) return;
 
     const interval = setInterval(() => {
-      setAnimationTimelineIndex((index) => index + 1);
+      setAnimationTimelineIndex((index) => {
+        const nextIndex = index + 1;
+
+        animationTimelineIndexRef.current = nextIndex;
+
+        return nextIndex;
+      });
     }, AUTO_PLAY_INTERVAL);
 
     return () => clearInterval(interval);
@@ -189,62 +178,102 @@ export function LandingPagePhotoCarousel({
     ? wrapIndex(Math.round(visibleTimelineIndex), images.length)
     : 0;
   const moveToAnimationIndex = (nextIndex: number) => {
+    animationTimelineIndexRef.current = nextIndex;
     setAnimationTimelineIndex(nextIndex);
-    setSwipeTimelineOffset(0);
-  };
-  const moveByAnimationStep = (step: number) => {
-    setAnimationTimelineIndex((index) => index + step);
     setSwipeTimelineOffset(0);
   };
   const openLightbox = (index: number) => {
     setLightboxIndex(index);
   };
-  const getSwipeTimelineOffset = (info: PanInfo) => {
+  const getSwipeTimelineDistance = () => {
+    const stageWidth = stageRef.current?.clientWidth ?? 0;
+
+    return Math.max(96, Math.min(stageWidth * 0.28, 260));
+  };
+  const resetDragCarrier = () => {
+    dragX.stop();
+    dragX.set(0);
+  };
+  const applyDragOffset = (offsetX: number) => {
+    const rawTimelineOffset = -offsetX / getSwipeTimelineDistance();
+    const wholeSteps = truncateTowardZero(rawTimelineOffset);
+    const fractionalOffset = rawTimelineOffset - wholeSteps;
+    const nextIndex = dragStartAnimationTimelineIndexRef.current + wholeSteps;
+
+    if (nextIndex !== animationTimelineIndexRef.current) {
+      animationTimelineIndexRef.current = nextIndex;
+      setAnimationTimelineIndex(nextIndex);
+    }
+
+    setSwipeTimelineOffset(fractionalOffset);
+  };
+  const handleDragStart = () => {
+    if (images.length <= 1) return;
+
+    dragStartAnimationTimelineIndexRef.current =
+      animationTimelineIndexRef.current;
+    resetDragCarrier();
+    setIsDragging(true);
+    setSwipeTimelineOffset(0);
+  };
+  const handleDragMove = (
+    _: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    if (images.length <= 1) return;
+
     const absX = Math.abs(info.offset.x);
     const absY = Math.abs(info.offset.y);
 
-    if (absX <= absY) return 0;
-
-    const stageWidth = stageRef.current?.clientWidth ?? 0;
-    const swipeTimelineDistance = Math.max(
-      96,
-      Math.min(stageWidth * 0.28, 260)
-    );
-
-    return clamp(
-      -info.offset.x / swipeTimelineDistance,
-      -swipeTimelineOffsetLimit,
-      swipeTimelineOffsetLimit
-    );
-  };
-  const handleSwipeMove = (
-    _: MouseEvent | TouchEvent | PointerEvent,
-    info: PanInfo
-  ) => {
-    if (images.length <= 1) return;
-
-    setSwipeTimelineOffset(getSwipeTimelineOffset(info));
-  };
-  const handleSwipeEnd = (
-    _: MouseEvent | TouchEvent | PointerEvent,
-    info: PanInfo
-  ) => {
-    if (images.length <= 1) return;
-
-    const timelineOffset = getSwipeTimelineOffset(info);
-    const isHorizontalDrag =
-      Math.abs(info.offset.x) >= swipeClickSuppressionDistance &&
-      Math.abs(info.offset.x) > Math.abs(info.offset.y);
-    const swipeStep = getSwipeStep(info, timelineOffset);
-
-    if (isHorizontalDrag) lastSwipeAtRef.current = Date.now();
-
-    if (swipeStep === 0) {
+    if (absX <= absY) {
       setSwipeTimelineOffset(0);
       return;
     }
 
-    moveByAnimationStep(swipeStep);
+    if (absX >= swipeClickSuppressionDistance) {
+      lastSwipeAtRef.current = Date.now();
+    }
+
+    applyDragOffset(info.offset.x);
+  };
+  const handleDragEnd = (
+    _: MouseEvent | TouchEvent | PointerEvent,
+    info: PanInfo
+  ) => {
+    if (images.length <= 1) return;
+
+    const rawTimelineOffset = -info.offset.x / getSwipeTimelineDistance();
+    const wholeSteps = truncateTowardZero(rawTimelineOffset);
+    const fractionalOffset = rawTimelineOffset - wholeSteps;
+    const isHorizontalDrag =
+      Math.abs(info.offset.x) >= swipeClickSuppressionDistance &&
+      Math.abs(info.offset.x) > Math.abs(info.offset.y);
+    let nextIndex = dragStartAnimationTimelineIndexRef.current + wholeSteps;
+
+    if (isHorizontalDrag) lastSwipeAtRef.current = Date.now();
+
+    if (!isHorizontalDrag) {
+      moveToAnimationIndex(dragStartAnimationTimelineIndexRef.current);
+      resetDragCarrier();
+      setIsDragging(false);
+      return;
+    }
+
+    if (
+      fractionalOffset >= swipeTimelineThreshold ||
+      info.velocity.x <= -swipeVelocityThreshold
+    ) {
+      nextIndex += 1;
+    } else if (
+      fractionalOffset <= -swipeTimelineThreshold ||
+      info.velocity.x >= swipeVelocityThreshold
+    ) {
+      nextIndex -= 1;
+    }
+
+    moveToAnimationIndex(nextIndex);
+    resetDragCarrier();
+    setIsDragging(false);
   };
   const shouldSuppressClickAfterSwipe = () =>
     Date.now() - lastSwipeAtRef.current < clickSuppressionAfterSwipeMs;
@@ -294,11 +323,31 @@ export function LandingPagePhotoCarousel({
     >
       <motion.div
         className="relative mx-auto h-72 max-w-6xl touch-pan-y @container-[size] sm:h-112 lg:h-136"
-        onPanEnd={handleSwipeEnd}
-        onPanStart={() => setSwipeTimelineOffset(0)}
-        onPan={handleSwipeMove}
+        onClickCapture={(event) => {
+          if (!shouldSuppressClickAfterSwipe()) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onPointerDownCapture={(event) => {
+          if (images.length <= 1 || event.button !== 0) return;
+
+          dragControls.start(event);
+        }}
         ref={stageRef}
       >
+        <motion.div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          drag="x"
+          dragControls={dragControls}
+          dragListener={false}
+          dragMomentum={false}
+          onDrag={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onDragStart={handleDragStart}
+          style={{ touchAction: "pan-y", x: dragX }}
+        />
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
           const baseOffset = virtualIndex - animationTimelineIndex;
           const logicalIndex = wrapIndex(virtualIndex, images.length);
