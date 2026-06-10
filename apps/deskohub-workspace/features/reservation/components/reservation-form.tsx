@@ -256,44 +256,44 @@ export function ReservationForm({
       tier: selectedTier,
     });
 
-  const { executeAsync: sendReservation, isExecuting: isSendingReservation } =
-    useAction(preparePayState, {
-      onSuccess: ({ data }) => {
-        if (data?.status === "error") {
-          setSubmissionMessage({
-            status: "error",
-            text: data.message,
-          });
-          return;
-        }
-
-        const redirectUrl = data?.redirectUrl;
-
-        if (!redirectUrl) {
-          setSubmissionMessage({
-            status: "error",
-            text: m.reservationErrorMessage({}, { locale }),
-          });
-          return;
-        }
-
-        if (
-          !hasTrackedSuccessfulSubmission.current &&
-          isAccepted("analytics")
-        ) {
-          hasTrackedSuccessfulSubmission.current = true;
-          track("workspace_checkout_started", sanitizedUtmParams);
-        }
-
-        router.push(redirectUrl);
-      },
-      onError: ({ error }) => {
+  const {
+    executeAsync: sendReservation,
+    isExecuting: isSendingReservation,
+    result: preparePayStateResult,
+  } = useAction(preparePayState, {
+    onSuccess: ({ data }) => {
+      if (data?.status === "error") {
         setSubmissionMessage({
           status: "error",
-          text: error.serverError || m.reservationErrorMessage({}, { locale }),
+          text: data.message,
         });
-      },
-    });
+        return;
+      }
+
+      const redirectUrl = data?.redirectUrl;
+
+      if (!redirectUrl) {
+        setSubmissionMessage({
+          status: "error",
+          text: m.reservationErrorMessage({}, { locale }),
+        });
+        return;
+      }
+
+      if (!hasTrackedSuccessfulSubmission.current && isAccepted("analytics")) {
+        hasTrackedSuccessfulSubmission.current = true;
+        track("workspace_checkout_started", sanitizedUtmParams);
+      }
+
+      router.push(redirectUrl);
+    },
+    onError: ({ error }) => {
+      setSubmissionMessage({
+        status: "error",
+        text: error.serverError || m.reservationErrorMessage({}, { locale }),
+      });
+    },
+  });
 
   useEffect(() => {
     if (shouldShowMonitors) {
@@ -337,10 +337,6 @@ export function ReservationForm({
         if (error instanceof DOMException && error.name === "AbortError") {
           return;
         }
-        console.error("Workspace availability request failed", {
-          error,
-          params: Object.fromEntries(params),
-        });
         setAvailability(null);
       })
       .finally(() => {
@@ -350,7 +346,13 @@ export function ReservationForm({
     return () => controller.abort();
   }, [selectedDate, selectedMonitorOption, selectedTier]);
 
+  const hasPreparedPayRedirect =
+    preparePayStateResult.data?.status === "ready" &&
+    Boolean(preparePayStateResult.data.redirectUrl);
+
   const handleSubmit = form.handleSubmit(async (data) => {
+    if (hasPreparedPayRedirect) return;
+
     setSubmissionMessage(null);
     if (isSelectedReservationUnavailable) {
       setSubmissionMessage({
@@ -827,6 +829,7 @@ export function ReservationForm({
                 disabled={
                   form.formState.isSubmitting ||
                   isSendingReservation ||
+                  hasPreparedPayRedirect ||
                   isSelectedReservationUnavailable ||
                   isAvailabilityLoading
                 }
