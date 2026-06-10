@@ -35,6 +35,11 @@ export type WorkspaceAvailability = {
   readonly notices: readonly WorkspaceAvailabilityNotice[];
 };
 
+export const workspaceAvailabilityKeys = {
+  availability: (query: WorkspaceAvailabilityQuery) =>
+    ["workspace-availability", query] as const,
+};
+
 const workspaceAvailabilityNoticeSchema = z.object({
   date: z.string(),
   startsAt: z.string(),

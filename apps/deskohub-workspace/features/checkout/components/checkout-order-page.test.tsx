@@ -13,21 +13,12 @@ const initialAvailabilityQuery = {
   entryTier: "basic",
 } as const;
 
-const initialAvailability = {
-  from: initialAvailabilityQuery.from,
-  to: initialAvailabilityQuery.to,
-  unavailableDates: [],
-  unavailableTiers: [],
-  unavailableMonitorOptions: [],
-  notices: [],
-} as const;
-
 const getFallbackProps = async (
   searchParams: Record<string, string | undefined>
 ) => {
   const { CheckoutOrderPage } = await import("./checkout-order-page");
   const page = CheckoutOrderPage({
-    initialAvailability,
+    initialAvailabilityQuery,
     locale: "en-US",
     searchParams,
   });

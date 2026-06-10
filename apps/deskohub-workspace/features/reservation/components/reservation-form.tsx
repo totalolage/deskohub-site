@@ -1,6 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
 import {
   AlertTriangle,
@@ -51,7 +52,8 @@ import {
 import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
 import {
   parseWorkspaceAvailabilityResponse,
-  type WorkspaceAvailability,
+  type WorkspaceAvailabilityQuery,
+  workspaceAvailabilityKeys,
 } from "@/features/reservation/schemas/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
@@ -82,12 +84,15 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
 
 type ReservationFormProps = {
+  initialAvailabilityQuery: WorkspaceAvailabilityQuery;
   locale: Locale;
-  initialAvailability?: WorkspaceAvailability | null;
   showIntro?: boolean;
 };
 
-type ReservationFormFallbackProps = ReservationFormProps & {
+type ReservationFormFallbackProps = Pick<
+  ReservationFormProps,
+  "locale" | "showIntro"
+> & {
   showMonitorOption?: boolean;
 };
 
@@ -144,8 +149,53 @@ const formatDateForInput = (date: Date) => {
   return `${year}-${month}-${day}`;
 };
 
-const addMonthsToInputDate = (date: string, months: number) =>
-  Temporal.PlainDate.from(date).add({ months }).toString();
+const getWorkspaceAvailabilityQuery = ({
+  date,
+  from,
+  monitorOption,
+  tier,
+  to,
+}: {
+  date?: string;
+  from: string;
+  monitorOption?: string;
+  tier: WorkspaceProductTier;
+  to: string;
+}): WorkspaceAvailabilityQuery => {
+  return {
+    from,
+    to,
+    ...(date && { date }),
+    ...(isWorkspaceProductTier(tier) && { entryTier: tier }),
+    ...(isWorkspaceProductMonitorOption(monitorOption) && { monitorOption }),
+  };
+};
+
+const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
+  const params = new URLSearchParams({
+    from: query.from,
+    to: query.to,
+  });
+
+  if (query.date) params.set("date", query.date);
+  if (query.entryTier) params.set("entryTier", query.entryTier);
+  if (query.monitorOption) params.set("monitorOption", query.monitorOption);
+
+  return `/api/workspace/availability?${params.toString()}`;
+};
+
+const loadWorkspaceAvailability = async ({
+  query,
+  signal,
+}: {
+  query: WorkspaceAvailabilityQuery;
+  signal: AbortSignal;
+}) => {
+  const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
+  if (!response.ok) throw new Error("Availability request failed");
+
+  return parseWorkspaceAvailabilityResponse(await response.json());
+};
 
 const formatDisplayDate = (date: string, locale: Locale) =>
   formatReservationDisplayDate(
@@ -177,7 +227,7 @@ const createReservationIntentId = () =>
   `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function ReservationForm({
-  initialAvailability = null,
+  initialAvailabilityQuery,
   locale,
   showIntro = true,
 }: ReservationFormProps) {
@@ -185,9 +235,6 @@ export function ReservationForm({
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
-  const shouldSkipInitialAvailabilityFetch = useRef(
-    Boolean(initialAvailability)
-  );
   const [reservationIntentId] = useState(createReservationIntentId);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
@@ -214,9 +261,33 @@ export function ReservationForm({
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
-  const [availability, setAvailability] =
-    useState<WorkspaceAvailability | null>(initialAvailability);
-  const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
+  const availabilityQuery = useMemo(
+    () =>
+      getWorkspaceAvailabilityQuery({
+        date: selectedDate,
+        from: initialAvailabilityQuery.from,
+        monitorOption: selectedMonitorOption,
+        tier: selectedTier,
+        to: initialAvailabilityQuery.to,
+      }),
+    [
+      initialAvailabilityQuery.from,
+      initialAvailabilityQuery.to,
+      selectedDate,
+      selectedMonitorOption,
+      selectedTier,
+    ]
+  );
+  const availabilityQueryResult = useQuery({
+    queryKey: workspaceAvailabilityKeys.availability(availabilityQuery),
+    queryFn: ({ signal }) =>
+      loadWorkspaceAvailability({ query: availabilityQuery, signal }),
+    staleTime: 30_000,
+  });
+  const availability = availabilityQueryResult.isError
+    ? null
+    : (availabilityQueryResult.data ?? null);
+  const isAvailabilityLoading = availabilityQueryResult.isFetching;
   const unavailableDates = useMemo(
     () => new Set(availability?.unavailableDates ?? []),
     [availability]
@@ -302,49 +373,6 @@ export function ReservationForm({
 
     form.setValue("monitorOption", undefined, { shouldValidate: true });
   }, [form, shouldShowMonitors]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    if (shouldSkipInitialAvailabilityFetch.current) {
-      shouldSkipInitialAvailabilityFetch.current = false;
-      return () => controller.abort();
-    }
-
-    const today = formatDateForInput(new Date());
-    const params = new URLSearchParams({
-      from: today,
-      to: addMonthsToInputDate(today, 6),
-    });
-
-    if (selectedDate) params.set("date", selectedDate);
-    if (isWorkspaceProductTier(selectedTier)) {
-      params.set("entryTier", selectedTier);
-    }
-    if (isWorkspaceProductMonitorOption(selectedMonitorOption)) {
-      params.set("monitorOption", selectedMonitorOption);
-    }
-
-    setIsAvailabilityLoading(true);
-    fetch(`/api/workspace/availability?${params.toString()}`, {
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("Availability request failed");
-        return parseWorkspaceAvailabilityResponse(await response.json());
-      })
-      .then((nextAvailability) => setAvailability(nextAvailability))
-      .catch((error) => {
-        if (error instanceof DOMException && error.name === "AbortError") {
-          return;
-        }
-        setAvailability(null);
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setIsAvailabilityLoading(false);
-      });
-
-    return () => controller.abort();
-  }, [selectedDate, selectedMonitorOption, selectedTier]);
 
   const hasPreparedPayRedirect =
     preparePayStateResult.data?.status === "ready" &&

@@ -1,3 +1,8 @@
+import {
+  dehydrate,
+  HydrationBoundary,
+  QueryClient,
+} from "@tanstack/react-query";
 import { Effect } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
@@ -13,6 +18,7 @@ import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { loadWorkspaceAvailability } from "@/features/reservation/backend/workspace-availability.server";
 import { getWorkspaceAvailabilityQueryFromReservationSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
+import { workspaceAvailabilityKeys } from "@/features/reservation/schemas/workspace-availability";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   getSearchParam,
@@ -128,15 +134,21 @@ export default async function LocalizedCheckoutOrderPage({
 
   const initialAvailabilityQuery =
     getWorkspaceAvailabilityQueryFromReservationSearchParams(rawSearchParams);
-  const initialAvailability = await loadWorkspaceAvailability(
-    initialAvailabilityQuery
-  );
+  const queryClient = new QueryClient();
+
+  await queryClient.fetchQuery({
+    queryKey: workspaceAvailabilityKeys.availability(initialAvailabilityQuery),
+    queryFn: () => loadWorkspaceAvailability(initialAvailabilityQuery),
+    staleTime: 30_000,
+  });
 
   return runWithRequestLocale(locale, () => (
-    <CheckoutOrderPage
-      initialAvailability={initialAvailability}
-      locale={locale}
-      searchParams={rawSearchParams}
-    />
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      <CheckoutOrderPage
+        initialAvailabilityQuery={initialAvailabilityQuery}
+        locale={locale}
+        searchParams={rawSearchParams}
+      />
+    </HydrationBoundary>
   ));
 }
