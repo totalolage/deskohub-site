@@ -52,6 +52,7 @@ import {
 import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
 import {
   parseWorkspaceAvailabilityResponse,
+  type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
   workspaceAvailabilityKeys,
 } from "@/features/reservation/schemas/workspace-availability";
@@ -190,7 +191,7 @@ const loadWorkspaceAvailability = async ({
 }: {
   query: WorkspaceAvailabilityQuery;
   signal: AbortSignal;
-}) => {
+}): Promise<WorkspaceAvailability> => {
   const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
   if (!response.ok) throw new Error("Availability request failed");
 
@@ -282,7 +283,7 @@ export function ReservationForm({
     queryKey: workspaceAvailabilityKeys.availability(availabilityQuery),
     queryFn: ({ signal }) =>
       loadWorkspaceAvailability({ query: availabilityQuery, signal }),
-    initialData: keepPreviousData,
+    placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
   const availability = availabilityQueryResult.isError
