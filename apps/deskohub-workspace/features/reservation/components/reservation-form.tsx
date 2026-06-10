@@ -49,6 +49,10 @@ import {
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
 import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
+import {
+  parseWorkspaceAvailabilityResponse,
+  type WorkspaceAvailability,
+} from "@/features/reservation/schemas/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import {
@@ -79,6 +83,7 @@ import { cn } from "@/shared/utils";
 
 type ReservationFormProps = {
   locale: Locale;
+  initialAvailability?: WorkspaceAvailability | null;
   showIntro?: boolean;
 };
 
@@ -90,73 +95,6 @@ type SubmissionMessage = {
   status: "error";
   text: string;
 };
-
-type WorkspaceAvailabilityNotice = {
-  readonly date: string;
-  readonly startsAt: string;
-  readonly endsAt: string;
-};
-
-type WorkspaceAvailability = {
-  readonly unavailableDates: readonly string[];
-  readonly unavailableTiers: readonly WorkspaceProductTier[];
-  readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
-  readonly notices: readonly WorkspaceAvailabilityNotice[];
-};
-
-const getObjectProperty = (value: unknown, key: string): unknown => {
-  if (!value || typeof value !== "object") {
-    return undefined;
-  }
-
-  return Object.getOwnPropertyDescriptor(value, key)?.value;
-};
-
-const getStringArrayProperty = (
-  value: unknown,
-  key: string
-): readonly string[] => {
-  const property = getObjectProperty(value, key);
-
-  if (!Array.isArray(property)) {
-    return [];
-  }
-
-  return property.filter((item): item is string => typeof item === "string");
-};
-
-const isWorkspaceAvailabilityNotice = (
-  value: unknown
-): value is WorkspaceAvailabilityNotice =>
-  typeof getObjectProperty(value, "date") === "string" &&
-  typeof getObjectProperty(value, "startsAt") === "string" &&
-  typeof getObjectProperty(value, "endsAt") === "string";
-
-const getWorkspaceAvailabilityNotices = (
-  value: unknown
-): readonly WorkspaceAvailabilityNotice[] => {
-  const property = getObjectProperty(value, "notices");
-
-  if (!Array.isArray(property)) {
-    return [];
-  }
-
-  return property.filter(isWorkspaceAvailabilityNotice);
-};
-
-const parseWorkspaceAvailabilityResponse = (
-  value: unknown
-): WorkspaceAvailability => ({
-  unavailableDates: getStringArrayProperty(value, "unavailableDates"),
-  unavailableTiers: getStringArrayProperty(value, "unavailableTiers").filter(
-    isWorkspaceProductTier
-  ),
-  unavailableMonitorOptions: getStringArrayProperty(
-    value,
-    "unavailableMonitorOptions"
-  ).filter(isWorkspaceProductMonitorOption),
-  notices: getWorkspaceAvailabilityNotices(value),
-});
 
 const utmKeys = [
   "utm_source",
@@ -239,6 +177,7 @@ const createReservationIntentId = () =>
   `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function ReservationForm({
+  initialAvailability = null,
   locale,
   showIntro = true,
 }: ReservationFormProps) {
@@ -246,6 +185,9 @@ export function ReservationForm({
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
+  const shouldSkipInitialAvailabilityFetch = useRef(
+    Boolean(initialAvailability)
+  );
   const [reservationIntentId] = useState(createReservationIntentId);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
@@ -273,7 +215,7 @@ export function ReservationForm({
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
   const [availability, setAvailability] =
-    useState<WorkspaceAvailability | null>(null);
+    useState<WorkspaceAvailability | null>(initialAvailability);
   const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
   const unavailableDates = useMemo(
     () => new Set(availability?.unavailableDates ?? []),
@@ -363,6 +305,11 @@ export function ReservationForm({
 
   useEffect(() => {
     const controller = new AbortController();
+    if (shouldSkipInitialAvailabilityFetch.current) {
+      shouldSkipInitialAvailabilityFetch.current = false;
+      return () => controller.abort();
+    }
+
     const today = formatDateForInput(new Date());
     const params = new URLSearchParams({
       from: today,

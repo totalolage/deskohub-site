@@ -1,3 +1,4 @@
+import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
@@ -11,9 +12,13 @@ import {
   type ReservationInput,
   reservationDefaultValues,
 } from "@/features/reservation/schemas/reservation";
+import {
+  parseWorkspaceAvailabilityQuery,
+  type WorkspaceAvailabilityQuery,
+} from "@/features/reservation/schemas/workspace-availability";
 import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
-export const reservationCheckoutQueryFields = [
+const reservationCheckoutQueryFields = [
   "entryTier",
   "date",
   "coffee",
@@ -27,7 +32,7 @@ export const reservationCheckoutQueryFields = [
 type ReservationCheckoutQueryField =
   (typeof reservationCheckoutQueryFields)[number];
 
-export type ReservationCheckoutQueryValues = Pick<
+type ReservationCheckoutQueryValues = Pick<
   ReservationInput,
   ReservationCheckoutQueryField
 >;
@@ -50,9 +55,7 @@ const queryPhoneSchema = z
   .string()
   .max(RESERVATION_VALIDATION.phone.max)
   .refine((phone) => isValidPhoneNumber(phone, "CZ"));
-const queryMessageSchema = z
-  .string()
-  .max(RESERVATION_VALIDATION.message.max);
+const queryMessageSchema = z.string().max(RESERVATION_VALIDATION.message.max);
 
 const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,
@@ -62,12 +65,7 @@ const getTrimmedSearchParam = (
   return value || undefined;
 };
 
-const decodeQueryParam = <T>(schema: z.ZodType<T>, value: string | undefined) => {
-  const parsed = schema.safeParse(value);
-  return parsed.success ? parsed.data : undefined;
-};
-
-export const decodeReservationCheckoutQuery = (
+const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams
 ): Partial<ReservationCheckoutQueryValues> => {
   const decoded: Partial<ReservationCheckoutQueryValues> = {};
@@ -75,12 +73,12 @@ export const decodeReservationCheckoutQuery = (
     getTrimmedSearchParam(searchParams, "entryTier") ??
     getTrimmedSearchParam(searchParams, "tier");
 
-  const entryTier = decodeQueryParam(queryTierSchema, requestedTier);
+  const entryTier = decodeStandardSchema(queryTierSchema, requestedTier);
   if (entryTier !== undefined) {
     decoded.entryTier = entryTier;
   }
 
-  const date = decodeQueryParam(
+  const date = decodeStandardSchema(
     queryDateSchema,
     getTrimmedSearchParam(searchParams, "date")
   );
@@ -88,7 +86,7 @@ export const decodeReservationCheckoutQuery = (
     decoded.date = date;
   }
 
-  const coffee = decodeQueryParam(
+  const coffee = decodeStandardSchema(
     queryBooleanSchema,
     getTrimmedSearchParam(searchParams, "coffee")
   );
@@ -96,7 +94,7 @@ export const decodeReservationCheckoutQuery = (
     decoded.coffee = coffee;
   }
 
-  const monitorOption = decodeQueryParam(
+  const monitorOption = decodeStandardSchema(
     queryMonitorOptionSchema,
     getTrimmedSearchParam(searchParams, "monitorOption")
   );
@@ -104,7 +102,7 @@ export const decodeReservationCheckoutQuery = (
     decoded.monitorOption = monitorOption;
   }
 
-  const name = decodeQueryParam(
+  const name = decodeStandardSchema(
     queryNameSchema,
     getTrimmedSearchParam(searchParams, "name")
   );
@@ -112,7 +110,7 @@ export const decodeReservationCheckoutQuery = (
     decoded.name = name;
   }
 
-  const email = decodeQueryParam(
+  const email = decodeStandardSchema(
     queryEmailSchema,
     getTrimmedSearchParam(searchParams, "email")
   );
@@ -120,7 +118,7 @@ export const decodeReservationCheckoutQuery = (
     decoded.email = email;
   }
 
-  const phone = decodeQueryParam(
+  const phone = decodeStandardSchema(
     queryPhoneSchema,
     getTrimmedSearchParam(searchParams, "phone")
   );
@@ -128,7 +126,7 @@ export const decodeReservationCheckoutQuery = (
     decoded.phone = phone;
   }
 
-  const message = decodeQueryParam(
+  const message = decodeStandardSchema(
     queryMessageSchema,
     getTrimmedSearchParam(searchParams, "message")
   );
@@ -163,4 +161,24 @@ export const getReservationDefaultValuesFromSearchParams = (
   }
 
   return values;
+};
+
+export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
+  searchParams: SupportedSearchParams
+): WorkspaceAvailabilityQuery => {
+  const defaultValues =
+    getReservationDefaultValuesFromSearchParams(searchParams);
+  const availabilitySearchParams = new URLSearchParams();
+
+  if (defaultValues.date) {
+    availabilitySearchParams.set("date", defaultValues.date);
+  }
+  if (defaultValues.entryTier) {
+    availabilitySearchParams.set("entryTier", defaultValues.entryTier);
+  }
+  if (defaultValues.monitorOption) {
+    availabilitySearchParams.set("monitorOption", defaultValues.monitorOption);
+  }
+
+  return parseWorkspaceAvailabilityQuery(availabilitySearchParams);
 };
