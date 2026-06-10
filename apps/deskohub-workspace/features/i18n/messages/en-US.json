@@ -385,7 +385,7 @@
   "contactEmailCustomerBody": "Thanks for reaching out. We will get back to you as soon as possible with next steps or an answer.",
   "contactEmailCustomerFollowUp": "If you want to add anything, reply or write to {email}.",
   "checkoutEmailCustomerAccessSubject": "Your Deskohub Workspace access code",
-  "checkoutEmailCustomerAccessHeading": "Your workspace access is ready",
+  "checkoutEmailCustomerAccessHeading": "Your workspace access is ready for {date}",
   "checkoutEmailCustomerAccessBody": "Payment is confirmed and your workspace reservation is prepared. Use this access code when you arrive.",
   "checkoutEmailAccessCodeLabel": "Access code",
   "checkoutEmailTableNumberLabel": "Table",
