@@ -47,7 +47,11 @@ export function CheckoutPayPage({
   const router = useRouter();
   const [legalConsent, setLegalConsent] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const { execute, isExecuting } = useAction(submitReservation, {
+  const {
+    execute,
+    isExecuting,
+    result: submitReservationResult,
+  } = useAction(submitReservation, {
     onSuccess: ({ data }) => {
       if (data?.status === "pricing_changed") {
         router.push(data.freshPayUrl);
@@ -72,6 +76,9 @@ export function CheckoutPayPage({
       );
     },
   });
+  const hasCheckoutRedirect =
+    submitReservationResult.data?.status === "pricing_changed" ||
+    submitReservationResult.data?.status === "redirect";
   const isPricingChanged = variant === "pricingChanged";
   const title = isPricingChanged
     ? m.checkoutPayPricingChangedTitle({}, { locale })
@@ -166,8 +173,10 @@ export function CheckoutPayPage({
             <Button
               type="button"
               className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-              disabled={!legalConsent || isExecuting}
+              disabled={!legalConsent || isExecuting || hasCheckoutRedirect}
               onClick={() => {
+                if (hasCheckoutRedirect) return;
+
                 setErrorMessage(null);
                 if (!payStateToken) {
                   setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
@@ -181,7 +190,7 @@ export function CheckoutPayPage({
                 });
               }}
             >
-              {isExecuting ? (
+              {isExecuting || hasCheckoutRedirect ? (
                 m.checkoutPaymentRetryPending({}, { locale })
               ) : (
                 <>
