@@ -385,7 +385,7 @@
   "contactEmailCustomerBody": "Děkujeme za zprávu. Ozveme se co nejdříve s dalším krokem nebo odpovědí.",
   "contactEmailCustomerFollowUp": "Pokud chceš cokoliv doplnit, napiš nám na {email}.",
   "checkoutEmailCustomerAccessSubject": "Tvůj přístupový kód do Deskohub Workspace",
-  "checkoutEmailCustomerAccessHeading": "Přístup do workspace je připravený",
+  "checkoutEmailCustomerAccessHeading": "Přístup do workspace je připravený na {date}",
   "checkoutEmailCustomerAccessBody": "Platba je potvrzená a rezervace workspace je připravená. Při příchodu použij tento přístupový kód.",
   "checkoutEmailAccessCodeLabel": "Přístupový kód",
   "checkoutEmailTableNumberLabel": "Stůl",

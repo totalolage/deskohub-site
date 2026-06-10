@@ -461,6 +461,16 @@ describe("ResendWebhookService", () => {
     try {
       const emailView = renderEmailHtml(customerHtml);
       const locale = "cs-CZ";
+      const customerAccessHeadingDate = new Intl.DateTimeFormat(locale, {
+        weekday: "long",
+        day: "numeric",
+        month: "long",
+        timeZone: "Europe/Prague",
+      }).format(new Date("2026-06-05T08:00:00.000Z"));
+      const customerAccessHeading = m.checkoutEmailCustomerAccessHeading(
+        { date: customerAccessHeadingDate },
+        { locale }
+      );
       const accessCodeLabel = emailView.getByText(
         m.checkoutEmailAccessCodeLabel({}, { locale })
       );
@@ -485,8 +495,9 @@ describe("ResendWebhookService", () => {
       const expectedMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
 
       expect(emailView.getByRole("heading", { level: 2 }).textContent).toBe(
-        m.checkoutEmailCustomerAccessHeading({}, { locale })
+        customerAccessHeading
       );
+      expect(customerText).toContain(customerAccessHeading);
       expect(
         emailView.queryByText(m.reservationEmailNameLabel({}, { locale }))
       ).toBeNull();
@@ -522,11 +533,14 @@ describe("ResendWebhookService", () => {
       expect(customerEmail.attachments?.[0]?.content).toEqual(locationMapImage);
       expect(customerEmail.attachments?.[1]).toMatchObject({
         contentId: "workspace-wifi-qr",
-        contentType: "image/svg+xml",
-        filename: "workspace-wifi-qr.svg",
+        contentType: "image/png",
+        filename: "workspace-wifi-qr.png",
       });
-      expect(customerEmail.attachments?.[1]?.content).toContain("<svg");
-      expect(customerEmail.attachments?.[1]?.content).toContain("</svg>");
+      const qrAttachmentContent = customerEmail.attachments?.[1]?.content;
+      if (!Buffer.isBuffer(qrAttachmentContent)) {
+        throw new Error("Wi-Fi QR attachment content was not a PNG buffer.");
+      }
+      expect(qrAttachmentContent.subarray(1, 4).toString("ascii")).toBe("PNG");
       expect(
         createWorkspaceCheckoutWifiQrPayload(
           workspaceCheckoutPlaceholderNetworkDetails

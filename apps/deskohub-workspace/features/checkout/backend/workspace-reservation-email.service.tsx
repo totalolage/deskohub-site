@@ -10,7 +10,7 @@ import type {
   EmailMessage,
   EmailRecipient,
 } from "@deskohub/email/types/email.types";
-import { generateQrCodeSvg } from "@deskohub/qr-code";
+import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer } from "effect";
 import { generateStaticMapImage } from "osm";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
@@ -80,6 +80,31 @@ const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 
+const customerAccessHeadingDateFormatOptions = {
+  weekday: "long",
+  day: "numeric",
+  month: "long",
+  timeZone: "Europe/Prague",
+} satisfies Intl.DateTimeFormatOptions;
+
+const formatCustomerAccessHeadingDate = (
+  reservation: WorkspaceReservation,
+  locale: Locale
+) =>
+  new Intl.DateTimeFormat(
+    locale,
+    customerAccessHeadingDateFormatOptions
+  ).format(getReservationDisplayDate(reservation));
+
+const createCustomerAccessHeading = (
+  reservation: WorkspaceReservation,
+  locale: Locale
+) =>
+  m.checkoutEmailCustomerAccessHeading(
+    { date: formatCustomerAccessHeadingDate(reservation, locale) },
+    { locale }
+  );
+
 const createWorkspaceLocationMapAttachment = (): Effect.Effect<
   EmailAttachment,
   EmailServiceError
@@ -110,7 +135,7 @@ const createWorkspaceNetworkQrAttachment = (
 ): Effect.Effect<EmailAttachment, EmailServiceError> =>
   Effect.tryPromise({
     try: async () => ({
-      content: await generateQrCodeSvg(
+      content: await generateQrCodePngBuffer(
         createWorkspaceCheckoutWifiQrPayload(networkDetails),
         {
           errorCorrectionLevel: "M",
@@ -119,8 +144,8 @@ const createWorkspaceNetworkQrAttachment = (
         }
       ),
       contentId: workspaceNetworkQrContentId,
-      contentType: "image/svg+xml",
-      filename: "workspace-wifi-qr.svg",
+      contentType: "image/png",
+      filename: "workspace-wifi-qr.png",
     }),
     catch: (cause) =>
       new EmailServiceError(
@@ -585,7 +610,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
   }) => {
     const locale = getReservationLocale(input.reservation.locale);
     const rows = createReservationRows(input.reservation, locale);
-    const networkQrSvg = await generateQrCodeSvg(
+    const networkQrPng = await generateQrCodePngBuffer(
       createWorkspaceCheckoutWifiQrPayload(
         workspaceCheckoutPlaceholderNetworkDetails
       ),
@@ -597,11 +622,11 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
     );
 
     return createEmailHtml({
-      heading: m.checkoutEmailCustomerAccessHeading({}, { locale }),
+      heading: createCustomerAccessHeading(input.reservation, locale),
       locale,
       accessCode: input.reservation.customerAccessCode,
       networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
-      networkQrImageSrc: `data:image/svg+xml;utf8,${encodeURIComponent(networkQrSvg)}`,
+      networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
       tableName: input.tableName,
       locationMapContentId: workspaceLocationMapContentId,
       rows,
@@ -687,7 +712,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               ).pipe(Effect.as(undefined))
             )
           );
-          const heading = m.checkoutEmailCustomerAccessHeading({}, { locale });
+          const heading = createCustomerAccessHeading(reservation, locale);
           const followUp = m.reservationEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
             { locale }
