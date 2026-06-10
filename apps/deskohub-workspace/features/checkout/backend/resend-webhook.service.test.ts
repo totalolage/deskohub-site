@@ -397,7 +397,7 @@ describe("ResendWebhookService", () => {
       return yield* service.sendPaidReservationEmails({
         reservation: {
           id: "reservation-id",
-          locale: "cs-CZ",
+          locale: "en-US",
           productTier: "test-tier",
           productCoffee: false,
           productMonitorOption: null,
@@ -460,7 +460,7 @@ describe("ResendWebhookService", () => {
     registerWorkspaceComponentTestEnv();
     try {
       const emailView = renderEmailHtml(customerHtml);
-      const locale = "cs-CZ";
+      const locale = "en-US";
       const customerAccessHeadingDate = new Intl.DateTimeFormat(locale, {
         weekday: "long",
         day: "numeric",
@@ -567,14 +567,35 @@ describe("ResendWebhookService", () => {
     if (!internalEmail) {
       throw new Error("Internal email was not sent.");
     }
+    const internalLocale = "cs-CZ";
     expect(internalEmail.subject).toBe(
       `[TESTING] ${m.checkoutEmailInternalPaidReservationSubject(
         { orderId: "reservation-id" },
-        { locale: "cs-CZ" }
+        { locale: internalLocale }
       )}`
+    );
+    expect(internalEmail.html).toContain(
+      m.checkoutEmailInternalPaidReservationHeading(
+        {},
+        { locale: internalLocale }
+      )
+    );
+    expect(internalEmail.text).toContain(
+      m.checkoutEmailInternalPaidReservationHeading(
+        {},
+        { locale: internalLocale }
+      )
     );
     expect(internalEmail.html).toContain("customer@example.com");
     expect(internalEmail.text).toContain("customer@example.com");
+    expect(internalEmail.html).not.toContain("ACCESS-123");
+    expect(internalEmail.text).not.toContain("ACCESS-123");
+    expect(internalEmail.html).not.toContain(
+      m.checkoutEmailAccessCodeLabel({}, { locale: internalLocale })
+    );
+    expect(internalEmail.text).not.toContain(
+      m.checkoutEmailAccessCodeLabel({}, { locale: internalLocale })
+    );
   });
 
   test("leaves paid fulfillment processing until Resend confirms delivery", async () => {

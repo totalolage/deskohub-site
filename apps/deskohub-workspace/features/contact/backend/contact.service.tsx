@@ -4,6 +4,7 @@ import {
 } from "@deskohub/email/backend/service";
 import type { EmailMessage } from "@deskohub/email/types/email.types";
 import { Context, Effect, Layer } from "effect";
+import { env } from "@/env";
 import { type Locale, m } from "@/features/i18n";
 import {
   type EmailDetailRow,
@@ -39,6 +40,9 @@ const workspaceRecipient = {
   name: workspaceSiteConstants.brand.name,
 } as const;
 
+const businessNotificationLocale: Locale = "cs-CZ";
+const businessTestingSubjectPrefix = "[TESTING]";
+
 const formatSubmissionDate = (submittedAt: string, locale: Locale) =>
   new Date(submittedAt).toLocaleString(locale, {
     dateStyle: "full",
@@ -46,8 +50,18 @@ const formatSubmissionDate = (submittedAt: string, locale: Locale) =>
     timeZone: "Europe/Prague",
   });
 
-const getBusinessSubject = (name: string, locale: Locale) =>
-  m.contactEmailBusinessSubject({ name }, { locale });
+const getBusinessSubject = (name: string) => {
+  const subject = m.contactEmailBusinessSubject(
+    { name },
+    { locale: businessNotificationLocale }
+  );
+
+  if (env.VERCEL_ENV === "production") {
+    return subject;
+  }
+
+  return `${businessTestingSubjectPrefix} ${subject}`;
+};
 
 const getConfirmationSubject = (locale: Locale) =>
   m.contactEmailConfirmationSubject({}, { locale });
@@ -93,16 +107,26 @@ export const ContactServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ submission });
           yield* Effect.logInfo("Workspace contact submission prepared");
 
-          const formattedDate = formatSubmissionDate(
+          const businessFormattedDate = formatSubmissionDate(
             submission.submittedAt,
-            locale
+            businessNotificationLocale
           );
-          const rows = createDetailRows(submission, formattedDate, locale);
-          const businessHeading = m.contactEmailBusinessHeading({}, { locale });
-          const messageHeading = m.contactEmailMessageHeading({}, { locale });
+          const businessRows = createDetailRows(
+            submission,
+            businessFormattedDate,
+            businessNotificationLocale
+          );
+          const businessHeading = m.contactEmailBusinessHeading(
+            {},
+            { locale: businessNotificationLocale }
+          );
+          const messageHeading = m.contactEmailMessageHeading(
+            {},
+            { locale: businessNotificationLocale }
+          );
           const messageTextHeading = m.contactEmailMessageTextHeading(
             {},
-            { locale }
+            { locale: businessNotificationLocale }
           );
           const confirmationHeading = m.contactEmailCustomerHeading(
             {},
@@ -117,7 +141,7 @@ export const ContactServiceLive = Layer.effect(
           const businessEmailMessage: EmailMessage = {
             from: emailConfig.defaultFrom,
             to: workspaceRecipient,
-            subject: getBusinessSubject(data.name, locale),
+            subject: getBusinessSubject(data.name),
             html: renderWorkspaceEmailHtml(
               <div
                 style={{
@@ -136,7 +160,7 @@ export const ContactServiceLive = Layer.effect(
                   }}
                 >
                   <tbody>
-                    <WorkspaceEmailRows rows={rows} />
+                    <WorkspaceEmailRows rows={businessRows} />
                   </tbody>
                 </table>
                 <h3 style={{ marginTop: "24px", color: "#0b1848" }}>
@@ -157,7 +181,7 @@ export const ContactServiceLive = Layer.effect(
             text: [
               businessHeading,
               "",
-              ...renderEmailRowsText(rows),
+              ...renderEmailRowsText(businessRows),
               "",
               messageTextHeading,
               data.message,
