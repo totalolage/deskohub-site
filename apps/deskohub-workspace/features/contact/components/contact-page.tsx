@@ -12,7 +12,6 @@ export function ContactPage({ locale, initialValues }: ContactPageProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
       <section className="relative isolate overflow-hidden pb-20 pt-28 sm:pb-24 sm:pt-36">
-        <div className="absolute inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(236,164,35,0.2),transparent_32%),radial-gradient(circle_at_right,rgba(0,223,153,0.12),transparent_28%),linear-gradient(180deg,#00024f_0%,#08154a_55%,#f4f1ea_55%,#f4f1ea_100%)]" />
         <div className="absolute inset-x-0 top-16 -z-10 h-56 bg-[radial-gradient(circle,rgba(221,72,10,0.18),transparent_60%)] blur-3xl" />
 
         <Container>
