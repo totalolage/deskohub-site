@@ -1,7 +1,7 @@
 "use client";
 
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
 import {
   AlertTriangle,
@@ -282,6 +282,7 @@ export function ReservationForm({
     queryKey: workspaceAvailabilityKeys.availability(availabilityQuery),
     queryFn: ({ signal }) =>
       loadWorkspaceAvailability({ query: availabilityQuery, signal }),
+    initialData: keepPreviousData,
     staleTime: 30_000,
   });
   const availability = availabilityQueryResult.isError
