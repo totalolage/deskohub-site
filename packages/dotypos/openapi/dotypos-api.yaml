@@ -1,0 +1,2163 @@
+openapi: 3.0.3
+info:
+  title: Dotypos API
+  description: Dotypos POS System API for managing reservations and authentication
+  version: 2.0.0
+servers:
+  - url: https://api.dotykacka.cz/v2
+    description: Production API server
+
+security:
+  - bearerAuth: []
+
+paths:
+  /signin/token:
+    post:
+      tags:
+        - Authentication
+      summary: Get access token from refresh token
+      operationId: getAccessToken
+      security: []
+      parameters:
+        - in: header
+          name: Authorization
+          required: true
+          schema:
+            type: string
+            description: User {refresh_token}
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '201':
+          description: Successful authentication
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/reservations:
+    post:
+      tags:
+        - Reservations
+      summary: Create a new reservation
+      operationId: createReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateReservationRequest'
+              maxItems: 100
+              description: Array of reservations to create (max 100)
+      responses:
+        '200':
+          description: Reservations created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    get:
+      tags:
+        - Reservations
+      summary: List reservations
+      operationId: listReservations
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: List of reservations
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedReservations'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Dotypos returns Not Found, sometimes with an empty body, when the cloud has no reservations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Reservations
+      summary: Replace or create reservations
+      operationId: replaceReservations
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Reservation'
+              maxItems: 100
+      responses:
+        '200':
+          description: Reservations replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Reservation'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/reservations/{reservationId}:
+    get:
+      tags:
+        - Reservations
+      summary: Get reservation by ID
+      operationId: getReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+      responses:
+        '200':
+          description: Reservation details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Reservations
+      summary: Update reservation
+      operationId: updateReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReservationRequest'
+      responses:
+        '200':
+          description: Reservation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Reservations
+      summary: Partially update reservation
+      operationId: patchReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateReservationRequest'
+      responses:
+        '200':
+          description: Reservation updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Reservation'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Reservations
+      summary: Cancel reservation
+      operationId: cancelReservation
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: reservationId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Reservation ID
+      responses:
+        '200':
+          description: Reservation cancelled successfully
+        '404':
+          description: Reservation not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/customers:
+    get:
+      tags:
+        - Customers
+      summary: Get customers
+      operationId: getCustomers
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: filter
+          in: query
+          description: Filter customers (e.g., by email or phone)
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of customers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCustomers'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    post:
+      tags:
+        - Customers
+      summary: Create customers
+      operationId: createCustomers
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/CreateCustomerRequest'
+      responses:
+        '200':
+          description: Customers created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Customers
+      summary: Replace or create customers
+      operationId: replaceCustomers
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Customer'
+      responses:
+        '200':
+          description: Customers replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/tables:
+    get:
+      tags:
+        - Tables
+      summary: Get tables
+      operationId: getTables
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+      responses:
+        '200':
+          description: Paginated list of tables
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedTables'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/products:
+    get:
+      tags:
+        - Products
+      summary: Get products
+      operationId: getProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: filter
+          in: query
+          description: Filter products (e.g., "_categoryId|eq|123")
+          schema:
+            type: string
+        - name: sort
+          in: query
+          description: Sort products (e.g., "name", "-priceWithVat")
+          schema:
+            type: string
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: include
+          in: query
+          description: Include related entities (comma-separated, e.g., "customizations,ingredients")
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Paginated list of products
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedProducts'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      tags:
+        - Products
+      summary: Create products
+      operationId: createProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Product'
+              maxItems: 100
+      responses:
+        '200':
+          description: Products created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Products
+      summary: Replace or create products
+      operationId: replaceProducts
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Product'
+              maxItems: 100
+      responses:
+        '200':
+          description: Products replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/products/{productId}:
+    get:
+      tags:
+        - Products
+      summary: Get product by ID
+      operationId: getProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - name: include
+          in: query
+          description: Include related entities (comma-separated, e.g., "customizations,ingredients")
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Product details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      tags:
+        - Products
+      summary: Replace or create product
+      operationId: replaceProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Product'
+      responses:
+        '200':
+          description: Product replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Products
+      summary: Partially update product
+      operationId: patchProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchProductRequest'
+      responses:
+        '200':
+          description: Product updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Product'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Products
+      summary: Delete product
+      operationId: deleteProduct
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: productId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Product ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteProductRequest'
+      responses:
+        '200':
+          description: Product deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+        '404':
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Product delete conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+
+  /clouds/{cloudId}/categories:
+    get:
+      summary: Get product categories
+      operationId: getCategories
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/PageParam'
+        - $ref: '#/components/parameters/LimitParam'
+        - name: filter
+          in: query
+          schema:
+            type: string
+          description: Filter expression
+        - name: sort
+          in: query
+          schema:
+            type: string
+          description: Sort expression
+      responses:
+        '200':
+          description: Paginated list of categories
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCategories'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    post:
+      summary: Create product categories
+      operationId: createCategories
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Category'
+              maxItems: 100
+      responses:
+        '200':
+          description: Categories created successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Replace or create product categories
+      operationId: replaceCategories
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                $ref: '#/components/schemas/Category'
+              maxItems: 100
+      responses:
+        '200':
+          description: Categories replaced successfully
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /clouds/{cloudId}/categories/{categoryId}:
+    get:
+      summary: Get product category by ID
+      operationId: getCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+      responses:
+        '200':
+          description: Category details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    put:
+      summary: Replace or create product category
+      operationId: replaceCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/Category'
+      responses:
+        '200':
+          description: Category replaced successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      summary: Partially update product category
+      operationId: patchCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PatchCategoryRequest'
+      responses:
+        '200':
+          description: Category updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+        '400':
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      summary: Delete product category
+      operationId: deleteCategory
+      tags:
+        - Categories
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Cloud ID
+        - name: categoryId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Category ID
+        - $ref: '#/components/parameters/IfMatchParam'
+      responses:
+        '200':
+          description: Category deleted successfully
+        '404':
+          description: Category not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: Category delete conflict
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /clouds/{cloudId}/customers/{customerId}:
+    get:
+      tags:
+        - Customers
+      summary: Get customer by ID
+      operationId: getCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Customer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    
+    put:
+      tags:
+        - Customers
+      summary: Update customer
+      operationId: updateCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    patch:
+      tags:
+        - Customers
+      summary: Partially update customer
+      operationId: patchCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - $ref: '#/components/parameters/IfMatchRequiredParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCustomerRequest'
+      responses:
+        '200':
+          description: Customer updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Customer'
+        '400':
+          description: Bad Request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+    delete:
+      tags:
+        - Customers
+      summary: Delete customer
+      operationId: deleteCustomer
+      parameters:
+        - name: cloudId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: customerId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: anonymize
+          in: query
+          required: false
+          schema:
+            type: boolean
+          description: Anonymize customer data when deleting
+        - $ref: '#/components/parameters/IfMatchParam'
+      responses:
+        '200':
+          description: Customer deleted successfully
+        '404':
+          description: Customer not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    PageParam:
+      name: page
+      in: query
+      schema:
+        type: integer
+        default: 1
+      description: Page number (starts at 1)
+
+    LimitParam:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        default: 100
+        maximum: 100
+      description: Items per page (max 100)
+
+    IfMatchParam:
+      name: If-Match
+      in: header
+      required: false
+      schema:
+        type: string
+      description: ETag to update only if not changed
+
+    IfMatchRequiredParam:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+      description: ETag to update only if not changed
+
+  schemas:
+    TranslatedStrings:
+      type: object
+      additionalProperties:
+        type: string
+      description: 'Map of locale codes to translated strings (e.g., {"en": "English text", "cs": "Czech text"})'
+      example:
+        en: "English text"
+        cs: "Český text"
+        de: "Deutscher Text"
+    TokenRequest:
+      type: object
+      properties:
+        _cloudId:
+          type: string
+          description: Cloud ID for cloud-specific token (optional)
+
+    TokenResponse:
+      type: object
+      required:
+        - accessToken
+      properties:
+        accessToken:
+          type: string
+          description: JWT access token for API authentication
+
+    CreateReservationRequest:
+      type: object
+      required:
+        - _branchId
+        - _cloudId
+        - _customerId
+        - startDate
+        - endDate
+        - seats
+        - status
+      properties:
+        _branchId:
+          type: string
+          description: Branch ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        _customerId:
+          type: string
+          description: Customer ID (long as string)
+        _employeeId:
+          type: string
+          description: Employee ID (long as string)
+        _tableId:
+          type: string
+          description: Table ID (long as string)
+          default: "0"
+        flags:
+          type: integer
+          minimum: 0
+          description: Reservation flags (bitwise flags)
+          default: 0
+        startDate:
+          type: integer
+          description: Start date/time as Unix timestamp in milliseconds
+        endDate:
+          type: integer
+          description: End date/time as Unix timestamp in milliseconds
+        seats:
+          type: integer
+          description: Number of seats/guests
+        status:
+          type: string
+          enum: [NEW, CONFIRMED, CANCELLED]
+        note:
+          type: string
+          description: Additional notes (used for customer info)
+
+    UpdateReservationRequest:
+      type: object
+      properties:
+        startDate:
+          type: integer
+          description: Start date/time as Unix timestamp in milliseconds
+        endDate:
+          type: integer
+          description: End date/time as Unix timestamp in milliseconds
+        seats:
+          type: integer
+          description: Number of seats/guests
+        status:
+          type: string
+          enum: [NEW, CONFIRMED, CANCELLED]
+        note:
+          type: string
+          description: Additional notes
+
+    Reservation:
+      type: object
+      required:
+        - _branchId
+        - _cloudId
+        - seats
+        - startDate
+        - endDate
+        - status
+      properties:
+        id:
+          type: string
+          description: Reservation ID (long as string)
+        _branchId:
+          type: string
+          description: Branch ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        _customerId:
+          type: string
+          description: Customer ID (long)
+        _employeeId:
+          type: string
+          description: Employee ID (long)
+        _tableId:
+          type: string
+          description: Table ID (long)
+        created:
+          type: string
+          description: Creation timestamp (ISO 8601 format)
+        flags:
+          type: string
+          description: Reservation flags (string representation)
+        startDate:
+          type: string
+          description: Start date/time (ISO 8601 format)
+        endDate:
+          type: string
+          description: End date/time (ISO 8601 format)
+        seats:
+          type: string
+          description: Number of seats (string representation)
+        status:
+          type: string
+          enum: [NEW, CONFIRMED, CANCELLED]
+          description: Reservation status
+        note:
+          type: string
+          description: Additional notes
+        versionDate:
+          type: string
+          description: Last update timestamp (ISO 8601 format)
+
+    PaginationBase:
+      type: object
+      description: Base pagination properties shared by all paginated responses
+      properties:
+        currentPage:
+          type: string
+          description: Current page number
+        perPage:
+          type: string
+          description: Items per page
+        totalItemsOnPage:
+          type: string
+          description: Number of items on current page
+        totalItemsCount:
+          type: string
+          description: Total number of items
+        firstPage:
+          type: string
+          description: First page number
+        lastPage:
+          type: string
+          description: Last page number
+        nextPage:
+          type: string
+          nullable: true
+          description: Next page number
+        prevPage:
+          type: string
+          nullable: true
+          description: Previous page number
+
+    PaginatedReservations:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of reservations
+              items:
+                $ref: '#/components/schemas/Reservation'
+
+    PaginatedCustomers:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of customers
+              items:
+                $ref: '#/components/schemas/Customer'
+
+    Customer:
+      type: object
+      required:
+        - _cloudId
+        - deleted
+        - display
+        - flags
+        - points
+      properties:
+        id:
+          type: string
+          description: Customer ID
+        _cloudId:
+          type: string
+          description: Cloud ID
+        _discountGroupId:
+          type: string
+          nullable: true
+          description: Discount group ID
+        _sellerId:
+          type: string
+          nullable: true
+          description: Seller ID
+        firstName:
+          type: string
+          nullable: true
+          description: First name (at least one of firstName, lastName, or companyName must be non-blank)
+        lastName:
+          type: string
+          nullable: true
+          description: Last name (at least one of firstName, lastName, or companyName must be non-blank)
+        companyName:
+          type: string
+          nullable: true
+          description: Company name (at least one of firstName, lastName, or companyName must be non-blank)
+        companyId:
+          type: string
+          nullable: true
+          description: Company ID
+        email:
+          type: string
+          nullable: true
+          description: Email address
+        phone:
+          type: string
+          nullable: true
+          description: Phone number
+        addressLine1:
+          type: string
+          nullable: true
+          description: Address line 1
+        addressLine2:
+          type: string
+          nullable: true
+          description: Address line 2
+        city:
+          type: string
+          nullable: true
+          description: City
+        zip:
+          type: string
+          nullable: true
+          description: ZIP code
+        country:
+          type: string
+          nullable: true
+          description: Country code
+        vatId:
+          type: string
+          nullable: true
+          description: VAT ID
+        barcode:
+          type: string
+          nullable: true
+          description: Customer barcode
+        birthday:
+          type: string
+          nullable: true
+          description: Birthday timestamp
+        created:
+          type: string
+          nullable: true
+          description: Creation timestamp (ISO 8601)
+        expireDate:
+          type: string
+          nullable: true
+          description: Expiration date timestamp
+        externalId:
+          type: string
+          nullable: true
+          description: External ID
+        headerPrint:
+          type: string
+          nullable: true
+          description: Header print text
+        hexColor:
+          type: string
+          nullable: true
+          description: Hex color code
+        internalNote:
+          type: string
+          nullable: true
+          description: Internal note
+        modifiedBy:
+          type: string
+          nullable: true
+          description: Modified by user ID (string representation)
+        note:
+          type: string
+          nullable: true
+          description: Customer note
+        tags:
+          type: array
+          nullable: true
+          description: Customer tags
+          items:
+            type: string
+        points:
+          type: string
+          nullable: true
+          description: Customer points (string representation of number)
+        flags:
+          type: string
+          description: Customer flags (string representation of long)
+        display:
+          type: boolean
+          description: Is displayed
+        deleted:
+          type: boolean
+          description: Is deleted
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
+
+    CreateCustomerRequest:
+      type: object
+      required:
+        - _cloudId
+        - firstName
+        - email
+        - phone
+      properties:
+        _cloudId:
+          type: string
+          description: Cloud ID
+        firstName:
+          type: string
+          description: First name
+        lastName:
+          type: string
+          description: Last name
+          default: ""
+        flags:
+          type: integer
+          minimum: 0
+          description: Customer flags (bitwise flags)
+          default: 0
+        email:
+          type: string
+          description: Email address
+        phone:
+          type: string
+          description: Phone number
+        addressLine1:
+          type: string
+          description: Address line 1
+          default: ""
+        addressLine2:
+          type: string
+          description: Address line 2
+          nullable: true
+          default: null
+        city:
+          type: string
+          description: City
+          nullable: true
+          default: null
+        zip:
+          type: string
+          description: ZIP code
+          default: ""
+        country:
+          type: string
+          description: Country code
+          nullable: true
+          default: null
+        companyName:
+          type: string
+          description: Company name
+          default: ""
+        vatId:
+          type: string
+          description: VAT ID
+          default: ""
+        note:
+          type: string
+          description: Customer note
+          nullable: true
+          default: null
+        display:
+          type: boolean
+          description: Is displayed
+          default: true
+        deleted:
+          type: boolean
+          description: Is deleted
+          default: false
+        points:
+          type: integer
+          description: Customer points
+          nullable: true
+          default: 0
+        internalNote:
+          type: string
+          description: Internal note
+          default: ""
+        companyId:
+          type: string
+          description: Company ID
+          default: ""
+        hexColor:
+          type: string
+          description: Hex color for customer
+          default: "#2196F3"
+        headerPrint:
+          type: string
+          description: Header print text
+          default: ""
+        tags:
+          type: array
+          description: Customer tags
+          items:
+            type: string
+          default: []
+        barcode:
+          type: string
+          description: Customer barcode
+          default: ""
+        expireDate:
+          description: Expiration date as either a Unix timestamp (seconds or milliseconds) or an ISO 8601 datetime string.
+          oneOf:
+            - type: integer
+              description: Unix timestamp (seconds or milliseconds since epoch)
+              example: 1735689600
+            - type: string
+              format: date-time
+              description: ISO 8601 datetime string
+              example: "2025-01-01T00:00:00Z"
+          nullable: true
+
+    UpdateCustomerRequest:
+      type: object
+      properties:
+        firstName:
+          type: string
+          description: First name
+        lastName:
+          type: string
+          description: Last name
+        email:
+          type: string
+          description: Email address
+        phone:
+          type: string
+          description: Phone number
+        addressLine1:
+          type: string
+          description: Address line 1
+        addressLine2:
+          type: string
+          description: Address line 2
+        city:
+          type: string
+          description: City
+        zip:
+          type: string
+          description: ZIP code
+        country:
+          type: string
+          description: Country code
+        companyName:
+          type: string
+          description: Company name
+        vatId:
+          type: string
+          description: VAT ID
+        note:
+          type: string
+          description: Customer note
+        display:
+          type: boolean
+          description: Is displayed
+        deleted:
+          type: boolean
+          description: Is deleted
+        points:
+          type: string
+          description: Customer points
+        internalNote:
+          type: string
+          description: Internal note
+        hexColor:
+          type: string
+          description: Hex color for customer
+        headerPrint:
+          type: string
+          description: Header print text
+        tags:
+          type: array
+          description: Customer tags
+          items:
+            type: string
+        barcode:
+          type: string
+          description: Customer barcode
+        companyId:
+          type: string
+          description: Company ID
+        flags:
+          type: integer
+          minimum: 0
+          description: Customer flags (bitwise flags)
+
+    PaginatedTables:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of tables
+              items:
+                $ref: '#/components/schemas/Table'
+
+    Table:
+      type: object
+      required:
+        - _cloudId
+        - name
+      properties:
+        id:
+          type: string
+          description: Table ID (long as string)
+        _branchId:
+          type: string
+          description: Branch ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        _sellerId:
+          type: string
+          description: Seller ID (long as string)
+          nullable: true
+        _tableGroupId:
+          type: string
+          description: Table group ID (long as string)
+        name:
+          type: string
+          description: Table name/number
+          maxLength: 180
+        seats:
+          type: string
+          description: Number of seats (string representation)
+        display:
+          type: boolean
+          description: Is displayed
+        enabled:
+          type: boolean
+          description: Is enabled
+        locationName:
+          type: string
+          description: Location name
+        positionX:
+          type: string
+          description: X position (string representation)
+        positionY:
+          type: string
+          description: Y position (string representation)
+        rotation:
+          type: string
+          description: Rotation angle (string representation)
+        type:
+          type: string
+          enum: [SQUARE, SQUARE6, CIRCLE2, CIRCLE4, DELIVERY, CHAIR_SINGLE, ROUND, DOOR, GENERIC, CAR1, CAR2]
+          description: Table type
+        tags:
+          type: array
+          description: Table tags
+          items:
+            type: string
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
+
+    PaginatedProducts:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of products
+              items:
+                $ref: '#/components/schemas/Product'
+
+    Product:
+      type: object
+      required:
+        - _categoryId
+        - name
+        - priceWithoutVat
+        - vat
+      properties:
+        id:
+          type: string
+          description: Product ID (long as string)
+        _categoryId:
+          type: string
+          description: Category ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        name:
+          type: string
+          description: Product name
+          maxLength: 255
+        alternativeName:
+          type: string
+          nullable: true
+          description: Alternative product name
+        description:
+          type: string
+          nullable: true
+          description: Product description
+        ean:
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: string
+              nullable: true
+          description: EAN codes (can be array or string)
+        externalId:
+          type: string
+          nullable: true
+          description: External ID
+        flags:
+          type: string
+          description: Product flags (string representation)
+        hexColor:
+          type: string
+          nullable: true
+          description: Hex color code
+        imageUrl:
+          type: string
+          nullable: true
+          description: Product image URL
+        minMargin:
+          type: string
+          nullable: true
+          description: Minimum margin (string representation)
+        modifiedBy:
+          type: string
+          nullable: true
+          description: Modified by user ID
+        packaging:
+          type: string
+          nullable: true
+          description: Packaging information
+        packageSize:
+          type: string
+          nullable: true
+          description: Package size (string representation)
+        points:
+          type: string
+          nullable: true
+          description: Points value (string representation)
+        priceWithVat:
+          type: string
+          nullable: true
+          description: Price with VAT (string representation)
+        priceWithoutVat:
+          type: string
+          description: Price without VAT (string representation)
+        printTicket:
+          type: boolean
+          nullable: true
+          description: Print ticket flag
+        stockDeduct:
+          type: boolean
+          nullable: true
+          description: Stock deduction flag
+        subtitle:
+          type: string
+          nullable: true
+          description: Product subtitle
+        tags:
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: string
+              nullable: true
+          description: Product tags (can be array or string)
+        translatedDescription:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/TranslatedStrings'
+          description: Translated descriptions by locale
+        translatedName:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/TranslatedStrings'
+          description: Translated names by locale
+        unit:
+          type: string
+          description: Unit of measurement (actual values vary from documented enum)
+        vat:
+          type: string
+          description: VAT rate (string representation)
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
+        deleted:
+          type: boolean
+          nullable: true
+          description: Is deleted
+        display:
+          type: boolean
+          nullable: true
+          description: Is displayed
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Category ID (long as string)
+        _cloudId:
+          type: string
+          description: Cloud ID (long as string)
+        name:
+          type: string
+          description: Category name
+        hexColor:
+          type: string
+          nullable: true
+          description: Hex color for the category
+        deleted:
+          type: boolean
+          description: Is deleted
+        display:
+          type: boolean
+          description: Is displayed
+        externalId:
+          type: string
+          nullable: true
+          description: External ID
+        flags:
+          type: string
+          description: Category flags (string representation of long)
+        fiscalName:
+          type: string
+          nullable: true
+          description: Fiscal name for the category
+        ordering:
+          type: string
+          nullable: true
+          description: Sort order (string representation)
+        translatedName:
+          nullable: true
+          allOf:
+            - $ref: '#/components/schemas/TranslatedStrings'
+          description: Translated names by locale
+        versionDate:
+          type: string
+          description: Last modification timestamp (ISO 8601)
+        tags:
+          type: array
+          nullable: true
+          items:
+            type: string
+          description: Category tags
+
+    PaginatedCategories:
+      allOf:
+        - $ref: '#/components/schemas/PaginationBase'
+        - type: object
+          properties:
+            data:
+              type: array
+              description: Array of categories
+              items:
+                $ref: '#/components/schemas/Category'
+
+    PatchProductRequest:
+      type: object
+      additionalProperties: true
+      description: Partial product object for PATCH requests
+
+    DeleteProductRequest:
+      type: object
+      properties:
+        productIsIngredient:
+          type: string
+          enum: [ERROR, PRESERVE, DELETE]
+          description: Strategy when the product is an ingredient
+        productHasIngredients:
+          type: string
+          enum: [ERROR, PRESERVE, DELETE]
+          description: Strategy when the product has ingredients
+
+    PatchCategoryRequest:
+      type: object
+      additionalProperties: true
+      description: Partial category object for PATCH requests
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+        error_description:
+          type: string
+        code:
+          type: integer

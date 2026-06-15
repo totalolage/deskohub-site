@@ -1,0 +1,109 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue", Arial,
+    sans-serif;
+  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  --color-navy-blue: var(--brand-navy-blue);
+  --color-silver: var(--brand-silver);
+  --color-sunset-yellow: var(--brand-sunset-yellow);
+  --color-chilean-fire: var(--brand-chilean-fire);
+  --color-burned-orange: var(--brand-burned-orange);
+  --color-aquamarine-green: var(--brand-aquamarine-green);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --container-8xl: 100rem;
+
+  @keyframes accordion-down {
+    from {
+      height: 0;
+    }
+    to {
+      height: var(--radix-accordion-content-height);
+    }
+  }
+
+  @keyframes accordion-up {
+    from {
+      height: var(--radix-accordion-content-height);
+    }
+    to {
+      height: 0;
+    }
+  }
+}
+
+:root {
+  --brand-navy-blue: #00024f;
+  --brand-silver: #d8d8d8;
+  --brand-sunset-yellow: #eca423;
+  --brand-chilean-fire: #f57c00;
+  --brand-burned-orange: #dd480a;
+  --brand-aquamarine-green: #00df99;
+  --site-header-height: 6rem;
+  --anchor-scroll-offset: var(--site-header-height);
+
+  --font-heading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-subheading: var(--font-sculpin), "Avenir Next", "Segoe UI",
+    "Helvetica Neue", Arial, sans-serif;
+  --font-body: var(--font-sculpin), "Avenir Next", "Segoe UI", "Helvetica Neue",
+    Arial, sans-serif;
+  --font-heading-weight: 400;
+  --font-subheading-weight: 400;
+  --font-body-weight: 400;
+
+  --radius: 0.65rem;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: var(--font-body);
+  font-weight: var(--font-body-weight);
+  color: var(--brand-navy-blue);
+  /* background: */
+  /*   radial-gradient(circle at 85% 8%, rgba(236, 164, 35, 0.18), transparent 34%), */
+  /*   radial-gradient(circle at 8% 18%, rgba(0, 223, 153, 0.12), transparent 28%), */
+  /*   linear-gradient(180deg, #f4f6fa 0%, #ffffff 30%); */
+}
+
+h1,
+h2 {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-family: var(--font-subheading);
+  font-weight: var(--font-subheading-weight);
+}
+
+main section[id],
+footer[id] {
+  scroll-margin-top: var(--anchor-scroll-offset);
+}

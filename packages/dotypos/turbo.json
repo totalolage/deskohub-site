@@ -1,0 +1,10 @@
+{
+  "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "generate": {
+      "passThroughEnv": ["DOTYPOS_WEBHOOK_SECRET", "FORM_DATA_ENC_SECRET"],
+      "outputs": ["src/generated/**"]
+    }
+  }
+}

@@ -1,0 +1,81 @@
+"use client";
+
+import { useEffect } from "react";
+import * as CookieConsent from "vanilla-cookieconsent";
+import "vanilla-cookieconsent/dist/cookieconsent.css";
+import type { Locale } from "@/features/i18n";
+import { createConsentConfig } from "../config/consent-config";
+import {
+  denyAnalyticsConsent,
+  denyMarketingConsent,
+  denyPreferencesConsent,
+  grantAnalyticsConsent,
+  grantMarketingConsent,
+  grantPreferencesConsent,
+  initializeConsentMode,
+  pushConsentUpdateEvent,
+} from "../utils/consent-mode";
+
+type CookieConsentProviderProps = {
+  locale: Locale;
+};
+
+export function CookieConsentProvider({ locale }: CookieConsentProviderProps) {
+  useEffect(() => {
+    initializeConsentMode();
+
+    CookieConsent.run({
+      ...createConsentConfig(locale),
+      onFirstConsent: () =>
+        handleConsentChange({ emitGtmConsentUpdateEvent: true }),
+      onConsent: () =>
+        handleConsentChange({ emitGtmConsentUpdateEvent: false }),
+      onChange: () => handleConsentChange({ emitGtmConsentUpdateEvent: true }),
+    });
+
+    handleConsentChange({ emitGtmConsentUpdateEvent: false });
+  }, [locale]);
+
+  return null;
+}
+
+type HandleConsentChangeOptions = {
+  emitGtmConsentUpdateEvent: boolean;
+};
+
+function handleConsentChange({
+  emitGtmConsentUpdateEvent,
+}: HandleConsentChangeOptions) {
+  const preferences = CookieConsent.getUserPreferences();
+  const acceptedCategories = preferences?.acceptedCategories || [];
+
+  if (CookieConsent.acceptedCategory("analytics")) {
+    grantAnalyticsConsent();
+  } else {
+    denyAnalyticsConsent();
+  }
+
+  if (CookieConsent.acceptedCategory("marketing")) {
+    grantMarketingConsent();
+  } else {
+    denyMarketingConsent();
+  }
+
+  if (CookieConsent.acceptedCategory("preferences")) {
+    grantPreferencesConsent();
+  } else {
+    denyPreferencesConsent();
+  }
+
+  if (emitGtmConsentUpdateEvent) {
+    queueMicrotask(pushConsentUpdateEvent);
+  }
+
+  if (typeof window === "undefined") return;
+
+  window.dispatchEvent(
+    new CustomEvent("consentUpdated", {
+      detail: { acceptedCategories },
+    })
+  );
+}

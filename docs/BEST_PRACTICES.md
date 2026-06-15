@@ -73,7 +73,7 @@ export const HomeHero = () => {
 };
 
 // ✅ Good - Client component scoped to interactive behavior only
-// features/booking/components/DatePicker.tsx
+// features/table-reservation/components/DatePicker.tsx
 "use client";
 
 export const DatePicker = ({ onDateChange }: DatePickerProps) => {
@@ -166,7 +166,7 @@ const [state, dispatch] = useReducer(bookingReducer, initialState);
 Keep feature-specific state within the feature:
 
 ```typescript
-// features/booking/hooks/useBookingState.ts
+// features/table-reservation/hooks/useReservationState.ts
 export const useBookingState = () => {
   const [booking, setBooking] = useState<Booking | null>(null);
   // Feature-specific logic
@@ -218,7 +218,7 @@ Always use theme tokens instead of hard-coded colors:
 ### Always Use Translations
 
 ```typescript
-import { m } from "@/i18n";
+import { m } from "@/features/i18n";
 
 // ✅ Good
 <h1>{m["hero.title"]()}</h1>
@@ -446,7 +446,11 @@ Lazy load features when possible:
 
 ```typescript
 // ✅ Good
-const BookingForm = lazy(() => import('@/features/booking').then(m => ({ default: m.BookingForm })));
+const ReservationForm = lazy(() =>
+  import("@/features/table-reservation").then((m) => ({
+    default: m.TableReservationForm,
+  }))
+);
 
 // Use with Suspense
 <Suspense fallback={<Loading />}>
@@ -523,7 +527,7 @@ All form inputs must use the error variant when displaying validation errors:
   </SelectContent>
 </Select>
 
-<TextArea
+<Textarea
   variant={form.formState.errors.message ? "error" : "default"}
   {...field}
 />
@@ -539,7 +543,7 @@ All form inputs must use the error variant when displaying validation errors:
 
 #### Error Variant Requirements
 
-1. **All input components must support error variants**: Input, Select, TextArea, and any custom form controls
+1. **All input components must support error variants**: Input, Select, Textarea, and any custom form controls
 2. **Use consistent variant prop**: `variant` with values "default" and "error"
 3. **Error styling must use theme tokens**: Use `border-destructive` instead of hardcoded colors
 4. **Integrate with form validation**: Always check `form.formState.errors` or `fieldState.error`

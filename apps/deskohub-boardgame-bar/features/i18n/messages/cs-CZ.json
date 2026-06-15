@@ -1,0 +1,1002 @@
+{
+  "language": "Česky",
+  "priceOnRequest": "Na dotaz",
+  "siteTitle": "Deskohub",
+  "siteDescription": "Deskoherní klub a školící místnost - nekonečno perspektiv. Místo, kde fantazie potkává realitu v odrazech nekonečných světů.",
+  "pageTitle": "Deskoherní klub a školící místnost",
+  "pageDescription": "Deskohub - místo pro všechny, kdo milují deskové hry, strategické, kampaňové či párty hry. Provozováno deskohráči.",
+  "nav": {
+    "home": "DOMŮ",
+    "boardGames": "DESKOVÉ HRY",
+    "gallery": "GALERIE",
+    "menu": "MENU",
+    "trainingRoom": "ŠKOLÍCÍ MÍSTNOST",
+    "contact": "KONTAKT",
+    "openMenu": "Otevřít menu"
+  },
+  "buttons": {
+    "reservation": "Rezervace",
+    "showMore": "ZOBRAZIT VÍCE",
+    "seeList": "ZOBRAZIT SEZNAM",
+    "ourLocation": "NAŠE LOKACE",
+    "contact": "KONTAKT",
+    "backToHome": "Zpět na hlavní stránku"
+  },
+  "hero": {
+    "title": "Deskoherní bar",
+    "description": "Místo pro všechny, kdo milují deskové hry. Klidné zákoutí pro vaši oblíbenou společenskou hru i možnost naučit se nové hry.",
+    "priceInfo": {
+      "forPlayers": "Vstup <price /> pro deskové hráče"
+    }
+  },
+  "hours": {
+    "weekdays": "PO - PÁ",
+    "weekends": "SO - NE"
+  },
+  "about": {
+    "description": "Místo pro všechny, kdo milují deskové hry, ať už strategické, kampaňové či párty hry. Ideální prostor pro setkání s přáteli i poznávání nových spřízněných duší.",
+    "priceInfo": {
+      "forPlayers": "Vstup <price /> pro deskové hráče",
+      "childrenFree": "Děti do 15 let: Zdarma",
+      "mondayFree": "Pondělí: Bez vstupného"
+    }
+  },
+  "features": {
+    "title": "PROČ DESKOHUB?",
+    "subtitle": "Ideální prostor pro vaši hernu",
+    "feature1": {
+      "title": "100+ deskových her",
+      "description": "Velký výběr deskových a karetních her pro všechny"
+    },
+    "feature2": {
+      "title": "Velké stoly s playmatkami",
+      "description": "Komfortní herní prostor pro vaše hry"
+    },
+    "feature3": {
+      "title": "Vysvětlování pravidel",
+      "description": "Rádi vám vysvětlíme pravidla a zahrajeme s vámi"
+    },
+    "feature4": {
+      "title": "Kvalitní osvětlení",
+      "description": "Ideální světelné podmínky pro herní zážitek"
+    },
+    "feature5": {
+      "title": "Komunita",
+      "description": "Poznejte nové spřízněné duše"
+    },
+    "feature6": {
+      "title": "Provozováno deskohráči",
+      "description": "Rozumíme vašim potřebám"
+    }
+  },
+  "stats": {
+    "boardGames": "Deskových Her",
+    "happyPlayers": "Spokojených Hráčů",
+    "yearsExperience": "Let Zkušeností",
+    "gameNights": "Herních Večerů"
+  },
+  "boardGamesCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} desková hra",
+        "countPlural=few": "{count} deskové hry",
+        "countPlural=other": "{count} deskových her"
+      }
+    }
+  ],
+  "happyPlayersCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} spokojený hráč",
+        "countPlural=few": "{count} spokojení hráči",
+        "countPlural=other": "{count} spokojených hráčů"
+      }
+    }
+  ],
+  "yearsExperienceCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} rok zkušeností",
+        "countPlural=few": "{count} roky zkušeností",
+        "countPlural=other": "{count} let zkušeností"
+      }
+    }
+  ],
+  "gameNightsCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} herní večer",
+        "countPlural=few": "{count} herní večery",
+        "countPlural=other": "{count} herních večerů"
+      }
+    }
+  ],
+  "gamesSection": {
+    "title": "OBJEVTE NAŠE",
+    "subtitle": "ÚŽASNÉ DESKOVÉ HRY"
+  },
+  "gameCategories": {
+    "strategic": "STRATEGICKÉ",
+    "party": "PÁRTY HRY",
+    "cooperative": "KOOPERATIVNÍ",
+    "family": "RODINNÉ",
+    "logic": "LOGICKÉ",
+    "card": "KARETNÍ",
+    "economic": "EKONOMICKÉ",
+    "adventure": "DOBRODRUŽNÉ",
+    "abstract": "ABSTRAKTNÍ"
+  },
+  "locationSection": {
+    "title": "V OKOLÍ?",
+    "subtitle": "NAJDĚTE NÁS"
+  },
+  "contactSection": {
+    "title": "MÁTE OTÁZKY NEBO POTŘEBUJETE",
+    "subtitle": "INFORMACE?"
+  },
+  "partners": {
+    "title": "Naši partneři"
+  },
+  "footer": {
+    "tagline": "Bar • Deskové hry • Komunita",
+    "socialLinks": {
+      "youtube": "YouTube",
+      "facebook": "Facebook",
+      "instagram": "Instagram"
+    },
+    "gdprLink": "Zásady zpracování osobních údajů"
+  },
+  "metadata": {
+    "title": "Deskohub - Deskoherní klub a školící místnost",
+    "description": "Místo, kde fantazie potkává realitu. Deskové hry, školící místnost a komunita deskohráčů v Praze."
+  },
+  "reservation": {
+    "pageTitle": "Rezervace stolu",
+    "pageDescription": "Rezervujte si stůl v Deskohub baru s deskovými hrami. Vyberte si preferované datum, čas a typ stolu pro dokonalý herní zážitek."
+  },
+  "tableReservation": {
+    "pageTitle": "Rezervace stolu",
+    "pageDescription": "Rezervujte si své ideální místo v Deskohub. Vyberte si datum, čas a preference pro nezapomenutelný zážitek s deskovými hrami.",
+    "dateLabel": "Datum",
+    "timeLabel": "Čas",
+    "guestCountLabel": "Počet hostů",
+    "durationLabel": "Jak dlouho se zdržíte?",
+    "noDurationAvailable": "Prosím vyberte dřívější čas",
+    "nameLabel": "Jméno a příjmení",
+    "emailLabel": "E-mailová adresa",
+    "phoneLabel": "Telefonní číslo",
+    "contactTitle": "Kontaktní údaje",
+    "contactDescription": "Vaše kontaktní informace pro potvrzení rezervace",
+    "tablePreferenceLabel": "Preference stolu",
+    "tablePreferences": {
+      "largerTable": "Potřebujeme větší stůl pro větší hru",
+      "largerTableDescription": "Vyberte, pokud plánujete hrát hru, která vyžaduje více místa na stole",
+      "privateSpace": "Potřebujeme soukromý prostor (např. DnD sezení)",
+      "privateSpaceDescription": "Vyberte pro soukromé herní sezení",
+      "privateSpaceDisabled": "Soukromý prostor je k dispozici pouze pro skupiny do 5 osob",
+      "standard": "Standardní stůl",
+      "large": "Velký stůl",
+      "private": "Soukromý prostor"
+    },
+    "specialRequestsLabel": "Speciální požadavky",
+    "specialRequestsPlaceholder": "Jakékoli speciální požadavky nebo přání...",
+    "gdprConsentLabel": "Souhlasím se zpracováním mých osobních údajů podle <gdprLink>Zásady zpracování osobních údajů</gdprLink> pro účely rezervace a účasti na akcích, včetně pořizování, zveřejňování a bez časového omezení používání fotografií a videozáznamů pro propagační účely. Rozumím, že souhlas mohu odvolat kdykoliv a že fotografie/video již jednou publikované budou odstraněny pokud je to technicky možné a pokud o to výslovně požádám.",
+    "pricingInfo": "Vstupné: {priceForPlayers} za deskového hráče",
+    "submit": "Rezervovat stůl",
+    "submitting": "Odesílání...",
+    "successTitle": "Rezervace úspěšná!",
+    "successMessage": "Vaše rezervace stolu byla úspěšně odeslána. Brzy vás budeme kontaktovat pro potvrzení rezervace.",
+    "errorTitle": "Chyba při rezervaci",
+    "errorMessage": "Při zpracování vaší rezervace došlo k chybě. Prosím zkuste to znovu nebo nás kontaktujte přímo.",
+    "required": "Toto pole je povinné",
+    "invalidEmail": "Prosím zadejte platnou e-mailovou adresu",
+    "invalidPhone": "Prosím zadejte platné telefonní číslo",
+    "validation": {
+      "datetime": {
+        "required": "Datum a čas jsou povinné",
+        "mustBeFuture": "Datum a čas musí být v budoucnu",
+        "outsideWorkingHours": "Prosím vyberte čas během naší otevírací doby",
+        "selectTimeSlot": "Vyberte prosím platný časový slot:",
+        "durationExceedsWorkingHours": "Vaše rezervace přesahuje naši zavírací dobu. Prosím vyberte kratší dobu trvání nebo dřívější čas."
+      },
+      "guestCount": {
+        "required": "Počet hostů je povinný",
+        "minimum": "Počet hostů je povinný",
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Maximálně {max} host povolen",
+              "maxPlural=few": "Maximálně {max} hosté povoleni",
+              "maxPlural=other": "Maximálně {max} hostů povoleno"
+            }
+          }
+        ],
+        "integer": "Počet hostů musí být celé číslo"
+      },
+      "name": {
+        "required": "Jméno a příjmení je povinné",
+        "minimum": [
+          {
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
+            "match": {
+              "minPlural=one": "Jméno musí mít alespoň {min} znak",
+              "minPlural=few": "Jméno musí mít alespoň {min} znaky",
+              "minPlural=other": "Jméno musí mít alespoň {min} znaků"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Jméno musí mít méně než {max} znak",
+              "maxPlural=few": "Jméno musí mít méně než {max} znaky",
+              "maxPlural=other": "Jméno musí mít méně než {max} znaků"
+            }
+          }
+        ],
+        "invalid": "Jméno může obsahovat pouze písmena, mezery, pomlčky a apostrofy"
+      },
+      "email": {
+        "required": "E-mailová adresa je povinná",
+        "invalid": "Prosím zadejte platnou e-mailovou adresu",
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "E-mail musí mít méně než {max} znak",
+              "maxPlural=few": "E-mail musí mít méně než {max} znaky",
+              "maxPlural=other": "E-mail musí mít méně než {max} znaků"
+            }
+          }
+        ]
+      },
+      "phone": {
+        "required": "Telefonní číslo je povinné",
+        "minimum": "Prosím zadejte platné telefonní číslo",
+        "maximum": "Telefonní číslo je příliš dlouhé",
+        "invalid": "Prosím zadejte platné telefonní číslo"
+      },
+      "duration": {
+        "minimum": "Minimální doba trvání je 30 minut",
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Maximální doba trvání je {max} hodina",
+              "maxPlural=few": "Maximální doba trvání je {max} hodiny",
+              "maxPlural=other": "Maximální doba trvání je {max} hodin"
+            }
+          }
+        ],
+        "increment": "Doba trvání musí být v 30minutových intervalech"
+      },
+      "specialRequests": {
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Speciální požadavky musí mít méně než {max} znak",
+              "maxPlural=few": "Speciální požadavky musí mít méně než {max} znaky",
+              "maxPlural=other": "Speciální požadavky musí mít méně než {max} znaků"
+            }
+          }
+        ]
+      },
+      "gdprConsent": {
+        "required": "Souhlas se zpracováním osobních údajů a používáním fotografií/video je povinný pro odeslání formuláře."
+      },
+      "general": "Prosím opravte chyby validace"
+    }
+  },
+  "thankYou": {
+    "title": "Rezervace potvrzena!",
+    "confirmation": "Skvělá zpráva! Vaše rezervace byla potvrzena.",
+    "bookingDetails": "Detaily rezervace",
+    "nextSteps": "Co dále?",
+    "nextStepsDescription": "Poslali jsme vám potvrzovací e-mail. Prosím uschovejte si tyto informace pro své záznamy.",
+    "nextStepsConfirmed": "Váš stůl je rezervován! Prosím přijďte včas. Pokud potřebujete provést změny, kontaktujte nás co nejdříve.",
+    "nextStepsPending": "Vaši rezervaci právě kontrolujeme. Potvrzovací e-mail obdržíte do 24 hodin. Prosím zkontrolujte svou e-mailovou schránku včetně složky spam.",
+    "questions": "Potřebujete provést změny?",
+    "contactInfo": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci",
+    "backToHome": "Zpět domů",
+    "bookingId": "Číslo rezervace: {id}"
+  },
+  "errors": {
+    "pageNotFound": "Stránka nenalezena",
+    "pageNotFoundDescription": "Stránka, kterou hledáte, neexistuje.",
+    "goHome": "Zpět domů",
+    "submissionError": "Při odesílání vaší zprávy došlo k chybě"
+  },
+  "altText": {
+    "boardGames": "Deskové hry",
+    "gamingArea": "Herní oblast",
+    "barAtmosphere": "Atmosféra baru",
+    "barLocation": "Umístění baru",
+    "heroImage": "Hlavní obrázek",
+    "deskohub": "Deskohub"
+  },
+  "placeholders": {
+    "fullName": "Jan Novák",
+    "email": "jan@example.com",
+    "phone": "+420 123 456 789",
+    "guestCount": "Počet hostů",
+    "duration": "Vyberte dobu trvání"
+  },
+  "guestCountPlural": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} osoba",
+        "countPlural=few": "{count} osoby",
+        "countPlural=other": "{count} osob"
+      }
+    }
+  ],
+  "timeUnits": {
+    "hour": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "hodina",
+          "count=2": "hodiny",
+          "count=3": "hodiny",
+          "count=4": "hodiny",
+          "*": "hodin"
+        }
+      }
+    ],
+    "minute": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "minuta",
+          "count=2": "minuty",
+          "count=3": "minuty",
+          "count=4": "minuty",
+          "*": "minut"
+        }
+      }
+    ]
+  },
+  "duration": {
+    "hoursOnly": "{hours} {hourLabel}",
+    "minutesOnly": "{minutes} {minuteLabel}",
+    "hoursAndMinutes": "{hours} {hourLabel}, {minutes} {minuteLabel}"
+  },
+  "descriptions": {
+    "dateTime": "Vyberte si preferované datum a čas",
+    "tableType": "Vyberte typ stolu, který vám vyhovuje",
+    "specialRequests": "Máte nějaké speciální požadavky nebo poznámky?",
+    "confirmationTime": "Vaši rezervaci potvrdíme do 24 hodin",
+    "keepInfo": "Prosím uchováte si tyto informace pro vaše záznamy"
+  },
+  "plurals": {
+    "person": "osoba",
+    "people": "lidé"
+  },
+  "accessibility": {
+    "errorCross": "Chybový křížek",
+    "successCheckmark": "Potvrzovací značka"
+  },
+  "labels": {
+    "email": "E-mail",
+    "phone": "Telefon",
+    "bookingId": "Číslo rezervace"
+  },
+  "reservationMetadata": {
+    "title": "Potvrzení rezervace | Deskohub",
+    "description": "Děkujeme za vaši rezervaci v Deskohub"
+  },
+  "training": {
+    "pageTitle": "Školící místnost či zasedačka",
+    "pageDescription": "Pronajměte si místnost až pro 20 osob. Vhodná pro školení, obchodní setkání, workshopy nebo týmové brainstormingy. Jen kousek od metra Palmovka.",
+    "hero": {
+      "title": "Pronajměte si místnost až pro 20 osob",
+      "subtitle": "Školící místnost či zasedačka",
+      "description": "V Deskohubu nabízíme k pronájmu školící místnost, která lze využít i pro obchodní setkání jako zasedací místnost. Vhodná je i pro workshopy nebo týmové brainstormingy. Nachází se jen kousek od stanice metra Palmovka, což zajišťuje snadný přístup pro všechny účastníky.",
+      "reserveButton": "Požádat o rezervaci",
+      "galleryButton": "Zobrazit galerii"
+    },
+    "features": {
+      "title": "VYBAVENÍ",
+      "subtitle": "Vše pro váš úspěšný event",
+      "feature1": {
+        "title": "Rychlý internet",
+        "description": "Spolehlivé vysokorychlostní připojení pro všechny účastníky"
+      },
+      "feature2": {
+        "title": "Flexibilní uspořádání",
+        "description": "Až 4 stoly - možnost uspořádání do tvaru U či do dvou řad, možnost odebrat stoly"
+      },
+      "feature3": {
+        "title": "Špičkové technologie",
+        "description": "Projektor, klimatizace, pohodlný nábytek a velké množství zásuvek"
+      },
+      "feature4": {
+        "title": "Flipchart nebo tabule",
+        "description": "Prezentační pomůcky pro kreativní práci"
+      }
+    },
+    "catering": {
+      "title": "Catering a občerstvení",
+      "description": "Nabízíme možnost objednat si catering do vedlejší místnosti. Rádi zajistíme pití a občerstvení."
+    },
+    "capacity": {
+      "people": "Až {capacity} osob",
+      "hourly": "{price}/h",
+      "daily": "{price}/den",
+      "size": "{size} m² místnost"
+    },
+    "packages": {
+      "title": "CENÍK A MOŽNOSTI PRONÁJMU",
+      "subtitle": "Flexibilní možnosti dle vašich potřeb",
+      "halfDay": {
+        "title": "Hodinový pronájem",
+        "duration": "{price}/h",
+        "features": {
+          "feature1": "Prostor až pro {capacity} osob",
+          "feature2": "Všechno vybavení v ceně",
+          "feature3": "Rychlý internet",
+          "feature4": "Klimatizace"
+        }
+      },
+      "fullDay": {
+        "title": "Celodenní pronájem",
+        "duration": "{price}/den",
+        "features": {
+          "feature1": "Prostor až pro {capacity} osob",
+          "feature2": "Všechno vybavení v ceně",
+          "feature3": "Možnost cateringu",
+          "feature4": "Flexibilní uspořádání"
+        },
+        "popular": "Nejvýhodnější"
+      },
+      "custom": {
+        "title": "Vlastní balíček",
+        "duration": "Na míru",
+        "customPrice": "Individuální cena",
+        "features": {
+          "feature1": "Flexibilní kapacita",
+          "feature2": "Přizpůsobené vybavení",
+          "feature3": "Catering dle přání",
+          "feature4": "Speciální požadavky"
+        }
+      },
+      "contactButton": "Kontaktovat"
+    },
+    "cta": {
+      "title": "Pro rezervaci nebo více informací",
+      "description": "Nás neváhejte kontaktovat na email: {email} či telefonní číslo {phone}. Těšíme se na vaši návštěvu a zajištění perfektního zážitku pro vás a vaše hosty.",
+      "button": "Požádat o rezervaci",
+      "call": "Zavolejte",
+      "write": "Napište",
+      "online": "Online",
+      "onlineReservation": "Žádost o rezervaci"
+    },
+    "gallery": {
+      "pageTitle": "Galerie školící místnosti",
+      "pageDescription": "Prohlédněte si naši moderní školící místnost a zasedačku v Deskohub",
+      "title": "Galerie školící místnosti",
+      "description": "Prohlédněte si naši plně vybavenou školící místnost s kapacitou až 20 osob. Ideální pro školení, workshopy, obchodní setkání a týmové brainstormingy.",
+      "backToTraining": "Zpět na školící místnost"
+    },
+    "reservation": {
+      "pageTitle": "Rezervace školící místnosti",
+      "pageDescription": "Rezervujte si naši školící místnost pro vaši firemní akci, workshop nebo teambuilding aktivitu v Deskohub"
+    }
+  },
+  "trainingReservation": {
+    "pageTitle": "Rezervace školící místnosti",
+    "pageDescription": "Rezervujte si naši prostornou školící místnost pro firemní akce, workshopy a teambuilding aktivity. Dokončete svou rezervaci v Deskohub.",
+    "form": {
+      "title": "Rezervace školící místnosti",
+      "yourInformation": "Vaše údaje",
+      "firstName": "Jméno",
+      "firstNamePlaceholder": "Jan",
+      "lastName": "Příjmení",
+      "lastNamePlaceholder": "Novák",
+      "company": "Společnost",
+      "companyPlaceholder": "Název společnosti s.r.o.",
+      "role": "Pozice",
+      "rolePlaceholder": "Projektový manažer",
+      "conditionalRequired": "(pokud není společnost)",
+      "conditionalRole": "(pokud je jméno i společnost)",
+      "validationHelpText": "Zadejte buď název společnosti NEBO jméno a příjmení. Pokud zadáte obojí, pozice je povinná.",
+      "email": "Email",
+      "emailPlaceholder": "vas@email.cz",
+      "phone": "Telefonní číslo",
+      "phonePlaceholder": "+420 123 456 789",
+      "reservationDetails": "Detaily rezervace",
+      "date": "Datum",
+      "pickDate": "Vyberte datum",
+      "time": "Čas",
+      "selectTime": "Vyberte čas",
+      "duration": "Doba trvání (hodiny)",
+      "selectDuration": "Vyberte dobu trvání",
+      "specialRequirements": "Speciální požadavky",
+      "specialRequirementsPlaceholder": "Jakékoliv speciální požadavky nebo poznámky k vaší rezervaci...",
+      "submit": "Odeslat žádost o rezervaci",
+      "submitting": "Odesílání..."
+    },
+    "success": {
+      "title": "Rezervace byla úspěšně odeslána!",
+      "description": "Brzy vám zašleme potvrzovací email."
+    },
+    "error": {
+      "title": "Nepodařilo se odeslat rezervaci",
+      "description": "Zkuste to prosím později nebo nás kontaktujte přímo."
+    },
+    "validation": {
+      "firstNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Jméno musí mít alespoň {min} znak",
+            "minPlural=few": "Jméno musí mít alespoň {min} znaky",
+            "minPlural=other": "Jméno musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "firstNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Jméno může mít maximálně {max} znak",
+            "maxPlural=few": "Jméno může mít maximálně {max} znaky",
+            "maxPlural=other": "Jméno může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "lastNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Příjmení musí mít alespoň {min} znak",
+            "minPlural=few": "Příjmení musí mít alespoň {min} znaky",
+            "minPlural=other": "Příjmení musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "lastNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Příjmení může mít maximálně {max} znak",
+            "maxPlural=few": "Příjmení může mít maximálně {max} znaky",
+            "maxPlural=other": "Příjmení může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "companyMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Název společnosti musí mít alespoň {min} znak",
+            "minPlural=few": "Název společnosti musí mít alespoň {min} znaky",
+            "minPlural=other": "Název společnosti musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "companyMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Název společnosti může mít maximálně {max} znak",
+            "maxPlural=few": "Název společnosti může mít maximálně {max} znaky",
+            "maxPlural=other": "Název společnosti může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "roleMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Pozice musí mít alespoň {min} znak",
+            "minPlural=few": "Pozice musí mít alespoň {min} znaky",
+            "minPlural=other": "Pozice musí mít alespoň {min} znaků"
+          }
+        }
+      ],
+      "roleMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Pozice může mít maximálně {max} znak",
+            "maxPlural=few": "Pozice může mít maximálně {max} znaky",
+            "maxPlural=other": "Pozice může mít maximálně {max} znaků"
+          }
+        }
+      ],
+      "companyOrNameRequired": "Zadejte prosím název společnosti nebo jméno a příjmení",
+      "firstNameRequired": "Jméno je povinné",
+      "lastNameRequired": "Příjmení je povinné",
+      "roleRequiredWhenBothFilled": "Pozice je povinná, pokud je zadané jméno i společnost",
+      "emailRequired": "Email je povinný",
+      "emailInvalid": "Zadejte prosím platnou emailovou adresu",
+      "emailMax": "Email může mít maximálně {max} znaků",
+      "phoneRequired": "Telefonní číslo je povinné",
+      "phoneInvalid": "Zadejte prosím platné telefonní číslo",
+      "dateRequired": "Vyberte prosím datum",
+      "timeRequired": "Vyberte prosím čas",
+      "durationMin": "Doba trvání musí být alespoň {min} hodina",
+      "durationMax": "Doba trvání může být maximálně {max} hodin",
+      "specialRequirementsMax": "Speciální požadavky mohou mít maximálně {max} znaků"
+    },
+    "details": {
+      "title": "Detaily rezervace",
+      "description": "Prosím uchovejte si tyto informace pro vaše záznamy"
+    },
+    "confirmation": {
+      "title": "Rezervace odeslána",
+      "message": "Vaše rezervace školící místnosti byla úspěšně odeslána. Zkontrolujeme ji a do 24 hodin vás budeme kontaktovat.",
+      "noIdMessage": "Podrobnosti rezervace zde nejsou dostupné. Potvrzení prosím najdete ve svém e-mailu."
+    },
+    "nextSteps": "Co bude následovat?",
+    "nextStepsDescription": "Obdržíte potvrzující email do 24 hodin. Náš tým Vás bude kontaktovat pro potvrzení dostupnosti a dokončení rezervace školící místnosti.",
+    "needChanges": "Potřebujete provést změny?",
+    "contactForChanges": "Neváhejte nás kontaktovat, pokud potřebujete upravit svou rezervaci"
+  },
+  "notFound": {
+    "title": "Stránka nenalezena",
+    "subtitle": "Vypadá to, že jste hodili nesprávnou kombinací!",
+    "description": "Zkuste to znovu nebo se vraťte na hlavní stránku pro další hru.",
+    "homeButton": "Domů",
+    "rollAgainButton": "Hodit znovu",
+    "rollingText": "Házím...",
+    "footerMessage": "Připojte se k nám na další hru v Deskohub!"
+  },
+  "contact": {
+    "pageTitle": "Kontaktujte nás",
+    "pageDescription": "Spojte se s Deskohub - bar s deskovými hrami v Praze. Kontaktní informace, otevírací doba a lokace.",
+    "heroTitle": "Kontakt",
+    "heroSubtitle": "Spojte se s námi a rezervujte si svůj stůl pro nezapomenutelný herní zážitek",
+    "heroTip": "Rezervace mimo oficiální otvírací dobu je možná po domluvě. <link>Napište nám!</link>",
+    "heroImageAlt": "Interiér Deskohub",
+    "infoTitle": "Kontaktní informace",
+    "addressLabel": "Adresa",
+    "street": "{street}",
+    "city": "{postalCode} {city} {district}",
+    "phoneLabel": "Telefon",
+    "phoneNumber": "{phone}",
+    "emailLabel": "Email",
+    "emailAddress": "{email}",
+    "hoursLabel": "Otevírací doba",
+    "weekdays": "PO - PÁ",
+    "weekdayHours": "{hours}",
+    "weekend": "SO - NE",
+    "weekendHours": "{hours}",
+    "hoursTooltip": "Rezervace mimo oficiální otevírací dobu je možná po domluvě.",
+    "formTitle": "Napište nám",
+    "formDescription": "Máte dotaz nebo chcete rezervovat stůl? Napište nám zprávu a my se vám ozveme co nejdříve.",
+    "nameLabel": "Jméno",
+    "namePlaceholder": "Vaše jméno",
+    "phoneFormLabel": "Telefon",
+    "phonePlaceholder": "+420 123 456 789",
+    "emailFormLabel": "Email",
+    "emailPlaceholder": "vas@email.cz",
+    "messageLabel": "Zpráva",
+    "messagePlaceholder": "Napište nám svou zprávu...",
+    "submitButton": "Odeslat zprávu",
+    "mapTitle": "Kde nás najdete",
+    "mapPlaceholder": "Mapa bude zde",
+    "mapAddress": "{address}",
+    "getDirections": "Navigovat",
+    "viewOnGoogleMaps": "Zobrazit na Google Maps",
+    "mapUnavailable": "Mapa je dočasně nedostupná",
+    "transport": {
+      "title": "Jak se k nám dostanete?",
+      "mhd": {
+        "title": "MHD:",
+        "metro": "Metro: Palmovka (Linka B) – 5 minut chůze",
+        "tram": "Tramvaj: Palmovka – tramvaje č. 1, 6, 8, 16, 25, 10 – 5 minut chůze",
+        "bus": "Autobus: Balabenka – linky 109, 140, 185 - 10 minut chůze"
+      },
+      "car": {
+        "title": "Autem:",
+        "parking": "Jsou tu modré a fialové zóny, ale volná místa v okolí občas jsou."
+      }
+    },
+    "successMessage": "Vaše zpráva byla úspěšně odeslána! Brzy se vám ozveme.",
+    "validation": {
+      "message": {
+        "minimum": [
+          {
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
+            "match": {
+              "minPlural=one": "Zpráva musí mít alespoň {min} znak",
+              "minPlural=few": "Zpráva musí mít alespoň {min} znaky",
+              "minPlural=other": "Zpráva musí mít alespoň {min} znaků"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Zpráva musí mít méně než {max} znak",
+              "maxPlural=few": "Zpráva musí mít méně než {max} znaky",
+              "maxPlural=other": "Zpráva musí mít méně než {max} znaků"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "menu": {
+    "pageTitle": "Menu - Jídlo a nápoje",
+    "pageDescription": "Objevte naše lahodné menu jídel a nápojů v Deskohub bar s deskovými hrami. Perfektní občerstvení a nápoje pro váš herní zážitek.",
+    "hero": {
+      "title": "MENU",
+      "subtitle": "Objevte naši nabídku jídel a nápojů pro perfektní herní zážitek",
+      "imageAlt": "Interiér Deskohub"
+    },
+    "downloadPDF": "Stáhnout menu (PDF)",
+    "generatingPDF": "Generování PDF...",
+    "openingHours": {
+      "title": "Otevírací doba",
+      "weekdays": "PO - PÁ",
+      "weekdaysTime": "{hours}",
+      "weekend": "SO - NE",
+      "weekendTime": "{hours}"
+    },
+    "sections": {
+      "food": "JÍDLO",
+      "drinks": "NÁPOJE",
+      "other": "OSTATNÍ"
+    },
+    "footerNote": "Vstupné pro hráče deskových her: {priceForPlayers}"
+  },
+  "boardGames": {
+    "pageTitle": "Deskové hry - Deskohub",
+    "pageDescription": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů v Deskohub bar s deskovými hrami.",
+    "title": "Sbírka deskových her",
+    "viewSpreadsheet": "Zobrazit seznam deskových her",
+    "hero": {
+      "title": "Deskové hry",
+      "subtitle": "Objevte naši rozsáhlou kolekci deskových her pro všechny věkové kategorie a úrovně hráčů"
+    },
+    "filters": {
+      "search": "Hledat",
+      "searchPlaceholder": "Hledat hry...",
+      "category": "Kategorie",
+      "difficulty": "Obtížnost",
+      "foundGames": [
+        {
+          "declarations": ["input count", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
+          "match": {
+            "countPlural=zero": "Nenalezeny žádné hry",
+            "countPlural=one": "Nalezena {count} hra",
+            "countPlural=few": "Nalezeny {count} hry",
+            "countPlural=other": "Nalezeno {count} her"
+          }
+        }
+      ],
+      "categories": {
+        "all": "Všechny",
+        "strategic": "Strategické",
+        "family": "Rodinné",
+        "dungeonCrawler": "Dungeon Crawler",
+        "party": "Párty"
+      },
+      "difficulties": {
+        "all": "Všechny",
+        "easy": "Lehké",
+        "medium": "Střední",
+        "hard": "Těžké"
+      },
+      "sortBy": "Řadit podle",
+      "sort": {
+        "nameAsc": "Název (A-Z)",
+        "nameDesc": "Název (Z-A)",
+        "ratingAsc": "Hodnocení (nejnižší)",
+        "ratingDesc": "Hodnocení (nejvyšší)",
+        "playersAsc": "Počet hráčů (nejméně)",
+        "playersDesc": "Počet hráčů (nejvíce)",
+        "durationAsc": "Délka hry (nejkratší)",
+        "durationDesc": "Délka hry (nejdelší)"
+      }
+    },
+    "table": {
+      "game": "Hra",
+      "players": "Hráči",
+      "duration": "Doba hry",
+      "difficulty": "Obtížnost",
+      "category": "Kategorie",
+      "rating": "Hodnocení"
+    },
+    "noGamesFound": "Žádné hry neodpovídají vašim kritériím."
+  },
+  "gallery": {
+    "pageTitle": "Galerie - Deskohub",
+    "pageDescription": "Prohlédněte si atmosféru našeho herního centra, kde se setkávají přátelé nad deskovými hrami",
+    "hero": {
+      "title": "Galerie",
+      "slides": {
+        "atmosphere": {
+          "title": "Útulná atmosféra",
+          "description": "Vychutnejte si kávu a hry v příjemném prostředí"
+        },
+        "mainRoom": {
+          "title": "Hlavní herní místnost",
+          "description": "Více než 500 deskových her na jednom místě"
+        },
+        "bar": {
+          "title": "Bar a občerstvení",
+          "description": "Široká nabídka nápojů a občerstvení"
+        },
+        "trainingRoom": {
+          "title": "Školící místnost",
+          "description": "Ideální prostor pro firemní akce a workshopy"
+        },
+        "evening": {
+          "title": "Večerní nálada",
+          "description": "Romantické osvětlení pro večerní hraní"
+        }
+      },
+      "previousImage": "Předchozí obrázek",
+      "nextImage": "Další obrázek",
+      "goToImage": "Přejít na obrázek"
+    },
+    "spaces": {
+      "title": "Naše prostory",
+      "subtitle": "Prohlédněte si atmosféru našeho herního centra, kde se setkávají přátelé nad deskovými hrami",
+      "locations": {
+        "mainRoom": "Hlavní herní místnost",
+        "cozyCorner": "Útulný koutek",
+        "bar": "Bar a občerstvení",
+        "gamesCollection": "Naše sbírka her",
+        "eveningAtmosphere": "Večerní atmosféra",
+        "trainingRoom": "Školící místnost"
+      }
+    },
+    "events": {
+      "title": "Akce a události",
+      "subtitle": "Podívejte se na fotografie z našich pravidelných akcí, turnajů a speciálních událostí",
+      "photos": "fotek",
+      "participants": "účastníků",
+      "tournaments": {
+        "catan": {
+          "title": "Turnaj v Catan",
+          "description": "Velký turnaj v oblíbené hře Osadníci z Katanu"
+        },
+        "christmas": {
+          "title": "Vánoční herní večer",
+          "description": "Speciální vánoční atmosféra s tematickými hrami"
+        },
+        "gameNight": {
+          "title": "Noc deskových her",
+          "description": "Celonočí herní maraton pro nadšence"
+        },
+        "familyDay": {
+          "title": "Rodinný herní den",
+          "description": "Speciální akce pro rodiny s dětmi"
+        },
+        "magic": {
+          "title": "Magic: The Gathering Draft",
+          "description": "Turnaj v populární karetní hře Magic"
+        },
+        "dnd": {
+          "title": "Dungeons & Dragons Session",
+          "description": "Epické dobrodružství v světě D&D"
+        }
+      }
+    }
+  },
+  "reservationSubmitted": {
+    "title": "Rezervace přijata",
+    "message": "Přijali jsme vaši žádost o rezervaci a kontrolujeme dostupnost. Ozveme se vám do 24 hodin."
+  },
+  "reservationRejected": {
+    "title": "Rezervaci nelze potvrdit",
+    "message": "Bohužel nemůžeme vyhovět vaší rezervaci v požadovaném čase. Prosím zkuste rezervovat jiný termín nebo nás kontaktujte pro pomoc s nalezením alternativy."
+  },
+  "status": {
+    "pending": "Čeká na kontrolu",
+    "confirmed": "Potvrzeno",
+    "rejected": "Není dostupné"
+  },
+  "cookieConsent": {
+    "consentModal": {
+      "title": "Používáme cookies",
+      "description": "Používáme cookies ke zlepšení vašeho prohlížení, poskytování personalizovaného obsahu a analýze návštěvnosti. Kliknutím na 'Přijmout vše' souhlasíte s použitím cookies.",
+      "acceptAllBtn": "Přijmout vše",
+      "acceptNecessaryBtn": "Odmítnout vše",
+      "showPreferencesBtn": "Spravovat předvolby"
+    },
+    "preferencesModal": {
+      "title": "Nastavení cookies",
+      "acceptAllBtn": "Přijmout vše",
+      "acceptNecessaryBtn": "Odmítnout vše",
+      "savePreferencesBtn": "Uložit nastavení",
+      "closeIconLabel": "Zavřít",
+      "sections": {
+        "usage": {
+          "title": "Používání cookies",
+          "description": "Používáme cookies k zajištění základních funkcí webu a ke zlepšení vašeho online zážitku. Pro každou kategorii si můžete zvolit, zda ji chcete povolit nebo zakázat."
+        },
+        "necessary": {
+          "title": "Nezbytné cookies",
+          "description": "Tyto cookies jsou nezbytné pro správné fungování webu. Bez těchto cookies by web nefungoval správně."
+        },
+        "analytics": {
+          "title": "Analytické cookies",
+          "description": "Tyto cookies sbírají informace o tom, jak používáte náš web, například které stránky jste navštívili a na které odkazy jste klikli. Všechna data jsou anonymizována a nelze je použít k vaší identifikaci."
+        },
+        "marketing": {
+          "title": "Marketingové cookies",
+          "description": "Tyto cookies se používají ke sledování návštěvníků napříč weby. Záměrem je zobrazovat reklamy, které jsou relevantní a zajímavé pro jednotlivé uživatele."
+        },
+        "preferences": {
+          "title": "Preferenční cookies",
+          "description": "Tyto cookies umožňují webu zapamatovat si vaše volby, například jazykové nastavení."
+        }
+      }
+    }
+  },
+  "cookieSettings": {
+    "title": "Nastavení cookies",
+    "description": "Spravujte své předvolby cookies a kontrolujte, jak používáme cookies na našem webu.",
+    "backToHome": "Zpět na hlavní stránku",
+    "categories": {
+      "necessary": {
+        "title": "Nezbytné cookies",
+        "description": "Tyto cookies jsou nezbytné pro správné fungování webu. Nelze je vypnout."
+      },
+      "analytics": {
+        "title": "Analytické cookies",
+        "description": "Tyto cookies nám pomáhají pochopit, jak návštěvníci interagují s naším webem, shromažďováním a hlášením informací anonymně."
+      },
+      "marketing": {
+        "title": "Marketingové cookies",
+        "description": "Tyto cookies se používají ke sledování návštěvníků napříč weby za účelem zobrazení relevantních a zajímavých reklam."
+      },
+      "preferences": {
+        "title": "Preferenční cookies",
+        "description": "Tyto cookies umožňují webu zapamatovat si vaše volby (jako je jazykové nastavení) pro poskytnutí personalizovanějšího zážitku."
+      }
+    },
+    "buttons": {
+      "acceptAll": "Přijmout vše",
+      "rejectAll": "Odmítnout vše",
+      "savePreferences": "Uložit předvolby",
+      "managePreferences": "Spravovat předvolby cookies"
+    },
+    "messages": {
+      "saved": "Vaše předvolby cookies byly uloženy.",
+      "error": "Nepodařilo se uložit předvolby. Zkuste to prosím znovu."
+    }
+  },
+  "gdpr": {
+    "pageTitle": "Zásady zpracování osobních údajů"
+  }
+}

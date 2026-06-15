@@ -1,0 +1,977 @@
+{
+  "language": "English",
+  "priceOnRequest": "Price on request",
+  "siteTitle": "Deskohub",
+  "siteDescription": "Board game club and training room - infinity of perspectives. A place where fantasy meets reality in reflections of infinite worlds.",
+  "pageTitle": "Board Game Club & Training Room",
+  "pageDescription": "Deskohub - a place for everyone who loves board games, strategic, campaign or party games. Operated by board gamers.",
+  "nav": {
+    "home": "HOME",
+    "boardGames": "BOARD GAMES",
+    "gallery": "GALLERY",
+    "menu": "MENU",
+    "trainingRoom": "TRAINING ROOM",
+    "contact": "CONTACT",
+    "openMenu": "Open menu"
+  },
+  "buttons": {
+    "reservation": "Reservation",
+    "showMore": "SHOW MORE",
+    "seeList": "SEE LIST",
+    "ourLocation": "OUR LOCATION",
+    "contact": "CONTACT",
+    "backToHome": "Back to Home"
+  },
+  "hero": {
+    "title": "Board Game Bar",
+    "description": "A place for everyone who loves board games. Quiet corners for your favorite social game and the opportunity to learn new games.",
+    "priceInfo": {
+      "forPlayers": "Entry <price /> for board game players"
+    }
+  },
+  "hours": {
+    "weekdays": "MON - FRI",
+    "weekends": "SAT - SUN"
+  },
+  "about": {
+    "description": "A place for everyone who loves board games, whether strategic, campaign or party games. An ideal space for meeting friends and getting to know new kindred spirits.",
+    "priceInfo": {
+      "forPlayers": "Entry <price /> for board game players",
+      "childrenFree": "Children under 15: Free",
+      "mondayFree": "Monday: No entry fee"
+    }
+  },
+  "features": {
+    "title": "WHY DESKOHUB?",
+    "subtitle": "The ideal space for your gaming experience",
+    "feature1": {
+      "title": "100+ board games",
+      "description": "Large selection of board and card games for everyone"
+    },
+    "feature2": {
+      "title": "Large tables with playmats",
+      "description": "Comfortable gaming space for your games"
+    },
+    "feature3": {
+      "title": "Rules explanation",
+      "description": "We'll gladly explain the rules and play with you"
+    },
+    "feature4": {
+      "title": "Quality lighting",
+      "description": "Ideal lighting conditions for gaming experience"
+    },
+    "feature5": {
+      "title": "Community",
+      "description": "Meet new like-minded people"
+    },
+    "feature6": {
+      "title": "Operated by gamers",
+      "description": "We understand your needs"
+    }
+  },
+  "stats": {
+    "boardGames": "Board Games",
+    "happyPlayers": "Happy Players",
+    "yearsExperience": "Years of Experience",
+    "gameNights": "Game Nights"
+  },
+  "boardGamesCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} board game",
+        "countPlural=other": "{count} board games"
+      }
+    }
+  ],
+  "happyPlayersCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} happy player",
+        "countPlural=other": "{count} happy players"
+      }
+    }
+  ],
+  "yearsExperienceCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} year of experience",
+        "countPlural=other": "{count} years of experience"
+      }
+    }
+  ],
+  "gameNightsCount": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} game night",
+        "countPlural=other": "{count} game nights"
+      }
+    }
+  ],
+  "gamesSection": {
+    "title": "DISCOVER OUR",
+    "subtitle": "AMAZING BOARD GAMES"
+  },
+  "gameCategories": {
+    "strategic": "STRATEGIC",
+    "party": "PARTY GAMES",
+    "cooperative": "COOPERATIVE",
+    "family": "FAMILY",
+    "logic": "LOGIC",
+    "card": "CARD",
+    "economic": "ECONOMIC",
+    "adventure": "ADVENTURE",
+    "abstract": "ABSTRACT"
+  },
+  "locationSection": {
+    "title": "IN THE AREA?",
+    "subtitle": "FIND US"
+  },
+  "contactSection": {
+    "title": "HAVE QUESTIONS OR NEED",
+    "subtitle": "INFORMATION?"
+  },
+  "partners": {
+    "title": "Our Partners"
+  },
+  "footer": {
+    "tagline": "Bar • Board games • Community",
+    "socialLinks": {
+      "youtube": "YouTube",
+      "facebook": "Facebook",
+      "instagram": "Instagram"
+    },
+    "gdprLink": "Privacy Policy"
+  },
+  "metadata": {
+    "title": "Deskohub - Board Game Club & Training Room",
+    "description": "A place where fantasy meets reality. Board games, training room and board gamer community in Prague."
+  },
+  "reservation": {
+    "pageTitle": "Table Reservation",
+    "pageDescription": "Reserve your table at Deskohub board game bar. Choose your preferred date, time, and table type for the perfect gaming experience."
+  },
+  "tableReservation": {
+    "pageTitle": "Book a Table",
+    "pageDescription": "Reserve your perfect spot at Deskohub. Choose your date, time, and preferences for an unforgettable board game experience.",
+    "dateLabel": "Date",
+    "timeLabel": "Time",
+    "guestCountLabel": "Number of Guests",
+    "durationLabel": "How long will you be staying?",
+    "noDurationAvailable": "Please select an earlier time",
+    "nameLabel": "Full Name",
+    "emailLabel": "Email Address",
+    "phoneLabel": "Phone Number",
+    "contactTitle": "Contact Information",
+    "contactDescription": "Your contact details for booking confirmation",
+    "tablePreferenceLabel": "Table Preference",
+    "tablePreferences": {
+      "largerTable": "We need a larger table for a larger game",
+      "largerTableDescription": "Select this if you're planning to play a game that requires more table space",
+      "privateSpace": "We need a private space (e.g., DnD session)",
+      "privateSpaceDescription": "Select this for private gaming sessions",
+      "privateSpaceDisabled": "Private space is only available for groups of 5 or fewer people",
+      "standard": "Standard table",
+      "large": "Large table",
+      "private": "Private space"
+    },
+    "specialRequestsLabel": "Special Requests",
+    "specialRequestsPlaceholder": "Any special requirements or requests...",
+    "gdprConsentLabel": "I consent to the processing of my personal data in accordance with the <gdprLink>Privacy Policy</gdprLink> for the purpose of reservation and event participation, including taking, publishing, and indefinite use of photographs and video recordings for promotional purposes. I understand that I may withdraw this consent at any time and that previously published media will be removed where technically feasible and upon explicit request.",
+    "pricingInfo": "Entry fee: {priceForPlayers} per board game player",
+    "submit": "Book Table",
+    "submitting": "Submitting...",
+    "successTitle": "Booking Successful!",
+    "successMessage": "Your table reservation has been submitted successfully. We will contact you shortly to confirm your booking.",
+    "errorTitle": "Booking Error",
+    "errorMessage": "There was an error processing your booking. Please try again or contact us directly.",
+    "required": "This field is required",
+    "invalidEmail": "Please enter a valid email address",
+    "invalidPhone": "Please enter a valid phone number",
+    "validation": {
+      "datetime": {
+        "required": "Date and time are required",
+        "mustBeFuture": "Date and time must be in the future",
+        "outsideWorkingHours": "Please select a time during our working hours",
+        "selectTimeSlot": "Please select a valid slot:",
+        "durationExceedsWorkingHours": "Your reservation extends beyond our closing time. Please select a shorter duration or an earlier time."
+      },
+      "guestCount": {
+        "required": "Number of guests is required",
+        "minimum": "Number of guests is required",
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Maximum {max} guest allowed",
+              "maxPlural=other": "Maximum {max} guests allowed"
+            }
+          }
+        ],
+        "integer": "Number of guests must be a whole number"
+      },
+      "name": {
+        "required": "Full name is required",
+        "minimum": [
+          {
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
+            "match": {
+              "minPlural=one": "Name must be at least {min} character",
+              "minPlural=other": "Name must be at least {min} characters"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Name must be less than {max} character",
+              "maxPlural=other": "Name must be less than {max} characters"
+            }
+          }
+        ],
+        "invalid": "Name can only contain letters, spaces, hyphens, and apostrophes"
+      },
+      "email": {
+        "required": "Email address is required",
+        "invalid": "Please enter a valid email address",
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Email must be less than {max} character",
+              "maxPlural=other": "Email must be less than {max} characters"
+            }
+          }
+        ]
+      },
+      "phone": {
+        "required": "Phone number is required",
+        "minimum": "Please enter a valid phone number",
+        "maximum": "Phone number is too long",
+        "invalid": "Please enter a valid phone number"
+      },
+      "duration": {
+        "minimum": "Minimum duration is 30 minutes",
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Maximum duration is {max} hour",
+              "maxPlural=other": "Maximum duration is {max} hours"
+            }
+          }
+        ],
+        "increment": "Duration must be in 30-minute increments"
+      },
+      "specialRequests": {
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Special requests must be less than {max} character",
+              "maxPlural=other": "Special requests must be less than {max} characters"
+            }
+          }
+        ]
+      },
+      "gdprConsent": {
+        "required": "Consent to the processing of personal data and use of photographs/videos is required to submit this form."
+      },
+      "general": "Please fix the validation errors"
+    }
+  },
+  "thankYou": {
+    "title": "Reservation Confirmed!",
+    "confirmation": "Great news! Your reservation has been confirmed.",
+    "bookingDetails": "Reservation Details",
+    "nextSteps": "What's Next?",
+    "nextStepsDescription": "We've sent a confirmation email to your address. Please save this information for your records.",
+    "nextStepsConfirmed": "Your table is reserved! Please arrive on time. If you need to make changes, contact us as soon as possible.",
+    "nextStepsPending": "We're reviewing your reservation. You'll receive a confirmation email within 24 hours. Please check your inbox and spam folder.",
+    "questions": "Need to Make Changes?",
+    "contactInfo": "Feel free to contact us if you need to modify your reservation",
+    "backToHome": "Back to Home",
+    "bookingId": "Booking reference: {id}"
+  },
+  "errors": {
+    "pageNotFound": "Page Not Found",
+    "pageNotFoundDescription": "The page you are looking for doesn't exist.",
+    "goHome": "Go Home",
+    "submissionError": "An error occurred while submitting your message"
+  },
+  "altText": {
+    "boardGames": "Board games",
+    "gamingArea": "Gaming area",
+    "barAtmosphere": "Bar atmosphere",
+    "barLocation": "Bar location",
+    "heroImage": "Hero image",
+    "deskohub": "Deskohub"
+  },
+  "placeholders": {
+    "fullName": "John Doe",
+    "email": "john@example.com",
+    "phone": "+420 123 456 789",
+    "guestCount": "Number of guests",
+    "duration": "Select duration"
+  },
+  "guestCountPlural": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} person",
+        "countPlural=other": "{count} people"
+      }
+    }
+  ],
+  "timeUnits": {
+    "hour": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "hour",
+          "*": "hours"
+        }
+      }
+    ],
+    "minute": [
+      {
+        "declarations": ["input count"],
+        "selectors": [],
+        "match": {
+          "count=1": "minute",
+          "*": "minutes"
+        }
+      }
+    ]
+  },
+  "duration": {
+    "hoursOnly": "{hours} {hourLabel}",
+    "minutesOnly": "{minutes} {minuteLabel}",
+    "hoursAndMinutes": "{hours} {hourLabel}, {minutes} {minuteLabel}"
+  },
+  "descriptions": {
+    "dateTime": "Choose your preferred date and time",
+    "tableType": "Choose the type of table that suits your needs",
+    "specialRequests": "Any special requests or notes?",
+    "confirmationTime": "We'll confirm your booking within 24 hours",
+    "keepInfo": "Please keep this information for your records"
+  },
+  "plurals": {
+    "person": "person",
+    "people": "people"
+  },
+  "accessibility": {
+    "errorCross": "Error cross",
+    "successCheckmark": "Success checkmark"
+  },
+  "labels": {
+    "email": "Email",
+    "phone": "Phone",
+    "bookingId": "Booking reference"
+  },
+  "reservationMetadata": {
+    "title": "Reservation Confirmation | Deskohub",
+    "description": "Thank you for your reservation at Deskohub"
+  },
+  "training": {
+    "pageTitle": "Training Room or Meeting Room",
+    "pageDescription": "Rent a room for up to 20 people. Suitable for training, business meetings, workshops or team brainstorming. Just a short walk from Palmovka metro.",
+    "hero": {
+      "title": "Rent a room for up to 20 people",
+      "subtitle": "Training room or meeting room",
+      "description": "At Deskohub we offer a training room for rent that can also be used for business meetings as a conference room. It is also suitable for workshops or team brainstorming. Located just a short walk from Palmovka metro station, ensuring easy access for all participants.",
+      "reserveButton": "Request Reservation",
+      "galleryButton": "View Gallery"
+    },
+    "features": {
+      "title": "EQUIPMENT",
+      "subtitle": "Everything for your successful event",
+      "feature1": {
+        "title": "Fast Internet",
+        "description": "Reliable high-speed connection for all participants"
+      },
+      "feature2": {
+        "title": "Flexible Layout",
+        "description": "Up to 4 tables - can be arranged in U-shape or two rows, tables can be removed"
+      },
+      "feature3": {
+        "title": "Top Technology",
+        "description": "Projector, air conditioning, comfortable furniture and plenty of power outlets"
+      },
+      "feature4": {
+        "title": "Flipchart or Whiteboard",
+        "description": "Presentation tools for creative work"
+      }
+    },
+    "catering": {
+      "title": "Catering and Refreshments",
+      "description": "We offer the option to order catering in the adjacent room. We'll be happy to provide drinks and refreshments."
+    },
+    "capacity": {
+      "people": "Up to {capacity} people",
+      "hourly": "{price}/h",
+      "daily": "{price}/day",
+      "size": "{size} m² room"
+    },
+    "packages": {
+      "title": "PRICING AND RENTAL OPTIONS",
+      "subtitle": "Flexible options for your needs",
+      "halfDay": {
+        "title": "Hourly Rental",
+        "duration": "{price}/h",
+        "features": {
+          "feature1": "Space for up to {capacity} people",
+          "feature2": "All equipment included",
+          "feature3": "Fast internet",
+          "feature4": "Air conditioning"
+        }
+      },
+      "fullDay": {
+        "title": "Full-Day Rental",
+        "duration": "{price}/day",
+        "features": {
+          "feature1": "Space for up to {capacity} people",
+          "feature2": "All equipment included",
+          "feature3": "Catering available",
+          "feature4": "Flexible layout"
+        },
+        "popular": "Best Value"
+      },
+      "custom": {
+        "title": "Custom Package",
+        "duration": "Tailored",
+        "customPrice": "Individual pricing",
+        "features": {
+          "feature1": "Flexible capacity",
+          "feature2": "Customized equipment",
+          "feature3": "Catering on request",
+          "feature4": "Special requirements"
+        }
+      },
+      "contactButton": "Contact"
+    },
+    "cta": {
+      "title": "For reservations or more information",
+      "description": "Feel free to contact us at email: {email} or phone number {phone}. We look forward to your visit and ensuring a perfect experience for you and your guests.",
+      "button": "Request Reservation",
+      "call": "Call",
+      "write": "Write",
+      "online": "Online",
+      "onlineReservation": "Request Reservation"
+    },
+    "gallery": {
+      "pageTitle": "Training Room Gallery",
+      "pageDescription": "Explore our modern training room and meeting space at Deskohub",
+      "title": "Training Room Gallery",
+      "description": "Explore our fully equipped training room with capacity for up to 20 people. Ideal for training sessions, workshops, business meetings, and team brainstorming.",
+      "backToTraining": "Back to Training Room"
+    },
+    "reservation": {
+      "pageTitle": "Reserve Training Room",
+      "pageDescription": "Book our training room for your corporate event, workshop, or team building activity at Deskohub"
+    }
+  },
+  "trainingReservation": {
+    "pageTitle": "Reserve Training Room",
+    "pageDescription": "Book our spacious training room for corporate events, workshops, and team building activities. Complete your reservation at Deskohub.",
+    "form": {
+      "title": "Reserve Training Room",
+      "yourInformation": "Your Information",
+      "firstName": "First Name",
+      "firstNamePlaceholder": "John",
+      "lastName": "Last Name",
+      "lastNamePlaceholder": "Doe",
+      "company": "Company",
+      "companyPlaceholder": "Company Name Ltd.",
+      "role": "Role",
+      "rolePlaceholder": "Project Manager",
+      "conditionalRequired": "(if no company)",
+      "conditionalRole": "(if both name and company)",
+      "validationHelpText": "Please provide either company name OR first and last name. If you provide both, role is required.",
+      "email": "Email",
+      "emailPlaceholder": "your@email.com",
+      "phone": "Phone Number",
+      "phonePlaceholder": "+420 123 456 789",
+      "reservationDetails": "Reservation Details",
+      "date": "Date",
+      "pickDate": "Pick a date",
+      "time": "Time",
+      "selectTime": "Select a time",
+      "duration": "Duration (hours)",
+      "selectDuration": "Select duration",
+      "spaceType": "Space Type",
+      "trainingRoom": "Training Room",
+      "trainingRoomCapacity": "Capacity: 20 people",
+      "specialRequirements": "Special Requirements",
+      "specialRequirementsPlaceholder": "Any special requirements or notes for your reservation...",
+      "submit": "Submit Reservation Request",
+      "submitting": "Submitting..."
+    },
+    "success": {
+      "title": "Reservation Submitted Successfully!",
+      "description": "We'll send you a confirmation email shortly."
+    },
+    "error": {
+      "title": "Failed to Submit Reservation",
+      "description": "Please try again later or contact us directly."
+    },
+    "validation": {
+      "firstNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "First name must be at least {min} character",
+            "minPlural=other": "First name must be at least {min} characters"
+          }
+        }
+      ],
+      "firstNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "First name must be at most {max} character",
+            "maxPlural=other": "First name must be at most {max} characters"
+          }
+        }
+      ],
+      "lastNameMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Last name must be at least {min} character",
+            "minPlural=other": "Last name must be at least {min} characters"
+          }
+        }
+      ],
+      "lastNameMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Last name must be at most {max} character",
+            "maxPlural=other": "Last name must be at most {max} characters"
+          }
+        }
+      ],
+      "companyMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Company name must be at least {min} character",
+            "minPlural=other": "Company name must be at least {min} characters"
+          }
+        }
+      ],
+      "companyMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Company name must be at most {max} character",
+            "maxPlural=other": "Company name must be at most {max} characters"
+          }
+        }
+      ],
+      "roleMin": [
+        {
+          "declarations": ["input min", "local minPlural = min: plural"],
+          "selectors": ["minPlural"],
+          "match": {
+            "minPlural=one": "Role must be at least {min} character",
+            "minPlural=other": "Role must be at least {min} characters"
+          }
+        }
+      ],
+      "roleMax": [
+        {
+          "declarations": ["input max", "local maxPlural = max: plural"],
+          "selectors": ["maxPlural"],
+          "match": {
+            "maxPlural=one": "Role must be at most {max} character",
+            "maxPlural=other": "Role must be at most {max} characters"
+          }
+        }
+      ],
+      "companyOrNameRequired": "Please provide either company name or first and last name",
+      "firstNameRequired": "First name is required",
+      "lastNameRequired": "Last name is required",
+      "roleRequiredWhenBothFilled": "Role is required when both name and company are provided",
+      "emailRequired": "Email is required",
+      "emailInvalid": "Please enter a valid email address",
+      "emailMax": "Email must be at most {max} characters",
+      "phoneRequired": "Phone number is required",
+      "phoneInvalid": "Please enter a valid phone number",
+      "dateRequired": "Please select a date",
+      "timeRequired": "Please select a time",
+      "durationMin": "Duration must be at least {min} hour",
+      "durationMax": "Duration must be at most {max} hours",
+      "specialRequirementsMax": "Special requirements must be at most {max} characters"
+    },
+    "nextSteps": "What's Next?",
+    "nextStepsDescription": "You will receive a confirmation email within 24 hours. Our team will contact you to confirm the availability and finalize your training room booking.",
+    "needChanges": "Need to Make Changes?",
+    "contactForChanges": "Feel free to contact us if you need to modify your reservation",
+    "confirmation": {
+      "title": "Reservation Submitted",
+      "message": "Your training room reservation has been successfully submitted. We will review it and contact you within 24 hours.",
+      "noIdMessage": "Reservation details are not available here. Please check your email for confirmation."
+    },
+    "details": {
+      "title": "Reservation Details",
+      "description": "Please keep this information for your records"
+    }
+  },
+  "notFound": {
+    "title": "Page Not Found",
+    "subtitle": "Oops! You rolled the wrong combination!",
+    "description": "It looks like you rolled the wrong combination! Try again or return to the home page for another game.",
+    "homeButton": "Home",
+    "rollAgainButton": "Roll Again",
+    "rollingText": "Rolling...",
+    "footerMessage": "Join us for another game at Deskohub!"
+  },
+  "contact": {
+    "pageTitle": "Contact Us",
+    "pageDescription": "Get in touch with Deskohub - board game bar in Prague. Contact information, opening hours, and location.",
+    "heroTitle": "Contact",
+    "heroSubtitle": "Get in touch with us and book your table for an unforgettable gaming experience",
+    "heroTip": "Reservations outside official opening hours are possible by arrangement. <link>Contact us!</link>",
+    "heroImageAlt": "Deskohub interior",
+    "infoTitle": "Contact Information",
+    "addressLabel": "Address",
+    "street": "{street}",
+    "city": "{postalCode} {city} {district}",
+    "phoneLabel": "Phone",
+    "phoneNumber": "{phone}",
+    "emailLabel": "Email",
+    "emailAddress": "{email}",
+    "hoursLabel": "Opening Hours",
+    "weekdays": "MON - FRI",
+    "weekdayHours": "{hours}",
+    "weekend": "SAT - SUN",
+    "weekendHours": "{hours}",
+    "hoursTooltip": "Reservations outside official opening hours are possible by arrangement.",
+    "formTitle": "Write to Us",
+    "formDescription": "Have a question or want to book a table? Send us a message and we'll get back to you as soon as possible.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Your name",
+    "phoneFormLabel": "Phone",
+    "phonePlaceholder": "+420 123 456 789",
+    "emailFormLabel": "Email",
+    "emailPlaceholder": "your@email.com",
+    "messageLabel": "Message",
+    "messagePlaceholder": "Write your message here...",
+    "submitButton": "Send Message",
+    "mapTitle": "Where to Find Us",
+    "mapPlaceholder": "Map will be here",
+    "mapAddress": "{address}",
+    "getDirections": "Get Directions",
+    "viewOnGoogleMaps": "View on Google Maps",
+    "mapUnavailable": "Map is temporarily unavailable",
+    "transport": {
+      "title": "How to Get Here?",
+      "mhd": {
+        "title": "Public Transport:",
+        "metro": "Metro: Palmovka (Line B) – 5 minute walk",
+        "tram": "Tram: Palmovka – trams no. 1, 6, 8, 16, 25, 10 – 5 minute walk",
+        "bus": "Bus: Balabenka – lines 109, 140, 185 - 10 minute walk"
+      },
+      "car": {
+        "title": "By Car:",
+        "parking": "There are blue and purple zones here, but free spots in the area are sometimes available."
+      }
+    },
+    "successMessage": "Your message has been sent successfully! We'll get back to you soon.",
+    "validation": {
+      "message": {
+        "minimum": [
+          {
+            "declarations": ["input min", "local minPlural = min: plural"],
+            "selectors": ["minPlural"],
+            "match": {
+              "minPlural=one": "Message must be at least {min} character",
+              "minPlural=other": "Message must be at least {min} characters"
+            }
+          }
+        ],
+        "maximum": [
+          {
+            "declarations": ["input max", "local maxPlural = max: plural"],
+            "selectors": ["maxPlural"],
+            "match": {
+              "maxPlural=one": "Message must be less than {max} character",
+              "maxPlural=other": "Message must be less than {max} characters"
+            }
+          }
+        ]
+      }
+    }
+  },
+  "menu": {
+    "pageTitle": "Menu - Food & Drinks",
+    "pageDescription": "Explore our delicious food and drinks menu at Deskohub board game bar. Perfect snacks and beverages for your gaming experience.",
+    "hero": {
+      "title": "MENU",
+      "subtitle": "Discover our selection of food and drinks for the perfect gaming experience",
+      "imageAlt": "Deskohub Interior"
+    },
+    "downloadPDF": "Download menu (PDF)",
+    "generatingPDF": "Generating PDF...",
+    "openingHours": {
+      "title": "Opening Hours",
+      "weekdays": "MON - FRI",
+      "weekdaysTime": "{hours}",
+      "weekend": "SAT - SUN",
+      "weekendTime": "{hours}"
+    },
+    "sections": {
+      "food": "FOOD",
+      "drinks": "DRINKS",
+      "other": "OTHER"
+    },
+    "footerNote": "Entry fee for board game players: {priceForPlayers}"
+  },
+  "boardGames": {
+    "pageTitle": "Board Games - Deskohub",
+    "pageDescription": "Explore our extensive collection of board games for all ages and skill levels at Deskohub board game bar.",
+    "title": "Board Games Collection",
+    "viewSpreadsheet": "View Board Games List",
+    "hero": {
+      "title": "Board Games",
+      "subtitle": "Discover our extensive collection of board games for all ages and skill levels"
+    },
+    "filters": {
+      "search": "Search",
+      "searchPlaceholder": "Search games...",
+      "category": "Category",
+      "difficulty": "Difficulty",
+      "foundGames": [
+        {
+          "declarations": ["input count", "local countPlural = count: plural"],
+          "selectors": ["countPlural"],
+          "match": {
+            "countPlural=zero": "No games found",
+            "countPlural=one": "Found 1 game",
+            "countPlural=other": "Found {count} games"
+          }
+        }
+      ],
+      "categories": {
+        "all": "All",
+        "strategic": "Strategic",
+        "family": "Family",
+        "dungeonCrawler": "Dungeon Crawler",
+        "party": "Party"
+      },
+      "difficulties": {
+        "all": "All",
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard"
+      },
+      "sortBy": "Sort by",
+      "sort": {
+        "nameAsc": "Name (A-Z)",
+        "nameDesc": "Name (Z-A)",
+        "ratingAsc": "Rating (Low to High)",
+        "ratingDesc": "Rating (High to Low)",
+        "playersAsc": "Players (Few to Many)",
+        "playersDesc": "Players (Many to Few)",
+        "durationAsc": "Duration (Short to Long)",
+        "durationDesc": "Duration (Long to Short)"
+      }
+    },
+    "table": {
+      "game": "Game",
+      "players": "Players",
+      "duration": "Game Duration",
+      "difficulty": "Difficulty",
+      "category": "Category",
+      "rating": "Rating"
+    },
+    "noGamesFound": "No games match your criteria."
+  },
+  "gallery": {
+    "pageTitle": "Gallery - Deskohub",
+    "pageDescription": "Explore the atmosphere of our gaming center where friends meet over board games",
+    "hero": {
+      "title": "Gallery",
+      "slides": {
+        "atmosphere": {
+          "title": "Cozy Atmosphere",
+          "description": "Enjoy coffee and games in a pleasant environment"
+        },
+        "mainRoom": {
+          "title": "Main Gaming Room",
+          "description": "More than 500 board games in one place"
+        },
+        "bar": {
+          "title": "Bar & Refreshments",
+          "description": "Wide selection of drinks and snacks"
+        },
+        "trainingRoom": {
+          "title": "Training Room",
+          "description": "Ideal space for corporate events and workshops"
+        },
+        "evening": {
+          "title": "Evening Vibes",
+          "description": "Romantic lighting for evening gaming"
+        }
+      },
+      "previousImage": "Previous image",
+      "nextImage": "Next image",
+      "goToImage": "Go to image"
+    },
+    "spaces": {
+      "title": "Our Spaces",
+      "subtitle": "Explore the atmosphere of our gaming center where friends meet over board games",
+      "locations": {
+        "mainRoom": "Main Gaming Room",
+        "cozyCorner": "Cozy Corner",
+        "bar": "Bar & Refreshments",
+        "gamesCollection": "Our Games Collection",
+        "eveningAtmosphere": "Evening Atmosphere",
+        "trainingRoom": "Training Room"
+      }
+    },
+    "events": {
+      "title": "Events & Activities",
+      "subtitle": "Check out photos from our regular events, tournaments, and special occasions",
+      "photos": "photos",
+      "participants": "participants",
+      "tournaments": {
+        "catan": {
+          "title": "Catan Tournament",
+          "description": "Major tournament in the popular Settlers of Catan game"
+        },
+        "christmas": {
+          "title": "Christmas Game Night",
+          "description": "Special Christmas atmosphere with themed games"
+        },
+        "gameNight": {
+          "title": "Board Game Night",
+          "description": "All-night gaming marathon for enthusiasts"
+        },
+        "familyDay": {
+          "title": "Family Game Day",
+          "description": "Special event for families with children"
+        },
+        "magic": {
+          "title": "Magic: The Gathering Draft",
+          "description": "Tournament in the popular card game Magic"
+        },
+        "dnd": {
+          "title": "Dungeons & Dragons Session",
+          "description": "Epic adventure in the world of D&D"
+        }
+      }
+    }
+  },
+  "reservationSubmitted": {
+    "title": "Reservation Received",
+    "message": "We've received your reservation request and are reviewing availability. You'll hear from us within 24 hours."
+  },
+  "reservationRejected": {
+    "title": "Reservation Could Not Be Confirmed",
+    "message": "Unfortunately, we're unable to accommodate your reservation at the requested time. Please try booking a different time slot or contact us for assistance finding an alternative."
+  },
+  "status": {
+    "pending": "Pending Review",
+    "confirmed": "Confirmed",
+    "rejected": "Not Available"
+  },
+  "cookieConsent": {
+    "consentModal": {
+      "title": "We use cookies",
+      "description": "We use cookies to improve your browsing experience, serve personalized content, and analyze our traffic. By clicking 'Accept all', you consent to our use of cookies.",
+      "acceptAllBtn": "Accept all",
+      "acceptNecessaryBtn": "Reject all",
+      "showPreferencesBtn": "Manage preferences"
+    },
+    "preferencesModal": {
+      "title": "Cookie Preferences",
+      "acceptAllBtn": "Accept all",
+      "acceptNecessaryBtn": "Reject all",
+      "savePreferencesBtn": "Save preferences",
+      "closeIconLabel": "Close",
+      "sections": {
+        "usage": {
+          "title": "Cookie Usage",
+          "description": "We use cookies to ensure the basic functionalities of the website and to enhance your online experience. You can choose for each category to opt-in/out whenever you want."
+        },
+        "necessary": {
+          "title": "Strictly Necessary Cookies",
+          "description": "These cookies are essential for the proper functioning of the website. Without these cookies, the website would not work properly."
+        },
+        "analytics": {
+          "title": "Analytics Cookies",
+          "description": "These cookies collect information about how you use our website, such as which pages you visited and which links you clicked on. All of the data is anonymized and cannot be used to identify you."
+        },
+        "marketing": {
+          "title": "Marketing Cookies",
+          "description": "These cookies are used to track visitors across websites. The intention is to display ads that are relevant and engaging for the individual user."
+        },
+        "preferences": {
+          "title": "Preference Cookies",
+          "description": "These cookies allow the website to remember choices you have made, such as your language preference."
+        }
+      }
+    }
+  },
+  "cookieSettings": {
+    "title": "Cookie Settings",
+    "description": "Manage your cookie preferences and control how we use cookies on our website.",
+    "backToHome": "Back to Home",
+    "categories": {
+      "necessary": {
+        "title": "Necessary Cookies",
+        "description": "These cookies are essential for the website to function properly. They cannot be disabled."
+      },
+      "analytics": {
+        "title": "Analytics Cookies",
+        "description": "These cookies help us understand how visitors interact with our website by collecting and reporting information anonymously."
+      },
+      "marketing": {
+        "title": "Marketing Cookies",
+        "description": "These cookies are used to track visitors across websites to display relevant and engaging advertisements."
+      },
+      "preferences": {
+        "title": "Preference Cookies",
+        "description": "These cookies allow the website to remember your choices (such as language preference) to provide a more personalized experience."
+      }
+    },
+    "buttons": {
+      "acceptAll": "Accept All",
+      "rejectAll": "Reject All",
+      "savePreferences": "Save Preferences",
+      "managePreferences": "Manage Cookie Preferences"
+    },
+    "messages": {
+      "saved": "Your cookie preferences have been saved.",
+      "error": "Failed to save preferences. Please try again."
+    }
+  },
+  "gdpr": {
+    "pageTitle": "Privacy Policy"
+  }
+}

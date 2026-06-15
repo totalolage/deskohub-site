@@ -1,0 +1,10 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "bunVersion": "1.3.14",
+  "crons": [
+    {
+      "path": "/api/cron/workspace/reservation-holds",
+      "schedule": "*/5 * * * *"
+    }
+  ]
+}

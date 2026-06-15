@@ -1,0 +1,268 @@
+openapi: 3.1.0
+info:
+  title: Nexi HPP API
+  version: 0.1.0
+servers:
+  - url: https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp/api/v1
+security:
+  - ApiKeyAuth: []
+paths:
+  /orders/hpp:
+    post:
+      operationId: createHostedPaymentPage
+      summary: Create hosted payment page session
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateHostedPaymentPageRequest"
+      responses:
+        "200":
+          description: Hosted payment page session created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateHostedPaymentPageResponse"
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /orders/{orderId}:
+    get:
+      operationId: getOrder
+      summary: Get order outcome
+      security:
+        - ApiKeyAuth: []
+      parameters:
+        - name: orderId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Order outcome
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrderResponse"
+        default:
+          description: Nexi API error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-KEY
+  schemas:
+    Amount:
+      type: object
+      description: Monetary amount as an integer minor-unit/scaled amount string, e.g. 5000 means 50.00 for currencies with two decimal places.
+      required:
+        - amount
+        - currency
+      properties:
+        amount:
+          type: string
+          description: Integer minor-unit/scaled amount string.
+          pattern: "^[0-9]+$"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+    PaymentSession:
+      type: object
+      description: Nexi marks notificationUrl optional, but this wrapper requires it for server-authoritative fulfillment.
+      required:
+        - amount
+        - language
+        - notificationUrl
+      properties:
+        amount:
+          type: string
+          description: Amount of the first payment in smallest currency unit.
+          pattern: "^[0-9]+$"
+        language:
+          type: string
+          enum:
+            - CZE
+            - ENG
+        resultUrl:
+          type: string
+          format: uri
+        cancelUrl:
+          type: string
+          format: uri
+        notificationUrl:
+          type: string
+          format: uri
+        paymentService:
+          type: string
+          enum:
+            - CARDS
+        captureType:
+          type: string
+          enum:
+            - IMPLICIT
+        actionType:
+          type: string
+          enum:
+            - PAY
+            - VERIFY
+            - PURCHASE
+            - PREAUTH
+    CreateHostedPaymentPageRequest:
+      type: object
+      required:
+        - order
+        - paymentSession
+      properties:
+        order:
+          type: object
+          required:
+            - orderId
+            - amount
+          properties:
+            orderId:
+              type: string
+            amount:
+              type: string
+              description: Transaction amount in smallest currency unit.
+              pattern: "^[0-9]+$"
+            currency:
+              type: string
+              minLength: 3
+              maxLength: 3
+        paymentSession:
+          $ref: "#/components/schemas/PaymentSession"
+        paymentService:
+          type: string
+          enum:
+            - CARDS
+        captureType:
+          type: string
+          enum:
+            - IMPLICIT
+    CreateHostedPaymentPageResponse:
+      type: object
+      required:
+        - hostedPage
+        - securityToken
+      properties:
+        hostedPage:
+          type: string
+          format: uri
+        securityToken:
+          type: string
+        orderId:
+          type: string
+    Operation:
+      type: object
+      properties:
+        operationId:
+          type: string
+        operationType:
+          type: string
+          enum:
+            - AUTHORIZATION
+            - CAPTURE
+        operationResult:
+          type: string
+          enum:
+            - AUTHORIZED
+            - PENDING
+            - EXECUTED
+            - DECLINED
+            - DENIED_BY_RISK
+            - DENIED
+            - THREEDS_FAILED
+            - FAILED
+            - CANCELED
+            - VOIDED
+            - REFUNDED
+        amount:
+          $ref: "#/components/schemas/Amount"
+        operationAmount:
+          type: string
+          pattern: "^[0-9]+$"
+        operationCurrency:
+          type: string
+          minLength: 3
+          maxLength: 3
+        securityToken:
+          type: string
+        operationTime:
+          type: string
+    OrderStatusOrder:
+      type: object
+      required:
+        - orderId
+        - amount
+        - currency
+      properties:
+        orderId:
+          type: string
+        amount:
+          type: string
+          pattern: "^[0-9]+$"
+        currency:
+          type: string
+          minLength: 3
+          maxLength: 3
+    OrderStatus:
+      type: object
+      required:
+        - order
+      properties:
+        authorizedAmount:
+          type: string
+        capturedAmount:
+          type: string
+        lastOperationTime:
+          type: string
+        lastOperationType:
+          type: string
+        order:
+          $ref: "#/components/schemas/OrderStatusOrder"
+    OrderResponse:
+      type: object
+      properties:
+        orderId:
+          type: string
+        amount:
+          $ref: "#/components/schemas/Amount"
+        securityToken:
+          type: string
+        orderStatus:
+          $ref: "#/components/schemas/OrderStatus"
+        operations:
+          type: array
+          items:
+            $ref: "#/components/schemas/Operation"
+    ErrorResponse:
+      type: object
+      properties:
+        errors:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+              description:
+                type: string
+        error:
+          type: string
+        message:
+          type: string
+        status:
+          type: integer

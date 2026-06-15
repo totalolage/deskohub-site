@@ -1,0 +1,60 @@
+---
+import LocaleCookieScript from "../../components/LocaleCookieScript.astro";
+import PortalPanel from "../../components/PortalPanel.astro";
+import PortalLayout from "../../layouts/PortalLayout.astro";
+import { getPortalMetadata } from "../../lib/portal";
+import { isLocale, type Locale, locales, m } from "../../../features/i18n";
+
+export const prerender = true;
+
+export function getStaticPaths() {
+  return locales.map((locale) => ({
+    params: { locale },
+    props: { locale },
+  }));
+}
+
+type Props = {
+  locale: Locale;
+};
+
+const candidateLocale = Astro.props.locale ?? Astro.params.locale;
+
+if (!candidateLocale || !isLocale(candidateLocale)) {
+  throw new Error(`Invalid locale route: ${candidateLocale ?? "undefined"}`);
+}
+
+const locale = candidateLocale;
+const metadata = getPortalMetadata(locale);
+---
+
+<PortalLayout metadata={metadata}>
+  <LocaleCookieScript locale={locale} />
+
+  <main class="portal-grid" aria-label={m.portalMainAriaLabel({}, { locale })}>
+    <h1 class="portal-title">{m.portalTitle({}, { locale })}</h1>
+
+    <nav
+      class="portal-panels"
+      aria-label={m.portalProductsAriaLabel({}, { locale })}
+    >
+      <PortalPanel
+        className="portal-panel-bar"
+        href="https://bar.deskohub.cz"
+        kicker={m.portalKicker({}, { locale })}
+        heading={m.portalBarHeading({}, { locale })}
+        description={m.portalBarDescription({}, { locale })}
+        label={m.portalBarLabel({}, { locale })}
+      />
+
+      <PortalPanel
+        className="portal-panel-workspace"
+        href="https://workspace.deskohub.cz"
+        kicker={m.portalKicker({}, { locale })}
+        heading={m.portalWorkspaceHeading({}, { locale })}
+        description={m.portalWorkspaceDescription({}, { locale })}
+        label={m.portalWorkspaceLabel({}, { locale })}
+      />
+    </nav>
+  </main>
+</PortalLayout>

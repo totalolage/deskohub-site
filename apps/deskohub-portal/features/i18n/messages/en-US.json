@@ -1,0 +1,13 @@
+{
+  "portalTitle": "Deskohub",
+  "portalMetaDescription": "Deskohub portal with links to Workspace and Boardgame Bar.",
+  "portalMainAriaLabel": "Deskohub portal",
+  "portalProductsAriaLabel": "Deskohub products",
+  "portalKicker": "Deskohub",
+  "portalBarHeading": "Boardgame Bar",
+  "portalBarDescription": "Games, people, and a late-night social energy with lounge momentum.",
+  "portalBarLabel": "bar.deskohub.cz",
+  "portalWorkspaceHeading": "Workspace",
+  "portalWorkspaceDescription": "Focused desks, refined operations, and a premium place to work.",
+  "portalWorkspaceLabel": "workspace.deskohub.cz"
+}

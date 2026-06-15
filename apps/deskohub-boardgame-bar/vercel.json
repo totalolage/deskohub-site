@@ -1,0 +1,5 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "buildCommand": "bun turbo build",
+  "bunVersion": "1.3.14"
+}

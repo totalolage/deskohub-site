@@ -1,0 +1,9 @@
+.astro/
+.build/
+.DS_Store
+.turbo/
+dist/
+node_modules/
+project.inlang/cache/
+.vercel
+.env*.local

@@ -1,0 +1,39 @@
+{
+  "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"],
+      "env": [
+        "NODE_ENV",
+        "DOTYPOS_CLIENT_ID",
+        "DOTYPOS_CLIENT_SECRET",
+        "DOTYPOS_REFRESH_TOKEN",
+        "DOTYPOS_API_URL",
+        "DOTYPOS_BRANCH_ID",
+        "DOTYPOS_CLOUD_ID",
+        "DOTYPOS_EMPLOYEE_ID",
+        "DOTYPOS_API_TIMEOUT",
+        "DOTYPOS_WEBHOOK_SECRET",
+        "EMAIL_API_KEY",
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "NEXT_PUBLIC_VERCEL_URL",
+        "NEXT_PUBLIC_VERCEL_ENV",
+        "CLOUDINARY_API_KEY",
+        "CLOUDINARY_API_SECRET",
+        "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
+        "NEXT_PUBLIC_GTM_ID"
+      ],
+      "passThroughEnv": ["FORM_DATA_ENC_SECRET"]
+    },
+    "i18n:compile": {
+      "passThroughEnv": ["DOTYPOS_WEBHOOK_SECRET", "FORM_DATA_ENC_SECRET"]
+    },
+    "dev": {
+      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
+    },
+    "typecheck": {
+      "dependsOn": ["@deskohub/dotypos#generate", "i18n:compile"]
+    }
+  }
+}

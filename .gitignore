@@ -6,6 +6,7 @@
 # next.js
 /.next/
 /out/
+/.turbo/
 
 # production
 /build
@@ -46,3 +47,6 @@ node_modules/
 
 **/*.local*
 .env*.local
+.playwright-mcp/
+
+.opencode/

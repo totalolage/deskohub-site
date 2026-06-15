@@ -1,0 +1,33 @@
+{
+  "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "build": {
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile"
+      ],
+      "env": [
+        "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
+        "NEXT_PUBLIC_GTM_ID",
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "VERCEL_URL"
+      ]
+    },
+    "db:migrate": {
+      "cache": false,
+      "env": ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]
+    },
+    "dev": {
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile"
+      ]
+    },
+    "typecheck": {
+      "dependsOn": ["@deskohub/nexi#generate", "i18n:compile"]
+    }
+  }
+}

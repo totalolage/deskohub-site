@@ -1,0 +1,13 @@
+.next
+.opencode
+.playwright-mcp
+.turbo
+.vercel
+node_modules
+apps/*/.next
+apps/*/.turbo
+packages/*/dist
+*.log
+*.tsbuildinfo
+workspace-*.md
+workspace-*.png

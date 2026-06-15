@@ -19,7 +19,7 @@ A modern web application for DeskohHub, featuring table reservations, workspace 
 Comprehensive documentation is available in the `/docs` directory:
 
 - **[Project Structure](./docs/PROJECT_STRUCTURE.md)** - Understanding our feature-based architecture
-- **[Designer Integration](./docs/DESIGNER_PAGE_INTEGRATION.md)** - Guide for integrating design exports
+- **[Documentation Index](./docs/README.md)** - Architecture, integration, and operational docs
 - **[Best Practices](./docs/BEST_PRACTICES.md)** - Coding standards and conventions
 
 ## 🛠️ Tech Stack
@@ -83,11 +83,41 @@ bun run start
 
 ## 🌍 Environment Variables
 
-Create a `.env.local` file in the root directory:
+This monorepo supports shared root defaults plus app-specific overrides.
 
-```env
-# Add any required environment variables here
+When an app command runs from the root (`bun run dev:*`, `bun run build:*`, `bun run lint:*`, `bun run typecheck:*`, or any Turbo task), env files are loaded in this order:
+
+```bash
+# root defaults
+.env
+.env.local
+.env.development
+.env.development.local
+
+# app-specific values (override root values)
+apps/<app>/.env
+apps/<app>/.env.local
+apps/<app>/.env.development
+apps/<app>/.env.development.local
 ```
+
+Later files override earlier files. Host-provided environment variables still take precedence over file values.
+
+```bash
+# Boardgame Bar app
+cp apps/deskohub-boardgame-bar/.env.example apps/deskohub-boardgame-bar/.env.local
+
+# Optional app-specific dev overrides (wins over root values for this app)
+touch apps/deskohub-boardgame-bar/.env.development.local
+
+# Workspace app
+cp apps/deskohub-workspace/.env.example apps/deskohub-workspace/.env.local
+
+# Optional app-specific dev overrides (wins over root values for this app)
+touch apps/deskohub-workspace/.env.development.local
+```
+
+Use `EMAIL_API_KEY` (not alternate names) for email provider credentials.
 
 ## 📦 Project Scripts
 
@@ -95,7 +125,7 @@ Create a `.env.local` file in the root directory:
 - `bun run build` - Build for production
 - `bun run start` - Start production server
 - `bun run lint` - Run type checking and linting
-- `bun run lint:fix` - Fix linting issues
+- `bun run format` - Fix linting issues
 
 ## 🤝 Contributing
 
@@ -106,7 +136,3 @@ Please read our [Best Practices Guide](./docs/BEST_PRACTICES.md) before contribu
 3. Add translations for new text
 4. Test on multiple screen sizes
 5. Ensure accessibility standards
-
-## 📄 License
-
-This project is proprietary and confidential.

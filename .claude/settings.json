@@ -8,12 +8,25 @@
           {
             "type": "command",
             "command": "claude-hooks run package-manager-enforcement"
+          },
+          {
+            "type": "command",
+            "command": "claude-hooks run taskmaster"
           }
         ]
       }
     ],
     "PostToolUse": [],
-    "Stop": [],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "claude-hooks run taskmaster"
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": []
   }
 }
