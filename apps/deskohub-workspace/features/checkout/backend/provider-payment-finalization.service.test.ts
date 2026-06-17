@@ -5,7 +5,7 @@ import type { NexiService as NexiServiceType } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "@/features/checkout/backend/paid-fulfillment.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 const paidNotStartedReservation = {
   id: "reservation-id",
@@ -28,7 +28,7 @@ describe("ProviderPaymentFinalizationService", () => {
       "./paid-fulfillment.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -82,7 +82,7 @@ describe("ProviderPaymentFinalizationService", () => {
       "./paid-fulfillment.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { NexiService } = await import("@deskohub/nexi");
 

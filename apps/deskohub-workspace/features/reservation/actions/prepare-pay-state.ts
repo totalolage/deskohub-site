@@ -46,10 +46,6 @@ import {
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
-import {
   WorkspaceTableAssignmentService,
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/workspace-table-assignment.service";
@@ -68,6 +64,10 @@ import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
 } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";

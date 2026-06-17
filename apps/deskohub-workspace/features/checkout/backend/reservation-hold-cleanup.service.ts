@@ -5,7 +5,7 @@ import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "@/features/checkout/backend/provider-payment-finalization.service";
-import { WorkspaceReservationRepository } from "@/features/checkout/backend/workspace-reservation.repository";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"

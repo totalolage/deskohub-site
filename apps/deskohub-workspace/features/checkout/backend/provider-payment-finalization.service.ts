@@ -18,7 +18,7 @@ import {
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 

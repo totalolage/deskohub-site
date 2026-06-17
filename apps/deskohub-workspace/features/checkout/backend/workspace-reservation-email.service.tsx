@@ -13,7 +13,6 @@ import type {
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer } from "effect";
 import { generateStaticMapImage } from "osm";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
 import { env } from "@/env";
 import {
   createWorkspaceCheckoutWifiQrPayload,
@@ -30,6 +29,7 @@ import {
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
@@ -41,9 +41,7 @@ import { workspaceSiteConstants } from "@/shared/utils";
 
 export interface WorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
-    readonly reservation: WorkspaceReservation;
-    readonly customer: Customer;
-    readonly tableName?: string;
+    readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
@@ -69,9 +67,6 @@ const getCustomerName = (customer: Customer) =>
   customer.email?.trim() ||
   "Workspace customer";
 
-const getReservationDisplayDate = (reservation: WorkspaceReservation) =>
-  reservation.reservationCreatedAt ?? reservation.createdAt;
-
 const workspaceAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
 
 const workspaceMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
@@ -91,16 +86,16 @@ const customerAccessHeadingDateFormatOptions = {
 } satisfies Intl.DateTimeFormatOptions;
 
 const formatCustomerAccessHeadingDate = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ) =>
   new Intl.DateTimeFormat(
     locale,
     customerAccessHeadingDateFormatOptions
-  ).format(getReservationDisplayDate(reservation));
+  ).format(reservation.reservedFrom);
 
 const createCustomerAccessHeading = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ) =>
   m.checkoutEmailCustomerAccessHeading(
@@ -109,7 +104,7 @@ const createCustomerAccessHeading = (
   );
 
 const createInternalReservationSubject = (
-  reservation: WorkspaceReservation
+  reservation: WorkspaceReservationDetails
 ) => {
   const subject = m.checkoutEmailInternalPaidReservationSubject(
     { orderId: reservation.id },
@@ -173,17 +168,14 @@ const createWorkspaceNetworkQrAttachment = (
   });
 
 const createReservationDetailRows = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
   const monitorOption = reservation.productMonitorOption ?? undefined;
   const rows: EmailDetailRow[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
-      formatReservationDisplayDate(
-        getReservationDisplayDate(reservation),
-        locale
-      ),
+      formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
     [
       m.reservationEmailTierLabel({}, { locale }),
@@ -211,7 +203,7 @@ const createReservationDetailRows = (
 
 const appendReservationReferenceRows = (
   rows: EmailDetailRow[],
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ) => {
   if (reservation.dotyposReservationId) {
@@ -225,7 +217,7 @@ const appendReservationReferenceRows = (
 };
 
 export const createReservationRows = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
   const rows = createReservationDetailRows(reservation, locale);
@@ -236,7 +228,7 @@ export const createReservationRows = (
 };
 
 const createInternalReservationRows = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   customer: Customer,
   locale: Locale
 ): EmailDetailRow[] => {
@@ -617,10 +609,7 @@ const createEmailText = (input: {
   ].join("\n");
 
 export const createWorkspaceReservationCustomerEmailPreviewHtml =
-  async (input: {
-    readonly reservation: WorkspaceReservation;
-    readonly tableName: string;
-  }) => {
+  async (input: { readonly reservation: WorkspaceReservationDetails }) => {
     const locale = getReservationLocale(input.reservation.locale);
     const rows = createReservationRows(input.reservation, locale);
     const networkQrPng = await generateQrCodePngBuffer(
@@ -640,7 +629,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
       accessCode: input.reservation.customerAccessCode,
       networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
       networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-      tableName: input.tableName,
+      tableName: input.reservation.tableName,
       locationMapContentId: workspaceLocationMapContentId,
       rows,
       followUp: m.reservationEmailCustomerFollowUp(
@@ -651,8 +640,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
   };
 
 export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
-  readonly reservation: WorkspaceReservation;
-  readonly customer: Customer;
+  readonly reservation: WorkspaceReservationDetails;
 }) => {
   return createEmailHtml({
     heading: m.checkoutEmailInternalPaidReservationHeading(
@@ -666,7 +654,7 @@ export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
     locale: internalNotificationLocale,
     rows: createInternalReservationRows(
       input.reservation,
-      input.customer,
+      input.reservation.customer,
       internalNotificationLocale
     ),
   });
@@ -682,8 +670,10 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
     return WorkspaceReservationEmailService.of({
       sendPaidReservationEmails: Effect.fn(
         "workspaceReservationEmail.sendPaidReservationEmails"
-      )(function* ({ reservation, customer, tableName }) {
+      )(function* ({ reservation }) {
         const locale = getReservationLocale(reservation.locale);
+        const customer = reservation.customer;
+        const tableName = reservation.tableName;
         const customerName = getCustomerName(customer);
         const customerEmail = customer.email?.trim();
         const networkDetails =
@@ -701,6 +691,8 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           workspaceReservationId: reservation.id,
           dotyposReservationId: reservation.dotyposReservationId,
           dotyposCustomerId: reservation.dotyposCustomerId,
+          dotyposReservationStartDate: reservation.reservedFrom.toISOString(),
+          dotyposReservationEndDate: reservation.reservedUntil.toISOString(),
         };
 
         if (customerEmail) {

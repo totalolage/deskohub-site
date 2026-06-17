@@ -5,7 +5,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "@/features/checkout/backend/operational-event.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 describe("ReservationHoldCleanupService", () => {
   test("does not cancel an expired hold when the pending provider payment finalizes paid", async () => {
@@ -18,7 +18,7 @@ describe("ReservationHoldCleanupService", () => {
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-cleanup-provider-paid";

@@ -25,16 +25,16 @@ import {
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
-import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 

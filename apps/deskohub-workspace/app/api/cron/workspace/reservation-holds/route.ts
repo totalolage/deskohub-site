@@ -9,7 +9,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLive,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { WorkspaceReservationRepositoryLive } from "@/features/checkout/backend/workspace-reservation.repository";
+import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 

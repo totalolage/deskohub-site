@@ -10,7 +10,7 @@ import { ResendWebhookRuntimeConfig } from "@/features/checkout/backend/resend-w
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { ResendWebhookRuntimeConfigLive } from "@/shared/backend/config/resend-webhook.config";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";

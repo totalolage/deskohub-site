@@ -6,7 +6,7 @@ import { Effect, Layer } from "effect";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   id: "reservation-provider-return",
@@ -90,7 +90,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-provider-return";
@@ -160,7 +160,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-provider-return";
@@ -215,7 +215,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
@@ -314,7 +314,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
@@ -411,7 +411,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
@@ -483,7 +483,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
