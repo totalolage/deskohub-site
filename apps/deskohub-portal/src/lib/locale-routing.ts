@@ -10,8 +10,10 @@ import {
 const redirectCacheControl = "private, no-store, max-age=0";
 
 export function createLocaleRedirectResponse(request: Request): Response {
+  const requestUrl = new URL(request.url);
   const locale = resolveRequestLocale(request);
   const redirectUrl = new URL(`/${locale}/`, request.url);
+  redirectUrl.search = requestUrl.search;
 
   return new Response(null, {
     status: 307,
