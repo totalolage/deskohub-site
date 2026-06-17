@@ -6,8 +6,8 @@ import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { buildSignedPayState, sealPayState } from "./pay-state";
 
@@ -68,7 +68,7 @@ describe("CheckoutService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-hpp-create-fails";

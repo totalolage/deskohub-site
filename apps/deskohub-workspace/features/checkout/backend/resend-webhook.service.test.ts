@@ -10,6 +10,7 @@ import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -17,7 +18,6 @@ import {
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "./operational-event.repository";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "./workspace-reservation.repository";
 
 let verifiedPayload: unknown;
 
@@ -144,7 +144,7 @@ const processWebhookEffect = async (input: {
     "./operational-event.repository"
   );
   const { WorkspaceReservationRepository } = await import(
-    "./workspace-reservation.repository"
+    "@/features/reservation/backend/workspace-reservation.repository"
   );
 
   const config = input.config ?? {
@@ -404,17 +404,17 @@ describe("ResendWebhookService", () => {
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
           customerAccessCode: "ACCESS-123",
-          reservationCreatedAt: new Date("2026-06-05T08:00:00.000Z"),
-          createdAt: new Date("2026-06-05T08:00:00.000Z"),
+          customer: {
+            email: "customer@example.com",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            companyName: null,
+            phone: "123456789",
+          },
+          reservedFrom: new Date("2026-06-15T22:00:00.000Z"),
+          reservedUntil: new Date("2026-06-16T22:00:00.000Z"),
+          tableName: "12",
         } as never,
-        customer: {
-          email: "customer@example.com",
-          firstName: "Ada",
-          lastName: "Lovelace",
-          companyName: null,
-          phone: "123456789",
-        } as never,
-        tableName: "12",
       });
     }).pipe(
       Effect.provide(WorkspaceReservationEmailServiceLive),
@@ -436,6 +436,8 @@ describe("ResendWebhookService", () => {
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      dotyposReservationStartDate: "2026-06-15T22:00:00.000Z",
+      dotyposReservationEndDate: "2026-06-16T22:00:00.000Z",
     });
     const customerEmail = sentMessages[0];
     if (!customerEmail) {
@@ -466,7 +468,7 @@ describe("ResendWebhookService", () => {
         day: "numeric",
         month: "long",
         timeZone: "Europe/Prague",
-      }).format(new Date("2026-06-05T08:00:00.000Z"));
+      }).format(new Date("2026-06-15T22:00:00.000Z"));
       const customerAccessHeading = m.checkoutEmailCustomerAccessHeading(
         { date: customerAccessHeadingDate },
         { locale }
@@ -608,10 +610,13 @@ describe("ResendWebhookService", () => {
       WorkspacePaidFulfillmentServiceLive,
     } = await import("./paid-fulfillment.service");
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
+    );
+    const { WorkspaceReservationService } = await import(
+      "@/features/reservation/backend/workspace-reservation.service"
     );
     const existingReservation = {
       id: "reservation-id",
@@ -626,6 +631,19 @@ describe("ResendWebhookService", () => {
       dotyposCustomerId: "dotypos-customer-id",
     };
     const sendPaidReservationEmails = mock(() => Effect.void);
+    const emailReservation = {
+      ...claimedReservation,
+      customer: { email: "customer@example.com" },
+      reservedFrom: new Date("2026-06-15T22:00:00.000Z"),
+      reservedUntil: new Date("2026-06-16T22:00:00.000Z"),
+      tableName: "12",
+    };
+    const getReservation = mock(() =>
+      Effect.succeed(emailReservation as never)
+    );
+    const workspaceReservations = {
+      getReservation,
+    };
     const markFulfilled = mock(() =>
       Effect.die("delivery webhook should mark fulfilled")
     );
@@ -637,15 +655,6 @@ describe("ResendWebhookService", () => {
       markFulfilled,
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {
-      getReservation: mock(() =>
-        Effect.succeed({
-          reservation: { _tableId: "table-id" },
-          customer: { email: "customer@example.com" },
-        } as never)
-      ),
-      getTables: mock(() =>
-        Effect.succeed([{ id: "table-id", name: "12" }] as never)
-      ),
       confirmReservation: mock(() =>
         Effect.die("reservation is already confirmed")
       ),
@@ -670,6 +679,9 @@ describe("ResendWebhookService", () => {
       ),
       Effect.provide(Layer.succeed(DotyposService, dotypos)),
       Effect.provide(
+        Layer.succeed(WorkspaceReservationService, workspaceReservations)
+      ),
+      Effect.provide(
         Layer.succeed(WorkspaceReservationEmailService, reservationEmails)
       ),
       Effect.runPromise
@@ -678,10 +690,9 @@ describe("ResendWebhookService", () => {
     expect(reservations.claimPaidFulfillment).toHaveBeenCalledWith(
       "reservation-id"
     );
+    expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
-      reservation: claimedReservation,
-      customer: { email: "customer@example.com" },
-      tableName: "12",
+      reservation: emailReservation,
     });
     expect(markFulfilled).not.toHaveBeenCalled();
     expect(operationalEvents.record).not.toHaveBeenCalled();

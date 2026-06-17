@@ -4,10 +4,7 @@ import { createWorkspaceReservationCustomerEmailPreviewHtml } from "@/features/c
 import { isLocale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { EmailPreviewFrame } from "../_components/email-preview-frame";
-import {
-  createWorkspaceReservationEmailPreviewReservation,
-  workspaceReservationEmailPreviewTableName,
-} from "../_lib/mock-reservation-email-preview";
+import { createWorkspaceReservationEmailPreviewReservation } from "../_lib/mock-reservation-email-preview";
 
 export const metadata: Metadata = {
   title: "Workspace customer reservation email preview",
@@ -30,7 +27,6 @@ export default async function WorkspaceReservationEmailPreviewPage({
   const html = await runWithRequestLocale(locale, () =>
     createWorkspaceReservationCustomerEmailPreviewHtml({
       reservation: createWorkspaceReservationEmailPreviewReservation(locale),
-      tableName: workspaceReservationEmailPreviewTableName,
     })
   );
 

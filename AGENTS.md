@@ -29,3 +29,4 @@ export class FooService extends Context.Tag("FooService")<
 - Dotypos request/response debug logging can include Authorization headers, refresh tokens, bearer tokens, and token response bodies; do not enable, fetch, or quote those logs for production diagnostics without explicit redaction.
 - Workspace/Dotypos application logging is globally censored/redacted, so local code should not strip useful log annotations purely for privacy unless a new uncensored sink is introduced.
 - Workspace Paraglide output can be stale relative to `features/i18n/messages/*.json`; run `bun run i18n:compile` before trusting generated copy or updating assertions that depend on message text.
+- Workspace E2E secrets that are only available in Vercel, such as email provider API keys, are not pullable into local env by design; validate email delivery through Vercel/runtime/webhook evidence and validate body content with a fake email transport renderer.

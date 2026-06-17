@@ -29,10 +29,6 @@ import {
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
-import {
   buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutQuote,
@@ -50,6 +46,10 @@ import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";

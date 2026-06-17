@@ -1,5 +1,4 @@
 import { Context, Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
 
 export interface WorkspaceCheckoutNetworkDetails {
   readonly ssid: string;
@@ -22,7 +21,7 @@ export const workspaceCheckoutPlaceholderNetworkDetails: WorkspaceCheckoutNetwor
 
 export interface IWorkspaceCheckoutNetworkDetailsService {
   readonly resolveCustomerNetworkDetails: (input: {
-    readonly reservation: WorkspaceReservation;
+    readonly reservation: { readonly id: string };
   }) => Effect.Effect<WorkspaceCheckoutNetworkDetails>;
 }
 
