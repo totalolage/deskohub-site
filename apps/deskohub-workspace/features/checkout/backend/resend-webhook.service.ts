@@ -6,11 +6,16 @@ import {
   OperationalEventRepository,
   OperationalEventRepositoryLive,
 } from "@/features/checkout/backend/operational-event.repository";
+import { captureReservationFulfilled } from "@/features/checkout/backend/posthog-lifecycle-events";
 import { ResendWebhookRuntimeConfig } from "@/features/checkout/backend/resend-webhook.config";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
 import { ResendWebhookRuntimeConfigLive } from "@/shared/backend/config/resend-webhook.config";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";
@@ -110,6 +115,7 @@ export const ResendWebhookServiceLive = Layer.effect(
     const reservations = yield* WorkspaceReservationRepository;
     const operationalEvents = yield* OperationalEventRepository;
     const config = yield* ResendWebhookRuntimeConfig;
+    const posthogEvents = yield* PostHogEventService;
 
     return ResendWebhookService.of({
       processWebhook: Effect.fn("resendWebhook.processWebhook")(
@@ -252,10 +258,11 @@ export const ResendWebhookServiceLive = Layer.effect(
               return ignored("reservation_not_processing");
             }
 
+            const fulfilledAt = new Date();
             yield* reservations
               .markFulfilled({
                 id: workspaceReservationId,
-                fulfilledAt: new Date(),
+                fulfilledAt,
               })
               .pipe(
                 Effect.mapError(
@@ -270,6 +277,10 @@ export const ResendWebhookServiceLive = Layer.effect(
                     })
                 )
               );
+            yield* captureReservationFulfilled({
+              reservation,
+              timestamp: fulfilledAt,
+            }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
 
             return {
               status: "processed",
@@ -337,6 +348,7 @@ export const ResendWebhookServiceLiveWithDependencies =
   ResendWebhookServiceLive.pipe(
     Layer.provide(ResendWebhookRuntimeConfigLive),
     Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive)
   );

@@ -31,6 +31,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
+import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
 import type {
@@ -272,6 +273,7 @@ export const WorkspaceAvailabilityServiceLiveWithDependencies =
     Layer.provide(ReservationHoldCleanupServiceLive),
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
     Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
