@@ -1,4 +1,16 @@
-import { Effect, HashMap, Logger } from "effect";
+import {
+  type AnyValue,
+  type AnyValueMap,
+  SeverityNumber,
+} from "@opentelemetry/api-logs";
+import type { LoggerProvider } from "@opentelemetry/sdk-logs";
+import { Effect, FiberId, HashMap, Logger, type LogLevel } from "effect";
+import { after } from "next/server";
+import { getPostHogLogAnnotationsFromCookieHeader } from "./posthog-log-annotations";
+import {
+  postHogLoggerProvider,
+  schedulePostHogLogsFlush,
+} from "./posthog-otel";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -17,7 +29,9 @@ const sensitiveLogKeyFragments = [
   "auth",
   "cookie",
   "set cookie",
-  "session",
+  "session cookie",
+  "session secret",
+  "session token",
   "name",
   "message",
   "email",
@@ -301,7 +315,108 @@ export const CensoringLogger = Logger.defaultLogger.pipe(
   Logger.mapInputOptions(censorLoggerOptions)
 );
 
-export const LoggerLive = Logger.replace(Logger.defaultLogger, CensoringLogger);
+const logLevelToOtelSeverity = (logLevel: LogLevel.LogLevel) => {
+  switch (logLevel._tag) {
+    case "Fatal":
+      return { severityNumber: SeverityNumber.FATAL, severityText: "fatal" };
+    case "Error":
+      return { severityNumber: SeverityNumber.ERROR, severityText: "error" };
+    case "Warning":
+      return { severityNumber: SeverityNumber.WARN, severityText: "warn" };
+    case "Info":
+      return { severityNumber: SeverityNumber.INFO, severityText: "info" };
+    case "Debug":
+      return { severityNumber: SeverityNumber.DEBUG, severityText: "debug" };
+    default:
+      return { severityNumber: SeverityNumber.TRACE, severityText: "trace" };
+  }
+};
+
+const toOtelValue = (value: unknown): AnyValue => {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  ) {
+    return value;
+  }
+
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+};
+
+const toOtelBody = (message: unknown): AnyValue => {
+  if (!Array.isArray(message)) return toOtelValue(message);
+  if (message.length === 1) return toOtelValue(message[0]);
+  return message.map(toOtelValue);
+};
+
+export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
+  Effect.sync(() =>
+    Logger.make((options) => {
+      const otelLogger = loggerProvider.getLogger("@effect/opentelemetry");
+      const { severityNumber, severityText } = logLevelToOtelSeverity(
+        options.logLevel
+      );
+      const now = options.date.getTime();
+      const attributes = HashMap.reduce(
+        options.annotations,
+        { fiberId: FiberId.threadName(options.fiberId) } as AnyValueMap,
+        (accumulator, value, key) => {
+          accumulator[key] = toOtelValue(value);
+          return accumulator;
+        }
+      );
+
+      for (const span of options.spans) {
+        attributes[`logSpan.${span.label}`] = `${now - span.startTime}ms`;
+      }
+
+      otelLogger.emit({
+        attributes,
+        body: toOtelBody(options.message),
+        observedTimestamp: Date.now(),
+        severityNumber,
+        severityText,
+        timestamp: options.date,
+      });
+    }).pipe(Logger.mapInputOptions(censorLoggerOptions))
+  );
+
+export const createWorkspaceLoggerLive = (loggerProvider?: LoggerProvider) =>
+  loggerProvider
+    ? Logger.replaceEffect(
+        Logger.defaultLogger,
+        createCensoredOtelLogger(loggerProvider).pipe(
+          Effect.map((otelLogger) => Logger.zip(CensoringLogger, otelLogger))
+        )
+      )
+    : Logger.replace(Logger.defaultLogger, CensoringLogger);
+
+export const LoggerLive = createWorkspaceLoggerLive(postHogLoggerProvider);
+
+export const runWorkspaceEffectWithLogAnnotations = <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  annotations: Record<string, unknown>
+) =>
+  Effect.runPromise(
+    effect.pipe(Effect.annotateLogs(annotations), Effect.provide(LoggerLive))
+  );
 
 export const runWorkspaceEffect = <A, E>(effect: Effect.Effect<A, E, never>) =>
-  Effect.runPromise(effect.pipe(Effect.provide(LoggerLive)));
+  runWorkspaceEffectWithLogAnnotations(effect, {});
+
+export const runWorkspaceRequestEffect = <A, E>(
+  request: Request,
+  effect: Effect.Effect<A, E, never>
+) => {
+  schedulePostHogLogsFlush(after);
+
+  return runWorkspaceEffectWithLogAnnotations(
+    effect,
+    getPostHogLogAnnotationsFromCookieHeader(request.headers.get("cookie"))
+  );
+};

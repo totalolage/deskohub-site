@@ -8,7 +8,7 @@ import {
   LogLevel,
 } from "effect";
 import type { Locale } from "@/features/i18n";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
 import { formatEffectError } from "@/shared/utils/error-formatting";
 import {
   actionClient,
@@ -62,7 +62,7 @@ export function createEffectSafeAction<S extends StandardSchemaV1, O, E, R>(
       );
 
       try {
-        return await runWorkspaceEffect(
+        return await runWorkspaceServerActionEffect(
           Logger.withMinimumLogLevel(program, LogLevel.All)
         );
       } catch (error: unknown) {

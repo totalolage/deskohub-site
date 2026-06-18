@@ -5,7 +5,7 @@ import {
   ResendWebhookService,
   ResendWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/resend-webhook.service";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
   function* (request: Request) {
@@ -82,7 +82,8 @@ const handleResendWebhookRouteError = Effect.fn(
  * Receives Resend delivery status for workspace customer fulfilment emails.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceEffect(
+  return runWorkspaceRequestEffect(
+    request,
     processWebhookRequest(request).pipe(
       Effect.provide(ResendWebhookServiceLiveWithDependencies),
       Effect.tap((result) =>
