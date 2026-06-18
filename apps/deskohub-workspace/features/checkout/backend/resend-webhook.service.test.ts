@@ -146,6 +146,9 @@ const processWebhookEffect = async (input: {
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
   );
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
+  );
 
   const config = input.config ?? {
     apiKey: "re_test",
@@ -169,6 +172,9 @@ const processWebhookEffect = async (input: {
     ),
     Effect.provide(
       Layer.succeed(OperationalEventRepository, input.operationalEvents)
+    ),
+    Effect.provide(
+      Layer.succeed(PostHogEventService, { capture: () => Effect.void })
     ),
     Effect.provide(Layer.succeed(ResendWebhookRuntimeConfig, config))
   );
@@ -618,6 +624,9 @@ describe("ResendWebhookService", () => {
     const { WorkspaceReservationService } = await import(
       "@/features/reservation/backend/workspace-reservation.service"
     );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
     const existingReservation = {
       id: "reservation-id",
       paymentState: "paid",
@@ -683,6 +692,9 @@ describe("ResendWebhookService", () => {
       ),
       Effect.provide(
         Layer.succeed(WorkspaceReservationEmailService, reservationEmails)
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.runPromise
     );

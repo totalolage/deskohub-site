@@ -20,6 +20,9 @@ describe("ReservationHoldCleanupService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
 
     const orderId = "reservation-cleanup-provider-paid";
     const attemptId = "attempt-cleanup-provider-paid";
@@ -62,6 +65,9 @@ describe("ReservationHoldCleanupService", () => {
       ),
       Effect.provide(
         Layer.succeed(OperationalEventRepository, operationalEvents)
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(Layer.succeed(DotyposService, dotypos)),
       Effect.runPromise
