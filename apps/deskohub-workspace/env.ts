@@ -34,6 +34,8 @@ export const env = createEnv({
     NEXI_API_ORIGIN: process.env.NEXI_API_ORIGIN,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE:
       process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE,
+    POSTHOG_SERVICE_NAME: process.env.POSTHOG_SERVICE_NAME,
+    POSTHOG_SERVICE_NAMESPACE: process.env.POSTHOG_SERVICE_NAMESPACE,
     VERCEL_AUTOMATION_BYPASS_SECRET:
       process.env.VERCEL_AUTOMATION_BYPASS_SECRET,
     VERCEL_ENV: process.env.VERCEL_ENV,
@@ -42,6 +44,9 @@ export const env = createEnv({
     NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME:
       process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
     NEXT_PUBLIC_GTM_ID: process.env.NEXT_PUBLIC_GTM_ID,
+    NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST,
+    NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN:
+      process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
   },
   emptyStringAsUndefined: true,
   onValidationError: (error) => {
