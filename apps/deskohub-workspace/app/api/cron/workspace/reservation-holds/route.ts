@@ -10,12 +10,14 @@ import {
   ReservationHoldCleanupServiceLive,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
+import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const CronReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
   Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
   Layer.provide(OperationalEventRepositoryLive),
+  Layer.provide(PostHogEventServiceLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive))
@@ -70,7 +72,8 @@ const handleReservationHoldCleanupCronError = Effect.fn(
 
 export async function GET(request: Request): Promise<NextResponse> {
   if (!isAuthorizedCronRequest(request)) {
-    await runWorkspaceEffect(
+    await runWorkspaceRequestEffect(
+      request,
       Effect.logWarning("Unauthorized reservation hold cleanup cron request", {
         request: {
           headers: Object.fromEntries(request.headers.entries()),
@@ -88,7 +91,8 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return runWorkspaceEffect(
+  return runWorkspaceRequestEffect(
+    request,
     sweepExpiredReservationHolds().pipe(
       Effect.provide(CronReservationHoldCleanupLive),
       Effect.catchAll(handleReservationHoldCleanupCronError)

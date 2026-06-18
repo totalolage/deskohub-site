@@ -7,6 +7,7 @@ import {
   OperationalEventRepository,
   OperationalEventRepositoryLive,
 } from "@/features/checkout/backend/operational-event.repository";
+import { captureReservationCompleted } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   WorkspaceReservationEmailService,
   WorkspaceReservationEmailServiceLive,
@@ -17,6 +18,10 @@ import {
   type WorkspaceReservationStateError,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 
@@ -59,6 +64,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     const dotypos = yield* DotyposService;
     const reservationEmails = yield* WorkspaceReservationEmailService;
     const workspaceReservations = yield* WorkspaceReservationService;
+    const posthogEvents = yield* PostHogEventService;
 
     const failFulfillment = Effect.fn("workspacePaidFulfillment.fail")(
       function* (input: {
@@ -271,10 +277,11 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Paid fulfillment reservation confirmed marker started"
             );
+            const confirmedAt = new Date();
             yield* reservations
               .markReservationConfirmed({
                 id: claimed.id,
-                confirmedAt: new Date(),
+                confirmedAt,
               })
               .pipe(
                 Effect.tapError((cause) =>
@@ -287,6 +294,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Paid fulfillment reservation confirmed marker succeeded"
             );
+            yield* captureReservationCompleted({
+              reservation: claimed,
+              timestamp: confirmedAt,
+            }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
           }
 
           yield* Effect.logInfo("Paid reservation email flow started");
@@ -348,6 +359,7 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
       )
     ),
     Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationService.Live),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),

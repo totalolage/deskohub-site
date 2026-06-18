@@ -16,9 +16,18 @@ import {
   PaymentAttemptRepositoryLive,
 } from "@/features/checkout/backend/payment-attempt.repository";
 import {
+  capturePaymentAbandoned,
+  capturePaymentCompleted,
+  capturePaymentFailed,
+} from "@/features/checkout/backend/posthog-lifecycle-events";
+import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 
@@ -51,6 +60,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
+    const posthogEvents = yield* PostHogEventService;
 
     return ProviderPaymentFinalizationService.of({
       finalizePendingProviderPayment: Effect.fn(
@@ -230,6 +240,14 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               );
               return "not_pending";
             }
+            if (paid.right.changed) {
+              yield* capturePaymentCompleted({
+                attempt: paid.right.attempt,
+                timestamp: paid.right.timestamp,
+              }).pipe(
+                Effect.provideService(PostHogEventService, posthogEvents)
+              );
+            }
             yield* Effect.logDebug("Payment finalization mark paid completed");
 
             yield* Effect.logInfo("Payment finalization fulfillment invoked");
@@ -282,6 +300,28 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               );
               return "not_pending";
             }
+            if (terminal.right.changed) {
+              if (terminalState === "failed") {
+                yield* capturePaymentFailed({
+                  attempt: terminal.right.attempt,
+                  failureCode:
+                    terminal.right.attempt.lastProviderStatus ??
+                    terminal.right.attempt.failureCode ??
+                    "nexi_payment_failed",
+                  failureReason: "nexi_payment_failed",
+                  timestamp: terminal.right.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              } else {
+                yield* capturePaymentAbandoned({
+                  attempt: terminal.right.attempt,
+                  timestamp: terminal.right.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              }
+            }
             yield* Effect.logDebug(
               "Payment finalization mark terminal completed"
             );
@@ -310,6 +350,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 export const ProviderPaymentFinalizationServiceLiveWithDependencies =
   ProviderPaymentFinalizationServiceLive.pipe(
     Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(

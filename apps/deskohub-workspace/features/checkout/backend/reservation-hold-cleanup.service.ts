@@ -1,11 +1,16 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer } from "effect";
 import { OperationalEventRepository } from "@/features/checkout/backend/operational-event.repository";
+import { captureReservationAbandoned } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "@/features/checkout/backend/provider-payment-finalization.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"
@@ -40,6 +45,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     const operationalEvents = yield* OperationalEventRepository;
     const finalization = yield* ProviderPaymentFinalizationService;
     const dotypos = yield* DotyposService;
+    const posthogEvents = yield* PostHogEventService;
 
     const cancelOrderHold = Effect.fn("reservationHoldCleanup.cancelOrderHold")(
       function* (input: {
@@ -206,10 +212,11 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         );
 
         yield* Effect.logInfo("Reservation hold cancelled marker started");
+        const cancelledAt = new Date();
         yield* reservations
           .markCancelled({
             id: claimed.id,
-            cancelledAt: new Date(),
+            cancelledAt,
             holdExpiredAt: input.holdExpiredAt,
           })
           .pipe(
@@ -229,6 +236,10 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             )
           );
         yield* Effect.logInfo("Reservation hold marked cancelled");
+        yield* captureReservationAbandoned({
+          reservation: claimed,
+          timestamp: cancelledAt,
+        }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
 
         yield* Effect.logInfo(
           "Reservation hold cancellation event recording started"
@@ -330,5 +341,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
-    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies)
+    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
+    Layer.provide(PostHogEventServiceLive)
   );

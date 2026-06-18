@@ -21,6 +21,11 @@ import {
   PaymentAttemptRepositoryLive,
 } from "@/features/checkout/backend/payment-attempt.repository";
 import {
+  capturePaymentAbandoned,
+  capturePaymentCompleted,
+  capturePaymentFailed,
+} from "@/features/checkout/backend/posthog-lifecycle-events";
+import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
@@ -33,6 +38,10 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 
 type NexiWebhookFailureCode =
@@ -130,6 +139,7 @@ export const NexiWebhookServiceLive = Layer.effect(
     const holdCleanup = yield* ReservationHoldCleanupService;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
+    const posthogEvents = yield* PostHogEventService;
 
     return NexiWebhookService.of({
       processNotification: Effect.fn("nexiWebhook.processNotification")(
@@ -432,7 +442,7 @@ export const NexiWebhookServiceLive = Layer.effect(
           if (verification.status === "success") {
             yield* Effect.logInfo("Nexi webhook paid transition started");
 
-            yield* paymentAttempts.markPaidForReservation({
+            const transition = yield* paymentAttempts.markPaidForReservation({
               id: attempt.id,
               workspaceReservationId: reservation.id,
               webhookEventId: eventId,
@@ -440,6 +450,14 @@ export const NexiWebhookServiceLive = Layer.effect(
               providerStatus,
               paidAt: new Date(),
             });
+            if (transition.changed) {
+              yield* capturePaymentCompleted({
+                attempt: transition.attempt,
+                timestamp: transition.timestamp,
+              }).pipe(
+                Effect.provideService(PostHogEventService, posthogEvents)
+              );
+            }
             yield* Effect.logInfo("Nexi webhook payment attempt marked paid");
 
             yield* fulfillment
@@ -475,15 +493,38 @@ export const NexiWebhookServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
             yield* Effect.logInfo("Nexi webhook terminal transition started");
 
-            yield* paymentAttempts.markTerminalForReservation({
-              id: attempt.id,
-              workspaceReservationId: reservation.id,
-              state: terminalState,
-              failureCode: "nexi_payment_failed",
-              webhookEventId: eventId,
-              providerOperationId,
-              providerStatus,
-            });
+            const transition =
+              yield* paymentAttempts.markTerminalForReservation({
+                id: attempt.id,
+                workspaceReservationId: reservation.id,
+                state: terminalState,
+                failureCode: "nexi_payment_failed",
+                webhookEventId: eventId,
+                providerOperationId,
+                providerStatus,
+              });
+            if (transition.changed) {
+              if (terminalState === "failed") {
+                yield* capturePaymentFailed({
+                  attempt: transition.attempt,
+                  failureCode:
+                    transition.attempt.lastProviderStatus ??
+                    transition.attempt.failureCode ??
+                    "nexi_payment_failed",
+                  failureReason: "nexi_payment_failed",
+                  timestamp: transition.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              } else {
+                yield* capturePaymentAbandoned({
+                  attempt: transition.attempt,
+                  timestamp: transition.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              }
+            }
             yield* Effect.logInfo(
               "Nexi webhook payment attempt marked terminal"
             );
@@ -569,6 +610,7 @@ export const NexiWebhookServiceLiveWithDependencies =
     Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(

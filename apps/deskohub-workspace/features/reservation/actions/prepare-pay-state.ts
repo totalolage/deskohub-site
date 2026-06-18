@@ -39,6 +39,7 @@ import {
   buildSignedPayState,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/pay-state.server";
+import { captureReservationStarted } from "@/features/checkout/backend/posthog-lifecycle-events";
 import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import {
   ReservationHoldCleanupService,
@@ -69,6 +70,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
+import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
@@ -322,6 +324,7 @@ const EarlyReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
   Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
   Layer.provide(EarlyReservationWorkspaceReservationRepositoryLive),
   Layer.provide(EarlyReservationOperationalEventRepositoryLive),
+  Layer.provide(PostHogEventServiceLive),
   Layer.provide(EarlyReservationDotyposLive)
 );
 
@@ -345,6 +348,7 @@ const EarlyReservationSubmitLive = Layer.mergeAll(
   EarlyReservationTableAssignmentLive,
   WorkspaceCheckoutAccessCodeServiceLive,
   EarlyReservationGoogleCalendarWorkspaceLimitationsLive,
+  PostHogEventServiceLive,
   EarlyReservationDotyposLive
 );
 
@@ -671,11 +675,13 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     yield* Effect.annotateLogsScoped({ dotyposReservationId });
     yield* Effect.logInfo("Workspace Dotypos reservation hold created");
 
+    const reservationCreatedAt = new Date();
+
     yield* reservations
       .attachHold({
         id: reservationDraft.id,
         dotyposReservationId,
-        reservationCreatedAt: new Date(),
+        reservationCreatedAt,
         reservationHoldExpiresAt: holdExpiresAt,
       })
       .pipe(
@@ -759,6 +765,13 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       );
     yield* Effect.logInfo("Workspace reservation hold attached");
+    yield* captureReservationStarted({
+      reservation: {
+        id: reservationDraft.id,
+        dotyposReservationId,
+      },
+      timestamp: reservationCreatedAt,
+    });
 
     yield* legalEvents.recordMany(
       Object.values(privacyEvidence).map((evidence) => ({
