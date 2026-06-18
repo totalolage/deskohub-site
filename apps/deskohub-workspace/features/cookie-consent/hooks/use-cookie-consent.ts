@@ -3,25 +3,39 @@
 import { useCallback, useEffect, useState } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentCategory } from "../config/consent-config";
+import { getAcceptedConsentCategoriesFromCookie } from "../utils/consent-cookie";
 
 export function useCookieConsent() {
   const [acceptedCategories, setAcceptedCategories] = useState<
     ConsentCategory[]
-  >([]);
+  >(() =>
+    typeof document === "undefined"
+      ? []
+      : getAcceptedConsentCategoriesFromCookie(document.cookie)
+  );
 
   useEffect(() => {
     const syncAcceptedCategories = () => {
       const preferences = CookieConsent.getUserPreferences();
-      setAcceptedCategories(
-        (preferences?.acceptedCategories || []) as ConsentCategory[]
-      );
+      const preferenceCategories = (preferences?.acceptedCategories ||
+        []) as ConsentCategory[];
+      const acceptedCategories = preferenceCategories.length
+        ? preferenceCategories
+        : getAcceptedConsentCategoriesFromCookie(document.cookie);
+
+      setAcceptedCategories(acceptedCategories);
     };
 
     syncAcceptedCategories();
+    const syncAfterConsentProviderInit = window.setTimeout(
+      syncAcceptedCategories,
+      0
+    );
 
     window.addEventListener("consentUpdated", syncAcceptedCategories);
 
     return () => {
+      window.clearTimeout(syncAfterConsentProviderInit);
       window.removeEventListener("consentUpdated", syncAcceptedCategories);
     };
   }, []);
