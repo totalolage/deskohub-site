@@ -30,6 +30,9 @@ describe("ProviderPaymentFinalizationService", () => {
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
     const { NexiService } = await import("@deskohub/nexi");
 
     const fulfillPaidOrder = mock(() => Effect.void);
@@ -60,6 +63,9 @@ describe("ProviderPaymentFinalizationService", () => {
           {} as PaymentAttemptRepositoryType
         )
       ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
+      ),
       Effect.provide(Layer.succeed(NexiService, {} as NexiServiceType)),
       Effect.runPromise
     );
@@ -83,6 +89,9 @@ describe("ProviderPaymentFinalizationService", () => {
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
     );
     const { NexiService } = await import("@deskohub/nexi");
 
@@ -118,6 +127,9 @@ describe("ProviderPaymentFinalizationService", () => {
           PaymentAttemptRepository,
           {} as PaymentAttemptRepositoryType
         )
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(Layer.succeed(NexiService, {} as NexiServiceType)),
       Effect.runPromise

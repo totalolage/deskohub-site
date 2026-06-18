@@ -108,7 +108,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("repository transitions are state and active-attempt guarded", async () => {
     const reservationRepository = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/workspace-reservation.repository.ts"
+      "apps/deskohub-workspace/features/reservation/backend/workspace-reservation.repository.ts"
     ).text();
     const paymentAttemptRepository = await Bun.file(
       "apps/deskohub-workspace/features/checkout/backend/payment-attempt.repository.ts"
