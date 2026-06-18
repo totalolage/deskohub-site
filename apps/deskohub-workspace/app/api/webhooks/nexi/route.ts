@@ -6,7 +6,7 @@ import {
   NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/nexi-webhook.service";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const NexiWebhookRouteLive = NexiWebhookServiceLiveWithDependencies.pipe(
   Layer.provide(NexiServiceLive)
@@ -56,7 +56,8 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(
  * Receives Nexi payment notifications and verifies payment state server-side.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceEffect(
+  return runWorkspaceRequestEffect(
+    request,
     processWebhookRequest(request).pipe(
       Effect.provide(NexiWebhookRouteLive),
       Effect.catchTag(
