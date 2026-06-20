@@ -68,6 +68,7 @@ bun --env-file=.env.development --env-file=.env.local --env-file=.env.developmen
 ```
 
 - Pull Vercel preview env only for preview database/runtime checks. Do not use pulled preview env as the source of Dotypos API secrets for manual tests.
+- Production Dotypos connection details are in `apps/deskohub-workspace/.env.production.local`. Use them only when production data access is explicitly requested, and confirm first if there is any uncertainty.
 
 Nexi sandbox notes:
 

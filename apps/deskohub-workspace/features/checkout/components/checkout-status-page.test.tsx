@@ -74,6 +74,36 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("renders assigned table map when available", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          tableMap: {
+            assignedTableId: "desk-1",
+            roomName: "Main room",
+            tables: [
+              {
+                _cloudId: "cloud-id",
+                id: "desk-1",
+                name: "Desk 1",
+                locationName: "Main room",
+                positionX: "0",
+                positionY: "0",
+              },
+            ],
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("Where to sit")).toBeDefined();
+    expect(view.getByText("Room: Main room")).toBeDefined();
+    expect(view.getByRole("img", { name: "Where to sit" })).toBeDefined();
+    expect(view.container.querySelector("svg > rect")).toBeDefined();
+  });
+
   test("renders prefilled support contact link for failed fulfillment", () => {
     const view = render(
       <CheckoutStatusPage
