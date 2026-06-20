@@ -16,10 +16,69 @@ export interface StaticMapImageOptions {
   readonly quality?: number;
 }
 
+export interface SvgPngTextOverlay {
+  readonly text: string;
+  readonly x: number;
+  readonly y: number;
+  readonly width?: number;
+  readonly font: string;
+  readonly fontfile?: string;
+  readonly color?: string;
+}
+
+export interface SvgPngBufferOptions {
+  readonly textOverlays?: readonly SvgPngTextOverlay[];
+}
+
 export const staticMapDefaults = {
   zoom: 16,
   quality: 84,
 } as const;
+
+export async function generateSvgPngBuffer(
+  svg: string | Buffer,
+  options: SvgPngBufferOptions = {}
+) {
+  const base = await sharp(Buffer.isBuffer(svg) ? svg : Buffer.from(svg))
+    .png()
+    .toBuffer();
+
+  if (!options.textOverlays?.length) return base;
+
+  const textOverlays = await Promise.all(
+    options.textOverlays.map(createTextOverlay)
+  );
+
+  return sharp(base).composite(textOverlays).png().toBuffer();
+}
+
+const escapePangoText = (text: string) =>
+  text.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+
+async function createTextOverlay(
+  overlay: SvgPngTextOverlay
+): Promise<sharp.OverlayOptions> {
+  const renderedText = await sharp({
+    text: {
+      text: overlay.color
+        ? `<span foreground="${overlay.color}">${escapePangoText(overlay.text)}</span>`
+        : escapePangoText(overlay.text),
+      font: overlay.font,
+      fontfile: overlay.fontfile,
+      width: overlay.width,
+      align: "center",
+      rgba: true,
+    },
+  })
+    .png()
+    .toBuffer({ resolveWithObject: true });
+
+  return {
+    input: renderedText.data,
+    left: Math.round(overlay.x - renderedText.info.width / 2),
+    top: Math.round(overlay.y - renderedText.info.height / 2),
+  };
+}
 
 interface TileCoordinate {
   readonly x: number;

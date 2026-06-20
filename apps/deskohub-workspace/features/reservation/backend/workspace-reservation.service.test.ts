@@ -67,6 +67,7 @@ const makeTable = (overrides: Partial<Table> = {}): Table => ({
   name: " 12 ",
   display: true,
   enabled: true,
+  locationName: "Main room",
   seats: "1",
   ...overrides,
 });
@@ -107,7 +108,19 @@ const detailsEffect = (input: {
 
 describe("WorkspaceReservationService", () => {
   test("builds details from Dotypos reservation dates and table", async () => {
-    const details = await Effect.runPromise(detailsEffect({}));
+    const details = await Effect.runPromise(
+      detailsEffect({
+        tables: [
+          makeTable(),
+          makeTable({ id: "neighbor-table", name: "11" }),
+          makeTable({
+            id: "quiet-table",
+            name: "1",
+            locationName: "Quiet room",
+          }),
+        ],
+      })
+    );
 
     expect(details).toMatchObject({
       id: "reservation-id",
@@ -115,7 +128,15 @@ describe("WorkspaceReservationService", () => {
       dotyposReservationId: "dotypos-reservation-id",
       customer,
       tableName: "12",
+      tableMap: {
+        assignedTableId: "table-id",
+        roomName: "Main room",
+      },
     });
+    expect(details.tableMap?.tables.map((table) => table.id)).toEqual([
+      "table-id",
+      "neighbor-table",
+    ]);
     expect(details.reservedFrom.toISOString()).toBe("2026-06-15T22:00:00.000Z");
     expect(details.reservedUntil.toISOString()).toBe(
       "2026-06-16T22:00:00.000Z"

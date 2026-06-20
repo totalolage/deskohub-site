@@ -72,6 +72,7 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
         customer: { id: "customer-id" },
       })
     ),
+    getTables: mock(() => Effect.succeed([])),
     ...overrides,
   }) as unknown as typeof DotyposService.Service;
 
@@ -268,6 +269,7 @@ describe("CheckoutStatusService", () => {
                 reservation: {
                   id: "dotypos-reservation-id",
                   _customerId: "customer-id",
+                  _tableId: "assigned-table",
                   startDate: "2026-06-19T22:00:00.000Z",
                   endDate: "2026-06-20T22:00:00.000Z",
                   seats: "1",
@@ -275,6 +277,28 @@ describe("CheckoutStatusService", () => {
                 },
                 customer: { id: "customer-id" },
               })
+            ),
+            getTables: mock(() =>
+              Effect.succeed([
+                {
+                  _cloudId: "cloud-id",
+                  id: "assigned-table",
+                  name: "Desk 1",
+                  locationName: "Main room",
+                },
+                {
+                  _cloudId: "cloud-id",
+                  id: "neighbor-table",
+                  name: "Desk 2",
+                  locationName: "Main room",
+                },
+                {
+                  _cloudId: "cloud-id",
+                  id: "other-room-table",
+                  name: "Desk 3",
+                  locationName: "Quiet room",
+                },
+              ])
             ),
           })
         )
@@ -292,7 +316,15 @@ describe("CheckoutStatusService", () => {
         monitorOption: "2x27-qhd",
         price: { value: 55_000, exponent: 2, currency: "CZK" },
       },
+      tableMap: {
+        assignedTableId: "assigned-table",
+        roomName: "Main room",
+      },
     });
+    expect(status.tableMap?.tables.map((table) => table.id)).toEqual([
+      "assigned-table",
+      "neighbor-table",
+    ]);
     expect(JSON.stringify(status)).not.toContain("email");
     expect(JSON.stringify(status)).not.toContain("phone");
     expect(JSON.stringify(status)).not.toContain("message");

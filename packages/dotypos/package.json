@@ -9,6 +9,7 @@
     "./backend/service": "./src/backend/service.ts",
     "./config": "./src/config.ts",
     "./errors": "./src/errors.ts",
+    "./table-map": "./src/table-map.tsx",
     "./types": "./src/types.ts",
     "./generated": "./src/generated/index.ts",
     "./generated/*": "./src/generated/*.ts",

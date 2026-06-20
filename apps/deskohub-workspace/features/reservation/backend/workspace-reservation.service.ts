@@ -2,6 +2,10 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
+import {
+  getWorkspaceTableMap,
+  type WorkspaceTableMap,
+} from "@/features/checkout/workspace-table-map";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
@@ -32,6 +36,7 @@ export type WorkspaceReservationDetails = Pick<
   readonly reservedFrom: Date;
   readonly reservedUntil: Date;
   readonly tableName?: string;
+  readonly tableMap?: WorkspaceTableMap;
 };
 
 export interface IWorkspaceReservationService {
@@ -133,6 +138,10 @@ export class WorkspaceReservationService extends Context.Tag(
             dotyposReservationDetails.reservation,
             tables
           );
+          const tableMap = getWorkspaceTableMap(
+            dotyposReservationDetails.reservation,
+            tables
+          );
 
           return {
             id: reservation.id,
@@ -147,6 +156,7 @@ export class WorkspaceReservationService extends Context.Tag(
             reservedFrom,
             reservedUntil,
             ...(tableName && { tableName }),
+            ...(tableMap && { tableMap }),
           };
         }
       );

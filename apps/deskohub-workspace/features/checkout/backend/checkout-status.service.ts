@@ -32,6 +32,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
+  getWorkspaceTableMap,
+  type WorkspaceTableMap,
+} from "@/features/checkout/workspace-table-map";
+import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -65,6 +69,8 @@ export type WorkspaceCheckoutStatusContactPrefill = {
   readonly phone?: string;
 };
 
+export type WorkspaceCheckoutTableMap = WorkspaceTableMap;
+
 export type CheckoutStatusViewModel = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
@@ -72,11 +78,13 @@ export type CheckoutStatusViewModel = {
   readonly paymentStatus?: PaymentState;
   readonly fulfillmentStatus?: FulfillmentState;
   readonly summary?: WorkspaceCheckoutStatusSummary;
+  readonly tableMap?: WorkspaceCheckoutTableMap;
   readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
 
 type CheckoutStatusReconstruction = {
   readonly summary?: WorkspaceCheckoutStatusSummary;
+  readonly tableMap?: WorkspaceCheckoutTableMap;
   readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
 
@@ -279,6 +287,24 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary Dotypos reservation loaded"
         );
 
+        const tables = yield* dotypos.getTables().pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Checkout status table map load failed", {
+              reservationId: reservation.id,
+              dotyposReservationId: reservation.dotyposReservationId,
+              cause,
+            })
+          ),
+          Effect.option
+        );
+        const tableMap =
+          tables._tag === "Some"
+            ? getWorkspaceTableMap(
+                dotyposReservation.value.reservation,
+                tables.value
+              )
+            : undefined;
+
         const date = toPragueReservationDate(
           dotyposReservation.value.reservation.startDate
         );
@@ -288,6 +314,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
             "Checkout status summary invalid reservation date"
           );
           return {
+            ...(tableMap ? { tableMap } : {}),
             supportContactPrefill: getSupportContactPrefill(
               dotyposReservation.value.customer
             ),
@@ -311,6 +338,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
         return {
           summary,
+          ...(tableMap ? { tableMap } : {}),
           supportContactPrefill: getSupportContactPrefill(
             dotyposReservation.value.customer
           ),
@@ -348,7 +376,8 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return result;
         }
 
-        const reconstruction = yield* reconstructSummary(reservation);
+        const reconstruction: CheckoutStatusReconstruction =
+          yield* reconstructSummary(reservation);
         const statusKind = toCheckoutStatusKind(
           reservation.paymentState,
           reservation.fulfillmentState
@@ -362,6 +391,9 @@ export const CheckoutStatusServiceLive = Layer.effect(
           fulfillmentStatus: reservation.fulfillmentState,
           ...(reconstruction.summary
             ? { summary: reconstruction.summary }
+            : {}),
+          ...(reconstruction.tableMap
+            ? { tableMap: reconstruction.tableMap }
             : {}),
           ...(statusKind === "fulfillment_failed" &&
           reconstruction.supportContactPrefill

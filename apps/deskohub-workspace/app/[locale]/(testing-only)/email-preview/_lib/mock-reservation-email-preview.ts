@@ -34,4 +34,28 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   reservedFrom: mockDate,
   reservedUntil: mockEndDate,
   tableName: workspaceReservationEmailPreviewTableName,
+  tableMap: {
+    assignedTableId: "desk-12",
+    roomName: "Main room",
+    tables: [
+      {
+        _cloudId: "preview-cloud-id",
+        id: "desk-12",
+        name: "12",
+        locationName: "Main room",
+        positionX: "40",
+        positionY: "80",
+        type: "SQUARE",
+      },
+      {
+        _cloudId: "preview-cloud-id",
+        id: "desk-11",
+        name: "11",
+        locationName: "Main room",
+        positionX: "130",
+        positionY: "80",
+        type: "SQUARE",
+      },
+    ],
+  },
 });
