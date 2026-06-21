@@ -1,4 +1,5 @@
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
+import { isDisplayableWorkspaceTable } from "./backend/workspace-table-selection";
 
 export type WorkspaceTableMap = {
   readonly assignedTableId: string;
@@ -23,13 +24,14 @@ export const getWorkspaceTableMap = (
   const assignedTableId = reservation._tableId?.trim();
   if (!assignedTableId) return undefined;
 
-  const assignedTable = tables.find(
+  const displayableTables = tables.filter(isDisplayableWorkspaceTable);
+  const assignedTable = displayableTables.find(
     (table) => getTableId(table) === assignedTableId
   );
   if (!assignedTable) return undefined;
 
   const roomName = getTableRoomName(assignedTable);
-  const roomTables = tables.filter(
+  const roomTables = displayableTables.filter(
     (table) => getTableRoomName(table) === roomName
   );
 

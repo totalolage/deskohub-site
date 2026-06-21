@@ -10,8 +10,10 @@ const SENSITIVE_QUERY_PARAMS = new Set([
 export function createPostHogPageUrl(href: string) {
   const url = new URL(href);
 
-  for (const param of SENSITIVE_QUERY_PARAMS) {
-    url.searchParams.delete(param);
+  for (const param of [...url.searchParams.keys()]) {
+    if (SENSITIVE_QUERY_PARAMS.has(param.toLowerCase())) {
+      url.searchParams.delete(param);
+    }
   }
 
   return url.toString();
