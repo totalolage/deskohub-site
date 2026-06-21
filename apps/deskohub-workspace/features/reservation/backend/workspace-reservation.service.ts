@@ -188,7 +188,10 @@ const parseDotyposReservationDate = (input: {
   readonly value: string;
   readonly fieldName: "startDate" | "endDate";
 }): Effect.Effect<Date, WorkspaceReservationDetailsError> =>
-  Effect.sync(() => new Date(input.value)).pipe(
+  Effect.sync(() => {
+    const value = input.value.trim();
+    return new Date(/^\d+$/.test(value) ? Number(value) : value);
+  }).pipe(
     Effect.filterOrFail(
       (date) => !Number.isNaN(date.getTime()),
       () =>

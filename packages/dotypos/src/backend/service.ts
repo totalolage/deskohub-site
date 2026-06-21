@@ -11,11 +11,7 @@ import {
 } from "effect";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { DotyposRuntimeConfig } from "../config";
-import {
-  ExternalAPIError,
-  NetworkError,
-  ValidationError,
-} from "../errors";
+import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import type {
   CreateReservationRequest,
   Customer,
@@ -183,6 +179,7 @@ const makeDotyposService = Effect.gen(function* () {
             service: "Dotypos",
             operation,
             message: "Dotypos returned an empty array.",
+            statusCode: 502,
           })
         );
   };
@@ -292,22 +289,23 @@ const makeDotyposService = Effect.gen(function* () {
       yield* Effect.logInfo("Dotypos reservation API call started");
 
       const reservation = yield* runDotyposRequest(
-        client.createReservation(config.cloudId, { payload: [request] }).pipe(
-          Effect.flatMap((reservations) =>
-            firstOrExternalError(reservations, "createReservation")
-          )
-        ),
+        client
+          .createReservation(config.cloudId, { payload: [request] })
+          .pipe(
+            Effect.flatMap((reservations) =>
+              firstOrExternalError(reservations, "createReservation")
+            )
+          ),
         "createReservation"
-      )
-        .pipe(
-          Effect.withSpan("dotyposService.createReservation"),
-          Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
-            Effect.logError("Dotypos reservation creation failed", {
-              error,
-            })
-          )
-        );
+      ).pipe(
+        Effect.withSpan("dotyposService.createReservation"),
+        Effect.retry(retryPolicy),
+        Effect.tapError((error) =>
+          Effect.logError("Dotypos reservation creation failed", {
+            error,
+          })
+        )
+      );
 
       yield* Effect.annotateLogsScoped({ reservation });
       yield* Effect.logInfo("Dotypos reservation created successfully");
@@ -342,15 +340,14 @@ const makeDotyposService = Effect.gen(function* () {
       yield* runDotyposRequest(
         client.cancelReservation(config.cloudId, id, undefined),
         "cancelReservation"
-      )
-        .pipe(
-          Effect.withSpan("dotyposService.cancelReservation"),
-          Effect.tapError((error) =>
-            Effect.logError("Dotypos reservation cancellation failed", {
-              error,
-            })
-          )
-        );
+      ).pipe(
+        Effect.withSpan("dotyposService.cancelReservation"),
+        Effect.tapError((error) =>
+          Effect.logError("Dotypos reservation cancellation failed", {
+            error,
+          })
+        )
+      );
 
       yield* Effect.logInfo("Dotypos reservation cancellation succeeded");
     },
@@ -375,11 +372,10 @@ const makeDotyposService = Effect.gen(function* () {
           config: { includeResponse: true },
         }),
         "Get reservation"
-      )
-        .pipe(
-          Effect.withSpan("dotyposService.confirmReservation.getEtag"),
-          Effect.retry(retryPolicy)
-        );
+      ).pipe(
+        Effect.withSpan("dotyposService.confirmReservation.getEtag"),
+        Effect.retry(retryPolicy)
+      );
       const etag = response.headers.etag ?? response.headers.ETag;
 
       yield* Effect.logDebug("Dotypos reservation ETag load succeeded", {
@@ -408,16 +404,15 @@ const makeDotyposService = Effect.gen(function* () {
           payload: { status: "CONFIRMED" },
         }),
         "patchReservation"
-      )
-        .pipe(
-          Effect.withSpan("dotyposService.confirmReservation"),
-          Effect.retry(retryPolicy),
-          Effect.tapError((error) =>
-            Effect.logError("Dotypos reservation confirmation failed", {
-              error,
-            })
-          )
-        );
+      ).pipe(
+        Effect.withSpan("dotyposService.confirmReservation"),
+        Effect.retry(retryPolicy),
+        Effect.tapError((error) =>
+          Effect.logError("Dotypos reservation confirmation failed", {
+            error,
+          })
+        )
+      );
 
       yield* Effect.logInfo("Dotypos reservation confirmation succeeded");
 
@@ -432,22 +427,21 @@ const makeDotyposService = Effect.gen(function* () {
       return yield* runDotyposRequest(
         client.getCustomer(config.cloudId, id, undefined),
         "getCustomer"
-      )
-        .pipe(
-          Effect.retry(retryPolicy),
-          Effect.catchIf(
-            (error) => !error,
-            (error) =>
-              Effect.fail(
-                new ExternalAPIError({
-                  service: "Dotypos",
-                  operation: "getCustomer",
-                  cause: `\`${error}' value thrown`,
-                })
-              )
-          ),
-          catchUnexpectedDotyposError("getCustomer")
-        );
+      ).pipe(
+        Effect.retry(retryPolicy),
+        Effect.catchIf(
+          (error) => !error,
+          (error) =>
+            Effect.fail(
+              new ExternalAPIError({
+                service: "Dotypos",
+                operation: "getCustomer",
+                cause: `\`${error}' value thrown`,
+              })
+            )
+        ),
+        catchUnexpectedDotyposError("getCustomer")
+      );
     },
     (effect, customerId) =>
       effect.pipe(
@@ -476,15 +470,14 @@ const makeDotyposService = Effect.gen(function* () {
               })
               .pipe(Effect.map((page) => [...(page.data ?? [])])),
             "searchCustomers"
-          )
-            .pipe(
-              Effect.catchTag("ExternalAPIError", (error) =>
-                error.statusCode === 404
-                  ? Effect.succeed<Customer[]>([])
-                  : Effect.fail(error)
-              ),
-              Effect.retry(retryPolicy)
-            );
+          ).pipe(
+            Effect.catchTag("ExternalAPIError", (error) =>
+              error.statusCode === 404
+                ? Effect.succeed<Customer[]>([])
+                : Effect.fail(error)
+            ),
+            Effect.retry(retryPolicy)
+          );
         });
 
       const lookupFields = options?.lookupFields ?? defaultCustomerLookupFields;
@@ -628,25 +621,25 @@ const makeDotyposService = Effect.gen(function* () {
               payload: updateRequest,
             }),
             "updateCustomer"
-          )
-            .pipe(
-              Effect.retry(retryPolicy),
-              Effect.tapError((error) =>
-                Effect.logWarning("Dotypos customer update failed", {
-                  error,
-                  existingCustomer,
-                  input: normalizedCustomerData,
-                  operation: "updateCustomer",
-                  request: {
-                    path: {
-                      cloudId: config.cloudId,
-                      customerId,
-                    },
-                    body: updateRequest,
+          ).pipe(
+            Effect.retry(retryPolicy),
+            Effect.tapError((error) =>
+              Effect.logWarning("Dotypos customer update failed", {
+                error,
+                existingCustomer,
+                input: normalizedCustomerData,
+                operation: "updateCustomer",
+                request: {
+                  path: {
+                    cloudId: config.cloudId,
+                    customerId,
                   },
-                })
-              )
-            );
+                  body: updateRequest,
+                },
+              })
+            ),
+            Effect.catch(() => Effect.succeed(existingCustomer))
+          );
 
           yield* Effect.logDebug("Dotypos existing customer result", {
             customer: updatedCustomer,
@@ -744,11 +737,7 @@ const makeDotyposService = Effect.gen(function* () {
         .getTables(config.cloudId, { params: { limit: 100 } })
         .pipe(Effect.map((page) => [...(page.data ?? [])])),
       "getTables"
-    )
-      .pipe(
-        Effect.retry(retryPolicy),
-        catchUnexpectedDotyposError("getTables")
-      );
+    ).pipe(Effect.retry(retryPolicy), catchUnexpectedDotyposError("getTables"));
   });
 
   const listReservations = Effect.fn("listReservations")(function* () {
@@ -757,14 +746,13 @@ const makeDotyposService = Effect.gen(function* () {
         .listReservations(config.cloudId, { params: { limit: 100 } })
         .pipe(Effect.map((page) => [...(page.data ?? [])])),
       "listReservations"
-    )
-      .pipe(
-        Effect.catchTag("ExternalAPIError", (error) =>
-          error.statusCode === 404 ? Effect.succeed([]) : Effect.fail(error)
-        ),
-        Effect.retry(retryPolicy),
-        catchUnexpectedDotyposError("listReservations")
-      );
+    ).pipe(
+      Effect.catchTag("ExternalAPIError", (error) =>
+        error.statusCode === 404 ? Effect.succeed([]) : Effect.fail(error)
+      ),
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("listReservations")
+    );
   });
 
   const getProducts = Effect.fn("getProducts")(function* (options: {
@@ -783,16 +771,15 @@ const makeDotyposService = Effect.gen(function* () {
         })
         .pipe(Effect.map((page) => [...(page.data ?? [])])),
       "getProducts"
-    )
-      .pipe(
-        Effect.map((products) =>
-          options?.includeDeleted
-            ? products
-            : products.filter((product) => !product.deleted)
-        ),
-        Effect.retry(retryPolicy),
-        catchUnexpectedDotyposError("getProducts")
-      );
+    ).pipe(
+      Effect.map((products) =>
+        options?.includeDeleted
+          ? products
+          : products.filter((product) => !product.deleted)
+      ),
+      Effect.retry(retryPolicy),
+      catchUnexpectedDotyposError("getProducts")
+    );
   });
 
   const getCategories = Effect.fn("getCategories")(function* () {
@@ -827,7 +814,10 @@ export class DotyposService extends Context.Service<
   DotyposService,
   Effect.Success<typeof makeDotyposService>
 >()("DotyposService") {
-  static DefaultWithoutDependencies = Layer.effect(this, makeDotyposService).pipe(
+  static DefaultWithoutDependencies = Layer.effect(
+    this,
+    makeDotyposService
+  ).pipe(
     Layer.provide(DotyposGeneratedClient.Live),
     Layer.provide(DotyposAccessToken.Live)
   );
