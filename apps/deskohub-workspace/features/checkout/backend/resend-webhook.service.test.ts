@@ -775,7 +775,7 @@ describe("ResendWebhookService", () => {
     );
 
     expect(reservations.claimPaidFulfillment).toHaveBeenCalledWith(
-      "reservation-id"
+      expect.objectContaining({ id: "reservation-id" })
     );
     expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
