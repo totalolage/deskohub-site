@@ -69,6 +69,7 @@ const makeTable = (overrides: Partial<Table> = {}): Table => ({
   enabled: true,
   locationName: "Main room",
   seats: "1",
+  tags: ["tier:profi"],
   ...overrides,
 });
 
@@ -157,5 +158,21 @@ describe("WorkspaceReservationService", () => {
       reservationId: "reservation-id",
       errorCode: "dotypos_reservation_date_invalid",
     });
+  });
+
+  test("accepts Dotypos millisecond timestamp strings", async () => {
+    const details = await Effect.runPromise(
+      detailsEffect({
+        dotyposReservation: makeDotyposReservation({
+          startDate: String(Date.UTC(2026, 5, 15, 6)),
+          endDate: String(Date.UTC(2026, 5, 16, 6)),
+        }),
+      })
+    );
+
+    expect(details.reservedFrom.toISOString()).toBe("2026-06-15T06:00:00.000Z");
+    expect(details.reservedUntil.toISOString()).toBe(
+      "2026-06-16T06:00:00.000Z"
+    );
   });
 });

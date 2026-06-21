@@ -53,11 +53,11 @@ export class DotyposService extends Context.Service<
                     includeDeleted: false,
                   })
                   .pipe(
-                    Effect.tapError((cause) =>
+                    Effect.catch((cause) =>
                       Effect.logWarning(
                         "Dotypos category products load failed",
                         { category, cause }
-                      )
+                      ).pipe(Effect.as([]))
                     )
                   )
               ),

@@ -66,8 +66,8 @@ export async function getCloudinaryImages(options: {
     }).pipe(Effect.scoped, Effect.annotateLogs({ options, normalizedTags })),
     CloudinaryServiceLive
   ).pipe(
-    Effect.tapError((error) =>
-      Effect.logError("Cloudinary search failed", error)
+    Effect.catch((error) =>
+      Effect.logError("Cloudinary search failed", error).pipe(Effect.as([]))
     )
   );
 

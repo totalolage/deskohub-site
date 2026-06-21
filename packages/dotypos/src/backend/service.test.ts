@@ -220,10 +220,55 @@ describe("DotyposService customer lookup", () => {
 
     expect(result).toEqual({ _tag: "NotFound", matches: [] });
   });
+
+  test("keeps matched customer usable when update fails", async () => {
+    const matched = customer({
+      id: "customer-id",
+      firstName: "Ada",
+      email: "ada@example.com",
+      lastName: undefined,
+    });
+    let updateAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") return Response.json({ data: [matched] });
+      }
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        if (request.method === "PUT") {
+          updateAttempts += 1;
+          return Response.json(
+            { error: "server", error_description: "Server error", code: 500 },
+            { status: 500 }
+          );
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+          },
+          undefined
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(matched);
+    expect(updateAttempts).toBeGreaterThan(1);
+  });
 });
 
 describe("DotyposService reservations", () => {
-  test("creates reservations with the generated array payload and retries 5xx", async () => {
+  test("creates reservations with the generated array payload and retries empty responses", async () => {
     let reservationAttempts = 0;
     const fetchMock = mockDotyposFetch(async (request) => {
       const url = new URL(request.url);
@@ -234,10 +279,7 @@ describe("DotyposService reservations", () => {
       ) {
         reservationAttempts += 1;
         if (reservationAttempts === 1) {
-          return Response.json(
-            { error: "server", error_description: "Server error", code: 500 },
-            { status: 500 }
-          );
+          return Response.json([]);
         }
         return Response.json([reservation()]);
       }

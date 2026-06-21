@@ -116,26 +116,25 @@ describe("DotyposService.getMenuItems", () => {
     ]);
   });
 
-  test("failed category products load fails visibly", async () => {
+  test("recovers failed category products load", async () => {
     setBoardgameTestEnv();
     const { ValidationError } = await import("@deskohub/dotypos");
 
-    await expect(
-      runWithShared(
-        (DotyposService) =>
-          Effect.gen(function* () {
-            const dotypos = yield* DotyposService;
-            return yield* dotypos.getMenuItems();
-          }),
-        {
-          getCategories: mock(() =>
-            Effect.succeed([category({ id: "broken" })])
-          ),
-          getProducts: mock(() =>
-            Effect.fail(new ValidationError({ message: "nope" }))
-          ),
-        }
-      )
-    ).rejects.toThrow("nope");
+    const result = await runWithShared(
+      (DotyposService) =>
+        Effect.gen(function* () {
+          const dotypos = yield* DotyposService;
+          return yield* dotypos.getMenuItems();
+        }),
+      {
+        getCategories: mock(() => Effect.succeed([category({ id: "broken" })])),
+        getProducts: mock(() =>
+          Effect.fail(new ValidationError({ message: "nope" }))
+        ),
+      }
+    );
+
+    expect(result.products).toEqual([]);
+    expect(result.categories).toEqual([category({ id: "broken" })]);
   });
 });
