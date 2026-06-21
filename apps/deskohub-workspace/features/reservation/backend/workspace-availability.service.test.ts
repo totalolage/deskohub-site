@@ -303,7 +303,7 @@ describe("WorkspaceAvailabilityService", () => {
 
   test("fails ensureAvailable when selected setup is occupied", async () => {
     const result = await runWithInventory(
-      Effect.either(
+      Effect.result(
         Effect.gen(function* () {
           const availability = yield* Effect.promise(
             () => import("./workspace-availability.service")
@@ -323,15 +323,15 @@ describe("WorkspaceAvailabilityService", () => {
       }
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("WorkspaceTableUnavailableError");
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
     }
   });
 
   test("fails ensureAvailable when calendar marks the date fully occupied", async () => {
     const result = await runWithInventory(
-      Effect.either(
+      Effect.result(
         Effect.gen(function* () {
           const availability = yield* Effect.promise(
             () => import("./workspace-availability.service")
@@ -353,9 +353,9 @@ describe("WorkspaceAvailabilityService", () => {
       }
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left._tag).toBe("WorkspaceTableUnavailableError");
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
     }
   });
 });

@@ -1,4 +1,3 @@
-import { DotyposService } from "@deskohub/dotypos";
 import {
   checkNexiWebhookSecurityToken,
   classifyNexiFailureStatus,
@@ -11,7 +10,6 @@ import {
 } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
 import {
   WorkspacePaidFulfillmentService,
   WorkspacePaidFulfillmentServiceLiveWithDependencies,
@@ -42,7 +40,6 @@ import {
   PostHogEventService,
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 
 type NexiWebhookFailureCode =
   | "nexi_webhook_parse_failed"
@@ -77,7 +74,7 @@ export interface NexiWebhookService {
 }
 
 export const NexiWebhookService =
-  Context.GenericTag<NexiWebhookService>("NexiWebhookService");
+  Context.Service<NexiWebhookService>("NexiWebhookService");
 
 const markEventFailed = (
   webhookEvents: WebhookEventRepository,
@@ -101,7 +98,7 @@ const failAfterMarkingEvent = (
   error: NexiWebhookProcessingError
 ) =>
   markEventFailed(webhookEvents, identity, error.errorCode).pipe(
-    Effect.zipRight(Effect.fail(error))
+    Effect.andThen(Effect.fail(error))
   );
 
 const failOnVerificationMismatch = Effect.fn(
@@ -176,7 +173,7 @@ export const NexiWebhookServiceLive = Layer.effect(
               Effect.mapError(
                 (cause) =>
                   new NexiWebhookProcessingError({
-                    errorCode: "nexi_webhook_parse_failed",
+                    errorCode: "nexi_webhook_transition_failed",
                     eventId,
                     orderId: providerOrderId,
                     message: "Nexi webhook event could not be recorded.",
@@ -369,9 +366,9 @@ export const NexiWebhookServiceLive = Layer.effect(
             );
           }
 
-          const currency = yield* Schema.decodeUnknown(NexiCurrencySchema)(
-            attempt.currency
-          ).pipe(
+          const currency = yield* Schema.decodeUnknownEffect(
+            NexiCurrencySchema
+          )(attempt.currency).pipe(
             Effect.mapError(
               (cause) =>
                 new NexiWebhookProcessingError({
@@ -382,7 +379,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                   cause,
                 })
             ),
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               failAfterMarkingEvent(
                 webhookEvents,
                 { type: "eventId", eventId },
@@ -416,7 +413,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                     cause,
                   })
               ),
-              Effect.catchAll((error) =>
+              Effect.catch((error) =>
                 failAfterMarkingEvent(
                   webhookEvents,
                   { type: "eventId", eventId },
@@ -473,7 +470,7 @@ export const NexiWebhookServiceLive = Layer.effect(
                       cause,
                     })
                 ),
-                Effect.catchAll((error) =>
+                Effect.catch((error) =>
                   failAfterMarkingEvent(
                     webhookEvents,
                     { type: "eventId", eventId },
@@ -484,12 +481,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             yield* Effect.logInfo("Nexi webhook paid order fulfilled");
           } else if (verification.status === "failure") {
             const failureKind = classifyNexiFailureStatus(providerStatus);
-            const terminalState =
-              failureKind === "cancelled"
-                ? "cancelled"
-                : failureKind === "expired"
-                  ? "expired"
-                  : "failed";
+            const terminalState = failureKind;
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
             yield* Effect.logInfo("Nexi webhook terminal transition started");
 
@@ -608,13 +600,9 @@ export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
     Layer.provide(WebhookEventRepositoryLive),
     Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
-    Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    ),
     Layer.provide(WorkspacePaidFulfillmentServiceLiveWithDependencies)
   );

@@ -43,9 +43,7 @@ export interface LegalEvidenceEventRepository {
 }
 
 export const LegalEvidenceEventRepository =
-  Context.GenericTag<LegalEvidenceEventRepository>(
-    "LegalEvidenceEventRepository"
-  );
+  Context.Service<LegalEvidenceEventRepository>("LegalEvidenceEventRepository");
 
 const parseLegalEvidenceEventInput = (input: LegalEvidenceEventInput) => {
   const parsed = legalEvidenceEventInputSchema.parse(input);

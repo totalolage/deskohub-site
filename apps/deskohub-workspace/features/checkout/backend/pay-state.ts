@@ -1,5 +1,12 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { Data, Effect, Schema as EffectSchema, ParseResult } from "effect";
+import {
+  Data,
+  Effect,
+  Schema as EffectSchema,
+  Option,
+  SchemaGetter,
+  SchemaIssue,
+} from "effect";
 import { z } from "zod/v4";
 import type {
   CheckoutSummaryChangedKeys,
@@ -305,6 +312,9 @@ export const buildRetryPayState = (input: {
     },
   });
 
+const payStateSchemaIssue = (actual: unknown, message: string) =>
+  new SchemaIssue.InvalidValue(Option.some(actual), { message });
+
 const sealPayStateRaw = (
   state: SignedPayState,
   options: PayStateCryptoOptions = {}
@@ -432,48 +442,49 @@ const openPayStateRaw = (
   return state.data;
 };
 
-const SignedPayStateEffectSchema: EffectSchema.Schema<SignedPayState> =
-  EffectSchema.declare(
-    (input: unknown): input is SignedPayState =>
-      signedPayStateSchema.safeParse(input).success,
-    {
-      identifier: "SignedPayState",
-      description: "Workspace checkout Pay state payload.",
-    }
-  );
+const SignedPayStateEffectSchema: EffectSchema.Codec<
+  SignedPayState,
+  SignedPayState
+> = EffectSchema.declare(
+  (input: unknown): input is SignedPayState =>
+    signedPayStateSchema.safeParse(input).success,
+  {
+    identifier: "SignedPayState",
+    description: "Workspace checkout Pay state payload.",
+  }
+);
 
-export const makePayStateTokenSchema = (options: PayStateCryptoOptions = {}) =>
-  EffectSchema.transformOrFail(
-    EffectSchema.String,
-    SignedPayStateEffectSchema,
-    {
-      strict: true,
-      decode: (token, _options, ast) =>
+export const makePayStateTokenSchema = (
+  options: PayStateCryptoOptions = {}
+): EffectSchema.Codec<SignedPayState, string> =>
+  EffectSchema.String.pipe(
+    EffectSchema.decodeTo(SignedPayStateEffectSchema, {
+      decode: SchemaGetter.transformOrFail((token: string) =>
         Effect.try({
           try: () => openPayStateRaw(token, options),
           catch: (error) =>
-            new ParseResult.Type(
-              ast,
+            payStateSchemaIssue(
               token,
               error instanceof Error
                 ? error.message
                 : "Invalid Pay state token."
             ),
-        }),
-      encode: (state, _options, ast) =>
+        })
+      ),
+      encode: SchemaGetter.transformOrFail((state: SignedPayState) =>
         Effect.try({
           try: () => sealPayStateRaw(state, options),
           catch: (error) =>
-            new ParseResult.Type(
-              ast,
+            payStateSchemaIssue(
               state,
               error instanceof Error
                 ? error.message
                 : "Pay state could not be sealed."
             ),
-        }),
-    }
-  ).annotations({
+        })
+      ),
+    })
+  ).annotate({
     identifier: "PayStateToken",
     description:
       "AES-GCM encrypted URL token for Workspace checkout Pay state.",
@@ -482,14 +493,13 @@ export const makePayStateTokenSchema = (options: PayStateCryptoOptions = {}) =>
 export const sealPayState = (
   state: SignedPayState,
   options: PayStateCryptoOptions = {}
-) =>
-  Effect.runSync(EffectSchema.encode(makePayStateTokenSchema(options))(state));
+) => EffectSchema.encodeSync(makePayStateTokenSchema(options))(state);
 
 export const openPayState = (
   token: string,
   options: PayStateCryptoOptions = {}
 ): SignedPayState =>
-  Effect.runSync(EffectSchema.decode(makePayStateTokenSchema(options))(token));
+  EffectSchema.decodeSync(makePayStateTokenSchema(options))(token);
 
 export const sealPayStateForUrl = (
   state: SignedPayState,

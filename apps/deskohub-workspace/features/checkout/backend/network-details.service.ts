@@ -25,12 +25,10 @@ export interface IWorkspaceCheckoutNetworkDetailsService {
   }) => Effect.Effect<WorkspaceCheckoutNetworkDetails>;
 }
 
-export class WorkspaceCheckoutNetworkDetailsService extends Context.Tag(
-  "@deskohub-workspace/checkout/WorkspaceCheckoutNetworkDetailsService"
-)<
+export class WorkspaceCheckoutNetworkDetailsService extends Context.Service<
   WorkspaceCheckoutNetworkDetailsService,
   IWorkspaceCheckoutNetworkDetailsService
->() {
+>()("@deskohub-workspace/checkout/WorkspaceCheckoutNetworkDetailsService") {
   static Live = Layer.succeed(this, {
     resolveCustomerNetworkDetails: Effect.fn(
       "workspaceCheckoutNetworkDetails.resolveCustomerNetworkDetails"

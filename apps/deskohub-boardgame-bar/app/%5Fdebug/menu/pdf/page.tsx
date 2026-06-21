@@ -1,11 +1,11 @@
+import { NextEffect } from "@deskohub/next-effect";
 import { Effect } from "effect";
 import { notFound } from "next/navigation";
 import { baseLocale } from "@/features/i18n";
 import { MenuData } from "@/features/menu";
 import { MenuPdfDebugView } from "@/features/menu/components/menu-debug";
-import { BasePage } from "@/shared/base-page";
 
-export default BasePage.build(
+export default NextEffect.make().page(
   Effect.fn("MenuPdfDebugPage")(
     function* MenuPage() {
       const { categories, products } = yield* MenuData;

@@ -96,14 +96,14 @@ export async function submitContactForm(
         Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
       )
     ),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       Effect.logError("Workspace contact form submission failed", {
         error,
         submittedValues,
       }).pipe(
         Effect.as({
           status: "error" as const,
-          message: error.message,
+          message: m.contactEmailSendError({}, { locale }),
           values: submittedValues,
         })
       )

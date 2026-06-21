@@ -11,9 +11,10 @@ export interface PostHogRuntimeConfigObj {
   readonly serviceNamespace: string;
 }
 
-export class PostHogRuntimeConfig extends Context.Tag(
-  "@deskohub-workspace/analytics/PostHogRuntimeConfig"
-)<PostHogRuntimeConfig, PostHogRuntimeConfigObj>() {}
+export class PostHogRuntimeConfig extends Context.Service<
+  PostHogRuntimeConfig,
+  PostHogRuntimeConfigObj
+>()("@deskohub-workspace/analytics/PostHogRuntimeConfig") {}
 
 export const PostHogRuntimeConfigLive = Layer.succeed(PostHogRuntimeConfig, {
   environment: env.VERCEL_ENV,

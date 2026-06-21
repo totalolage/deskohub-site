@@ -28,7 +28,7 @@ export interface WorkspaceTableAssignmentService {
 }
 
 export const WorkspaceTableAssignmentService =
-  Context.GenericTag<WorkspaceTableAssignmentService>(
+  Context.Service<WorkspaceTableAssignmentService>(
     "WorkspaceTableAssignmentService"
   );
 

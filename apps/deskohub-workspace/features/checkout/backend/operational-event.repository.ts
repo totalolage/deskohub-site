@@ -105,7 +105,7 @@ export interface OperationalEventRepository {
 }
 
 export const OperationalEventRepository =
-  Context.GenericTag<OperationalEventRepository>("OperationalEventRepository");
+  Context.Service<OperationalEventRepository>("OperationalEventRepository");
 
 export const parseOperationalEventInput = (input: OperationalEventInput) =>
   operationalEventInputSchema.parse(input);

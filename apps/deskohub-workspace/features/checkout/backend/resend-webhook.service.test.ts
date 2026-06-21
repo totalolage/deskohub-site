@@ -606,7 +606,7 @@ describe("ResendWebhookService", () => {
         );
       }
       expect(tableMapSvg).toContain('width="720"');
-      expect(tableMapSvg).toContain('height="960"');
+      expect(tableMapSvg).toContain('height="540"');
       expect(tableMapSvg).not.toContain("<text");
       const [, tableMapOptions] = generateSvgPngBuffer.mock.calls[0] ?? [];
       if (
@@ -786,16 +786,28 @@ describe("ResendWebhookService", () => {
   });
 
   test("Resend provider forwards webhook correlation tags", async () => {
-    const { EmailProviderTag } = await import(
+    const { EmailConfigTag, EmailProviderTag } = await import(
       "@deskohub/email/backend/service"
     );
     const { ResendEmailProviderLive } = await import(
       "@deskohub/email/backend/providers/resend-provider"
     );
+    const emailConfig: EmailProviderConfig = {
+      provider: "resend",
+      apiKey: "api-key",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub",
+      },
+    };
 
     const provider = await Effect.gen(function* () {
       return yield* EmailProviderTag;
-    }).pipe(Effect.provide(ResendEmailProviderLive), Effect.runPromise);
+    }).pipe(
+      Effect.provide(ResendEmailProviderLive),
+      Effect.provide(Layer.succeed(EmailConfigTag, emailConfig)),
+      Effect.runPromise
+    );
 
     await Effect.runPromise(
       provider.send({

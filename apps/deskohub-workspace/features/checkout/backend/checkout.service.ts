@@ -59,7 +59,7 @@ import {
   PostHogEventService,
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 import {
   getWorkspaceRuntimeCallbackOrigin,
@@ -92,7 +92,7 @@ export interface CheckoutService {
 }
 
 export const CheckoutService =
-  Context.GenericTag<CheckoutService>("CheckoutService");
+  Context.Service<CheckoutService>("CheckoutService");
 
 const generateNexiOrderId = () =>
   `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
@@ -177,7 +177,7 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
   }
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
-const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
+const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
 
 export const getNexiCheckoutCurrencyOverride = () => {
   if (env.VERCEL_ENV === "production") return undefined;
@@ -738,8 +738,6 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(PaymentAttemptRepositoryLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
-  Layer.provide(
-    Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-  ),
+  Layer.provide(DotyposServiceLive),
   Layer.provide(NexiServiceLive)
 );

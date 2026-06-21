@@ -1,12 +1,11 @@
 "use server";
 
-import { StandaloneEmailServiceLayer } from "@deskohub/email";
 import { Effect, Layer } from "effect";
 import {
   TrainingReservationService,
   TrainingReservationServiceLive,
 } from "@/features/training/reservation/backend/training-reservation.service";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { EmailServiceLayer } from "@/shared/backend/config/email.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { reservationSchema } from "../schemas/reservation";
 
@@ -100,9 +99,7 @@ const _submitTrainingRoomReservation = createEffectSafeAction(
     ),
   // Provide TrainingReservationServiceLive with its email service dependency
   TrainingReservationServiceLive.pipe(
-    Layer.provide(
-      StandaloneEmailServiceLayer.pipe(Layer.provide(EmailConfigLayer))
-    ),
+    Layer.provide(EmailServiceLayer),
     Layer.orDie
   )
 );

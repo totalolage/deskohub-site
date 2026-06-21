@@ -4,7 +4,7 @@ import {
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
-import { Effect, FiberId, HashMap, Logger, type LogLevel } from "effect";
+import { Effect, Logger, type LogLevel, References } from "effect";
 import { after } from "next/server";
 import { getPostHogLogAnnotationsFromCookieHeader } from "./posthog-log-annotations";
 import {
@@ -295,33 +295,46 @@ export const censorLogValue = (value: unknown): unknown =>
   censorLogValueInternal(value, new WeakMap());
 
 export const censorLoggerOptions = (
-  options: Logger.Logger.Options<unknown>
-): Logger.Logger.Options<unknown> => ({
-  ...options,
-  message: censorLogValue(options.message),
-  annotations: HashMap.reduce(
-    options.annotations,
-    HashMap.empty<string, unknown>(),
-    (accumulator, value, key) =>
-      HashMap.set(
-        accumulator,
-        key,
-        isSensitiveLogKey(key) ? CENSORED_LOG_VALUE : censorLogValue(value)
-      )
-  ),
-});
+  options: Logger.Options<unknown>
+): Logger.Options<unknown> => {
+  const fiber = options.fiber;
 
-export const CensoringLogger = Logger.defaultLogger.pipe(
-  Logger.mapInputOptions(censorLoggerOptions)
+  return {
+    ...options,
+    message: censorLogValue(options.message),
+    fiber: {
+      ...fiber,
+      getRef: (ref) => {
+        const value = fiber.getRef(ref);
+        if (ref !== References.CurrentLogAnnotations) return value;
+        const annotations = value as Readonly<Record<string, unknown>>;
+
+        return Object.fromEntries(
+          Object.entries(annotations).map(([key, nestedValue]) => [
+            key,
+            isSensitiveLogKey(key)
+              ? CENSORED_LOG_VALUE
+              : censorLogValue(nestedValue),
+          ])
+        ) as typeof value;
+      },
+    },
+  };
+};
+
+const CensoringFormatter = Logger.make((options) =>
+  Logger.formatLogFmt.log(censorLoggerOptions(options))
 );
 
+export const CensoringLogger = Logger.withLeveledConsole(CensoringFormatter);
+
 const logLevelToOtelSeverity = (logLevel: LogLevel.LogLevel) => {
-  switch (logLevel._tag) {
+  switch (logLevel) {
     case "Fatal":
       return { severityNumber: SeverityNumber.FATAL, severityText: "fatal" };
     case "Error":
       return { severityNumber: SeverityNumber.ERROR, severityText: "error" };
-    case "Warning":
+    case "Warn":
       return { severityNumber: SeverityNumber.WARN, severityText: "warn" };
     case "Info":
       return { severityNumber: SeverityNumber.INFO, severityText: "info" };
@@ -356,23 +369,25 @@ const toOtelBody = (message: unknown): AnyValue => {
 
 export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
   Effect.sync(() =>
-    Logger.make((options) => {
+    Logger.make((rawOptions) => {
+      const options = censorLoggerOptions(rawOptions);
       const otelLogger = loggerProvider.getLogger("@effect/opentelemetry");
       const { severityNumber, severityText } = logLevelToOtelSeverity(
         options.logLevel
       );
       const now = options.date.getTime();
-      const attributes = HashMap.reduce(
-        options.annotations,
-        { fiberId: FiberId.threadName(options.fiberId) } as AnyValueMap,
-        (accumulator, value, key) => {
-          accumulator[key] = toOtelValue(value);
-          return accumulator;
-        }
-      );
+      const attributes = { fiberId: `#${options.fiber.id}` } as AnyValueMap;
 
-      for (const span of options.spans) {
-        attributes[`logSpan.${span.label}`] = `${now - span.startTime}ms`;
+      for (const [key, value] of Object.entries(
+        options.fiber.getRef(References.CurrentLogAnnotations)
+      )) {
+        attributes[key] = toOtelValue(value);
+      }
+
+      for (const [label, timestamp] of options.fiber.getRef(
+        References.CurrentLogSpans
+      )) {
+        attributes[`logSpan.${label}`] = `${now - timestamp}ms`;
       }
 
       otelLogger.emit({
@@ -383,18 +398,15 @@ export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
         severityText,
         timestamp: options.date,
       });
-    }).pipe(Logger.mapInputOptions(censorLoggerOptions))
+    })
   );
 
 export const createWorkspaceLoggerLive = (loggerProvider?: LoggerProvider) =>
-  loggerProvider
-    ? Logger.replaceEffect(
-        Logger.defaultLogger,
-        createCensoredOtelLogger(loggerProvider).pipe(
-          Effect.map((otelLogger) => Logger.zip(CensoringLogger, otelLogger))
-        )
-      )
-    : Logger.replace(Logger.defaultLogger, CensoringLogger);
+  Logger.layer(
+    loggerProvider
+      ? [CensoringLogger, createCensoredOtelLogger(loggerProvider)]
+      : [CensoringLogger]
+  );
 
 export const LoggerLive = createWorkspaceLoggerLive(postHogLoggerProvider);
 

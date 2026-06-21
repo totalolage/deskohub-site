@@ -48,9 +48,10 @@ export interface IWorkspaceReservationService {
   >;
 }
 
-export class WorkspaceReservationService extends Context.Tag(
-  "@deskohub-workspace/reservation/WorkspaceReservationService"
-)<WorkspaceReservationService, IWorkspaceReservationService>() {
+export class WorkspaceReservationService extends Context.Service<
+  WorkspaceReservationService,
+  IWorkspaceReservationService
+>()("@deskohub-workspace/reservation/WorkspaceReservationService") {
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {

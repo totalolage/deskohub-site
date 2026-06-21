@@ -1,3 +1,4 @@
+import { GoogleCalendarService } from "@deskohub/google-calendar";
 import {
   GoogleCalendarRuntimeConfig,
   type GoogleCalendarRuntimeConfigObj,
@@ -13,4 +14,8 @@ export const GoogleCalendarRuntimeConfigLive = Layer.succeed(
     privateKey: env.GOOGLE_CALENDAR_PRIVATE_KEY,
     timeZone: "Europe/Prague",
   } satisfies GoogleCalendarRuntimeConfigObj
+);
+
+export const GoogleCalendarServiceLive = GoogleCalendarService.Live.pipe(
+  Layer.provide(GoogleCalendarRuntimeConfigLive)
 );

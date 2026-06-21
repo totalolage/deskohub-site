@@ -69,7 +69,7 @@ export async function GET(request: Request): Promise<NextResponse> {
         Effect.logInfo("Workspace availability response ready", { result })
       ),
       Effect.map((result) => NextResponse.json(result)),
-      Effect.catchAll(handleAvailabilityRouteError)
+      Effect.catch(handleAvailabilityRouteError)
     )
   );
 }

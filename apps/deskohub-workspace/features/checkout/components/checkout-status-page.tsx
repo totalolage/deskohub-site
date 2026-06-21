@@ -210,6 +210,7 @@ export function CheckoutStatusPage({
   status,
 }: CheckoutStatusPageProps) {
   const copy = getStatusCopy(status.status, locale);
+  const showReservationDetails = status.status !== "not_found";
   const summaryRows = getSummaryRows(status, locale);
   const supportContactHref = getFulfillmentFailedContactHref(status, locale);
   const showSupportButton = !!supportContactHref;
@@ -250,43 +251,45 @@ export function CheckoutStatusPage({
           </Button>
         )}
 
-        <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
-          <h2 className="text-xl text-navy-blue">
-            {m.checkoutStatusSummaryTitle({}, { locale })}
-          </h2>
+        {showReservationDetails && (
+          <div className="mt-10 rounded-[1.6rem] border border-navy-blue/10 bg-linear-to-br from-white to-aquamarine-green/8 p-5 sm:p-6">
+            <h2 className="text-xl text-navy-blue">
+              {m.checkoutStatusSummaryTitle({}, { locale })}
+            </h2>
 
-          <dl className="mt-5 grid gap-3">
-            <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
-              <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                {m.checkoutStatusOrderIdLabel({}, { locale })}
-              </dt>
-              <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
-                {status.orderId}
-              </dd>
-            </div>
-            {summaryRows.map((row) => (
-              <div
-                key={row.label}
-                className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
-              >
+            <dl className="mt-5 grid gap-3">
+              <div className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4">
                 <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
-                  {row.label}
+                  {m.checkoutStatusOrderIdLabel({}, { locale })}
                 </dt>
-                <dd className="text-base font-semibold text-navy-blue">
-                  {row.value}
+                <dd className="break-all font-mono text-sm font-semibold text-navy-blue">
+                  {status.orderId}
                 </dd>
               </div>
-            ))}
-          </dl>
+              {summaryRows.map((row) => (
+                <div
+                  key={row.label}
+                  className="grid gap-1 rounded-2xl border border-navy-blue/8 bg-white/80 px-4 py-3 sm:grid-cols-[10rem_1fr] sm:gap-4"
+                >
+                  <dt className="text-xs font-semibold uppercase tracking-[0.14em] text-navy-blue/52">
+                    {row.label}
+                  </dt>
+                  <dd className="text-base font-semibold text-navy-blue">
+                    {row.value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
 
-          {summaryRows.length === 0 && (
-            <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/70">
-              {m.checkoutStatusMissingSummary({}, { locale })}
-            </p>
-          )}
-        </div>
+            {summaryRows.length === 0 && (
+              <p className="mt-4 rounded-2xl border border-burned-orange/16 bg-burned-orange/8 px-4 py-3 text-sm leading-6 text-navy-blue/70">
+                {m.checkoutStatusMissingSummary({}, { locale })}
+              </p>
+            )}
+          </div>
+        )}
 
-        {status.tableMap && (
+        {showReservationDetails && status.tableMap && (
           <div className="mt-8 rounded-[1.6rem] border border-navy-blue/10 bg-white/88 p-5 sm:p-6">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>

@@ -1,8 +1,14 @@
 import "server-only";
 
-import * as Schema from "@effect/schema/Schema";
 import { v2 as cloudinary } from "cloudinary";
 import { Context, Effect, Layer, pipe, Schedule } from "effect";
+import * as Schema from "effect/Schema";
+import {
+  type CloudinaryConfig,
+  CloudinaryRuntimeConfig,
+  configureCloudinarySdk,
+  validateCloudinaryRuntimeConfig,
+} from "./config";
 import { CloudinarySearchError } from "./errors";
 import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
 import {
@@ -12,15 +18,9 @@ import {
   SearchOptionsSchema,
 } from "./schema";
 
-export interface CloudinaryConfig {
-  readonly cloudName: string;
-  readonly apiKey: string;
-  readonly apiSecret: string;
-  readonly defaultMaxResults?: number;
-  readonly serviceName?: string;
-}
+export type { CloudinaryConfig } from "./config";
 
-export interface CloudinaryService {
+export interface ICloudinaryService {
   readonly searchByTag: (
     tag: string,
     options?: SearchOptions
@@ -42,15 +42,107 @@ export interface CloudinaryService {
   ) => Effect.Effect<readonly CloudinaryAsset[], CloudinarySearchError>;
 }
 
-export const CloudinaryService = Context.GenericTag<CloudinaryService>(
-  "@deskohub/cloudinary/CloudinaryService"
-);
+export class CloudinaryService extends Context.Service<
+  CloudinaryService,
+  ICloudinaryService
+>()("@deskohub/cloudinary/CloudinaryService") {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const rawConfig = yield* CloudinaryRuntimeConfig;
+      const config = yield* validateCloudinaryRuntimeConfig(rawConfig);
+      yield* configureCloudinarySdk(config);
+
+      yield* Effect.logDebug("Cloudinary service initialized", {
+        serviceName: config.serviceName,
+        cloudName: config.cloudName,
+      });
+
+      const executeSearch = createSearchExecutor(config);
+
+      const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
+        executeSearch(`tags=${tag} AND resource_type:image`, options);
+
+      const searchByFolder: ICloudinaryService["searchByFolder"] = (
+        folder,
+        options
+      ) =>
+        Effect.gen(function* () {
+          yield* Effect.annotateLogsScoped({ folder, options });
+          yield* Effect.logInfo("Cloudinary folder search started", { folder });
+
+          const expressions = [`folder=${folder}`, `folder:${folder}`];
+
+          for (const expression of expressions) {
+            const assets = yield* executeSearch(
+              `${expression} AND resource_type:image`,
+              options
+            );
+
+            if (assets.length > 0) {
+              yield* Effect.annotateLogsScoped({ result: assets });
+              yield* Effect.logInfo("Cloudinary folder search completed", {
+                folder,
+                expression,
+                resultCount: assets.length,
+              });
+              return assets;
+            }
+
+            yield* Effect.logWarning(
+              "Cloudinary folder search expression returned no assets",
+              {
+                folder,
+                expression,
+              }
+            );
+          }
+
+          yield* Effect.annotateLogsScoped({ result: [] });
+          yield* Effect.logWarning(
+            "Cloudinary folder search completed with no assets",
+            {
+              folder,
+            }
+          );
+          return [];
+        }).pipe(Effect.scoped, Effect.annotateLogs({ folder, options }));
+
+      const searchAll: ICloudinaryService["searchAll"] = (options) =>
+        executeSearch("resource_type:image", options);
+
+      const searchByExpression: ICloudinaryService["searchByExpression"] = (
+        expression,
+        options
+      ) => executeSearch(expression, options);
+
+      const searchWithTags: ICloudinaryService["searchWithTags"] = (
+        tags,
+        options
+      ) => {
+        if (tags.length === 0) {
+          return searchAll(options);
+        }
+
+        return executeSearch(cnfToCloudinaryExpression(tags), options);
+      };
+
+      return {
+        searchByTag,
+        searchByFolder,
+        searchAll,
+        searchByExpression,
+        searchWithTags,
+      } satisfies ICloudinaryService;
+    })
+  );
+}
 
 const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
-  Schedule.intersect(Schedule.recurs(2)),
-  Schedule.whileInput<CloudinarySearchError>(
-    (error) => error.httpCode !== undefined && error.httpCode >= 500
+  Schedule.both(Schedule.recurs(2)),
+  Schedule.while<CloudinarySearchError, unknown>(
+    ({ input }) => input.httpCode !== undefined && input.httpCode >= 500
   )
 );
 
@@ -84,7 +176,7 @@ function stringifyUnknownError(error: unknown): string {
 
 function decodeSearchResponse(result: unknown, expression: string) {
   return pipe(
-    Schema.decodeUnknown(CloudinarySearchResponseSchema)(result),
+    Schema.decodeUnknownEffect(CloudinarySearchResponseSchema)(result),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
@@ -98,7 +190,7 @@ function decodeSearchResponse(result: unknown, expression: string) {
 
 function decodeSearchOptions(options: unknown, expression: string) {
   return pipe(
-    Schema.decodeUnknown(SearchOptionsSchema)(options ?? {}),
+    Schema.decodeUnknownEffect(SearchOptionsSchema)(options ?? {}),
     Effect.mapError(
       () =>
         new CloudinarySearchError({
@@ -207,104 +299,6 @@ function createSearchExecutor(config: CloudinaryConfig) {
     (effect, expression, options) =>
       effect.pipe(Effect.scoped, Effect.annotateLogs({ expression, options }))
   );
-}
-
-export function makeCloudinaryService(config: CloudinaryConfig) {
-  return Effect.gen(function* () {
-    yield* Effect.sync(() => {
-      cloudinary.config({
-        cloud_name: config.cloudName,
-        api_key: config.apiKey,
-        api_secret: config.apiSecret,
-      });
-    });
-
-    yield* Effect.logDebug("Cloudinary service initialized", {
-      serviceName: config.serviceName,
-      cloudName: config.cloudName,
-    });
-
-    const executeSearch = createSearchExecutor(config);
-
-    const searchByTag: CloudinaryService["searchByTag"] = (tag, options) =>
-      executeSearch(`tags=${tag} AND resource_type:image`, options);
-
-    const searchByFolder: CloudinaryService["searchByFolder"] = (
-      folder,
-      options
-    ) =>
-      Effect.gen(function* () {
-        yield* Effect.annotateLogsScoped({ folder, options });
-        yield* Effect.logInfo("Cloudinary folder search started", { folder });
-
-        const expressions = [`folder=${folder}`, `folder:${folder}`];
-
-        for (const expression of expressions) {
-          const assets = yield* executeSearch(
-            `${expression} AND resource_type:image`,
-            options
-          );
-
-          if (assets.length > 0) {
-            yield* Effect.annotateLogsScoped({ result: assets });
-            yield* Effect.logInfo("Cloudinary folder search completed", {
-              folder,
-              expression,
-              resultCount: assets.length,
-            });
-            return assets;
-          }
-
-          yield* Effect.logWarning(
-            "Cloudinary folder search expression returned no assets",
-            {
-              folder,
-              expression,
-            }
-          );
-        }
-
-        yield* Effect.annotateLogsScoped({ result: [] });
-        yield* Effect.logWarning(
-          "Cloudinary folder search completed with no assets",
-          {
-            folder,
-          }
-        );
-        return [];
-      }).pipe(Effect.scoped, Effect.annotateLogs({ folder, options }));
-
-    const searchAll: CloudinaryService["searchAll"] = (options) =>
-      executeSearch("resource_type:image", options);
-
-    const searchByExpression: CloudinaryService["searchByExpression"] = (
-      expression,
-      options
-    ) => executeSearch(expression, options);
-
-    const searchWithTags: CloudinaryService["searchWithTags"] = (
-      tags,
-      options
-    ) => {
-      if (tags.length === 0) {
-        return searchAll(options);
-      }
-
-      return executeSearch(cnfToCloudinaryExpression(tags), options);
-    };
-
-    return {
-      searchByTag,
-      searchByFolder,
-      searchAll,
-      searchByExpression,
-      searchWithTags,
-    } satisfies CloudinaryService;
-  });
-}
-
-export function makeCloudinaryServiceLive(config: CloudinaryConfig) {
-  return Layer.effect(CloudinaryService, makeCloudinaryService(config));
 }
 
 export const getGalleryImages = Effect.fn("getGalleryImages")(

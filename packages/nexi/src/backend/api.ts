@@ -1,100 +1,143 @@
-import { Effect, Schema } from "effect";
+import { Context, Effect, Layer, Option, Predicate, Schema } from "effect";
 import { NexiRuntimeConfig, type NexiRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError } from "../errors";
-import { createClient } from "../generated/client";
-import * as generatedApi from "../generated/sdk.gen";
-import type {
-  CreateHostedPaymentPageRequest,
+import {
+  type CreateHostedPaymentPageRequest,
+  type CreateHostedPaymentPageResponse,
   ErrorResponse,
-} from "../generated/types.gen";
-
-export class NexiApi extends Effect.Service<NexiApi>()("NexiApi", {
-  effect: Effect.gen(function* () {
-    const config = yield* NexiRuntimeConfig;
-    const baseUrl = getNexiApiBaseUrl(config.baseUrl);
-
-    const client = createClient({
-      baseUrl,
-    });
-
-    return {
-      createHostedPaymentPage: Effect.fn("createHostedPaymentPage")(
-        function* (params: {
-          body: CreateHostedPaymentPageRequest;
-          headers?: Record<string, string>;
-        }) {
-          return yield* Effect.tryPromise({
-            try: async () => {
-              const response = await generatedApi.createHostedPaymentPage(
-                createApiOptions(config, client, {
-                  body: params.body,
-                  headers: params.headers,
-                })
-              );
-
-              if (response.error) throw response.error satisfies ErrorResponse;
-
-              return response.data;
-            },
-            catch: (error) =>
-              transformErrorResponse(
-                error,
-                "Create hosted payment page",
-                baseUrl
-              ),
-          });
-        }
-      ),
-
-      getOrder: Effect.fn("getOrder")(function* (params: {
-        path: { orderId: string };
-        headers?: Record<string, string>;
-      }) {
-        return yield* Effect.tryPromise({
-          try: async () => {
-            const response = await generatedApi.getOrder(
-              createApiOptions(config, client, {
-                path: params.path,
-                headers: params.headers,
-              })
-            );
-
-            if (response.error) throw response.error satisfies ErrorResponse;
-
-            return response.data;
-          },
-          catch: (error) => transformErrorResponse(error, "Get order", baseUrl),
-        });
-      }),
-    };
-  }),
-}) {}
-
-const ErrorResponseSchema = Schema.Struct({
-  errors: Schema.optional(
-    Schema.Array(
-      Schema.Struct({
-        code: Schema.optional(Schema.String),
-        description: Schema.optional(Schema.String),
-      })
-    )
-  ),
-  status: Schema.optional(Schema.Int),
-  error: Schema.optional(Schema.String),
-  message: Schema.optional(Schema.String),
-});
+  make,
+  type NexiClient,
+  type OrderResponse,
+} from "../generated/effect.gen";
+import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClientError from "effect/unstable/http/HttpClientError";
+import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 
 const NEXI_API_PATH = "/api/phoenix-0.0/psp/api/v1";
 
-const getNexiApiBaseUrl = (origin: string) =>
-  new URL(NEXI_API_PATH, origin).toString();
+export const makeNexiClient = ({
+  config,
+  headers,
+  httpClient,
+}: {
+  config: NexiRuntimeConfigObj;
+  headers?: Record<string, string>;
+  httpClient: HttpClient.HttpClient;
+}): NexiClient => {
+  const baseUrl = new URL(NEXI_API_PATH, config.baseUrl).toString();
+  return make(httpClient, {
+    transformClient: (client) =>
+      Effect.succeed(
+        client.pipe(
+          HttpClient.mapRequestInput((request) =>
+            request.pipe(
+              HttpClientRequest.prependUrl(baseUrl),
+              HttpClientRequest.setHeaders({
+                "X-API-KEY": config.apiKey,
+                ...headers,
+              })
+            )
+          )
+        )
+      ),
+  });
+};
 
-const transformErrorResponse = (
+interface INexiGeneratedClient {
+  readonly createHostedPaymentPage: (input: {
+    readonly correlationId: string;
+    readonly payload: CreateHostedPaymentPageRequest;
+  }) => Effect.Effect<
+    CreateHostedPaymentPageResponse,
+    ExternalAPIError | NetworkError
+  >;
+  readonly getOrder: (input: {
+    readonly correlationId: string;
+    readonly orderId: string;
+  }) => Effect.Effect<OrderResponse, ExternalAPIError | NetworkError>;
+}
+
+const makeNexiGeneratedClient = Effect.gen(function* () {
+  const config = yield* NexiRuntimeConfig;
+  const httpClient = yield* HttpClient.HttpClient;
+
+  const clientFor = (correlationId: string) =>
+    makeNexiClient({
+      config,
+      httpClient,
+      headers: { "Correlation-Id": correlationId },
+    });
+
+  const runNexiRequest = <A, E>(
+    effect: Effect.Effect<A, E>,
+    operation: string
+  ) =>
+    effect.pipe(
+      Effect.mapError((error) => mapNexiClientError(error, operation)),
+      Effect.timeoutOrElse({
+        duration: config.apiTimeout,
+        orElse: () =>
+          Effect.fail(
+            new NetworkError({
+              message: "Failed to connect to Nexi",
+            })
+          ),
+      })
+    );
+
+  return {
+    createHostedPaymentPage: ({ correlationId, payload }) =>
+      runNexiRequest(
+        clientFor(correlationId).createHostedPaymentPage({ payload }),
+        "Create hosted payment page"
+      ),
+    getOrder: ({ correlationId, orderId }) =>
+      runNexiRequest(
+        clientFor(correlationId).getOrder(orderId, undefined),
+        "Get order"
+      ),
+  } satisfies INexiGeneratedClient;
+});
+
+export class NexiGeneratedClient extends Context.Service<
+  NexiGeneratedClient,
+  INexiGeneratedClient
+>()("NexiGeneratedClient") {
+  static Live = Layer.effect(this, makeNexiGeneratedClient);
+}
+
+export const mapNexiClientError = (
   error: unknown,
-  operation: string,
-  _apiUrl: string
+  operation: string
 ): ExternalAPIError | NetworkError => {
-  if (error instanceof Error) {
+  if (isNetworkError(error)) return error;
+
+  if (HttpClientError.isHttpClientError(error)) {
+    const reason = error.reason;
+    if (
+      Predicate.isTagged(reason, "TransportError") ||
+      Predicate.isTagged(reason, "InvalidUrlError")
+    ) {
+      return new NetworkError({
+        message: "Failed to connect to Nexi",
+        url: error.request.url,
+        cause: error,
+      });
+    }
+
+    const providerError = parseProviderError(
+      "description" in reason ? reason.description : undefined
+    );
+    return toExternalApiError({
+      operation,
+      providerError,
+      statusCode: error.response?.status,
+      cause: providerError?.errors ?? providerError?.error ?? reason.cause,
+      message: providerError?.message ?? providerError?.errors?.[0]?.description,
+    });
+  }
+
+  if (Predicate.isError(error)) {
     if (
       error.name === "AbortError" ||
       error.message.includes("fetch") ||
@@ -107,15 +150,14 @@ const transformErrorResponse = (
     }
   }
 
-  const parseResult = Schema.decodeUnknownOption(ErrorResponseSchema)(error);
-  if (parseResult._tag === "Some") {
-    const { errors, status, error: errorCode, message } = parseResult.value;
-    return new ExternalAPIError({
-      service: "Nexi",
+  const providerError = parseProviderError(error);
+  if (providerError) {
+    return toExternalApiError({
       operation,
-      statusCode: status ?? 500,
-      message: message ?? errors?.[0]?.description,
-      cause: errors ?? errorCode,
+      providerError,
+      statusCode: providerError.status ?? 500,
+      cause: providerError.errors ?? providerError.error,
+      message: providerError.message ?? providerError.errors?.[0]?.description,
     });
   }
 
@@ -125,27 +167,41 @@ const transformErrorResponse = (
   });
 };
 
-type ApiCallOptions = {
-  path?: Record<string, string>;
-  query?: Record<string, unknown>;
-  body?: unknown;
-  headers?: Record<string, string>;
+const parseProviderError = (error: unknown): ErrorResponse | undefined => {
+  const decoded = Schema.decodeUnknownOption(ErrorResponse)(error);
+  if (Option.isSome(decoded)) return decoded.value;
+
+  if (typeof error !== "string") return undefined;
+
+  try {
+    const parsed = JSON.parse(error);
+    const parsedDecoded = Schema.decodeUnknownOption(ErrorResponse)(parsed);
+    return Option.isSome(parsedDecoded) ? parsedDecoded.value : undefined;
+  } catch {
+    return undefined;
+  }
 };
 
-const createApiOptions = <T extends ApiCallOptions>(
-  config: NexiRuntimeConfigObj,
-  client: ReturnType<typeof createClient>,
-  options: T
-): T & {
-  client: ReturnType<typeof createClient>;
-  headers: Record<string, string>;
-  signal: AbortSignal;
-} => ({
-  ...options,
-  client,
-  headers: {
-    "X-API-KEY": config.apiKey,
-    ...options.headers,
-  },
-  signal: AbortSignal.timeout(config.apiTimeout),
-});
+const toExternalApiError = ({
+  cause,
+  message,
+  operation,
+  providerError,
+  statusCode,
+}: {
+  cause: unknown;
+  message: string | undefined;
+  operation: string;
+  providerError: ErrorResponse | undefined;
+  statusCode: number | undefined;
+}) =>
+  new ExternalAPIError({
+    service: "Nexi",
+    operation,
+    statusCode: providerError?.status ?? statusCode,
+    message,
+    cause,
+  });
+
+const isNetworkError = (error: unknown): error is NetworkError =>
+  Predicate.isTagged(error, "NetworkError");

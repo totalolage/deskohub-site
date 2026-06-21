@@ -1,5 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
+import type { Customer } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -11,7 +11,6 @@ import type {
   PaymentState,
   WorkspaceReservation,
 } from "@/db/schema";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
 import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
@@ -39,8 +38,7 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
 
@@ -99,7 +97,7 @@ export interface CheckoutStatusService {
   }) => Effect.Effect<CheckoutStatusViewModel, DatabaseError>;
 }
 
-export const CheckoutStatusService = Context.GenericTag<CheckoutStatusService>(
+export const CheckoutStatusService = Context.Service<CheckoutStatusService>(
   "CheckoutStatusService"
 );
 
@@ -506,12 +504,8 @@ export const CheckoutStatusServiceLiveWithDependencies =
   CheckoutStatusServiceLive.pipe(
     Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    ),
-    Layer.provide(NexiServiceLive)
+    Layer.provide(DotyposServiceLive)
   );

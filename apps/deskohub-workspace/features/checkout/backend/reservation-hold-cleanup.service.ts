@@ -1,16 +1,24 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer } from "effect";
-import { OperationalEventRepository } from "@/features/checkout/backend/operational-event.repository";
+import { WorkspaceDatabaseLive } from "@/db/database.service";
+import {
+  OperationalEventRepository,
+  OperationalEventRepositoryLive,
+} from "@/features/checkout/backend/operational-event.repository";
 import { captureReservationAbandoned } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "@/features/checkout/backend/provider-payment-finalization.service";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"
@@ -29,12 +37,12 @@ export interface ReservationHoldCleanupService {
     readonly limit: number;
   }) => Effect.Effect<
     { readonly cancelled: number; readonly failed: number },
-    never
+    ReservationHoldCleanupError
   >;
 }
 
 export const ReservationHoldCleanupService =
-  Context.GenericTag<ReservationHoldCleanupService>(
+  Context.Service<ReservationHoldCleanupService>(
     "ReservationHoldCleanupService"
   );
 
@@ -282,7 +290,13 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                 cause,
               })
             ),
-            Effect.orElseSucceed(() => [])
+            Effect.mapError(
+              (cause) =>
+                new ReservationHoldCleanupError({
+                  message: "Expired reservation holds could not be selected.",
+                  cause,
+                })
+            )
           );
           yield* Effect.annotateLogsScoped({ orders });
           yield* Effect.logInfo(
@@ -301,10 +315,10 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             const result = yield* cancelOrderHold({
               orderId: order.id,
               holdExpiredAt: input.now,
-            }).pipe(Effect.either);
+            }).pipe(Effect.result);
             yield* Effect.annotateLogsScoped({ order, result });
 
-            if (result._tag === "Right") {
+            if (result._tag === "Success") {
               cancelled += 1;
               yield* Effect.logInfo(
                 "Expired reservation hold cleanup completed",
@@ -319,7 +333,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                 "Expired reservation hold cleanup failed",
                 {
                   orderId: order.id,
-                  cause: result.left,
+                  cause: result.failure,
                 }
               );
             }
@@ -342,5 +356,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(PostHogEventServiceLive)
+    Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
+    Layer.provide(WorkspaceReservationRepositoryLive),
+    Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(DotyposServiceLive)
   );

@@ -8,7 +8,7 @@ import {
 } from "@/features/checkout/backend/pay-state.server";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
-import { isLocale, locales, m, type Locale } from "@/features/i18n";
+import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { Button } from "@/shared/components/ui/button";
@@ -116,11 +116,7 @@ export default async function LocalizedCheckoutPayPage({
   ));
 }
 
-function InvalidPayState({
-  locale,
-}: {
-  readonly locale: Locale;
-}) {
+function InvalidPayState({ locale }: { readonly locale: Locale }) {
   return (
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">

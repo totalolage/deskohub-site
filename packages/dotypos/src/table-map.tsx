@@ -1,5 +1,5 @@
 import type { CSSProperties, KeyboardEventHandler } from "react";
-import type { Table } from "./generated/types.gen";
+import type { Table } from "./generated";
 
 type TableType = NonNullable<Table["type"]>;
 

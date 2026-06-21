@@ -32,8 +32,7 @@ export interface ContactService {
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
 
-export const ContactService =
-  Context.GenericTag<ContactService>("ContactService");
+export const ContactService = Context.Service<ContactService>("ContactService");
 
 const workspaceRecipient = {
   email: workspaceSiteConstants.contact.infoEmail,
@@ -282,7 +281,7 @@ export const ContactServiceLive = Layer.effect(
                 "Workspace contact confirmation email send succeeded"
               )
             ),
-            Effect.catchAll((error) =>
+            Effect.catch((error) =>
               Effect.logWarning("Contact confirmation email delivery failed", {
                 error,
                 errorType: error._tag,

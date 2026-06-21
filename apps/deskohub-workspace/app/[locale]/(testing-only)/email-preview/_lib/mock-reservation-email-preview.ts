@@ -1,4 +1,4 @@
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
+import type { Customer } from "@deskohub/dotypos/generated";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
 const mockDate = new Date("2026-06-12T09:00:00.000+02:00");

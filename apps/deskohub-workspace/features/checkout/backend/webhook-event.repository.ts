@@ -51,8 +51,9 @@ export interface WebhookEventRepository {
   ) => Effect.Effect<"claimed" | "processed", DatabaseError>;
 }
 
-export const WebhookEventRepository =
-  Context.GenericTag<WebhookEventRepository>("WebhookEventRepository");
+export const WebhookEventRepository = Context.Service<WebhookEventRepository>(
+  "WebhookEventRepository"
+);
 
 const eventIdentityWhere = (input: WebhookEventIdentity) =>
   input.type === "id"

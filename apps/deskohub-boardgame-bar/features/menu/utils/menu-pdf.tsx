@@ -2,12 +2,13 @@ import { renderToStream } from "@react-pdf/renderer";
 import { Effect } from "effect";
 import { LocaleValue } from "@/features/localization/effect-locale";
 import { MenuPDFDocument } from "../components/menu-pdf-document";
-import { MenuData } from "../data";
+import { MenuService } from "../data";
 
 export const generateMenuPdf = Effect.gen(function* () {
   yield* Effect.logInfo("Generating menu PDF response");
 
-  const { categories, products } = yield* MenuData;
+  const menuService = yield* MenuService;
+  const { categories, products } = yield* menuService.getMenuData();
   const locale = yield* LocaleValue;
 
   // Generate PDF

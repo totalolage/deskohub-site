@@ -1,51 +1,32 @@
-import { NextMiddleware } from "@mcrovero/effect-nextjs";
-import { Data, Effect, Layer, Schema } from "effect";
-import { baseLocale, locales, setLocale } from "@/features/i18n";
-import { LocaleValue } from "@/features/localization/locale-value";
-import { runAppWithLocale } from "../i18n/utils/setup-server";
+import { Data, Effect, Schema } from "effect";
+import { locales } from "@/features/i18n";
 
 export { LocaleValue } from "@/features/localization/locale-value";
 
-const PromiseSchema = Schema.declare(
-  (input: unknown): input is Promise<unknown> =>
-    typeof input === "object" &&
-    input !== null &&
-    "then" in input &&
-    typeof input.then === "function",
-
-  {
-    identifier: "Promise",
-    description: "Promise",
-  }
-);
 const ParamsSchema = Schema.Struct({
-  locale: Schema.Literal(...locales),
+  locale: Schema.Literals(locales),
 });
 
-const ArgsSchema = Schema.Tuple(
-  [
-    Schema.Struct({
-      params: PromiseSchema,
-    }),
-  ],
-  Schema.Unknown
-);
+const ArgsSchema = Schema.Struct({
+  params: Schema.Unknown,
+});
 
 class MiddlewarePropsError extends Data.TaggedError("MiddlewarePropsError")<{
   readonly cause?: unknown;
   readonly message: string;
 }> {}
 
-const ParseMiddlewareProps = Effect.fn("ParseMiddlewareProps")(
-  function* <A>(props: unknown, schema: Schema.Schema<A>) {
+export const parseLocaleProps = Effect.fn("parseLocaleProps")(
+  function* (props: unknown) {
     yield* Effect.logDebug("Parsing middleware props");
 
-    const [{ params: paramsPromise }] =
-      yield* Schema.decodeUnknown(ArgsSchema)(props);
+    const { params: paramsPromise } =
+      yield* Schema.decodeUnknownEffect(ArgsSchema)(props);
     const paramsUnknown = yield* Effect.promise(() =>
       Promise.resolve(paramsPromise)
     );
-    const params = yield* Schema.decodeUnknown(schema)(paramsUnknown);
+    const params =
+      yield* Schema.decodeUnknownEffect(ParamsSchema)(paramsUnknown);
     return params;
   },
   (effect) =>
@@ -58,47 +39,7 @@ const ParseMiddlewareProps = Effect.fn("ParseMiddlewareProps")(
           })
       ),
       Effect.annotateLogs({
-        operation: "ParseMiddlewareProps",
+        operation: "parseLocaleProps",
       })
     )
-);
-
-export class LocaleMiddleware extends NextMiddleware.Tag<LocaleMiddleware>()(
-  "LocaleMiddleware",
-  {
-    provides: LocaleValue,
-    failure: Schema.Never,
-    wrap: true,
-  }
-) {}
-
-export const LocaleMiddlewareLive = Layer.succeed(
-  LocaleMiddleware,
-  LocaleMiddleware.of(
-    Effect.fn("LocaleMiddlewareLive")(
-      function* ({ props, next }) {
-        yield* Effect.logDebug("LocaleMiddlewareLive");
-
-        const { locale } = yield* ParseMiddlewareProps(props, ParamsSchema);
-
-        setLocale(locale, { reload: false });
-        return yield* runAppWithLocale(next).pipe(
-          Effect.provideService(LocaleValue, locale)
-        );
-      },
-      (effect, input) =>
-        effect.pipe(
-          Effect.orElse(() => {
-            setLocale(baseLocale, { reload: false });
-            return runAppWithLocale(input.next).pipe(
-              Effect.provideService(LocaleValue, baseLocale)
-            );
-          }),
-          Effect.tapError(Effect.logError),
-          Effect.annotateLogs({
-            operation: "LocaleMiddlewareLive",
-          })
-        )
-    )
-  )
 );

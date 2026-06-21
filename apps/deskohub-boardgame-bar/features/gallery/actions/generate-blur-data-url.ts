@@ -1,6 +1,6 @@
+import type { CloudinaryAsset } from "@deskohub/cloudinary";
 import { getCldImageUrl } from "next-cloudinary";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
-import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
 /**
  * Server-side cached version of generateBlurDataUrl

@@ -1,31 +1,13 @@
-export { NexiApi } from "./backend/api";
 export { NexiService } from "./backend/service";
 export type { NexiRuntimeConfigObj } from "./config";
-export { makeNexiRuntimeConfigLayer, NexiRuntimeConfig } from "./config";
-export { ExternalAPIError, NetworkError, ValidationError } from "./errors";
-export {
-  checkNexiWebhookSecurityToken,
-  classifyNexiFailureStatus,
-  decodeNexiWebhookNotification,
-  deriveNexiWebhookEventIdentity,
-  getNexiPaymentMetadata,
-  locales,
-  locales as nexiLocales,
-  NexiAmountSchema,
-  NexiCurrencySchema,
-  NexiWebhookNotificationSchema,
-  NexiWebhookOperationSchema,
-  nexiMinorUnitExponent,
-  normalizeNexiWebhookNotification,
-} from "./types";
+export { NexiRuntimeConfig } from "./config";
+export { ExternalAPIError, NetworkError } from "./errors";
 export type {
   CreateHostedPaymentPageInput,
-  HostedPaymentPageSession,
   Locale,
-  Locale as NexiLocale,
-  NexiFailureStatusKind,
   NexiAmount,
   NexiCurrency,
+  NexiFailureStatusKind,
   NexiPaymentMetadata,
   NexiWebhookEventIdentity,
   NexiWebhookEventIdentitySource,
@@ -37,4 +19,18 @@ export type {
   PaymentVerificationResult,
   ProviderPaymentFacts,
   VerifyPaymentOutcomeInput,
+} from "./types";
+export {
+  checkNexiWebhookSecurityToken,
+  classifyNexiFailureStatus,
+  decodeNexiWebhookNotification,
+  deriveNexiWebhookEventIdentity,
+  getNexiPaymentMetadata,
+  locales,
+  NexiAmountSchema,
+  NexiCurrencySchema,
+  NexiWebhookNotificationSchema,
+  NexiWebhookOperationSchema,
+  nexiMinorUnitExponent,
+  normalizeNexiWebhookNotification,
 } from "./types";

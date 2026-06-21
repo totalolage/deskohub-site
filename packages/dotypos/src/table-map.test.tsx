@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import type { Table } from "./generated/types.gen";
+import type { Table } from "./generated";
 import { TableMap } from "./table-map";
 
 type ReactElementLike = {

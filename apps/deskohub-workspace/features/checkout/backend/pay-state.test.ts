@@ -172,7 +172,7 @@ describe("Pay URL state", () => {
     );
 
     expect(() => sealPayState(unsupportedState)).toThrow(
-      "Expected SignedPayState"
+      "Expected PayStateToken"
     );
   });
 

@@ -88,7 +88,7 @@ export interface ResendWebhookService {
   >;
 }
 
-export const ResendWebhookService = Context.GenericTag<ResendWebhookService>(
+export const ResendWebhookService = Context.Service<ResendWebhookService>(
   "ResendWebhookService"
 );
 

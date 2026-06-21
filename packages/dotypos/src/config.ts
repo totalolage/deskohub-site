@@ -8,9 +8,8 @@ export const DotyposRuntimeConfigSchema = Schema.Struct({
   branchId: Schema.NonEmptyString,
   employeeId: Schema.NonEmptyString,
   apiUrl: Schema.NonEmptyString,
-  apiTimeout: Schema.Number.pipe(
-    Schema.positive(),
-    Schema.annotations({ description: "API timeout in milliseconds" })
+  apiTimeout: Schema.Number.check(
+    Schema.isGreaterThan(0, { description: "API timeout in milliseconds" })
   ),
   reservationTableIds: Schema.Array(Schema.NonEmptyString),
 });
@@ -19,9 +18,10 @@ export type DotyposRuntimeConfigObj = Schema.Schema.Type<
   typeof DotyposRuntimeConfigSchema
 >;
 
-export class DotyposRuntimeConfig extends Context.Tag(
-  "@deskohub/dotypos/DotyposRuntimeConfig"
-)<DotyposRuntimeConfig, DotyposRuntimeConfigObj>() {}
+export class DotyposRuntimeConfig extends Context.Service<
+  DotyposRuntimeConfig,
+  DotyposRuntimeConfigObj
+>()("@deskohub/dotypos/DotyposRuntimeConfig") {}
 
 export const makeDotyposRuntimeConfigLayer = (
   config: DotyposRuntimeConfigObj

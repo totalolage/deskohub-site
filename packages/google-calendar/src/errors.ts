@@ -9,4 +9,13 @@ export class GoogleCalendarAPIError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export type GoogleCalendarError = GoogleCalendarAPIError;
+export class GoogleCalendarConfigError extends Data.TaggedError(
+  "GoogleCalendarConfigError"
+)<{
+  readonly message: string;
+  readonly field: string;
+}> {}
+
+export type GoogleCalendarError =
+  | GoogleCalendarAPIError
+  | GoogleCalendarConfigError;

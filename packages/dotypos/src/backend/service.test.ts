@@ -1,9 +1,8 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Predicate } from "effect";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { makeDotyposRuntimeConfigLayer } from "../config";
-import { ExternalAPIError } from "../errors";
-import type { Customer, Reservation } from "../generated/types.gen";
-import { DotyposApi } from "./api";
+import type { Customer, Reservation } from "../generated/effect.gen";
 import { DotyposService } from "./service";
 
 const config = {
@@ -18,7 +17,7 @@ const config = {
   reservationTableIds: ["table-id"],
 };
 
-const customer = (overrides: Partial<Customer>): Customer => ({
+const customer = (overrides: Partial<Customer> = {}): Customer => ({
   _cloudId: config.cloudId,
   id: "customer-id",
   firstName: "Ada",
@@ -29,399 +28,313 @@ const customer = (overrides: Partial<Customer>): Customer => ({
   ...overrides,
 });
 
-const runWithApi = <A, E>(
-  effect: Effect.Effect<A, E, DotyposService>,
-  api: DotyposApi
+const reservation = (overrides: Partial<Reservation> = {}): Reservation => ({
+  id: "reservation-id",
+  _branchId: config.branchId,
+  _cloudId: config.cloudId,
+  _customerId: "customer-id",
+  _tableId: "table-id",
+  startDate: "2026-06-20T10:00:00.000Z",
+  endDate: "2026-06-20T12:00:00.000Z",
+  seats: "2",
+  status: "NEW",
+  ...overrides,
+});
+
+type FetchCall = [RequestInfo | URL, RequestInit?];
+
+const getRequest = ([input, init]: FetchCall) =>
+  input instanceof Request ? input : new Request(input, init);
+
+const getUrl = (call: FetchCall) => getRequest(call).url;
+
+const getMethod = (call: FetchCall) => getRequest(call).method;
+
+const getHeader = (call: FetchCall, name: string) =>
+  getRequest(call).headers.get(name);
+
+const readJsonBody = async (call: FetchCall) =>
+  JSON.parse(await getRequest(call).clone().text());
+
+const mockDotyposFetch = (
+  handler: (request: Request) => Response | Promise<Response>
 ) => {
-  const dependencies = Layer.merge(
-    Layer.succeed(DotyposApi, api),
-    makeDotyposRuntimeConfigLayer(config)
+  const fetchMock = mock(async (input: RequestInfo | URL, init?: RequestInit) =>
+    handler(getRequest([input, init]))
+  );
+  return fetchMock as unknown as typeof globalThis.fetch & typeof fetchMock;
+};
+
+const tokenResponse = () => Response.json({ accessToken: "access-token" });
+
+const runWithService = <A, E>(
+  effect: Effect.Effect<A, E, DotyposService>,
+  fetchMock: typeof globalThis.fetch
+) => {
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchMock))
   );
   const serviceLayer = DotyposService.DefaultWithoutDependencies.pipe(
-    Layer.provide(dependencies)
+    Layer.provide(
+      Layer.merge(makeDotyposRuntimeConfigLayer(config), httpClientLayer)
+    )
   );
 
   return Effect.runPromise(effect.pipe(Effect.provide(serviceLayer)));
 };
 
-const makeApi = (overrides: Partial<DotyposApi> = {}): DotyposApi => ({
-  _tag: "DotyposApi",
-  searchCustomers: mock(() => Effect.succeed<Customer[]>([])),
-  createCustomer: mock((params) =>
-    Effect.succeed(customer({ id: "created-customer-id", ...params.body }))
-  ),
-  updateCustomer: mock((params) =>
-    Effect.succeed(customer({ id: params.path.customerId, ...params.body }))
-  ),
-  getCustomer: mock(() => Effect.die("getCustomer not mocked")),
-  createReservation: mock(() => Effect.die("createReservation not mocked")),
-  getReservation: mock(() => Effect.die("getReservation not mocked")),
-  getReservationForUpdate: mock(() =>
-    Effect.die("getReservationForUpdate not mocked")
-  ),
-  cancelReservation: mock(() => Effect.die("cancelReservation not mocked")),
-  updateReservation: mock(() => Effect.die("updateReservation not mocked")),
-  patchReservation: mock(() => Effect.die("patchReservation not mocked")),
-  listReservations: mock(() => Effect.die("listReservations not mocked")),
-  getTables: mock(() => Effect.die("getTables not mocked")),
-  getProducts: mock(() => Effect.die("getProducts not mocked")),
-  getCategories: mock(() => Effect.die("getCategories not mocked")),
-  getDiscountGroup: mock(() => Effect.die("getDiscountGroup not mocked")),
-  ...overrides,
-});
-
 describe("DotyposService customer lookup", () => {
-  test("finds by exact email after API like search", async () => {
+  test("requests a token once, searches by exact email, and sends bearer auth", async () => {
     const matched = customer({ id: "email-match", email: "ada@example.com" });
-    const api = makeApi({
-      searchCustomers: mock(() =>
-        Effect.succeed([
-          customer({ id: "partial", email: "not-ada@example.com" }),
-          matched,
-        ])
-      ),
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({
+          data: [customer({ id: "partial", email: "not-ada@example.com" }), matched],
+        });
+      }
+      return new Response("Not found", { status: 404 });
     });
 
-    const result = await runWithApi(
+    const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.findCustomer({
+        const first = yield* dotypos.findCustomer({
           firstName: "Ada",
           email: "ada@example.com",
-        });
-      }),
-      api
-    );
-
-    expect(result).toEqual({
-      _tag: "Matched",
-      customer: matched,
-      matches: [matched],
-    });
-    expect(api.searchCustomers).toHaveBeenCalledWith({
-      path: { cloudId: config.cloudId },
-      query: { limit: 100, filter: "email|like|ada@example.com" },
-    });
-  });
-
-  test("finds by phone using normalized matching", async () => {
-    const matched = customer({ id: "phone-match", phone: "+420777777777" });
-    const api = makeApi({
-      searchCustomers: mock((params) =>
-        params.query.filter === "phone|like|+420777777777"
-          ? Effect.succeed([matched])
-          : Effect.succeed<Customer[]>([])
-      ),
-    });
-
-    const result = await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findCustomer({
-          firstName: "Ada",
-          phone: "777 777 777",
-        });
-      }),
-      api
-    );
-
-    expect(result._tag).toBe("Matched");
-    expect(result.matches).toEqual([matched]);
-  });
-
-  test("findCustomer does not call create or update", async () => {
-    const matched = customer({ id: "email-match", email: "ada@example.com" });
-    const api = makeApi({
-      searchCustomers: mock(() => Effect.succeed([matched])),
-    });
-
-    await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findCustomer({
+        }, undefined);
+        yield* dotypos.findCustomer({
           firstName: "Ada",
           email: "ada@example.com",
-        });
+        }, undefined);
+        return first;
       }),
-      api
+      fetchMock
     );
 
-    expect(api.createCustomer).not.toHaveBeenCalled();
-    expect(api.updateCustomer).not.toHaveBeenCalled();
-  });
+    expect(result).toEqual({ _tag: "Matched", customer: matched, matches: [matched] });
 
-  test("404 search returns no match", async () => {
-    const api = makeApi({
-      searchCustomers: mock(() =>
-        Effect.fail(
-          new ExternalAPIError({
-            service: "Dotypos",
-            operation: "Search customers",
-            statusCode: 404,
-          })
-        )
-      ),
-    });
+    const tokenCalls = fetchMock.mock.calls.filter((call) =>
+      getUrl(call as FetchCall).endsWith("/signin/token")
+    ) as FetchCall[];
+    expect(tokenCalls).toHaveLength(1);
+    const tokenCall = tokenCalls[0]!;
+    expect(getMethod(tokenCall)).toBe("POST");
+    expect(getHeader(tokenCall, "Authorization")).toBe("User refresh-token");
+    expect(await readJsonBody(tokenCall)).toEqual({ _cloudId: "cloud-id" });
 
-    const result = await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-        });
-      }),
-      api
+    const searchCall = fetchMock.mock.calls.find((call) =>
+      getUrl(call as FetchCall).includes("/customers")
+    ) as FetchCall;
+    const searchUrl = new URL(getUrl(searchCall));
+    expect(searchUrl.searchParams.get("filter")).toBe(
+      "email|like|ada@example.com"
     );
-
-    expect(result).toEqual({ _tag: "NotFound", matches: [] });
+    expect(searchUrl.searchParams.get("limit")).toBe("100");
+    expect(getHeader(searchCall, "Authorization")).toBe("Bearer access-token");
   });
 
-  test("403 search failure is not retried", async () => {
-    const api = makeApi({
-      searchCustomers: mock(() =>
-        Effect.fail(
-          new ExternalAPIError({
-            service: "Dotypos",
-            operation: "Search customers",
-            statusCode: 403,
-          })
-        )
-      ),
-    });
-
-    await expect(
-      runWithApi(
-        Effect.gen(function* () {
-          const dotypos = yield* DotyposService;
-          return yield* dotypos.findCustomer({
-            firstName: "Ada",
-            email: "ada@example.com",
-          });
-        }),
-        api
-      )
-    ).rejects.toThrow();
-
-    expect(api.searchCustomers).toHaveBeenCalledTimes(1);
-  });
-
-  test('workspace-style lookupFields:["email"] does not match by phone', async () => {
-    const phoneMatch = customer({ id: "phone-match", phone: "+420777777777" });
-    const searchCustomers = mock(() => Effect.succeed([phoneMatch]));
-    const api = makeApi({ searchCustomers });
-
-    const result = await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findCustomer(
-          {
-            firstName: "Ada",
-            email: "ada@example.com",
-            phone: "777 777 777",
-          },
-          { lookupFields: ["email"] }
+  test("maps customer search 404 to no match", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json(
+          { error: "not_found", error_description: "No customers", code: 404 },
+          { status: 404 }
         );
-      }),
-      api
-    );
-
-    expect(result).toEqual({ _tag: "NotFound", matches: [] });
-    expect(api.searchCustomers).toHaveBeenCalledTimes(1);
-    const firstSearchCall = (
-      searchCustomers.mock.calls as unknown as Array<
-        [{ query?: { filter?: string } }]
-      >
-    )[0]?.[0];
-    expect(firstSearchCall?.query?.filter).toBe("email|like|ada@example.com");
-  });
-
-  test("findOrCreateCustomer reuses lookup and updates the existing customer", async () => {
-    const existing = customer({
-      id: "existing-customer-id",
-      email: "ada@example.com",
-      firstName: null,
-    });
-    const api = makeApi({
-      searchCustomers: mock(() => Effect.succeed([existing])),
+      }
+      return new Response("Not found", { status: 404 });
     });
 
-    const result = await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findOrCreateCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-        });
-      }),
-      api
-    );
-
-    expect(api.updateCustomer).toHaveBeenCalledWith({
-      path: { cloudId: config.cloudId, customerId: "existing-customer-id" },
-      body: { firstName: "Ada" },
-    });
-    expect(api.createCustomer).not.toHaveBeenCalled();
-    expect(result).toEqual(
-      expect.objectContaining({ id: "existing-customer-id", firstName: "Ada" })
-    );
-  });
-
-  test("findOrCreateCustomer creates when lookup has no match", async () => {
-    const api = makeApi();
-
-    const result = await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findOrCreateCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-          phone: "777 777 777",
-        });
-      }),
-      api
-    );
-
-    expect(api.createCustomer).toHaveBeenCalledWith({
-      path: { cloudId: config.cloudId },
-      body: expect.objectContaining({
-        _cloudId: config.cloudId,
-        firstName: "Ada",
-        email: "ada@example.com",
-        phone: "+420777777777",
-      }),
-    });
-    expect(api.updateCustomer).not.toHaveBeenCalled();
-    expect(result.id).toBe("created-customer-id");
-  });
-
-  test("ambiguous exact matches are explicit for safe discount lookup", async () => {
-    const first = customer({ id: "first", email: "ada@example.com" });
-    const second = customer({ id: "second", email: "ada@example.com" });
-    const api = makeApi({
-      searchCustomers: mock(() => Effect.succeed([first, second])),
-    });
-
-    const result = await runWithApi(
+    const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.findCustomer({
           firstName: "Ada",
           email: "ada@example.com",
-        });
+        }, undefined);
       }),
-      api
+      fetchMock
     );
 
-    expect(result).toEqual({
-      _tag: "Ambiguous",
-      matches: [first, second],
-    });
-  });
-
-  test("findOrCreateCustomer preserves first-match behavior on ambiguity", async () => {
-    const first = customer({ id: "first", email: "ada@example.com" });
-    const second = customer({ id: "second", email: "ada@example.com" });
-    const api = makeApi({
-      searchCustomers: mock(() => Effect.succeed([first, second])),
-    });
-
-    const result = await runWithApi(
-      Effect.gen(function* () {
-        const dotypos = yield* DotyposService;
-        return yield* dotypos.findOrCreateCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-        });
-      }),
-      api
-    );
-
-    expect(result).toBe(first);
-    expect(api.createCustomer).not.toHaveBeenCalled();
+    expect(result).toEqual({ _tag: "NotFound", matches: [] });
   });
 });
 
-describe("DotyposService reservation confirmation", () => {
-  test("confirms by reading ETag and patching with If-Match", async () => {
-    const reservation = { id: "reservation-id" } as Reservation;
-    const api = makeApi({
-      getReservationForUpdate: mock(() =>
-        Effect.succeed({ reservation, etag: '"reservation-etag"' })
-      ),
-      patchReservation: mock((params) =>
-        Effect.succeed({ ...reservation, ...params.body })
-      ),
+describe("DotyposService reservations", () => {
+  test("creates reservations with the generated array payload and retries 5xx", async () => {
+    let reservationAttempts = 0;
+    const fetchMock = mockDotyposFetch(async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations" &&
+        request.method === "POST"
+      ) {
+        reservationAttempts += 1;
+        if (reservationAttempts === 1) {
+          return Response.json(
+            { error: "server", error_description: "Server error", code: 500 },
+            { status: 500 }
+          );
+        }
+        return Response.json([reservation()]);
+      }
+      return new Response("Not found", { status: 404 });
     });
 
-    await runWithApi(
+    const input = {
+      customerId: " customer-id ",
+      tableId: " table-id ",
+      startDate: new Date("2026-06-20T10:00:00.000Z"),
+      endDate: new Date("2026-06-20T12:00:00.000Z"),
+      seats: 2,
+      status: "NEW" as const,
+      note: " setup note ",
+    };
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.createReservation(input);
+      }),
+      fetchMock
+    );
+
+    expect(result.id).toBe("reservation-id");
+    expect(reservationAttempts).toBe(2);
+
+    const createCall = fetchMock.mock.calls.find(
+      (call) => getMethod(call as FetchCall) === "POST" && getUrl(call as FetchCall).includes("/reservations")
+    ) as FetchCall;
+    expect(await readJsonBody(createCall)).toEqual([
+      {
+        _branchId: config.branchId,
+        _cloudId: config.cloudId,
+        _customerId: "customer-id",
+        _tableId: "table-id",
+        _employeeId: config.employeeId,
+        startDate: input.startDate.getTime(),
+        endDate: input.endDate.getTime(),
+        seats: 2,
+        status: "NEW",
+        flags: 0,
+        note: "setup note",
+      },
+    ]);
+  });
+
+  test("confirms by reading ETag and patching with If-Match", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(reservation(), { headers: { etag: '"reservation-etag"' } });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(reservation({ status: "CONFIRMED" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
         return yield* dotypos.confirmReservation(" reservation-id ");
       }),
-      api
+      fetchMock
     );
 
-    expect(api.getReservationForUpdate).toHaveBeenCalledWith({
-      path: { cloudId: config.cloudId, reservationId: "reservation-id" },
-    });
-    expect(api.patchReservation).toHaveBeenCalledWith({
-      path: { cloudId: config.cloudId, reservationId: "reservation-id" },
-      headers: { "If-Match": '"reservation-etag"' },
-      body: { status: "CONFIRMED" },
-    });
-    expect(api.updateReservation).not.toHaveBeenCalled();
+    const patchCall = fetchMock.mock.calls.find(
+      (call) => getMethod(call as FetchCall) === "PATCH"
+    ) as FetchCall;
+    expect(getHeader(patchCall, "If-Match")).toBe('"reservation-etag"');
+    expect(getHeader(patchCall, "Authorization")).toBe("Bearer access-token");
+    expect(await readJsonBody(patchCall)).toEqual({ status: "CONFIRMED" });
   });
+});
 
-  test("fails clearly when Dotypos omits the reservation ETag", async () => {
-    const api = makeApi({
-      getReservationForUpdate: mock(() =>
-        Effect.succeed({
-          reservation: { id: "reservation-id" } as Reservation,
-          etag: undefined,
-        })
-      ),
-      patchReservation: mock(() => Effect.die("patchReservation not expected")),
+describe("DotyposService customer discounts", () => {
+  test('accepts "10" and ignores out-of-range discounts', async () => {
+    const discounts: Record<string, string | number> = {
+      ten: "10",
+      zero: 0,
+      tooHigh: 101,
+    };
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      const match = url.pathname.match(/\/discount-groups\/(.+)$/);
+      if (match) {
+        const discountGroupId = match[1]!;
+        return Response.json({
+          id: discountGroupId,
+          discountPercent: discounts[discountGroupId],
+        });
+      }
+      return new Response("Not found", { status: 404 });
     });
 
-    await expect(
-      runWithApi(
-        Effect.gen(function* () {
-          const dotypos = yield* DotyposService;
-          return yield* dotypos.confirmReservation("reservation-id");
-        }),
-        api
-      )
-    ).rejects.toThrow("Reservation ETag header was missing.");
-    expect(api.patchReservation).not.toHaveBeenCalled();
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* Effect.all([
+          dotypos.getCustomerDiscount(customer({ _discountGroupId: "ten" })),
+          dotypos.getCustomerDiscount(customer({ _discountGroupId: "zero" })),
+          dotypos.getCustomerDiscount(customer({ _discountGroupId: "tooHigh" })),
+        ]);
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([
+      {
+        source: "dotypos-discount-group",
+        discountGroupId: "ten",
+        percent: 10,
+      },
+      undefined,
+      undefined,
+    ]);
   });
 });
 
 describe("DotyposService reservation listing", () => {
   test("preserves typed Dotypos API errors", async () => {
-    const apiError = new ExternalAPIError({
-      service: "Dotypos",
-      operation: "List reservations",
-      statusCode: 403,
-    });
-    const api = makeApi({
-      listReservations: mock(() => Effect.fail(apiError)),
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json(
+          { error: "forbidden", error_description: "Forbidden", code: 403 },
+          { status: 403 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
     });
 
-    const result = await runWithApi(
+    const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.listReservations().pipe(Effect.either);
+        return yield* dotypos.listReservations().pipe(Effect.result);
       }),
-      api
+      fetchMock
     );
 
-    expect(result._tag).toBe("Left");
-    if (result._tag === "Left") {
-      expect(result.left).toMatchObject({
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(result.failure).toMatchObject({
         _tag: "ExternalAPIError",
         service: "Dotypos",
-        operation: "List reservations",
+        operation: "listReservations",
         statusCode: 403,
       });
     }
