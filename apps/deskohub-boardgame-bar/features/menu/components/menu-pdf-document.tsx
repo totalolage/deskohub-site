@@ -20,58 +20,12 @@ Font.register({
   family: "Roboto",
   fonts: [
     {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-thin-webfont.ttf",
-      fontWeight: "thin",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-webfont.ttf",
-      fontWeight: "light",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-webfont.ttf",
-      fontWeight: "medium",
-    },
-    {
       src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-webfont.ttf",
       fontWeight: "normal",
     },
     {
       src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-webfont.ttf",
       fontWeight: "bold",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-black-webfont.ttf",
-      fontWeight: "heavy",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-thin-italic-webfont.ttf",
-      fontWeight: "thin",
-      fontStyle: "italic",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-light-italic-webfont.ttf",
-      fontWeight: "light",
-      fontStyle: "italic",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-medium-italic-webfont.ttf",
-      fontWeight: "medium",
-      fontStyle: "italic",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-regular-italic-webfont.ttf",
-      fontWeight: "normal",
-      fontStyle: "italic",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-bold-italic-webfont.ttf",
-      fontWeight: "bold",
-      fontStyle: "italic",
-    },
-    {
-      src: "https://cdnjs.cloudflare.com/ajax/libs/ink/3.1.10/fonts/Roboto/roboto-black-italic-webfont.ttf",
-      fontWeight: "heavy",
-      fontStyle: "italic",
     },
   ],
 });
@@ -99,13 +53,6 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
     color: "#000000",
     marginBottom: 10,
-  },
-  sectionTitle: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#22c55e",
-    marginTop: 30,
-    marginBottom: 20,
   },
   category: {
     marginBottom: 25,
@@ -151,14 +98,6 @@ const styles = StyleSheet.create({
     minWidth: 60,
     textAlign: "right",
   },
-  unavailable: {
-    opacity: 0.6,
-  },
-  unavailableText: {
-    fontSize: 9,
-    color: "#ff0000",
-    marginLeft: 5,
-  },
 });
 
 interface MenuPDFDocumentProps {
@@ -172,31 +111,17 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
   products,
   locale,
 }) => {
-  const renderItems = (categoryId: string) => {
-    const categoryProducts = products.filter(
-      (p) => p._categoryId === categoryId
-    );
-
+  const renderItems = (categoryProducts: Product[]) => {
     return categoryProducts.map((product) => {
       const item = formatMenuItem(product, locale);
 
       return (
-        <View
-          key={item.id}
-          style={
-            !item.isAvailable ? [styles.item, styles.unavailable] : styles.item
-          }
-        >
+        <View key={item.id} style={styles.item}>
           <View style={styles.itemLeft}>
             <View style={{ flexDirection: "row", alignItems: "center" }}>
               <Text style={styles.itemName}>{item.name}</Text>
               {item.unit && ["g", "l"].some((u) => item.unit?.includes(u)) && (
                 <Text style={styles.itemUnit}>({item.unit})</Text>
-              )}
-              {!item.isAvailable && (
-                <Text style={styles.unavailableText}>
-                  (momentálně nedostupné)
-                </Text>
               )}
             </View>
             {item.description && (
@@ -225,8 +150,11 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
       <Page size="A4" style={styles.page}>
         {/* Render all categories */}
         {categories.map((category) => {
+          const categoryId = category.id;
+          if (!categoryId) return null;
+
           const categoryProducts = products.filter(
-            (p) => p._categoryId === category.id
+            (p) => p._categoryId === categoryId
           );
 
           // Skip empty categories
@@ -236,9 +164,9 @@ export const MenuPDFDocument: React.FC<MenuPDFDocumentProps> = ({
           const formattedCategory = formatCategory(category, locale);
 
           return (
-            <View key={category.id} style={styles.category}>
+            <View key={categoryId} style={styles.category}>
               <Text style={styles.categoryTitle}>{formattedCategory.name}</Text>
-              {renderItems(category.id!)}
+              {renderItems(categoryProducts)}
             </View>
           );
         })}

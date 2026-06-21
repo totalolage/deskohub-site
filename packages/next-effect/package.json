@@ -1,0 +1,31 @@
+{
+  "name": "@deskohub/next-effect",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./effect-action": "./src/effect-action.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "^1.1.0"
+  },
+  "peerDependencies": {
+    "effect": "4.0.0-beta.85",
+    "next": "^16.2.6",
+    "next-safe-action": "^8.0.7"
+  },
+  "peerDependenciesMeta": {
+    "next-safe-action": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "effect": "4.0.0-beta.85",
+    "next-safe-action": "^8.5.2",
+    "typescript": "^5"
+  }
+}

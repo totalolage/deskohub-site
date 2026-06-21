@@ -43,6 +43,7 @@ function MinimalLocaleSwitcherLinks({
         ) : (
           <Link
             href={getLocaleHref(locale)}
+            prefetch={false}
             scroll={false}
             className="transition-colors hover:text-sunset-yellow"
           >

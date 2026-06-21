@@ -18,20 +18,24 @@ export const nonNegativeWorkspaceMoneySchema = workspaceMoneySchema.extend({
   value: z.int().nonnegative(),
 });
 
-export const positiveWorkspaceMoneyEffectSchema: Schema.Schema<WorkspaceMoney> =
-  Schema.Struct({
-    value: Schema.Number.pipe(Schema.int(), Schema.positive()),
-    exponent: Schema.Number.pipe(Schema.int(), Schema.positive()),
-    currency: Schema.String.pipe(
-      Schema.pattern(/^[A-Z]{3}$/, {
+export const positiveWorkspaceMoneyEffectSchema: Schema.Codec<
+  WorkspaceMoney,
+  WorkspaceMoney
+> = Schema.Struct({
+  value: Schema.Int.check(Schema.isGreaterThan(0)),
+  exponent: Schema.Int.check(Schema.isGreaterThan(0)),
+  currency: Schema.String.pipe(
+    Schema.check(
+      Schema.isPattern(/^[A-Z]{3}$/, {
         description: "ISO 4217 uppercase alphabetic currency code.",
       })
-    ),
-  }).annotations({
-    identifier: "PositiveWorkspaceMoney",
-    description:
-      "Positive workspace money amount stored as a scaled integer value, decimal exponent, and ISO currency code.",
-  });
+    )
+  ),
+}).annotate({
+  identifier: "PositiveWorkspaceMoney",
+  description:
+    "Positive workspace money amount stored as a scaled integer value, decimal exponent, and ISO currency code.",
+});
 
 export const toWorkspaceMoneyMajorAmount = (money: WorkspaceMoney) =>
   money.value / 10 ** money.exponent;

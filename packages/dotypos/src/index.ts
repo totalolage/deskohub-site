@@ -1,8 +1,7 @@
-export { DotyposApi } from "./backend/api";
 export type {
+  CustomerLookupField,
   DotyposCustomerDiscount,
   DotyposCustomerLookupData,
-  CustomerLookupField,
   FindCustomerOptions,
 } from "./backend/service";
 export { DotyposService, FindCustomerResult } from "./backend/service";
@@ -14,7 +13,7 @@ export {
   NetworkError,
   ValidationError,
 } from "./errors";
-export type { Reservation } from "./generated/types.gen";
+export type { Reservation } from "./generated";
 export type {
   CreateDotyposReservationInput,
   DotyposReservationStatus,

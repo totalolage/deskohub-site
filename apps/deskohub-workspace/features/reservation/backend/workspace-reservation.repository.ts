@@ -115,7 +115,7 @@ export interface WorkspaceReservationRepository {
 }
 
 export const WorkspaceReservationRepository =
-  Context.GenericTag<WorkspaceReservationRepository>(
+  Context.Service<WorkspaceReservationRepository>(
     "WorkspaceReservationRepository"
   );
 

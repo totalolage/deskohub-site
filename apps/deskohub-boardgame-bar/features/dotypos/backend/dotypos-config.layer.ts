@@ -1,6 +1,5 @@
 import { env } from "@/env";
 import { makeDotyposConfigLayer } from "@/shared/backend/config/dotypos.config";
-import { siteConstants } from "@/shared/utils/constants";
 
 export const DotyposConfigFromEnv = makeDotyposConfigLayer({
   clientId: env.DOTYPOS_CLIENT_ID,
@@ -11,6 +10,4 @@ export const DotyposConfigFromEnv = makeDotyposConfigLayer({
   employeeId: env.DOTYPOS_EMPLOYEE_ID,
   apiUrl: env.DOTYPOS_API_URL,
   apiTimeout: env.DOTYPOS_API_TIMEOUT,
-  reservationTableIds:
-    siteConstants.tableReservation.tablesToAssignReservationsTo,
 });

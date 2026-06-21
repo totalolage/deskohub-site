@@ -13,6 +13,7 @@
       "**/*.ts",
       "**/*.tsx",
       "**/*.json",
+      "!**/.vercel",
       "!**/.turbo",
       "!.taskmaster",
       "!**/generated"

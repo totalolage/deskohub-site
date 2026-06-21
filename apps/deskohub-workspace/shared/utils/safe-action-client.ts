@@ -1,4 +1,4 @@
-import { Data } from "effect";
+import { Cause, Data } from "effect";
 import {
   createSafeActionClient,
   DEFAULT_SERVER_ERROR_MESSAGE,
@@ -13,6 +13,18 @@ export class PublicSafeActionError extends Data.TaggedError(
 }> {}
 
 export function getPublicSafeActionErrorMessage(error: unknown): string | null {
+  if (Cause.isCause(error)) {
+    for (const reason of error.reasons) {
+      const value = Cause.isFailReason(reason)
+        ? reason.error
+        : Cause.isDieReason(reason)
+          ? reason.defect
+          : undefined;
+      const message = getPublicSafeActionErrorMessage(value);
+      if (message) return message;
+    }
+  }
+
   if (!error || typeof error !== "object") {
     return null;
   }

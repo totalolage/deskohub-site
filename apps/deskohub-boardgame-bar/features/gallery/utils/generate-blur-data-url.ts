@@ -1,5 +1,5 @@
+import type { CloudinaryAsset } from "@deskohub/cloudinary";
 import { getCldImageUrl } from "next-cloudinary";
-import type { CloudinaryAsset } from "../backend/cloudinary.service";
 
 /**
  * Generates a base64-encoded blur data URL for a Cloudinary image

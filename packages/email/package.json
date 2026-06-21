@@ -14,7 +14,7 @@
     "./types/email.types": "./types/email.types.ts"
   },
   "dependencies": {
-    "effect": "^3.17.2",
+    "effect": "4.0.0-beta.85",
     "resend": "^6.0.1"
   }
 }

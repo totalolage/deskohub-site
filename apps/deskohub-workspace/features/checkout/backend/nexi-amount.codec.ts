@@ -1,14 +1,14 @@
 import { NexiAmountSchema, nexiMinorUnitExponent } from "@deskohub/nexi";
-import { Effect, ParseResult, Schema } from "effect";
+import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
 import { positiveWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 
-export const NexiAmountFromWorkspaceMoney = Schema.transformOrFail(
-  NexiAmountSchema,
-  positiveWorkspaceMoneyEffectSchema,
-  {
-    strict: true,
-    decode: (nexiAmount, options, ast) =>
-      Schema.decode(positiveWorkspaceMoneyEffectSchema)(
+const invalidValue = (actual: unknown, message: string) =>
+  new SchemaIssue.InvalidValue(Option.some(actual), { message });
+
+export const NexiAmountFromWorkspaceMoney = NexiAmountSchema.pipe(
+  Schema.decodeTo(positiveWorkspaceMoneyEffectSchema, {
+    decode: SchemaGetter.transformOrFail((nexiAmount, options) =>
+      Schema.decodeUnknownEffect(positiveWorkspaceMoneyEffectSchema)(
         {
           value: Number(nexiAmount.amount),
           exponent: nexiMinorUnitExponent,
@@ -16,12 +16,11 @@ export const NexiAmountFromWorkspaceMoney = Schema.transformOrFail(
         },
         options
       ).pipe(
-        Effect.mapError(
-          (error) => new ParseResult.Type(ast, nexiAmount, error.message)
-        )
-      ),
-    encode: (money, options, ast) =>
-      Schema.decodeUnknown(NexiAmountSchema)(
+        Effect.mapError((error) => invalidValue(nexiAmount, error.message))
+      )
+    ),
+    encode: SchemaGetter.transformOrFail((money, options) =>
+      Schema.decodeUnknownEffect(NexiAmountSchema)(
         {
           amount: (
             money.value *
@@ -30,13 +29,13 @@ export const NexiAmountFromWorkspaceMoney = Schema.transformOrFail(
           currency: money.currency,
         },
         options
-      ).pipe(
-        Effect.mapError(
-          (error) => new ParseResult.Type(ast, money, error.message)
-        )
-      ),
-  }
-).annotations({
+      ).pipe(Effect.mapError((error) => invalidValue(money, error.message)))
+    ) as SchemaGetter.Getter<
+      typeof NexiAmountSchema.Encoded,
+      typeof positiveWorkspaceMoneyEffectSchema.Encoded
+    >,
+  })
+).annotate({
   identifier: "NexiAmountFromWorkspaceMoney",
   description:
     "Codec between WorkspaceMoney and Nexi's integer minor-unit amount shape with ISO 4217 currency.",

@@ -4,7 +4,7 @@ import {
   LoggerProvider,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
-import { Effect, HashMap, Logger, Option } from "effect";
+import { Cause, Effect, Logger, References } from "effect";
 import {
   CENSORED_LOG_VALUE,
   censorLoggerOptions,
@@ -277,60 +277,62 @@ describe("censorLogValue", () => {
 
 describe("censorLoggerOptions", () => {
   test("redacts message values and annotation values or sensitive annotation keys", () => {
-    const annotations = HashMap.set(
-      HashMap.set(HashMap.empty<string, unknown>(), "request", {
-        headers: { authorization: "Bearer secret" },
-      }),
-      "sessionToken",
-      "session-secret"
-    );
+    const annotations = {
+      request: { headers: { authorization: "Bearer secret" } },
+      sessionToken: "session-secret",
+    };
     const options = {
       message: { password: "secret", safe: "visible" },
-      annotations,
-    } as Logger.Logger.Options<unknown>;
+      logLevel: "Info",
+      cause: Cause.empty,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: (ref: unknown) =>
+          ref === References.CurrentLogAnnotations ? annotations : [],
+      },
+    } as Logger.Options<unknown>;
 
     const censored = censorLoggerOptions(options);
+    const censoredAnnotations = censored.fiber.getRef(
+      References.CurrentLogAnnotations
+    );
 
     expect(censored.message).toEqual({
       password: CENSORED_LOG_VALUE,
       safe: "visible",
     });
-    expect(
-      Option.getOrThrow(HashMap.get(censored.annotations, "request"))
-    ).toEqual({
+    expect(censoredAnnotations.request).toEqual({
       headers: { authorization: CENSORED_LOG_VALUE },
     });
-    expect(
-      Option.getOrThrow(HashMap.get(censored.annotations, "sessionToken"))
-    ).toEqual(CENSORED_LOG_VALUE);
-    expect(
-      Option.getOrThrow(HashMap.get(options.annotations, "sessionToken"))
-    ).toBe("session-secret");
+    expect(censoredAnnotations.sessionToken).toBe(CENSORED_LOG_VALUE);
+    expect(annotations.sessionToken).toBe("session-secret");
   });
 
   test("preserves observable session annotation keys", () => {
-    const annotations = HashMap.set(
-      HashMap.set(
-        HashMap.empty<string, unknown>(),
-        "session",
-        "public-session"
-      ),
-      "sessionId",
-      "ph-session"
-    );
+    const annotations = {
+      session: "public-session",
+      sessionId: "ph-session",
+    };
     const options = {
       message: "safe",
-      annotations,
-    } as Logger.Logger.Options<unknown>;
+      logLevel: "Info",
+      cause: Cause.empty,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: (ref: unknown) =>
+          ref === References.CurrentLogAnnotations ? annotations : [],
+      },
+    } as Logger.Options<unknown>;
 
     const censored = censorLoggerOptions(options);
+    const censoredAnnotations = censored.fiber.getRef(
+      References.CurrentLogAnnotations
+    );
 
-    expect(
-      Option.getOrThrow(HashMap.get(censored.annotations, "session"))
-    ).toBe("public-session");
-    expect(
-      Option.getOrThrow(HashMap.get(censored.annotations, "sessionId"))
-    ).toBe("ph-session");
+    expect(censoredAnnotations.session).toBe("public-session");
+    expect(censoredAnnotations.sessionId).toBe("ph-session");
   });
 });
 
@@ -347,12 +349,7 @@ describe("createCensoredOtelLogger", () => {
           sessionId: "posthog-session-id",
           token: "secret-token",
         }),
-        Effect.provide(
-          Logger.replaceEffect(
-            Logger.defaultLogger,
-            createCensoredOtelLogger(provider)
-          )
-        )
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
       )
     );
     await provider.forceFlush();

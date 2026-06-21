@@ -12,6 +12,8 @@ type LocalizedWorkspaceHomePageProps = {
   params: Promise<{ locale: string }>;
 };
 
+export const dynamic = "force-dynamic";
+
 export async function generateMetadata({
   params,
 }: LocalizedWorkspaceHomePageProps): Promise<Metadata> {

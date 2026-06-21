@@ -1,8 +1,13 @@
 import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
-import { Data, Effect } from "effect";
-import type { CloudinaryConfig } from "./service";
+import { Context, Data, Effect, Layer } from "effect";
+import {
+  type CloudinaryConfig,
+  CloudinaryRuntimeConfig,
+  configureCloudinarySdk,
+  validateCloudinaryRuntimeConfig,
+} from "./config";
 
 export class CloudinaryWebhookAuthError extends Data.TaggedError(
   "CloudinaryWebhookAuthError"
@@ -23,13 +28,33 @@ export interface VerifiedCloudinaryWebhook {
 
 const DEFAULT_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = 5 * 60;
 
-type CloudinaryWebhookConfig = Pick<
-  CloudinaryConfig,
-  "cloudName" | "apiKey" | "apiSecret"
-> & {
-  readonly serviceName?: string;
-  readonly timestampToleranceSeconds?: number;
-};
+export interface ICloudinaryWebhookVerifier {
+  readonly verify: (
+    request: Request
+  ) => Effect.Effect<
+    VerifiedCloudinaryWebhook,
+    CloudinaryWebhookAuthError | CloudinaryWebhookValidationError
+  >;
+}
+
+export class CloudinaryWebhookVerifier extends Context.Service<
+  CloudinaryWebhookVerifier,
+  ICloudinaryWebhookVerifier
+>()("@deskohub/cloudinary/CloudinaryWebhookVerifier") {
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const rawConfig = yield* CloudinaryRuntimeConfig;
+      const config = yield* validateCloudinaryRuntimeConfig(rawConfig);
+      yield* configureCloudinarySdk(config);
+
+      return {
+        verify: (request) =>
+          verifyCloudinaryWebhookRequestWithConfig(request, config),
+      } satisfies ICloudinaryWebhookVerifier;
+    })
+  );
+}
 
 function readRequiredCloudinaryHeaders(request: Request) {
   const signature = request.headers.get("x-cld-signature");
@@ -112,16 +137,6 @@ function readCloudinaryWebhookBody(request: Request) {
   });
 }
 
-function configureCloudinary(config: CloudinaryWebhookConfig) {
-  return Effect.sync(() => {
-    cloudinary.config({
-      cloud_name: config.cloudName,
-      api_key: config.apiKey,
-      api_secret: config.apiSecret,
-    });
-  });
-}
-
 function verifyCloudinarySignature(
   bodyText: string,
   timestamp: number,
@@ -162,9 +177,9 @@ function parseCloudinaryWebhookPayload(bodyText: string) {
   });
 }
 
-export function verifyCloudinaryWebhookRequest(
+function verifyCloudinaryWebhookRequestWithConfig(
   request: Request,
-  config: CloudinaryWebhookConfig
+  config: CloudinaryConfig
 ): Effect.Effect<
   VerifiedCloudinaryWebhook,
   CloudinaryWebhookAuthError | CloudinaryWebhookValidationError
@@ -191,8 +206,6 @@ export function verifyCloudinaryWebhookRequest(
       timestamp,
       timestampToleranceSeconds: config.timestampToleranceSeconds,
     });
-
-    yield* configureCloudinary(config);
 
     const bodyText = yield* readCloudinaryWebhookBody(request);
     yield* Effect.annotateLogsScoped({ bodyText });
@@ -237,4 +250,17 @@ export function verifyCloudinaryWebhookRequest(
       })
     )
   );
+}
+
+export function verifyCloudinaryWebhookRequest(
+  request: Request
+): Effect.Effect<
+  VerifiedCloudinaryWebhook,
+  CloudinaryWebhookAuthError | CloudinaryWebhookValidationError,
+  CloudinaryWebhookVerifier
+> {
+  return Effect.gen(function* () {
+    const verifier = yield* CloudinaryWebhookVerifier;
+    return yield* verifier.verify(request);
+  });
 }

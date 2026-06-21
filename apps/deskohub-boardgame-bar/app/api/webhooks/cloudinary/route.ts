@@ -1,46 +1,13 @@
 import {
-  type VerifiedCloudinaryWebhook,
+  CloudinaryWebhookVerifier,
+  makeCloudinaryRuntimeConfigLayer,
   verifyCloudinaryWebhookRequest,
 } from "@deskohub/cloudinary/server";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
-
-const processWebhook = Effect.fn("processWebhook")(
-  function* (webhook: VerifiedCloudinaryWebhook) {
-    yield* Effect.annotateLogsScoped({ webhook });
-    yield* Effect.logInfo("Processing Cloudinary webhook");
-
-    // Invalidate all cloudinary image caches
-    // In the future when we parse the data from the webhook,
-    // we can invalidate only the affected images
-    const tagToRevalidate = cloudinaryTags.all();
-    yield* Effect.logInfo("Cloudinary cache invalidation started", {
-      invalidatedTag: tagToRevalidate,
-    });
-    revalidateTag(tagToRevalidate, "max");
-
-    yield* Effect.logInfo("Cloudinary cache invalidation completed", {
-      invalidatedTag: tagToRevalidate,
-      webhookTimestamp: webhook.timestamp,
-    });
-
-    const response = NextResponse.json({
-      message: "Webhook received",
-    });
-    yield* Effect.logInfo("Cloudinary webhook response ready", { response });
-    return response;
-  },
-  (effect) =>
-    effect.pipe(
-      Effect.scoped,
-      Effect.annotateLogs({
-        operation: "processWebhook",
-      })
-    )
-);
 
 /**
  * POST /api/webhooks/cloudinary
@@ -60,50 +27,65 @@ export async function POST(request: Request): Promise<NextResponse> {
       yield* Effect.logInfo("Cloudinary webhook request invoked");
 
       yield* Effect.logInfo("Cloudinary webhook verification started");
-      const webhook = yield* verifyCloudinaryWebhookRequest(request, {
-        cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-        apiKey: env.CLOUDINARY_API_KEY,
-        apiSecret: env.CLOUDINARY_API_SECRET,
-        serviceName: "deskohub-boardgame-bar",
-      });
+      const webhook = yield* verifyCloudinaryWebhookRequest(request);
       yield* Effect.annotateLogsScoped({ webhook });
       yield* Effect.logInfo("Cloudinary webhook verification succeeded");
 
-      return yield* processWebhook(webhook);
+      yield* Effect.logInfo("Processing Cloudinary webhook");
+
+      // Invalidate all cloudinary image caches
+      // In the future when we parse the data from the webhook,
+      // we can invalidate only the affected images
+      const tagToRevalidate = cloudinaryTags.all();
+      yield* Effect.logInfo("Cloudinary cache invalidation started", {
+        invalidatedTag: tagToRevalidate,
+      });
+      revalidateTag(tagToRevalidate, "max");
+
+      yield* Effect.logInfo("Cloudinary cache invalidation completed", {
+        invalidatedTag: tagToRevalidate,
+        webhookTimestamp: webhook.timestamp,
+      });
+
+      const response = NextResponse.json({
+        message: "Webhook received",
+      });
+      yield* Effect.logInfo("Cloudinary webhook response ready", { response });
+      return response;
     }).pipe(
-      Effect.scoped,
-      Effect.tapError(
-        Effect.fn(function* (error) {
-          yield* Effect.logError(error);
-        })
-      ),
-      Effect.annotateLogs({
-        method: "POST",
-        operation: "webhook",
-      }),
       Effect.catchTags({
         CloudinaryWebhookAuthError: (error) =>
           Effect.succeed(
             NextResponse.json(
-              {
-                error: "Unauthorized",
-                message: error.message,
-              },
+              { error: "Unauthorized", message: error.message },
               { status: 401 }
             )
           ),
         CloudinaryWebhookValidationError: (error) =>
           Effect.succeed(
             NextResponse.json(
-              {
-                error: "Invalid payload",
-                message: error.message,
-              },
-              {
-                status: 400,
-              }
+              { error: "Invalid payload", message: error.message },
+              { status: 400 }
             )
           ),
+      }),
+      Effect.scoped,
+      Effect.provide(
+        CloudinaryWebhookVerifier.Live.pipe(
+          Layer.provide(
+            makeCloudinaryRuntimeConfigLayer({
+              cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+              apiKey: env.CLOUDINARY_API_KEY,
+              apiSecret: env.CLOUDINARY_API_SECRET,
+              serviceName: "deskohub-boardgame-bar",
+            })
+          )
+        )
+      ),
+      Effect.tapError(Effect.logError),
+      Effect.annotateLogs({
+        method: "POST",
+        operation: "webhook",
       })
     )
   );

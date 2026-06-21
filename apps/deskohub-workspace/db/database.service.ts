@@ -28,7 +28,7 @@ export interface WorkspaceDatabase {
 }
 
 export const WorkspaceDatabase =
-  Context.GenericTag<WorkspaceDatabase>("WorkspaceDatabase");
+  Context.Service<WorkspaceDatabase>("WorkspaceDatabase");
 
 export const WorkspaceDatabaseLive = Layer.succeed(
   WorkspaceDatabase,

@@ -33,10 +33,10 @@ export interface EmailProvider {
   readonly verify: () => Effect.Effect<boolean, EmailServiceError>;
 }
 
-export class EmailProviderTag extends Context.Tag("EmailProvider")<
+export class EmailProviderTag extends Context.Service<
   EmailProviderTag,
   EmailProvider
->() {}
+>()("EmailProvider") {}
 
 export interface EmailTemplateService {
   readonly render: (
@@ -47,9 +47,12 @@ export interface EmailTemplateService {
   >;
 }
 
-export class EmailTemplateServiceTag extends Context.Tag(
+export class EmailTemplateServiceTag extends Context.Service<
+  EmailTemplateServiceTag,
+  EmailTemplateService
+>()(
   "EmailTemplateService"
-)<EmailTemplateServiceTag, EmailTemplateService>() {}
+) {}
 
 export interface EmailService {
   readonly send: (
@@ -65,15 +68,15 @@ export interface EmailService {
   readonly verify: () => Effect.Effect<boolean, EmailServiceError>;
 }
 
-export class EmailServiceTag extends Context.Tag("EmailService")<
+export class EmailServiceTag extends Context.Service<
   EmailServiceTag,
   EmailService
->() {}
+>()("EmailService") {}
 
-export class EmailConfigTag extends Context.Tag("EmailConfig")<
+export class EmailConfigTag extends Context.Service<
   EmailConfigTag,
   EmailProviderConfig
->() {}
+>()("EmailConfig") {}
 
 export const isRetryableEmailError = (
   error: EmailServiceError | NetworkError
@@ -92,8 +95,10 @@ const getEmailRetryPolicyDescription = (
 
 const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   Schedule.jittered,
-  Schedule.intersect(Schedule.recurs(3)),
-  Schedule.whileInput<EmailServiceError | NetworkError>(isRetryableEmailError),
+  Schedule.while<EmailServiceError | NetworkError, Duration.Duration>(({ input }) =>
+    isRetryableEmailError(input)
+  ),
+  Schedule.both(Schedule.recurs(3)),
   Schedule.tapOutput(([duration, attempt]) =>
     Effect.logInfo(
       `Email retry attempt #${attempt + 1} starting after ${Duration.toMillis(duration)}ms delay`,

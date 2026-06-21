@@ -7,13 +7,10 @@ const defaultFromEmail = "reservations@workspace.deskohub.cz";
 
 const emailConfig = Config.all({
   provider: Config.withDefault(
-    Config.literal(
-      "resend",
-      "smtp",
-      "sendgrid",
-      "mailgun",
-      "console"
-    )("EMAIL_PROVIDER"),
+    Config.literals(
+      ["resend", "smtp", "sendgrid", "mailgun", "console"],
+      "EMAIL_PROVIDER"
+    ),
     "console" as const
   ),
   apiKey: Config.option(Config.string("EMAIL_API_KEY")),

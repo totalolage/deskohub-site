@@ -1,27 +1,11 @@
-import { DotyposService } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { NextResponse } from "next/server";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
-import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import {
   ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLive,
+  ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
-import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
-
-const CronReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
-  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-  Layer.provide(OperationalEventRepositoryLive),
-  Layer.provide(PostHogEventServiceLive),
-  Layer.provide(WorkspaceReservationRepositoryLive),
-  Layer.provide(WorkspaceDatabaseLive),
-  Layer.provide(Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive))
-);
 
 const cronBatchLimit = 25;
 
@@ -94,8 +78,8 @@ export async function GET(request: Request): Promise<NextResponse> {
   return runWorkspaceRequestEffect(
     request,
     sweepExpiredReservationHolds().pipe(
-      Effect.provide(CronReservationHoldCleanupLive),
-      Effect.catchAll(handleReservationHoldCleanupCronError)
+      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+      Effect.catch(handleReservationHoldCleanupCronError)
     )
   );
 }

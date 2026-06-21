@@ -1,8 +1,4 @@
-import {
-  type CountryCode,
-  isValidPhoneNumber,
-  parsePhoneNumber,
-} from "libphonenumber-js";
+import { type CountryCode, parsePhoneNumber } from "libphonenumber-js";
 
 const DEFAULT_COUNTRY: CountryCode = "CZ";
 
@@ -16,13 +12,6 @@ export const normalizePhoneNumber = (
   if (!cleaned) return null;
 
   try {
-    const isValidForCountry = isValidPhoneNumber(cleaned, countryCode);
-    const isValidInternational = isValidPhoneNumber(cleaned);
-
-    if (!isValidForCountry && !isValidInternational) {
-      return null;
-    }
-
     const parsed = parsePhoneNumber(cleaned, countryCode);
     if (!parsed || !parsed.isValid()) {
       return null;

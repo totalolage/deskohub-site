@@ -1,4 +1,4 @@
-import type { CreateReservationRequest } from "./generated/types.gen";
+import type { CreateReservationRequest } from "./generated";
 
 export type DotyposReservationStatus = CreateReservationRequest["status"];
 

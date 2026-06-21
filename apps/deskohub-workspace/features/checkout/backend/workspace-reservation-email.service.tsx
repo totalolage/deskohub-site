@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
+import type { Customer } from "@deskohub/dotypos/generated";
 import { TableMap } from "@deskohub/dotypos/table-map";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
 import {
@@ -55,7 +55,7 @@ export interface WorkspaceReservationEmailService {
 }
 
 export const WorkspaceReservationEmailService =
-  Context.GenericTag<WorkspaceReservationEmailService>(
+  Context.Service<WorkspaceReservationEmailService>(
     "WorkspaceReservationEmailService"
   );
 
@@ -930,7 +930,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
         if (customerEmail) {
           const locationMapAttachment =
             yield* createWorkspaceLocationMapAttachment().pipe(
-              Effect.catchAll((cause) =>
+              Effect.catch((cause) =>
                 Effect.logWarning(
                   "Workspace reservation location map attachment skipped",
                   {
@@ -943,7 +943,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           const networkQrAttachment = yield* createWorkspaceNetworkQrAttachment(
             networkDetails
           ).pipe(
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               Effect.logWarning(
                 "Workspace reservation Wi-Fi QR attachment skipped",
                 {
@@ -958,7 +958,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
                 reservation.tableMap,
                 locale
               ).pipe(
-                Effect.catchAll((cause) =>
+                Effect.catch((cause) =>
                   Effect.logWarning(
                     "Workspace reservation table map attachment skipped",
                     {

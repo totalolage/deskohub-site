@@ -4,9 +4,12 @@
  * Configuration for the email service
  */
 
-import type { EmailProviderConfig } from "@deskohub/email";
-import { EmailConfigTag } from "@deskohub/email";
-import { Config, Layer } from "effect";
+import {
+  EmailConfigTag,
+  type EmailProviderConfig,
+  StandaloneEmailServiceLayer,
+} from "@deskohub/email";
+import { Config, Layer, Option } from "effect";
 import { siteConstants } from "@/shared/utils/constants";
 
 /**
@@ -14,13 +17,10 @@ import { siteConstants } from "@/shared/utils/constants";
  */
 const emailConfig = Config.all({
   provider: Config.withDefault(
-    Config.literal(
-      "resend",
-      "smtp",
-      "sendgrid",
-      "mailgun",
-      "console"
-    )("EMAIL_PROVIDER"),
+    Config.literals(
+      ["resend", "smtp", "sendgrid", "mailgun", "console"],
+      "EMAIL_PROVIDER"
+    ),
     "console" as const
   ),
   defaultFromEmail: Config.withDefault(
@@ -53,21 +53,19 @@ export const EmailConfigLayer = Layer.effect(
           email: config.defaultFromEmail,
           name: config.defaultFromName,
         },
-        apiKey: config.apiKey._tag === "Some" ? config.apiKey.value : undefined,
-        smtpHost:
-          config.smtpHost._tag === "Some" ? config.smtpHost.value : undefined,
-        smtpPort:
-          config.smtpPort._tag === "Some" ? config.smtpPort.value : undefined,
-        smtpUser:
-          config.smtpUser._tag === "Some" ? config.smtpUser.value : undefined,
-        smtpPassword:
-          config.smtpPassword._tag === "Some"
-            ? config.smtpPassword.value
-            : undefined,
+        apiKey: Option.getOrUndefined(config.apiKey),
+        smtpHost: Option.getOrUndefined(config.smtpHost),
+        smtpPort: Option.getOrUndefined(config.smtpPort),
+        smtpUser: Option.getOrUndefined(config.smtpUser),
+        smtpPassword: Option.getOrUndefined(config.smtpPassword),
         smtpSecure: config.smtpSecure,
         testMode: config.testMode,
       };
       return providerConfig;
     })
   )
+);
+
+export const EmailServiceLayer = StandaloneEmailServiceLayer.pipe(
+  Layer.provide(EmailConfigLayer)
 );

@@ -39,7 +39,7 @@ const decodeCheckoutStatusParams = getParamsDecoder({
 
 const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
   Schema.Struct({
-    outcome: Schema.Literal("success", "cancelled"),
+    outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
 
@@ -47,15 +47,6 @@ const loadCheckoutStatus = (
   orderId: string,
   returnOutcome: CheckoutStatusReturnOutcome
 ) => refreshCheckoutStatus({ orderId, returnOutcome });
-
-const getFallbackStatus = (
-  orderId: string,
-  returnOutcome: CheckoutStatusReturnOutcome
-): CheckoutStatusViewModel => ({
-  orderId,
-  returnOutcome,
-  status: "not_found",
-});
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -141,7 +132,7 @@ export default async function LocalizedCheckoutStatusPage({
         returnOutcome,
         cause,
       }).pipe(runWorkspaceEffect);
-      return getFallbackStatus(orderId, returnOutcome);
+      throw cause;
     }
   );
   const retryOutcome = getRetryOutcome(status.status);

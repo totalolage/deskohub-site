@@ -100,7 +100,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         "ResendWebhookProcessingError",
         handleResendWebhookProcessingError
       ),
-      Effect.catchAll(handleResendWebhookRouteError)
+      Effect.catch(handleResendWebhookRouteError)
     )
   );
 }

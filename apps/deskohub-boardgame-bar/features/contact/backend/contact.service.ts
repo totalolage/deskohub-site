@@ -1,6 +1,5 @@
-import { EmailServiceTag } from "@deskohub/email";
+import { type EmailMessage, EmailServiceTag } from "@deskohub/email";
 import { Context, Effect, Layer } from "effect";
-import type { EmailMessage } from "@/features/email/types/email.types";
 import { StorageError } from "@/shared/backend/errors";
 import { siteConstants } from "@/shared/utils/constants";
 import {
@@ -24,8 +23,7 @@ export interface ContactService {
   ) => Effect.Effect<ContactSubmission, StorageError>;
 }
 
-export const ContactService =
-  Context.GenericTag<ContactService>("ContactService");
+export const ContactService = Context.Service<ContactService>("ContactService");
 
 export const ContactServiceLive = Layer.effect(
   ContactService,
@@ -214,7 +212,7 @@ Your space for work and creativity
                 }
               )
             ),
-            Effect.catchAll(() => Effect.void)
+            Effect.catch(() => Effect.void)
           );
 
           yield* Effect.logDebug("Contact form submission service completed");

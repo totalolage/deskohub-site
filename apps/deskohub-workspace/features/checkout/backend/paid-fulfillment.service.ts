@@ -22,7 +22,7 @@ import {
   PostHogEventService,
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 
 export type WorkspacePaidFulfillmentFailureCode =
@@ -52,7 +52,7 @@ export interface WorkspacePaidFulfillmentService {
 }
 
 export const WorkspacePaidFulfillmentService =
-  Context.GenericTag<WorkspacePaidFulfillmentService>(
+  Context.Service<WorkspacePaidFulfillmentService>(
     "WorkspacePaidFulfillmentService"
   );
 
@@ -261,7 +261,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                     { claimed, cause }
                   )
                 ),
-                Effect.catchAll((cause) =>
+                Effect.catch((cause) =>
                   failFulfillment({
                     orderId: input.orderId,
                     failureCode: "dotypos_reservation_failed",
@@ -312,7 +312,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 cause,
               })
             ),
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               failFulfillment({
                 orderId: input.orderId,
                 failureCode: "fulfillment_email_failed",
@@ -363,7 +363,5 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     Layer.provide(WorkspaceReservationService.Live),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    )
+    Layer.provide(DotyposServiceLive)
   );

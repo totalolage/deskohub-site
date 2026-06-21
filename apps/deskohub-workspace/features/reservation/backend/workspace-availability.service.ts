@@ -5,17 +5,11 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
-import {
-  type GoogleCalendarError,
-  GoogleCalendarService,
-} from "@deskohub/google-calendar";
+import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
-import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
-import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
 import {
   ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLive,
+  ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import {
   getWorkspaceTableOccupancyById,
@@ -30,10 +24,8 @@ import {
   workspaceProductMonitorOptionTableTags,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
-import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
-import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import type {
   WorkspaceAvailability,
   WorkspaceAvailabilityNotice,
@@ -73,9 +65,7 @@ export interface WorkspaceAvailabilityService {
 }
 
 export const WorkspaceAvailabilityService =
-  Context.GenericTag<WorkspaceAvailabilityService>(
-    "WorkspaceAvailabilityService"
-  );
+  Context.Service<WorkspaceAvailabilityService>("WorkspaceAvailabilityService");
 
 export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
@@ -97,7 +87,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
                 cause,
               })
             ),
-            Effect.either
+            Effect.result
           );
         yield* Effect.annotateLogsScoped({ sweepResult });
         yield* Effect.logInfo(
@@ -259,27 +249,16 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   })
 );
 
-const GoogleCalendarLive = GoogleCalendarService.Live.pipe(
-  Layer.provide(GoogleCalendarRuntimeConfigLive)
-);
-
 const GoogleCalendarWorkspaceLimitationsLive =
   GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(GoogleCalendarLive)
+    Layer.provide(GoogleCalendarServiceLive)
   );
 
 export const WorkspaceAvailabilityServiceLiveWithDependencies =
   WorkspaceAvailabilityServiceLive.pipe(
-    Layer.provide(ReservationHoldCleanupServiceLive),
-    Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(OperationalEventRepositoryLive),
-    Layer.provide(PostHogEventServiceLive),
-    Layer.provide(WorkspaceReservationRepositoryLive),
-    Layer.provide(WorkspaceDatabaseLive),
+    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    )
+    Layer.provide(DotyposServiceLive)
   );
 
 const getFullyOccupiedCalendarDates = (

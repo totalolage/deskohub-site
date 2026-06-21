@@ -12,13 +12,8 @@ export type ParaglideAsyncLocalStorage<Locale extends string = string> = {
   run: (store: ParaglideStore<Locale>, callback: unknown) => unknown;
 };
 
-export class LocaleContext extends Context.Tag("@deskohub/i18n/LocaleContext")<
-  LocaleContext,
-  string
->() {}
-
 type CreateParaglideLocaleBridgeOptions<Locale extends string, LocaleTag> = {
-  localeTag: Context.Tag<LocaleTag, Locale>;
+  localeTag: Context.Service<LocaleTag, Locale>;
   origin: string;
   setLocale: (locale: Locale, options?: { reload?: boolean }) => unknown;
   overwriteServerAsyncLocalStorage: (
@@ -48,10 +43,9 @@ export function createParaglideLocaleBridge<Locale extends string, LocaleTag>({
 
     const nextWithLocale = next.pipe(Effect.provideService(localeTag, locale));
 
-    return yield* Effect.promise(
-      localeAsyncLocalStorage.run(
-        { locale, origin },
-        () => (signal) => Effect.runPromise(nextWithLocale, { signal })
+    return yield* Effect.promise((signal) =>
+      localeAsyncLocalStorage.run({ locale, origin }, () =>
+        Effect.runPromise(nextWithLocale, { signal })
       )
     );
   });

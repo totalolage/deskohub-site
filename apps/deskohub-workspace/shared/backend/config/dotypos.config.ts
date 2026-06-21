@@ -1,7 +1,8 @@
 import {
   DotyposRuntimeConfig,
   type DotyposRuntimeConfigObj,
-} from "@deskohub/dotypos/config";
+  DotyposService,
+} from "@deskohub/dotypos";
 import { Layer } from "effect";
 import { env } from "@/env";
 
@@ -16,3 +17,7 @@ export const DotyposRuntimeConfigLive = Layer.succeed(DotyposRuntimeConfig, {
   apiTimeout: env.DOTYPOS_API_TIMEOUT,
   reservationTableIds: [],
 } satisfies DotyposRuntimeConfigObj);
+
+export const DotyposServiceLive = DotyposService.Default.pipe(
+  Layer.provide(DotyposRuntimeConfigLive)
+);

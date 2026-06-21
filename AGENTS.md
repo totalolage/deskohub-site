@@ -4,17 +4,17 @@ The role of this file is to describe common mistakes and confusion points that a
 
 ## Points
 
-- For new Effect services, declare the service interface first, then define a `Context.Tag` class with static layer properties; do not introduce new `Effect.Service` classes. Preferred shape:
+- For new Effect V4 services, declare the service interface first, then define a `Context.Service` class with static layer properties; do not introduce `Effect.Service`, `Context.Tag`, or `Context.GenericTag`. Preferred shape:
 
 ```ts
 interface IFooService {
   readonly prop: Type;
 }
 
-export class FooService extends Context.Tag("FooService")<
+export class FooService extends Context.Service<
   FooService,
   IFooService
->() {
+>()("FooService") {
   static Live = Layer.effect(this, implementation);
 }
 ```

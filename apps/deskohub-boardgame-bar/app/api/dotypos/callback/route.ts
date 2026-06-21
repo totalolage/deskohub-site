@@ -12,14 +12,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return await Effect.runPromise(
       Effect.gen(function* () {
         const searchParams = request.nextUrl.searchParams;
-        yield* Effect.annotateLogsScoped({
-          request: {
-            headers: Object.fromEntries(request.headers.entries()),
-            method: request.method,
-            searchParams: Object.fromEntries(searchParams),
-            url: request.url,
-          },
-        });
         yield* Effect.logInfo("Dotypos callback received");
 
         // Extract parameters from Dotypos redirect
@@ -30,9 +22,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         // Validate required parameters
         if (!token || !cloudId) {
           yield* Effect.logWarning("Dotypos callback missing required params", {
-            cloudId,
-            state,
-            token,
+            hasCloudId: Boolean(cloudId),
+            hasState: Boolean(state),
+            hasToken: Boolean(token),
           });
           return NextResponse.json(
             {
@@ -55,12 +47,6 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         if (state) {
           redirectUrl.searchParams.set("state", state);
         }
-        yield* Effect.annotateLogsScoped({
-          cloudId,
-          redirectUrl: redirectUrl.toString(),
-          state,
-          token,
-        });
         yield* Effect.logInfo("Dotypos callback redirect URL built");
 
         return NextResponse.redirect(redirectUrl);

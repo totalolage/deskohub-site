@@ -74,6 +74,25 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("renders not found without reservation summary copy", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          orderId: "test-order",
+          returnOutcome: "unknown",
+          status: "not_found",
+        }}
+      />
+    );
+
+    expect(view.getByText("We could not find this order.")).toBeDefined();
+    expect(view.queryByText("Reservation summary")).toBeNull();
+    expect(
+      view.queryByText("We will send the reservation details by email.")
+    ).toBeNull();
+  });
+
   test("renders assigned table map when available", () => {
     const view = render(
       <CheckoutStatusPage

@@ -6,7 +6,7 @@ export type Locale = (typeof locales)[number];
 
 export const nexiMinorUnitExponent = 2;
 
-export const NexiCurrencySchema = Schema.Literal("CZK", "EUR").annotations({
+export const NexiCurrencySchema = Schema.Literals(["CZK", "EUR"]).annotate({
   identifier: "NexiCurrency",
   description:
     "Nexi amount currency code. Supported settlement currencies depend on the merchant configuration.",
@@ -14,13 +14,13 @@ export const NexiCurrencySchema = Schema.Literal("CZK", "EUR").annotations({
 export type NexiCurrency = Schema.Schema.Type<typeof NexiCurrencySchema>;
 
 export const NexiAmountSchema = Schema.Struct({
-  amount: Schema.String.pipe(
-    Schema.pattern(/^[1-9][0-9]*$/, {
+  amount: Schema.String.check(
+    Schema.isPattern(/^[1-9][0-9]*$/, {
       description: "Positive integer minor-unit/scaled amount string.",
     })
   ),
   currency: NexiCurrencySchema,
-}).annotations({
+}).annotate({
   identifier: "NexiAmount",
   description: "Nexi API amount shape with ISO 4217 alphabetic currency code.",
 });
@@ -28,14 +28,14 @@ export const NexiAmountSchema = Schema.Struct({
 export type NexiAmount = Schema.Schema.Type<typeof NexiAmountSchema>;
 
 export const NexiWebhookOperationSchema = Schema.Struct({
-  orderId: Schema.String.pipe(Schema.nonEmptyString()),
+  orderId: Schema.NonEmptyString,
   operationId: Schema.optional(Schema.String),
   operationType: Schema.optional(Schema.String),
   operationResult: Schema.optional(Schema.String),
   operationTime: Schema.optional(Schema.String),
   operationAmount: Schema.optional(Schema.String),
   operationCurrency: Schema.optional(Schema.String),
-}).annotations({
+}).annotate({
   identifier: "NexiWebhookOperation",
   description:
     "Official Nexi webhook operation payload fields required by Deskohub payment processing.",
@@ -50,7 +50,7 @@ export const NexiWebhookNotificationSchema = Schema.Struct({
   eventTime: Schema.optional(Schema.String),
   securityToken: Schema.optional(Schema.String),
   operation: NexiWebhookOperationSchema,
-}).annotations({
+}).annotate({
   identifier: "NexiWebhookNotification",
   description:
     "Official Nexi webhook notification envelope. Schema.Struct decodes only declared fields, so sensitive provider extras are tolerated but not returned in the typed value.",
@@ -60,7 +60,7 @@ export type NexiWebhookNotification = Schema.Schema.Type<
   typeof NexiWebhookNotificationSchema
 >;
 
-const decodeUnknownNexiWebhookNotification = Schema.decodeUnknown(
+const decodeUnknownNexiWebhookNotification = Schema.decodeUnknownEffect(
   NexiWebhookNotificationSchema
 );
 
@@ -99,9 +99,13 @@ export const normalizeNexiWebhookNotification = (
     orderId: notification.operation.orderId,
     operationId: cleanOptionalString(notification.operation.operationId),
     operationType: cleanOptionalString(notification.operation.operationType),
-    operationResult: cleanOptionalString(notification.operation.operationResult),
+    operationResult: cleanOptionalString(
+      notification.operation.operationResult
+    ),
     operationTime: cleanOptionalString(notification.operation.operationTime),
-    operationAmount: cleanOptionalString(notification.operation.operationAmount),
+    operationAmount: cleanOptionalString(
+      notification.operation.operationAmount
+    ),
     operationCurrency: cleanOptionalString(
       notification.operation.operationCurrency
     ),
@@ -186,12 +190,6 @@ export interface CreateHostedPaymentPageInput {
   readonly resultUrl: string;
   readonly cancelUrl: string;
   readonly notificationUrl: string;
-}
-
-export interface HostedPaymentPageSession {
-  readonly orderId: string;
-  readonly hostedPage: string;
-  readonly securityToken: string;
 }
 
 export interface VerifyPaymentOutcomeInput {

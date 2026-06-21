@@ -1,5 +1,4 @@
-import { NexiApi, NexiService } from "@deskohub/nexi";
-import { NexiRuntimeConfig } from "@deskohub/nexi/config";
+import { NexiRuntimeConfig, NexiService } from "@deskohub/nexi";
 import { Layer } from "effect";
 import { env } from "@/env";
 
@@ -10,5 +9,5 @@ export const NexiRuntimeConfigLive = Layer.succeed(NexiRuntimeConfig, {
 });
 
 export const NexiServiceLive = NexiService.Default.pipe(
-  Layer.provide(NexiApi.Default.pipe(Layer.provide(NexiRuntimeConfigLive)))
+  Layer.provide(NexiRuntimeConfigLive)
 );

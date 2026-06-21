@@ -91,7 +91,7 @@ export interface PaymentAttemptRepository {
 }
 
 export const PaymentAttemptRepository =
-  Context.GenericTag<PaymentAttemptRepository>("PaymentAttemptRepository");
+  Context.Service<PaymentAttemptRepository>("PaymentAttemptRepository");
 
 const isPaymentAttemptStateError = (
   cause: unknown

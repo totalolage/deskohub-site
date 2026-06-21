@@ -7,7 +7,7 @@ export interface WorkspaceCheckoutAccessCodeService {
 }
 
 export const WorkspaceCheckoutAccessCodeService =
-  Context.GenericTag<WorkspaceCheckoutAccessCodeService>(
+  Context.Service<WorkspaceCheckoutAccessCodeService>(
     "WorkspaceCheckoutAccessCodeService"
   );
 

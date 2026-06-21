@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Context, Effect, HashMap, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option, References } from "effect";
 import { type EventMessage, PostHog } from "posthog-node";
 import {
   PostHogRuntimeConfig,
@@ -32,9 +32,10 @@ interface PostHogEventServiceOptions {
   readonly config: PostHogRuntimeConfigObj;
 }
 
-export class PostHogEventService extends Context.Tag(
-  "@deskohub-workspace/analytics/PostHogEventService"
-)<PostHogEventService, IPostHogEventService>() {
+export class PostHogEventService extends Context.Service<
+  PostHogEventService,
+  IPostHogEventService
+>()("@deskohub-workspace/analytics/PostHogEventService") {
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {
@@ -59,12 +60,9 @@ const createPostHogCaptureClient = ({
   return new PostHog(projectToken, { host });
 };
 
-const toRecord = (annotations: HashMap.HashMap<string, unknown>) =>
-  Object.fromEntries(HashMap.toEntries(annotations));
-
 const collectEffectContextProperties = Effect.gen(function* () {
-  const logAnnotations = toRecord(yield* Effect.logAnnotations);
-  const spanAnnotations = toRecord(yield* Effect.spanAnnotations);
+  const logAnnotations = yield* References.CurrentLogAnnotations;
+  const spanAnnotations = yield* Effect.spanAnnotations;
 
   const currentSpan = yield* Effect.currentSpan.pipe(Effect.option);
   const spanMetadata = Option.isSome(currentSpan)
@@ -126,7 +124,7 @@ export const makePostHogEventService = ({
           uuid: input.uuid,
         })
       ).pipe(
-        Effect.catchAll((cause) =>
+        Effect.catch((cause) =>
           Effect.logWarning("PostHog lifecycle event capture failed", {
             event: input.event,
             uuid: input.uuid,
