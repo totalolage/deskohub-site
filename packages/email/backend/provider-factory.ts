@@ -23,6 +23,11 @@ export const EmailProviderLive = Layer.unwrap(
     }
 
     if (process.env.NODE_ENV === "production" && !config.testMode) {
+      if (config.apiKey) {
+        yield* Effect.logInfo("Using Resend email provider");
+        return ResendEmailProviderLive;
+      }
+
       return yield* Effect.fail(
         new EmailServiceError(
           "Console email provider is disabled in production",
