@@ -1,6 +1,5 @@
 import { join } from "node:path";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { TableMap } from "@deskohub/dotypos/table-map";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
 import {
   EmailConfigTag,
@@ -19,7 +18,6 @@ import {
   generateSvgPngBuffer,
   type SvgPngTextOverlay,
 } from "osm";
-import type { CSSProperties } from "react";
 import { env } from "@/env";
 import {
   createWorkspaceCheckoutWifiQrPayload,
@@ -28,6 +26,13 @@ import {
   workspaceCheckoutPlaceholderNetworkDetails,
 } from "@/features/checkout/backend/network-details.service";
 import {
+  WorkspaceTableMapView,
+  workspaceTableMapFontFamily,
+  workspaceTableMapImageHeight,
+  workspaceTableMapImageWidth,
+  workspaceTableMapLabelWidth,
+} from "@/features/checkout/components/workspace-table-map-view";
+import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
@@ -35,7 +40,6 @@ import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
-import { getWorkspaceRoomLayout } from "@/features/checkout/workspace-room-layouts";
 import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map";
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
@@ -85,15 +89,10 @@ const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const workspaceTableMapContentId = "workspace-table-map";
-const workspaceTableMapImageWidth = 720;
-const workspaceTableMapImageHeight = 540;
-const workspaceTableMapFontFamily = "Sculpin";
-const workspaceTableMapFontStack = `${workspaceTableMapFontFamily}, "Avenir Next", "Segoe UI", "Helvetica Neue", Arial, sans-serif`;
 const workspaceTableMapFontFile = join(
   process.cwd(),
   "assets/fonts/Sculpin/regular.woff2"
 );
-const workspaceTableMapLabelWidth = 96;
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
 
@@ -191,21 +190,9 @@ const createWorkspaceTableMapPng = (
   locale: Locale
 ) => {
   const svg = renderWorkspaceEmailHtml(
-    <TableMap
+    <WorkspaceTableMapView
       ariaLabel={m.checkoutStatusTableMapTitle({}, { locale })}
-      height={workspaceTableMapImageHeight}
-      rotation={-90}
-      roomLayout={createEmailRoomLayout(tableMap.roomName)}
-      style={{ background: "#ffffff", fontFamily: workspaceTableMapFontStack }}
-      tableLabelInlineStyle={(table) =>
-        getEmailTableLabelStyle(tableMap, table.id)
-      }
-      tableShapeInlineStyle={(table) =>
-        getEmailTableShapeStyle(tableMap, table.id)
-      }
-      tableStyle={() => ""}
-      tables={tableMap.tables}
-      width={workspaceTableMapImageWidth}
+      tableMap={tableMap}
     />
   );
 
@@ -400,54 +387,6 @@ const createInternalReservationRows = (
 
   return rows;
 };
-
-const createEmailRoomLayout = (roomName: string | undefined) => {
-  return {
-    ...getWorkspaceRoomLayout(roomName),
-    style: {
-      fill: "#ffffff",
-      fillOpacity: 0.72,
-      stroke: "#00024f",
-      strokeOpacity: 0.18,
-      strokeWidth: 3,
-    } satisfies CSSProperties,
-  };
-};
-
-const isAssignedTable = (
-  tableId: string | undefined,
-  assignedTableId: string
-) => tableId?.trim() === assignedTableId;
-
-const getEmailTableShapeStyle = (
-  tableMap: WorkspaceTableMap,
-  tableId: string | undefined
-): CSSProperties =>
-  isAssignedTable(tableId, tableMap.assignedTableId)
-    ? {
-        fill: "#00024f",
-        stroke: "#00024f",
-        strokeWidth: 4,
-        fontWidth: "bold",
-      }
-    : {
-        fill: "#ccf7ea",
-        stroke: "#00024f",
-        strokeOpacity: 0.25,
-        strokeWidth: 2,
-      };
-
-const getEmailTableLabelStyle = (
-  tableMap: WorkspaceTableMap,
-  tableId: string | undefined
-): CSSProperties => ({
-  fill: isAssignedTable(tableId, tableMap.assignedTableId)
-    ? "#ffffff"
-    : "#00024f",
-  fontFamily: workspaceTableMapFontStack,
-  fontSize: 15,
-  fontWeight: 800,
-});
 
 const createEmailHtml = (input: {
   readonly heading: string;

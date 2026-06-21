@@ -22,7 +22,7 @@ import { formatReservationDisplayDate } from "@/features/reservation/reservation
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
-import { CheckoutStatusTableMap } from "./checkout-status-table-map";
+import { WorkspaceTableMapView } from "./workspace-table-map-view";
 
 type CheckoutStatusPageProps = {
   readonly locale: Locale;
@@ -309,11 +309,9 @@ export function CheckoutStatusPage({
             </div>
 
             <div className="mt-5 overflow-hidden rounded-[1.2rem] border border-navy-blue/8 bg-linear-to-br from-aquamarine-green/8 to-white p-3 [&>svg]:h-[min(58vh,28rem)] [&>svg]:min-h-72 [&>svg]:w-full [&_text]:font-bold">
-              <CheckoutStatusTableMap
+              <WorkspaceTableMapView
                 ariaLabel={m.checkoutStatusTableMapTitle({}, { locale })}
-                assignedTableId={status.tableMap.assignedTableId}
-                roomName={status.tableMap.roomName}
-                tables={status.tableMap.tables}
+                tableMap={status.tableMap}
               />
             </div>
           </div>
