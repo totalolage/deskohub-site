@@ -120,7 +120,7 @@ describe("CheckoutStatusPage", () => {
     expect(view.getByText("Where to sit")).toBeDefined();
     expect(view.getByText("Room: Main room")).toBeDefined();
     expect(view.getByRole("img", { name: "Where to sit" })).toBeDefined();
-    expect(view.container.querySelector("svg > rect")).toBeDefined();
+    expect(view.container.querySelector("svg rect")).toBeDefined();
   });
 
   test("renders prefilled support contact link for failed fulfillment", () => {

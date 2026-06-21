@@ -101,12 +101,16 @@ The Workspace migrations have been rewritten into a fresh single baseline, `apps
 
 ## Preview Deployment
 
-Do not deploy from this checklist automatically. When ready, use Vercel CLI explicitly:
+For E2E that validates current code, deploy a fresh preview from the current checkout with Vercel CLI, then move `new.workspace.deskohub.cz` to that deployment before starting checkout. The CLI deploy is the source of truth because it uploads the current filesystem state, including uncommitted changes. The `new.workspace.deskohub.cz` alias is still used for webhook E2E because Resend/Nexi callbacks are configured for that host.
 
 ```bash
+git status --short
 vercel env pull .env.local --cwd apps/deskohub-workspace
-vercel --cwd apps/deskohub-workspace
+vercel --cwd apps/deskohub-workspace --yes
+vercel alias set <preview-url> new.workspace.deskohub.cz --cwd apps/deskohub-workspace
 ```
+
+Use `https://new.workspace.deskohub.cz` for the checkout flow and post-deploy checks after the alias command succeeds. Do not run `vercel --prod` for preview E2E unless production validation was explicitly requested. Do not use the existing `new.workspace.deskohub.cz` deployment without first moving it to the fresh preview unless the test is explicitly about the already-live alias.
 
 The pulled `.env.local` is useful for Vercel preview runtime values such as `DATABASE_URL`. It is not sufficient for manual Dotypos SDK verification because `DOTYPOS_REFRESH_TOKEN` must come from `.env.development.local`.
 
@@ -134,10 +138,10 @@ Database requirements and risks:
 
 Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi HPP result and notification callbacks must be public HTTPS URLs reachable by Nexi, and Workspace builds those URLs from the preview deployment host.
 
-1. Deploy the Vercel preview first.
+1. Deploy a fresh Vercel preview from the exact current checkout and assign `new.workspace.deskohub.cz` to it with the CLI commands above.
 2. Confirm the preview environment uses the Nexi sandbox origin and sandbox API key from [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
 3. If validating Workspace catalog prices that are still `CZK` against the public Nexi CEE sandbox merchant/cards, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on the preview environment only. Treat resulting `EUR` payment amounts as expected sandbox behavior, not a currency bug.
-4. Open the deployed preview URL and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values.
+4. Open `https://new.workspace.deskohub.cz` after it points to the new deployment and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values for the same deployed code under test.
 5. Complete one payment with an OK sandbox card and the successful 3DS stub option.
 6. Start a second checkout and exercise the cancellation or failure path with the documented KO card or a user cancellation from HPP.
 7. From the returned Workspace status page, retry or restart checkout as the UI allows and confirm the retry path does not mutate the already failed/cancelled order into a false success.
