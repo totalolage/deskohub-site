@@ -91,7 +91,10 @@ describe("DotyposService customer lookup", () => {
       if (url.pathname === "/signin/token") return tokenResponse();
       if (url.pathname === "/clouds/cloud-id/customers") {
         return Response.json({
-          data: [customer({ id: "partial", email: "not-ada@example.com" }), matched],
+          data: [
+            customer({ id: "partial", email: "not-ada@example.com" }),
+            matched,
+          ],
         });
       }
       return new Response("Not found", { status: 404 });
@@ -100,20 +103,30 @@ describe("DotyposService customer lookup", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        const first = yield* dotypos.findCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-        }, undefined);
-        yield* dotypos.findCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-        }, undefined);
+        const first = yield* dotypos.findCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
+        yield* dotypos.findCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
         return first;
       }),
       fetchMock
     );
 
-    expect(result).toEqual({ _tag: "Matched", customer: matched, matches: [matched] });
+    expect(result).toEqual({
+      _tag: "Matched",
+      customer: matched,
+      matches: [matched],
+    });
 
     const tokenCalls = fetchMock.mock.calls.filter((call) =>
       getUrl(call as FetchCall).endsWith("/signin/token")
@@ -135,6 +148,49 @@ describe("DotyposService customer lookup", () => {
     expect(getHeader(searchCall, "Authorization")).toBe("Bearer access-token");
   });
 
+  test("does not cache failed token fetches", async () => {
+    const matched = customer({ id: "email-match", email: "ada@example.com" });
+    let tokenAttempts = 0;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") {
+        tokenAttempts += 1;
+        if (tokenAttempts === 1) {
+          return Response.json(
+            { error: "server", error_description: "Server error", code: 500 },
+            { status: 500 }
+          );
+        }
+        return tokenResponse();
+      }
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [matched] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({
+      _tag: "Matched",
+      customer: matched,
+      matches: [matched],
+    });
+    expect(tokenAttempts).toBe(2);
+  });
+
   test("maps customer search 404 to no match", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
@@ -151,10 +207,13 @@ describe("DotyposService customer lookup", () => {
     const result = await runWithService(
       Effect.gen(function* () {
         const dotypos = yield* DotyposService;
-        return yield* dotypos.findCustomer({
-          firstName: "Ada",
-          email: "ada@example.com",
-        }, undefined);
+        return yield* dotypos.findCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
       }),
       fetchMock
     );
@@ -207,7 +266,9 @@ describe("DotyposService reservations", () => {
     expect(reservationAttempts).toBe(2);
 
     const createCall = fetchMock.mock.calls.find(
-      (call) => getMethod(call as FetchCall) === "POST" && getUrl(call as FetchCall).includes("/reservations")
+      (call) =>
+        getMethod(call as FetchCall) === "POST" &&
+        getUrl(call as FetchCall).includes("/reservations")
     ) as FetchCall;
     expect(await readJsonBody(createCall)).toEqual([
       {
@@ -234,7 +295,9 @@ describe("DotyposService reservations", () => {
         url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
         request.method === "GET"
       ) {
-        return Response.json(reservation(), { headers: { etag: '"reservation-etag"' } });
+        return Response.json(reservation(), {
+          headers: { etag: '"reservation-etag"' },
+        });
       }
       if (
         url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
@@ -289,7 +352,9 @@ describe("DotyposService customer discounts", () => {
         return yield* Effect.all([
           dotypos.getCustomerDiscount(customer({ _discountGroupId: "ten" })),
           dotypos.getCustomerDiscount(customer({ _discountGroupId: "zero" })),
-          dotypos.getCustomerDiscount(customer({ _discountGroupId: "tooHigh" })),
+          dotypos.getCustomerDiscount(
+            customer({ _discountGroupId: "tooHigh" })
+          ),
         ]);
       }),
       fetchMock
