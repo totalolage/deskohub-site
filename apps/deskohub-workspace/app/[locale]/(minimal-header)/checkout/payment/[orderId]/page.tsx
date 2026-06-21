@@ -1,4 +1,4 @@
-import { Option, Schema } from "effect";
+import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
@@ -7,6 +7,7 @@ import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
@@ -108,6 +109,12 @@ export default async function LocalizedCheckoutPaymentPage({
     () => ({ outcome: "unknown" as const })
   );
 
-  await refreshStatus(orderId, outcome);
+  await refreshStatus(orderId, outcome).catch(async (cause) => {
+    await Effect.logError("Checkout payment return refresh failed", {
+      orderId,
+      outcome,
+      cause,
+    }).pipe(runWorkspaceEffect);
+  });
   redirect(getCheckoutStatusRedirectPath({ locale, orderId, outcome }));
 }

@@ -8,7 +8,7 @@ import {
   createPostHogSessionCookieStrings,
   writePostHogSessionCookie,
 } from "@/shared/utils/posthog-session-cookies";
-import { createPostHogPageUrl } from "../utils/posthog-url";
+import { sanitizePostHogProperties } from "../utils/posthog-url";
 
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 
@@ -21,15 +21,10 @@ function sanitizePostHogEvent(
   event: PostHogBeforeSendEvent,
   posthogEnvironment: string
 ) {
-  event.properties = {
-    ...event.properties,
-    "deployment.environment.name": posthogEnvironment,
-  };
-
-  const currentUrl = event.properties?.$current_url;
-  if (typeof currentUrl === "string") {
-    event.properties.$current_url = createPostHogPageUrl(currentUrl);
-  }
+  event.properties = sanitizePostHogProperties(
+    event.properties,
+    posthogEnvironment
+  );
 
   return event;
 }

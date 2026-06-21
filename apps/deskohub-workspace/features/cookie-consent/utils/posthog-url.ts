@@ -18,3 +18,22 @@ export function createPostHogPageUrl(href: string) {
 
   return url.toString();
 }
+
+export function sanitizePostHogProperties(
+  properties: Record<string, unknown> | undefined,
+  posthogEnvironment: string
+) {
+  const sanitizedProperties: Record<string, unknown> = {
+    ...properties,
+    "deployment.environment.name": posthogEnvironment,
+  };
+
+  for (const property of ["$current_url", "$referrer"]) {
+    const url = sanitizedProperties[property];
+    if (typeof url === "string") {
+      sanitizedProperties[property] = createPostHogPageUrl(url);
+    }
+  }
+
+  return sanitizedProperties;
+}
