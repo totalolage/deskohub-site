@@ -1,6 +1,6 @@
 "use client";
 
-import posthog, { type BeforeSendFn, type Properties } from "posthog-js";
+import posthog, { type BeforeSendFn } from "posthog-js";
 import { useEffect } from "react";
 import { env } from "@/env";
 import {
@@ -11,18 +11,11 @@ import {
 import { createPostHogPageUrl } from "../utils/posthog-url";
 
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
-const MAX_QUEUED_EVENTS = 100;
 
 let hasInitializedPostHog = false;
 let analyticsSendingEnabled = false;
-let queuedEvents: QueuedPostHogEvent[] = [];
 
 type PostHogBeforeSendEvent = NonNullable<Parameters<BeforeSendFn>[0]>;
-
-type QueuedPostHogEvent = {
-  event: string;
-  properties?: Properties;
-};
 
 function sanitizePostHogEvent(
   event: PostHogBeforeSendEvent,
@@ -39,26 +32,6 @@ function sanitizePostHogEvent(
   }
 
   return event;
-}
-
-function queuePostHogEvent(event: PostHogBeforeSendEvent) {
-  if (queuedEvents.length >= MAX_QUEUED_EVENTS) {
-    queuedEvents.shift();
-  }
-
-  queuedEvents.push({
-    event: String(event.event),
-    properties: event.properties ? { ...event.properties } : undefined,
-  });
-}
-
-function flushQueuedPostHogEvents() {
-  const events = queuedEvents;
-  queuedEvents = [];
-
-  for (const event of events) {
-    posthog.capture(event.event, event.properties, { send_instantly: true });
-  }
 }
 
 type PostHogAnalyticsProps = {
@@ -98,6 +71,16 @@ function PostHogClient({
   posthogProjectToken,
 }: PostHogClientProps) {
   useEffect(() => {
+    if (!analyticsAccepted) {
+      analyticsSendingEnabled = false;
+      if (hasInitializedPostHog) {
+        posthog.stopSessionRecording();
+      }
+      return;
+    }
+
+    analyticsSendingEnabled = true;
+
     if (!hasInitializedPostHog) {
       posthog.init(posthogProjectToken, {
         api_host: posthogHost,
@@ -108,10 +91,7 @@ function PostHogClient({
             event,
             posthogEnvironment
           );
-          if (!analyticsSendingEnabled) {
-            queuePostHogEvent(sanitizedEvent);
-            return null;
-          }
+          if (!analyticsSendingEnabled) return null;
 
           return sanitizedEvent;
         },
@@ -130,27 +110,18 @@ function PostHogClient({
       hasInitializedPostHog = true;
     }
 
-    if (analyticsAccepted) {
-      analyticsSendingEnabled = true;
-      posthog.startSessionRecording();
-      flushQueuedPostHogEvents();
-      return;
-    }
-
-    analyticsSendingEnabled = false;
-    queuedEvents = [];
-    posthog.stopSessionRecording();
+    posthog.startSessionRecording();
   }, [analyticsAccepted, posthogEnvironment, posthogHost, posthogProjectToken]);
 
   useEffect(() => {
-    if (!hasInitializedPostHog) return;
-
     if (!analyticsAccepted) {
       for (const cookie of createPostHogSessionClearCookieStrings()) {
         writePostHogSessionCookie(cookie);
       }
       return;
     }
+
+    if (!hasInitializedPostHog) return;
 
     const syncSessionCookies = (sessionId = posthog.get_session_id()) => {
       for (const cookie of createPostHogSessionCookieStrings({

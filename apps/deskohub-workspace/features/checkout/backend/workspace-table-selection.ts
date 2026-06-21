@@ -136,7 +136,7 @@ const getWorkspaceScoringTablesByRoom = (tables: readonly Table[]) => {
   const scoringTablesByRoom = new Map<string, Table[]>();
 
   for (const table of tables) {
-    if (!isWorkspaceScoringTable(table)) continue;
+    if (!isDisplayableWorkspaceTable(table)) continue;
 
     const roomKey = getWorkspaceTableRoomKey(table);
     const roomTables = scoringTablesByRoom.get(roomKey);
@@ -150,7 +150,7 @@ const getWorkspaceScoringTablesByRoom = (tables: readonly Table[]) => {
   return scoringTablesByRoom;
 };
 
-const isWorkspaceScoringTable = (table: Table) => {
+export const isDisplayableWorkspaceTable = (table: Table) => {
   const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return false;
   if (table.enabled !== true || table.display !== true) return false;
