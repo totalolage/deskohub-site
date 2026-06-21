@@ -59,7 +59,7 @@ export class DotyposAccessToken extends Context.Service<
       const config = yield* DotyposRuntimeConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const client = makeDotyposClient({ config, httpClient });
-      const get = yield* Effect.cached(
+      const get = yield* Effect.cachedWithTTL(
         client
           .getAccessToken({
             params: { Authorization: `User ${config.refreshToken}` },
@@ -70,7 +70,8 @@ export class DotyposAccessToken extends Context.Service<
             Effect.mapError((error) =>
               mapDotyposClientError(error, "Get access token", config.apiUrl)
             )
-          )
+          ),
+        "59 minutes"
       );
 
       return { get };

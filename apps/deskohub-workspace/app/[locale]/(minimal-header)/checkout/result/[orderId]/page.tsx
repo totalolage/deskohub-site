@@ -41,12 +41,12 @@ const loadCheckoutStatusAttempt = (
     if (attempt > 1) yield* Effect.sleep("1500 millis");
 
     return yield* loadCheckoutStatusEffect(orderId).pipe(
-      Effect.tapError((cause) =>
+      Effect.catchCause((cause) =>
         Effect.logWarning("Checkout status refresh retry failed", {
           orderId,
           attempt,
           cause,
-        })
+        }).pipe(Effect.as(undefined))
       )
     );
   });
@@ -58,6 +58,7 @@ const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
       Effect.repeat({
         times: 3,
         while: (attemptStatus) =>
+          !attemptStatus ||
           attemptStatus.status === "created" ||
           attemptStatus.status === "pending",
       })
@@ -114,7 +115,7 @@ export default async function LocalizedCheckoutResultPage({
   const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
   const rawSearchParams = await searchParams;
   const status = await loadCheckoutStatusWithBriefRetry(orderId);
-  const retryOutcome = getRetryOutcome(status.status);
+  const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 
   if (retryOutcome) {
     redirect(

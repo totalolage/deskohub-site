@@ -38,6 +38,8 @@ describe("EmailProviderLive", () => {
   test("fails for production console and resend without api key", async () => {
     process.env.NODE_ENV = "production";
 
+    expect(await providerName({ apiKey: "api-key" })).toBe("resend");
+
     const consoleResult = await Effect.runPromise(
       Effect.gen(function* () {
         yield* EmailProviderTag;
