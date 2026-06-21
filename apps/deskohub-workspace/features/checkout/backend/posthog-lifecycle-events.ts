@@ -48,7 +48,7 @@ const captureLifecycleEvent = (input: {
       event: input.event,
       properties: input.properties,
       timestamp: input.timestamp,
-      uuid: input.id,
+      uuid: `${input.id}:${input.event}`,
     });
   });
 

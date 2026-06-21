@@ -45,7 +45,7 @@ describe("PostHog lifecycle events", () => {
       distinctId: reservationId,
       event: "payment completed",
       timestamp,
-      uuid: attemptId,
+      uuid: `${attemptId}:payment completed`,
     });
     expect(captures[0].properties).toMatchObject({
       amount: 350,

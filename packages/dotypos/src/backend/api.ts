@@ -1,4 +1,4 @@
-import { Context, Effect, Layer, Option, Predicate, Schema } from "effect";
+import { Context, Effect, Layer, Option, Predicate, Ref, Schema } from "effect";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
@@ -25,6 +25,11 @@ interface IDotyposGeneratedClient {
   readonly client: DotyposClient;
   readonly httpClient: HttpClient.HttpClient;
 }
+
+type AccessTokenCache = {
+  readonly token: string;
+  readonly expiresAt: number;
+};
 
 type GeneratedClientError = {
   readonly response: HttpClientResponse.HttpClientResponse;
@@ -59,8 +64,13 @@ export class DotyposAccessToken extends Context.Service<
       const config = yield* DotyposRuntimeConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const client = makeDotyposClient({ config, httpClient });
-      const get = yield* Effect.cachedWithTTL(
-        client
+      const tokenCache = yield* Ref.make<AccessTokenCache | null>(null);
+      const get = Effect.gen(function* () {
+        const cached = yield* Ref.get(tokenCache);
+        const now = Date.now();
+        if (cached && now < cached.expiresAt) return cached.token;
+
+        const token = yield* client
           .getAccessToken({
             params: { Authorization: `User ${config.refreshToken}` },
             payload: { _cloudId: config.cloudId },
@@ -70,9 +80,15 @@ export class DotyposAccessToken extends Context.Service<
             Effect.mapError((error) =>
               mapDotyposClientError(error, "Get access token", config.apiUrl)
             )
-          ),
-        "59 minutes"
-      );
+          );
+
+        yield* Ref.set(tokenCache, {
+          token,
+          expiresAt: now + 59 * 60 * 1000,
+        });
+
+        return token;
+      });
 
       return { get };
     })

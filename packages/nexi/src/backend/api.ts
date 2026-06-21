@@ -1,4 +1,8 @@
 import { Context, Effect, Layer, Option, Predicate, Schema } from "effect";
+import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClientError from "effect/unstable/http/HttpClientError";
+import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import type * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { NexiRuntimeConfig, type NexiRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError } from "../errors";
 import {
@@ -9,9 +13,6 @@ import {
   type NexiClient,
   type OrderResponse,
 } from "../generated/effect.gen";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientError from "effect/unstable/http/HttpClientError";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 
 const NEXI_API_PATH = "/api/phoenix-0.0/psp/api/v1";
 
@@ -56,6 +57,11 @@ interface INexiGeneratedClient {
     readonly orderId: string;
   }) => Effect.Effect<OrderResponse, ExternalAPIError | NetworkError>;
 }
+
+type GeneratedClientError = {
+  readonly response: HttpClientResponse.HttpClientResponse;
+  readonly cause: unknown;
+};
 
 const makeNexiGeneratedClient = Effect.gen(function* () {
   const config = yield* NexiRuntimeConfig;
@@ -133,7 +139,20 @@ export const mapNexiClientError = (
       providerError,
       statusCode: error.response?.status,
       cause: providerError?.errors ?? providerError?.error ?? reason.cause,
-      message: providerError?.message ?? providerError?.errors?.[0]?.description,
+      message:
+        providerError?.message ?? providerError?.errors?.[0]?.description,
+    });
+  }
+
+  if (isGeneratedClientError(error)) {
+    const providerError = parseProviderError(error.cause);
+    return toExternalApiError({
+      operation,
+      providerError,
+      statusCode: error.response.status,
+      cause: providerError?.errors ?? providerError?.error ?? error.cause,
+      message:
+        providerError?.message ?? providerError?.errors?.[0]?.description,
     });
   }
 
@@ -205,3 +224,9 @@ const toExternalApiError = ({
 
 const isNetworkError = (error: unknown): error is NetworkError =>
   Predicate.isTagged(error, "NetworkError");
+
+const isGeneratedClientError = (
+  error: unknown
+): error is GeneratedClientError =>
+  Predicate.hasProperty(error, "response") &&
+  Predicate.hasProperty(error, "cause");
