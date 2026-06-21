@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -88,9 +88,10 @@ export interface WorkspaceReservationRepository {
     readonly paymentState: "failed" | "cancelled" | "expired";
     readonly failureCode: string;
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
-  readonly claimPaidFulfillment: (
-    id: string
-  ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
+  readonly claimPaidFulfillment: (input: {
+    readonly id: string;
+    readonly staleProcessingBefore: Date;
+  }) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
   readonly markFulfilled: (input: {
     readonly id: string;
     readonly fulfilledAt: Date;
@@ -530,7 +531,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       claimPaidFulfillment: Effect.fn(
         "workspaceReservations.claimPaidFulfillment"
-      )(function* (id) {
+      )(function* (input) {
         return yield* runDb(
           "workspaceReservations.claimPaidFulfillment",
           async () => {
@@ -539,12 +540,21 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .set({ fulfillmentState: "processing", updatedAt: new Date() })
               .where(
                 and(
-                  eq(workspaceReservations.id, id),
+                  eq(workspaceReservations.id, input.id),
                   eq(workspaceReservations.paymentState, "paid"),
-                  inArray(workspaceReservations.fulfillmentState, [
-                    "not_started",
-                    "failed",
-                  ])
+                  or(
+                    inArray(workspaceReservations.fulfillmentState, [
+                      "not_started",
+                      "failed",
+                    ]),
+                    and(
+                      eq(workspaceReservations.fulfillmentState, "processing"),
+                      lte(
+                        workspaceReservations.updatedAt,
+                        input.staleProcessingBefore
+                      )
+                    )
+                  )
                 )
               )
               .returning();

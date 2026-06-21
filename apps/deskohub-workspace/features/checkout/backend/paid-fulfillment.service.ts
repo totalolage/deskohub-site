@@ -42,6 +42,8 @@ export class WorkspacePaidFulfillmentError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 15 * 60 * 1000;
+
 export interface WorkspacePaidFulfillmentService {
   readonly fulfillPaidOrder: (input: {
     readonly orderId: string;
@@ -186,18 +188,35 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             return;
           }
 
+          const staleProcessingBefore = new Date(
+            Date.now() - PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS
+          );
+
           if (reservation.fulfillmentState === "processing") {
-            yield* Effect.logInfo(
-              "Paid fulfillment skipped: already processing",
+            if (reservation.updatedAt > staleProcessingBefore) {
+              yield* Effect.logInfo(
+                "Paid fulfillment skipped: already processing",
+                {
+                  reason: "already_processing",
+                }
+              );
+              return;
+            }
+
+            yield* Effect.logWarning(
+              "Paid fulfillment retrying stale processing reservation",
               {
-                reason: "already_processing",
+                reason: "stale_processing",
+                staleProcessingBefore,
               }
             );
-            return;
           }
 
           const claimed = yield* reservations
-            .claimPaidFulfillment(reservation.id)
+            .claimPaidFulfillment({
+              id: reservation.id,
+              staleProcessingBefore,
+            })
             .pipe(
               Effect.mapError(
                 (cause) =>

@@ -20,6 +20,7 @@ const sensitiveLogKeyFragments = [
   "pwd",
   "token",
   "access token",
+  "access code",
   "refresh token",
   "id token",
   "secret",
