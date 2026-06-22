@@ -117,7 +117,7 @@ describe("products webhook route", () => {
     );
   });
 
-  test("revalidate throw returns sanitized 500", async () => {
+  test("processing failures are acknowledged without retry", async () => {
     const { POST } = await import("./route");
     revalidateTag.mockImplementation(() => {
       throw new Error("cache failed");
@@ -125,7 +125,7 @@ describe("products webhook route", () => {
 
     const response = await POST(request([productPayload()]));
 
-    expect(response.status).toBe(500);
+    expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       success: false,
       error: "Internal processing error",

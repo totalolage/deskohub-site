@@ -10,7 +10,7 @@ describe("createPostHogPageUrl", () => {
     ).toBe("https://deskohub.test/checkout?step=pay");
   });
 
-  test("strips sensitive params from current and referrer urls", () => {
+  test("strips sensitive params from current, referrer, and initial urls", () => {
     expect(
       sanitizePostHogProperties(
         {
@@ -18,6 +18,10 @@ describe("createPostHogPageUrl", () => {
             "https://deskohub.test/checkout/pay?payState=secret&step=pay",
           $referrer:
             "https://deskohub.test/checkout/payment/order-id?checkoutToken=secret&outcome=success",
+          $initial_current_url:
+            "https://deskohub.test/checkout/result/order-id?payStateRef=secret",
+          $initial_referrer:
+            "https://deskohub.test/checkout/order?token=secret&step=details",
         },
         "preview"
       )
@@ -25,6 +29,24 @@ describe("createPostHogPageUrl", () => {
       $current_url: "https://deskohub.test/checkout/pay?step=pay",
       $referrer:
         "https://deskohub.test/checkout/payment/order-id?outcome=success",
+      $initial_current_url: "https://deskohub.test/checkout/result/order-id",
+      $initial_referrer: "https://deskohub.test/checkout/order?step=details",
+      "deployment.environment.name": "preview",
+    });
+  });
+
+  test("leaves non-url referrers unchanged", () => {
+    expect(
+      sanitizePostHogProperties(
+        {
+          $referrer: "$direct",
+          $initial_referrer: "$direct",
+        },
+        "preview"
+      )
+    ).toEqual({
+      $referrer: "$direct",
+      $initial_referrer: "$direct",
       "deployment.environment.name": "preview",
     });
   });
