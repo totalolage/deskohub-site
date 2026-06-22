@@ -178,13 +178,10 @@ export async function POST(request: Request): Promise<NextResponse> {
     }),
     Effect.catch(() =>
       Effect.succeed(
-        NextResponse.json(
-          {
-            success: false,
-            error: "Internal processing error",
-          },
-          { status: 500 }
-        )
+        NextResponse.json({
+          success: false,
+          error: "Internal processing error",
+        })
       )
     )
   );

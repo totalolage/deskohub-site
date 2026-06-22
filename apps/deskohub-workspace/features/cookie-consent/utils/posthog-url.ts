@@ -19,6 +19,14 @@ export function createPostHogPageUrl(href: string) {
   return url.toString();
 }
 
+function sanitizePostHogUrl(value: string) {
+  try {
+    return createPostHogPageUrl(value);
+  } catch {
+    return value;
+  }
+}
+
 export function sanitizePostHogProperties(
   properties: Record<string, unknown> | undefined,
   posthogEnvironment: string
@@ -28,10 +36,15 @@ export function sanitizePostHogProperties(
     "deployment.environment.name": posthogEnvironment,
   };
 
-  for (const property of ["$current_url", "$referrer"]) {
+  for (const property of [
+    "$current_url",
+    "$referrer",
+    "$initial_current_url",
+    "$initial_referrer",
+  ]) {
     const url = sanitizedProperties[property];
     if (typeof url === "string") {
-      sanitizedProperties[property] = createPostHogPageUrl(url);
+      sanitizedProperties[property] = sanitizePostHogUrl(url);
     }
   }
 
