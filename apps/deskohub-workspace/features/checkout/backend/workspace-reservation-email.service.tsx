@@ -27,7 +27,6 @@ import {
 } from "@/features/checkout/backend/network-details.service";
 import {
   WorkspaceTableMapView,
-  workspaceTableMapFontFamily,
   workspaceTableMapImageHeight,
   workspaceTableMapImageWidth,
   workspaceTableMapLabelWidth,
@@ -89,9 +88,10 @@ const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const workspaceTableMapContentId = "workspace-table-map";
-const workspaceTableMapFontFile = join(
+export const workspaceTableMapPngFontFamily = "Sculpin Variable Light";
+export const workspaceTableMapFontFile = join(
   process.cwd(),
-  "assets/fonts/Sculpin/regular.woff2"
+  "assets/fonts/Sculpin/regular.ttf"
 );
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
@@ -236,7 +236,7 @@ const createWorkspaceTableMapTextOverlays = (
         x: offsetX + (x - viewBox.x) * scale,
         y: offsetY + (y - viewBox.y) * scale,
         width: Math.ceil(workspaceTableMapLabelWidth * scale),
-        font: `${workspaceTableMapFontFamily} ${Math.max(1, Math.round(fontSize * scale))}`,
+        font: `${workspaceTableMapPngFontFamily} ${Math.max(1, Math.round(fontSize * scale))}`,
         fontfile: workspaceTableMapFontFile,
         color,
       },
