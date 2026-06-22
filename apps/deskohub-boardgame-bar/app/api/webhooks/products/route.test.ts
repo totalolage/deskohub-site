@@ -46,6 +46,34 @@ describe("products webhook route", () => {
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
+  test("development accepts product webhooks without a secret", async () => {
+    const originalNodeEnv = process.env.NODE_ENV;
+    const originalVercelEnv = process.env.NEXT_PUBLIC_VERCEL_ENV;
+    Object.assign(process.env, {
+      NODE_ENV: "development",
+      NEXT_PUBLIC_VERCEL_ENV: "development",
+    });
+    const { POST } = await import("./route");
+
+    try {
+      const response = await POST(request([productPayload()], ""));
+
+      expect(response.status).toBe(200);
+      expect(revalidateTag).toHaveBeenCalledWith(dotyposTags.menu.all(), "max");
+    } finally {
+      if (originalNodeEnv === undefined) {
+        Reflect.deleteProperty(process.env, "NODE_ENV");
+      } else {
+        Object.assign(process.env, { NODE_ENV: originalNodeEnv });
+      }
+      if (originalVercelEnv === undefined) {
+        Reflect.deleteProperty(process.env, "NEXT_PUBLIC_VERCEL_ENV");
+      } else {
+        process.env.NEXT_PUBLIC_VERCEL_ENV = originalVercelEnv;
+      }
+    }
+  });
+
   test("invalid payload returns 400", async () => {
     const { POST } = await import("./route");
 
