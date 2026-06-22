@@ -3,6 +3,7 @@ import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { dotyposTags } from "@/shared/utils/cache-tags";
+import { isDev } from "@/shared/utils/environment";
 
 class WebhookAuthError extends Data.TaggedError("WebhookAuthError")<{
   readonly message: string;
@@ -17,6 +18,8 @@ class WebhookValidationError extends Data.TaggedError(
 
 const validateWebhookUUID = (url: URL) =>
   Effect.gen(function* () {
+    if (isDev()) return;
+
     const providedSecret = url.searchParams.get("secret");
 
     if (!providedSecret) {
