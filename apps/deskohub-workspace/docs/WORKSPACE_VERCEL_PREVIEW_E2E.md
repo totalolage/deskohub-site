@@ -110,6 +110,21 @@ vercel --cwd apps/deskohub-workspace --yes
 vercel alias set <preview-url> new.workspace.deskohub.cz --cwd apps/deskohub-workspace
 ```
 
+If the alias CLI resolves the custom domain under the wrong scope, assign the alias through the Vercel deployments API instead. This has happened when `vercel alias set <preview-host> new.workspace.deskohub.cz` fetched the domain under `filip-kalny-projects` and failed with `You don't have access to the domain new.workspace.deskohub.cz under filip-kalny-projects`; `--scope deskohub-bar` then found the domain but could not find the Workspace deployment. Do not spend time trying `--project` because current Vercel CLI rejects it for `alias set`.
+
+Use the deployment ID from the fresh preview and the Workspace team ID:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://api.vercel.com/v2/deployments/<deployment-id>/aliases?teamId=team_MgMQ4MEWijWnYa1R48C2JU5e" \
+  -d '{"alias":"new.workspace.deskohub.cz"}'
+```
+
+The successful response is `200` with message `new.workspace.deskohub.cz`. Verify the alias with the Vercel API or MCP before starting checkout; CLI inspect can hit the same scope confusion as alias assignment.
+
 Use `https://new.workspace.deskohub.cz` for the checkout flow and post-deploy checks after the alias command succeeds. Do not run `vercel --prod` for preview E2E unless production validation was explicitly requested. Do not use the existing `new.workspace.deskohub.cz` deployment without first moving it to the fresh preview unless the test is explicitly about the already-live alias.
 
 The pulled `.env.local` is useful for Vercel preview runtime values such as `DATABASE_URL`. It is not sufficient for manual Dotypos SDK verification because `DOTYPOS_REFRESH_TOKEN` must come from `.env.development.local`.

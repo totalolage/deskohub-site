@@ -628,7 +628,7 @@ describe("ResendWebhookService", () => {
         color: "#ffffff",
       });
       expect(tableMapLabel.font).toContain("Sculpin");
-      expect(tableMapLabel.fontfile).toContain("Sculpin/regular.woff2");
+      expect(tableMapLabel.fontfile).toContain("Sculpin/regular.ttf");
       expect(generateStaticMapImage).toHaveBeenCalledWith(
         expect.objectContaining({
           height: 640,
