@@ -70,6 +70,8 @@ function PostHogClient({
       analyticsSendingEnabled = false;
       if (hasInitializedPostHog) {
         posthog.stopSessionRecording();
+        posthog.opt_out_capturing();
+        posthog.reset(true);
       }
       return;
     }
@@ -105,6 +107,7 @@ function PostHogClient({
       hasInitializedPostHog = true;
     }
 
+    posthog.opt_in_capturing();
     posthog.startSessionRecording();
   }, [analyticsAccepted, posthogEnvironment, posthogHost, posthogProjectToken]);
 

@@ -2,7 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Predicate } from "effect";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { makeDotyposRuntimeConfigLayer } from "../config";
-import type { Customer, Reservation } from "../generated/effect.gen";
+import type { Category, Customer, Reservation } from "../generated/effect.gen";
 import { DotyposService } from "./service";
 
 const config = {
@@ -38,6 +38,14 @@ const reservation = (overrides: Partial<Reservation> = {}): Reservation => ({
   endDate: "2026-06-20T12:00:00.000Z",
   seats: "2",
   status: "NEW",
+  ...overrides,
+});
+
+const category = (overrides: Partial<Category> = {}): Category => ({
+  id: "category-id",
+  _cloudId: config.cloudId,
+  name: "Coffee",
+  tags: null,
   ...overrides,
 });
 
@@ -364,6 +372,29 @@ describe("DotyposService reservations", () => {
     expect(getHeader(patchCall, "If-Match")).toBe('"reservation-etag"');
     expect(getHeader(patchCall, "Authorization")).toBe("Bearer access-token");
     expect(await readJsonBody(patchCall)).toEqual({ status: "CONFIRMED" });
+  });
+});
+
+describe("DotyposService categories", () => {
+  test("accepts nullable category tags", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/categories") {
+        return Response.json({ data: [category()] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getCategories();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([category()]);
   });
 });
 

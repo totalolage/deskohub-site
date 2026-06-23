@@ -10,6 +10,14 @@ describe("createPostHogPageUrl", () => {
     ).toBe("https://deskohub.test/checkout?step=pay");
   });
 
+  test("strips Vercel preview bypass params", () => {
+    expect(
+      createPostHogPageUrl(
+        "https://deskohub.test/checkout/status/order-id?x-vercel-protection-bypass=secret&step=done"
+      )
+    ).toBe("https://deskohub.test/checkout/status/order-id?step=done");
+  });
+
   test("strips sensitive params from current, referrer, and initial urls", () => {
     expect(
       sanitizePostHogProperties(
