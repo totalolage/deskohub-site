@@ -5,6 +5,7 @@ const SENSITIVE_QUERY_PARAMS = new Set([
   "token",
   "state",
   "secret",
+  "x-vercel-protection-bypass",
 ]);
 
 export function createPostHogPageUrl(href: string) {
