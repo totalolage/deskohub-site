@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { Customer } from "@deskohub/dotypos/generated";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
 import {
@@ -89,9 +89,8 @@ const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const workspaceTableMapContentId = "workspace-table-map";
 export const workspaceTableMapPngFontFamily = "Sculpin Variable Light";
-export const workspaceTableMapFontFile = join(
-  process.cwd(),
-  "assets/fonts/Sculpin/regular.ttf"
+export const workspaceTableMapFontFile = fileURLToPath(
+  new URL("../../../assets/fonts/Sculpin/regular.ttf", import.meta.url)
 );
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
