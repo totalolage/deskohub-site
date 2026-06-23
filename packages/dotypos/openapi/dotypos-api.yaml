@@ -1647,11 +1647,12 @@ components:
           nullable: true
           description: Customer note
         tags:
-          type: array
-          nullable: true
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: "null"
           description: Customer tags
-          items:
-            type: string
         points:
           type: string
           nullable: true
@@ -2113,10 +2114,11 @@ components:
           type: string
           description: Last modification timestamp (ISO 8601)
         tags:
-          type: array
-          nullable: true
-          items:
-            type: string
+          oneOf:
+            - type: array
+              items:
+                type: string
+            - type: "null"
           description: Category tags
 
     PaginatedCategories:

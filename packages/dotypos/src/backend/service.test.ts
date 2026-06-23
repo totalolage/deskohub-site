@@ -156,6 +156,42 @@ describe("DotyposService customer lookup", () => {
     expect(getHeader(searchCall, "Authorization")).toBe("Bearer access-token");
   });
 
+  test("accepts nullable customer tags", async () => {
+    const matched = customer({
+      id: "email-match",
+      email: "ada@example.com",
+      tags: null,
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        return Response.json({ data: [matched] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({
+      _tag: "Matched",
+      customer: matched,
+      matches: [matched],
+    });
+  });
+
   test("does not cache failed token fetches", async () => {
     const matched = customer({ id: "email-match", email: "ada@example.com" });
     let tokenAttempts = 0;
