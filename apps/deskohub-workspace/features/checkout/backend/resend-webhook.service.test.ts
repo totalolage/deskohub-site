@@ -598,7 +598,7 @@ describe("ResendWebhookService", () => {
         createWorkspaceCheckoutWifiQrPayload(
           workspaceCheckoutPlaceholderNetworkDetails
         )
-      ).toBe("WIFI:T:WPA;S:O2-Internet_6BE;P:95502205;;");
+      ).toBe("WIFI:T:WPA;S:Deskohub Workspace;P:Workspace42;;");
       const [tableMapSvg] = generateSvgPngBuffer.mock.calls[0] ?? [];
       if (typeof tableMapSvg !== "string") {
         throw new Error(

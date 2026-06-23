@@ -15,8 +15,8 @@ export const createWorkspaceCheckoutWifiQrPayload = (
 
 export const workspaceCheckoutPlaceholderNetworkDetails: WorkspaceCheckoutNetworkDetails =
   {
-    ssid: "O2-Internet_6BE",
-    password: "95502205",
+    ssid: "Deskohub Workspace",
+    password: "Workspace42",
   };
 
 export interface IWorkspaceCheckoutNetworkDetailsService {
