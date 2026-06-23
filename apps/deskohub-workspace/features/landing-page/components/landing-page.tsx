@@ -7,6 +7,7 @@ import {
   LandingPageHeroSection,
   landingPageHeroVars,
 } from "./landing-page-hero-section";
+import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
 import { LandingPageWorkspaceSection } from "./landing-page-workspace-section";
@@ -33,6 +34,8 @@ export function LandingPage({ locale }: LandingPageProps) {
       />
 
       <LandingPagePhotoCarouselSection />
+
+      <LandingPageLocationMapSection locale={locale} />
 
       <LandingPageWorkspaceSection
         locale={locale}

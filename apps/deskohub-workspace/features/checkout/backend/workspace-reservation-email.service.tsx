@@ -13,11 +13,7 @@ import type {
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer } from "effect";
-import {
-  generateStaticMapImage,
-  generateSvgPngBuffer,
-  type SvgPngTextOverlay,
-} from "osm";
+import { generateSvgPngBuffer, type SvgPngTextOverlay } from "osm";
 import { env } from "@/env";
 import {
   createWorkspaceCheckoutWifiQrPayload,
@@ -49,7 +45,13 @@ import {
   renderWorkspaceEmailHtml,
   WorkspaceEmailRows,
 } from "@/shared/backend/email/rendering";
-import { workspaceSiteConstants } from "@/shared/utils";
+import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
+import {
+  workspaceFormattedAddress,
+  workspaceGoogleDirectionsUrl,
+  workspaceLocationMapImagePath,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 
 export interface WorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
@@ -79,13 +81,7 @@ const getCustomerName = (customer: Customer) =>
   customer.email?.trim() ||
   "Workspace customer";
 
-const workspaceAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
-
-const workspaceMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
-
 const workspaceLocationMapContentId = "workspace-location-map";
-const workspaceLocationMapWidth = 1200;
-const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const workspaceTableMapContentId = "workspace-table-map";
 export const workspaceTableMapPngFontFamily = "Sculpin Variable Light";
@@ -142,17 +138,10 @@ const createWorkspaceLocationMapAttachment = (): Effect.Effect<
 > =>
   Effect.tryPromise({
     try: async () => ({
-      content: await generateStaticMapImage({
-        lat: workspaceSiteConstants.contact.coordinates.lat,
-        lng: workspaceSiteConstants.contact.coordinates.lng,
-        width: workspaceLocationMapWidth,
-        height: workspaceLocationMapHeight,
-        zoom: 16,
-        quality: 84,
-      }),
+      content: await generateWorkspaceLocationMapImage(),
       contentId: workspaceLocationMapContentId,
       contentType: "image/jpeg",
-      filename: "workspace-location-map.jpeg",
+      filename: workspaceLocationMapImagePath.slice(1),
     }),
     catch: (cause) =>
       new EmailServiceError(
@@ -436,7 +425,7 @@ const createEmailHtml = (input: {
               {m.checkoutEmailLocationHeading({}, { locale: input.locale })}
             </div>
             <a
-              href={workspaceMapUrl}
+              href={workspaceGoogleDirectionsUrl}
               rel="noopener noreferrer"
               style={{
                 color: "#00024f",
@@ -448,7 +437,7 @@ const createEmailHtml = (input: {
               }}
               target="_blank"
             >
-              {workspaceAddress}
+              {workspaceFormattedAddress}
             </a>
           </div>
           {input.locationMapContentId && (
@@ -478,7 +467,7 @@ const createEmailHtml = (input: {
             }}
           >
             <a
-              href={workspaceMapUrl}
+              href={workspaceGoogleDirectionsUrl}
               rel="noopener noreferrer"
               style={{
                 background: "#00024f",
@@ -744,8 +733,8 @@ const createEmailText = (input: {
       ? [
           "",
           m.checkoutEmailLocationHeading({}, { locale: input.locale }),
-          workspaceAddress,
-          workspaceMapUrl,
+          workspaceFormattedAddress,
+          workspaceGoogleDirectionsUrl,
         ]
       : []),
     ...(input.accessCode
