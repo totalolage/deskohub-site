@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 
-export const runtime = "nodejs";
-
 export async function GET() {
   try {
     const image = new Uint8Array(await generateWorkspaceLocationMapImage());
