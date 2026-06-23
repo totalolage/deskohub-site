@@ -90,7 +90,10 @@ const workspaceNetworkQrContentId = "workspace-wifi-qr";
 const workspaceTableMapContentId = "workspace-table-map";
 export const workspaceTableMapPngFontFamily = "Sculpin Variable Light";
 export const workspaceTableMapFontFile = fileURLToPath(
-  new URL("../../../assets/fonts/Sculpin/regular.ttf", import.meta.url)
+  new URL(
+    "../../../assets/fonts/Sculpin/regular.ttf",
+    import.meta.url
+  ).toString()
 );
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
