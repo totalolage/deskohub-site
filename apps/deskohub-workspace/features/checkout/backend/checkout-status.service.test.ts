@@ -282,21 +282,30 @@ describe("CheckoutStatusService", () => {
               Effect.succeed([
                 {
                   _cloudId: "cloud-id",
+                  display: true,
+                  enabled: true,
                   id: "assigned-table",
                   name: "Desk 1",
                   locationName: "Main room",
+                  tags: ["tier:profi"],
                 },
                 {
                   _cloudId: "cloud-id",
+                  display: true,
+                  enabled: true,
                   id: "neighbor-table",
                   name: "Desk 2",
                   locationName: "Main room",
+                  tags: ["tier:profi"],
                 },
                 {
                   _cloudId: "cloud-id",
+                  display: true,
+                  enabled: true,
                   id: "other-room-table",
                   name: "Desk 3",
                   locationName: "Quiet room",
+                  tags: ["tier:profi"],
                 },
               ])
             ),
