@@ -15,7 +15,8 @@ export function getCloudinaryImageUrl({
     format: "auto",
     height,
     quality: "auto",
-    src: asset.public_id,
+    // Preserve Cloudinary's version segment so overwritten assets bust caches.
+    src: asset.secure_url,
     width,
   });
 }
