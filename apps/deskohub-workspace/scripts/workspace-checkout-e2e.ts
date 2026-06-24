@@ -2,11 +2,6 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
-import {
-  type NexiCurrency,
-  NexiRuntimeConfig,
-  NexiService,
-} from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import { Pool } from "pg";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
@@ -14,8 +9,6 @@ import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 const WORKSPACE_PROJECT_ID = "prj_7FliQBcbBiBwGaO2JLrigicnXCRd";
 const WORKSPACE_TEAM_ID = "team_MgMQ4MEWijWnYa1R48C2JU5e";
 const DEFAULT_ALIAS = "new.workspace.deskohub.cz";
-const DEFAULT_NEXI_ORIGIN =
-  "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp";
 const CHECKOUT_TIMEOUT_MS = Number(
   process.env.WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS ?? 10 * 60 * 1000
 );
@@ -129,10 +122,11 @@ const main = async () => {
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
 
     const orderId = await completeCheckout({ config, data, run, session });
+    // Nexi verification happens inside the deployed webhook handler. The runner
+    // validates the resulting payment/webhook state without holding Nexi secrets.
     const row = await validatePostgres(datasourceConfig, data, orderId);
     await verifyAlias(config, deployment.id);
     await assertFulfilledStatusPage({ config, orderId, run, session });
-    await validateNexi(datasourceConfig, row);
     await validateDotypos(datasourceConfig, data, row);
 
     log(`Checkout e2e passed for order ${orderId}`);
@@ -177,10 +171,6 @@ const getDatasourceConfig = () => ({
     refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
   },
   expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
-  nexi: {
-    apiKey: requireEnv("NEXI_API_KEY"),
-    baseUrl: env("NEXI_API_ORIGIN") ?? DEFAULT_NEXI_ORIGIN,
-  },
 });
 
 const makeRunner =
@@ -643,54 +633,6 @@ const assertNoLocalPii = async (
     Number(result.rows[0]?.count ?? 0) === 0,
     "local checkout tables contain test PII"
   );
-};
-
-const validateNexi = async (
-  config: ReturnType<typeof getDatasourceConfig>,
-  row: CheckoutRow
-) => {
-  assert(
-    row.provider_order_id,
-    "provider order id missing before Nexi validation"
-  );
-  assert(row.security_token, "security token missing before Nexi validation");
-  assert(row.amount_value !== null, "amount missing before Nexi validation");
-  assert(row.currency, "currency missing before Nexi validation");
-  const amount = String(row.amount_value);
-  const currency = row.currency as NexiCurrency;
-  const orderId = row.provider_order_id;
-  const securityToken = row.security_token;
-
-  const layer = NexiService.Default.pipe(
-    Layer.provide(
-      Layer.succeed(NexiRuntimeConfig, {
-        apiKey: config.nexi.apiKey,
-        apiTimeout: 5_000,
-        baseUrl: config.nexi.baseUrl,
-      })
-    )
-  );
-
-  const result = await Effect.runPromise(
-    Effect.gen(function* () {
-      const nexi = yield* NexiService;
-      return yield* nexi.verifyPaymentOutcome({
-        amount,
-        correlationId: row.correlation_id,
-        currency,
-        orderId,
-        securityToken,
-      });
-    }).pipe(Effect.provide(layer))
-  );
-
-  assert(result.status === "success", `Nexi status was ${result.status}`);
-  assert(result.provider.captureExecuted, "Nexi capture was not executed");
-  assert(
-    result.mismatches.length === 0,
-    `Nexi mismatches: ${result.mismatches.join(", ")}`
-  );
-  log("Nexi provider state validated");
 };
 
 const validateDotypos = async (
