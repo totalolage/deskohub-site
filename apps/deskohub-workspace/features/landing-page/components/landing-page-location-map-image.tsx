@@ -27,7 +27,7 @@ export function LandingPageLocationMapImage({
     target: frameRef,
     offset: ["start end", "end start"],
   });
-  const y = useTransform(scrollYProgress, [0, 1], ["-5%", "5%"]);
+  const y = useTransform(scrollYProgress, [0, 1], ["-15%", "15%"]);
 
   return (
     <div className="absolute inset-0 overflow-hidden" ref={frameRef}>
