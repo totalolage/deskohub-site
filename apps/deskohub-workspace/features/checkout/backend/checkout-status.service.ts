@@ -1,5 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
+import type { Customer } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -11,7 +11,6 @@ import type {
   PaymentState,
   WorkspaceReservation,
 } from "@/db/schema";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
 import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
@@ -25,18 +24,21 @@ import {
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
-import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
+import {
+  getWorkspaceTableMap,
+  type WorkspaceTableMap,
+} from "@/features/checkout/workspace-table-map";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
 
@@ -65,6 +67,8 @@ export type WorkspaceCheckoutStatusContactPrefill = {
   readonly phone?: string;
 };
 
+export type WorkspaceCheckoutTableMap = WorkspaceTableMap;
+
 export type CheckoutStatusViewModel = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
@@ -72,11 +76,13 @@ export type CheckoutStatusViewModel = {
   readonly paymentStatus?: PaymentState;
   readonly fulfillmentStatus?: FulfillmentState;
   readonly summary?: WorkspaceCheckoutStatusSummary;
+  readonly tableMap?: WorkspaceCheckoutTableMap;
   readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
 
 type CheckoutStatusReconstruction = {
   readonly summary?: WorkspaceCheckoutStatusSummary;
+  readonly tableMap?: WorkspaceCheckoutTableMap;
   readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
 
@@ -91,7 +97,7 @@ export interface CheckoutStatusService {
   }) => Effect.Effect<CheckoutStatusViewModel, DatabaseError>;
 }
 
-export const CheckoutStatusService = Context.GenericTag<CheckoutStatusService>(
+export const CheckoutStatusService = Context.Service<CheckoutStatusService>(
   "CheckoutStatusService"
 );
 
@@ -279,6 +285,24 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary Dotypos reservation loaded"
         );
 
+        const tables = yield* dotypos.getTables().pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Checkout status table map load failed", {
+              reservationId: reservation.id,
+              dotyposReservationId: reservation.dotyposReservationId,
+              cause,
+            })
+          ),
+          Effect.option
+        );
+        const tableMap =
+          tables._tag === "Some"
+            ? getWorkspaceTableMap(
+                dotyposReservation.value.reservation,
+                tables.value
+              )
+            : undefined;
+
         const date = toPragueReservationDate(
           dotyposReservation.value.reservation.startDate
         );
@@ -288,6 +312,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
             "Checkout status summary invalid reservation date"
           );
           return {
+            ...(tableMap ? { tableMap } : {}),
             supportContactPrefill: getSupportContactPrefill(
               dotyposReservation.value.customer
             ),
@@ -311,6 +336,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
         return {
           summary,
+          ...(tableMap ? { tableMap } : {}),
           supportContactPrefill: getSupportContactPrefill(
             dotyposReservation.value.customer
           ),
@@ -348,7 +374,8 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return result;
         }
 
-        const reconstruction = yield* reconstructSummary(reservation);
+        const reconstruction: CheckoutStatusReconstruction =
+          yield* reconstructSummary(reservation);
         const statusKind = toCheckoutStatusKind(
           reservation.paymentState,
           reservation.fulfillmentState
@@ -362,6 +389,9 @@ export const CheckoutStatusServiceLive = Layer.effect(
           fulfillmentStatus: reservation.fulfillmentState,
           ...(reconstruction.summary
             ? { summary: reconstruction.summary }
+            : {}),
+          ...(reconstruction.tableMap
+            ? { tableMap: reconstruction.tableMap }
             : {}),
           ...(statusKind === "fulfillment_failed" &&
           reconstruction.supportContactPrefill
@@ -474,12 +504,8 @@ export const CheckoutStatusServiceLiveWithDependencies =
   CheckoutStatusServiceLive.pipe(
     Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    ),
-    Layer.provide(NexiServiceLive)
+    Layer.provide(DotyposServiceLive)
   );

@@ -14,6 +14,7 @@ describe("checkout payment return route", () => {
     const source = readFileSync(routePath, "utf8");
 
     expect(source).toContain("refreshStatus");
+    expect(source).toContain("Checkout payment return refresh failed");
     expect(source).toContain("redirect(getCheckoutStatusRedirectPath");
     expect(source).not.toContain("\n  notFound();\n}");
   });

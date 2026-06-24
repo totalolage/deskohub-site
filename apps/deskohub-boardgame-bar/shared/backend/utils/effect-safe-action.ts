@@ -1,4 +1,5 @@
-import { Duration, Effect, type Layer, Logger, LogLevel, pipe } from "effect";
+import { EffectAction } from "@deskohub/next-effect/effect-action";
+import { Duration, Effect, type Layer } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/features/i18n";
 import { formatEffectError } from "@/shared/utils/error-formatting";
@@ -9,55 +10,40 @@ export function createEffectSafeAction<I, O, E, R>(
   handler: (input: I, context: { locale: Locale }) => Effect.Effect<O, E, R>,
   layers: Layer.Layer<R, never, never>
 ) {
-  return actionClient
+  return EffectAction.fromClient(actionClient, {
+    layer: layers,
+    mapError: (error) => {
+      const formatted = formatEffectError(error);
+
+      return new Error(formatted.message || "An unexpected error occurred");
+    },
+  })
     .inputSchema(schema)
-    .action(async ({ parsedInput, ctx }) => {
-      const program = pipe(
-        Effect.gen(function* () {
-          yield* Effect.logDebug("Safe action executed", {
-            locale: ctx.locale,
-            inputKeys:
-              parsedInput && typeof parsedInput === "object"
-                ? Object.keys(parsedInput)
-                : [],
-          });
+    .action(({ parsedInput, ctx }) =>
+      Effect.gen(function* () {
+        yield* Effect.logDebug("Safe action executed", {
+          locale: ctx.locale,
+          inputKeys:
+            parsedInput && typeof parsedInput === "object"
+              ? Object.keys(parsedInput)
+              : [],
+        });
 
-          const result = yield* handler(parsedInput, { locale: ctx.locale });
+        const result = yield* handler(parsedInput, { locale: ctx.locale });
 
-          yield* Effect.logDebug("Action completed successfully");
-          return result;
-        }),
+        yield* Effect.logDebug("Action completed successfully");
+        return result;
+      }).pipe(
         Effect.tapError((error) => Effect.logError("Action failed", error)),
         Effect.withSpan("safeAction", {
           attributes: {
             "action.locale": ctx.locale,
           },
         }),
-        Effect.provide(layers),
-        // Add a global timeout of 45 seconds to ensure the action completes
-        // This is shorter than Next.js's default timeout to ensure we get an error
         Effect.timeout(Duration.seconds(45)),
-        Effect.catchTag("TimeoutException", () =>
+        Effect.catchTag("TimeoutError", () =>
           Effect.fail(new Error("Request timed out. Please try again."))
         )
-      );
-
-      // Use simpler logger configuration
-      const programWithLogging = Logger.withMinimumLogLevel(
-        program,
-        LogLevel.All
-      );
-
-      try {
-        // Run the Effect with a timeout
-        const result = await Effect.runPromise(programWithLogging);
-        return result;
-      } catch (error: unknown) {
-        // Format the error for the user
-        const formatted = formatEffectError(error);
-
-        // Throw an error that next-safe-action will catch
-        throw new Error(formatted.message || "An unexpected error occurred");
-      }
-    });
+      )
+    );
 }

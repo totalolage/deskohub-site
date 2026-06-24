@@ -4,26 +4,16 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./backend/api": "./src/backend/api.ts",
-    "./backend/service": "./src/backend/service.ts",
-    "./config": "./src/config.ts",
-    "./errors": "./src/errors.ts",
-    "./types": "./src/types.ts",
-    "./generated": "./src/generated/index.ts",
-    "./generated/*": "./src/generated/*.ts"
+    ".": "./src/index.ts"
   },
   "scripts": {
-    "generate": "openapi-ts -f ./openapi/openapi-ts.config.ts",
+    "generate": "mkdir -p ./src/generated && openapigen --spec ./openapi/nexi-api.yaml --name NexiClient --format httpclient > ./src/generated/effect.gen.ts",
     "typecheck": "bun run generate && tsc --project tsconfig.json"
   },
   "dependencies": {
-    "@hey-api/client-fetch": "^0.13.1",
-    "effect": "^3.17.2",
-    "zod": "^4.0.17"
+    "effect": "4.0.0-beta.85"
   },
   "devDependencies": {
-    "@hey-api/openapi-ts": "^0.90.8",
     "typescript": "^5"
   }
 }

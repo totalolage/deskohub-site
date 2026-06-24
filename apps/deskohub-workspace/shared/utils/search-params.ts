@@ -12,7 +12,7 @@ const normalizeSearchParamsRecord = (searchParams: SearchParamsRecord) =>
   );
 
 export const getSearchParamsDecoder = <A, I>(
-  outputSchema: Schema.Schema<A, I, never>
+  outputSchema: Schema.Codec<A, I>
 ) => {
   const decodeUnknown = Schema.decodeUnknownOption(outputSchema);
   return (searchParams: SearchParamsRecord) =>

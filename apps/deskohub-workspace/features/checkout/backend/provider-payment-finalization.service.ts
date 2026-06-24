@@ -1,4 +1,3 @@
-import { DotyposService } from "@deskohub/dotypos";
 import {
   classifyNexiFailureStatus,
   getNexiPaymentMetadata,
@@ -16,10 +15,18 @@ import {
   PaymentAttemptRepositoryLive,
 } from "@/features/checkout/backend/payment-attempt.repository";
 import {
+  capturePaymentAbandoned,
+  capturePaymentCompleted,
+  capturePaymentFailed,
+} from "@/features/checkout/backend/posthog-lifecycle-events";
+import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+} from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 
 export type ProviderPaymentFinalizationResult =
@@ -40,7 +47,7 @@ export interface ProviderPaymentFinalizationService {
 }
 
 export const ProviderPaymentFinalizationService =
-  Context.GenericTag<ProviderPaymentFinalizationService>(
+  Context.Service<ProviderPaymentFinalizationService>(
     "ProviderPaymentFinalizationService"
   );
 
@@ -51,6 +58,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
+    const posthogEvents = yield* PostHogEventService;
 
     return ProviderPaymentFinalizationService.of({
       finalizePendingProviderPayment: Effect.fn(
@@ -86,7 +94,8 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
           if (reservation.paymentState !== "pending") {
             if (
               reservation.paymentState === "paid" &&
-              reservation.fulfillmentState === "not_started"
+              (reservation.fulfillmentState === "not_started" ||
+                reservation.fulfillmentState === "processing")
             ) {
               yield* Effect.logInfo(
                 "Payment finalization invoking fulfillment for already-paid reservation"
@@ -138,9 +147,9 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
             return "not_verifiable";
           }
 
-          const currency = yield* Schema.decodeUnknown(NexiCurrencySchema)(
-            attempt.currency
-          ).pipe(
+          const currency = yield* Schema.decodeUnknownEffect(
+            NexiCurrencySchema
+          )(attempt.currency).pipe(
             Effect.tapError((cause) =>
               Effect.logError("Payment finalization currency decode failed", {
                 input,
@@ -221,14 +230,22 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 providerStatus,
                 paidAt: new Date(),
               })
-              .pipe(Effect.either);
+              .pipe(Effect.result);
 
-            if (paid._tag === "Left") {
+            if (paid._tag === "Failure") {
               yield* Effect.logWarning(
                 "Payment finalization mark paid returned not_pending",
                 { paid }
               );
               return "not_pending";
+            }
+            if (paid.success.changed) {
+              yield* capturePaymentCompleted({
+                attempt: paid.success.attempt,
+                timestamp: paid.success.timestamp,
+              }).pipe(
+                Effect.provideService(PostHogEventService, posthogEvents)
+              );
             }
             yield* Effect.logDebug("Payment finalization mark paid completed");
 
@@ -254,12 +271,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 
           if (verification.status === "failure") {
             const failureKind = classifyNexiFailureStatus(providerStatus);
-            const terminalState =
-              failureKind === "cancelled"
-                ? "cancelled"
-                : failureKind === "expired"
-                  ? "expired"
-                  : "failed";
+            const terminalState = failureKind;
             yield* Effect.annotateLogsScoped({ failureKind, terminalState });
 
             yield* Effect.logInfo("Payment finalization mark terminal started");
@@ -273,14 +285,36 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 providerOperationId,
                 providerStatus,
               })
-              .pipe(Effect.either);
+              .pipe(Effect.result);
 
-            if (terminal._tag === "Left") {
+            if (terminal._tag === "Failure") {
               yield* Effect.logWarning(
                 "Payment finalization mark terminal returned not_pending",
                 { terminal }
               );
               return "not_pending";
+            }
+            if (terminal.success.changed) {
+              if (terminalState === "failed") {
+                yield* capturePaymentFailed({
+                  attempt: terminal.success.attempt,
+                  failureCode:
+                    terminal.success.attempt.lastProviderStatus ??
+                    terminal.success.attempt.failureCode ??
+                    "nexi_payment_failed",
+                  failureReason: "nexi_payment_failed",
+                  timestamp: terminal.success.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              } else {
+                yield* capturePaymentAbandoned({
+                  attempt: terminal.success.attempt,
+                  timestamp: terminal.success.timestamp,
+                }).pipe(
+                  Effect.provideService(PostHogEventService, posthogEvents)
+                );
+              }
             }
             yield* Effect.logDebug(
               "Payment finalization mark terminal completed"
@@ -310,11 +344,9 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 export const ProviderPaymentFinalizationServiceLiveWithDependencies =
   ProviderPaymentFinalizationServiceLive.pipe(
     Layer.provide(PaymentAttemptRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    ),
     Layer.provide(WorkspacePaidFulfillmentServiceLiveWithDependencies),
     Layer.provide(NexiServiceLive)
   );

@@ -105,10 +105,7 @@ export const getWorkspaceProductTierTitle = (
   tier: WorkspaceProductTier,
   locale: Locale
 ) =>
-  getWorkspaceProductMessage(
-    workspaceProductTierMessages[tier].title,
-    locale
-  );
+  getWorkspaceProductMessage(workspaceProductTierMessages[tier].title, locale);
 
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,

@@ -26,6 +26,13 @@
         "i18n:compile"
       ]
     },
+    "test": {
+      "dependsOn": [
+        "@deskohub/dotypos#generate",
+        "@deskohub/nexi#generate",
+        "i18n:compile"
+      ]
+    },
     "typecheck": {
       "dependsOn": ["@deskohub/nexi#generate", "i18n:compile"]
     }

@@ -2,13 +2,25 @@
 
 import { Analytics } from "@vercel/analytics/react";
 import { useCookieConsent } from "../hooks/use-cookie-consent";
+import { PostHogAnalytics } from "./posthog-analytics";
 
-export function ConsentAwareAnalytics() {
+type ConsentAwareAnalyticsProps = {
+  posthogEnvironment: string;
+};
+
+export function ConsentAwareAnalytics({
+  posthogEnvironment,
+}: ConsentAwareAnalyticsProps) {
   const { isAccepted } = useCookieConsent();
+  const analyticsAccepted = isAccepted("analytics");
 
-  if (!isAccepted("analytics")) {
-    return null;
-  }
-
-  return <Analytics />;
+  return (
+    <>
+      {analyticsAccepted ? <Analytics /> : null}
+      <PostHogAnalytics
+        analyticsAccepted={analyticsAccepted}
+        posthogEnvironment={posthogEnvironment}
+      />
+    </>
+  );
 }

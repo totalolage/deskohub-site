@@ -36,12 +36,12 @@ export interface IGoogleCalendarWorkspaceLimitationsService {
   >;
 }
 
-export class GoogleCalendarWorkspaceLimitationsService extends Context.Tag(
-  "@deskohub-workspace/reservation/GoogleCalendarWorkspaceLimitationsService"
-)<
+export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
   GoogleCalendarWorkspaceLimitationsService,
   IGoogleCalendarWorkspaceLimitationsService
->() {
+>()(
+  "@deskohub-workspace/reservation/GoogleCalendarWorkspaceLimitationsService"
+) {
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {

@@ -1,27 +1,21 @@
 "use server";
 
-import {
-  normalizeExpression,
-  type UnnormalizedLogicalExpression,
+import type {
+  CloudinaryAsset,
+  UnnormalizedLogicalExpression,
 } from "@deskohub/cloudinary";
+import { normalizeExpression } from "@deskohub/cloudinary";
+import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
-import {
-  type CloudinaryAsset,
-  CloudinaryServiceLive,
-  getGalleryImages,
-} from "../backend/cloudinary.service";
+import { CloudinaryServiceLive } from "../backend/cloudinary.service";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
-export interface GetGalleryImagesOptions {
+// Cached function using 'use cache' directive
+export async function getCloudinaryImages(options: {
   tags: UnnormalizedLogicalExpression<CloudinaryTag>;
   maxResults?: number;
-}
-
-// Cached function using 'use cache' directive
-export async function getCloudinaryImages(
-  options: GetGalleryImagesOptions
-): Promise<readonly CloudinaryAsset[]> {
+}): Promise<readonly CloudinaryAsset[]> {
   "use cache";
 
   const { tags, maxResults = 50 } = options;
@@ -30,7 +24,6 @@ export async function getCloudinaryImages(
   // Tag both general cloudinary cache and specific search
   applyCacheTags(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults));
 
-  // Normalize the tag expression to CNF format
   const normalizedTags = normalizeExpression(tags);
 
   const getImagesEffect = Effect.provide(
@@ -73,25 +66,8 @@ export async function getCloudinaryImages(
     }).pipe(Effect.scoped, Effect.annotateLogs({ options, normalizedTags })),
     CloudinaryServiceLive
   ).pipe(
-    Effect.tapError(
-      Effect.fn(function* (error) {
-        yield* Effect.logError("Cloudinary search failed", error);
-      })
-    ),
-    Effect.catchAll((error) =>
-      Effect.gen(function* () {
-        yield* Effect.logWarning(
-          "Boardgame gallery Cloudinary image lookup fell back to empty result",
-          {
-            tags,
-            normalizedTags,
-            maxResults,
-            error,
-          }
-        );
-
-        return [] as readonly CloudinaryAsset[];
-      })
+    Effect.catch((error) =>
+      Effect.logError("Cloudinary search failed", error).pipe(Effect.as([]))
     )
   );
 

@@ -15,11 +15,9 @@ Dotypos integration is OpenAPI-first and layered:
 packages/dotypos/
 |- openapi/
 |  |- dotypos-api.yaml
-|  `- openapi-ts.config.ts
 `- src/
-   |- generated/
+   |- generated/effect.gen.ts
    |- backend/
-   |- utils/
    `- index.ts
 ```
 
@@ -28,10 +26,10 @@ packages/dotypos/
 Regenerate Dotypos client code with:
 
 ```bash
-bun run generate:dotypos
+bun run generate
 ```
 
-The root script runs the package `generate` script for `@deskohub/dotypos`.
+The package script runs `openapigen`, the CLI binary from `@effect/openapi-generator`.
 
 ## Service Usage
 

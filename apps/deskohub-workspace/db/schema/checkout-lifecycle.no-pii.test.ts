@@ -4,6 +4,9 @@ import { describe, expect, mock, test } from "bun:test";
 
 mock.module("server-only", () => ({}));
 
+const readAppFile = (path: string) =>
+  Bun.file(new URL(`../../${path}`, import.meta.url)).text();
+
 const piiColumnFragments = [
   "customer_name",
   "customer_email",
@@ -20,9 +23,7 @@ const piiColumnFragments = [
 
 describe("workspace checkout lifecycle no-PII persistence contract", () => {
   test("schema exports only target lifecycle tables", async () => {
-    const schemaIndex = await Bun.file(
-      "apps/deskohub-workspace/db/schema/index.ts"
-    ).text();
+    const schemaIndex = await readAppFile("db/schema/index.ts");
 
     expect(schemaIndex).toContain("./workspace-reservations");
     expect(schemaIndex).toContain("./payment-attempts");
@@ -34,9 +35,9 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("baseline migration does not create forbidden or PII-capable columns", async () => {
-    const migration = await Bun.file(
-      "apps/deskohub-workspace/db/migrations/0000_free_morgan_stark.sql"
-    ).text();
+    const migration = await readAppFile(
+      "db/migrations/0000_free_morgan_stark.sql"
+    );
     const lowerMigration = migration.toLowerCase();
 
     expect(lowerMigration).not.toContain("checkout_return_state_tokens");
@@ -47,9 +48,9 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("intent key uses JSON.stringify payload and does not use tuple delimiter", async () => {
-    const source = await Bun.file(
-      "apps/deskohub-workspace/features/reservation/actions/prepare-pay-state.ts"
-    ).text();
+    const source = await readAppFile(
+      "features/reservation/actions/prepare-pay-state.ts"
+    );
 
     expect(source).toContain('schema: "workspace-reservation-intent-key"');
     expect(source).toContain("reservationIntentId");
@@ -84,9 +85,9 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       } as never)
     ).toThrow();
 
-    const source = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/operational-event.repository.ts"
-    ).text();
+    const source = await readAppFile(
+      "features/checkout/backend/operational-event.repository.ts"
+    );
     expect(source).not.toContain("piiLikeMessagePattern");
     expect(source).not.toContain("messagePattern");
     expect(source).not.toContain("RegExp");
@@ -107,12 +108,12 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("repository transitions are state and active-attempt guarded", async () => {
-    const reservationRepository = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/workspace-reservation.repository.ts"
-    ).text();
-    const paymentAttemptRepository = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/payment-attempt.repository.ts"
-    ).text();
+    const reservationRepository = await readAppFile(
+      "features/reservation/backend/workspace-reservation.repository.ts"
+    );
+    const paymentAttemptRepository = await readAppFile(
+      "features/checkout/backend/payment-attempt.repository.ts"
+    );
 
     expect(reservationRepository).toContain(
       'eq(workspaceReservations.reservationState, "cancelling")'
@@ -135,12 +136,12 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("webhook duplicate handling is retry-safe", async () => {
-    const source = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/nexi-webhook.service.ts"
-    ).text();
-    const repository = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/webhook-event.repository.ts"
-    ).text();
+    const source = await readAppFile(
+      "features/checkout/backend/nexi-webhook.service.ts"
+    );
+    const repository = await readAppFile(
+      "features/checkout/backend/webhook-event.repository.ts"
+    );
 
     expect(repository).toContain(
       '| { readonly status: "duplicate"; readonly event: WebhookEvent }'
@@ -152,12 +153,12 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("webhook terminal payment transitions use one transaction", async () => {
-    const source = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/nexi-webhook.service.ts"
-    ).text();
-    const repository = await Bun.file(
-      "apps/deskohub-workspace/features/checkout/backend/payment-attempt.repository.ts"
-    ).text();
+    const source = await readAppFile(
+      "features/checkout/backend/nexi-webhook.service.ts"
+    );
+    const repository = await readAppFile(
+      "features/checkout/backend/payment-attempt.repository.ts"
+    );
 
     expect(source).toContain("paymentAttempts.markPaidForReservation");
     expect(source).toContain("paymentAttempts.markTerminalForReservation");
@@ -171,9 +172,9 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
   });
 
   test("reservation submit acquires local hold claim before remote Dotypos hold", async () => {
-    const source = await Bun.file(
-      "apps/deskohub-workspace/features/reservation/actions/prepare-pay-state.ts"
-    ).text();
+    const source = await readAppFile(
+      "features/reservation/actions/prepare-pay-state.ts"
+    );
 
     expect(source.indexOf("reservations.createDraft({")).toBeLessThan(
       source.indexOf("createWorkspaceDotyposReservation({")

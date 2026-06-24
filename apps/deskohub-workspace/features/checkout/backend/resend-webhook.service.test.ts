@@ -10,6 +10,7 @@ import type { EmailService } from "@deskohub/email/backend/service";
 import { getQueriesForElement } from "@testing-library/react";
 import { Effect, Layer } from "effect";
 import { m } from "@/features/i18n";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -17,7 +18,6 @@ import {
 import { workspaceSiteConstants } from "@/shared/utils";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "./operational-event.repository";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "./workspace-reservation.repository";
 
 let verifiedPayload: unknown;
 
@@ -43,10 +43,13 @@ const verifyWebhook = mock(
 );
 
 const locationMapImage = Buffer.from("workspace-location-map");
+const tableMapImage = Buffer.from([0x89, 0x50, 0x4e, 0x47]);
 const generateStaticMapImage = mock(async () => locationMapImage);
+const generateSvgPngBuffer = mock(async () => tableMapImage);
 
 mock.module("osm", () => ({
   generateStaticMapImage,
+  generateSvgPngBuffer,
 }));
 
 mock.module("resend", () => ({
@@ -144,7 +147,10 @@ const processWebhookEffect = async (input: {
     "./operational-event.repository"
   );
   const { WorkspaceReservationRepository } = await import(
-    "./workspace-reservation.repository"
+    "@/features/reservation/backend/workspace-reservation.repository"
+  );
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
   );
 
   const config = input.config ?? {
@@ -170,6 +176,9 @@ const processWebhookEffect = async (input: {
     Effect.provide(
       Layer.succeed(OperationalEventRepository, input.operationalEvents)
     ),
+    Effect.provide(
+      Layer.succeed(PostHogEventService, { capture: () => Effect.void })
+    ),
     Effect.provide(Layer.succeed(ResendWebhookRuntimeConfig, config))
   );
 };
@@ -182,6 +191,7 @@ describe("ResendWebhookService", () => {
     sendEmail.mockClear();
     constructResend.mockClear();
     generateStaticMapImage.mockClear();
+    generateSvgPngBuffer.mockClear();
   });
 
   test("marks delivered customer reservation access emails fulfilled", async () => {
@@ -404,17 +414,32 @@ describe("ResendWebhookService", () => {
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
           customerAccessCode: "ACCESS-123",
-          reservationCreatedAt: new Date("2026-06-05T08:00:00.000Z"),
-          createdAt: new Date("2026-06-05T08:00:00.000Z"),
+          customer: {
+            email: "customer@example.com",
+            firstName: "Ada",
+            lastName: "Lovelace",
+            companyName: null,
+            phone: "123456789",
+          },
+          reservedFrom: new Date("2026-06-15T22:00:00.000Z"),
+          reservedUntil: new Date("2026-06-16T22:00:00.000Z"),
+          tableName: "12",
+          tableMap: {
+            assignedTableId: "desk-12",
+            roomName: "Main room",
+            tables: [
+              {
+                _cloudId: "cloud-id",
+                id: "desk-12",
+                name: "12",
+                locationName: "Main room",
+                positionX: "40",
+                positionY: "80",
+                type: "SQUARE",
+              },
+            ],
+          },
         } as never,
-        customer: {
-          email: "customer@example.com",
-          firstName: "Ada",
-          lastName: "Lovelace",
-          companyName: null,
-          phone: "123456789",
-        } as never,
-        tableName: "12",
       });
     }).pipe(
       Effect.provide(WorkspaceReservationEmailServiceLive),
@@ -436,6 +461,8 @@ describe("ResendWebhookService", () => {
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
+      dotyposReservationStartDate: "2026-06-15T22:00:00.000Z",
+      dotyposReservationEndDate: "2026-06-16T22:00:00.000Z",
     });
     const customerEmail = sentMessages[0];
     if (!customerEmail) {
@@ -466,7 +493,7 @@ describe("ResendWebhookService", () => {
         day: "numeric",
         month: "long",
         timeZone: "Europe/Prague",
-      }).format(new Date("2026-06-05T08:00:00.000Z"));
+      }).format(new Date("2026-06-15T22:00:00.000Z"));
       const customerAccessHeading = m.checkoutEmailCustomerAccessHeading(
         { date: customerAccessHeadingDate },
         { locale }
@@ -477,6 +504,9 @@ describe("ResendWebhookService", () => {
       const tableLabel = emailView.getByText(
         m.checkoutEmailTableNumberLabel({}, { locale })
       );
+      const tableMap = emailView.getByRole("img", {
+        name: m.checkoutStatusTableMapTitle({}, { locale }),
+      });
       const networkHeading = emailView.getByText(
         m.checkoutEmailNetworkHeading({}, { locale })
       );
@@ -518,13 +548,23 @@ describe("ResendWebhookService", () => {
       ).toBeTruthy();
       expect(networkQrImage.getAttribute("src")).toBe("cid:workspace-wifi-qr");
       expect(tableLabel.nextElementSibling?.textContent).toBe("12");
+      expect(tableLabel.parentElement?.contains(tableMap)).toBe(true);
+      expect(tableMap.tagName.toLowerCase()).toBe("img");
+      expect(tableMap.getAttribute("src")).toBe("cid:workspace-table-map");
+      expect(tableMap.getAttribute("width")).toBe("500");
+      expect(customerHtml.indexOf("Where to sit")).toBeGreaterThan(
+        customerHtml.indexOf(m.checkoutEmailTableNumberLabel({}, { locale }))
+      );
+      expect(customerHtml.indexOf("Where to sit")).toBeLessThan(
+        customerHtml.indexOf(m.checkoutEmailNetworkHeading({}, { locale }))
+      );
       expect(emailView.getByText("dotypos-reservation-id")).toBeTruthy();
       expect(emailView.getByText("reservation-id")).toBeTruthy();
       expect(mapImage.getAttribute("src")).toBe("cid:workspace-location-map");
       expect(addressLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("href")).toBe(expectedMapUrl);
       expect(mapLink.getAttribute("style")).toContain("margin-top:-24px");
-      expect(customerEmail.attachments).toHaveLength(2);
+      expect(customerEmail.attachments).toHaveLength(3);
       expect(customerEmail.attachments?.[0]).toMatchObject({
         contentId: "workspace-location-map",
         contentType: "image/jpeg",
@@ -532,11 +572,24 @@ describe("ResendWebhookService", () => {
       });
       expect(customerEmail.attachments?.[0]?.content).toEqual(locationMapImage);
       expect(customerEmail.attachments?.[1]).toMatchObject({
+        contentId: "workspace-table-map",
+        contentType: "image/png",
+        filename: "workspace-table-map.png",
+      });
+      expect(customerEmail.attachments?.[1]?.content).toEqual(tableMapImage);
+      const tableMapAttachmentContent = customerEmail.attachments?.[1]?.content;
+      if (!Buffer.isBuffer(tableMapAttachmentContent)) {
+        throw new Error("Table map attachment content was not a PNG buffer.");
+      }
+      expect(tableMapAttachmentContent.subarray(1, 4).toString("ascii")).toBe(
+        "PNG"
+      );
+      expect(customerEmail.attachments?.[2]).toMatchObject({
         contentId: "workspace-wifi-qr",
         contentType: "image/png",
         filename: "workspace-wifi-qr.png",
       });
-      const qrAttachmentContent = customerEmail.attachments?.[1]?.content;
+      const qrAttachmentContent = customerEmail.attachments?.[2]?.content;
       if (!Buffer.isBuffer(qrAttachmentContent)) {
         throw new Error("Wi-Fi QR attachment content was not a PNG buffer.");
       }
@@ -545,7 +598,37 @@ describe("ResendWebhookService", () => {
         createWorkspaceCheckoutWifiQrPayload(
           workspaceCheckoutPlaceholderNetworkDetails
         )
-      ).toBe("WIFI:T:WPA;S:O2-Internet_6BE;P:95502205;;");
+      ).toBe("WIFI:T:WPA;S:Deskohub Workspace;P:Workspace42;;");
+      const [tableMapSvg] = generateSvgPngBuffer.mock.calls[0] ?? [];
+      if (typeof tableMapSvg !== "string") {
+        throw new Error(
+          "Table map PNG should be generated from an SVG string."
+        );
+      }
+      expect(tableMapSvg).toContain('width="720"');
+      expect(tableMapSvg).toContain('height="540"');
+      expect(tableMapSvg).not.toContain("<text");
+      const [, tableMapOptions] = generateSvgPngBuffer.mock.calls[0] ?? [];
+      if (
+        !tableMapOptions ||
+        typeof tableMapOptions !== "object" ||
+        !("textOverlays" in tableMapOptions) ||
+        !Array.isArray(tableMapOptions.textOverlays)
+      ) {
+        throw new Error(
+          "Table map labels should be rendered as text overlays."
+        );
+      }
+      const [tableMapLabel] = tableMapOptions.textOverlays;
+      if (!tableMapLabel) {
+        throw new Error("Table map label overlay was not generated.");
+      }
+      expect(tableMapLabel).toMatchObject({
+        text: "12",
+        color: "#ffffff",
+      });
+      expect(tableMapLabel.font).toContain("Sculpin");
+      expect(tableMapLabel.fontfile).toContain("Sculpin/regular.ttf");
       expect(generateStaticMapImage).toHaveBeenCalledWith(
         expect.objectContaining({
           height: 640,
@@ -608,10 +691,16 @@ describe("ResendWebhookService", () => {
       WorkspacePaidFulfillmentServiceLive,
     } = await import("./paid-fulfillment.service");
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
+    );
+    const { WorkspaceReservationService } = await import(
+      "@/features/reservation/backend/workspace-reservation.service"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
     );
     const existingReservation = {
       id: "reservation-id",
@@ -626,6 +715,19 @@ describe("ResendWebhookService", () => {
       dotyposCustomerId: "dotypos-customer-id",
     };
     const sendPaidReservationEmails = mock(() => Effect.void);
+    const emailReservation = {
+      ...claimedReservation,
+      customer: { email: "customer@example.com" },
+      reservedFrom: new Date("2026-06-15T22:00:00.000Z"),
+      reservedUntil: new Date("2026-06-16T22:00:00.000Z"),
+      tableName: "12",
+    };
+    const getReservation = mock(() =>
+      Effect.succeed(emailReservation as never)
+    );
+    const workspaceReservations = {
+      getReservation,
+    };
     const markFulfilled = mock(() =>
       Effect.die("delivery webhook should mark fulfilled")
     );
@@ -637,15 +739,6 @@ describe("ResendWebhookService", () => {
       markFulfilled,
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {
-      getReservation: mock(() =>
-        Effect.succeed({
-          reservation: { _tableId: "table-id" },
-          customer: { email: "customer@example.com" },
-        } as never)
-      ),
-      getTables: mock(() =>
-        Effect.succeed([{ id: "table-id", name: "12" }] as never)
-      ),
       confirmReservation: mock(() =>
         Effect.die("reservation is already confirmed")
       ),
@@ -670,34 +763,51 @@ describe("ResendWebhookService", () => {
       ),
       Effect.provide(Layer.succeed(DotyposService, dotypos)),
       Effect.provide(
+        Layer.succeed(WorkspaceReservationService, workspaceReservations)
+      ),
+      Effect.provide(
         Layer.succeed(WorkspaceReservationEmailService, reservationEmails)
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.runPromise
     );
 
     expect(reservations.claimPaidFulfillment).toHaveBeenCalledWith(
-      "reservation-id"
+      expect.objectContaining({ id: "reservation-id" })
     );
+    expect(getReservation).toHaveBeenCalledWith("reservation-id");
     expect(sendPaidReservationEmails).toHaveBeenCalledWith({
-      reservation: claimedReservation,
-      customer: { email: "customer@example.com" },
-      tableName: "12",
+      reservation: emailReservation,
     });
     expect(markFulfilled).not.toHaveBeenCalled();
     expect(operationalEvents.record).not.toHaveBeenCalled();
   });
 
   test("Resend provider forwards webhook correlation tags", async () => {
-    const { EmailProviderTag } = await import(
+    const { EmailConfigTag, EmailProviderTag } = await import(
       "@deskohub/email/backend/service"
     );
     const { ResendEmailProviderLive } = await import(
       "@deskohub/email/backend/providers/resend-provider"
     );
+    const emailConfig: EmailProviderConfig = {
+      provider: "resend",
+      apiKey: "api-key",
+      defaultFrom: {
+        email: "reservations@workspace.deskohub.cz",
+        name: "Deskohub",
+      },
+    };
 
     const provider = await Effect.gen(function* () {
       return yield* EmailProviderTag;
-    }).pipe(Effect.provide(ResendEmailProviderLive), Effect.runPromise);
+    }).pipe(
+      Effect.provide(ResendEmailProviderLive),
+      Effect.provide(Layer.succeed(EmailConfigTag, emailConfig)),
+      Effect.runPromise
+    );
 
     await Effect.runPromise(
       provider.send({

@@ -58,6 +58,9 @@ export function CloudinaryImage({
   size,
   blurDataURL,
   className,
+  preload,
+  priority,
+  sizes,
   style,
   ...props
 }: CloudinaryImageProps) {
@@ -65,27 +68,31 @@ export function CloudinaryImage({
   const objectFit = config.crop === "fill" ? "object-cover" : "object-contain";
   const finalClassName = classNames(config.className, objectFit, className);
   const imageSize = size || config.size;
-  const { size: _, className: __, ...restConfig } = config;
+  const {
+    size: _,
+    className: __,
+    preload: variantPreload,
+    ...restConfig
+  } = config;
   const useFill = imageSize.width === "fill" || imageSize.height === "fill";
+  const finalPreload = preload ?? priority ?? variantPreload;
+  const finalSizes = useFill ? (sizes ?? "100vw") : sizes;
 
   type FinalProps = typeof restConfig &
+    Pick<CldImageProps, "preload" | "sizes"> &
     ({ fill: true } | { width: number; height: number });
 
-  let finalProps: FinalProps;
-  if (useFill) {
-    finalProps = { ...restConfig, fill: true };
-  } else if (
-    typeof imageSize.width === "number" &&
-    typeof imageSize.height === "number"
-  ) {
-    finalProps = {
-      ...restConfig,
-      width: imageSize.width,
-      height: imageSize.height,
-    };
-  } else {
-    finalProps = { ...restConfig, fill: true };
-  }
+  const sharedProps = {
+    ...restConfig,
+    preload: finalPreload,
+    sizes: finalSizes,
+  };
+  const finalProps: FinalProps =
+    useFill ||
+    typeof imageSize.width !== "number" ||
+    typeof imageSize.height !== "number"
+      ? { ...sharedProps, fill: true }
+      : { ...sharedProps, width: imageSize.width, height: imageSize.height };
 
   const positioningStyle: CldImageProps["style"] = {
     backgroundSize: config.crop === "fill" ? "cover" : "contain",

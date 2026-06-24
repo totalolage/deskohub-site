@@ -1,4 +1,4 @@
-import type { Category } from "../generated/types.gen";
+import type { Category } from "@deskohub/dotypos/generated";
 
 /**
  * Check if a category should be displayed in menus

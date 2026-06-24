@@ -1,52 +1,26 @@
 # Dotypos Manual API Usage
 
-Use this when you need to manually inspect Dotypos API data from the repo without adding throwaway scripts.
+Use this when you need to inspect Dotypos data from the repo without throwaway scripts.
 
 ## Run From Workspace
 
-Run manual commands from `apps/deskohub-workspace`. The workspace app keeps Dotypos configuration across multiple local env files, and Bun can load all of them for a one-off command:
+Run manual checks from `apps/deskohub-workspace` so the workspace env files are loaded together:
 
 ```bash
 bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval '<script>'
 ```
 
-Do not print env values. Check only whether required keys are present.
+Do not print env values. `DOTYPOS_REFRESH_TOKEN` is a secret and is not expected to come from Vercel preview env pulls.
 
-`DOTYPOS_REFRESH_TOKEN` is a secret. Do not expect it to be available from `vercel env pull`, including preview pulls used during E2E tests. For local manual API checks, load it from `apps/deskohub-workspace/.env.development.local` using the layered `bun --env-file` command above. If a pulled preview env file has an empty `DOTYPOS_REFRESH_TOKEN`, that is expected and should not block manual Dotypos verification; use the local layered env files instead.
+For most checks, use `DotyposService.Default`; it handles token fetching, bearer auth, timeouts, retries, and provider error mapping.
 
-## Import Generated SDK
-
-Import the generated Dotypos SDK from the workspace package instead of copying generated files or writing temporary scripts:
-
-```ts
-import { getAccessToken, getCustomers } from "@deskohub/dotypos/generated";
-import { createClient } from "@deskohub/dotypos/generated/client/index";
-```
-
-The generated SDK exposes raw endpoint functions. Authenticate first with `getAccessToken`, then pass the bearer token to the endpoint you want to inspect.
-
-## Query Customers
-
-This command authenticates with the generated SDK, queries the customers endpoint, and prints only non-secret customer fields:
+## Query Tables
 
 ```bash
-bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval 'import { getAccessToken, getCustomers } from "@deskohub/dotypos/generated"; import { createClient } from "@deskohub/dotypos/generated/client/index"; const required = ["DOTYPOS_REFRESH_TOKEN", "DOTYPOS_CLOUD_ID", "DOTYPOS_API_URL"]; const missing = required.filter((key) => !process.env[key]); if (missing.length) throw new Error(`Missing Dotypos env: ${missing.join(", ")}`); const client = createClient({ baseUrl: process.env.DOTYPOS_API_URL }); const tokenResponse = await getAccessToken({ client, headers: { Authorization: `User ${process.env.DOTYPOS_REFRESH_TOKEN}` }, body: { _cloudId: process.env.DOTYPOS_CLOUD_ID }, throwOnError: true }); const customersResponse = await getCustomers({ client, headers: { Authorization: `Bearer ${tokenResponse.data.accessToken}` }, path: { cloudId: process.env.DOTYPOS_CLOUD_ID }, query: { page: 1, limit: 10 }, throwOnError: true }); const customers = customersResponse.data.data ?? []; console.log(JSON.stringify({ currentPage: customersResponse.data.currentPage, perPage: customersResponse.data.perPage, totalItemsOnPage: customersResponse.data.totalItemsOnPage, totalItemsCount: customersResponse.data.totalItemsCount, customers: customers.map((customer) => ({ id: customer.id, firstName: customer.firstName, lastName: customer.lastName, companyName: customer.companyName, email: customer.email, phone: customer.phone, discountGroupId: customer._discountGroupId, display: customer.display, deleted: customer.deleted })) }, null, 2));'
+bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval 'import { Effect, Layer } from "effect"; import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos"; const required = ["DOTYPOS_REFRESH_TOKEN", "DOTYPOS_CLOUD_ID", "DOTYPOS_API_URL", "DOTYPOS_BRANCH_ID", "DOTYPOS_EMPLOYEE_ID"]; const missing = required.filter((key) => !process.env[key]); if (missing.length) throw new Error(`Missing Dotypos env: ${missing.join(", ")}`); const config = Layer.succeed(DotyposRuntimeConfig, { refreshToken: process.env.DOTYPOS_REFRESH_TOKEN, cloudId: process.env.DOTYPOS_CLOUD_ID, apiUrl: process.env.DOTYPOS_API_URL, branchId: process.env.DOTYPOS_BRANCH_ID, employeeId: process.env.DOTYPOS_EMPLOYEE_ID, apiTimeout: 10000 }); const rows = await Effect.runPromise(Effect.gen(function* () { const dotypos = yield* DotyposService; return yield* dotypos.getTables(); }).pipe(Effect.provide(DotyposService.Default.pipe(Layer.provide(config))))); console.log(JSON.stringify(rows.map((table) => ({ id: table.id, name: table.name, seats: table.seats, display: table.display, enabled: table.enabled })), null, 2));'
 ```
-
-Adjust `query.page`, `query.limit`, or add `query.filter` for narrower customer inspection.
-
-## Adapt To Other Endpoints
-
-Keep the same generated-client setup and swap the endpoint import/call. For example, to inspect tables:
-
-```bash
-bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval 'import { getAccessToken, getTables } from "@deskohub/dotypos/generated"; import { createClient } from "@deskohub/dotypos/generated/client/index"; const required = ["DOTYPOS_REFRESH_TOKEN", "DOTYPOS_CLOUD_ID", "DOTYPOS_API_URL"]; const missing = required.filter((key) => !process.env[key]); if (missing.length) throw new Error(`Missing Dotypos env: ${missing.join(", ")}`); const client = createClient({ baseUrl: process.env.DOTYPOS_API_URL }); const tokenResponse = await getAccessToken({ client, headers: { Authorization: `User ${process.env.DOTYPOS_REFRESH_TOKEN}` }, body: { _cloudId: process.env.DOTYPOS_CLOUD_ID }, throwOnError: true }); const tablesResponse = await getTables({ client, headers: { Authorization: `Bearer ${tokenResponse.data.accessToken}` }, path: { cloudId: process.env.DOTYPOS_CLOUD_ID }, query: { page: 1, limit: 100 }, throwOnError: true }); const tables = tablesResponse.data.data ?? []; const rows = tables.map((table) => ({ id: table.id, name: table.name, seats: table.seats, display: table.display, enabled: table.enabled, locationName: table.locationName, type: table.type, tags: table.tags ?? [] })).sort((a, b) => String(a.name).localeCompare(String(b.name), undefined, { numeric: true })); console.log(JSON.stringify(rows, null, 2));'
-```
-
-Use the returned fields to understand how Dotypos currently represents API data, then apply filtering in application code rather than hardcoding assumptions in this document.
 
 ## Notes
 
-- `bun --env-file=.env.development.local --eval ...` may not be enough because workspace test secrets are split across files.
-- `bun --env-file=.env.development.local -p '...'` is useful for a yes/no env-load check, but do not print secret values.
-- Generated SDK response validators run before data is returned. If a real API response fails validation, fix the OpenAPI schema and regenerate with `bun run generate:dotypos`.
+- Use production Dotypos API access only when explicitly requested.
+- Fix the OpenAPI schema and regenerate with `bun run generate` from `packages/dotypos` if a real response fails generated decoding.

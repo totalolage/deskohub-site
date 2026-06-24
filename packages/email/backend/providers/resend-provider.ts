@@ -1,17 +1,14 @@
-import { Config, Context, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { Resend } from "resend";
 import type { EmailMessage, EmailSendResult } from "../../types/email.types";
 import { NetworkError } from "../network-error";
 import {
+  EmailConfigTag,
   type EmailProvider,
   EmailProviderTag,
   EmailServiceError,
   isRetryableEmailError,
 } from "../service";
-
-interface ResendConfig {
-  apiKey: string;
-}
 
 const resendTagPattern = /^[A-Za-z0-9_-]{1,256}$/;
 
@@ -33,28 +30,26 @@ const toResendTags = (message: EmailMessage) => {
   return tags.length > 0 ? tags : undefined;
 };
 
-class ResendConfigTag extends Context.Tag("ResendConfig")<
-  ResendConfigTag,
-  ResendConfig
->() {}
+const getResendErrorMessage = (error: unknown) => {
+  if (!error || typeof error !== "object") return "Unknown Resend error";
 
-const ResendConfigLayer = Layer.effect(
-  ResendConfigTag,
-  Effect.gen(function* () {
-    const apiKey = yield* Config.string("EMAIL_API_KEY").pipe(
-      Config.withDefault("")
-    );
+  const message = "message" in error ? error.message : undefined;
+  if (typeof message === "string") return message;
 
-    if (!apiKey) {
-      yield* Effect.logWarning("Resend API key not configured");
-    }
+  const code = "error" in error ? error.error : undefined;
+  return typeof code === "string" ? code : "Unknown Resend error";
+};
 
-    return { apiKey } satisfies ResendConfig;
-  })
-);
+const getResendErrorStatusCode = (error: unknown) => {
+  if (!error || typeof error !== "object" || !("statusCode" in error)) {
+    return undefined;
+  }
 
-const createResendProvider = (config: ResendConfig): EmailProvider => {
-  const resend = new Resend(config.apiKey);
+  return typeof error.statusCode === "number" ? error.statusCode : undefined;
+};
+
+const createResendProvider = (apiKey: string): EmailProvider => {
+  const resend = new Resend(apiKey);
 
   return {
     name: "resend",
@@ -71,16 +66,11 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
         const result = yield* Effect.tryPromise({
           try: async () => {
             const fromAddress =
-              typeof message.from === "string"
-                ? message.from
-                : `${message.from.name || ""} <${message.from.email}>`.trim();
+              `${message.from.name || ""} <${message.from.email}>`.trim();
 
-            const toAddresses =
-              typeof message.to === "string"
-                ? [message.to]
-                : Array.isArray(message.to)
-                  ? message.to.map((r) => r.email)
-                  : [message.to.email];
+            const toAddresses = Array.isArray(message.to)
+              ? message.to.map((r) => r.email)
+              : [message.to.email];
 
             const response = await resend.emails.send({
               from: fromAddress,
@@ -94,32 +84,21 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
                 contentType: attachment.contentType,
                 filename: attachment.filename,
               })),
-              replyTo: message.replyTo
-                ? typeof message.replyTo === "string"
-                  ? message.replyTo
-                  : message.replyTo.email
-                : undefined,
+              replyTo: message.replyTo?.email,
               headers: message.headers,
               tags: toResendTags(message),
             });
 
-            if (response.error) {
-              const resendError = response.error as {
-                statusCode?: number;
-                message?: string;
-                error?: string;
-                name?: string;
-              };
-              const errorMessage =
-                resendError.message ||
-                resendError.error ||
-                "Unknown Resend error";
+            const resendError = response.error;
+            if (resendError) {
+              const errorMessage = getResendErrorMessage(resendError);
+              const statusCode = getResendErrorStatusCode(resendError);
               const normalizedErrorMessage = errorMessage.toLowerCase();
 
               if (
-                (resendError.statusCode !== undefined &&
-                  resendError.statusCode >= 400 &&
-                  resendError.statusCode < 500) ||
+                (statusCode !== undefined &&
+                  statusCode >= 400 &&
+                  statusCode < 500) ||
                 normalizedErrorMessage.includes("invalid") ||
                 normalizedErrorMessage.includes("bad request") ||
                 normalizedErrorMessage.includes("unauthorized") ||
@@ -193,9 +172,10 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 
         const sendResult = {
           id: result.data?.id || `resend-${Date.now()}`,
+          status: "sent",
           provider: "resend",
           timestamp: new Date(),
-        } as EmailSendResult;
+        } satisfies EmailSendResult;
 
         yield* Effect.annotateLogsScoped({ result: sendResult });
         yield* Effect.logDebug("Resend email send result created", {
@@ -241,15 +221,22 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
               );
             })
           ),
-          Effect.as(true),
+          Effect.flatMap((response) => {
+            const resendError = response.error;
+            if (!resendError) return Effect.succeed(true);
+
+            return Effect.fail(
+              new EmailServiceError(
+                `Failed to verify Resend API key: ${getResendErrorMessage(resendError)}`,
+                resendError,
+                "resend"
+              )
+            );
+          }),
           Effect.tap((success) =>
             Effect.gen(function* () {
               yield* Effect.annotateLogsScoped({ result: success });
-              if (success) {
-                yield* Effect.logInfo("Resend API key verified successfully");
-              } else {
-                yield* Effect.logWarning("Resend API key verification failed");
-              }
+              yield* Effect.logInfo("Resend API key verified successfully");
             })
           ),
           Effect.tapError((error) =>
@@ -269,7 +256,19 @@ const createResendProvider = (config: ResendConfig): EmailProvider => {
 export const ResendEmailProviderLive = Layer.effect(
   EmailProviderTag,
   Effect.gen(function* () {
-    const config = yield* ResendConfigTag;
-    return createResendProvider(config);
+    const config = yield* EmailConfigTag;
+    const apiKey = config.apiKey?.trim() ?? "";
+
+    if (!apiKey) {
+      return yield* Effect.fail(
+        new EmailServiceError(
+          "EMAIL_API_KEY is required for Resend email provider",
+          undefined,
+          "resend"
+        )
+      );
+    }
+
+    return createResendProvider(apiKey);
   })
-).pipe(Layer.provide(ResendConfigLayer));
+);

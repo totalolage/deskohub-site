@@ -24,6 +24,8 @@ export const workspaceServerEnvSchema = z.object({
   NEXI_API_KEY: z.string().min(1),
   NEXI_API_ORIGIN: z.url(),
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: z.enum(["EUR"]).optional(),
+  POSTHOG_SERVICE_NAME: z.string().min(1).default("deskohub-workspace"),
+  POSTHOG_SERVICE_NAMESPACE: z.string().min(1).default("deskohub"),
   VERCEL_ENV: z.enum(["production", "preview", "development"]),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
   VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
@@ -33,6 +35,8 @@ export const workspaceServerEnvSchema = z.object({
 export const workspaceClientEnvSchema = z.object({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: z.string(),
   NEXT_PUBLIC_GTM_ID: z.string().optional(),
+  NEXT_PUBLIC_POSTHOG_HOST: z.url().optional(),
+  NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: z.string().min(1).optional(),
 });
 
 export type WorkspaceServerEnv = z.infer<typeof workspaceServerEnvSchema>;

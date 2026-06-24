@@ -21,17 +21,11 @@ export class PaymentAttemptStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-type PaymentAttemptStateFailure = {
-  readonly _tag: "PaymentAttemptStateFailure";
-  readonly error: PaymentAttemptStateError;
-};
-
-const paymentAttemptStateFailure = (
-  error: PaymentAttemptStateError
-): PaymentAttemptStateFailure => ({
-  _tag: "PaymentAttemptStateFailure",
-  error,
-});
+export interface PaymentAttemptReservationTransition {
+  readonly attempt: PaymentAttempt;
+  readonly changed: boolean;
+  readonly timestamp: Date;
+}
 
 export interface PaymentAttemptRepository {
   readonly create: (input: {
@@ -56,7 +50,7 @@ export interface PaymentAttemptRepository {
     readonly id: string;
     readonly securityToken: string;
     readonly providerRedirectUrl: string;
-  }) => Effect.Effect<void, DatabaseError | PaymentAttemptStateError>;
+  }) => Effect.Effect<PaymentAttempt, DatabaseError | PaymentAttemptStateError>;
   readonly markPaid: (input: {
     readonly id: string;
     readonly webhookEventId?: string;
@@ -78,7 +72,10 @@ export interface PaymentAttemptRepository {
     readonly providerOperationId?: string;
     readonly providerStatus?: string;
     readonly paidAt: Date;
-  }) => Effect.Effect<void, DatabaseError | PaymentAttemptStateError>;
+  }) => Effect.Effect<
+    PaymentAttemptReservationTransition,
+    DatabaseError | PaymentAttemptStateError
+  >;
   readonly markTerminalForReservation: (input: {
     readonly id: string;
     readonly workspaceReservationId: string;
@@ -87,11 +84,14 @@ export interface PaymentAttemptRepository {
     readonly webhookEventId?: string;
     readonly providerOperationId?: string;
     readonly providerStatus?: string;
-  }) => Effect.Effect<void, DatabaseError | PaymentAttemptStateError>;
+  }) => Effect.Effect<
+    PaymentAttemptReservationTransition,
+    DatabaseError | PaymentAttemptStateError
+  >;
 }
 
 export const PaymentAttemptRepository =
-  Context.GenericTag<PaymentAttemptRepository>("PaymentAttemptRepository");
+  Context.Service<PaymentAttemptRepository>("PaymentAttemptRepository");
 
 const isPaymentAttemptStateError = (
   cause: unknown
@@ -238,6 +238,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
       attachHostedPaymentPage: Effect.fn(
         "paymentAttempts.attachHostedPaymentPage"
       )(function* (input) {
+        const attachedAt = new Date();
         const updated = yield* runDb(
           "paymentAttempts.attachHostedPaymentPage",
           () =>
@@ -247,7 +248,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                 state: "pending",
                 securityToken: input.securityToken,
                 providerRedirectUrl: input.providerRedirectUrl,
-                updatedAt: new Date(),
+                updatedAt: attachedAt,
               })
               .where(
                 and(
@@ -255,10 +256,11 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                   eq(paymentAttempts.state, "created")
                 )
               )
-              .returning({ id: paymentAttempts.id })
+              .returning()
         );
 
-        if (updated.length === 0) {
+        const attempt = updated[0];
+        if (!attempt) {
           return yield* Effect.fail(
             new PaymentAttemptStateError({
               operation: "paymentAttempts.attachHostedPaymentPage",
@@ -268,6 +270,8 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
             })
           );
         }
+
+        return attempt;
       }),
       markPaid: Effect.fn("paymentAttempts.markPaid")(function* (input) {
         const updated = yield* runDb("paymentAttempts.markPaid", () =>
@@ -338,13 +342,13 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
         "paymentAttempts.markPaidForReservation"
       )(function* (input) {
         const result = yield* runDb<
-          undefined | PaymentAttemptStateFailure,
+          PaymentAttemptReservationTransition,
           PaymentAttemptStateError
         >(
           "paymentAttempts.markPaidForReservation",
           async () => {
             return await db.transaction(
-              async (tx): Promise<undefined | PaymentAttemptStateFailure> => {
+              async (tx): Promise<PaymentAttemptReservationTransition> => {
                 const [attempt] = await tx
                   .update(paymentAttempts)
                   .set({
@@ -365,17 +369,15 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                       inArray(paymentAttempts.state, ["pending", "paid"])
                     )
                   )
-                  .returning({ id: paymentAttempts.id });
+                  .returning();
 
                 if (!attempt) {
-                  return paymentAttemptStateFailure(
-                    new PaymentAttemptStateError({
-                      operation: "paymentAttempts.markPaidForReservation",
-                      paymentAttemptId: input.id,
-                      message:
-                        "Only pending or already-paid payment attempts can mark a reservation paid.",
-                    })
-                  );
+                  throw new PaymentAttemptStateError({
+                    operation: "paymentAttempts.markPaidForReservation",
+                    paymentAttemptId: input.id,
+                    message:
+                      "Only pending or already-paid payment attempts can mark a reservation paid.",
+                  });
                 }
 
                 const [reservation] = await tx
@@ -397,12 +399,21 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                       eq(workspaceReservations.activePaymentAttemptId, input.id)
                     )
                   )
-                  .returning({ id: workspaceReservations.id });
+                  .returning({
+                    paidAt: workspaceReservations.paidAt,
+                  });
 
-                if (reservation) return;
+                if (reservation)
+                  return {
+                    attempt,
+                    changed: true,
+                    timestamp: reservation.paidAt ?? input.paidAt,
+                  };
 
                 const [consistent] = await tx
-                  .select({ id: workspaceReservations.id })
+                  .select({
+                    paidAt: workspaceReservations.paidAt,
+                  })
                   .from(workspaceReservations)
                   .where(
                     and(
@@ -416,7 +427,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                   )
                   .limit(1);
 
-                if (consistent) return;
+                if (consistent)
+                  return {
+                    attempt,
+                    changed: false,
+                    timestamp: consistent.paidAt ?? input.paidAt,
+                  };
 
                 // Intentionally reject the transaction to roll back the payment-attempt update above.
                 throw new PaymentAttemptStateError({
@@ -431,21 +447,20 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
           { preserveError: isPaymentAttemptStateError }
         );
 
-        if (result?._tag === "PaymentAttemptStateFailure") {
-          return yield* Effect.fail(result.error);
-        }
+        return result;
       }),
       markTerminalForReservation: Effect.fn(
         "paymentAttempts.markTerminalForReservation"
       )(function* (input) {
+        const terminalAt = new Date();
         const result = yield* runDb<
-          undefined | PaymentAttemptStateFailure,
+          PaymentAttemptReservationTransition,
           PaymentAttemptStateError
         >(
           "paymentAttempts.markTerminalForReservation",
           async () => {
             return await db.transaction(
-              async (tx): Promise<undefined | PaymentAttemptStateFailure> => {
+              async (tx): Promise<PaymentAttemptReservationTransition> => {
                 const [attempt] = await tx
                   .update(paymentAttempts)
                   .set({
@@ -454,7 +469,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                     lastWebhookEventId: input.webhookEventId,
                     lastProviderOperationId: input.providerOperationId,
                     lastProviderStatus: input.providerStatus,
-                    updatedAt: new Date(),
+                    updatedAt: terminalAt,
                   })
                   .where(
                     and(
@@ -470,17 +485,15 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                       ])
                     )
                   )
-                  .returning({ id: paymentAttempts.id });
+                  .returning();
 
                 if (!attempt) {
-                  return paymentAttemptStateFailure(
-                    new PaymentAttemptStateError({
-                      operation: "paymentAttempts.markTerminalForReservation",
-                      paymentAttemptId: input.id,
-                      message:
-                        "Only non-terminal or matching terminal payment attempts can mark a reservation terminal.",
-                    })
-                  );
+                  throw new PaymentAttemptStateError({
+                    operation: "paymentAttempts.markTerminalForReservation",
+                    paymentAttemptId: input.id,
+                    message:
+                      "Only non-terminal or matching terminal payment attempts can mark a reservation terminal.",
+                  });
                 }
 
                 const [reservation] = await tx
@@ -488,7 +501,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                   .set({
                     paymentState: input.state,
                     failureCode: input.failureCode,
-                    updatedAt: new Date(),
+                    updatedAt: terminalAt,
                   })
                   .where(
                     and(
@@ -501,12 +514,21 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                       eq(workspaceReservations.activePaymentAttemptId, input.id)
                     )
                   )
-                  .returning({ id: workspaceReservations.id });
+                  .returning({
+                    updatedAt: workspaceReservations.updatedAt,
+                  });
 
-                if (reservation) return;
+                if (reservation)
+                  return {
+                    attempt,
+                    changed: true,
+                    timestamp: reservation.updatedAt,
+                  };
 
                 const [consistent] = await tx
-                  .select({ id: workspaceReservations.id })
+                  .select({
+                    updatedAt: workspaceReservations.updatedAt,
+                  })
                   .from(workspaceReservations)
                   .where(
                     and(
@@ -520,7 +542,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
                   )
                   .limit(1);
 
-                if (consistent) return;
+                if (consistent)
+                  return {
+                    attempt,
+                    changed: false,
+                    timestamp: consistent.updatedAt,
+                  };
 
                 // Intentionally reject the transaction to roll back the payment-attempt update above.
                 throw new PaymentAttemptStateError({
@@ -535,9 +562,7 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
           { preserveError: isPaymentAttemptStateError }
         );
 
-        if (result?._tag === "PaymentAttemptStateFailure") {
-          return yield* Effect.fail(result.error);
-        }
+        return result;
       }),
     });
   })

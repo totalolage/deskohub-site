@@ -1,7 +1,10 @@
-import { calendar, type calendar_v3 } from "@googleapis/calendar";
+import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
 import { Context, Effect, Layer } from "effect";
-import { JWT } from "google-auth-library";
-import { GoogleCalendarRuntimeConfig } from "../config";
+import {
+  GoogleCalendarRuntimeConfig,
+  type GoogleCalendarRuntimeConfigObj,
+  validateGoogleCalendarRuntimeConfig,
+} from "../config";
 import { GoogleCalendarAPIError, type GoogleCalendarError } from "../errors";
 import type {
   GoogleCalendarEvent,
@@ -19,13 +22,15 @@ export interface IGoogleCalendarService {
   ) => Effect.Effect<readonly GoogleCalendarEvent[], GoogleCalendarError>;
 }
 
-export class GoogleCalendarService extends Context.Tag(
-  "@deskohub/google-calendar/GoogleCalendarService"
-)<GoogleCalendarService, IGoogleCalendarService>() {
+export class GoogleCalendarService extends Context.Service<
+  GoogleCalendarService,
+  IGoogleCalendarService
+>()("@deskohub/google-calendar/GoogleCalendarService") {
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {
-      const config = yield* GoogleCalendarRuntimeConfig;
+      const rawConfig = yield* GoogleCalendarRuntimeConfig;
+      const config = yield* validateGoogleCalendarRuntimeConfig(rawConfig);
       const client = getCalendarClient(config);
 
       const listEvents = Effect.fn("googleCalendar.listEvents")(
@@ -88,13 +93,8 @@ export class GoogleCalendarService extends Context.Tag(
   );
 }
 
-const getCalendarClient = (config: {
-  readonly calendarId: string;
-  readonly serviceAccountEmail: string;
-  readonly privateKey: string;
-  readonly timeZone: string;
-}) => {
-  const auth = new JWT({
+const getCalendarClient = (config: GoogleCalendarRuntimeConfigObj) => {
+  const clientAuth = new auth.JWT({
     email: config.serviceAccountEmail,
     key: config.privateKey.replaceAll("\\n", "\n"),
     scopes: [calendarReadonlyScope],
@@ -102,7 +102,7 @@ const getCalendarClient = (config: {
 
   return calendar({
     version: "v3",
-    auth: auth as unknown as calendar_v3.Options["auth"],
+    auth: clientAuth,
   });
 };
 

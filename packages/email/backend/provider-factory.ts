@@ -1,74 +1,43 @@
-import { Config, Context, Effect, Layer } from "effect";
+import { Effect, Layer } from "effect";
 import { ConsoleEmailProviderLive } from "./providers/console-provider";
 import { ResendEmailProviderLive } from "./providers/resend-provider";
-import type { EmailProvider } from "./service";
+import { EmailConfigTag, EmailServiceError } from "./service";
 
-export type EmailProviderType = "console" | "resend";
+export const EmailProviderLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const config = yield* EmailConfigTag;
 
-type EmailProviderLayer = Layer.Layer<EmailProvider, never, never>;
-
-export class EmailProviderFactoryTag extends Context.Tag(
-  "EmailProviderFactory"
-)<EmailProviderFactoryTag, EmailProviderLayer>() {}
-
-export const createEmailProviderLayer = (providerType?: EmailProviderType) => {
-  if (providerType) {
-    switch (providerType) {
-      case "console":
-        return ConsoleEmailProviderLive;
-      case "resend":
-        return ResendEmailProviderLive;
-      default:
-        return ConsoleEmailProviderLive;
+    if (config.provider === "resend") {
+      yield* Effect.logInfo("Using Resend email provider");
+      return ResendEmailProviderLive;
     }
-  }
 
-  return Layer.unwrapScoped(
-    Effect.gen(function* () {
-      const emailApiKey = yield* Config.string("EMAIL_API_KEY").pipe(
-        Config.withDefault("")
+    if (config.provider !== "console") {
+      return yield* Effect.fail(
+        new EmailServiceError(
+          `Unsupported email provider: ${config.provider}`,
+          undefined,
+          config.provider
+        )
       );
+    }
 
-      const nodeEnv = yield* Config.string("NODE_ENV").pipe(
-        Config.withDefault("development")
-      );
-
-      if (emailApiKey && nodeEnv !== "test") {
+    if (process.env.NODE_ENV === "production" && !config.testMode) {
+      if (config.apiKey) {
         yield* Effect.logInfo("Using Resend email provider");
         return ResendEmailProviderLive;
       }
 
-      yield* Effect.logInfo("Using Console email provider");
-      return ConsoleEmailProviderLive;
-    })
-  );
-};
-
-export const EmailProviderLive = Layer.unwrapEffect(
-  Effect.gen(function* () {
-    const emailApiKey = yield* Config.string("EMAIL_API_KEY").pipe(
-      Config.withDefault(""),
-      Config.withDescription("Email provider API key for email sending")
-    );
-
-    const emailProvider = yield* Config.string("EMAIL_PROVIDER").pipe(
-      Config.withDefault("auto"),
-      Config.withDescription("Email provider to use: console, resend, or auto")
-    );
-
-    const nodeEnv = yield* Config.string("NODE_ENV").pipe(
-      Config.withDefault("development")
-    );
-
-    if (
-      emailProvider === "resend" ||
-      (emailProvider === "auto" && emailApiKey && nodeEnv !== "test")
-    ) {
-      yield* Effect.logInfo("Initializing Resend email provider");
-      return ResendEmailProviderLive;
+      return yield* Effect.fail(
+        new EmailServiceError(
+          "Console email provider is disabled in production",
+          undefined,
+          "console"
+        )
+      );
     }
 
-    yield* Effect.logInfo("Initializing Console email provider");
+    yield* Effect.logInfo("Using Console email provider");
     return ConsoleEmailProviderLive;
   })
 );

@@ -64,7 +64,7 @@ export default async function LocaleLayout({
       )}
       <body>
         <CookieConsentProvider locale={locale} />
-        <ConsentAwareAnalytics />
+        <ConsentAwareAnalytics posthogEnvironment={env.VERCEL_ENV} />
         <QueryProvider>
           <div className="min-h-screen pb-[calc(var(--under-construction-ribbon-safe-area-block)+env(safe-area-inset-bottom))]">
             {children}

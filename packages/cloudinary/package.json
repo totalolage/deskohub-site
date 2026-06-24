@@ -12,9 +12,8 @@
     "./schema": "./src/schema.ts"
   },
   "dependencies": {
-    "@effect/schema": "^0.75.5",
     "cloudinary": "^2.10.0",
-    "effect": "^3.17.2",
+    "effect": "4.0.0-beta.85",
     "server-only": "^0.0.1"
   }
 }

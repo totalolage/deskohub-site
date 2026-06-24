@@ -1,4 +1,5 @@
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
+import { join } from "node:path";
+import type { Customer } from "@deskohub/dotypos/generated";
 import type { NetworkError } from "@deskohub/email/backend/network-error";
 import {
   EmailConfigTag,
@@ -12,8 +13,11 @@ import type {
 } from "@deskohub/email/types/email.types";
 import { generateQrCodePngBuffer } from "@deskohub/qr-code";
 import { Context, Effect, Layer } from "effect";
-import { generateStaticMapImage } from "osm";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
+import {
+  generateStaticMapImage,
+  generateSvgPngBuffer,
+  type SvgPngTextOverlay,
+} from "osm";
 import { env } from "@/env";
 import {
   createWorkspaceCheckoutWifiQrPayload,
@@ -22,6 +26,12 @@ import {
   workspaceCheckoutPlaceholderNetworkDetails,
 } from "@/features/checkout/backend/network-details.service";
 import {
+  WorkspaceTableMapView,
+  workspaceTableMapImageHeight,
+  workspaceTableMapImageWidth,
+  workspaceTableMapLabelWidth,
+} from "@/features/checkout/components/workspace-table-map-view";
+import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
@@ -29,7 +39,9 @@ import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map";
 import { isLocale, type Locale, m } from "@/features/i18n";
+import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
@@ -41,14 +53,12 @@ import { workspaceSiteConstants } from "@/shared/utils";
 
 export interface WorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {
-    readonly reservation: WorkspaceReservation;
-    readonly customer: Customer;
-    readonly tableName?: string;
+    readonly reservation: WorkspaceReservationDetails;
   }) => Effect.Effect<void, EmailServiceError | NetworkError>;
 }
 
 export const WorkspaceReservationEmailService =
-  Context.GenericTag<WorkspaceReservationEmailService>(
+  Context.Service<WorkspaceReservationEmailService>(
     "WorkspaceReservationEmailService"
   );
 
@@ -69,9 +79,6 @@ const getCustomerName = (customer: Customer) =>
   customer.email?.trim() ||
   "Workspace customer";
 
-const getReservationDisplayDate = (reservation: WorkspaceReservation) =>
-  reservation.reservationCreatedAt ?? reservation.createdAt;
-
 const workspaceAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
 
 const workspaceMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
@@ -80,6 +87,12 @@ const workspaceLocationMapContentId = "workspace-location-map";
 const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceNetworkQrContentId = "workspace-wifi-qr";
+const workspaceTableMapContentId = "workspace-table-map";
+export const workspaceTableMapPngFontFamily = "Sculpin Variable Light";
+export const workspaceTableMapFontFile = join(
+  process.cwd(),
+  "assets/fonts/Sculpin/regular.ttf"
+);
 const internalTestingSubjectPrefix = "[TESTING]";
 const internalNotificationLocale: Locale = "cs-CZ";
 
@@ -91,16 +104,16 @@ const customerAccessHeadingDateFormatOptions = {
 } satisfies Intl.DateTimeFormatOptions;
 
 const formatCustomerAccessHeadingDate = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ) =>
   new Intl.DateTimeFormat(
     locale,
     customerAccessHeadingDateFormatOptions
-  ).format(getReservationDisplayDate(reservation));
+  ).format(reservation.reservedFrom);
 
 const createCustomerAccessHeading = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ) =>
   m.checkoutEmailCustomerAccessHeading(
@@ -109,7 +122,7 @@ const createCustomerAccessHeading = (
   );
 
 const createInternalReservationSubject = (
-  reservation: WorkspaceReservation
+  reservation: WorkspaceReservationDetails
 ) => {
   const subject = m.checkoutEmailInternalPaidReservationSubject(
     { orderId: reservation.id },
@@ -172,18 +185,133 @@ const createWorkspaceNetworkQrAttachment = (
       ),
   });
 
+const createWorkspaceTableMapPng = (
+  tableMap: WorkspaceTableMap,
+  locale: Locale
+) => {
+  const svg = renderWorkspaceEmailHtml(
+    <WorkspaceTableMapView
+      ariaLabel={m.checkoutStatusTableMapTitle({}, { locale })}
+      tableMap={tableMap}
+    />
+  );
+
+  return generateSvgPngBuffer(removeSvgTextElements(svg), {
+    textOverlays: createWorkspaceTableMapTextOverlays(svg),
+  });
+};
+
+const svgTextElementPattern = /<text\b([^>]*)>([\s\S]*?)<\/text>/g;
+
+const removeSvgTextElements = (svg: string) =>
+  svg.replace(svgTextElementPattern, "");
+
+const createWorkspaceTableMapTextOverlays = (
+  svg: string
+): readonly SvgPngTextOverlay[] => {
+  const viewBox = getSvgViewBox(svg);
+  if (!viewBox) return [];
+
+  const scale = Math.min(
+    workspaceTableMapImageWidth / viewBox.width,
+    workspaceTableMapImageHeight / viewBox.height
+  );
+  const offsetX = (workspaceTableMapImageWidth - viewBox.width * scale) / 2;
+  const offsetY = (workspaceTableMapImageHeight - viewBox.height * scale) / 2;
+
+  return [...svg.matchAll(svgTextElementPattern)].flatMap((match) => {
+    const attributes = match[1] ?? "";
+    const text = decodeSvgText(match[2] ?? "");
+    const x = Number(getSvgAttribute(attributes, "x"));
+    const y = Number(getSvgAttribute(attributes, "y"));
+    if (!text || !Number.isFinite(x) || !Number.isFinite(y)) return [];
+
+    const style = getSvgAttribute(attributes, "style") ?? "";
+    const fontSize = parseSvgSize(getSvgStyleValue(style, "font-size")) ?? 15;
+    const color = getSvgStyleValue(style, "fill") ?? "#00024f";
+
+    return [
+      {
+        text,
+        x: offsetX + (x - viewBox.x) * scale,
+        y: offsetY + (y - viewBox.y) * scale,
+        width: Math.ceil(workspaceTableMapLabelWidth * scale),
+        font: `${workspaceTableMapPngFontFamily} ${Math.max(1, Math.round(fontSize * scale))}`,
+        fontfile: workspaceTableMapFontFile,
+        color,
+      },
+    ];
+  });
+};
+
+const getSvgViewBox = (svg: string) => {
+  const values = svg
+    .match(/\bviewBox="([^"]+)"/)?.[1]
+    ?.trim()
+    .split(/\s+/)
+    .map(Number);
+  if (values?.length !== 4 || values.some((value) => !Number.isFinite(value))) {
+    return undefined;
+  }
+
+  const [
+    x = Number.NaN,
+    y = Number.NaN,
+    width = Number.NaN,
+    height = Number.NaN,
+  ] = values;
+  if (width <= 0 || height <= 0) return undefined;
+
+  return { x, y, width, height };
+};
+
+const getSvgAttribute = (attributes: string, name: string) =>
+  attributes.match(new RegExp(`\\b${name}="([^"]*)"`))?.[1];
+
+const getSvgStyleValue = (style: string, property: string) =>
+  style.match(new RegExp(`${property}\\s*:\\s*([^;]+)`))?.[1]?.trim();
+
+const parseSvgSize = (value: string | undefined) => {
+  const size = Number.parseFloat(value ?? "");
+
+  return Number.isFinite(size) ? size : undefined;
+};
+
+const decodeSvgText = (text: string) =>
+  text
+    .replaceAll("&amp;", "&")
+    .replaceAll("&lt;", "<")
+    .replaceAll("&gt;", ">")
+    .replaceAll("&quot;", '"')
+    .replaceAll("&#x27;", "'");
+
+const createWorkspaceTableMapAttachment = (
+  tableMap: WorkspaceTableMap,
+  locale: Locale
+): Effect.Effect<EmailAttachment, EmailServiceError> =>
+  Effect.tryPromise({
+    try: async () => ({
+      content: await createWorkspaceTableMapPng(tableMap, locale),
+      contentId: workspaceTableMapContentId,
+      contentType: "image/png",
+      filename: "workspace-table-map.png",
+    }),
+    catch: (cause) =>
+      new EmailServiceError(
+        "Workspace reservation table map could not be generated.",
+        cause
+      ),
+  });
+
 const createReservationDetailRows = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
   const monitorOption = reservation.productMonitorOption ?? undefined;
   const rows: EmailDetailRow[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
-      formatReservationDisplayDate(
-        getReservationDisplayDate(reservation),
-        locale
-      ),
+      formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
     [
       m.reservationEmailTierLabel({}, { locale }),
@@ -211,7 +339,7 @@ const createReservationDetailRows = (
 
 const appendReservationReferenceRows = (
   rows: EmailDetailRow[],
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ) => {
   if (reservation.dotyposReservationId) {
@@ -225,7 +353,7 @@ const appendReservationReferenceRows = (
 };
 
 export const createReservationRows = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
   const rows = createReservationDetailRows(reservation, locale);
@@ -236,7 +364,7 @@ export const createReservationRows = (
 };
 
 const createInternalReservationRows = (
-  reservation: WorkspaceReservation,
+  reservation: WorkspaceReservationDetails,
   customer: Customer,
   locale: Locale
 ): EmailDetailRow[] => {
@@ -268,6 +396,7 @@ const createEmailHtml = (input: {
   readonly networkDetails?: WorkspaceCheckoutNetworkDetails;
   readonly networkQrImageSrc?: string;
   readonly tableName?: string;
+  readonly tableMapImageSrc?: string;
   readonly locationMapContentId?: string;
   readonly rows: readonly EmailDetailRow[];
   readonly followUp?: string;
@@ -447,6 +576,34 @@ const createEmailHtml = (input: {
               >
                 {input.tableName}
               </div>
+              {input.tableMapImageSrc && (
+                <div
+                  style={{
+                    background: "#ffffff",
+                    border: "1px solid rgba(0, 2, 79, 0.1)",
+                    borderRadius: "18px",
+                    margin: "16px auto 0",
+                    maxWidth: "500px",
+                    padding: "12px",
+                  }}
+                >
+                  {/* biome-ignore lint/performance/noImgElement: Email HTML needs a plain image tag. */}
+                  <img
+                    alt={m.checkoutStatusTableMapTitle(
+                      {},
+                      { locale: input.locale }
+                    )}
+                    src={input.tableMapImageSrc}
+                    style={{
+                      border: 0,
+                      display: "block",
+                      height: "auto",
+                      width: "100%",
+                    }}
+                    width="500"
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -597,6 +754,12 @@ const createEmailText = (input: {
           `${m.checkoutEmailAccessCodeLabel({}, { locale: input.locale })}: ${input.accessCode}`,
         ]
       : []),
+    ...(input.tableName
+      ? [
+          "",
+          `${m.checkoutEmailTableNumberLabel({}, { locale: input.locale })}: ${input.tableName}`,
+        ]
+      : []),
     ...(input.networkDetails
       ? [
           "",
@@ -605,22 +768,13 @@ const createEmailText = (input: {
           `${m.checkoutEmailNetworkPasswordLabel({}, { locale: input.locale })}: ${input.networkDetails.password}`,
         ]
       : []),
-    ...(input.tableName
-      ? [
-          "",
-          `${m.checkoutEmailTableNumberLabel({}, { locale: input.locale })}: ${input.tableName}`,
-        ]
-      : []),
     "",
     ...renderEmailRowsText(input.rows),
     ...(input.followUp ? ["", input.followUp] : []),
   ].join("\n");
 
 export const createWorkspaceReservationCustomerEmailPreviewHtml =
-  async (input: {
-    readonly reservation: WorkspaceReservation;
-    readonly tableName: string;
-  }) => {
+  async (input: { readonly reservation: WorkspaceReservationDetails }) => {
     const locale = getReservationLocale(input.reservation.locale);
     const rows = createReservationRows(input.reservation, locale);
     const networkQrPng = await generateQrCodePngBuffer(
@@ -633,6 +787,9 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
         width: 280,
       }
     );
+    const tableMapPng = input.reservation.tableMap
+      ? await createWorkspaceTableMapPng(input.reservation.tableMap, locale)
+      : undefined;
 
     return createEmailHtml({
       heading: createCustomerAccessHeading(input.reservation, locale),
@@ -640,7 +797,10 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
       accessCode: input.reservation.customerAccessCode,
       networkDetails: workspaceCheckoutPlaceholderNetworkDetails,
       networkQrImageSrc: `data:image/png;base64,${networkQrPng.toString("base64")}`,
-      tableName: input.tableName,
+      tableName: input.reservation.tableName,
+      tableMapImageSrc: tableMapPng
+        ? `data:image/png;base64,${tableMapPng.toString("base64")}`
+        : undefined,
       locationMapContentId: workspaceLocationMapContentId,
       rows,
       followUp: m.reservationEmailCustomerFollowUp(
@@ -651,8 +811,7 @@ export const createWorkspaceReservationCustomerEmailPreviewHtml =
   };
 
 export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
-  readonly reservation: WorkspaceReservation;
-  readonly customer: Customer;
+  readonly reservation: WorkspaceReservationDetails;
 }) => {
   return createEmailHtml({
     heading: m.checkoutEmailInternalPaidReservationHeading(
@@ -666,7 +825,7 @@ export const createWorkspaceReservationNotificationEmailPreviewHtml = (input: {
     locale: internalNotificationLocale,
     rows: createInternalReservationRows(
       input.reservation,
-      input.customer,
+      input.reservation.customer,
       internalNotificationLocale
     ),
   });
@@ -682,8 +841,10 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
     return WorkspaceReservationEmailService.of({
       sendPaidReservationEmails: Effect.fn(
         "workspaceReservationEmail.sendPaidReservationEmails"
-      )(function* ({ reservation, customer, tableName }) {
+      )(function* ({ reservation }) {
         const locale = getReservationLocale(reservation.locale);
+        const customer = reservation.customer;
+        const tableName = reservation.tableName;
         const customerName = getCustomerName(customer);
         const customerEmail = customer.email?.trim();
         const networkDetails =
@@ -701,12 +862,14 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           workspaceReservationId: reservation.id,
           dotyposReservationId: reservation.dotyposReservationId,
           dotyposCustomerId: reservation.dotyposCustomerId,
+          dotyposReservationStartDate: reservation.reservedFrom.toISOString(),
+          dotyposReservationEndDate: reservation.reservedUntil.toISOString(),
         };
 
         if (customerEmail) {
           const locationMapAttachment =
             yield* createWorkspaceLocationMapAttachment().pipe(
-              Effect.catchAll((cause) =>
+              Effect.catch((cause) =>
                 Effect.logWarning(
                   "Workspace reservation location map attachment skipped",
                   {
@@ -719,7 +882,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           const networkQrAttachment = yield* createWorkspaceNetworkQrAttachment(
             networkDetails
           ).pipe(
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               Effect.logWarning(
                 "Workspace reservation Wi-Fi QR attachment skipped",
                 {
@@ -729,6 +892,22 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               ).pipe(Effect.as(undefined))
             )
           );
+          const tableMapAttachment = reservation.tableMap
+            ? yield* createWorkspaceTableMapAttachment(
+                reservation.tableMap,
+                locale
+              ).pipe(
+                Effect.catch((cause) =>
+                  Effect.logWarning(
+                    "Workspace reservation table map attachment skipped",
+                    {
+                      cause,
+                      workspaceReservationId: reservation.id,
+                    }
+                  ).pipe(Effect.as(undefined))
+                )
+              )
+            : undefined;
           const heading = createCustomerAccessHeading(reservation, locale);
           const followUp = m.reservationEmailCustomerFollowUp(
             { email: workspaceSiteConstants.contact.infoEmail },
@@ -748,6 +927,9 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
                 ? `cid:${networkQrAttachment.contentId}`
                 : undefined,
               tableName,
+              tableMapImageSrc: tableMapAttachment
+                ? `cid:${tableMapAttachment.contentId}`
+                : undefined,
               locationMapContentId: locationMapAttachment?.contentId,
               rows: customerRows,
               followUp,
@@ -761,8 +943,12 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
               rows: customerRows,
               followUp,
             }),
-            attachments: [locationMapAttachment, networkQrAttachment].filter(
-              (attachment): attachment is EmailAttachment => Boolean(attachment)
+            attachments: [
+              locationMapAttachment,
+              tableMapAttachment,
+              networkQrAttachment,
+            ].filter((attachment): attachment is EmailAttachment =>
+              Boolean(attachment)
             ),
             tags: ["workspace-paid-reservation-access"],
             metadata,

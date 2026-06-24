@@ -1,5 +1,4 @@
 import { Context, Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
 
 export interface WorkspaceCheckoutNetworkDetails {
   readonly ssid: string;
@@ -16,22 +15,20 @@ export const createWorkspaceCheckoutWifiQrPayload = (
 
 export const workspaceCheckoutPlaceholderNetworkDetails: WorkspaceCheckoutNetworkDetails =
   {
-    ssid: "O2-Internet_6BE",
-    password: "95502205",
+    ssid: "Deskohub Workspace",
+    password: "Workspace42",
   };
 
 export interface IWorkspaceCheckoutNetworkDetailsService {
   readonly resolveCustomerNetworkDetails: (input: {
-    readonly reservation: WorkspaceReservation;
+    readonly reservation: { readonly id: string };
   }) => Effect.Effect<WorkspaceCheckoutNetworkDetails>;
 }
 
-export class WorkspaceCheckoutNetworkDetailsService extends Context.Tag(
-  "@deskohub-workspace/checkout/WorkspaceCheckoutNetworkDetailsService"
-)<
+export class WorkspaceCheckoutNetworkDetailsService extends Context.Service<
   WorkspaceCheckoutNetworkDetailsService,
   IWorkspaceCheckoutNetworkDetailsService
->() {
+>()("@deskohub-workspace/checkout/WorkspaceCheckoutNetworkDetailsService") {
   static Live = Layer.succeed(this, {
     resolveCustomerNetworkDetails: Effect.fn(
       "workspaceCheckoutNetworkDetails.resolveCustomerNetworkDetails"

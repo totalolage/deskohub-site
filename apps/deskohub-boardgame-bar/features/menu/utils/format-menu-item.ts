@@ -11,14 +11,12 @@ export interface FormattedMenuItem {
   description: string | undefined;
   priceWithVat: string | null | undefined;
   unit: string | undefined;
-  isAvailable: boolean;
 }
 
 /**
  * Formatted category with localized text
  */
 export interface FormattedCategory {
-  id: string;
   name: string;
 }
 
@@ -44,16 +42,12 @@ export function formatMenuItem(
     product.description || product.subtitle
   );
 
-  // Items are always available for now since we don't have stock quantity data from the API
-  const isAvailable = true;
-
   return {
     id: product.id ?? "",
     name: localizedName,
     description: localizedDescription ?? undefined,
     priceWithVat: product.priceWithVat,
     unit: product.unit,
-    isAvailable,
   };
 }
 
@@ -74,7 +68,6 @@ export function formatCategory(
     "";
 
   return {
-    id: category.id ?? "",
     name: localizedName,
   };
 }

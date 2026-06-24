@@ -5,7 +5,6 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
-import { GoogleCalendarService } from "@deskohub/google-calendar";
 import {
   Data,
   Duration,
@@ -39,20 +38,13 @@ import {
   buildSignedPayState,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/pay-state.server";
-import { ProviderPaymentFinalizationServiceLiveWithDependencies } from "@/features/checkout/backend/provider-payment-finalization.service";
+import { captureReservationStarted } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLive,
+  ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
-import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
-import {
-  WorkspaceTableAssignmentService,
-  WorkspaceTableAssignmentServiceLive,
-} from "@/features/checkout/backend/workspace-table-assignment.service";
+import { WorkspaceTableAssignmentServiceLive } from "@/features/checkout/backend/workspace-table-assignment.service";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
@@ -68,9 +60,14 @@ import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
 } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { GoogleCalendarRuntimeConfigLive } from "@/shared/backend/config/google-calendar.config";
+import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
@@ -128,7 +125,7 @@ const decodeDotyposEntityId = Effect.fn(
   readonly value: unknown;
   readonly missingIdMessage: string;
 }) {
-  const entity = yield* Schema.decodeUnknown(DotyposEntityWithIdSchema)(
+  const entity = yield* Schema.decodeUnknownEffect(DotyposEntityWithIdSchema)(
     input.value
   ).pipe(
     Effect.mapError(
@@ -259,10 +256,13 @@ class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
 }> {}
 
 const pendingHoldCreationRetryPolicy = Schedule.exponential("250 millis").pipe(
-  Schedule.modifyDelay((_, delay) => Duration.min(delay, Duration.seconds(5))),
-  Schedule.upTo("40 seconds"),
-  Schedule.whileInput((error: unknown) =>
-    Predicate.isTagged(error, "PendingHoldCreation")
+  Schedule.modifyDelay((_, delay) =>
+    Effect.succeed(Duration.min(delay, Duration.seconds(5)))
+  ),
+  Schedule.collectWhile(
+    (metadata) =>
+      metadata.elapsed < 40_000 &&
+      Predicate.isTagged(metadata.input, "PendingHoldCreation")
   )
 );
 
@@ -283,7 +283,7 @@ const waitForPendingHoldCreation = Effect.fn(
         return Effect.logDebug(
           "Waiting for in-flight workspace reservation hold creation"
         ).pipe(
-          Effect.zipRight(Effect.fail(new PendingHoldCreation({ reservation })))
+          Effect.andThen(Effect.fail(new PendingHoldCreation({ reservation })))
         );
       })
     );
@@ -296,57 +296,10 @@ const waitForPendingHoldCreation = Effect.fn(
   );
 });
 
-const EarlyReservationDotyposLive = DotyposService.Default.pipe(
-  Layer.provide(DotyposRuntimeConfigLive)
-);
-
-const EarlyReservationGoogleCalendarLive = GoogleCalendarService.Live.pipe(
-  Layer.provide(GoogleCalendarRuntimeConfigLive)
-);
-
 const EarlyReservationGoogleCalendarWorkspaceLimitationsLive =
   GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(EarlyReservationGoogleCalendarLive)
+    Layer.provide(GoogleCalendarServiceLive)
   );
-
-const EarlyReservationWorkspaceReservationRepositoryLive =
-  WorkspaceReservationRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
-
-const EarlyReservationLegalEvidenceEventRepositoryLive =
-  LegalEvidenceEventRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
-
-const EarlyReservationOperationalEventRepositoryLive =
-  OperationalEventRepositoryLive.pipe(Layer.provide(WorkspaceDatabaseLive));
-
-const EarlyReservationHoldCleanupLive = ReservationHoldCleanupServiceLive.pipe(
-  Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-  Layer.provide(EarlyReservationWorkspaceReservationRepositoryLive),
-  Layer.provide(EarlyReservationOperationalEventRepositoryLive),
-  Layer.provide(EarlyReservationDotyposLive)
-);
-
-const EarlyReservationAvailabilityLive = WorkspaceAvailabilityServiceLive.pipe(
-  Layer.provide(EarlyReservationHoldCleanupLive),
-  Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
-  Layer.provide(EarlyReservationDotyposLive)
-);
-
-const EarlyReservationTableAssignmentLive =
-  WorkspaceTableAssignmentServiceLive.pipe(
-    Layer.provide(EarlyReservationDotyposLive)
-  );
-
-const EarlyReservationSubmitLive = Layer.mergeAll(
-  EarlyReservationWorkspaceReservationRepositoryLive,
-  EarlyReservationLegalEvidenceEventRepositoryLive,
-  EarlyReservationOperationalEventRepositoryLive,
-  EarlyReservationHoldCleanupLive,
-  EarlyReservationAvailabilityLive,
-  EarlyReservationTableAssignmentLive,
-  WorkspaceCheckoutAccessCodeServiceLive,
-  EarlyReservationGoogleCalendarWorkspaceLimitationsLive,
-  EarlyReservationDotyposLive
-);
 
 export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
@@ -483,7 +436,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
     const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
       input.reservation
-    ).pipe(Effect.provideService(DotyposService, dotypos));
+    );
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logDebug("Workspace reservation quote built");
 
@@ -524,11 +477,14 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     yield* Effect.logDebug("Workspace reservation availability confirmed");
 
     const customerName = splitCustomerName(input.reservation.name);
-    const customer = yield* dotypos.findOrCreateCustomer({
-      ...customerName,
-      email: input.reservation.email,
-      phone: input.reservation.phone,
-    });
+    const customer = yield* dotypos.findOrCreateCustomer(
+      {
+        ...customerName,
+        email: input.reservation.email,
+        phone: input.reservation.phone,
+      },
+      {}
+    );
     yield* Effect.annotateLogsScoped({ customer });
     const dotyposCustomerId = yield* getDotyposCustomerId(customer);
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
@@ -613,35 +569,27 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       dotyposCustomerId,
       checkoutDetails: checkoutDetails as CheckoutDetailsJson,
       status: "NEW",
-    })
-      .pipe(
-        Effect.provideService(DotyposService, dotypos),
-        Effect.provideService(
-          WorkspaceTableAssignmentService,
-          yield* WorkspaceTableAssignmentService
-        )
-      )
-      .pipe(
-        Effect.tapError(
-          Effect.fn(function* (cause) {
-            yield* Effect.logError(
-              "Workspace Dotypos reservation hold creation failed",
-              {
-                cause,
-              }
-            );
+    }).pipe(
+      Effect.tapError(
+        Effect.fn(function* (cause) {
+          yield* Effect.logError(
+            "Workspace Dotypos reservation hold creation failed",
+            {
+              cause,
+            }
+          );
 
-            yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
-              Effect.tapError((releaseCause) =>
-                Effect.logError("Reservation hold creation release failed", {
-                  cause: releaseCause,
-                })
-              ),
-              Effect.ignore
-            );
-          })
-        )
-      );
+          yield* reservations.releaseHoldCreation(reservationDraft.id).pipe(
+            Effect.tapError((releaseCause) =>
+              Effect.logError("Reservation hold creation release failed", {
+                cause: releaseCause,
+              })
+            ),
+            Effect.ignore
+          );
+        })
+      )
+    );
     yield* Effect.annotateLogsScoped({ dotyposReservation });
 
     const dotyposReservationId = yield* decodeDotyposEntityId({
@@ -671,15 +619,17 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     yield* Effect.annotateLogsScoped({ dotyposReservationId });
     yield* Effect.logInfo("Workspace Dotypos reservation hold created");
 
+    const reservationCreatedAt = new Date();
+
     yield* reservations
       .attachHold({
         id: reservationDraft.id,
         dotyposReservationId,
-        reservationCreatedAt: new Date(),
+        reservationCreatedAt,
         reservationHoldExpiresAt: holdExpiresAt,
       })
       .pipe(
-        Effect.catchAll(
+        Effect.catch(
           Effect.fn(function* (cause) {
             yield* Effect.logError(
               "Workspace reservation hold attach failed; cancelling Dotypos hold",
@@ -711,7 +661,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
               );
 
             yield* dotypos.cancelReservation(dotyposReservationId).pipe(
-              Effect.catchAll((cancelCause) =>
+              Effect.catch((cancelCause) =>
                 Effect.gen(function* () {
                   yield* Effect.logFatal(
                     "Workspace reservation hold attach cleanup failed",
@@ -759,6 +709,13 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       );
     yield* Effect.logInfo("Workspace reservation hold attached");
+    yield* captureReservationStarted({
+      reservation: {
+        id: reservationDraft.id,
+        dotyposReservationId,
+      },
+      timestamp: reservationCreatedAt,
+    });
 
     yield* legalEvents.recordMany(
       Object.values(privacyEvidence).map((evidence) => ({
@@ -795,7 +752,23 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 const preparePayStateAction = createEffectSafeAction(
   getPreparePayStateSchema(),
   prepareWorkspacePayStateEffect,
-  EarlyReservationSubmitLive
+  Layer.mergeAll(
+    Layer.mergeAll(
+      WorkspaceReservationRepositoryLive,
+      LegalEvidenceEventRepositoryLive,
+      OperationalEventRepositoryLive
+    ).pipe(Layer.provide(WorkspaceDatabaseLive)),
+    ReservationHoldCleanupServiceLiveWithDependencies,
+    WorkspaceAvailabilityServiceLive.pipe(
+      Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+      Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
+      Layer.provide(DotyposServiceLive)
+    ),
+    WorkspaceTableAssignmentServiceLive.pipe(Layer.provide(DotyposServiceLive)),
+    WorkspaceCheckoutAccessCodeServiceLive,
+    PostHogEventServiceLive,
+    DotyposServiceLive
+  )
 );
 
 export const preparePayState: typeof preparePayStateAction = async (

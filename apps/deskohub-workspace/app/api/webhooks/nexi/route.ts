@@ -6,11 +6,18 @@ import {
   NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/nexi-webhook.service";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
-const NexiWebhookRouteLive = NexiWebhookServiceLiveWithDependencies.pipe(
-  Layer.provide(NexiServiceLive)
-);
+const nexiWebhookProcessingErrorStatuses = {
+  nexi_webhook_parse_failed: 400,
+  nexi_webhook_unknown_order: 202,
+  nexi_webhook_missing_security_token: 202,
+  nexi_webhook_invalid_currency: 202,
+  nexi_webhook_verification_failed: 500,
+  nexi_webhook_verification_mismatch: 202,
+  nexi_webhook_transition_failed: 500,
+  nexi_webhook_fulfillment_failed: 500,
+} satisfies Record<NexiWebhookProcessingError["errorCode"], 202 | 400 | 500>;
 
 const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(
   function* (request: Request) {
@@ -56,9 +63,14 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(
  * Receives Nexi payment notifications and verifies payment state server-side.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceEffect(
+  return runWorkspaceRequestEffect(
+    request,
     processWebhookRequest(request).pipe(
-      Effect.provide(NexiWebhookRouteLive),
+      Effect.provide(
+        NexiWebhookServiceLiveWithDependencies.pipe(
+          Layer.provide(NexiServiceLive)
+        )
+      ),
       Effect.catchTag(
         "NexiWebhookProcessingError",
         Effect.fn("logNexiWebhookProcessingError")(function* (error) {
@@ -98,13 +110,12 @@ export async function POST(request: Request): Promise<NextResponse> {
               code: error.errorCode,
             },
             {
-              status:
-                error.errorCode === "nexi_webhook_parse_failed" ? 400 : 202,
+              status: nexiWebhookProcessingErrorStatuses[error.errorCode],
             }
           )
         )
       ),
-      Effect.catchAll((cause) =>
+      Effect.catch((cause) =>
         Effect.logError("Nexi webhook route failed", { cause }).pipe(
           Effect.as(
             NextResponse.json(
@@ -112,7 +123,7 @@ export async function POST(request: Request): Promise<NextResponse> {
                 error: "Webhook processing failed",
                 code: "nexi_webhook_internal_error",
               },
-              { status: 202 }
+              { status: 500 }
             )
           )
         )

@@ -1,6 +1,5 @@
 import { Check } from "lucide-react";
-import Link from "next/link";
-import { m } from "@/features/i18n";
+import { LocalizedLink as Link, m } from "@/features/i18n";
 import { Price } from "@/shared/components/price";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -128,7 +127,6 @@ export const TrainingPackages = () => {
                         : "bg-gray-900 hover:bg-gray-800"
                     )}
                     size="lg"
-                    asChild
                   >
                     {m["training.packages.contactButton"]()}
                   </Button>

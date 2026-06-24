@@ -1,0 +1,30 @@
+name: Workspace Tests
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/workspace-tests.yml
+      - apps/deskohub-workspace/**
+      - packages/**
+      - bun.lock
+      - package.json
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - run: bun turbo test --filter=./apps/deskohub-workspace

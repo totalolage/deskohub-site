@@ -1,9 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { HashMap, type Logger, Option } from "effect";
+import {
+  InMemoryLogRecordExporter,
+  LoggerProvider,
+  SimpleLogRecordProcessor,
+} from "@opentelemetry/sdk-logs";
+import { Cause, Effect, Logger, References } from "effect";
 import {
   CENSORED_LOG_VALUE,
   censorLoggerOptions,
   censorLogValue,
+  createCensoredOtelLogger,
   isSensitiveLogKey,
 } from "./censorship";
 
@@ -34,7 +40,9 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("set cookie")).toBe(true);
     expect(isSensitiveLogKey("set_cookie")).toBe(true);
     expect(isSensitiveLogKey("set.cookie")).toBe(true);
-    expect(isSensitiveLogKey("session")).toBe(true);
+    expect(isSensitiveLogKey("sessionCookie")).toBe(true);
+    expect(isSensitiveLogKey("session_secret")).toBe(true);
+    expect(isSensitiveLogKey("session-token")).toBe(true);
     expect(isSensitiveLogKey("name")).toBe(true);
     expect(isSensitiveLogKey("message")).toBe(true);
     expect(isSensitiveLogKey("email")).toBe(true);
@@ -66,6 +74,8 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("authentication")).toBe(false);
     expect(isSensitiveLogKey("passwordless")).toBe(false);
     expect(isSensitiveLogKey("tokenizedLabel")).toBe(false);
+    expect(isSensitiveLogKey("session")).toBe(false);
+    expect(isSensitiveLogKey("sessionId")).toBe(false);
     expect(isSensitiveLogKey("sessionDuration")).toBe(false);
     expect(isSensitiveLogKey("userSessionCount")).toBe(false);
     expect(isSensitiveLogKey("apiKeyDisplayName")).toBe(true);
@@ -82,6 +92,8 @@ describe("censorLogValue", () => {
         stripeApiKey: "secret-stripe-api-key",
         githubAccessToken: "secret-github-access-token",
         userRefreshToken: "secret-user-refresh-token",
+        customerAccessCode: "123456",
+        accessCode: "654321",
         oauthClientSecret: "secret-oauth-client-secret",
         requestAuthorization: "Bearer secret",
         name: "Ada Lovelace",
@@ -106,6 +118,8 @@ describe("censorLogValue", () => {
         stripeApiKey: CENSORED_LOG_VALUE,
         githubAccessToken: CENSORED_LOG_VALUE,
         userRefreshToken: CENSORED_LOG_VALUE,
+        customerAccessCode: CENSORED_LOG_VALUE,
+        accessCode: CENSORED_LOG_VALUE,
         oauthClientSecret: CENSORED_LOG_VALUE,
         requestAuthorization: CENSORED_LOG_VALUE,
         name: CENSORED_LOG_VALUE,
@@ -267,34 +281,92 @@ describe("censorLogValue", () => {
 
 describe("censorLoggerOptions", () => {
   test("redacts message values and annotation values or sensitive annotation keys", () => {
-    const annotations = HashMap.set(
-      HashMap.set(HashMap.empty<string, unknown>(), "request", {
-        headers: { authorization: "Bearer secret" },
-      }),
-      "session",
-      "session-secret"
-    );
+    const annotations = {
+      request: { headers: { authorization: "Bearer secret" } },
+      sessionToken: "session-secret",
+    };
     const options = {
       message: { password: "secret", safe: "visible" },
-      annotations,
-    } as Logger.Logger.Options<unknown>;
+      logLevel: "Info",
+      cause: Cause.empty,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: (ref: unknown) =>
+          ref === References.CurrentLogAnnotations ? annotations : [],
+      },
+    } as Logger.Options<unknown>;
 
     const censored = censorLoggerOptions(options);
+    const censoredAnnotations = censored.fiber.getRef(
+      References.CurrentLogAnnotations
+    );
 
     expect(censored.message).toEqual({
       password: CENSORED_LOG_VALUE,
       safe: "visible",
     });
-    expect(
-      Option.getOrThrow(HashMap.get(censored.annotations, "request"))
-    ).toEqual({
+    expect(censoredAnnotations.request).toEqual({
       headers: { authorization: CENSORED_LOG_VALUE },
     });
-    expect(
-      Option.getOrThrow(HashMap.get(censored.annotations, "session"))
-    ).toEqual(CENSORED_LOG_VALUE);
-    expect(Option.getOrThrow(HashMap.get(options.annotations, "session"))).toBe(
-      "session-secret"
+    expect(censoredAnnotations.sessionToken).toBe(CENSORED_LOG_VALUE);
+    expect(annotations.sessionToken).toBe("session-secret");
+  });
+
+  test("preserves observable session annotation keys", () => {
+    const annotations = {
+      session: "public-session",
+      sessionId: "ph-session",
+    };
+    const options = {
+      message: "safe",
+      logLevel: "Info",
+      cause: Cause.empty,
+      date: new Date(0),
+      fiber: {
+        id: 1,
+        getRef: (ref: unknown) =>
+          ref === References.CurrentLogAnnotations ? annotations : [],
+      },
+    } as Logger.Options<unknown>;
+
+    const censored = censorLoggerOptions(options);
+    const censoredAnnotations = censored.fiber.getRef(
+      References.CurrentLogAnnotations
     );
+
+    expect(censoredAnnotations.session).toBe("public-session");
+    expect(censoredAnnotations.sessionId).toBe("ph-session");
+  });
+});
+
+describe("createCensoredOtelLogger", () => {
+  test("redacts Effect log options before emitting OTel logs", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+
+    await Effect.runPromise(
+      Effect.logInfo("safe message").pipe(
+        Effect.annotateLogs({
+          sessionId: "posthog-session-id",
+          token: "secret-token",
+        }),
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+      )
+    );
+    await provider.forceFlush();
+
+    const record = exporter.getFinishedLogRecords()[0];
+
+    expect(record?.body).toBe("safe message");
+    expect(record?.severityNumber).toBe(9);
+    expect(record?.severityText).toBe("info");
+    expect(record?.attributes).toMatchObject({
+      sessionId: "posthog-session-id",
+      token: CENSORED_LOG_VALUE,
+    });
+    await provider.shutdown();
   });
 });

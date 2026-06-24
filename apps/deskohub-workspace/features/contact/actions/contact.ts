@@ -10,7 +10,7 @@ import {
 import { getContactSchema } from "@/features/contact/schemas/contact";
 import { getLocale, m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
 
 export type ContactFormValues = {
   name: string;
@@ -96,19 +96,19 @@ export async function submitContactForm(
         Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
       )
     ),
-    Effect.catchAll((error) =>
+    Effect.catch((error) =>
       Effect.logError("Workspace contact form submission failed", {
         error,
         submittedValues,
       }).pipe(
         Effect.as({
           status: "error" as const,
-          message: error.message,
+          message: m.contactEmailSendError({}, { locale }),
           values: submittedValues,
         })
       )
     )
   );
 
-  return await runWorkspaceEffect(program);
+  return await runWorkspaceServerActionEffect(program);
 }

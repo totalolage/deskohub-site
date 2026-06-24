@@ -32,13 +32,6 @@ const loadCheckoutStatusEffect = (orderId: string) =>
     });
   });
 
-const isResolvedCheckoutStatus = (
-  status: CheckoutStatusViewModel | undefined
-) =>
-  status !== undefined &&
-  status.status !== "created" &&
-  status.status !== "pending";
-
 const loadCheckoutStatusAttempt = (
   orderId: string,
   attempts: Ref.Ref<number>
@@ -48,7 +41,7 @@ const loadCheckoutStatusAttempt = (
     if (attempt > 1) yield* Effect.sleep("1500 millis");
 
     return yield* loadCheckoutStatusEffect(orderId).pipe(
-      Effect.catchAllCause((cause) =>
+      Effect.catchCause((cause) =>
         Effect.logWarning("Checkout status refresh retry failed", {
           orderId,
           attempt,
@@ -64,7 +57,10 @@ const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
     return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
       Effect.repeat({
         times: 3,
-        while: (attemptStatus) => !isResolvedCheckoutStatus(attemptStatus),
+        while: (attemptStatus) =>
+          !attemptStatus ||
+          attemptStatus.status === "created" ||
+          attemptStatus.status === "pending",
       })
     );
   }).pipe(

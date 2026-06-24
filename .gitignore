@@ -50,3 +50,4 @@ node_modules/
 .playwright-mcp/
 
 .opencode/
+.skillopt-sleep/

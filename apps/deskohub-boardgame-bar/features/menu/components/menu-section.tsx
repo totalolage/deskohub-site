@@ -51,11 +51,6 @@ export function MenuSection({ products, category, emoji }: MenuSectionProps) {
                 {item.description && (
                   <p className="text-gray-300 text-sm">{item.description}</p>
                 )}
-                {!item.isAvailable && (
-                  <span className="inline-block mt-2 px-2 py-1 text-xs bg-red-900/50 text-red-300 rounded">
-                    Momentálně nedostupné
-                  </span>
-                )}
               </div>
               <div className="text-2xl font-bold text-green-400 ml-4">
                 {formatPrice(item.priceWithVat, locale)}

@@ -6,7 +6,7 @@ import { Effect, Layer } from "effect";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   id: "reservation-provider-return",
@@ -72,6 +72,7 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
         customer: { id: "customer-id" },
       })
     ),
+    getTables: mock(() => Effect.succeed([])),
     ...overrides,
   }) as unknown as typeof DotyposService.Service;
 
@@ -90,7 +91,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-provider-return";
@@ -160,7 +161,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-provider-return";
@@ -215,7 +216,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
@@ -268,6 +269,7 @@ describe("CheckoutStatusService", () => {
                 reservation: {
                   id: "dotypos-reservation-id",
                   _customerId: "customer-id",
+                  _tableId: "assigned-table",
                   startDate: "2026-06-19T22:00:00.000Z",
                   endDate: "2026-06-20T22:00:00.000Z",
                   seats: "1",
@@ -275,6 +277,37 @@ describe("CheckoutStatusService", () => {
                 },
                 customer: { id: "customer-id" },
               })
+            ),
+            getTables: mock(() =>
+              Effect.succeed([
+                {
+                  _cloudId: "cloud-id",
+                  display: true,
+                  enabled: true,
+                  id: "assigned-table",
+                  name: "Desk 1",
+                  locationName: "Main room",
+                  tags: ["tier:profi"],
+                },
+                {
+                  _cloudId: "cloud-id",
+                  display: true,
+                  enabled: true,
+                  id: "neighbor-table",
+                  name: "Desk 2",
+                  locationName: "Main room",
+                  tags: ["tier:profi"],
+                },
+                {
+                  _cloudId: "cloud-id",
+                  display: true,
+                  enabled: true,
+                  id: "other-room-table",
+                  name: "Desk 3",
+                  locationName: "Quiet room",
+                  tags: ["tier:profi"],
+                },
+              ])
             ),
           })
         )
@@ -292,7 +325,15 @@ describe("CheckoutStatusService", () => {
         monitorOption: "2x27-qhd",
         price: { value: 55_000, exponent: 2, currency: "CZK" },
       },
+      tableMap: {
+        assignedTableId: "assigned-table",
+        roomName: "Main room",
+      },
     });
+    expect(status.tableMap?.tables.map((table) => table.id)).toEqual([
+      "assigned-table",
+      "neighbor-table",
+    ]);
     expect(JSON.stringify(status)).not.toContain("email");
     expect(JSON.stringify(status)).not.toContain("phone");
     expect(JSON.stringify(status)).not.toContain("message");
@@ -314,7 +355,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
@@ -411,7 +452,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
@@ -483,7 +524,7 @@ describe("CheckoutStatusService", () => {
       "./reservation-hold-cleanup.service"
     );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"

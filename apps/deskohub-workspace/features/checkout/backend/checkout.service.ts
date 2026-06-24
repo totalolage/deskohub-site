@@ -24,14 +24,14 @@ import {
   PaymentAttemptRepositoryLive,
 } from "@/features/checkout/backend/payment-attempt.repository";
 import {
+  capturePaymentFailed,
+  capturePaymentStarted,
+} from "@/features/checkout/backend/posthog-lifecycle-events";
+import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
-import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-} from "@/features/checkout/backend/workspace-reservation.repository";
 import {
   buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
@@ -50,8 +50,16 @@ import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 import {
   getWorkspaceRuntimeCallbackOrigin,
@@ -84,7 +92,7 @@ export interface CheckoutService {
 }
 
 export const CheckoutService =
-  Context.GenericTag<CheckoutService>("CheckoutService");
+  Context.Service<CheckoutService>("CheckoutService");
 
 const generateNexiOrderId = () =>
   `D${BigInt(`0x${randomUUID().replaceAll("-", "")}`)
@@ -169,7 +177,7 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
   }
 ).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError));
 
-const toNexiAmount = Schema.encode(NexiAmountFromWorkspaceMoney);
+const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
 
 export const getNexiCheckoutCurrencyOverride = () => {
   if (env.VERCEL_ENV === "production") return undefined;
@@ -358,6 +366,7 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const holdCleanup = yield* ReservationHoldCleanupService;
+    const posthogEvents = yield* PostHogEventService;
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -412,34 +421,49 @@ export const CheckoutServiceLive = Layer.effect(
           })
           .pipe(
             Effect.tapError(() =>
-              paymentAttempts
-                .markTerminalForReservation({
-                  id: attempt.id,
-                  workspaceReservationId: input.workspaceReservationId,
-                  state: "failed",
-                  failureCode: "nexi_hpp_create_failed",
-                  providerStatus: "hpp_create_failed",
-                })
-                .pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logWarning(
-                      "Payment attempt terminal marker failed after checkout creation failure",
-                      {
-                        orderId: input.workspaceReservationId,
-                        paymentAttemptId: attempt.id,
-                        cause,
-                      }
-                    )
-                  ),
-                  Effect.ignore
-                )
+              Effect.gen(function* () {
+                const transition =
+                  yield* paymentAttempts.markTerminalForReservation({
+                    id: attempt.id,
+                    workspaceReservationId: input.workspaceReservationId,
+                    state: "failed",
+                    failureCode: "nexi_hpp_create_failed",
+                    providerStatus: "hpp_create_failed",
+                  });
+
+                if (transition.changed) {
+                  yield* capturePaymentFailed({
+                    attempt: transition.attempt,
+                    failureCode:
+                      transition.attempt.lastProviderStatus ??
+                      transition.attempt.failureCode ??
+                      "nexi_hpp_create_failed",
+                    failureReason: "nexi_hpp_create_failed",
+                    timestamp: transition.timestamp,
+                  }).pipe(
+                    Effect.provideService(PostHogEventService, posthogEvents)
+                  );
+                }
+              }).pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Payment attempt terminal marker failed after checkout creation failure",
+                    {
+                      orderId: input.workspaceReservationId,
+                      paymentAttemptId: attempt.id,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.ignore
+              )
             )
           );
         yield* Effect.annotateLogsScoped({ hostedPaymentPage });
         yield* Effect.logInfo("Nexi hosted payment page creation completed");
 
         yield* Effect.logInfo("Checkout hosted payment page attach started");
-        yield* paymentAttempts
+        const attachedAttempt = yield* paymentAttempts
           .attachHostedPaymentPage({
             id: attempt.id,
             securityToken: hostedPaymentPage.securityToken,
@@ -454,6 +478,10 @@ export const CheckoutServiceLive = Layer.effect(
               })
             )
           );
+        yield* capturePaymentStarted({
+          attempt: attachedAttempt,
+          timestamp: attachedAttempt.updatedAt,
+        }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
         yield* Effect.logDebug("Checkout hosted payment page attach completed");
         yield* Effect.logInfo("Checkout provider session started");
 
@@ -706,11 +734,10 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
   Layer.provide(OperationalEventRepositoryLive),
   Layer.provide(LegalEvidenceEventRepositoryLive),
+  Layer.provide(PostHogEventServiceLive),
   Layer.provide(PaymentAttemptRepositoryLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
-  Layer.provide(
-    Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-  ),
+  Layer.provide(DotyposServiceLive),
   Layer.provide(NexiServiceLive)
 );

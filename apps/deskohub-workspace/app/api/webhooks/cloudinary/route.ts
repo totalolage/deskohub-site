@@ -1,13 +1,26 @@
 import {
+  CloudinaryWebhookVerifier,
+  makeCloudinaryRuntimeConfigLayer,
   type VerifiedCloudinaryWebhook,
   verifyCloudinaryWebhookRequest,
 } from "@deskohub/cloudinary/server";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
+
+const CloudinaryWebhookVerifierLive = CloudinaryWebhookVerifier.Live.pipe(
+  Layer.provide(
+    makeCloudinaryRuntimeConfigLayer({
+      cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
+      apiKey: env.CLOUDINARY_API_KEY,
+      apiSecret: env.CLOUDINARY_API_SECRET,
+      serviceName: "deskohub-workspace",
+    })
+  )
+);
 
 const processWebhook = Effect.fn("processWebhook")(function* (
   webhook: VerifiedCloudinaryWebhook
@@ -45,12 +58,7 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
     });
     yield* Effect.logInfo("Cloudinary webhook invoked");
 
-    const webhook = yield* verifyCloudinaryWebhookRequest(request, {
-      cloudName: env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME,
-      apiKey: env.CLOUDINARY_API_KEY,
-      apiSecret: env.CLOUDINARY_API_SECRET,
-      serviceName: "deskohub-workspace",
-    });
+    const webhook = yield* verifyCloudinaryWebhookRequest(request);
     yield* Effect.annotateLogsScoped({ webhook });
     yield* Effect.logInfo("Cloudinary webhook verified");
 
@@ -72,8 +80,10 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
  * Receives webhooks from Cloudinary
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceEffect(
+  return runWorkspaceRequestEffect(
+    request,
     processWebhookRequest(request).pipe(
+      Effect.provide(CloudinaryWebhookVerifierLive),
       Effect.catchTag(
         "CloudinaryWebhookAuthError",
         Effect.fn("logCloudinaryWebhookAuthError")(function* (error) {

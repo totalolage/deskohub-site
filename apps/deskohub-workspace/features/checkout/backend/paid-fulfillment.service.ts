@@ -1,5 +1,4 @@
 import { DotyposService } from "@deskohub/dotypos";
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
@@ -8,16 +7,22 @@ import {
   OperationalEventRepository,
   OperationalEventRepositoryLive,
 } from "@/features/checkout/backend/operational-event.repository";
-import {
-  WorkspaceReservationRepository,
-  WorkspaceReservationRepositoryLive,
-  type WorkspaceReservationStateError,
-} from "@/features/checkout/backend/workspace-reservation.repository";
+import { captureReservationCompleted } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   WorkspaceReservationEmailService,
   WorkspaceReservationEmailServiceLive,
 } from "@/features/checkout/backend/workspace-reservation-email.service";
-import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+  type WorkspaceReservationStateError,
+} from "@/features/reservation/backend/workspace-reservation.repository";
+import { WorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import {
+  PostHogEventService,
+  PostHogEventServiceLive,
+} from "@/shared/backend/analytics/posthog-event.service";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 
 export type WorkspacePaidFulfillmentFailureCode =
@@ -37,6 +42,8 @@ export class WorkspacePaidFulfillmentError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+export const PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS = 15 * 60 * 1000;
+
 export interface WorkspacePaidFulfillmentService {
   readonly fulfillPaidOrder: (input: {
     readonly orderId: string;
@@ -47,23 +54,9 @@ export interface WorkspacePaidFulfillmentService {
 }
 
 export const WorkspacePaidFulfillmentService =
-  Context.GenericTag<WorkspacePaidFulfillmentService>(
+  Context.Service<WorkspacePaidFulfillmentService>(
     "WorkspacePaidFulfillmentService"
   );
-
-const getReservationTableName = (
-  reservation: Reservation,
-  tables: readonly Table[]
-) => {
-  const tableId = reservation._tableId?.trim();
-  if (!tableId) return undefined;
-
-  const tableName = tables
-    .find((table) => table.id?.trim() === tableId)
-    ?.name?.trim();
-
-  return tableName || tableId;
-};
 
 export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
   WorkspacePaidFulfillmentService,
@@ -72,6 +65,8 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
     const operationalEvents = yield* OperationalEventRepository;
     const dotypos = yield* DotyposService;
     const reservationEmails = yield* WorkspaceReservationEmailService;
+    const workspaceReservations = yield* WorkspaceReservationService;
+    const posthogEvents = yield* PostHogEventService;
 
     const failFulfillment = Effect.fn("workspacePaidFulfillment.fail")(
       function* (input: {
@@ -193,18 +188,35 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             return;
           }
 
+          const staleProcessingBefore = new Date(
+            Date.now() - PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS
+          );
+
           if (reservation.fulfillmentState === "processing") {
-            yield* Effect.logInfo(
-              "Paid fulfillment skipped: already processing",
+            if (reservation.updatedAt > staleProcessingBefore) {
+              yield* Effect.logInfo(
+                "Paid fulfillment skipped: already processing",
+                {
+                  reason: "already_processing",
+                }
+              );
+              return;
+            }
+
+            yield* Effect.logWarning(
+              "Paid fulfillment retrying stale processing reservation",
               {
-                reason: "already_processing",
+                reason: "stale_processing",
+                staleProcessingBefore,
               }
             );
-            return;
           }
 
           const claimed = yield* reservations
-            .claimPaidFulfillment(reservation.id)
+            .claimPaidFulfillment({
+              id: reservation.id,
+              staleProcessingBefore,
+            })
             .pipe(
               Effect.mapError(
                 (cause) =>
@@ -268,7 +280,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                     { claimed, cause }
                   )
                 ),
-                Effect.catchAll((cause) =>
+                Effect.catch((cause) =>
                   failFulfillment({
                     orderId: input.orderId,
                     failureCode: "dotypos_reservation_failed",
@@ -284,10 +296,11 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Paid fulfillment reservation confirmed marker started"
             );
+            const confirmedAt = new Date();
             yield* reservations
               .markReservationConfirmed({
                 id: claimed.id,
-                confirmedAt: new Date(),
+                confirmedAt,
               })
               .pipe(
                 Effect.tapError((cause) =>
@@ -300,25 +313,16 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Paid fulfillment reservation confirmed marker succeeded"
             );
+            yield* captureReservationCompleted({
+              reservation: claimed,
+              timestamp: confirmedAt,
+            }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
           }
 
           yield* Effect.logInfo("Paid reservation email flow started");
-          yield* Effect.all(
-            [
-              dotypos.getReservation(claimed.dotyposReservationId),
-              dotypos.getTables(),
-            ],
-            { concurrency: 2 }
-          ).pipe(
-            Effect.flatMap(([dotyposReservationDetails, tables]) =>
-              reservationEmails.sendPaidReservationEmails({
-                reservation: claimed,
-                customer: dotyposReservationDetails.customer,
-                tableName: getReservationTableName(
-                  dotyposReservationDetails.reservation,
-                  tables
-                ),
-              })
+          yield* workspaceReservations.getReservation(claimed.id).pipe(
+            Effect.flatMap((reservation) =>
+              reservationEmails.sendPaidReservationEmails({ reservation })
             ),
             Effect.tapError((cause) =>
               Effect.logError("Workspace paid reservation email flow failed", {
@@ -327,7 +331,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                 cause,
               })
             ),
-            Effect.catchAll((cause) =>
+            Effect.catch((cause) =>
               failFulfillment({
                 orderId: input.orderId,
                 failureCode: "fulfillment_email_failed",
@@ -374,9 +378,9 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
       )
     ),
     Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PostHogEventServiceLive),
+    Layer.provide(WorkspaceReservationService.Live),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(
-      Layer.provide(DotyposService.Default, DotyposRuntimeConfigLive)
-    )
+    Layer.provide(DotyposServiceLive)
   );

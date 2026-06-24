@@ -68,6 +68,7 @@ bun --env-file=.env.development --env-file=.env.local --env-file=.env.developmen
 ```
 
 - Pull Vercel preview env only for preview database/runtime checks. Do not use pulled preview env as the source of Dotypos API secrets for manual tests.
+- Production Dotypos connection details are in `apps/deskohub-workspace/.env.production.local`. Use them only when production data access is explicitly requested, and confirm first if there is any uncertainty.
 
 Nexi sandbox notes:
 
@@ -100,12 +101,31 @@ The Workspace migrations have been rewritten into a fresh single baseline, `apps
 
 ## Preview Deployment
 
-Do not deploy from this checklist automatically. When ready, use Vercel CLI explicitly:
+For E2E that validates current code, deploy a fresh preview from the current checkout with Vercel CLI, then move `new.workspace.deskohub.cz` to that deployment before starting checkout. The CLI deploy is the source of truth because it uploads the current filesystem state, including uncommitted changes. The `new.workspace.deskohub.cz` alias is still used for webhook E2E because Resend/Nexi callbacks are configured for that host.
 
 ```bash
+git status --short
 vercel env pull .env.local --cwd apps/deskohub-workspace
-vercel --cwd apps/deskohub-workspace
+vercel --cwd apps/deskohub-workspace --yes
+vercel alias set <preview-url> new.workspace.deskohub.cz --cwd apps/deskohub-workspace
 ```
+
+If the alias CLI resolves the custom domain under the wrong scope, assign the alias through the Vercel deployments API instead. This has happened when `vercel alias set <preview-host> new.workspace.deskohub.cz` fetched the domain under `filip-kalny-projects` and failed with `You don't have access to the domain new.workspace.deskohub.cz under filip-kalny-projects`; `--scope deskohub-bar` then found the domain but could not find the Workspace deployment. Do not spend time trying `--project` because current Vercel CLI rejects it for `alias set`.
+
+Use the deployment ID from the fresh preview and the Workspace team ID:
+
+```bash
+curl -fsS \
+  -X POST \
+  -H "Authorization: Bearer $VERCEL_TOKEN" \
+  -H "Content-Type: application/json" \
+  "https://api.vercel.com/v2/deployments/<deployment-id>/aliases?teamId=team_MgMQ4MEWijWnYa1R48C2JU5e" \
+  -d '{"alias":"new.workspace.deskohub.cz"}'
+```
+
+The successful response is `200` with message `new.workspace.deskohub.cz`. Verify the alias with the Vercel API or MCP before starting checkout; CLI inspect can hit the same scope confusion as alias assignment.
+
+Use `https://new.workspace.deskohub.cz` for the checkout flow and post-deploy checks after the alias command succeeds. Do not run `vercel --prod` for preview E2E unless production validation was explicitly requested. Do not use the existing `new.workspace.deskohub.cz` deployment without first moving it to the fresh preview unless the test is explicitly about the already-live alias.
 
 The pulled `.env.local` is useful for Vercel preview runtime values such as `DATABASE_URL`. It is not sufficient for manual Dotypos SDK verification because `DOTYPOS_REFRESH_TOKEN` must come from `.env.development.local`.
 
@@ -133,10 +153,10 @@ Database requirements and risks:
 
 Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi HPP result and notification callbacks must be public HTTPS URLs reachable by Nexi, and Workspace builds those URLs from the preview deployment host.
 
-1. Deploy the Vercel preview first.
+1. Deploy a fresh Vercel preview from the exact current checkout and assign `new.workspace.deskohub.cz` to it with the CLI commands above.
 2. Confirm the preview environment uses the Nexi sandbox origin and sandbox API key from [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
 3. If validating Workspace catalog prices that are still `CZK` against the public Nexi CEE sandbox merchant/cards, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on the preview environment only. Treat resulting `EUR` payment amounts as expected sandbox behavior, not a currency bug.
-4. Open the deployed preview URL and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values.
+4. Open `https://new.workspace.deskohub.cz` after it points to the new deployment and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values for the same deployed code under test.
 5. Complete one payment with an OK sandbox card and the successful 3DS stub option.
 6. Start a second checkout and exercise the cancellation or failure path with the documented KO card or a user cancellation from HPP.
 7. From the returned Workspace status page, retry or restart checkout as the UI allows and confirm the retry path does not mutate the already failed/cancelled order into a false success.

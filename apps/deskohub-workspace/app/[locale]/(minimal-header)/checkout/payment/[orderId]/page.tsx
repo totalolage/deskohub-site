@@ -28,7 +28,7 @@ const decodeCheckoutPaymentParams = getParamsDecoder({
 
 const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
   Schema.Struct({
-    outcome: Schema.Literal("success", "cancelled"),
+    outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
 
@@ -110,7 +110,7 @@ export default async function LocalizedCheckoutPaymentPage({
   );
 
   await refreshStatus(orderId, outcome).catch(async (cause) => {
-    await Effect.logError("Checkout status refresh failed", {
+    await Effect.logError("Checkout payment return refresh failed", {
       orderId,
       outcome,
       cause,

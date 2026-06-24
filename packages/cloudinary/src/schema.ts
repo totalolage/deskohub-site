@@ -1,4 +1,4 @@
-import * as Schema from "@effect/schema/Schema";
+import * as Schema from "effect/Schema";
 
 export const CloudinaryAssetSchema = Schema.Struct({
   public_id: Schema.String,
@@ -29,16 +29,14 @@ export const CloudinarySearchResponseSchema = Schema.Struct({
   resources: Schema.Array(CloudinaryAssetSchema),
 });
 
-export type CloudinarySearchResponse = Schema.Schema.Type<
-  typeof CloudinarySearchResponseSchema
->;
-
 export const SearchOptionsSchema = Schema.Struct({
-  maxResults: Schema.optional(Schema.Number.pipe(Schema.positive())),
-  sortBy: Schema.optional(
-    Schema.Literal("created_at", "updated_at", "public_id")
+  maxResults: Schema.optional(
+    Schema.Number.check(Schema.isGreaterThan(0))
   ),
-  sortDirection: Schema.optional(Schema.Literal("asc", "desc")),
+  sortBy: Schema.optional(
+    Schema.Literals(["created_at", "updated_at", "public_id"])
+  ),
+  sortDirection: Schema.optional(Schema.Literals(["asc", "desc"])),
 });
 
 export type SearchOptions = Schema.Schema.Type<typeof SearchOptionsSchema>;

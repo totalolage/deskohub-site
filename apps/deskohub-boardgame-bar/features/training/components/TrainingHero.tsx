@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { m } from "@/features/i18n";
+import { LocalizedLink as Link, m } from "@/features/i18n";
 import { Hero } from "@/shared/components";
 import { Price } from "@/shared/components/price";
 import { Button } from "@/shared/components/ui/button";

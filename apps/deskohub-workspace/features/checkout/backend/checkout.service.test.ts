@@ -6,8 +6,8 @@ import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/checkout/backend/workspace-reservation.repository";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { buildSignedPayState, sealPayState } from "./pay-state";
 
@@ -67,43 +67,62 @@ describe("CheckoutService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
     const { WorkspaceReservationRepository } = await import(
-      "./workspace-reservation.repository"
+      "@/features/reservation/backend/workspace-reservation.repository"
     );
 
     const orderId = "reservation-hpp-create-fails";
     const attemptId = "attempt-hpp-create-fails";
+    const attempt = {
+      id: attemptId,
+      workspaceReservationId: orderId,
+      provider: "nexi" as const,
+      providerOrderId: attemptId,
+      state: "created" as const,
+      amountValue: 35_000,
+      amountExponent: 2,
+      currency: "CZK",
+      securityToken: null,
+      providerRedirectUrl: null,
+      lastWebhookEventId: null,
+      lastProviderOperationId: null,
+      lastProviderStatus: null,
+      failureCode: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
     const markTerminal = mock(() => Effect.void);
     const markPaymentTerminal = mock(() => Effect.void);
-    const markTerminalForReservation = mock(() => Effect.void);
+    const markTerminalForReservation = mock(() =>
+      Effect.succeed({
+        attempt: {
+          ...attempt,
+          state: "failed" as const,
+          failureCode: "nexi_hpp_create_failed",
+          lastProviderStatus: "hpp_create_failed",
+        },
+        changed: true,
+        timestamp: new Date(),
+      })
+    );
 
     const paymentAttempts: PaymentAttemptRepositoryType = {
-      create: mock(() =>
-        Effect.succeed({
-          id: attemptId,
-          workspaceReservationId: orderId,
-          provider: "nexi",
-          providerOrderId: attemptId,
-          state: "created",
-          amountValue: 35_000,
-          amountExponent: 2,
-          currency: "CZK",
-          securityToken: null,
-          providerRedirectUrl: null,
-          lastWebhookEventId: null,
-          lastProviderOperationId: null,
-          lastProviderStatus: null,
-          failureCode: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        })
-      ),
+      create: mock(() => Effect.succeed(attempt)),
       findById: mock(() => Effect.succeed(null)),
       findByProviderOrderId: mock(() => Effect.succeed(null)),
-      attachHostedPaymentPage: mock(() => Effect.void),
+      attachHostedPaymentPage: mock(() => Effect.succeed(attempt)),
       markPaid: mock(() => Effect.void),
       markTerminal,
-      markPaidForReservation: mock(() => Effect.void),
+      markPaidForReservation: mock(() =>
+        Effect.succeed({
+          attempt,
+          changed: true,
+          timestamp: new Date(),
+        })
+      ),
       markTerminalForReservation,
     };
     const reservations = {
@@ -172,6 +191,11 @@ describe("CheckoutService", () => {
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
       Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, {
+          capture: mock(() => Effect.void),
+        })
+      ),
       Effect.provide(
         Layer.succeed(LegalEvidenceEventRepository, {
           recordMany: mock(() => Effect.void),

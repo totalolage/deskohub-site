@@ -1,40 +1,10 @@
-import type { Customer } from "@deskohub/dotypos/generated/types.gen";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
+import type { Customer } from "@deskohub/dotypos/generated";
+import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
 const mockDate = new Date("2026-06-12T09:00:00.000+02:00");
+const mockEndDate = new Date("2026-06-13T09:00:00.000+02:00");
 
 export const workspaceReservationEmailPreviewTableName = "12";
-
-export const createWorkspaceReservationEmailPreviewReservation = (
-  locale: string
-): WorkspaceReservation => ({
-  id: "workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
-  reservationIntentKey: "preview-reservation-intent",
-  correlationId: "preview-correlation-id",
-  dotyposCustomerId: "987654321",
-  dotyposReservationId: "123456789",
-  customerAccessCode: "4829",
-  reservationState: "confirmed",
-  paymentState: "paid",
-  fulfillmentState: "fulfilled",
-  activePaymentAttemptId: "preview-payment-attempt",
-  productTier: "profi",
-  productCoffee: true,
-  productMonitorOption: "2x27-qhd",
-  locale,
-  reservationHoldExpiresAt: null,
-  reservationHoldExpiredAt: null,
-  reservationCreatedAt: mockDate,
-  reservationConfirmedAt: mockDate,
-  reservationCancelledAt: null,
-  paidAt: mockDate,
-  fulfilledAt: mockDate,
-  fulfillmentFailedAt: null,
-  failureCode: null,
-  fulfillmentFailureCode: null,
-  createdAt: mockDate,
-  updatedAt: mockDate,
-});
 
 export const workspaceReservationEmailPreviewCustomer: Customer = {
   _cloudId: "preview-cloud-id",
@@ -48,3 +18,44 @@ export const workspaceReservationEmailPreviewCustomer: Customer = {
   display: true,
   deleted: false,
 };
+
+export const createWorkspaceReservationEmailPreviewReservation = (
+  locale: string
+): WorkspaceReservationDetails => ({
+  id: "workspace_01JY4J8R6Z9Q2N8K7M5P3A1B0C",
+  dotyposCustomerId: "987654321",
+  dotyposReservationId: "123456789",
+  customerAccessCode: "4829",
+  productTier: "profi",
+  productCoffee: true,
+  productMonitorOption: "2x27-qhd",
+  locale,
+  customer: workspaceReservationEmailPreviewCustomer,
+  reservedFrom: mockDate,
+  reservedUntil: mockEndDate,
+  tableName: workspaceReservationEmailPreviewTableName,
+  tableMap: {
+    assignedTableId: "desk-12",
+    roomName: "Main room",
+    tables: [
+      {
+        _cloudId: "preview-cloud-id",
+        id: "desk-12",
+        name: "12",
+        locationName: "Main room",
+        positionX: "40",
+        positionY: "80",
+        type: "SQUARE",
+      },
+      {
+        _cloudId: "preview-cloud-id",
+        id: "desk-11",
+        name: "11",
+        locationName: "Main room",
+        positionX: "130",
+        positionY: "80",
+        type: "SQUARE",
+      },
+    ],
+  },
+});

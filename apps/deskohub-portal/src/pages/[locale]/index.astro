@@ -57,4 +57,22 @@ const metadata = getPortalMetadata(locale);
       />
     </nav>
   </main>
+
+  <script is:inline>
+    const portalSearch = window.location.search;
+
+    if (portalSearch) {
+      const portalSearchParams = new URLSearchParams(portalSearch);
+
+      for (const link of document.querySelectorAll(".portal-panel")) {
+        const url = new URL(link.href);
+
+        for (const [key, value] of portalSearchParams) {
+          url.searchParams.append(key, value);
+        }
+
+        link.href = url.href;
+      }
+    }
+  </script>
 </PortalLayout>
