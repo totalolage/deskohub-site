@@ -4,7 +4,7 @@
   "tasks": {
     "build": {
       "dependsOn": ["i18n:compile"],
-      "outputs": ["dist/**", ".astro/**"]
+      "outputs": ["dist/**", ".astro/**", ".vercel/output/**"]
     },
     "i18n:compile": {
       "inputs": [
