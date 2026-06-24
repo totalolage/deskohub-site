@@ -35,7 +35,7 @@ export function WorkspaceGalleryAlbum({ photos }: WorkspaceGalleryAlbumProps) {
         alt: photo.alt,
         description: photo.caption,
         height: photo.height,
-        src: photo.src,
+        src: photo.fullSrc,
         title: photo.caption,
         width: photo.width,
       })),
