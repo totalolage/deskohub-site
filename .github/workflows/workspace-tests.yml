@@ -6,6 +6,15 @@ permissions:
 on:
   pull_request:
     branches: [main]
+    paths:
+      - .vercelignore
+      - .github/workflows/workspace-tests.yml
+      - apps/deskohub-workspace/**
+      - packages/**
+      - bun.lock
+      - package.json
+      - tsconfig.json
+      - turbo.json
 
 jobs:
   test:

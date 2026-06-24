@@ -89,15 +89,19 @@ const main = async () => {
       "--token",
       config.vercelToken,
     ]);
-    const pulledEnv = await loadEnvFile(resolve(workspaceDir, ".env.local"));
+    const pulledEnv = await loadEnvFile(
+      resolve(workspaceDir, ".vercel/.env.preview.local")
+    );
     const datasourceConfig = getDatasourceConfig();
     assertSafeDatabaseUrl(datasourceConfig.databaseUrl, "DATABASE_URL");
-    const pulledDatabaseUrl = pulledEnv.get("DATABASE_URL");
-    if (pulledDatabaseUrl) {
-      addRedaction(pulledDatabaseUrl);
-      assertSafeDatabaseUrl(pulledDatabaseUrl, "Vercel preview DATABASE_URL");
-      assertSameDatabaseUrl(pulledDatabaseUrl, datasourceConfig.databaseUrl);
-    }
+    const pulledDatabaseUrl = pulledEnv.get("DATABASE_URL")?.trim();
+    assert(
+      pulledDatabaseUrl,
+      "Vercel preview DATABASE_URL is required for workspace checkout e2e"
+    );
+    addRedaction(pulledDatabaseUrl);
+    assertSafeDatabaseUrl(pulledDatabaseUrl, "Vercel preview DATABASE_URL");
+    assertSameDatabaseUrl(pulledDatabaseUrl, datasourceConfig.databaseUrl);
 
     const deploy = await run(
       "bunx",
@@ -115,8 +119,8 @@ const main = async () => {
     const previewUrl = extractDeploymentUrl(deploy.stdout);
     const deployment = await getDeployment(config, previewUrl);
 
-    await recordAliasPreflight(config, deployment.id);
-    await assignAlias(config, deployment.id);
+    if (await recordAliasPreflight(config, deployment.id))
+      await assignAlias(config, deployment.id);
     await verifyAlias(config, deployment.id);
     await assertWebhookEndpoint(config, "/api/webhooks/nexi");
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
@@ -760,13 +764,13 @@ const recordAliasPreflight = async (
   );
   if (!response.ok) {
     log(`${config.alias} currently has no readable deployment target`);
-    return;
+    return true;
   }
 
   const body = (await response.json()) as { id?: unknown };
   if (body.id === deploymentId) {
     log(`${config.alias} already points at the fresh deployment`);
-    return;
+    return false;
   }
 
   if (typeof body.id === "string") {
@@ -774,6 +778,7 @@ const recordAliasPreflight = async (
       `${config.alias} currently points at ${body.id}; it will be left on the fresh deployment for webhook stability`
     );
   }
+  return true;
 };
 
 const assignAlias = async (
