@@ -1,0 +1,1130 @@
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
+import {
+  type NexiCurrency,
+  NexiRuntimeConfig,
+  NexiService,
+} from "@deskohub/nexi";
+import { Effect, Layer } from "effect";
+import { Pool } from "pg";
+import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
+
+const WORKSPACE_PROJECT_ID = "prj_7FliQBcbBiBwGaO2JLrigicnXCRd";
+const WORKSPACE_TEAM_ID = "team_MgMQ4MEWijWnYa1R48C2JU5e";
+const DEFAULT_ALIAS = "new.workspace.deskohub.cz";
+const DEFAULT_NEXI_ORIGIN =
+  "https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp";
+const CHECKOUT_TIMEOUT_MS = Number(
+  process.env.WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS ?? 10 * 60 * 1000
+);
+const DATASOURCE_TIMEOUT_MS = Number(
+  process.env.WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS ?? 4 * 60 * 1000
+);
+const POLL_INTERVAL_MS = 5_000;
+
+type CheckoutRow = {
+  reservation_id: string;
+  correlation_id: string;
+  dotypos_customer_id: string | null;
+  dotypos_reservation_id: string | null;
+  reservation_state: string;
+  payment_state: string;
+  fulfillment_state: string;
+  active_payment_attempt_id: string | null;
+  product_tier: string;
+  product_coffee: boolean;
+  product_monitor_option: string | null;
+  locale: string;
+  reservation_created_at: Date | null;
+  reservation_confirmed_at: Date | null;
+  reservation_cancelled_at: Date | null;
+  reservation_hold_expired_at: Date | null;
+  paid_at: Date | null;
+  fulfilled_at: Date | null;
+  fulfillment_failed_at: Date | null;
+  failure_code: string | null;
+  fulfillment_failure_code: string | null;
+  payment_attempt_id: string | null;
+  provider: string | null;
+  provider_order_id: string | null;
+  security_token: string | null;
+  payment_attempt_state: string | null;
+  amount_value: number | null;
+  amount_exponent: number | null;
+  currency: string | null;
+  provider_redirect_url: string | null;
+  last_webhook_event_id: string | null;
+  last_provider_operation_id: string | null;
+  last_provider_status: string | null;
+  payment_failure_code: string | null;
+  webhook_id: string | null;
+  webhook_provider: string | null;
+  webhook_event_id: string | null;
+  webhook_provider_order_id: string | null;
+  webhook_processed_at: Date | null;
+  webhook_state: string | null;
+  webhook_error_code: string | null;
+};
+
+const scriptDir = dirname(fileURLToPath(import.meta.url));
+const workspaceDir = resolve(scriptDir, "..");
+const repoRoot = resolve(workspaceDir, "../..");
+const redactions = new Set<string>();
+
+const main = async () => {
+  await loadEnvFile(resolve(workspaceDir, ".env.local"));
+
+  const config = getConfig();
+  const run = makeRunner(config);
+  const session = `workspace-checkout-e2e-${Date.now()}`;
+  const data = makeCheckoutData(config.aliasUrl);
+  for (const value of [data.checkoutUrl, data.email, data.name, data.phone])
+    addRedaction(value);
+
+  try {
+    await writeVercelProjectLink(config);
+    await run("git", ["status", "--short"], { cwd: repoRoot });
+    await run("bunx", [
+      "vercel@latest",
+      "pull",
+      "--yes",
+      "--environment=preview",
+      "--cwd",
+      workspaceDir,
+      "--token",
+      config.vercelToken,
+    ]);
+    const pulledEnv = await loadEnvFile(resolve(workspaceDir, ".env.local"));
+    const datasourceConfig = getDatasourceConfig();
+    assertSafeDatabaseUrl(datasourceConfig.databaseUrl, "DATABASE_URL");
+    const pulledDatabaseUrl = pulledEnv.get("DATABASE_URL");
+    if (pulledDatabaseUrl) {
+      addRedaction(pulledDatabaseUrl);
+      assertSafeDatabaseUrl(pulledDatabaseUrl, "Vercel preview DATABASE_URL");
+      assertSameDatabaseUrl(pulledDatabaseUrl, datasourceConfig.databaseUrl);
+    }
+
+    const deploy = await run(
+      "bunx",
+      [
+        "vercel@latest",
+        "deploy",
+        "--yes",
+        "--cwd",
+        workspaceDir,
+        "--token",
+        config.vercelToken,
+      ],
+      { timeoutMs: 20 * 60 * 1000 }
+    );
+    const previewUrl = extractDeploymentUrl(deploy.stdout);
+    const deployment = await getDeployment(config, previewUrl);
+
+    await recordAliasPreflight(config, deployment.id);
+    await assignAlias(config, deployment.id);
+    await verifyAlias(config, deployment.id);
+    await assertWebhookEndpoint(config, "/api/webhooks/nexi");
+    await assertWebhookEndpoint(config, "/api/webhooks/resend");
+
+    const orderId = await completeCheckout({ config, data, run, session });
+    const row = await validatePostgres(datasourceConfig, data, orderId);
+    await verifyAlias(config, deployment.id);
+    await assertFulfilledStatusPage({ config, orderId, run, session });
+    await validateNexi(datasourceConfig, row);
+    await validateDotypos(datasourceConfig, data, row);
+
+    log(`Checkout e2e passed for order ${orderId}`);
+  } finally {
+    await run("agent-browser", ["--session", session, "close"], {
+      allowFailure: true,
+    });
+  }
+};
+
+const getConfig = () => {
+  const vercelToken = requireEnv("VERCEL_TOKEN");
+  const vercelTeamId =
+    env("VERCEL_TEAM_ID") ?? env("VERCEL_ORG_ID") ?? WORKSPACE_TEAM_ID;
+  const vercelProjectId = env("VERCEL_PROJECT_ID") ?? WORKSPACE_PROJECT_ID;
+  const alias = env("WORKSPACE_E2E_ALIAS") ?? DEFAULT_ALIAS;
+  const bypassSecret = env("VERCEL_AUTOMATION_BYPASS_SECRET");
+
+  addRedaction(vercelToken);
+  addRedaction(bypassSecret);
+
+  return {
+    alias,
+    aliasUrl: `https://${alias}`,
+    bypassSecret,
+    vercelProjectId,
+    vercelTeamId,
+    vercelToken,
+  };
+};
+
+const getDatasourceConfig = () => ({
+  databaseUrl: requireEnv("DATABASE_URL"),
+  dotypos: {
+    apiTimeout: Number(env("DOTYPOS_API_TIMEOUT") ?? 5_000),
+    apiUrl: requireEnv("DOTYPOS_API_URL"),
+    branchId: requireEnv("DOTYPOS_BRANCH_ID"),
+    clientId: requireEnv("DOTYPOS_CLIENT_ID"),
+    clientSecret: requireEnv("DOTYPOS_CLIENT_SECRET"),
+    cloudId: requireEnv("DOTYPOS_CLOUD_ID"),
+    employeeId: requireEnv("DOTYPOS_EMPLOYEE_ID"),
+    refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
+  },
+  expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
+  nexi: {
+    apiKey: requireEnv("NEXI_API_KEY"),
+    baseUrl: env("NEXI_API_ORIGIN") ?? DEFAULT_NEXI_ORIGIN,
+  },
+});
+
+const makeRunner =
+  (config: ReturnType<typeof getConfig>) =>
+  async (
+    command: string,
+    args: string[],
+    options: {
+      allowFailure?: boolean;
+      cwd?: string;
+      input?: string;
+      timeoutMs?: number;
+    } = {}
+  ) => {
+    const printable = redact([command, ...args].join(" "));
+    log(`$ ${printable}`);
+
+    const child = Bun.spawn([command, ...args], {
+      cwd: options.cwd,
+      env: {
+        ...process.env,
+        VERCEL_ORG_ID: config.vercelTeamId,
+        VERCEL_PROJECT_ID: config.vercelProjectId,
+      },
+      stderr: "pipe",
+      stdin: options.input ? "pipe" : "ignore",
+      stdout: "pipe",
+    });
+
+    if (options.input) {
+      child.stdin?.write(options.input);
+      child.stdin?.end();
+    }
+
+    const timeout = setTimeout(
+      () => child.kill(),
+      options.timeoutMs ?? 120_000
+    );
+    const [stdout, stderr, exitCode] = await Promise.all([
+      new Response(child.stdout).text(),
+      new Response(child.stderr).text(),
+      child.exited,
+    ]).finally(() => clearTimeout(timeout));
+
+    const result = {
+      exitCode,
+      stderr: redact(stderr.trim()),
+      stdout: redact(stdout.trim()),
+    };
+
+    if (exitCode !== 0 && !options.allowFailure) {
+      throw new Error(
+        `${printable} failed with ${exitCode}\n${result.stdout}\n${result.stderr}`.trim()
+      );
+    }
+
+    if (result.stdout) log(result.stdout);
+    if (result.stderr) log(result.stderr);
+
+    return result;
+  };
+
+const completeCheckout = async ({
+  config,
+  data,
+  run,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  data: ReturnType<typeof makeCheckoutData>;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  const headers = config.bypassSecret
+    ? [
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": config.bypassSecret }),
+      ]
+    : [];
+
+  await run(
+    "agent-browser",
+    ["--session", session, ...headers, "open", data.checkoutUrl],
+    {
+      timeoutMs: CHECKOUT_TIMEOUT_MS,
+    }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: submitReservationScript,
+  });
+  await run(
+    "agent-browser",
+    ["--session", session, "wait", "--url", "**/checkout/pay**"],
+    {
+      timeoutMs: CHECKOUT_TIMEOUT_MS,
+    }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: submitPaymentScript,
+  });
+  await run(
+    "agent-browser",
+    ["--session", session, "wait", "--url", "**nexigroup.com**"],
+    {
+      timeoutMs: CHECKOUT_TIMEOUT_MS,
+    }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: fillNexiScript(data),
+    timeoutMs: CHECKOUT_TIMEOUT_MS,
+  });
+  await run(
+    "agent-browser",
+    ["--session", session, "wait", "--url", "**/checkout/status/**"],
+    {
+      timeoutMs: CHECKOUT_TIMEOUT_MS,
+    }
+  );
+
+  const url = await run("agent-browser", ["--session", session, "get", "url"]);
+  const orderId = extractOrderId(url.stdout);
+  log(`Reached checkout status for order ${orderId}`);
+  return orderId;
+};
+
+const assertFulfilledStatusPage = async ({
+  config,
+  orderId,
+  run,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  orderId: string;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  const headers = config.bypassSecret
+    ? [
+        "--headers",
+        JSON.stringify({ "x-vercel-protection-bypass": config.bypassSecret }),
+      ]
+    : [];
+
+  await run(
+    "agent-browser",
+    [
+      "--session",
+      session,
+      ...headers,
+      "open",
+      `${config.aliasUrl}/en-US/checkout/status/${orderId}`,
+    ],
+    { timeoutMs: CHECKOUT_TIMEOUT_MS }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: assertFulfilledStatusScript,
+    timeoutMs: CHECKOUT_TIMEOUT_MS,
+  });
+  log("Fulfilled status page validated");
+};
+
+const validatePostgres = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  data: ReturnType<typeof makeCheckoutData>,
+  orderId: string
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+  });
+
+  try {
+    const row = await poll(
+      async () => {
+        const row = await readCheckoutRow(pool, orderId);
+        return row && isPostgresComplete(row, config) ? row : undefined;
+      },
+      DATASOURCE_TIMEOUT_MS,
+      `Postgres checkout rows for ${orderId}`
+    );
+
+    assertPostgresRow(row, data, config);
+    await assertLegalEvidence(pool, orderId);
+    await assertOperationalEvents(pool, orderId, row.payment_attempt_id, data);
+    await assertNoLocalPii(
+      pool,
+      orderId,
+      row.payment_attempt_id,
+      row.last_webhook_event_id,
+      data
+    );
+    log("Postgres checkout tables validated");
+    return row;
+  } finally {
+    await pool.end();
+  }
+};
+
+const readCheckoutRow = async (pool: Pool, orderId: string) => {
+  const result = await pool.query<CheckoutRow>(
+    `select
+      wr.id as reservation_id,
+      wr.correlation_id,
+      wr.dotypos_customer_id,
+      wr.dotypos_reservation_id,
+      wr.reservation_state,
+      wr.payment_state,
+      wr.fulfillment_state,
+      wr.active_payment_attempt_id,
+      wr.product_tier,
+      wr.product_coffee,
+      wr.product_monitor_option,
+      wr.locale,
+      wr.reservation_created_at,
+      wr.reservation_confirmed_at,
+      wr.reservation_cancelled_at,
+      wr.reservation_hold_expired_at,
+      wr.paid_at,
+      wr.fulfilled_at,
+      wr.fulfillment_failed_at,
+      wr.failure_code,
+      wr.fulfillment_failure_code,
+      pa.id as payment_attempt_id,
+      pa.provider,
+      pa.provider_order_id,
+      pa.security_token,
+      pa.state as payment_attempt_state,
+      pa.amount_value,
+      pa.amount_exponent,
+      pa.currency,
+      pa.provider_redirect_url,
+      pa.last_webhook_event_id,
+      pa.last_provider_operation_id,
+      pa.last_provider_status,
+      pa.failure_code as payment_failure_code,
+      wh.id as webhook_id,
+      wh.provider as webhook_provider,
+      wh.event_id as webhook_event_id,
+      wh.provider_order_id as webhook_provider_order_id,
+      wh.processed_at as webhook_processed_at,
+      wh.state as webhook_state,
+      wh.error_code as webhook_error_code
+    from workspace_reservations wr
+    left join payment_attempts pa on pa.id = wr.active_payment_attempt_id
+    left join webhook_events wh on wh.id = pa.last_webhook_event_id
+    where wr.id = $1`,
+    [orderId]
+  );
+  return result.rows[0];
+};
+
+const isPostgresComplete = (
+  row: CheckoutRow,
+  config: ReturnType<typeof getDatasourceConfig>
+) =>
+  row.reservation_state === "confirmed" &&
+  row.payment_state === "paid" &&
+  row.fulfillment_state === "fulfilled" &&
+  row.payment_attempt_state === "paid" &&
+  row.currency === config.expectedCurrency &&
+  row.webhook_state === "processed";
+
+const assertPostgresRow = (
+  row: CheckoutRow,
+  data: ReturnType<typeof makeCheckoutData>,
+  config: ReturnType<typeof getDatasourceConfig>
+) => {
+  assert(
+    row.reservation_id === data.orderIdHint || row.reservation_id,
+    "reservation id missing"
+  );
+  assert(
+    row.reservation_state === "confirmed",
+    "reservation was not confirmed"
+  );
+  assert(row.payment_state === "paid", "reservation payment was not paid");
+  assert(
+    row.fulfillment_state === "fulfilled",
+    "reservation fulfillment was not fulfilled"
+  );
+  assert(row.active_payment_attempt_id, "active payment attempt missing");
+  assert(row.dotypos_customer_id, "Dotypos customer id missing");
+  assert(row.dotypos_reservation_id, "Dotypos reservation id missing");
+  assert(row.reservation_created_at, "reservation_created_at missing");
+  assert(row.reservation_confirmed_at, "reservation_confirmed_at missing");
+  assert(row.paid_at, "paid_at missing");
+  assert(row.fulfilled_at, "fulfilled_at missing");
+  assert(
+    row.reservation_cancelled_at === null,
+    "reservation_cancelled_at should be null"
+  );
+  assert(
+    row.reservation_hold_expired_at === null,
+    "reservation_hold_expired_at should be null"
+  );
+  assert(
+    row.fulfillment_failed_at === null,
+    "fulfillment_failed_at should be null"
+  );
+  assert(row.failure_code === null, "reservation failure_code should be null");
+  assert(
+    row.fulfillment_failure_code === null,
+    "fulfillment_failure_code should be null"
+  );
+  assert(row.product_tier === "basic", "unexpected product tier");
+  assert(
+    row.product_coffee === false,
+    "coffee should be off for this happy path"
+  );
+  assert(
+    row.product_monitor_option === null,
+    "monitor option should be null for basic tier"
+  );
+  assert(row.locale === "en-US", "unexpected locale");
+  assert(
+    row.payment_attempt_id === row.active_payment_attempt_id,
+    "active attempt mismatch"
+  );
+  assert(row.provider === "nexi", "payment provider should be nexi");
+  assert(row.provider_order_id, "provider order id missing");
+  assert(row.security_token, "security token missing");
+  assert(row.payment_attempt_state === "paid", "payment attempt was not paid");
+  assert(row.amount_value && row.amount_value > 0, "payment amount missing");
+  assert(row.amount_exponent !== null, "payment amount exponent missing");
+  assert(
+    row.currency === config.expectedCurrency,
+    `expected ${config.expectedCurrency} currency`
+  );
+  assert(row.provider_redirect_url, "provider redirect URL missing");
+  assert(row.last_webhook_event_id, "last webhook event id missing");
+  assert(row.last_provider_operation_id, "last provider operation id missing");
+  assert(
+    row.last_provider_status === "EXECUTED",
+    "last provider status was not EXECUTED"
+  );
+  assert(
+    row.payment_failure_code === null,
+    "payment failure code should be null"
+  );
+  assert(row.webhook_id === row.last_webhook_event_id, "webhook id mismatch");
+  assert(row.webhook_provider === "nexi", "webhook provider should be nexi");
+  assert(
+    row.webhook_provider_order_id === row.provider_order_id,
+    "webhook order id mismatch"
+  );
+  assert(row.webhook_processed_at, "webhook processed_at missing");
+  assert(row.webhook_state === "processed", "webhook was not processed");
+  assert(row.webhook_error_code === null, "webhook error code should be null");
+};
+
+const assertLegalEvidence = async (pool: Pool, orderId: string) => {
+  const result = await pool.query<{
+    accepted: boolean;
+    document_key: string;
+    hash_algorithm: string;
+    locale: string;
+    source: string;
+  }>(
+    `select document_key, source, accepted, hash_algorithm, locale
+    from legal_evidence_events
+    where workspace_reservation_id = $1`,
+    [orderId]
+  );
+
+  const expected = new Set([
+    "privacyPolicy:reservation_submit",
+    "termsAndConditions:payment_submit",
+    "operatingRules:payment_submit",
+  ]);
+
+  for (const row of result.rows) {
+    assert(row.accepted, `legal evidence ${row.document_key} was not accepted`);
+    assert(
+      row.hash_algorithm === "sha256",
+      "legal evidence hash algorithm mismatch"
+    );
+    assert(row.locale === "en-US", "legal evidence locale mismatch");
+    expected.delete(`${row.document_key}:${row.source}`);
+  }
+
+  assert(
+    expected.size === 0,
+    `missing legal evidence rows: ${[...expected].join(", ")}`
+  );
+};
+
+const assertOperationalEvents = async (
+  pool: Pool,
+  orderId: string,
+  paymentAttemptId: string | null,
+  data: ReturnType<typeof makeCheckoutData>
+) => {
+  const errors = await pool.query<{ count: string }>(
+    `select count(*)
+    from operational_events
+    where severity = 'error'
+      and (workspace_reservation_id = $1 or payment_attempt_id = $2)`,
+    [orderId, paymentAttemptId]
+  );
+  assert(
+    Number(errors.rows[0]?.count ?? 0) === 0,
+    "error operational events found"
+  );
+
+  const pii = await pool.query<{ count: string }>(
+    `select count(*)
+    from operational_events
+    where workspace_reservation_id = $1
+      and (message ilike $2 or message ilike $3 or message ilike $4)`,
+    [orderId, `%${data.email}%`, `%${data.phone}%`, `%${data.name}%`]
+  );
+  assert(
+    Number(pii.rows[0]?.count ?? 0) === 0,
+    "operational event messages contain test PII"
+  );
+};
+
+const assertNoLocalPii = async (
+  pool: Pool,
+  orderId: string,
+  paymentAttemptId: string | null,
+  webhookEventId: string | null,
+  data: ReturnType<typeof makeCheckoutData>
+) => {
+  const result = await pool.query<{ count: string }>(
+    `with payloads as (
+      select to_jsonb(wr)::text as payload
+      from workspace_reservations wr
+      where wr.id = $1
+      union all
+      select to_jsonb(pa)::text
+      from payment_attempts pa
+      where pa.id = $2
+      union all
+      select to_jsonb(wh)::text
+      from webhook_events wh
+      where wh.id = $3
+      union all
+      select to_jsonb(le)::text
+      from legal_evidence_events le
+      where le.workspace_reservation_id = $1
+      union all
+      select to_jsonb(oe)::text
+      from operational_events oe
+      where oe.workspace_reservation_id = $1 or oe.payment_attempt_id = $2
+    )
+    select count(*)
+    from payloads
+    where payload ilike $4 or payload ilike $5 or payload ilike $6`,
+    [
+      orderId,
+      paymentAttemptId,
+      webhookEventId,
+      `%${data.email}%`,
+      `%${data.phone}%`,
+      `%${data.name}%`,
+    ]
+  );
+
+  assert(
+    Number(result.rows[0]?.count ?? 0) === 0,
+    "local checkout tables contain test PII"
+  );
+};
+
+const validateNexi = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  row: CheckoutRow
+) => {
+  assert(
+    row.provider_order_id,
+    "provider order id missing before Nexi validation"
+  );
+  assert(row.security_token, "security token missing before Nexi validation");
+  assert(row.amount_value !== null, "amount missing before Nexi validation");
+  assert(row.currency, "currency missing before Nexi validation");
+  const amount = String(row.amount_value);
+  const currency = row.currency as NexiCurrency;
+  const orderId = row.provider_order_id;
+  const securityToken = row.security_token;
+
+  const layer = NexiService.Default.pipe(
+    Layer.provide(
+      Layer.succeed(NexiRuntimeConfig, {
+        apiKey: config.nexi.apiKey,
+        apiTimeout: 5_000,
+        baseUrl: config.nexi.baseUrl,
+      })
+    )
+  );
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const nexi = yield* NexiService;
+      return yield* nexi.verifyPaymentOutcome({
+        amount,
+        correlationId: row.correlation_id,
+        currency,
+        orderId,
+        securityToken,
+      });
+    }).pipe(Effect.provide(layer))
+  );
+
+  assert(result.status === "success", `Nexi status was ${result.status}`);
+  assert(result.provider.captureExecuted, "Nexi capture was not executed");
+  assert(
+    result.mismatches.length === 0,
+    `Nexi mismatches: ${result.mismatches.join(", ")}`
+  );
+  log("Nexi provider state validated");
+};
+
+const validateDotypos = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  data: ReturnType<typeof makeCheckoutData>,
+  row: CheckoutRow
+) => {
+  assert(
+    row.dotypos_reservation_id,
+    "Dotypos reservation id missing before validation"
+  );
+  assert(
+    row.dotypos_customer_id,
+    "Dotypos customer id missing before validation"
+  );
+  const dotyposReservationId = row.dotypos_reservation_id;
+
+  const layer = DotyposService.Default.pipe(
+    Layer.provide(
+      Layer.succeed(DotyposRuntimeConfig, {
+        apiTimeout: config.dotypos.apiTimeout,
+        apiUrl: config.dotypos.apiUrl,
+        branchId: config.dotypos.branchId,
+        clientId: config.dotypos.clientId,
+        clientSecret: config.dotypos.clientSecret,
+        cloudId: config.dotypos.cloudId,
+        employeeId: config.dotypos.employeeId,
+        refreshToken: config.dotypos.refreshToken,
+        reservationTableIds: [],
+      })
+    )
+  );
+
+  const result = await Effect.runPromise(
+    Effect.gen(function* () {
+      const dotypos = yield* DotyposService;
+      return yield* dotypos.getReservation(dotyposReservationId);
+    }).pipe(Effect.provide(layer))
+  );
+
+  assert(
+    result.reservation.status === "CONFIRMED",
+    "Dotypos reservation is not confirmed"
+  );
+  assert(
+    result.reservation._customerId === row.dotypos_customer_id,
+    "Dotypos customer mismatch"
+  );
+  assert(result.reservation._tableId, "Dotypos table id missing");
+  assert(
+    result.reservation.seats === "1",
+    "Dotypos reservation seats should be 1"
+  );
+  assert(
+    result.reservation.note?.includes(row.reservation_id),
+    "Dotypos note missing workspace order id"
+  );
+  assert(
+    dotyposDateCovers(
+      result.reservation.startDate,
+      result.reservation.endDate,
+      data.date
+    ),
+    "Dotypos date does not cover selected checkout date"
+  );
+  log("Dotypos reservation state validated");
+};
+
+const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
+  const allowlist = requireEnv("WORKSPACE_E2E_DATABASE_ALLOWLIST")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  assert(
+    allowlist.includes(databaseSafetyKey(databaseUrl)),
+    `${label} is not allowlisted for workspace checkout e2e`
+  );
+};
+
+const assertSameDatabaseUrl = (pulled: string, validation: string) => {
+  assert(
+    databaseSafetyKey(pulled) === databaseSafetyKey(validation),
+    "Vercel preview DATABASE_URL does not match validation DATABASE_URL"
+  );
+};
+
+const databaseSafetyKey = (databaseUrl: string) => {
+  const url = new URL(normalizePostgresConnectionUrl(databaseUrl));
+  return `${url.hostname}${url.pathname}`;
+};
+
+const writeVercelProjectLink = async (config: ReturnType<typeof getConfig>) => {
+  const file = resolve(workspaceDir, ".vercel/project.json");
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(
+    file,
+    `${JSON.stringify({ orgId: config.vercelTeamId, projectId: config.vercelProjectId }, null, 2)}\n`
+  );
+};
+
+const getDeployment = async (
+  config: ReturnType<typeof getConfig>,
+  previewUrl: string
+) => {
+  const host = new URL(previewUrl).host;
+  const response = await vercelFetch(config, `/v13/deployments/${host}`);
+  const body = (await response.json()) as { id?: unknown };
+  assert(
+    typeof body.id === "string",
+    "Vercel deployment response did not include id"
+  );
+  log(`Fresh Vercel deployment ${body.id} at ${previewUrl}`);
+  return { id: body.id as string };
+};
+
+const recordAliasPreflight = async (
+  config: ReturnType<typeof getConfig>,
+  deploymentId: string
+) => {
+  const response = await vercelFetch(
+    config,
+    `/v13/deployments/${config.alias}`,
+    {},
+    { allowFailure: true }
+  );
+  if (!response.ok) {
+    log(`${config.alias} currently has no readable deployment target`);
+    return;
+  }
+
+  const body = (await response.json()) as { id?: unknown };
+  if (body.id === deploymentId) {
+    log(`${config.alias} already points at the fresh deployment`);
+    return;
+  }
+
+  if (typeof body.id === "string") {
+    log(
+      `${config.alias} currently points at ${body.id}; it will be left on the fresh deployment for webhook stability`
+    );
+  }
+};
+
+const assignAlias = async (
+  config: ReturnType<typeof getConfig>,
+  deploymentId: string
+) => {
+  const response = await vercelFetch(
+    config,
+    `/v2/deployments/${deploymentId}/aliases`,
+    {
+      body: JSON.stringify({ alias: config.alias }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    }
+  );
+  if (!response.ok)
+    throw new Error(`Vercel alias assignment failed: ${response.status}`);
+  log(`Assigned ${config.aliasUrl} to fresh deployment`);
+};
+
+const verifyAlias = async (
+  config: ReturnType<typeof getConfig>,
+  deploymentId: string
+) => {
+  const response = await vercelFetch(
+    config,
+    `/v13/deployments/${config.alias}`
+  );
+  const body = (await response.json()) as { id?: unknown };
+  assert(
+    body.id === deploymentId,
+    `${config.alias} does not point at fresh deployment`
+  );
+  log("Vercel alias target verified");
+};
+
+const assertWebhookEndpoint = async (
+  config: ReturnType<typeof getConfig>,
+  path: string
+) => {
+  const response = await fetch(`${config.aliasUrl}${path}`, {
+    headers: config.bypassSecret
+      ? { "x-vercel-protection-bypass": config.bypassSecret }
+      : undefined,
+  });
+  assert(response.ok, `${path} health check failed with ${response.status}`);
+};
+
+const vercelFetch = async (
+  config: ReturnType<typeof getConfig>,
+  path: string,
+  init: RequestInit = {},
+  options: { readonly allowFailure?: boolean } = {}
+) => {
+  const separator = path.includes("?") ? "&" : "?";
+  const response = await fetch(
+    `https://api.vercel.com${path}${separator}teamId=${config.vercelTeamId}`,
+    {
+      ...init,
+      headers: {
+        authorization: `Bearer ${config.vercelToken}`,
+        ...init.headers,
+      },
+    }
+  );
+  if (!response.ok && !options.allowFailure)
+    throw new Error(`Vercel API ${path} failed with ${response.status}`);
+  return response;
+};
+
+const makeCheckoutData = (aliasUrl: string) => {
+  const runId = new Date()
+    .toISOString()
+    .replace(/[-:.TZ]/g, "")
+    .slice(0, 14);
+  const name = `Workspace E2E ${runId}`;
+  const phone = `+420735${runId.slice(-6)}`;
+  const email = `delivered+workspace-e2e-${runId}@resend.dev`;
+  const date = futureIsoDate();
+  const params = new URLSearchParams({
+    coffee: "false",
+    date,
+    email,
+    entryTier: "basic",
+    message: `Automated checkout e2e ${runId}`,
+    name,
+    phone,
+  });
+
+  return {
+    checkoutUrl: `${aliasUrl}/en-US/checkout/order?${params}`,
+    date,
+    email,
+    name,
+    orderIdHint: "",
+    phone,
+  };
+};
+
+const futureIsoDate = () => {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + 28);
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
+    date.setUTCDate(date.getUTCDate() + 1);
+  }
+  return date.toISOString().slice(0, 10);
+};
+
+const extractDeploymentUrl = (stdout: string) => {
+  const urls = stdout.match(/https:\/\/[^\s]+\.vercel\.app/g) ?? [];
+  const url = urls.at(-1);
+  assert(url, "could not find Vercel preview URL in deploy output");
+  return url;
+};
+
+const extractOrderId = (stdout: string) => {
+  const match = stdout.match(/\/checkout\/status\/([^\s/?#]+)/);
+  assert(match?.[1], "could not extract checkout status order id");
+  return match[1];
+};
+
+const dotyposDateCovers = (
+  start: string,
+  end: string,
+  expectedDate: string
+) => {
+  const selected = new Date(`${expectedDate}T12:00:00.000Z`).getTime();
+  return (
+    new Date(start).getTime() <= selected && selected <= new Date(end).getTime()
+  );
+};
+
+const poll = async <T>(
+  fn: () => Promise<T | undefined>,
+  timeoutMs: number,
+  label: string
+) => {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await fn();
+    if (result) return result;
+    await Bun.sleep(POLL_INTERVAL_MS);
+  }
+  throw new Error(`Timed out waiting for ${label}`);
+};
+
+const loadEnvFile = async (path: string) => {
+  const values = new Map<string, string>();
+  let text = "";
+  try {
+    text = await readFile(path, "utf8");
+  } catch {
+    return values;
+  }
+
+  for (const line of text.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#")) continue;
+    const equals = trimmed.indexOf("=");
+    if (equals === -1) continue;
+    const key = trimmed.slice(0, equals).trim();
+    const value = unquoteEnv(trimmed.slice(equals + 1).trim());
+    values.set(key, value);
+    process.env[key] ??= value;
+  }
+
+  return values;
+};
+
+const unquoteEnv = (value: string) => {
+  if (
+    (value.startsWith('"') && value.endsWith('"')) ||
+    (value.startsWith("'") && value.endsWith("'"))
+  ) {
+    return value.slice(1, -1).replaceAll("\\n", "\n");
+  }
+  return value;
+};
+
+const requireEnv = (name: string) => {
+  const value = env(name);
+  assert(value, `${name} is required for workspace checkout e2e`);
+  addRedaction(value);
+  return value;
+};
+
+const env = (name: string) => {
+  const value = process.env[name]?.trim();
+  return value ? value : undefined;
+};
+
+const addRedaction = (value: string | undefined) => {
+  if (!value || value.length <= 6) return;
+  redactions.add(value);
+  redactions.add(encodeURIComponent(value));
+  redactions.add(
+    new URLSearchParams({ value }).toString().slice("value=".length)
+  );
+};
+
+const redact = (text: string) => {
+  let output = text;
+  for (const secret of redactions)
+    output = output.replaceAll(secret, "[redacted]");
+  return output;
+};
+
+function assert(condition: unknown, message: string): asserts condition {
+  if (!condition) throw new Error(message);
+}
+
+const log = (message: string) => process.stdout.write(`${redact(message)}\n`);
+
+const submitReservationScript = `
+(() => {
+  const checkbox = document.querySelector('#reservation-privacy-consent');
+  if (!(checkbox instanceof HTMLInputElement)) throw new Error('privacy consent checkbox not found');
+  if (!checkbox.checked) checkbox.click();
+  const form = checkbox.closest('form') ?? document.querySelector('form');
+  if (!(form instanceof HTMLFormElement)) throw new Error('reservation form not found');
+  form.requestSubmit();
+  return location.href;
+})()
+`;
+
+const submitPaymentScript = String.raw`
+(async () => {
+  const checkbox = document.querySelector('#checkout-pay-legal-consent');
+  if (!(checkbox instanceof HTMLInputElement)) throw new Error('payment consent checkbox not found');
+  if (!checkbox.checked) checkbox.click();
+  await new Promise((resolve) => setTimeout(resolve, 250));
+  const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
+  if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
+  button.click();
+  return location.href;
+})()
+`;
+
+const assertFulfilledStatusScript = String.raw`
+(() => {
+  const text = document.body?.textContent ?? '';
+  if (!/Your workspace access is ready\./i.test(text)) throw new Error('fulfilled status title not visible');
+  if (!/sent by email/i.test(text)) throw new Error('email delivery fulfillment copy not visible');
+  return location.href;
+})()
+`;
+
+const fillNexiScript = (data: ReturnType<typeof makeCheckoutData>) => `
+(async () => {
+  const setValue = (input, value) => {
+    input.focus();
+    input.value = value;
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  const byPattern = (patterns) => {
+    const inputs = [...document.querySelectorAll('input')];
+    return inputs.find((input) => {
+      const text = [input.name, input.id, input.placeholder, input.ariaLabel, input.autocomplete].join(' ').toLowerCase();
+      return patterns.some((pattern) => pattern.test(text));
+    });
+  };
+  const clickText = (pattern) => {
+    const candidate = [...document.querySelectorAll('button,a,input,[role="button"],label,span,div')]
+      .find((element) => pattern.test((element.textContent || element.value || '').trim()));
+    if (!candidate) throw new Error('click target not found: ' + pattern);
+    candidate.click();
+  };
+  const card = byPattern([/card.*number/, /pan/, /numero.*carta/, /cc-number/]);
+  const expiry = byPattern([/expir/, /scadenza/, /cc-exp/]);
+  const cvv = byPattern([/cvv/, /cvc/, /security/, /cc-csc/]);
+  const holder = byPattern([/holder/, /card.*name/, /titolare/, /name/]);
+  const email = byPattern([/email/]);
+  if (!card || !expiry || !cvv) throw new Error('Nexi card fields not found');
+  setValue(card, '4509034543615006');
+  setValue(expiry, '1028');
+  setValue(cvv, '298');
+  if (holder) setValue(holder, ${JSON.stringify(data.name)});
+  if (email) setValue(email, ${JSON.stringify(data.email)});
+  clickText(/continue|continua/i);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  clickText(/^pay$|^paga$/i);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  clickText(/autenticazione riuscita|authentication successful/i);
+  await new Promise((resolve) => setTimeout(resolve, 1000));
+  clickText(/back to the shop|torna al negozio/i);
+  return location.href;
+})()
+`;
+
+main().catch((error) => {
+  process.stderr.write(
+    `${redact(error instanceof Error ? (error.stack ?? error.message) : String(error))}\n`
+  );
+  process.exit(1);
+});

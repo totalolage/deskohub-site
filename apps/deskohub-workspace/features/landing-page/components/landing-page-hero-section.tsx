@@ -33,6 +33,7 @@ export function LandingPageHeroSection({
 }: LandingPageHeroSectionProps) {
   const { props: cornerMaskProps } = getImageProps({
     ...cornerMask,
+    alt: "",
     width: 128,
     height: 128,
     priority: true,

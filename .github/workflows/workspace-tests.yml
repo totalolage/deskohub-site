@@ -1,13 +1,11 @@
 name: Workspace Tests
 
+permissions:
+  contents: read
+
 on:
   pull_request:
-    paths:
-      - .github/workflows/workspace-tests.yml
-      - apps/deskohub-workspace/**
-      - packages/**
-      - bun.lock
-      - package.json
+    branches: [main]
 
 jobs:
   test:
@@ -28,3 +26,52 @@ jobs:
       - run: bun install --frozen-lockfile
 
       - run: bun turbo test --filter=./apps/deskohub-workspace
+
+  checkout-e2e:
+    needs: test
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    environment: workspace-checkout-e2e
+    concurrency:
+      group: workspace-checkout-e2e-new-workspace-alias
+      cancel-in-progress: false
+    env:
+      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+      TURBO_TEAM: ${{ vars.TURBO_TEAM }}
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_ORG_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
+      VERCEL_TEAM_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
+      VERCEL_PROJECT_ID: prj_7FliQBcbBiBwGaO2JLrigicnXCRd
+      WORKSPACE_E2E_ALIAS: new.workspace.deskohub.cz
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      DATABASE_URL: ${{ secrets.WORKSPACE_E2E_DATABASE_URL }}
+      WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ vars.WORKSPACE_E2E_DATABASE_ALLOWLIST }}
+      NEXI_API_KEY: ${{ secrets.WORKSPACE_E2E_NEXI_API_KEY }}
+      NEXI_API_ORIGIN: ${{ vars.WORKSPACE_E2E_NEXI_API_ORIGIN }}
+      WORKSPACE_E2E_EXPECTED_CURRENCY: EUR
+      DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
+      DOTYPOS_API_TIMEOUT: ${{ vars.WORKSPACE_E2E_DOTYPOS_API_TIMEOUT }}
+      DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
+      DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
+      DOTYPOS_REFRESH_TOKEN: ${{ secrets.WORKSPACE_E2E_DOTYPOS_REFRESH_TOKEN }}
+      DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
+      DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
+      DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - run: npm i -g agent-browser
+
+      - run: agent-browser install
+
+      - run: bun run e2e:checkout
+        working-directory: apps/deskohub-workspace
