@@ -12,8 +12,8 @@ export const workspaceLocationMapImagePath = "/workspace-location-map.jpeg";
 export const workspaceLocationMapImageOptions = {
   lat: workspaceCoordinates.lat,
   lng: workspaceCoordinates.lng,
-  width: 1200,
-  height: 640,
-  zoom: 16,
+  width: 2400,
+  height: 1280,
+  zoom: 17,
   quality: 84,
 } as const;

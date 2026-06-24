@@ -15,7 +15,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { workspaceSiteConstants } from "@/shared/utils";
+import {
+  workspaceLocationMapImageOptions,
+  workspaceSiteConstants,
+} from "@/shared/utils";
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "./operational-event.repository";
 import type { ResendWebhookRuntimeConfigObj } from "./resend-webhook.config";
 
@@ -630,14 +633,7 @@ describe("ResendWebhookService", () => {
       expect(tableMapLabel.font).toContain("Sculpin");
       expect(tableMapLabel.fontfile).toContain("Sculpin/regular.ttf");
       expect(generateStaticMapImage).toHaveBeenCalledWith(
-        expect.objectContaining({
-          height: 640,
-          lat: workspaceSiteConstants.contact.coordinates.lat,
-          lng: workspaceSiteConstants.contact.coordinates.lng,
-          quality: 84,
-          width: 1200,
-          zoom: 16,
-        })
+        workspaceLocationMapImageOptions
       );
       expect(
         emailView.queryByText(m.checkoutEmailCustomerAccessBody({}, { locale }))
