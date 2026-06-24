@@ -1,9 +1,14 @@
+import { getCloudinaryImageUrl } from "@deskohub/cloudinary-image/url";
 import type { CloudinaryAsset } from "../backend/cloudinary.service";
+
+const galleryImageSize = 960;
+const lightboxImageSize = 1920;
 
 export type GalleryPhoto = {
   id: string;
   publicId: string;
   src: string;
+  fullSrc: string;
   width: number;
   height: number;
   alt: string;
@@ -29,7 +34,16 @@ export function toGalleryPhotos(
       {
         id: asset.public_id,
         publicId: asset.public_id,
-        src: asset.secure_url,
+        src: getCloudinaryImageUrl({
+          asset,
+          height: galleryImageSize,
+          width: galleryImageSize,
+        }),
+        fullSrc: getCloudinaryImageUrl({
+          asset,
+          height: lightboxImageSize,
+          width: lightboxImageSize,
+        }),
         width: asset.width,
         height: asset.height,
         alt,
