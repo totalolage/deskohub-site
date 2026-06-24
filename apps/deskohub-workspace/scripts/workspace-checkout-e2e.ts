@@ -362,7 +362,7 @@ const validatePostgres = async (
       pool,
       orderId,
       row.payment_attempt_id,
-      row.last_webhook_event_id,
+      row.webhook_id,
       data
     );
     log("Postgres checkout tables validated");
@@ -418,7 +418,7 @@ const readCheckoutRow = async (pool: Pool, orderId: string) => {
       wh.error_code as webhook_error_code
     from workspace_reservations wr
     left join payment_attempts pa on pa.id = wr.active_payment_attempt_id
-    left join webhook_events wh on wh.id = pa.last_webhook_event_id
+    left join webhook_events wh on wh.event_id = pa.last_webhook_event_id
     where wr.id = $1`,
     [orderId]
   );
@@ -513,7 +513,11 @@ const assertPostgresRow = (
     row.payment_failure_code === null,
     "payment failure code should be null"
   );
-  assert(row.webhook_id === row.last_webhook_event_id, "webhook id mismatch");
+  assert(row.webhook_id, "webhook id missing");
+  assert(
+    row.webhook_event_id === row.last_webhook_event_id,
+    "webhook event id mismatch"
+  );
   assert(row.webhook_provider === "nexi", "webhook provider should be nexi");
   assert(
     row.webhook_provider_order_id === row.provider_order_id,
