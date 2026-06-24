@@ -11,6 +11,7 @@ import cornerMask from "../images/corner.svg";
 import heroImage from "../images/hero.jpeg";
 import { LandingPageHeroScrollScene } from "./landing-page-hero-scroll-scene";
 import { LandingPageHexagon } from "./landing-page-hexagon";
+import { LandingPageParallaxLayer } from "./landing-page-parallax-layer";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
 type LandingPageHeroSectionProps = {
@@ -90,25 +91,43 @@ export function LandingPageHeroSection({
     <div className="relative min-h-(--hero-bottom-section-height)">
       <div className="absolute inset-0 top-8">
         <div
-          className="absolute left-0 top-0 h-32 w-32 bg-chilean-fire"
+          className="absolute left-0 top-0 h-32 w-32 overflow-hidden bg-chilean-fire"
           style={{
             maskImage: `url(${cornerMaskProps.src})`,
             maskSize: "cover",
           }}
         >
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageParallaxLayer
+            className="absolute inset-x-0 -top-1/4 -bottom-1/4"
+            from="-20%"
+            to="20%"
+          >
+            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          </LandingPageParallaxLayer>
         </div>
-        <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] bg-chilean-fire">
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+        <div className="absolute inset-x-0 bottom-0 top-[calc(8rem-3.075rem)] overflow-hidden bg-chilean-fire">
+          <LandingPageParallaxLayer
+            className="absolute inset-x-0 -top-1/4 -bottom-1/4"
+            from="-20%"
+            to="20%"
+          >
+            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          </LandingPageParallaxLayer>
         </div>
         <div
-          className="absolute right-0 top-0 h-32 w-32 bg-chilean-fire rotate-y-180"
+          className="absolute right-0 top-0 h-32 w-32 overflow-hidden bg-chilean-fire rotate-y-180"
           style={{
             maskImage: `url(${cornerMaskProps.src})`,
             maskSize: "cover",
           }}
         >
-          <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          <LandingPageParallaxLayer
+            className="absolute inset-x-0 -top-1/4 -bottom-1/4"
+            from="-20%"
+            to="20%"
+          >
+            <LandingPagePhotoCarouselBackgroundNoise className="bg-bottom" />
+          </LandingPageParallaxLayer>
         </div>
       </div>
     </div>
