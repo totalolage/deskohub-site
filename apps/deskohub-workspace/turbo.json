@@ -28,6 +28,7 @@
     },
     "test": {
       "dependsOn": [
+        "$TURBO_EXTENDS$",
         "@deskohub/dotypos#generate",
         "@deskohub/nexi#generate",
         "i18n:compile"
