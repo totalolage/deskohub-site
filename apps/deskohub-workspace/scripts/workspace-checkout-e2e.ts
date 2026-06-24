@@ -910,7 +910,7 @@ const makeCheckoutData = (aliasUrl: string) => {
   const name = `Workspace E2E ${runId}`;
   const phone = `+420735${runId.slice(-6)}`;
   const email = `delivered+workspace-e2e-${runId}@resend.dev`;
-  const date = futureIsoDate();
+  const date = futureIsoDate(runId);
   const params = new URLSearchParams({
     coffee: "false",
     date,
@@ -931,9 +931,10 @@ const makeCheckoutData = (aliasUrl: string) => {
   };
 };
 
-const futureIsoDate = () => {
+const futureIsoDate = (runId: string) => {
+  const offsetDays = 21 + (Number(runId) % 21);
   const date = new Date();
-  date.setUTCDate(date.getUTCDate() + 28);
+  date.setUTCDate(date.getUTCDate() + offsetDays);
   while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
     date.setUTCDate(date.getUTCDate() + 1);
   }
@@ -1048,8 +1049,8 @@ const log = (message: string) => process.stdout.write(`${redact(message)}\n`);
 const submitReservationScript = `
 (() => {
   const checkbox = document.querySelector('#reservation-privacy-consent');
-  if (!(checkbox instanceof HTMLInputElement)) throw new Error('privacy consent checkbox not found');
-  if (!checkbox.checked) checkbox.click();
+  if (!(checkbox instanceof HTMLButtonElement)) throw new Error('privacy consent checkbox not found');
+  if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
   const form = checkbox.closest('form') ?? document.querySelector('form');
   if (!(form instanceof HTMLFormElement)) throw new Error('reservation form not found');
   form.requestSubmit();
@@ -1060,8 +1061,8 @@ const submitReservationScript = `
 const submitPaymentScript = String.raw`
 (async () => {
   const checkbox = document.querySelector('#checkout-pay-legal-consent');
-  if (!(checkbox instanceof HTMLInputElement)) throw new Error('payment consent checkbox not found');
-  if (!checkbox.checked) checkbox.click();
+  if (!(checkbox instanceof HTMLButtonElement)) throw new Error('payment consent checkbox not found');
+  if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
   await new Promise((resolve) => setTimeout(resolve, 250));
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
