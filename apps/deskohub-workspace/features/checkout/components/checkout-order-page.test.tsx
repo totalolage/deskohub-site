@@ -6,9 +6,6 @@ mock.module("@/features/reservation/components/reservation-form", () => ({
   ReservationForm: () => null,
   ReservationFormFallback: () => null,
 }));
-mock.module("./checkout-order-return-redirect", () => ({
-  CheckoutOrderReturnRedirect: () => null,
-}));
 
 const getFallbackProps = async () => {
   const { CheckoutOrderPage } = await import("./checkout-order-page");
