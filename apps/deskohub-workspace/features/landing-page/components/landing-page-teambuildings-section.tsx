@@ -45,11 +45,11 @@ export function LandingPageTeambuildingsSection({
   return (
     <section
       id={teambuildingsSectionId}
-      className="bg-[linear-gradient(180deg,#05083f_0%,#0d1258_45%,#15123e_100%)] py-20 sm:py-24"
+      className="bg-white py-20 sm:py-24"
     >
       <Container>
         <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
-          <Card className="rounded-[2rem] border-white/12 bg-[linear-gradient(145deg,rgba(255,247,236,0.98)_0%,rgba(255,255,255,0.97)_40%,rgba(241,232,214,0.96)_100%)] shadow-[0_38px_95px_-54px_rgba(0,0,0,0.55)] backdrop-blur-sm">
+          <Card className="rounded-4xl border-white/12 bg-[linear-gradient(145deg,rgba(255,247,236,0.98)_0%,rgba(255,255,255,0.97)_40%,rgba(241,232,214,0.96)_100%)] shadow-[0_38px_95px_-54px_rgba(0,0,0,0.55)] backdrop-blur-sm">
             <CardHeader>
               <Badge>
                 {m.landingTeambuildingsSectionLabel({}, { locale })}
@@ -92,7 +92,7 @@ export function LandingPageTeambuildingsSection({
             </CardContent>
           </Card>
 
-          <Card className="rounded-[2rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.05)_100%)] shadow-[0_34px_90px_-45px_rgba(0,0,0,0.65)] backdrop-blur-md">
+          <Card className="rounded-4xl border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.12)_0%,rgba(255,255,255,0.05)_100%)] shadow-[0_34px_90px_-45px_rgba(0,0,0,0.65)] backdrop-blur-md">
             <CardHeader>
               <Badge className="border-white/12 bg-white/8">
                 {m.landingUiTeamPerksTitle({}, { locale })}
@@ -119,7 +119,7 @@ export function LandingPageTeambuildingsSection({
 
               <Link
                 href={contactHref}
-                className="group flex items-center justify-between rounded-[1.5rem] border border-white/10 bg-white/4 px-5 py-4 text-sm leading-7 transition-colors hover:bg-white/10"
+                className="group flex items-center justify-between rounded-3xl border border-white/10 bg-white/4 px-5 py-4 text-sm leading-7 transition-colors hover:bg-white/10"
               >
                 <span>
                   {m.landingTeambuildingsInquiryPrompt({}, { locale })}

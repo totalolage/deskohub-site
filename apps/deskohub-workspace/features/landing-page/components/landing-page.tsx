@@ -47,12 +47,12 @@ export function LandingPage({ locale }: LandingPageProps) {
         contactEmail={contactEmail}
       />
 
-      <LandingPageExperiencesSection
-        locale={locale}
-        ttrpgSectionId={siteHeaderSectionIds.ttrpg}
-        eventsSectionId={siteHeaderSectionIds.events}
-        contactHref={contactHref}
-      />
+      {/* <LandingPageExperiencesSection */}
+      {/*   locale={locale} */}
+      {/*   ttrpgSectionId={siteHeaderSectionIds.ttrpg} */}
+      {/*   eventsSectionId={siteHeaderSectionIds.events} */}
+      {/*   contactHref={contactHref} */}
+      {/* /> */}
 
       <LandingPageTeambuildingsSection
         locale={locale}
