@@ -53,7 +53,13 @@ export function LandingPage({ locale }: LandingPageProps) {
       {/*   contactHref={contactHref} */}
       {/* /> */}
 
-      {/* Keep old shared hashes valid while the experiences section is hidden. */}
+      <LandingPageTeambuildingsSection
+        locale={locale}
+        teambuildingsSectionId={siteHeaderSectionIds.teambuildings}
+        contactHref={contactHref}
+      />
+
+      {/* Legacy event/TTRPG hashes land by contact while those sections are hidden. */}
       <div
         id={siteHeaderSectionIds.events}
         aria-hidden="true"
@@ -63,12 +69,6 @@ export function LandingPage({ locale }: LandingPageProps) {
         id={siteHeaderSectionIds.ttrpg}
         aria-hidden="true"
         className="scroll-mt-[var(--anchor-scroll-offset)]"
-      />
-
-      <LandingPageTeambuildingsSection
-        locale={locale}
-        teambuildingsSectionId={siteHeaderSectionIds.teambuildings}
-        contactHref={contactHref}
       />
 
       <LandingPageFaqContactSection
