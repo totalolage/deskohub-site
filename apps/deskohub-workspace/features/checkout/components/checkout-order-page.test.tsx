@@ -6,28 +6,29 @@ mock.module("@/features/reservation/components/reservation-form", () => ({
   ReservationForm: () => null,
   ReservationFormFallback: () => null,
 }));
+mock.module("./checkout-order-return-redirect", () => ({
+  CheckoutOrderReturnRedirect: () => null,
+}));
 
-const initialAvailabilityQuery = {
-  from: "2026-01-01",
-  to: "2026-07-01",
-  entryTier: "basic",
-} as const;
-
-const getFallbackProps = async (
-  searchParams: Record<string, string | undefined>
-) => {
+const getFallbackProps = async () => {
   const { CheckoutOrderPage } = await import("./checkout-order-page");
   const page = CheckoutOrderPage({
-    initialAvailabilityQuery,
     locale: "en-US",
-    searchParams,
   });
 
   if (!isValidElement(page)) {
     throw new Error("CheckoutOrderPage did not return a React element");
   }
 
-  const suspense = (page.props as { children: ReactElement }).children;
+  const children = (page.props as { children: ReactElement[] }).children;
+  const suspense = children.find(
+    (child) => isValidElement(child) && "fallback" in child.props
+  );
+
+  if (!isValidElement(suspense)) {
+    throw new Error("CheckoutOrderPage did not render a Suspense boundary");
+  }
+
   const fallback = (suspense.props as { fallback: ReactNode }).fallback;
 
   if (!isValidElement(fallback)) {
@@ -38,13 +39,7 @@ const getFallbackProps = async (
 };
 
 describe("CheckoutOrderPage", () => {
-  test("reserves monitor option fallback space for workstation tier query", async () => {
-    expect((await getFallbackProps({ tier: "profi" })).showMonitorOption).toBe(
-      true
-    );
-  });
-
-  test("does not reserve monitor option fallback space by default", async () => {
-    expect((await getFallbackProps({})).showMonitorOption).toBe(false);
+  test("uses a static generic reservation fallback", async () => {
+    expect((await getFallbackProps()).showMonitorOption).toBe(false);
   });
 });

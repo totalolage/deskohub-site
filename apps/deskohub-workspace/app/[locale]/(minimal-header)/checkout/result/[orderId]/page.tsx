@@ -1,5 +1,6 @@
 import { Effect, Option, Ref, Schema } from "effect";
 import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
 import {
   CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
@@ -11,7 +12,6 @@ import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import type { SearchParamsRecord } from "@/shared/utils";
 
-export const dynamic = "force-dynamic";
 export const maxDuration = 45;
 
 type LocalizedCheckoutResultPageProps = {
@@ -117,6 +117,7 @@ export default async function LocalizedCheckoutResultPage({
   params,
   searchParams,
 }: LocalizedCheckoutResultPageProps) {
+  await connection();
   const decodedParams = decodeCheckoutResultParams(await params);
   const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
   const rawSearchParams = await searchParams;

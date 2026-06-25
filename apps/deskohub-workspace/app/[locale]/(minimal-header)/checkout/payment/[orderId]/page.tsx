@@ -1,6 +1,7 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
 import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
 import type { CheckoutStatusReturnOutcome } from "@/features/checkout/backend/checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
@@ -14,8 +15,6 @@ import {
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
-
-export const dynamic = "force-dynamic";
 
 type LocalizedCheckoutPaymentPageProps = {
   params: Promise<{ locale: string; orderId: string }>;
@@ -101,6 +100,7 @@ export default async function LocalizedCheckoutPaymentPage({
   params,
   searchParams,
 }: LocalizedCheckoutPaymentPageProps) {
+  await connection();
   const decodedParams = decodeCheckoutPaymentParams(await params);
   const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 

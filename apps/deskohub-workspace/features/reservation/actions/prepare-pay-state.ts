@@ -57,6 +57,7 @@ import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
 import {
+  WorkspaceAvailabilityInventoryService,
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLive,
 } from "@/features/reservation/backend/workspace-availability.service";
@@ -304,6 +305,12 @@ const waitForPendingHoldCreation = Effect.fn(
 const EarlyReservationGoogleCalendarWorkspaceLimitationsLive =
   GoogleCalendarWorkspaceLimitationsService.Live.pipe(
     Layer.provide(GoogleCalendarServiceLive)
+  );
+
+const EarlyReservationWorkspaceAvailabilityInventoryServiceLive =
+  WorkspaceAvailabilityInventoryService.Live.pipe(
+    Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
+    Layer.provide(DotyposServiceLive)
   );
 
 export const prepareWorkspacePayStateEffect = Effect.fn(
@@ -774,8 +781,7 @@ const preparePayStateAction = createEffectSafeAction(
     ReservationHoldCleanupServiceLiveWithDependencies,
     WorkspaceAvailabilityServiceLive.pipe(
       Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
-      Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
-      Layer.provide(DotyposServiceLive)
+      Layer.provide(EarlyReservationWorkspaceAvailabilityInventoryServiceLive)
     ),
     WorkspaceTableAssignmentServiceLive.pipe(Layer.provide(DotyposServiceLive)),
     WorkspaceCheckoutAccessCodeServiceLive,

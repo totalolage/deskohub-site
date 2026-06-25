@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import { requireWorkspaceTestingOnlyAccess } from "@/shared/utils/testing-only";
 
 type TestingOnlyLayoutProps = {
@@ -10,5 +10,5 @@ export default function TestingOnlyLayout({
 }: TestingOnlyLayoutProps) {
   requireWorkspaceTestingOnlyAccess();
 
-  return children;
+  return <Suspense fallback={null}>{children}</Suspense>;
 }

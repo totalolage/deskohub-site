@@ -49,7 +49,10 @@ import {
   tierIncludesCourtesyCoffee,
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
-import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
+import {
+  getReservationDefaultValuesFromSearchParams,
+  getWorkspaceAvailabilityQueryFromReservationSearchParams,
+} from "@/features/reservation/schemas/reservation-checkout-query";
 import {
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
@@ -85,7 +88,6 @@ import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
 
 type ReservationFormProps = {
-  initialAvailabilityQuery: WorkspaceAvailabilityQuery;
   locale: Locale;
   showIntro?: boolean;
 };
@@ -228,7 +230,6 @@ const createReservationIntentId = () =>
   `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export function ReservationForm({
-  initialAvailabilityQuery,
   locale,
   showIntro = true,
 }: ReservationFormProps) {
@@ -246,6 +247,11 @@ export function ReservationForm({
   const schema = useMemo(() => getReservationSchema(), []);
   const defaultValues = useMemo(
     () => getReservationDefaultValuesFromSearchParams(searchParams),
+    [searchParams]
+  );
+  const initialAvailabilityQuery = useMemo(
+    () =>
+      getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams),
     [searchParams]
   );
   const form = useForm<ReservationInput, unknown, ReservationData>({

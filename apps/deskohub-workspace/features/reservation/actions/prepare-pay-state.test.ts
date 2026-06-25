@@ -104,6 +104,7 @@ describe("prepareWorkspacePayStateEffect", () => {
     }).pipe(
       Effect.provide(
         Layer.succeed(WorkspaceAvailabilityService, {
+          getAdvisoryAvailability: mock(() => Effect.die("unused")),
           getAvailability: mock(() => Effect.die("unused")),
           ensureAvailable,
         } satisfies WorkspaceAvailabilityServiceType)

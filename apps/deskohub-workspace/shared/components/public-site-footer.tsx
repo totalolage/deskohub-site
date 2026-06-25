@@ -7,11 +7,12 @@ type PublicSiteFooterProps = {
   locale: Locale;
 };
 
-export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
+export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
   const localePath = `/${locale}`;
   const reservationPath = `${localePath}/checkout/order`;
   const companyExtractPath = "/official-company-extract";
   const companyAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
+  const copyrightYear = await getFooterCopyrightYear();
 
   return (
     <footer className="border-t border-white/12 bg-navy-blue text-white">
@@ -139,7 +140,7 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
         <div className="mt-10 border-t border-white/10 pt-5 text-sm text-white/56">
           {m.footerCopyright(
             {
-              year: new Date().getFullYear(),
+              year: copyrightYear,
               companyName: workspaceSiteConstants.brand.legalName,
             },
             { locale }
@@ -148,4 +149,9 @@ export function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
       </Container>
     </footer>
   );
+}
+
+async function getFooterCopyrightYear() {
+  "use cache";
+  return new Date().getFullYear();
 }

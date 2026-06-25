@@ -4,31 +4,25 @@ import {
   ReservationForm,
   ReservationFormFallback,
 } from "@/features/reservation/components/reservation-form";
-import { tierRequiresMonitorOption } from "@/features/reservation/schemas/reservation";
-import { getReservationDefaultValuesFromSearchParams } from "@/features/reservation/schemas/reservation-checkout-query";
-import type { WorkspaceAvailabilityQuery } from "@/features/reservation/schemas/workspace-availability";
-import type { SupportedSearchParams } from "@/shared/utils";
+import {
+  reservationDefaultValues,
+  tierRequiresMonitorOption,
+} from "@/features/reservation/schemas/reservation";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
+import { CheckoutOrderReturnRedirect } from "./checkout-order-return-redirect";
 
 type CheckoutOrderPageProps = {
-  initialAvailabilityQuery: WorkspaceAvailabilityQuery;
   locale: Locale;
-  searchParams: SupportedSearchParams;
 };
 
-export function CheckoutOrderPage({
-  initialAvailabilityQuery,
-  locale,
-  searchParams,
-}: CheckoutOrderPageProps) {
-  const fallbackDefaultValues =
-    getReservationDefaultValuesFromSearchParams(searchParams);
+export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
   const showMonitorOptionFallback = tierRequiresMonitorOption(
-    fallbackDefaultValues.entryTier
+    reservationDefaultValues.entryTier
   );
 
   return (
     <CheckoutFlowLayout activeStepKey="order" locale={locale}>
+      <CheckoutOrderReturnRedirect locale={locale} />
       {/* Suspense isolates useSearchParams() hydration, not data fetching or lazy loading. */}
       <Suspense
         fallback={
@@ -39,11 +33,7 @@ export function CheckoutOrderPage({
           />
         }
       >
-        <ReservationForm
-          initialAvailabilityQuery={initialAvailabilityQuery}
-          locale={locale}
-          showIntro={false}
-        />
+        <ReservationForm locale={locale} showIntro={false} />
       </Suspense>
     </CheckoutFlowLayout>
   );

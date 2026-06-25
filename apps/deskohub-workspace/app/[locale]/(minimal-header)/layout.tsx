@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { type ReactNode, Suspense } from "react";
 import type { Locale } from "@/features/i18n";
 import { MinimalSiteHeader } from "@/shared/components/minimal-site-header";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
@@ -22,7 +22,7 @@ export default async function MinimalHeaderLayout({
         currentLocale={locale}
         languageLabels={languageLabels}
       />
-      {children}
+      <Suspense fallback={null}>{children}</Suspense>
       <PublicSiteFooter locale={locale} />
     </>
   );

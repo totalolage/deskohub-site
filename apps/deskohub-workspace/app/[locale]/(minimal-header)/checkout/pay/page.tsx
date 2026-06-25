@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
 import {
   openPayState,
   payStateTokenQueryParam,
@@ -25,8 +26,6 @@ import {
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
-
-export const dynamic = "force-dynamic";
 
 type LocalizedCheckoutPayPageProps = {
   params: Promise<{ locale: string }>;
@@ -73,6 +72,7 @@ export default async function LocalizedCheckoutPayPage({
   params,
   searchParams,
 }: LocalizedCheckoutPayPageProps) {
+  await connection();
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
