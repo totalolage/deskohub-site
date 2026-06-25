@@ -40,9 +40,25 @@ export const getConfirmedDotyposCustomerDiscount = Effect.fn(
     },
     { lookupFields: ["email"] }
   );
-  const confirmedLookup = yield* failClosedOnAmbiguousDotyposCustomer(lookup);
 
-  return confirmedLookup._tag === "Matched" && confirmedLookup.customer
-    ? yield* dotypos.getCustomerDiscount(confirmedLookup.customer)
-    : undefined;
+  if (lookup._tag === "Matched") {
+    return yield* dotypos.getCustomerDiscount(lookup.customer);
+  }
+
+  if (lookup._tag === "NotFound") {
+    return undefined;
+  }
+
+  // Ambiguous pre-reservation lookups are not a confirmed discount. The final
+  // checkout recalculates by the persisted Dotypos customer ID.
+  return undefined;
+});
+
+export const getConfirmedDotyposCustomerDiscountById = Effect.fn(
+  "checkout.getConfirmedDotyposCustomerDiscountById"
+)(function* (customerId: string) {
+  const dotypos = yield* DotyposService;
+  const customer = yield* dotypos.getCustomer(customerId);
+
+  return yield* dotypos.getCustomerDiscount(customer);
 });
