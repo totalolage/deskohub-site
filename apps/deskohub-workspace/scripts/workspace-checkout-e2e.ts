@@ -406,11 +406,17 @@ const requireHostedPaymentRef = async (
   labels: readonly string[],
   frameLabels: readonly string[]
 ) => {
-  return await poll(
-    async () => findHostedPaymentRef(run, session, labels, frameLabels),
-    60_000,
-    `Nexi target ${labels.join(" / ")}`
-  );
+  try {
+    return await poll(
+      async () => findHostedPaymentRef(run, session, labels, frameLabels),
+      60_000,
+      `Nexi target ${labels.join(" / ")}`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const snapshot = await readInteractiveSnapshot(run, session);
+    throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
+  }
 };
 
 const tryFillHostedPaymentField = async (
@@ -451,29 +457,53 @@ const findHostedPaymentRef = async (
   const directRef = findSnapshotRef(snapshot, labels);
   if (directRef) return { framed: false, ref: directRef };
 
-  const frameRef = findSnapshotRef(snapshot, frameLabels);
-  if (!frameRef) return;
+  for (const frame of findHostedPaymentFrames(snapshot, frameLabels)) {
+    const switched = await run(
+      "agent-browser",
+      ["--session", session, "frame", frame.ref],
+      { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
+    );
+    if (switched.exitCode !== 0) continue;
 
-  const switched = await run(
-    "agent-browser",
-    ["--session", session, "frame", frameRef],
-    { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
-  );
-  if (switched.exitCode !== 0) return;
+    let shouldRestoreMainFrame = true;
+    try {
+      const frameSnapshot = await readInteractiveSnapshot(run, session);
+      const frameFieldRef =
+        findSnapshotRef(frameSnapshot, labels) ??
+        (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined);
+      if (!frameFieldRef) continue;
 
-  let shouldRestoreMainFrame = true;
-  try {
-    const frameSnapshot = await readInteractiveSnapshot(run, session);
-    const frameFieldRef =
-      findSnapshotRef(frameSnapshot, labels) ??
-      findFirstTextFieldRef(frameSnapshot);
-    if (!frameFieldRef) return;
-
-    shouldRestoreMainFrame = false;
-    return { framed: true, ref: frameFieldRef };
-  } finally {
-    if (shouldRestoreMainFrame) await switchToMainFrame(run, session);
+      shouldRestoreMainFrame = false;
+      return { framed: true, ref: frameFieldRef };
+    } finally {
+      if (shouldRestoreMainFrame) await switchToMainFrame(run, session);
+    }
   }
+};
+
+type HostedPaymentFrame = {
+  readonly exact: boolean;
+  readonly ref: string;
+};
+
+const findHostedPaymentFrames = (
+  snapshot: string,
+  frameLabels: readonly string[]
+) => {
+  const frames = new Map<string, HostedPaymentFrame>();
+  for (const line of snapshot.split("\n")) {
+    const ref = line.match(/@e\d+/)?.[0];
+    if (!ref || !/\b(?:frame|iframe)\b/i.test(line)) continue;
+
+    const exact = frameLabels.some((label) =>
+      line.toLowerCase().includes(label.toLowerCase())
+    );
+    frames.set(ref, { exact, ref });
+  }
+
+  return [...frames.values()].sort((left, right) =>
+    left.exact === right.exact ? 0 : left.exact ? -1 : 1
+  );
 };
 
 type HostedPaymentClickTarget = {
@@ -535,6 +565,26 @@ const findFirstTextFieldRef = (snapshot: string) => {
     if (ref && /\[(textbox|input)\b/i.test(line)) return ref;
   }
 };
+
+const summarizeHostedPaymentSnapshot = (snapshot: string) => {
+  const lines = snapshot
+    .split("\n")
+    .filter((line) =>
+      /\b(?:button|frame|iframe|input|textbox|link)\b/i.test(line)
+    )
+    .slice(0, 80)
+    .map(sanitizeDiagnosticLine)
+    .join("\n");
+
+  return lines
+    ? `Nexi HPP snapshot summary:\n${lines}`
+    : "Nexi HPP snapshot summary unavailable";
+};
+
+const sanitizeDiagnosticLine = (line: string) =>
+  redact(line)
+    .replace(/https?:\/\/\S+/g, "[url]")
+    .replace(/[A-Za-z0-9_-]{32,}/g, "[token]");
 
 const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
   for (const line of snapshot.split("\n")) {
