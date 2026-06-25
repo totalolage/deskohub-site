@@ -516,24 +516,33 @@ const clickHostedPaymentTarget = async (
   label: string,
   targets: readonly HostedPaymentClickTarget[]
 ) => {
-  await poll(
-    async () => {
-      const ref = findSnapshotRef(
-        await readInteractiveSnapshot(run, session),
-        targets.map((target) => target.value)
-      );
-      if (!ref) return;
+  const labels = targets.map((target) => target.value);
 
-      const result = await run(
-        "agent-browser",
-        ["--session", session, "click", ref],
-        { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
-      );
-      return result.exitCode === 0 ? true : undefined;
-    },
-    CHECKOUT_TIMEOUT_MS,
-    `Nexi ${label} action`
-  );
+  try {
+    await poll(
+      async () => {
+        const target = await findHostedPaymentRef(run, session, labels, []);
+        if (!target) return;
+
+        try {
+          const result = await run(
+            "agent-browser",
+            ["--session", session, "click", target.ref],
+            { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
+          );
+          return result.exitCode === 0 ? true : undefined;
+        } finally {
+          if (target.framed) await switchToMainFrame(run, session);
+        }
+      },
+      CHECKOUT_TIMEOUT_MS,
+      `Nexi ${label} action`
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const snapshot = await readInteractiveSnapshot(run, session);
+    throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
+  }
 };
 
 const readInteractiveSnapshot = async (
