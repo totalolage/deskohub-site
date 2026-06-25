@@ -1,7 +1,6 @@
 import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { LandingPageExperiencesSection } from "./landing-page-experiences-section";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
 import {
   LandingPageHeroSection,
@@ -30,7 +29,7 @@ export function LandingPage({ locale }: LandingPageProps) {
         locale={locale}
         overviewSectionId={siteHeaderSectionIds.overview}
         reservationHref={reservationHref}
-        eventsHref={localizedHash(`#${siteHeaderSectionIds.events}`)}
+        eventsHref={contactHref}
       />
 
       <LandingPagePhotoCarouselSection />

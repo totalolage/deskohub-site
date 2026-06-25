@@ -43,10 +43,7 @@ export function LandingPageTeambuildingsSection({
   ];
 
   return (
-    <section
-      id={teambuildingsSectionId}
-      className="bg-white py-20 sm:py-24"
-    >
+    <section id={teambuildingsSectionId} className="bg-white py-20 sm:py-24">
       <Container>
         <div className="grid gap-8 lg:grid-cols-[1.02fr_0.98fr] lg:items-start">
           <Card className="rounded-4xl border-white/12 bg-[linear-gradient(145deg,rgba(255,247,236,0.98)_0%,rgba(255,255,255,0.97)_40%,rgba(241,232,214,0.96)_100%)] shadow-[0_38px_95px_-54px_rgba(0,0,0,0.55)] backdrop-blur-sm">

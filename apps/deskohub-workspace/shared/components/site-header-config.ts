@@ -26,10 +26,6 @@ export function getSiteHeaderConfig(locale: Locale) {
         href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
       },
       {
-        label: m.landingNavEvents({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.events}`),
-      },
-      {
         label: m.landingNavGallery({}, { locale }),
         href: `${localePath}/gallery`,
       },
