@@ -1147,43 +1147,72 @@ const assertFulfilledStatusScript = String.raw`
 
 const fillNexiScript = (data: ReturnType<typeof makeCheckoutData>) => `
 (async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const getDocuments = () => [
+    document,
+    ...[...document.querySelectorAll('iframe')].flatMap((frame) => {
+      try {
+        return frame.contentDocument ? [frame.contentDocument] : [];
+      } catch {
+        return [];
+      }
+    }),
+  ];
   const setValue = (input, value) => {
     input.focus();
-    input.value = value;
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
     input.dispatchEvent(new Event('input', { bubbles: true }));
     input.dispatchEvent(new Event('change', { bubbles: true }));
   };
   const byPattern = (patterns) => {
-    const inputs = [...document.querySelectorAll('input')];
+    const inputs = getDocuments().flatMap((doc) => [...doc.querySelectorAll('input')]);
     return inputs.find((input) => {
-      const text = [input.name, input.id, input.placeholder, input.ariaLabel, input.autocomplete].join(' ').toLowerCase();
+      const labelText = [...(input.labels ?? [])].map((label) => label.textContent).join(' ');
+      const text = [input.name, input.id, input.placeholder, input.ariaLabel, input.autocomplete, labelText]
+        .join(' ')
+        .toLowerCase();
       return patterns.some((pattern) => pattern.test(text));
     });
   };
-  const clickText = (pattern) => {
-    const candidate = [...document.querySelectorAll('button,a,input,[role="button"],label,span,div')]
+  const clickText = async (pattern) => {
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      const candidate = getDocuments().flatMap((doc) => [...doc.querySelectorAll('button,a,input,[role="button"],label,span,div')])
       .find((element) => pattern.test((element.textContent || element.value || '').trim()));
-    if (!candidate) throw new Error('click target not found: ' + pattern);
-    candidate.click();
+      if (candidate) {
+        candidate.click();
+        return;
+      }
+      await wait(500);
+    }
+    throw new Error('click target not found: ' + pattern);
   };
-  const card = byPattern([/card.*number/, /pan/, /numero.*carta/, /cc-number/]);
-  const expiry = byPattern([/expir/, /scadenza/, /cc-exp/]);
-  const cvv = byPattern([/cvv/, /cvc/, /security/, /cc-csc/]);
+  const waitForFields = async () => {
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      const card = byPattern([/card.*number/, /numero.*carta/, /cc-number/, /pan/]);
+      const expiry = byPattern([/expir/, /scadenza/, /cc-exp/, /expiry/]);
+      const cvv = byPattern([/cvv/, /cvc/, /security/, /cc-csc/]);
+      if (card && expiry && cvv) return { card, expiry, cvv };
+      await wait(500);
+    }
+    throw new Error('Nexi card fields not found');
+  };
+  const { card, expiry, cvv } = await waitForFields();
   const holder = byPattern([/holder/, /card.*name/, /titolare/, /name/]);
   const email = byPattern([/email/]);
-  if (!card || !expiry || !cvv) throw new Error('Nexi card fields not found');
   setValue(card, '4509034543615006');
   setValue(expiry, '1028');
   setValue(cvv, '298');
   if (holder) setValue(holder, ${JSON.stringify(data.name)});
   if (email) setValue(email, ${JSON.stringify(data.email)});
-  clickText(/continue|continua/i);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  clickText(/^pay$|^paga$/i);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  clickText(/autenticazione riuscita|authentication successful/i);
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-  clickText(/back to the shop|torna al negozio/i);
+  await clickText(/continue|continua/i);
+  await wait(1000);
+  await clickText(/^pay$|^paga$/i);
+  await wait(1000);
+  await clickText(/autenticazione riuscita|authentication successful/i);
+  await wait(1000);
+  await clickText(/back to the shop|torna al negozio/i);
   return location.href;
 })()
 `;
