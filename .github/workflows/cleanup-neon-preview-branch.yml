@@ -1,0 +1,32 @@
+name: Cleanup Neon preview branch
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions: {}
+
+jobs:
+  delete-branch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate branch name
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if ! git check-ref-format --branch "$HEAD_REF" >/dev/null; then
+            echo "Unsupported branch name: $HEAD_REF" >&2
+            exit 1
+          fi
+
+          if printf '%s' "$HEAD_REF" | grep -q '["$`\\]'; then
+            echo "Branch name contains characters unsafe for delete-branch-action" >&2
+            exit 1
+          fi
+
+      - uses: neondatabase/delete-branch-action@v3
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: preview/${{ github.head_ref }}
+          api_key: ${{ secrets.NEON_API_KEY }}
