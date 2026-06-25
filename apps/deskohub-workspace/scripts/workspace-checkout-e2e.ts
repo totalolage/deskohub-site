@@ -492,7 +492,7 @@ const findHostedPaymentFrames = (
 ) => {
   const frames = new Map<string, HostedPaymentFrame>();
   for (const line of snapshot.split("\n")) {
-    const ref = line.match(/@e\d+/)?.[0];
+    const ref = getSnapshotRef(line);
     if (!ref || !/\b(?:frame|iframe)\b/i.test(line)) continue;
 
     const exact = frameLabels.some((label) =>
@@ -561,7 +561,7 @@ const switchToMainFrame = async (
 
 const findFirstTextFieldRef = (snapshot: string) => {
   for (const line of snapshot.split("\n")) {
-    const ref = line.match(/@e\d+/)?.[0];
+    const ref = getSnapshotRef(line);
     if (ref && /\[(textbox|input)\b/i.test(line)) return ref;
   }
 };
@@ -588,7 +588,7 @@ const sanitizeDiagnosticLine = (line: string) =>
 
 const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
   for (const line of snapshot.split("\n")) {
-    const ref = line.match(/@e\d+/)?.[0];
+    const ref = getSnapshotRef(line);
     if (!ref) continue;
 
     const name = line
@@ -600,7 +600,7 @@ const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
   }
 
   for (const line of snapshot.split("\n")) {
-    const ref = line.match(/@e\d+/)?.[0];
+    const ref = getSnapshotRef(line);
     if (!ref) continue;
 
     const lowerLine = line.toLowerCase();
@@ -608,6 +608,10 @@ const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
       return ref;
   }
 };
+
+const getSnapshotRef = (line: string) =>
+  line.match(/\[ref=(e\d+)\]/)?.[1]?.replace(/^/, "@") ??
+  line.match(/@e\d+/)?.[0];
 
 const waitForBrowserUrl = async ({
   description,
