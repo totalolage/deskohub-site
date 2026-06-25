@@ -1430,7 +1430,7 @@ const submitReservationScript = `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 30000;
+    const deadline = Date.now() + 25000;
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);
@@ -1446,7 +1446,7 @@ const submitReservationScript = `
   const button = form.querySelector('button[type="submit"]');
   if (!(button instanceof HTMLButtonElement)) throw new Error('reservation submit button not found');
   await waitUntil(() => !button.disabled, 'reservation submit button stayed disabled');
-  button.click();
+  setTimeout(() => button.click(), 0);
   return location.href;
 })()
 `;
@@ -1455,7 +1455,7 @@ const submitPaymentScript = String.raw`
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 30000;
+    const deadline = Date.now() + 25000;
     while (Date.now() < deadline) {
       if (predicate()) return;
       await wait(250);
@@ -1469,7 +1469,7 @@ const submitPaymentScript = String.raw`
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
   await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
-  button.click();
+  setTimeout(() => button.click(), 0);
   return location.href;
 })()
 `;
