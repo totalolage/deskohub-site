@@ -6,6 +6,8 @@ type WorkspaceMapPreviewPageProps = {
   params: Promise<{ locale: string }>;
 };
 
+export const dynamic = "force-dynamic";
+
 const workspaceLocationMapWidth = 1200;
 const workspaceLocationMapHeight = 640;
 const workspaceMapUrl = `https://www.google.com/maps/dir/?api=1&destination=${workspaceSiteConstants.contact.coordinates.lat},${workspaceSiteConstants.contact.coordinates.lng}`;
