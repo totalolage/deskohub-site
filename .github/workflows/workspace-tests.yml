@@ -76,9 +76,9 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
-      - run: npm i -g agent-browser
+      - run: bun add -g agent-browser
 
-      - run: agent-browser install
+      - run: agent-browser install --with-deps
 
       - run: bun run e2e:checkout
         working-directory: apps/deskohub-workspace

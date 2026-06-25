@@ -106,6 +106,21 @@ const main = async () => {
     assertSafeDatabaseUrl(pulledDatabaseUrl, "Vercel preview DATABASE_URL");
     assertSameDatabaseUrl(pulledDatabaseUrl, datasourceConfig.databaseUrl);
 
+    const pulledUnpooledDatabaseUrl = pulledEnv
+      .get("DATABASE_URL_UNPOOLED")
+      ?.trim();
+    if (pulledUnpooledDatabaseUrl) {
+      addRedaction(pulledUnpooledDatabaseUrl);
+      assertSafeDatabaseUrl(
+        pulledUnpooledDatabaseUrl,
+        "Vercel preview DATABASE_URL_UNPOOLED"
+      );
+      assertSameDatabaseUrl(
+        pulledUnpooledDatabaseUrl,
+        datasourceConfig.databaseUrl
+      );
+    }
+
     const deploy = await run(
       "bunx",
       [
@@ -189,12 +204,13 @@ const makeRunner =
       allowFailure?: boolean;
       cwd?: string;
       input?: string;
+      logCommand?: boolean;
       logOutput?: boolean;
       timeoutMs?: number;
     } = {}
   ) => {
     const printable = redact([command, ...args].join(" "));
-    log(`$ ${printable}`);
+    if (options.logCommand !== false) log(`$ ${printable}`);
 
     const child = Bun.spawn([command, ...args], {
       cwd: options.cwd,
@@ -231,7 +247,7 @@ const makeRunner =
 
     if (exitCode !== 0 && !options.allowFailure) {
       throw new Error(
-        `${printable} failed with ${exitCode}\n${result.stdout}\n${result.stderr}`.trim()
+        `${options.logCommand === false ? command : printable} failed with ${exitCode}\n${result.stdout}\n${result.stderr}`.trim()
       );
     }
 
@@ -257,7 +273,10 @@ const completeCheckout = async ({
   const headers = config.bypassSecret
     ? [
         "--headers",
-        JSON.stringify({ "x-vercel-protection-bypass": config.bypassSecret }),
+        JSON.stringify({
+          "x-vercel-protection-bypass": config.bypassSecret,
+          "x-vercel-set-bypass-cookie": "true",
+        }),
       ]
     : [];
 
@@ -315,7 +334,6 @@ const completeNexiHostedPayment = async ({
   session: string;
 }) => {
   addRedaction(NEXI_TEST_CARD_NUMBER);
-  addRedaction(NEXI_TEST_CVV);
 
   await fillHostedPaymentField(
     run,
@@ -392,6 +410,7 @@ const fillHostedPaymentField = async (
       "agent-browser",
       ["--session", session, "fill", target.ref, value],
       {
+        logCommand: false,
         timeoutMs: 60_000,
       }
     );
@@ -434,6 +453,7 @@ const tryFillHostedPaymentField = async (
       ["--session", session, "fill", target.ref, value],
       {
         allowFailure: true,
+        logCommand: false,
         timeoutMs: 30_000,
       }
     );
@@ -699,7 +719,10 @@ const assertFulfilledStatusPage = async ({
   const headers = config.bypassSecret
     ? [
         "--headers",
-        JSON.stringify({ "x-vercel-protection-bypass": config.bypassSecret }),
+        JSON.stringify({
+          "x-vercel-protection-bypass": config.bypassSecret,
+          "x-vercel-set-bypass-cookie": "true",
+        }),
       ]
     : [];
 
@@ -1266,7 +1289,7 @@ const makeCheckoutData = (aliasUrl: string) => {
     .slice(0, 14);
   const name = `Workspace E2E ${runId}`;
   const phone = `+420735${runId.slice(-6)}`;
-  const email = "delivered@resend.dev";
+  const email = `delivered+${runId}@resend.dev`;
   const date = futureIsoDate(runId);
   const params = new URLSearchParams({
     coffee: "false",
@@ -1453,6 +1476,17 @@ const submitPaymentScript = String.raw`
 
 const browserDiagnosticsScript = String.raw`
 (() => {
+  const cleanUrl = (value) => {
+    try {
+      const url = new URL(value);
+      for (const key of ['payState', 'checkoutToken', '_vercel_share', 'x-vercel-protection-bypass']) {
+        if (url.searchParams.has(key)) url.searchParams.set(key, '[redacted]');
+      }
+      return url.toString();
+    } catch {
+      return '[unavailable]';
+    }
+  };
   const submit = document.querySelector('button[type="submit"]');
   const alerts = [...document.querySelectorAll('[role="alert"]')]
     .map((element) => element.textContent?.replace(/\s+/g, ' ').trim())
@@ -1463,7 +1497,7 @@ const browserDiagnosticsScript = String.raw`
     submitDisabled: submit instanceof HTMLButtonElement ? submit.disabled : null,
     submitText: submit?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
     title: document.title,
-    url: location.href,
+    url: cleanUrl(location.href),
   };
 })()
 `;
