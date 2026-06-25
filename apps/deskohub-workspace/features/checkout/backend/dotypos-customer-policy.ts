@@ -41,10 +41,10 @@ export const getConfirmedDotyposCustomerDiscount = Effect.fn(
     { lookupFields: ["email"] }
   );
 
-  // Pre-reservation quotes cannot safely resolve duplicate Dotypos customers.
-  // Final checkout recalculates against the persisted Dotypos customer ID.
-  return lookup._tag === "Matched"
-    ? yield* dotypos.getCustomerDiscount(lookup.customer)
+  const confirmedLookup = yield* failClosedOnAmbiguousDotyposCustomer(lookup);
+
+  return confirmedLookup._tag === "Matched"
+    ? yield* dotypos.getCustomerDiscount(confirmedLookup.customer)
     : undefined;
 });
 
