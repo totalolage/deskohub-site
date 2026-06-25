@@ -1216,7 +1216,7 @@ const makeCheckoutData = (aliasUrl: string) => {
 };
 
 const futureIsoDate = (runId: string) => {
-  const offsetDays = 21 + (Number(runId) % 21);
+  const offsetDays = 45 + (Number(runId) % 91);
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
   while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
