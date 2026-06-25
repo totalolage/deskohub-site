@@ -530,7 +530,17 @@ const clickHostedPaymentTarget = async (
             ["--session", session, "click", target.ref],
             { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
           );
-          return result.exitCode === 0 ? true : undefined;
+          if (result.exitCode !== 0) return;
+
+          await Bun.sleep(POLL_INTERVAL_MS);
+          const stillPresent = await findHostedPaymentRef(
+            run,
+            session,
+            labels,
+            []
+          );
+          if (stillPresent?.framed) await switchToMainFrame(run, session);
+          return stillPresent ? undefined : true;
         } finally {
           if (target.framed) await switchToMainFrame(run, session);
         }
