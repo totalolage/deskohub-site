@@ -16,16 +16,19 @@ import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-ca
 
 type LandingPageLocationMapSectionProps = {
   locale: Locale;
+  locationMapSectionId: string;
 };
 
 export function LandingPageLocationMapSection({
   locale,
+  locationMapSectionId,
 }: LandingPageLocationMapSectionProps) {
   const vars: VariableStyle<"separator-height"> = {
     "--separator-height": "120px",
   };
   return (
     <section
+      id={locationMapSectionId}
       style={vars}
       className={cn("relative overflow-hidden bg-[#f4f1ea] text-navy-blue")}
     >

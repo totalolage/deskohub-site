@@ -35,7 +35,10 @@ export function LandingPage({ locale }: LandingPageProps) {
 
       <LandingPagePhotoCarouselSection />
 
-      <LandingPageLocationMapSection locale={locale} />
+      <LandingPageLocationMapSection
+        locale={locale}
+        locationMapSectionId={siteHeaderSectionIds.locationMap}
+      />
 
       <LandingPageWorkspaceSection
         locale={locale}
