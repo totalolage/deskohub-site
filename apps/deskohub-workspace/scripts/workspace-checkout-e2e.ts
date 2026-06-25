@@ -265,39 +265,92 @@ const completeCheckout = async ({
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: submitReservationScript,
   });
-  await run(
-    "agent-browser",
-    ["--session", session, "wait", "--url", "**/checkout/pay**"],
-    {
-      timeoutMs: CHECKOUT_TIMEOUT_MS,
-    }
-  );
+  await waitForBrowserUrl({
+    description: "checkout pay page",
+    matches: (url) => url.includes("/checkout/pay"),
+    run,
+    session,
+    timeoutMs: CHECKOUT_TIMEOUT_MS,
+  });
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: submitPaymentScript,
   });
-  await run(
-    "agent-browser",
-    ["--session", session, "wait", "--url", "**nexigroup.com**"],
-    {
-      timeoutMs: CHECKOUT_TIMEOUT_MS,
-    }
-  );
+  await waitForBrowserUrl({
+    description: "Nexi hosted payment page",
+    matches: (url) => url.includes("nexigroup.com"),
+    run,
+    session,
+    timeoutMs: CHECKOUT_TIMEOUT_MS,
+  });
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: fillNexiScript(data),
     timeoutMs: CHECKOUT_TIMEOUT_MS,
   });
-  await run(
-    "agent-browser",
-    ["--session", session, "wait", "--url", "**/checkout/status/**"],
-    {
-      timeoutMs: CHECKOUT_TIMEOUT_MS,
-    }
-  );
+  await waitForBrowserUrl({
+    description: "checkout status page",
+    matches: (url) => url.includes("/checkout/status/"),
+    run,
+    session,
+    timeoutMs: CHECKOUT_TIMEOUT_MS,
+  });
 
   const url = await run("agent-browser", ["--session", session, "get", "url"]);
   const orderId = extractOrderId(url.stdout);
   log(`Reached checkout status for order ${orderId}`);
   return orderId;
+};
+
+const waitForBrowserUrl = async ({
+  description,
+  matches,
+  run,
+  session,
+  timeoutMs,
+}: {
+  description: string;
+  matches: (url: string) => boolean;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+  timeoutMs: number;
+}) => {
+  try {
+    const url = await poll(
+      async () => {
+        const result = await run(
+          "agent-browser",
+          ["--session", session, "get", "url"],
+          { allowFailure: true }
+        );
+        const url = result.stdout.trim();
+        return result.exitCode === 0 && matches(url) ? url : undefined;
+      },
+      timeoutMs,
+      description
+    );
+    log(`Reached ${description}`);
+    return url;
+  } catch (error) {
+    const diagnostics = await readBrowserDiagnostics(run, session);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${message}\n${diagnostics}`);
+  }
+};
+
+const readBrowserDiagnostics = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "eval", "--stdin"],
+    {
+      allowFailure: true,
+      input: browserDiagnosticsScript,
+    }
+  );
+
+  if (result.exitCode !== 0) return "Browser diagnostics unavailable";
+  return `Browser diagnostics:\n${result.stdout}`;
 };
 
 const assertFulfilledStatusPage = async ({
@@ -1019,27 +1072,67 @@ function assert(condition: unknown, message: string): asserts condition {
 const log = (message: string) => process.stdout.write(`${redact(message)}\n`);
 
 const submitReservationScript = `
-(() => {
+(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    throw new Error(label);
+  };
   const checkbox = document.querySelector('#reservation-privacy-consent');
   if (!(checkbox instanceof HTMLButtonElement)) throw new Error('privacy consent checkbox not found');
   if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
+  await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'privacy consent checkbox did not check');
   const form = checkbox.closest('form') ?? document.querySelector('form');
   if (!(form instanceof HTMLFormElement)) throw new Error('reservation form not found');
-  form.requestSubmit();
+  const button = form.querySelector('button[type="submit"]');
+  if (!(button instanceof HTMLButtonElement)) throw new Error('reservation submit button not found');
+  await waitUntil(() => !button.disabled, 'reservation submit button stayed disabled');
+  button.click();
   return location.href;
 })()
 `;
 
 const submitPaymentScript = String.raw`
 (async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + 30000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    throw new Error(label);
+  };
   const checkbox = document.querySelector('#checkout-pay-legal-consent');
   if (!(checkbox instanceof HTMLButtonElement)) throw new Error('payment consent checkbox not found');
   if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
-  await new Promise((resolve) => setTimeout(resolve, 250));
+  await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'payment consent checkbox did not check');
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
+  await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
   button.click();
   return location.href;
+})()
+`;
+
+const browserDiagnosticsScript = String.raw`
+(() => {
+  const submit = document.querySelector('button[type="submit"]');
+  const alerts = [...document.querySelectorAll('[role="alert"]')]
+    .map((element) => element.textContent?.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+  return {
+    alerts,
+    body: (document.body?.innerText ?? '').replace(/\s+/g, ' ').slice(0, 1200),
+    submitDisabled: submit instanceof HTMLButtonElement ? submit.disabled : null,
+    submitText: submit?.textContent?.replace(/\s+/g, ' ').trim() ?? null,
+    title: document.title,
+    url: location.href,
+  };
 })()
 `;
 
