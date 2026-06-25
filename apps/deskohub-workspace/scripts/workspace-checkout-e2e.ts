@@ -15,6 +15,9 @@ const CHECKOUT_TIMEOUT_MS = Number(
 const DATASOURCE_TIMEOUT_MS = Number(
   process.env.WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS ?? 4 * 60 * 1000
 );
+const NEXI_TEST_CARD_NUMBER = "4509034543615006";
+const NEXI_TEST_CVV = "298";
+const NEXI_TEST_EXPIRY = "1028";
 const POLL_INTERVAL_MS = 5_000;
 
 type CheckoutRow = {
@@ -186,6 +189,7 @@ const makeRunner =
       allowFailure?: boolean;
       cwd?: string;
       input?: string;
+      logOutput?: boolean;
       timeoutMs?: number;
     } = {}
   ) => {
@@ -231,8 +235,10 @@ const makeRunner =
       );
     }
 
-    if (result.stdout) log(result.stdout);
-    if (result.stderr) log(result.stderr);
+    if (options.logOutput !== false) {
+      if (result.stdout) log(result.stdout);
+      if (result.stderr) log(result.stderr);
+    }
 
     return result;
   };
@@ -282,10 +288,7 @@ const completeCheckout = async ({
     session,
     timeoutMs: CHECKOUT_TIMEOUT_MS,
   });
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: fillNexiScript(data),
-    timeoutMs: CHECKOUT_TIMEOUT_MS,
-  });
+  await completeNexiHostedPayment({ data, run, session });
   await waitForBrowserUrl({
     description: "checkout status page",
     matches: (url) => url.includes("/checkout/status/"),
@@ -298,6 +301,177 @@ const completeCheckout = async ({
   const orderId = extractOrderId(url.stdout);
   log(`Reached checkout status for order ${orderId}`);
   return orderId;
+};
+
+const completeNexiHostedPayment = async ({
+  data,
+  run,
+  session,
+}: {
+  data: ReturnType<typeof makeCheckoutData>;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  addRedaction(NEXI_TEST_CARD_NUMBER);
+  addRedaction(NEXI_TEST_CVV);
+
+  await fillHostedPaymentField(
+    run,
+    session,
+    ["Card number", "Numero carta", "Numero della carta"],
+    NEXI_TEST_CARD_NUMBER
+  );
+  await fillHostedPaymentField(
+    run,
+    session,
+    ["Expiration date", "Scadenza", "Data scadenza"],
+    NEXI_TEST_EXPIRY
+  );
+  await fillHostedPaymentField(
+    run,
+    session,
+    ["CVV", "CVC", "Codice sicurezza"],
+    NEXI_TEST_CVV
+  );
+  await tryFillHostedPaymentField(
+    run,
+    session,
+    ["First Name", "Nome", "Titolare"],
+    data.name
+  );
+  await tryFillHostedPaymentField(
+    run,
+    session,
+    ["Email", "E-mail"],
+    data.email
+  );
+
+  await clickHostedPaymentTarget(run, session, "continue", [
+    { value: "CONTINUE" },
+    { value: "Continue" },
+    { value: "CONTINUA" },
+  ]);
+  await clickHostedPaymentTarget(run, session, "pay", [
+    { value: "PAY" },
+    { value: "Pay" },
+    { value: "PAGA" },
+  ]);
+  await clickHostedPaymentTarget(run, session, "3DS success", [
+    { value: "AUTENTICAZIONE RIUSCITA" },
+    { value: "Authentication successful" },
+  ]);
+  await clickHostedPaymentTarget(run, session, "back to shop", [
+    { value: "BACK TO THE SHOP" },
+    { value: "Back to the shop" },
+    { value: "TORNA AL NEGOZIO" },
+  ]);
+};
+
+const fillHostedPaymentField = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  labels: readonly string[],
+  value: string
+) => {
+  const ref = await requireHostedPaymentRef(run, session, labels);
+  await run("agent-browser", ["--session", session, "fill", ref, value], {
+    timeoutMs: 60_000,
+  });
+};
+
+const requireHostedPaymentRef = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  labels: readonly string[]
+) => {
+  return await poll(
+    async () =>
+      findSnapshotRef(await readInteractiveSnapshot(run, session), labels),
+    60_000,
+    `Nexi target ${labels.join(" / ")}`
+  );
+};
+
+const tryFillHostedPaymentField = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  labels: readonly string[],
+  value: string
+) => {
+  const ref = findSnapshotRef(
+    await readInteractiveSnapshot(run, session),
+    labels
+  );
+  if (!ref) return;
+  await run("agent-browser", ["--session", session, "fill", ref, value], {
+    allowFailure: true,
+    timeoutMs: 30_000,
+  });
+};
+
+type HostedPaymentClickTarget = {
+  readonly value: string;
+};
+
+const clickHostedPaymentTarget = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  label: string,
+  targets: readonly HostedPaymentClickTarget[]
+) => {
+  await poll(
+    async () => {
+      const ref = findSnapshotRef(
+        await readInteractiveSnapshot(run, session),
+        targets.map((target) => target.value)
+      );
+      if (!ref) return;
+
+      const result = await run(
+        "agent-browser",
+        ["--session", session, "click", ref],
+        { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
+      );
+      return result.exitCode === 0 ? true : undefined;
+    },
+    CHECKOUT_TIMEOUT_MS,
+    `Nexi ${label} action`
+  );
+};
+
+const readInteractiveSnapshot = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "snapshot", "-i"],
+    { logOutput: false, timeoutMs: 60_000 }
+  );
+  return result.stdout;
+};
+
+const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
+  for (const line of snapshot.split("\n")) {
+    const ref = line.match(/@e\d+/)?.[0];
+    if (!ref) continue;
+
+    const name = line
+      .match(/"([^"]+)"/)?.[1]
+      ?.trim()
+      .toLowerCase();
+    if (name && labels.some((label) => name === label.toLowerCase()))
+      return ref;
+  }
+
+  for (const line of snapshot.split("\n")) {
+    const ref = line.match(/@e\d+/)?.[0];
+    if (!ref) continue;
+
+    const lowerLine = line.toLowerCase();
+    if (labels.some((label) => lowerLine.includes(label.toLowerCase())))
+      return ref;
+  }
 };
 
 const waitForBrowserUrl = async ({
@@ -319,7 +493,7 @@ const waitForBrowserUrl = async ({
         const result = await run(
           "agent-browser",
           ["--session", session, "get", "url"],
-          { allowFailure: true }
+          { allowFailure: true, logOutput: false }
         );
         const url = result.stdout.trim();
         return result.exitCode === 0 && matches(url) ? url : undefined;
@@ -1141,78 +1315,6 @@ const assertFulfilledStatusScript = String.raw`
   const text = document.body?.textContent ?? '';
   if (!/Your workspace access is ready\./i.test(text)) throw new Error('fulfilled status title not visible');
   if (!/sent by email/i.test(text)) throw new Error('email delivery fulfillment copy not visible');
-  return location.href;
-})()
-`;
-
-const fillNexiScript = (data: ReturnType<typeof makeCheckoutData>) => `
-(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const getDocuments = () => [
-    document,
-    ...[...document.querySelectorAll('iframe')].flatMap((frame) => {
-      try {
-        return frame.contentDocument ? [frame.contentDocument] : [];
-      } catch {
-        return [];
-      }
-    }),
-  ];
-  const setValue = (input, value) => {
-    input.focus();
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
-    input.dispatchEvent(new Event('input', { bubbles: true }));
-    input.dispatchEvent(new Event('change', { bubbles: true }));
-  };
-  const byPattern = (patterns) => {
-    const inputs = getDocuments().flatMap((doc) => [...doc.querySelectorAll('input')]);
-    return inputs.find((input) => {
-      const labelText = [...(input.labels ?? [])].map((label) => label.textContent).join(' ');
-      const text = [input.name, input.id, input.placeholder, input.ariaLabel, input.autocomplete, labelText]
-        .join(' ')
-        .toLowerCase();
-      return patterns.some((pattern) => pattern.test(text));
-    });
-  };
-  const clickText = async (pattern) => {
-    const deadline = Date.now() + 60000;
-    while (Date.now() < deadline) {
-      const candidate = getDocuments().flatMap((doc) => [...doc.querySelectorAll('button,a,input,[role="button"],label,span,div')])
-      .find((element) => pattern.test((element.textContent || element.value || '').trim()));
-      if (candidate) {
-        candidate.click();
-        return;
-      }
-      await wait(500);
-    }
-    throw new Error('click target not found: ' + pattern);
-  };
-  const waitForFields = async () => {
-    const deadline = Date.now() + 60000;
-    while (Date.now() < deadline) {
-      const card = byPattern([/card.*number/, /numero.*carta/, /cc-number/, /pan/]);
-      const expiry = byPattern([/expir/, /scadenza/, /cc-exp/, /expiry/]);
-      const cvv = byPattern([/cvv/, /cvc/, /security/, /cc-csc/]);
-      if (card && expiry && cvv) return { card, expiry, cvv };
-      await wait(500);
-    }
-    throw new Error('Nexi card fields not found');
-  };
-  const { card, expiry, cvv } = await waitForFields();
-  const holder = byPattern([/holder/, /card.*name/, /titolare/, /name/]);
-  const email = byPattern([/email/]);
-  setValue(card, '4509034543615006');
-  setValue(expiry, '1028');
-  setValue(cvv, '298');
-  if (holder) setValue(holder, ${JSON.stringify(data.name)});
-  if (email) setValue(email, ${JSON.stringify(data.email)});
-  await clickText(/continue|continua/i);
-  await wait(1000);
-  await clickText(/^pay$|^paga$/i);
-  await wait(1000);
-  await clickText(/autenticazione riuscita|authentication successful/i);
-  await wait(1000);
-  await clickText(/back to the shop|torna al negozio/i);
   return location.href;
 })()
 `;
