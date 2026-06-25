@@ -85,12 +85,12 @@ const main = async () => {
       "--yes",
       "--environment=preview",
       "--cwd",
-      workspaceDir,
+      repoRoot,
       "--token",
       config.vercelToken,
     ]);
     const pulledEnv = await loadEnvFile(
-      resolve(workspaceDir, ".vercel/.env.preview.local")
+      resolve(repoRoot, ".vercel/.env.preview.local")
     );
     const datasourceConfig = getDatasourceConfig();
     assertSafeDatabaseUrl(datasourceConfig.databaseUrl, "DATABASE_URL");
@@ -110,7 +110,7 @@ const main = async () => {
         "deploy",
         "--yes",
         "--cwd",
-        workspaceDir,
+        repoRoot,
         "--token",
         config.vercelToken,
       ],
@@ -754,7 +754,7 @@ const databaseKeyFromHostPath = (hostname: string, pathname: string) => {
 };
 
 const writeVercelProjectLink = async (config: ReturnType<typeof getConfig>) => {
-  const file = resolve(workspaceDir, ".vercel/project.json");
+  const file = resolve(repoRoot, ".vercel/project.json");
   await mkdir(dirname(file), { recursive: true });
   await writeFile(
     file,
