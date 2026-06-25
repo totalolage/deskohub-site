@@ -270,6 +270,7 @@ const completeCheckout = async ({
   );
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: submitReservationScript,
+    logOutput: false,
   });
   await waitForBrowserUrl({
     description: "checkout pay page",
@@ -280,6 +281,7 @@ const completeCheckout = async ({
   });
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: submitPaymentScript,
+    logOutput: false,
   });
   await waitForBrowserUrl({
     description: "Nexi hosted payment page",
@@ -319,30 +321,35 @@ const completeNexiHostedPayment = async ({
     run,
     session,
     ["Card number", "Numero carta", "Numero della carta"],
+    ["CARD_NUMBER"],
     NEXI_TEST_CARD_NUMBER
   );
   await fillHostedPaymentField(
     run,
     session,
     ["Expiration date", "Scadenza", "Data scadenza"],
+    ["EXPIRATION_DATE"],
     NEXI_TEST_EXPIRY
   );
   await fillHostedPaymentField(
     run,
     session,
     ["CVV", "CVC", "Codice sicurezza"],
+    ["SECURITY_CODE"],
     NEXI_TEST_CVV
   );
   await tryFillHostedPaymentField(
     run,
     session,
     ["First Name", "Nome", "Titolare"],
+    ["CARDHOLDER_NAME"],
     data.name
   );
   await tryFillHostedPaymentField(
     run,
     session,
     ["Email", "E-mail"],
+    ["CARDHOLDER_EMAIL"],
     data.email
   );
 
@@ -371,22 +378,36 @@ const fillHostedPaymentField = async (
   run: ReturnType<typeof makeRunner>,
   session: string,
   labels: readonly string[],
+  frameLabels: readonly string[],
   value: string
 ) => {
-  const ref = await requireHostedPaymentRef(run, session, labels);
-  await run("agent-browser", ["--session", session, "fill", ref, value], {
-    timeoutMs: 60_000,
-  });
+  const target = await requireHostedPaymentRef(
+    run,
+    session,
+    labels,
+    frameLabels
+  );
+  try {
+    await run(
+      "agent-browser",
+      ["--session", session, "fill", target.ref, value],
+      {
+        timeoutMs: 60_000,
+      }
+    );
+  } finally {
+    if (target.framed) await switchToMainFrame(run, session);
+  }
 };
 
 const requireHostedPaymentRef = async (
   run: ReturnType<typeof makeRunner>,
   session: string,
-  labels: readonly string[]
+  labels: readonly string[],
+  frameLabels: readonly string[]
 ) => {
   return await poll(
-    async () =>
-      findSnapshotRef(await readInteractiveSnapshot(run, session), labels),
+    async () => findHostedPaymentRef(run, session, labels, frameLabels),
     60_000,
     `Nexi target ${labels.join(" / ")}`
   );
@@ -396,17 +417,63 @@ const tryFillHostedPaymentField = async (
   run: ReturnType<typeof makeRunner>,
   session: string,
   labels: readonly string[],
+  frameLabels: readonly string[],
   value: string
 ) => {
-  const ref = findSnapshotRef(
-    await readInteractiveSnapshot(run, session),
-    labels
+  const target = await findHostedPaymentRef(run, session, labels, frameLabels);
+  if (!target) return;
+  try {
+    await run(
+      "agent-browser",
+      ["--session", session, "fill", target.ref, value],
+      {
+        allowFailure: true,
+        timeoutMs: 30_000,
+      }
+    );
+  } finally {
+    if (target.framed) await switchToMainFrame(run, session);
+  }
+};
+
+type HostedPaymentRef = {
+  readonly framed: boolean;
+  readonly ref: string;
+};
+
+const findHostedPaymentRef = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  labels: readonly string[],
+  frameLabels: readonly string[]
+): Promise<HostedPaymentRef | undefined> => {
+  const snapshot = await readInteractiveSnapshot(run, session);
+  const directRef = findSnapshotRef(snapshot, labels);
+  if (directRef) return { framed: false, ref: directRef };
+
+  const frameRef = findSnapshotRef(snapshot, frameLabels);
+  if (!frameRef) return;
+
+  const switched = await run(
+    "agent-browser",
+    ["--session", session, "frame", frameRef],
+    { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
   );
-  if (!ref) return;
-  await run("agent-browser", ["--session", session, "fill", ref, value], {
-    allowFailure: true,
-    timeoutMs: 30_000,
-  });
+  if (switched.exitCode !== 0) return;
+
+  let shouldRestoreMainFrame = true;
+  try {
+    const frameSnapshot = await readInteractiveSnapshot(run, session);
+    const frameFieldRef =
+      findSnapshotRef(frameSnapshot, labels) ??
+      findFirstTextFieldRef(frameSnapshot);
+    if (!frameFieldRef) return;
+
+    shouldRestoreMainFrame = false;
+    return { framed: true, ref: frameFieldRef };
+  } finally {
+    if (shouldRestoreMainFrame) await switchToMainFrame(run, session);
+  }
 };
 
 type HostedPaymentClickTarget = {
@@ -449,6 +516,24 @@ const readInteractiveSnapshot = async (
     { logOutput: false, timeoutMs: 60_000 }
   );
   return result.stdout;
+};
+
+const switchToMainFrame = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  await run("agent-browser", ["--session", session, "frame", "main"], {
+    allowFailure: true,
+    logOutput: false,
+    timeoutMs: 30_000,
+  });
+};
+
+const findFirstTextFieldRef = (snapshot: string) => {
+  for (const line of snapshot.split("\n")) {
+    const ref = line.match(/@e\d+/)?.[0];
+    if (ref && /\[(textbox|input)\b/i.test(line)) return ref;
+  }
 };
 
 const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
