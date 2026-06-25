@@ -713,6 +713,7 @@ const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
   const allowlist = requireEnv("WORKSPACE_E2E_DATABASE_ALLOWLIST")
     .split(",")
     .map((value) => value.trim())
+    .map(databaseAllowlistKey)
     .filter(Boolean);
   assert(
     allowlist.includes(databaseSafetyKey(databaseUrl)),
@@ -729,7 +730,27 @@ const assertSameDatabaseUrl = (pulled: string, validation: string) => {
 
 const databaseSafetyKey = (databaseUrl: string) => {
   const url = new URL(normalizePostgresConnectionUrl(databaseUrl));
-  return `${url.hostname}${url.pathname}`;
+  return databaseKeyFromHostPath(url.hostname, url.pathname);
+};
+
+const databaseAllowlistKey = (value: string) => {
+  if (!value) return value;
+  if (value.includes("://")) return databaseSafetyKey(value);
+  const slashIndex = value.indexOf("/");
+  if (slashIndex === -1) return databaseKeyFromHostPath(value, "");
+  return databaseKeyFromHostPath(
+    value.slice(0, slashIndex),
+    value.slice(slashIndex)
+  );
+};
+
+const databaseKeyFromHostPath = (hostname: string, pathname: string) => {
+  const [firstLabel, ...rest] = hostname.split(".");
+  const normalizedFirstLabel =
+    hostname.endsWith(".neon.tech") && firstLabel?.endsWith("-pooler")
+      ? firstLabel.slice(0, -"-pooler".length)
+      : firstLabel;
+  return `${[normalizedFirstLabel, ...rest].join(".")}${pathname}`;
 };
 
 const writeVercelProjectLink = async (config: ReturnType<typeof getConfig>) => {
