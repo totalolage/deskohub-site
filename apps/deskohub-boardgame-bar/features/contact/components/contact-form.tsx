@@ -33,10 +33,16 @@ import {
 import { Input } from "@/shared/components/ui/input";
 import { Textarea } from "@/shared/components/ui/textarea";
 
-export function ContactForm() {
+type ContactFormProps = {
+  initialValues?: ContactFormInitialValues;
+};
+
+export type ContactFormInitialValues = Partial<ContactFormData>;
+
+export function ContactForm({ initialValues }: ContactFormProps) {
   const form = useForm<ContactFormData, unknown, ContactData>({
     resolver: zodResolver(getContactSchema()),
-    defaultValues: contactDefaultValues,
+    defaultValues: { ...contactDefaultValues, ...initialValues },
     mode: "onChange",
   });
 

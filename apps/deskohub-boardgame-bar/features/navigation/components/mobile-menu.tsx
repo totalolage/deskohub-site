@@ -30,17 +30,13 @@ const navigationItems = [
   },
   { label: "nav.gallery", href: "/gallery", text: () => m["nav.gallery"]() },
   { label: "nav.menu", href: "/menu", text: () => m["nav.menu"]() },
-  {
-    label: "nav.trainingRoom",
-    href: "/training-room",
-    text: () => m["nav.trainingRoom"](),
-  },
   { label: "nav.contact", href: "/contact", text: () => m["nav.contact"]() },
 ];
 
 export function MobileMenu() {
   const [isOpen, setIsOpen] = useState(false);
   const locale = useLocale();
+  const ttrpgRoomHref = `https://workspace.deskohub.cz/${locale}/ttrpg-room`;
   setLocale(locale, { reload: false });
 
   return (
@@ -88,6 +84,13 @@ export function MobileMenu() {
                 {item.text()}
               </LocalizedLink>
             ))}
+            <a
+              href={ttrpgRoomHref}
+              className="flex items-center px-4 py-3 text-gray-300 hover:text-white hover:bg-gray-800 rounded-lg transition-colors duration-200 font-medium"
+              onClick={() => setIsOpen(false)}
+            >
+              {m["nav.trainingRoom"]()}
+            </a>
           </nav>
 
           <div className="mt-8 space-y-4">

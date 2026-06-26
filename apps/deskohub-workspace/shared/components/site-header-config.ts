@@ -26,6 +26,10 @@ export function getSiteHeaderConfig(locale: Locale) {
         href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
       },
       {
+        label: m.landingNavTtrpg({}, { locale }),
+        href: `${localePath}/ttrpg-room`,
+      },
+      {
         label: m.landingNavGallery({}, { locale }),
         href: `${localePath}/gallery`,
       },
