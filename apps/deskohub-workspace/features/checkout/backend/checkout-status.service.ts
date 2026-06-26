@@ -1,6 +1,7 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer, Match } from "effect";
+import { after } from "next/server";
 import {
   type DatabaseError,
   WorkspaceDatabaseLive,
@@ -481,14 +482,18 @@ export const CheckoutStatusServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Checkout status refresh terminal hold cleanup completed"
             );
-            yield* availabilityInventory.invalidateAdvisory().pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning(
-                  "Checkout status advisory availability invalidation failed",
-                  { orderId: reservation.id, cause }
+            after(() =>
+              Effect.runPromise(
+                availabilityInventory.invalidateAdvisory().pipe(
+                  Effect.tapError((cause) =>
+                    Effect.logWarning(
+                      "Checkout status advisory availability invalidation failed",
+                      { orderId: reservation.id, cause }
+                    )
+                  ),
+                  Effect.ignore
                 )
-              ),
-              Effect.ignore
+              )
             );
           } else {
             if (

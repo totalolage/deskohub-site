@@ -9,6 +9,10 @@ import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType
 import type { IWorkspaceAvailabilityInventoryService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
+mock.module("next/server", () => ({
+  after: mock((callback: () => unknown) => callback()),
+}));
+
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   id: "reservation-provider-return",
   reservationIntentKey: "intent-key",
