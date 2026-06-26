@@ -1452,7 +1452,7 @@ const submitReservationScript = `
   };
   const checkbox = document.querySelector('#reservation-privacy-consent');
   if (!(checkbox instanceof HTMLButtonElement)) throw new Error('privacy consent checkbox not found');
-  if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
+  if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
   await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'privacy consent checkbox did not check');
   const form = checkbox.closest('form') ?? document.querySelector('form');
   if (!(form instanceof HTMLFormElement)) throw new Error('reservation form not found');
@@ -1477,7 +1477,7 @@ const submitPaymentScript = String.raw`
   };
   const checkbox = document.querySelector('#checkout-pay-legal-consent');
   if (!(checkbox instanceof HTMLButtonElement)) throw new Error('payment consent checkbox not found');
-  if (checkbox.getAttribute('aria-checked') !== 'true') checkbox.click();
+  if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
   await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'payment consent checkbox did not check');
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
