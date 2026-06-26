@@ -6,6 +6,7 @@ const siteHeaderSectionIds = {
   ttrpg: "ttrpg",
   events: "events",
   cowork: "cowork",
+  locationMap: "location-map",
   privateOffice: "private-office",
   faqContact: "faq-contact",
 } as const;
@@ -21,12 +22,8 @@ export function getSiteHeaderConfig(locale: Locale) {
     } satisfies Record<Locale, string>,
     links: [
       {
-        label: m.landingNavCowork({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.cowork}`),
-      },
-      {
-        label: m.landingNavEvents({}, { locale }),
-        href: localizedHash(`#${siteHeaderSectionIds.events}`),
+        label: m.landingNavWhereToFindUs({}, { locale }),
+        href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
       },
       {
         label: m.landingNavGallery({}, { locale }),
