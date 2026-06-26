@@ -75,9 +75,6 @@ const main = async () => {
   const config = getConfig();
   const run = makeRunner(config);
   const session = `workspace-checkout-e2e-${Date.now()}`;
-  const data = makeCheckoutData(config.aliasUrl);
-  for (const value of [data.checkoutUrl, data.email, data.name, data.phone])
-    addRedaction(value);
 
   try {
     await writeVercelProjectLink(config);
@@ -122,6 +119,13 @@ const main = async () => {
     await verifyAlias(config, deployment.id);
     await assertWebhookEndpoint(config, "/api/webhooks/nexi");
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
+
+    const data = makeCheckoutData(
+      config.aliasUrl,
+      await selectAvailableCheckoutDate(config)
+    );
+    for (const value of [data.checkoutUrl, data.email, data.name, data.phone])
+      addRedaction(value);
 
     const orderId = await completeCheckout({ config, data, run, session });
     // Nexi verification happens inside the deployed webhook handler. The runner
@@ -1295,7 +1299,7 @@ const vercelFetch = async (
   return response;
 };
 
-const makeCheckoutData = (aliasUrl: string) => {
+const makeCheckoutData = (aliasUrl: string, date: string) => {
   const runId = new Date()
     .toISOString()
     .replace(/[-:.TZ]/g, "")
@@ -1303,7 +1307,6 @@ const makeCheckoutData = (aliasUrl: string) => {
   const name = `Workspace E2E ${runId}`;
   const phone = `+4207${runId.slice(-8)}`;
   const email = `delivered+${runId}@resend.dev`;
-  const date = futureIsoDate(runId);
   const params = new URLSearchParams({
     coffee: "false",
     date,
@@ -1324,14 +1327,54 @@ const makeCheckoutData = (aliasUrl: string) => {
   };
 };
 
-const futureIsoDate = (runId: string) => {
-  const offsetDays = 14 + (Number(runId) % 28);
+const selectAvailableCheckoutDate = async (
+  config: ReturnType<typeof getConfig>
+) => {
+  const from = futureIsoDate(14);
+  const to = futureIsoDate(90);
+  const params = new URLSearchParams({ entryTier: "basic", from, to });
+  const response = await fetch(
+    `${config.aliasUrl}/api/workspace/availability?${params}`,
+    {
+      headers: config.bypassSecret
+        ? { "x-vercel-protection-bypass": config.bypassSecret }
+        : undefined,
+    }
+  );
+  assert(response.ok, `availability check failed with ${response.status}`);
+
+  const availability = (await response.json()) as {
+    readonly unavailableDates?: unknown;
+  };
+  assert(
+    Array.isArray(availability.unavailableDates),
+    "availability response missing unavailableDates"
+  );
+  const unavailable = new Set(
+    availability.unavailableDates.filter(
+      (date): date is string => typeof date === "string"
+    )
+  );
+
+  for (let offset = 14; offset <= 90; offset += 1) {
+    const date = futureIsoDate(offset);
+    if (!isWeekday(date) || unavailable.has(date)) continue;
+    log(`Selected available checkout date ${date}`);
+    return date;
+  }
+
+  throw new Error("No available checkout date found");
+};
+
+const futureIsoDate = (offsetDays: number) => {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() + offsetDays);
-  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) {
-    date.setUTCDate(date.getUTCDate() + 1);
-  }
   return date.toISOString().slice(0, 10);
+};
+
+const isWeekday = (date: string) => {
+  const day = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+  return day !== 0 && day !== 6;
 };
 
 const extractDeploymentUrl = (stdout: string) => {
