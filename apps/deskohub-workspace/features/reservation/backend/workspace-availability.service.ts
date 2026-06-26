@@ -426,7 +426,7 @@ const GoogleCalendarWorkspaceLimitationsLive =
     Layer.provide(GoogleCalendarServiceLive)
   );
 
-const WorkspaceAvailabilityInventoryServiceLiveWithDependencies =
+export const WorkspaceAvailabilityInventoryServiceLiveWithDependencies =
   WorkspaceAvailabilityInventoryService.Live.pipe(
     Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
     Layer.provide(DotyposServiceLive)

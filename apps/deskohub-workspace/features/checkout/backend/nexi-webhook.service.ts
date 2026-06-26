@@ -33,6 +33,10 @@ import {
   WebhookEventRepositoryLive,
 } from "@/features/checkout/backend/webhook-event.repository";
 import {
+  WorkspaceAvailabilityInventoryService,
+  WorkspaceAvailabilityInventoryServiceLiveWithDependencies,
+} from "@/features/reservation/backend/workspace-availability.service";
+import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -137,6 +141,7 @@ export const NexiWebhookServiceLive = Layer.effect(
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
     const posthogEvents = yield* PostHogEventService;
+    const availabilityInventory = yield* WorkspaceAvailabilityInventoryService;
 
     return NexiWebhookService.of({
       processNotification: Effect.fn("nexiWebhook.processNotification")(
@@ -540,6 +545,15 @@ export const NexiWebhookServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Nexi webhook terminal hold cleanup attempted"
             );
+            yield* availabilityInventory.invalidateAdvisory().pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning(
+                  "Nexi webhook advisory availability invalidation failed",
+                  { eventId, orderId: reservation.id, providerOrderId, cause }
+                )
+              ),
+              Effect.ignore
+            );
           } else {
             yield* Effect.logInfo(
               "Nexi webhook verification did not require payment transition"
@@ -600,6 +614,7 @@ export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
     Layer.provide(WebhookEventRepositoryLive),
     Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+    Layer.provide(WorkspaceAvailabilityInventoryServiceLiveWithDependencies),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),

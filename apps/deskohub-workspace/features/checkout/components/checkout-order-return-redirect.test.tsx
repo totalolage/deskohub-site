@@ -64,6 +64,24 @@ describe("CheckoutOrderReturnRedirect", () => {
     });
   });
 
+  test("preserves Vercel bypass params on payment return redirects", async () => {
+    const token = "a".repeat(43);
+    setWindowUrl(
+      `https://workspace.example.test/checkout/order?paymentOrderId=order_123&checkoutToken=${token}&x-vercel-protection-bypass=preview-secret`
+    );
+    const { CheckoutOrderReturnRedirect } = await import(
+      "./checkout-order-return-redirect"
+    );
+
+    render(<CheckoutOrderReturnRedirect locale="en-US" />);
+
+    await waitFor(() => {
+      expect(replace).toHaveBeenCalledWith(
+        `/en-US/checkout/status/order_123?checkoutToken=${token}&x-vercel-protection-bypass=preview-secret&x-vercel-set-bypass-cookie=true`
+      );
+    });
+  });
+
   test("ignores payment returns without a valid token", async () => {
     setWindowUrl(
       "https://workspace.example.test/checkout/order?paymentOrderId=order_123&checkoutToken=bad"

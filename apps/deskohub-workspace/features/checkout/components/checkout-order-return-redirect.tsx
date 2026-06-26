@@ -26,11 +26,16 @@ export function CheckoutOrderReturnRedirect({
 
     if (!orderId || !token) return;
 
+    const vercelBypass = params.get("x-vercel-protection-bypass");
     const url = new URL(
       `/${locale}/checkout/status/${encodeURIComponent(orderId)}`,
       window.location.origin
     );
     url.searchParams.set(checkoutReturnStateTokenQueryParam, token);
+    if (vercelBypass) {
+      url.searchParams.set("x-vercel-protection-bypass", vercelBypass);
+      url.searchParams.set("x-vercel-set-bypass-cookie", "true");
+    }
 
     router.replace(`${url.pathname}${url.search}`);
   }, [locale, router]);

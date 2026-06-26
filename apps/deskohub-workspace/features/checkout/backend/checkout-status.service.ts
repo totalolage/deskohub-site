@@ -35,6 +35,10 @@ import {
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
 import {
+  WorkspaceAvailabilityInventoryService,
+  WorkspaceAvailabilityInventoryServiceLiveWithDependencies,
+} from "@/features/reservation/backend/workspace-availability.service";
+import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -199,6 +203,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
     const dotypos = yield* DotyposService;
     const holdCleanup = yield* ReservationHoldCleanupService;
     const finalization = yield* ProviderPaymentFinalizationService;
+    const availabilityInventory = yield* WorkspaceAvailabilityInventoryService;
 
     const reconstructSummary = Effect.fn("checkoutStatus.reconstructSummary")(
       function* (reservation: WorkspaceReservation) {
@@ -476,6 +481,15 @@ export const CheckoutStatusServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Checkout status refresh terminal hold cleanup completed"
             );
+            yield* availabilityInventory.invalidateAdvisory().pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning(
+                  "Checkout status advisory availability invalidation failed",
+                  { orderId: reservation.id, cause }
+                )
+              ),
+              Effect.ignore
+            );
           } else {
             if (
               result === "not_verifiable" ||
@@ -515,6 +529,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
 export const CheckoutStatusServiceLiveWithDependencies =
   CheckoutStatusServiceLive.pipe(
     Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+    Layer.provide(WorkspaceAvailabilityInventoryServiceLiveWithDependencies),
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),

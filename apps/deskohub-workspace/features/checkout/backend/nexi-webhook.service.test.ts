@@ -10,6 +10,7 @@ import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentService
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import type { WebhookEventRepository as WebhookEventRepositoryType } from "@/features/checkout/backend/webhook-event.repository";
+import type { IWorkspaceAvailabilityInventoryService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 const payload = {
@@ -82,7 +83,18 @@ type NexiWebhookTestServices = {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly nexi: NexiServiceType;
   readonly fulfillment: WorkspacePaidFulfillmentServiceType;
+  readonly holdCleanup?: ReservationHoldCleanupServiceType;
+  readonly availabilityInventory?: IWorkspaceAvailabilityInventoryService;
 };
+
+const makeAvailabilityInventory = (
+  overrides: Partial<IWorkspaceAvailabilityInventoryService> = {}
+): IWorkspaceAvailabilityInventoryService => ({
+  invalidateAdvisory: mock(() => Effect.void),
+  loadAdvisory: mock(() => Effect.die("unused")),
+  loadFresh: mock(() => Effect.die("unused")),
+  ...overrides,
+});
 
 const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
   const { NexiService } = await import("@deskohub/nexi");
@@ -104,6 +116,9 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
   const { ReservationHoldCleanupService } = await import(
     "./reservation-hold-cleanup.service"
   );
+  const { WorkspaceAvailabilityInventoryService } = await import(
+    "@/features/reservation/backend/workspace-availability.service"
+  );
   const { WebhookEventRepository } = await import("./webhook-event.repository");
 
   return Effect.gen(function* () {
@@ -121,10 +136,20 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
       Layer.succeed(WorkspaceReservationRepository, services.reservations)
     ),
     Effect.provide(
-      Layer.succeed(ReservationHoldCleanupService, {
-        cancelOrderHold: mock(() => Effect.die("unused")),
-        sweepExpiredHolds: mock(() => Effect.die("unused")),
-      } as unknown as ReservationHoldCleanupServiceType)
+      Layer.succeed(
+        ReservationHoldCleanupService,
+        services.holdCleanup ??
+          ({
+            cancelOrderHold: mock(() => Effect.die("unused")),
+            sweepExpiredHolds: mock(() => Effect.die("unused")),
+          } as unknown as ReservationHoldCleanupServiceType)
+      )
+    ),
+    Effect.provide(
+      Layer.succeed(
+        WorkspaceAvailabilityInventoryService,
+        services.availabilityInventory ?? makeAvailabilityInventory()
+      )
     ),
     Effect.provide(Layer.succeed(NexiService, services.nexi)),
     Effect.provide(
@@ -206,6 +231,93 @@ describe("NexiWebhookService", () => {
     expect(fulfillPaidOrder).toHaveBeenCalledWith({
       orderId: "reservation-id",
     });
+    expect(markProcessed).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "eventId", eventId: "event-id" })
+    );
+    expect(markFailed).not.toHaveBeenCalled();
+  });
+
+  test("cancels the hold and invalidates advisory availability when payment fails", async () => {
+    const markProcessed = mock(() => Effect.void);
+    const markFailed = mock(() => Effect.void);
+    const markPaidForReservation = mock(() => Effect.die("unused"));
+    const markTerminalForReservation = mock(() =>
+      Effect.succeed({
+        attempt: {
+          ...attempt,
+          state: "failed" as const,
+          failureCode: "nexi_payment_failed",
+          lastProviderStatus: "DECLINED",
+        },
+        changed: true,
+        timestamp: new Date(),
+      })
+    );
+    const cancelOrderHold = mock(() => Effect.void);
+    const invalidateAdvisory = mock(() => Effect.void);
+
+    const result = await Effect.runPromise(
+      await buildWebhookEffect({
+        webhookEvents: {
+          insertReceived: mock(() =>
+            Effect.succeed({ status: "inserted", event: receivedEvent })
+          ),
+          linkPaymentAttempt: mock(() => Effect.void),
+          markProcessed,
+          markFailed,
+          claimRetry: mock(() => Effect.die("unused")),
+        } as unknown as WebhookEventRepositoryType,
+        paymentAttempts: {
+          findByProviderOrderId: mock(() => Effect.succeed(attempt)),
+          markPaidForReservation,
+          markTerminalForReservation,
+        } as unknown as PaymentAttemptRepositoryType,
+        reservations: {
+          findById: mock(() => Effect.succeed(reservation as never)),
+        } as unknown as WorkspaceReservationRepositoryType,
+        nexi: {
+          verifyPaymentOutcome: mock(() =>
+            Effect.succeed({
+              ...verification,
+              status: "failure" as const,
+              provider: {
+                ...verification.provider,
+                captureExecuted: false,
+                orderStatus: "DECLINED",
+              },
+            })
+          ),
+        } as unknown as NexiServiceType,
+        fulfillment: {
+          fulfillPaidOrder: mock(() => Effect.die("unused")),
+        } satisfies WorkspacePaidFulfillmentServiceType,
+        holdCleanup: {
+          cancelOrderHold,
+          sweepExpiredHolds: mock(() => Effect.die("unused")),
+        },
+        availabilityInventory: makeAvailabilityInventory({
+          invalidateAdvisory,
+        }),
+      })
+    );
+
+    expect(result).toEqual({
+      status: "accepted",
+      eventId: "event-id",
+      orderId: "provider-order-id",
+    });
+    expect(markTerminalForReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "attempt-id",
+        workspaceReservationId: "reservation-id",
+        state: "failed",
+        failureCode: "nexi_payment_failed",
+        webhookEventId: "event-id",
+      })
+    );
+    expect(cancelOrderHold).toHaveBeenCalledWith({ orderId: "reservation-id" });
+    expect(invalidateAdvisory).toHaveBeenCalledTimes(1);
+    expect(markPaidForReservation).not.toHaveBeenCalled();
     expect(markProcessed).toHaveBeenCalledWith(
       expect.objectContaining({ type: "eventId", eventId: "event-id" })
     );

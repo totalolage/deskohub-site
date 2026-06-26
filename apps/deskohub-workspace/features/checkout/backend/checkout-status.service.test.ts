@@ -6,6 +6,7 @@ import { Effect, Layer } from "effect";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import type { IWorkspaceAvailabilityInventoryService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
@@ -76,6 +77,24 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
     ...overrides,
   }) as unknown as typeof DotyposService.Service;
 
+const makeAvailabilityInventory = (
+  overrides: Partial<IWorkspaceAvailabilityInventoryService> = {}
+): IWorkspaceAvailabilityInventoryService => ({
+  invalidateAdvisory: mock(() => Effect.void),
+  loadAdvisory: mock(() => Effect.die("unused")),
+  loadFresh: mock(() => Effect.die("unused")),
+  ...overrides,
+});
+
+const makeAvailabilityInventoryLayer = async (
+  service: IWorkspaceAvailabilityInventoryService
+) => {
+  const { WorkspaceAvailabilityInventoryService } = await import(
+    "@/features/reservation/backend/workspace-availability.service"
+  );
+  return Layer.succeed(WorkspaceAvailabilityInventoryService, service);
+};
+
 describe("CheckoutStatusService", () => {
   test("refreshes successful payment status before reading status", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
@@ -118,6 +137,7 @@ describe("CheckoutStatusService", () => {
     const paymentAttempts = {
       findDisplayableForReservation: mock(() => Effect.succeed(null)),
     } as unknown as PaymentAttemptRepositoryType;
+    const availabilityInventory = makeAvailabilityInventory();
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -136,6 +156,9 @@ describe("CheckoutStatusService", () => {
       Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
       Effect.provide(Layer.succeed(DotyposService, makeDotypos())),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        await makeAvailabilityInventoryLayer(availabilityInventory)
+      ),
       Effect.runPromise
     );
 
@@ -181,6 +204,7 @@ describe("CheckoutStatusService", () => {
     const paymentAttempts = {
       findDisplayableForReservation: mock(() => Effect.succeed(null)),
     } as unknown as PaymentAttemptRepositoryType;
+    const availabilityInventory = makeAvailabilityInventory();
 
     await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -199,10 +223,14 @@ describe("CheckoutStatusService", () => {
       Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
       Effect.provide(Layer.succeed(DotyposService, makeDotypos())),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        await makeAvailabilityInventoryLayer(availabilityInventory)
+      ),
       Effect.runPromise
     );
 
     expect(cancelOrderHold).toHaveBeenCalledWith({ orderId });
+    expect(availabilityInventory.invalidateAdvisory).toHaveBeenCalledTimes(1);
   });
 
   test("reconstructs a paid fulfilled reservation summary without PII", async () => {
@@ -244,6 +272,7 @@ describe("CheckoutStatusService", () => {
       cancelOrderHold: mock(() => Effect.die("not used")),
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
+    const availabilityInventory = makeAvailabilityInventory();
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -313,6 +342,9 @@ describe("CheckoutStatusService", () => {
         )
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        await makeAvailabilityInventoryLayer(availabilityInventory)
+      ),
       Effect.runPromise
     );
 
@@ -385,6 +417,7 @@ describe("CheckoutStatusService", () => {
       cancelOrderHold: mock(() => Effect.die("not used")),
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
+    const availabilityInventory = makeAvailabilityInventory();
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -428,6 +461,9 @@ describe("CheckoutStatusService", () => {
         )
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        await makeAvailabilityInventoryLayer(availabilityInventory)
+      ),
       Effect.runPromise
     );
 
@@ -485,6 +521,7 @@ describe("CheckoutStatusService", () => {
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
     const getReservation = mock(() => Effect.die("not used"));
+    const availabilityInventory = makeAvailabilityInventory();
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -505,6 +542,9 @@ describe("CheckoutStatusService", () => {
         Layer.succeed(DotyposService, makeDotypos({ getReservation }))
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        await makeAvailabilityInventoryLayer(availabilityInventory)
+      ),
       Effect.runPromise
     );
 
@@ -552,6 +592,7 @@ describe("CheckoutStatusService", () => {
       cancelOrderHold: mock(() => Effect.die("not used")),
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
+    const availabilityInventory = makeAvailabilityInventory();
 
     const status = await Effect.gen(function* () {
       const service = yield* CheckoutStatusService;
@@ -575,6 +616,9 @@ describe("CheckoutStatusService", () => {
         )
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        await makeAvailabilityInventoryLayer(availabilityInventory)
+      ),
       Effect.runPromise
     );
 

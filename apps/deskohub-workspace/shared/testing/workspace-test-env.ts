@@ -15,6 +15,7 @@ process.env.DOTYPOS_CLIENT_SECRET ??= "secret";
 process.env.DOTYPOS_CLOUD_ID ??= "cloud";
 process.env.DOTYPOS_EMPLOYEE_ID ??= "employee";
 process.env.DOTYPOS_REFRESH_TOKEN ??= "refresh";
+process.env.DOTYPOS_WEBHOOK_SECRET ??= "webhook-secret";
 process.env.GOOGLE_CALENDAR_ID ??= "calendar";
 process.env.GOOGLE_CALENDAR_PRIVATE_KEY ??= "test-private-key";
 process.env.GOOGLE_CALENDAR_SERVICE_ACCOUNT_EMAIL ??= "calendar@example.test";

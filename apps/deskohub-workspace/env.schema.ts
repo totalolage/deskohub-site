@@ -13,7 +13,7 @@ export const workspaceServerEnvSchema = z.object({
   DOTYPOS_CLOUD_ID: z.string().min(1),
   DOTYPOS_EMPLOYEE_ID: z.string().min(1),
   DOTYPOS_REFRESH_TOKEN: z.string().min(1),
-  DOTYPOS_WEBHOOK_SECRET: z.string().min(1).optional(),
+  DOTYPOS_WEBHOOK_SECRET: z.string().min(1),
   EMAIL_API_KEY: z.string().optional(),
   GOOGLE_CALENDAR_ID: z.string().min(1),
   GOOGLE_CALENDAR_PRIVATE_KEY: z.string().min(1),
