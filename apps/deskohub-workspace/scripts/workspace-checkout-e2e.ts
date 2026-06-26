@@ -75,6 +75,9 @@ const main = async () => {
   const config = getConfig();
   const run = makeRunner(config);
   const session = `workspace-checkout-e2e-${Date.now()}`;
+  let datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
+  let checkoutRow: CheckoutRow | undefined;
+  let workflowError: unknown;
 
   try {
     await writeVercelProjectLink(config);
@@ -90,7 +93,7 @@ const main = async () => {
       config.vercelToken,
     ]);
     await loadEnvFile(resolve(repoRoot, ".vercel/.env.preview.local"));
-    const datasourceConfig = getDatasourceConfig();
+    datasourceConfig = getDatasourceConfig();
     assertSafeDatabaseUrl(datasourceConfig.databaseUrl, "DATABASE_URL");
     assertSafeDatabaseUrl(
       datasourceConfig.databaseUrlUnpooled,
@@ -124,22 +127,45 @@ const main = async () => {
       config.aliasUrl,
       await selectAvailableCheckoutDate(config)
     );
-    for (const value of [data.checkoutUrl, data.email, data.name, data.phone])
+    for (const value of [
+      data.checkoutUrl,
+      data.email,
+      data.message,
+      data.name,
+      data.phone,
+    ])
       addRedaction(value);
 
     const orderId = await completeCheckout({ config, data, run, session });
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
-    const row = await validatePostgres(datasourceConfig, data, orderId);
+    checkoutRow = await validatePostgres(datasourceConfig, data, orderId);
     await verifyAlias(config, deployment.id);
     await assertFulfilledStatusPage({ config, orderId, run, session });
-    await validateDotypos(datasourceConfig, data, row);
+    await validateDotypos(datasourceConfig, data, checkoutRow);
 
     log(`Checkout e2e passed for order ${orderId}`);
+  } catch (cause) {
+    workflowError = cause;
+    throw cause;
   } finally {
+    let cleanupError: unknown;
+    if (datasourceConfig && checkoutRow?.dotypos_reservation_id) {
+      try {
+        await cancelDotyposReservation(
+          datasourceConfig,
+          checkoutRow.dotypos_reservation_id
+        );
+      } catch (cause) {
+        cleanupError = cause;
+        if (workflowError)
+          log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+      }
+    }
     await run("agent-browser", ["--session", session, "close"], {
       allowFailure: true,
     });
+    if (cleanupError && !workflowError) throw cleanupError;
   }
 };
 
@@ -166,7 +192,8 @@ const getConfig = () => {
 
 const getDatasourceConfig = () => {
   const databaseUrl = requireEnv("DATABASE_URL");
-  const databaseUrlUnpooled = env("DATABASE_URL_UNPOOLED") ?? databaseUrl;
+  const databaseUrlUnpooled =
+    env("WORKSPACE_E2E_DATABASE_URL_UNPOOLED") ?? databaseUrl;
   addRedaction(databaseUrlUnpooled);
 
   return {
@@ -201,15 +228,28 @@ const getVercelDeployEnvArgs = (
     DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
     DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
     DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
+    NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
+    WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
     ...(config.bypassSecret
       ? { VERCEL_AUTOMATION_BYPASS_SECRET: config.bypassSecret }
       : {}),
   };
 
-  return Object.entries(values).flatMap(([key, value]) => [
-    "--env",
-    `${key}=${value}`,
-  ]);
+  const buildValues = {
+    DATABASE_URL: datasourceConfig.databaseUrl,
+    DATABASE_URL_UNPOOLED: datasourceConfig.databaseUrlUnpooled,
+  };
+
+  return [
+    ...Object.entries(buildValues).flatMap(([key, value]) => [
+      "--build-env",
+      `${key}=${value}`,
+    ]),
+    ...Object.entries(values).flatMap(([key, value]) => [
+      "--env",
+      `${key}=${value}`,
+    ]),
+  ];
 };
 
 const makeRunner =
@@ -329,7 +369,13 @@ const completeCheckout = async ({
   await completeNexiHostedPayment({ data, run, session });
   await waitForBrowserUrl({
     description: "checkout status page",
-    matches: (url) => url.includes("/checkout/status/"),
+    matches: (url) => {
+      const parsed = parseUrl(url);
+      return (
+        parsed?.host === config.alias &&
+        parsed.pathname.includes("/checkout/status/")
+      );
+    },
     run,
     session,
     timeoutMs: CHECKOUT_TIMEOUT_MS,
@@ -351,6 +397,8 @@ const completeNexiHostedPayment = async ({
   session: string;
 }) => {
   addRedaction(NEXI_TEST_CARD_NUMBER);
+  addRedaction(NEXI_TEST_CVV, true);
+  addRedaction(NEXI_TEST_EXPIRY, true);
 
   await fillHostedPaymentField(
     run,
@@ -768,6 +816,9 @@ const validatePostgres = async (
 ) => {
   const pool = new Pool({
     connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: DATASOURCE_TIMEOUT_MS,
+    query_timeout: DATASOURCE_TIMEOUT_MS,
+    statement_timeout: DATASOURCE_TIMEOUT_MS,
   });
 
   try {
@@ -1050,8 +1101,8 @@ const assertNoLocalPii = async (
       where oe.workspace_reservation_id = $1 or oe.payment_attempt_id = $2
     )
     select count(*)
-    from payloads
-    where payload ilike $4 or payload ilike $5 or payload ilike $6`,
+      from payloads
+      where payload ilike $4 or payload ilike $5 or payload ilike $6 or payload ilike $7`,
     [
       orderId,
       paymentAttemptId,
@@ -1059,6 +1110,7 @@ const assertNoLocalPii = async (
       `%${data.email}%`,
       `%${data.phone}%`,
       `%${data.name}%`,
+      `%${data.message}%`,
     ]
   );
 
@@ -1132,6 +1184,28 @@ const validateDotypos = async (
     "Dotypos date does not cover selected checkout date"
   );
   log("Dotypos reservation state validated");
+};
+
+const cancelDotyposReservation = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  dotyposReservationId: string
+) => {
+  const layer = DotyposService.Default.pipe(
+    Layer.provide(
+      Layer.succeed(DotyposRuntimeConfig, {
+        apiTimeout: config.dotypos.apiTimeout,
+        apiUrl: config.dotypos.apiUrl,
+        branchId: config.dotypos.branchId,
+        clientId: config.dotypos.clientId,
+        clientSecret: config.dotypos.clientSecret,
+        cloudId: config.dotypos.cloudId,
+        employeeId: config.dotypos.employeeId,
+        refreshToken: config.dotypos.refreshToken,
+        reservationTableIds: [],
+      })
+    )
+  );
+
   await Effect.runPromise(
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
@@ -1269,11 +1343,11 @@ const assertWebhookEndpoint = async (
   config: ReturnType<typeof getConfig>,
   path: string
 ) => {
-  const response = await fetch(`${config.aliasUrl}${path}`, {
-    headers: config.bypassSecret
-      ? { "x-vercel-protection-bypass": config.bypassSecret }
-      : undefined,
-  });
+  const url = new URL(path, config.aliasUrl);
+  if (config.bypassSecret)
+    url.searchParams.set("x-vercel-protection-bypass", config.bypassSecret);
+
+  const response = await fetch(url);
   assert(response.ok, `${path} health check failed with ${response.status}`);
 };
 
@@ -1307,12 +1381,13 @@ const makeCheckoutData = (aliasUrl: string, date: string) => {
   const name = `Workspace E2E ${runId}`;
   const phone = `+4207${runId.slice(-8)}`;
   const email = `delivered+${runId}@resend.dev`;
+  const message = `Automated checkout e2e ${runId}`;
   const params = new URLSearchParams({
     coffee: "false",
     date,
     email,
     entryTier: "basic",
-    message: `Automated checkout e2e ${runId}`,
+    message,
     name,
     phone,
   });
@@ -1321,6 +1396,7 @@ const makeCheckoutData = (aliasUrl: string, date: string) => {
     checkoutUrl: `${aliasUrl}/en-US/checkout/order?${params}`,
     date,
     email,
+    message,
     name,
     orderIdHint: "",
     phone,
@@ -1401,6 +1477,14 @@ const dotyposDateCovers = (
   );
 };
 
+const parseUrl = (value: string) => {
+  try {
+    return new URL(value);
+  } catch {
+    return undefined;
+  }
+};
+
 const poll = async <T>(
   fn: () => Promise<T | undefined>,
   timeoutMs: number,
@@ -1460,8 +1544,8 @@ const env = (name: string) => {
   return value ? value : undefined;
 };
 
-const addRedaction = (value: string | undefined) => {
-  if (!value || value.length <= 6) return;
+const addRedaction = (value: string | undefined, force = false) => {
+  if (!value || (!force && value.length <= 6)) return;
   redactions.add(value);
   redactions.add(encodeURIComponent(value));
   redactions.add(

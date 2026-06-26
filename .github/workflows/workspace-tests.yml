@@ -38,32 +38,20 @@ jobs:
 
   checkout-e2e:
     needs: test
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     environment: workspace-checkout-e2e
     concurrency:
       group: workspace-checkout-e2e-new-workspace-alias
       cancel-in-progress: false
     env:
-      TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
-      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
       VERCEL_ORG_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
       VERCEL_TEAM_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
       VERCEL_PROJECT_ID: prj_7FliQBcbBiBwGaO2JLrigicnXCRd
       WORKSPACE_E2E_ALIAS: new.workspace.deskohub.cz
-      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-      DATABASE_URL: ${{ secrets.WORKSPACE_E2E_DATABASE_URL }}
-      WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ vars.WORKSPACE_E2E_DATABASE_ALLOWLIST }}
       WORKSPACE_E2E_EXPECTED_CURRENCY: EUR
-      DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
       DOTYPOS_API_TIMEOUT: ${{ vars.WORKSPACE_E2E_DOTYPOS_API_TIMEOUT }}
-      DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
-      DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
-      DOTYPOS_REFRESH_TOKEN: ${{ secrets.WORKSPACE_E2E_DOTYPOS_REFRESH_TOKEN }}
-      DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
-      DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
-      DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}
 
     steps:
       - uses: actions/checkout@v4
@@ -82,3 +70,17 @@ jobs:
 
       - run: bun run e2e:checkout
         working-directory: apps/deskohub-workspace
+        env:
+          TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          DATABASE_URL: ${{ secrets.WORKSPACE_E2E_DATABASE_URL }}
+          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ secrets.WORKSPACE_E2E_DATABASE_URL_UNPOOLED }}
+          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ vars.WORKSPACE_E2E_DATABASE_ALLOWLIST }}
+          DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
+          DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
+          DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
+          DOTYPOS_REFRESH_TOKEN: ${{ secrets.WORKSPACE_E2E_DOTYPOS_REFRESH_TOKEN }}
+          DOTYPOS_CLOUD_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLOUD_ID }}
+          DOTYPOS_BRANCH_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_BRANCH_ID }}
+          DOTYPOS_EMPLOYEE_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_EMPLOYEE_ID }}

@@ -30,6 +30,7 @@ export const workspaceServerEnvSchema = z.object({
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
   VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
   VERCEL_URL: z.string().optional(),
+  WORKSPACE_CALLBACK_ORIGIN: z.url().optional(),
 });
 
 export const workspaceClientEnvSchema = z.object({
