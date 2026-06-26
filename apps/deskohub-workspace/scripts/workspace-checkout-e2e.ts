@@ -1380,7 +1380,7 @@ const makeCheckoutData = (aliasUrl: string, date: string) => {
     .slice(0, 14);
   const name = `Workspace E2E ${runId}`;
   const phone = `+4207${runId.slice(-8)}`;
-  const email = `delivered+${runId}@resend.dev`;
+  const email = "delivered@resend.dev";
   const message = `Automated checkout e2e ${runId}`;
   const params = new URLSearchParams({
     coffee: "false",
