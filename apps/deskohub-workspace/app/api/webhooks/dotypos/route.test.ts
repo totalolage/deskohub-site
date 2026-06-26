@@ -14,14 +14,17 @@ mock.module("next/cache", () => ({
   revalidateTag,
 }));
 
-const request = (body: unknown, secret = webhookSecret) =>
+const request = (body: BodyInit, secret = webhookSecret) =>
   new Request(
     `https://workspace.example.test/api/webhooks/dotypos${secret ? `?secret=${secret}` : ""}`,
     {
       method: "POST",
-      body: JSON.stringify(body),
+      body,
     }
   );
+
+const jsonRequest = (body: unknown, secret = webhookSecret) =>
+  request(JSON.stringify(body), secret);
 
 describe("Dotypos webhook route", () => {
   beforeEach(() => {
@@ -34,7 +37,7 @@ describe("Dotypos webhook route", () => {
 
     for (const secret of ["", "wrong-secret"]) {
       const response = await POST(
-        request({ payloadEntity: "RESERVATION" }, secret)
+        jsonRequest([{ id: "reservation-1" }], secret)
       );
       expect(response.status).toBe(401);
     }
@@ -45,31 +48,21 @@ describe("Dotypos webhook route", () => {
   test("invalid payload returns 400 without invalidation", async () => {
     const { POST } = await import("./route");
 
-    const response = await POST(request({ nope: true }));
+    const response = await POST(request("not json"));
     const body = await response.json();
 
     expect(response.status).toBe(400);
     expect(body).toMatchObject({
       error: "Invalid payload",
-      message: "Invalid Dotypos webhook payload",
+      message: "Failed to parse request body",
     });
     expect(revalidateTag).not.toHaveBeenCalled();
   });
 
-  test("non-reservation payloads are ignored", async () => {
+  test("reservation record list expires workspace availability cache", async () => {
     const { POST } = await import("./route");
 
-    const response = await POST(request({ payloadEntity: "PRODUCT" }));
-
-    expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ ignored: true });
-    expect(revalidateTag).not.toHaveBeenCalled();
-  });
-
-  test("reservation payload expires workspace availability cache", async () => {
-    const { POST } = await import("./route");
-
-    const response = await POST(request({ payloadEntity: "RESERVATION" }));
+    const response = await POST(jsonRequest([{ id: "reservation-1" }]));
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
@@ -87,7 +80,7 @@ describe("Dotypos webhook route", () => {
       throw new Error("cache failed");
     });
 
-    const response = await POST(request({ payloadEntity: "RESERVATION" }));
+    const response = await POST(jsonRequest([{ id: "reservation-1" }]));
 
     expect(response.status).toBe(500);
   });

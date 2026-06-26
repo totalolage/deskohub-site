@@ -1,4 +1,4 @@
-import { Data, Effect, Schema } from "effect";
+import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
@@ -17,10 +17,6 @@ class DotyposWebhookValidationError extends Data.TaggedError(
   readonly message: string;
   readonly issues?: unknown;
 }> {}
-
-const DotyposWebhookPayload = Schema.Struct({
-  payloadEntity: Schema.String,
-});
 
 const getVercelEnv = () => process.env.VERCEL_ENV ?? env.VERCEL_ENV;
 
@@ -53,40 +49,21 @@ const validateWebhookSecret = (url: URL) =>
     }
   });
 
-const parseWebhookPayload = (request: Request) =>
+const parseWebhookBody = (request: Request) =>
   Effect.tryPromise({
     try: () => request.json(),
     catch: () =>
       new DotyposWebhookValidationError({
         message: "Failed to parse request body",
       }),
-  }).pipe(
-    Effect.flatMap((payload) =>
-      Schema.decodeUnknownEffect(DotyposWebhookPayload)(payload).pipe(
-        Effect.mapError(
-          (error) =>
-            new DotyposWebhookValidationError({
-              message: "Invalid Dotypos webhook payload",
-              issues: error.message,
-            })
-        )
-      )
-    )
-  );
+  });
 
 const processWebhookRequest = Effect.fn("processDotyposWebhookRequest")(
   function* (request: Request) {
     yield* Effect.logInfo("Dotypos webhook invoked");
 
     yield* validateWebhookSecret(new URL(request.url));
-    const payload = yield* parseWebhookPayload(request);
-
-    if (payload.payloadEntity !== "RESERVATION") {
-      yield* Effect.logInfo("Dotypos webhook ignored", {
-        payloadEntity: payload.payloadEntity,
-      });
-      return NextResponse.json({ ignored: true });
-    }
+    yield* parseWebhookBody(request);
 
     const tag = workspaceAvailabilityTags.all();
     yield* Effect.try({
@@ -147,6 +124,6 @@ export async function GET() {
     status: "ok",
     endpoint: "/api/webhooks/dotypos",
     accepts: "POST",
-    payloadEntity: "RESERVATION",
+    payload: "Dotypos reservation change records",
   });
 }
