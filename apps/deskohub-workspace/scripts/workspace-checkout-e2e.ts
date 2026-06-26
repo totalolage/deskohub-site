@@ -1302,7 +1302,7 @@ const makeCheckoutData = (aliasUrl: string) => {
     .slice(0, 14);
   const name = `Workspace E2E ${runId}`;
   const phone = `+420735${runId.slice(-6)}`;
-  const email = "delivered@resend.dev";
+  const email = `delivered+${runId}@resend.dev`;
   const date = futureIsoDate(runId);
   const params = new URLSearchParams({
     coffee: "false",
