@@ -9,7 +9,10 @@ import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType }
 import type { OperationalEventRepository as OperationalEventRepositoryType } from "@/features/checkout/backend/operational-event.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import type { WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType } from "@/features/checkout/backend/workspace-table-assignment.service";
-import type { WorkspaceAvailabilityService as WorkspaceAvailabilityServiceType } from "@/features/reservation/backend/workspace-availability.service";
+import type {
+  IWorkspaceAvailabilityInventoryService,
+  WorkspaceAvailabilityService as WorkspaceAvailabilityServiceType,
+} from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("@/features/legal/acceptance-snapshot", () => ({
@@ -61,7 +64,10 @@ describe("prepareWorkspacePayStateEffect", () => {
     const { WorkspaceTableAssignmentService } = await import(
       "@/features/checkout/backend/workspace-table-assignment.service"
     );
-    const { WorkspaceAvailabilityService } = await import(
+    const {
+      WorkspaceAvailabilityInventoryService,
+      WorkspaceAvailabilityService,
+    } = await import(
       "@/features/reservation/backend/workspace-availability.service"
     );
     const { WorkspaceReservationRepository } = await import(
@@ -90,6 +96,7 @@ describe("prepareWorkspacePayStateEffect", () => {
     );
     const claimHoldCreation = mock(() => Effect.succeed(true));
     const attachHold = mock(() => Effect.void);
+    const invalidateAdvisory = mock(() => Effect.void);
     const recordMany = mock((input) => Effect.succeed(input as never));
     const createReservation = mock(() =>
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
@@ -108,6 +115,13 @@ describe("prepareWorkspacePayStateEffect", () => {
           getAvailability: mock(() => Effect.die("unused")),
           ensureAvailable,
         } satisfies WorkspaceAvailabilityServiceType)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceAvailabilityInventoryService, {
+          invalidateAdvisory,
+          loadAdvisory: mock(() => Effect.die("unused")),
+          loadFresh: mock(() => Effect.die("unused")),
+        } satisfies IWorkspaceAvailabilityInventoryService)
       ),
       Effect.provide(
         Layer.succeed(WorkspaceReservationRepository, {
@@ -186,6 +200,7 @@ describe("prepareWorkspacePayStateEffect", () => {
         dotyposReservationId: "dotypos-reservation-id",
       })
     );
+    expect(invalidateAdvisory).toHaveBeenCalledTimes(1);
     expect(recordMany).toHaveBeenCalledWith([
       expect.objectContaining({
         workspaceReservationId: "reservation-id",

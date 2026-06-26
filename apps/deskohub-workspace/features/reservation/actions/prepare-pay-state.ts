@@ -728,6 +728,16 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           })
         )
       );
+    const availabilityInventory = yield* WorkspaceAvailabilityInventoryService;
+    yield* availabilityInventory.invalidateAdvisory().pipe(
+      Effect.tapError((cause) =>
+        Effect.logError(
+          "Workspace availability advisory cache invalidation failed after hold creation",
+          { cause }
+        )
+      ),
+      Effect.ignore
+    );
     yield* Effect.logInfo("Workspace reservation hold attached");
     yield* captureReservationStarted({
       reservation: {
@@ -779,6 +789,7 @@ const preparePayStateAction = createEffectSafeAction(
       OperationalEventRepositoryLive
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
     ReservationHoldCleanupServiceLiveWithDependencies,
+    EarlyReservationWorkspaceAvailabilityInventoryServiceLive,
     WorkspaceAvailabilityServiceLive.pipe(
       Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
       Layer.provide(EarlyReservationWorkspaceAvailabilityInventoryServiceLive)
