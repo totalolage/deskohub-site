@@ -92,34 +92,13 @@ const main = async () => {
       "--token",
       config.vercelToken,
     ]);
-    const pulledEnv = await loadEnvFile(
-      resolve(repoRoot, ".vercel/.env.preview.local")
-    );
+    await loadEnvFile(resolve(repoRoot, ".vercel/.env.preview.local"));
     const datasourceConfig = getDatasourceConfig();
     assertSafeDatabaseUrl(datasourceConfig.databaseUrl, "DATABASE_URL");
-    const pulledDatabaseUrl = pulledEnv.get("DATABASE_URL")?.trim();
-    assert(
-      pulledDatabaseUrl,
-      "Vercel preview DATABASE_URL is required for workspace checkout e2e"
+    assertSafeDatabaseUrl(
+      datasourceConfig.databaseUrlUnpooled,
+      "DATABASE_URL_UNPOOLED"
     );
-    addRedaction(pulledDatabaseUrl);
-    assertSafeDatabaseUrl(pulledDatabaseUrl, "Vercel preview DATABASE_URL");
-    assertSameDatabaseUrl(pulledDatabaseUrl, datasourceConfig.databaseUrl);
-
-    const pulledUnpooledDatabaseUrl = pulledEnv
-      .get("DATABASE_URL_UNPOOLED")
-      ?.trim();
-    if (pulledUnpooledDatabaseUrl) {
-      addRedaction(pulledUnpooledDatabaseUrl);
-      assertSafeDatabaseUrl(
-        pulledUnpooledDatabaseUrl,
-        "Vercel preview DATABASE_URL_UNPOOLED"
-      );
-      assertSameDatabaseUrl(
-        pulledUnpooledDatabaseUrl,
-        datasourceConfig.databaseUrl
-      );
-    }
 
     const deploy = await run(
       "bunx",
@@ -129,6 +108,7 @@ const main = async () => {
         "--yes",
         "--cwd",
         repoRoot,
+        ...getVercelDeployEnvArgs(config, datasourceConfig),
         "--token",
         config.vercelToken,
       ],
@@ -180,20 +160,53 @@ const getConfig = () => {
   };
 };
 
-const getDatasourceConfig = () => ({
-  databaseUrl: requireEnv("DATABASE_URL"),
-  dotypos: {
-    apiTimeout: Number(env("DOTYPOS_API_TIMEOUT") ?? 5_000),
-    apiUrl: requireEnv("DOTYPOS_API_URL"),
-    branchId: requireEnv("DOTYPOS_BRANCH_ID"),
-    clientId: requireEnv("DOTYPOS_CLIENT_ID"),
-    clientSecret: requireEnv("DOTYPOS_CLIENT_SECRET"),
-    cloudId: requireEnv("DOTYPOS_CLOUD_ID"),
-    employeeId: requireEnv("DOTYPOS_EMPLOYEE_ID"),
-    refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
-  },
-  expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
-});
+const getDatasourceConfig = () => {
+  const databaseUrl = requireEnv("DATABASE_URL");
+  const databaseUrlUnpooled = env("DATABASE_URL_UNPOOLED") ?? databaseUrl;
+  addRedaction(databaseUrlUnpooled);
+
+  return {
+    databaseUrl,
+    databaseUrlUnpooled,
+    dotypos: {
+      apiTimeout: Number(env("DOTYPOS_API_TIMEOUT") ?? 5_000),
+      apiUrl: requireEnv("DOTYPOS_API_URL"),
+      branchId: requireEnv("DOTYPOS_BRANCH_ID"),
+      clientId: requireEnv("DOTYPOS_CLIENT_ID"),
+      clientSecret: requireEnv("DOTYPOS_CLIENT_SECRET"),
+      cloudId: requireEnv("DOTYPOS_CLOUD_ID"),
+      employeeId: requireEnv("DOTYPOS_EMPLOYEE_ID"),
+      refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
+    },
+    expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
+  };
+};
+
+const getVercelDeployEnvArgs = (
+  config: ReturnType<typeof getConfig>,
+  datasourceConfig: ReturnType<typeof getDatasourceConfig>
+) => {
+  const values = {
+    DATABASE_URL: datasourceConfig.databaseUrl,
+    DATABASE_URL_UNPOOLED: datasourceConfig.databaseUrlUnpooled,
+    DOTYPOS_API_TIMEOUT: String(datasourceConfig.dotypos.apiTimeout),
+    DOTYPOS_API_URL: datasourceConfig.dotypos.apiUrl,
+    DOTYPOS_BRANCH_ID: datasourceConfig.dotypos.branchId,
+    DOTYPOS_CLIENT_ID: datasourceConfig.dotypos.clientId,
+    DOTYPOS_CLIENT_SECRET: datasourceConfig.dotypos.clientSecret,
+    DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
+    DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
+    DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
+    ...(config.bypassSecret
+      ? { VERCEL_AUTOMATION_BYPASS_SECRET: config.bypassSecret }
+      : {}),
+  };
+
+  return Object.entries(values).flatMap(([key, value]) => [
+    "--env",
+    `${key}=${value}`,
+  ]);
+};
 
 const makeRunner =
   (config: ReturnType<typeof getConfig>) =>
@@ -1115,6 +1128,13 @@ const validateDotypos = async (
     "Dotypos date does not cover selected checkout date"
   );
   log("Dotypos reservation state validated");
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const dotypos = yield* DotyposService;
+      yield* dotypos.cancelReservation(dotyposReservationId);
+    }).pipe(Effect.provide(layer))
+  );
+  log("Dotypos reservation cancelled after validation");
 };
 
 const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
@@ -1126,13 +1146,6 @@ const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
   assert(
     allowlist.includes(databaseSafetyKey(databaseUrl)),
     `${label} is not allowlisted for workspace checkout e2e`
-  );
-};
-
-const assertSameDatabaseUrl = (pulled: string, validation: string) => {
-  assert(
-    databaseSafetyKey(pulled) === databaseSafetyKey(validation),
-    "Vercel preview DATABASE_URL does not match validation DATABASE_URL"
   );
 };
 
