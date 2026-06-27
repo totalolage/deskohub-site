@@ -19,7 +19,6 @@ type TtrpgRoomPageProps = {
 
 const pathname = "/ttrpg-room";
 const roomImageMaxResults = 8;
-export const dynamic = "force-dynamic";
 
 const getContactHref = (href: string, message: string) => {
   const searchParams = new URLSearchParams({ message });

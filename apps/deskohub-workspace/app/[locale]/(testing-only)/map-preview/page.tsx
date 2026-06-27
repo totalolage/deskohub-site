@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { isLocale, m } from "@/features/i18n";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
@@ -10,14 +11,13 @@ type WorkspaceMapPreviewPageProps = {
   params: Promise<{ locale: string }>;
 };
 
-export const dynamic = "force-dynamic";
-
 export default async function WorkspaceMapPreviewPage({
   params,
 }: WorkspaceMapPreviewPageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) return null;
 
+  await connection();
   const image = await generateWorkspaceLocationMapImage();
   const imageSrc = `data:image/jpeg;base64,${image.toString("base64")}`;
 
