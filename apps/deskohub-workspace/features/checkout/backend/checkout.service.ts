@@ -49,7 +49,11 @@ import type {
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
+import {
+  WorkspaceAvailabilityInventoryService,
+  WorkspaceAvailabilityInventoryServiceLiveWithDependencies,
+  type WorkspaceTableUnavailableError,
+} from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -366,7 +370,28 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const holdCleanup = yield* ReservationHoldCleanupService;
+    const availabilityInventory = yield* WorkspaceAvailabilityInventoryService;
     const posthogEvents = yield* PostHogEventService;
+
+    const invalidateAdvisoryAvailability = Effect.fn(
+      "checkout.invalidateAdvisoryAvailability"
+    )(function* (input: {
+      readonly reason: string;
+      readonly orderId?: string;
+    }) {
+      yield* availabilityInventory.invalidateAdvisory().pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning(
+            "Checkout advisory availability invalidation failed",
+            {
+              ...input,
+              cause,
+            }
+          )
+        ),
+        Effect.ignore
+      );
+    });
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -500,7 +525,7 @@ export const CheckoutServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ input, locale });
           yield* Effect.logInfo("Hosted payment checkout creation started");
 
-          yield* holdCleanup
+          const sweepResult = yield* holdCleanup
             .sweepExpiredHolds({ now: new Date(), limit: 10 })
             .pipe(
               Effect.tapError((cause) =>
@@ -508,8 +533,17 @@ export const CheckoutServiceLive = Layer.effect(
                   cause,
                 })
               ),
-              Effect.ignore
+              Effect.result
             );
+
+          if (
+            sweepResult._tag === "Success" &&
+            sweepResult.success.cancelled > 0
+          ) {
+            yield* invalidateAdvisoryAvailability({
+              reason: "expired_hold_sweep",
+            });
+          }
 
           if (input.legalConsent !== true) {
             yield* Effect.logInfo(
@@ -572,7 +606,7 @@ export const CheckoutServiceLive = Layer.effect(
             reservation.reservationHoldExpiresAt &&
             reservation.reservationHoldExpiresAt <= new Date()
           ) {
-            yield* holdCleanup
+            const cancellationResult = yield* holdCleanup
               .cancelOrderHold({
                 orderId: reservation.id,
                 holdExpiredAt: new Date(),
@@ -587,8 +621,16 @@ export const CheckoutServiceLive = Layer.effect(
                     }
                   )
                 ),
-                Effect.ignore
+                Effect.result
               );
+
+            if (cancellationResult._tag === "Success") {
+              yield* invalidateAdvisoryAvailability({
+                reason: "expired_hold_checkout",
+                orderId: reservation.id,
+              });
+            }
+
             yield* Effect.logInfo(
               "Hosted payment checkout returned in_progress: reservation hold expired"
             );
@@ -732,6 +774,7 @@ export const CheckoutServiceLive = Layer.effect(
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+  Layer.provide(WorkspaceAvailabilityInventoryServiceLiveWithDependencies),
   Layer.provide(OperationalEventRepositoryLive),
   Layer.provide(LegalEvidenceEventRepositoryLive),
   Layer.provide(PostHogEventServiceLive),

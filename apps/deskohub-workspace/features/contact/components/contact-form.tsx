@@ -2,6 +2,7 @@
 
 import { Send } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
@@ -35,13 +36,12 @@ const initialContactFormState: ContactFormState = {
 };
 
 const getContactQueryValue = (
-  params: URLSearchParams,
+  params: Pick<URLSearchParams, "get">,
   key: keyof ContactFormInitialValues,
   maxLength: number
 ) => params.get(key)?.slice(0, maxLength);
 
-const getContactQueryInitialValues = () => {
-  const params = new URLSearchParams(window.location.search);
+const getContactQueryInitialValues = (params: Pick<URLSearchParams, "get">) => {
   const values: ContactFormInitialValues = {
     name: getContactQueryValue(params, "name", 100),
     email: getContactQueryValue(params, "email", 255),
@@ -53,6 +53,8 @@ const getContactQueryInitialValues = () => {
 };
 
 export function ContactForm({ locale, initialValues }: ContactFormProps) {
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
   const [state, formAction] = useActionState(
     submitContactForm,
     initialContactFormState
@@ -84,8 +86,12 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
   }, [state.status]);
 
   useEffect(() => {
-    if (!initialValues) setQueryInitialValues(getContactQueryInitialValues());
-  }, [initialValues]);
+    if (!initialValues) {
+      setQueryInitialValues(
+        getContactQueryInitialValues(new URLSearchParams(queryString))
+      );
+    }
+  }, [initialValues, queryString]);
 
   return (
     <Card

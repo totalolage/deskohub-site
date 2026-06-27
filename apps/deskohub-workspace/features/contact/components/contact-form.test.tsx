@@ -4,6 +4,7 @@ import {
   beforeAll,
   describe,
   expect,
+  mock,
   test,
 } from "bun:test";
 import { cleanup, render, waitFor } from "@testing-library/react";
@@ -11,7 +12,10 @@ import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
-import { ContactForm } from "./contact-form";
+
+mock.module("next/navigation", () => ({
+  useSearchParams: () => new URLSearchParams(window.location.search),
+}));
 
 const setWindowUrl = (url: string) => {
   (
@@ -36,7 +40,8 @@ describe("ContactForm", () => {
     unregisterWorkspaceComponentTestEnv();
   });
 
-  test("prefills fields from provided initial values", () => {
+  test("prefills fields from provided initial values", async () => {
+    const { ContactForm } = await import("./contact-form");
     const view = render(
       <ContactForm
         locale="en-US"
@@ -64,6 +69,7 @@ describe("ContactForm", () => {
   });
 
   test("prefills fields from URL query values", async () => {
+    const { ContactForm } = await import("./contact-form");
     setWindowUrl(
       "https://workspace.example.test/contact?name=Grace%20Hopper&email=grace%40example.com&phone=%2B420123456789&message=Static%20prefill"
     );
@@ -84,5 +90,27 @@ describe("ContactForm", () => {
     expect((view.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
       "Static prefill"
     );
+  });
+
+  test("updates URL query prefill after same-page navigation", async () => {
+    const { ContactForm } = await import("./contact-form");
+    setWindowUrl("https://workspace.example.test/contact?name=Ada");
+
+    const view = render(<ContactForm locale="en-US" />);
+
+    await waitFor(() => {
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
+        "Ada"
+      );
+    });
+
+    setWindowUrl("https://workspace.example.test/contact?name=Grace");
+    view.rerender(<ContactForm locale="en-US" />);
+
+    await waitFor(() => {
+      expect((view.getByLabelText("Name") as HTMLInputElement).value).toBe(
+        "Grace"
+      );
+    });
   });
 });

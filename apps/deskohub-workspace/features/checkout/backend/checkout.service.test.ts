@@ -7,11 +7,16 @@ import { Effect, Layer } from "effect";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import type { IWorkspaceAvailabilityInventoryService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { buildSignedPayState, sealPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
+
+mock.module("@/env", () => ({
+  env: process.env,
+}));
 
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
@@ -53,6 +58,15 @@ const buildPayStateToken = (orderId: string) => {
   );
 };
 
+const makeAvailabilityInventory = (
+  overrides: Partial<IWorkspaceAvailabilityInventoryService> = {}
+): IWorkspaceAvailabilityInventoryService => ({
+  invalidateAdvisory: mock(() => Effect.void),
+  loadAdvisory: mock(() => Effect.die("unused")),
+  loadFresh: mock(() => Effect.die("unused")),
+  ...overrides,
+});
+
 describe("CheckoutService", () => {
   test("marks HPP provider-create failures atomically for the reservation", async () => {
     const { CheckoutService, CheckoutServiceLive } = await import(
@@ -66,6 +80,9 @@ describe("CheckoutService", () => {
     );
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
+    );
+    const { WorkspaceAvailabilityInventoryService } = await import(
+      "@/features/reservation/backend/workspace-availability.service"
     );
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
@@ -177,6 +194,7 @@ describe("CheckoutService", () => {
         Effect.succeed({ cancelled: 0, failed: 0 })
       ),
     };
+    const availabilityInventory = makeAvailabilityInventory();
 
     await Effect.gen(function* () {
       const service = yield* CheckoutService;
@@ -203,6 +221,12 @@ describe("CheckoutService", () => {
         })
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        Layer.succeed(
+          WorkspaceAvailabilityInventoryService,
+          availabilityInventory
+        )
+      ),
       Effect.flip,
       Effect.runPromise
     );
@@ -217,5 +241,135 @@ describe("CheckoutService", () => {
     });
     expect(markTerminal).not.toHaveBeenCalled();
     expect(markPaymentTerminal).not.toHaveBeenCalled();
+    expect(availabilityInventory.invalidateAdvisory).not.toHaveBeenCalled();
+  });
+
+  test("invalidates advisory availability after cancelling an expired hold", async () => {
+    const { CheckoutService, CheckoutServiceLive } = await import(
+      "./checkout.service"
+    );
+    const { LegalEvidenceEventRepository } = await import(
+      "./legal-evidence-event.repository"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "./reservation-hold-cleanup.service"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { WorkspaceAvailabilityInventoryService } = await import(
+      "@/features/reservation/backend/workspace-availability.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+
+    const orderId = "reservation-expired-hold";
+    const cancelOrderHold = mock(() => Effect.void);
+    const invalidateAdvisory = mock(() => Effect.void);
+    const paymentAttempts = {
+      attachHostedPaymentPage: mock(() => Effect.die("unused")),
+      create: mock(() => Effect.die("unused")),
+      findById: mock(() => Effect.die("unused")),
+      findByProviderOrderId: mock(() => Effect.die("unused")),
+      markPaid: mock(() => Effect.die("unused")),
+      markPaidForReservation: mock(() => Effect.die("unused")),
+      markTerminal: mock(() => Effect.die("unused")),
+      markTerminalForReservation: mock(() => Effect.die("unused")),
+    } as unknown as PaymentAttemptRepositoryType;
+    const reservations = {
+      findById: mock(() =>
+        Effect.succeed({
+          id: orderId,
+          reservationIntentKey: "intent-key",
+          dotyposCustomerId: "customer-id",
+          dotyposReservationId: "dotypos-reservation-id",
+          productTier: reservationData.entryTier,
+          productCoffee: reservationData.coffee,
+          productMonitorOption: reservationData.monitorOption,
+          locale: "en-US",
+          reservationState: "held",
+          reservationHoldExpiresAt: new Date("2026-06-20T10:00:00.000Z"),
+          reservationCreatedAt: new Date("2026-06-01T10:00:00.000Z"),
+          reservationCancelledAt: null,
+          holdExpiredAt: null,
+          cancellationClaimedAt: null,
+          holdCreationClaimedAt: null,
+          paymentState: "not_started",
+          activePaymentAttemptId: null,
+          failureCode: null,
+          paidAt: null,
+          fulfillmentState: "not_started",
+          fulfillmentClaimedAt: null,
+          fulfilledAt: null,
+          reservationConfirmedAt: null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+      ),
+      markPaymentTerminal: mock(() => Effect.die("unused")),
+      updateProductIntent: mock(() => Effect.die("unused")),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const dotypos = {
+      findCustomer: mock(() => Effect.die("unused")),
+      getCustomerDiscount: mock(() => Effect.die("unused")),
+    } as unknown as typeof DotyposService.Service;
+    const nexi = {
+      createHostedPaymentPage: mock(() => Effect.die("unused")),
+      verifyPaymentOutcome: mock(() => Effect.die("unused")),
+    } as unknown as typeof NexiService.Service;
+    const holdCleanup: ReservationHoldCleanupServiceType = {
+      cancelOrderHold,
+      sweepExpiredHolds: mock(() =>
+        Effect.succeed({ cancelled: 0, failed: 0 })
+      ),
+    };
+    const availabilityInventory = makeAvailabilityInventory({
+      invalidateAdvisory,
+    });
+
+    const result = await Effect.gen(function* () {
+      const service = yield* CheckoutService;
+      return yield* service.createHostedPaymentCheckout(
+        { payStateToken: buildPayStateToken(orderId), legalConsent: true },
+        "en-US"
+      );
+    }).pipe(
+      Effect.provide(CheckoutServiceLive),
+      Effect.provide(Layer.succeed(DotyposService, dotypos)),
+      Effect.provide(Layer.succeed(NexiService, nexi)),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, reservations)
+      ),
+      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, {
+          capture: mock(() => Effect.void),
+        })
+      ),
+      Effect.provide(
+        Layer.succeed(LegalEvidenceEventRepository, {
+          recordMany: mock(() => Effect.void),
+        })
+      ),
+      Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        Layer.succeed(
+          WorkspaceAvailabilityInventoryService,
+          availabilityInventory
+        )
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId,
+      holdExpiredAt: expect.any(Date),
+    });
+    expect(invalidateAdvisory).toHaveBeenCalledTimes(1);
   });
 });
