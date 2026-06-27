@@ -5,6 +5,7 @@ import {
 
 const POSTHOG_DISTINCT_ID_HEADER = "X-POSTHOG-DISTINCT-ID";
 const POSTHOG_SESSION_ID_HEADER = "X-POSTHOG-SESSION-ID";
+const CONSENT_COOKIE = "cc_cookie";
 
 export type PostHogLogAnnotations = {
   readonly posthogDistinctId?: string;
@@ -54,9 +55,11 @@ export function getPostHogLogAnnotationsFromCookieHeader(
 export function getPostHogLogAnnotationsFromRequestHeaders(
   headers: Headers
 ): PostHogLogAnnotations {
-  const cookieAnnotations = getPostHogLogAnnotationsFromCookieHeader(
-    headers.get("cookie")
-  );
+  const cookieHeader = headers.get("cookie");
+  if (!hasAnalyticsConsent(cookieHeader)) return {};
+
+  const cookieAnnotations =
+    getPostHogLogAnnotationsFromCookieHeader(cookieHeader);
 
   // PostHog tracing headers can outlive a no-reload consent revoke in the browser.
   if (!cookieAnnotations.posthogDistinctId || !cookieAnnotations.sessionId) {
@@ -78,4 +81,33 @@ function decodeCookieValue(value: string) {
   } catch {
     return value;
   }
+}
+
+function hasAnalyticsConsent(cookieHeader: string | null | undefined) {
+  if (!cookieHeader) return false;
+
+  for (const cookie of cookieHeader.split(";")) {
+    const separatorIndex = cookie.indexOf("=");
+    if (separatorIndex === -1) continue;
+
+    const name = cookie.slice(0, separatorIndex).trim();
+    if (name !== CONSENT_COOKIE) continue;
+
+    try {
+      const value = JSON.parse(
+        decodeCookieValue(cookie.slice(separatorIndex + 1).trim())
+      );
+
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        Array.isArray((value as { categories?: unknown }).categories) &&
+        (value as { categories: unknown[] }).categories.includes("analytics")
+      );
+    } catch {
+      return false;
+    }
+  }
+
+  return false;
 }

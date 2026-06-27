@@ -9,6 +9,13 @@ import {
   getPostHogLogAnnotationsFromRequestHeaders,
 } from "./posthog-log-annotations";
 
+const analyticsConsentCookie = `cc_cookie=${encodeURIComponent(
+  JSON.stringify({ categories: ["necessary", "analytics"] })
+)}`;
+const necessaryConsentCookie = `cc_cookie=${encodeURIComponent(
+  JSON.stringify({ categories: ["necessary"] })
+)}`;
+
 describe("PostHog log annotations", () => {
   test("maps cookie values to PostHog log-linking attributes", () => {
     expect(
@@ -41,7 +48,7 @@ describe("PostHog log annotations", () => {
     expect(
       getPostHogLogAnnotationsFromRequestHeaders(
         new Headers({
-          cookie: `${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+          cookie: `${analyticsConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
           "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
           "X-POSTHOG-SESSION-ID": "header-session-id",
         })
@@ -56,6 +63,7 @@ describe("PostHog log annotations", () => {
     expect(
       getPostHogLogAnnotationsFromRequestHeaders(
         new Headers({
+          cookie: analyticsConsentCookie,
           "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
           "X-POSTHOG-SESSION-ID": "header-session-id",
         })
@@ -67,7 +75,7 @@ describe("PostHog log annotations", () => {
     expect(
       getPostHogLogAnnotationsFromRequestHeaders(
         new Headers({
-          cookie: `${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+          cookie: `${analyticsConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
         })
       )
     ).toEqual({
@@ -80,7 +88,7 @@ describe("PostHog log annotations", () => {
     expect(
       getPostHogLogAnnotationsFromRequestHeaders(
         new Headers({
-          cookie: `${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+          cookie: `${analyticsConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
           "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
           "X-POSTHOG-SESSION-ID": "header-session-id",
         })
@@ -89,5 +97,17 @@ describe("PostHog log annotations", () => {
       posthogDistinctId: "header-distinct-id",
       sessionId: "header-session-id",
     });
+  });
+
+  test("ignores request annotations without analytics consent", () => {
+    expect(
+      getPostHogLogAnnotationsFromRequestHeaders(
+        new Headers({
+          cookie: `${necessaryConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+          "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
+          "X-POSTHOG-SESSION-ID": "header-session-id",
+        })
+      )
+    ).toEqual({});
   });
 });

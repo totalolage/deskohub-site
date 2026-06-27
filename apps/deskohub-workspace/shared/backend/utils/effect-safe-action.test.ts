@@ -2,7 +2,7 @@ import { expect, mock, test } from "bun:test";
 import { Context, Effect, Layer, Schema } from "effect";
 
 mock.module("next/headers", () => ({
-  cookies: async () => ({ get: () => undefined }),
+  cookies: async () => ({ getAll: () => [] }),
   headers: async () => new Headers({ referer: "https://deskohub.test/en-US" }),
 }));
 

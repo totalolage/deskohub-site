@@ -1,12 +1,8 @@
 import { Effect } from "effect";
 import { cookies } from "next/headers";
 import { after } from "next/server";
-import {
-  POSTHOG_DISTINCT_ID_COOKIE,
-  POSTHOG_SESSION_ID_COOKIE,
-} from "@/shared/utils/posthog-session-cookies";
 import { runWorkspaceEffect } from "./censorship";
-import { getPostHogLogAnnotationsFromCookieValues } from "./posthog-log-annotations";
+import { getPostHogLogAnnotationsFromRequestHeaders } from "./posthog-log-annotations";
 import { schedulePostHogLogsFlush } from "./posthog-otel";
 
 export async function runWorkspaceServerActionEffect<A, E>(
@@ -19,10 +15,14 @@ export async function runWorkspaceServerActionEffect<A, E>(
   return runWorkspaceEffect(
     effect.pipe(
       Effect.annotateLogs(
-        getPostHogLogAnnotationsFromCookieValues({
-          distinctId: cookieStore.get(POSTHOG_DISTINCT_ID_COOKIE)?.value,
-          sessionId: cookieStore.get(POSTHOG_SESSION_ID_COOKIE)?.value,
-        })
+        getPostHogLogAnnotationsFromRequestHeaders(
+          new Headers({
+            cookie: cookieStore
+              .getAll()
+              .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
+              .join("; "),
+          })
+        )
       )
     )
   );
