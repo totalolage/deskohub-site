@@ -102,6 +102,7 @@ function PostHogClient({
           maskAllInputs: true,
           maskTextSelector: "body",
         },
+        tracing_headers: [window.location.hostname],
       });
       posthog.stopSessionRecording();
       hasInitializedPostHog = true;

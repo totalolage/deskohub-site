@@ -6,7 +6,7 @@ import {
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import { Effect, Logger, type LogLevel, References } from "effect";
 import { after } from "next/server";
-import { getPostHogLogAnnotationsFromCookieHeader } from "./posthog-log-annotations";
+import { getPostHogLogAnnotationsFromRequestHeaders } from "./posthog-log-annotations";
 import {
   postHogLoggerProvider,
   schedulePostHogLogsFlush,
@@ -430,6 +430,6 @@ export const runWorkspaceRequestEffect = <A, E>(
 
   return runWorkspaceEffectWithLogAnnotations(
     effect,
-    getPostHogLogAnnotationsFromCookieHeader(request.headers.get("cookie"))
+    getPostHogLogAnnotationsFromRequestHeaders(request.headers)
   );
 };

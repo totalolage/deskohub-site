@@ -3,6 +3,9 @@ import {
   POSTHOG_SESSION_ID_COOKIE,
 } from "@/shared/utils/posthog-session-cookies";
 
+const POSTHOG_DISTINCT_ID_HEADER = "X-POSTHOG-DISTINCT-ID";
+const POSTHOG_SESSION_ID_HEADER = "X-POSTHOG-SESSION-ID";
+
 export type PostHogLogAnnotations = {
   readonly posthogDistinctId?: string;
   readonly sessionId?: string;
@@ -46,6 +49,18 @@ export function getPostHogLogAnnotationsFromCookieHeader(
   }
 
   return getPostHogLogAnnotationsFromCookieValues(values);
+}
+
+export function getPostHogLogAnnotationsFromRequestHeaders(
+  headers: Headers
+): PostHogLogAnnotations {
+  return {
+    ...getPostHogLogAnnotationsFromCookieHeader(headers.get("cookie")),
+    ...getPostHogLogAnnotationsFromCookieValues({
+      distinctId: headers.get(POSTHOG_DISTINCT_ID_HEADER) ?? undefined,
+      sessionId: headers.get(POSTHOG_SESSION_ID_HEADER) ?? undefined,
+    }),
+  };
 }
 
 function decodeCookieValue(value: string) {
