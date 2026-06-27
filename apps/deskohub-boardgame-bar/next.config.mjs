@@ -15,26 +15,6 @@ const nextConfig = {
   async redirects() {
     return [
       {
-        source: '/training-room',
-        destination: 'https://workspace.deskohub.cz/ttrpg-room',
-        permanent: true,
-      },
-      {
-        source: '/training-room/:path*',
-        destination: 'https://workspace.deskohub.cz/ttrpg-room',
-        permanent: true,
-      },
-      {
-        source: '/:locale(cs-CZ|en-US)/training-room',
-        destination: 'https://workspace.deskohub.cz/:locale/ttrpg-room',
-        permanent: true,
-      },
-      {
-        source: '/:locale(cs-CZ|en-US)/training-room/:path*',
-        destination: 'https://workspace.deskohub.cz/:locale/ttrpg-room',
-        permanent: true,
-      },
-      {
         source: '/workspace',
         destination: 'https://workspace.deskohub.cz',
         permanent: true,
