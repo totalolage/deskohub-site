@@ -1,6 +1,5 @@
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import { Resend } from "resend";
-import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   OperationalEventRepository,
@@ -22,35 +21,59 @@ const workspaceFulfillmentSource = "workspace-paid-fulfillment";
 const customerAccessCategory = "workspace-paid-reservation-access";
 const fulfillmentEmailFailureCode = "fulfillment_email_failed";
 
-const resendTagSchema = z.object({
-  name: z.string(),
-  value: z.string(),
+const ResendTagSchema = Schema.Struct({
+  name: Schema.String,
+  value: Schema.String,
+});
+type ResendTag = Schema.Schema.Type<typeof ResendTagSchema>;
+
+const ResendTagsSchema = Schema.Union([
+  Schema.Array(ResendTagSchema),
+  Schema.Record(Schema.String, Schema.Unknown),
+]);
+
+const ResendWebhookEventInputSchema = Schema.Struct({
+  type: Schema.String,
+  data: Schema.Struct({
+    email_id: Schema.optional(Schema.String),
+    tags: Schema.optional(ResendTagsSchema),
+  }),
 });
 
-const resendTagsSchema = z.preprocess((value) => {
-  if (Array.isArray(value)) return value;
-  if (value && typeof value === "object") {
-    return Object.entries(value).map(([name, tagValue]) => ({
-      name,
-      value: String(tagValue),
-    }));
-  }
-  return [];
-}, z.array(resendTagSchema));
+type ResendWebhookEventInput = Schema.Schema.Type<
+  typeof ResendWebhookEventInputSchema
+>;
 
-const resendWebhookEventSchema = z
-  .object({
-    type: z.string(),
-    data: z
-      .object({
-        email_id: z.string().optional(),
-        tags: resendTagsSchema,
+interface ResendWebhookEvent {
+  readonly type: string;
+  readonly data: {
+    readonly email_id?: string;
+    readonly tags: readonly { readonly name: string; readonly value: string }[];
+  };
+}
+
+const normalizeResendTags = (tags: ResendWebhookEventInput["data"]["tags"]) => {
+  if (!tags) return [];
+  if (Array.isArray(tags)) return tags as readonly ResendTag[];
+
+  return Object.entries(tags).map(([name, value]) => ({
+    name,
+    value: String(value),
+  }));
+};
+
+const decodeResendWebhookEvent = (input: unknown) =>
+  Schema.decodeUnknownEffect(ResendWebhookEventInputSchema)(input).pipe(
+    Effect.map(
+      (event): ResendWebhookEvent => ({
+        type: event.type,
+        data: {
+          email_id: event.data.email_id,
+          tags: normalizeResendTags(event.data.tags),
+        },
       })
-      .passthrough(),
-  })
-  .passthrough();
-
-type ResendWebhookEvent = z.infer<typeof resendWebhookEventSchema>;
+    )
+  );
 
 export class ResendWebhookProcessingError extends Data.TaggedError(
   "ResendWebhookProcessingError"
@@ -117,18 +140,21 @@ export const ResendWebhookServiceLive = Layer.effect(
     const config = yield* ResendWebhookRuntimeConfig;
     const posthogEvents = yield* PostHogEventService;
 
-    const processVerifiedEvent = Effect.fn("resendWebhook.processVerifiedEvent")(
+    const processVerifiedEvent = Effect.fn(
+      "resendWebhook.processVerifiedEvent"
+    )(
       function* (input: { readonly eventId: string; readonly event: unknown }) {
-        const event = yield* Effect.try({
-          try: () => resendWebhookEventSchema.parse(input.event),
-          catch: (cause) =>
-            new ResendWebhookProcessingError({
-              errorCode: "resend_webhook_payload_invalid",
-              message: "Resend webhook payload was invalid.",
-              eventId: input.eventId,
-              cause,
-            }),
-        });
+        const event = yield* decodeResendWebhookEvent(input.event).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ResendWebhookProcessingError({
+                errorCode: "resend_webhook_payload_invalid",
+                message: "Resend webhook payload was invalid.",
+                eventId: input.eventId,
+                cause,
+              })
+          )
+        );
         yield* Effect.annotateLogsScoped({
           eventId: input.eventId,
           eventType: event.type,
@@ -158,19 +184,21 @@ export const ResendWebhookServiceLive = Layer.effect(
           return ignored("deployment_environment_mismatch");
         }
 
-        const reservation = yield* reservations.findById(workspaceReservationId).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ResendWebhookProcessingError({
-                errorCode: "resend_webhook_reservation_load_failed",
-                message:
-                  "Resend webhook could not load referenced reservation.",
-                eventId: input.eventId,
-                workspaceReservationId,
-                cause,
-              })
-          )
-        );
+        const reservation = yield* reservations
+          .findById(workspaceReservationId)
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ResendWebhookProcessingError({
+                  errorCode: "resend_webhook_reservation_load_failed",
+                  message:
+                    "Resend webhook could not load referenced reservation.",
+                  eventId: input.eventId,
+                  workspaceReservationId,
+                  cause,
+                })
+            )
+          );
 
         if (!reservation) {
           yield* Effect.logWarning(
@@ -287,13 +315,13 @@ export const ResendWebhookServiceLive = Layer.effect(
         return {
           status: "processed",
         } satisfies ResendWebhookProcessingResult;
-        },
-        (effect) =>
-          effect.pipe(
-            Effect.scoped,
-            Effect.annotateLogs({ operation: "resendWebhook" })
-          )
-      );
+      },
+      (effect) =>
+        effect.pipe(
+          Effect.scoped,
+          Effect.annotateLogs({ operation: "resendWebhook" })
+        )
+    );
 
     return ResendWebhookService.of({
       processWebhook: Effect.fn("resendWebhook.processWebhook")(

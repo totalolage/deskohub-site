@@ -15,7 +15,7 @@ export const getWorkspaceRuntimeCallbackOrigin: Effect.Effect<
   const url =
     env.VERCEL_ENV === "production"
       ? env.VERCEL_PROJECT_PRODUCTION_URL
-      : env.WORKSPACE_CALLBACK_ORIGIN ?? env.VERCEL_URL;
+      : (env.WORKSPACE_CALLBACK_ORIGIN ?? env.VERCEL_URL);
 
   if (!url) {
     return yield* new WorkspaceUrlConfigError({

@@ -266,6 +266,30 @@ describe("ResendWebhookService", () => {
     expect(operationalEvents.record).not.toHaveBeenCalled();
   });
 
+  test("fails Resend webhook processing for invalid payloads", async () => {
+    verifiedPayload = { data: { tags: [] }, type: 42 };
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const operationalEvents = {
+      record: mock(() => Effect.die("should not record")),
+    } as unknown as OperationalEventRepositoryType;
+
+    const error = await processWebhookError({
+      reservations,
+      operationalEvents,
+    });
+
+    expect(error).toMatchObject({
+      _tag: "ResendWebhookProcessingError",
+      errorCode: "resend_webhook_payload_invalid",
+      eventId: "webhook-event-id",
+    });
+    expect(verifyWebhook).toHaveBeenCalled();
+    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(operationalEvents.record).not.toHaveBeenCalled();
+  });
+
   test("marks customer reservation access delivery failures failed", async () => {
     verifiedPayload = customerFailurePayload;
     const record = mock(() => Effect.succeed({} as never));
