@@ -41,6 +41,8 @@ type GeneratedClientError = {
   readonly cause: unknown;
 };
 
+type ProviderErrorInput = DotyposErrorResponse | string | undefined;
+
 export const makeDotyposClient = ({
   config,
   httpClient,
@@ -180,9 +182,13 @@ export const mapDotyposClientError = (
       });
     }
 
+    const providerErrorInput = Predicate.hasProperty(reason, "description")
+      ? reason.description
+      : undefined;
     const providerError = parseProviderError(
-      Predicate.hasProperty(reason, "description")
-        ? reason.description
+      Predicate.isString(providerErrorInput) ||
+        Schema.is(ErrorResponse)(providerErrorInput)
+        ? providerErrorInput
         : undefined
     );
     return toExternalApiError({
@@ -193,7 +199,11 @@ export const mapDotyposClientError = (
   }
 
   if (isGeneratedClientError(error)) {
-    const providerError = parseProviderError(error.cause);
+    const providerError = parseProviderError(
+      Predicate.isString(error.cause) || Schema.is(ErrorResponse)(error.cause)
+        ? error.cause
+        : undefined
+    );
     return toExternalApiError({
       operation,
       providerError,
@@ -215,7 +225,11 @@ export const mapDotyposClientError = (
     }
   }
 
-  const providerError = parseProviderError(error);
+  const providerError = parseProviderError(
+    Predicate.isString(error) || Schema.is(ErrorResponse)(error)
+      ? error
+      : undefined
+  );
   if (providerError) {
     return toExternalApiError({
       operation,
@@ -248,11 +262,9 @@ const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>
       )
   );
 
-const parseProviderError = (error: unknown) => {
-  const decoded = Schema.decodeUnknownOption(ErrorResponse)(error);
-  if (Option.isSome(decoded)) return toProviderError(decoded.value);
-
-  if (!Predicate.isString(error)) return undefined;
+const parseProviderError = (error: ProviderErrorInput) => {
+  if (!error) return undefined;
+  if (!Predicate.isString(error)) return toProviderError(error);
 
   try {
     const parsed = JSON.parse(error);
@@ -268,11 +280,11 @@ const parseProviderError = (error: unknown) => {
 const toProviderError = (
   error: DotyposErrorResponse
 ): DotyposProviderError | undefined => {
-  const providerError = {
+  const providerError: DotyposProviderError = {
     error: error.error,
     errorDescription: error.error_description,
     code: error.code,
-  } satisfies DotyposProviderError;
+  };
 
   return providerError.error ||
     providerError.errorDescription ||
