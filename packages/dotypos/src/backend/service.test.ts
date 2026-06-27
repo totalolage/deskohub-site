@@ -408,10 +408,24 @@ describe("DotyposService customer lookup", () => {
       },
       createCustomerRequestFields: [
         "_cloudId",
+        "addressLine1",
+        "barcode",
+        "companyId",
+        "companyName",
+        "deleted",
+        "display",
         "firstName",
+        "flags",
+        "headerPrint",
+        "hexColor",
+        "internalNote",
         "lastName",
         "email",
         "phone",
+        "points",
+        "tags",
+        "vatId",
+        "zip",
         "expireDate",
       ],
     });
@@ -420,10 +434,24 @@ describe("DotyposService customer lookup", () => {
       customerInputFields: ["firstName", "lastName", "email", "phone"],
       createCustomerRequestFields: [
         "_cloudId",
+        "addressLine1",
+        "barcode",
+        "companyId",
+        "companyName",
+        "deleted",
+        "display",
         "firstName",
+        "flags",
+        "headerPrint",
+        "hexColor",
+        "internalNote",
         "lastName",
         "email",
         "phone",
+        "points",
+        "tags",
+        "vatId",
+        "zip",
         "expireDate",
       ],
     });
@@ -434,6 +462,73 @@ describe("DotyposService customer lookup", () => {
     expect(annotations).not.toContain("Ada");
     expect(annotations).not.toContain("Lovelace");
     expect(annotations).not.toContain(providerDescription);
+  });
+
+  test("creates customers with Dotypos-required defaults", async () => {
+    const created = customer({
+      id: "created-customer",
+      firstName: "Ada",
+      lastName: "Lovelace",
+      email: "ada@example.com",
+      phone: "+420777123456",
+    });
+    const fetchMock = mockDotyposFetch(async (request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") return Response.json({ data: [] });
+        if (request.method === "POST") return Response.json([created]);
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "+420 777 123 456",
+          },
+          undefined
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(created);
+
+    const createCall = fetchMock.mock.calls.find(
+      (call) =>
+        getMethod(call as FetchCall) === "POST" &&
+        getUrl(call as FetchCall).includes("/customers")
+    ) as FetchCall;
+    expect(await readJsonBody(createCall)).toEqual([
+      {
+        _cloudId: config.cloudId,
+        addressLine1: "",
+        barcode: "",
+        companyId: "",
+        companyName: "",
+        deleted: false,
+        display: true,
+        firstName: "Ada",
+        flags: "0",
+        headerPrint: "",
+        hexColor: "#000000",
+        internalNote: "",
+        lastName: "Lovelace",
+        email: "ada@example.com",
+        phone: "+420777123456",
+        points: "0",
+        tags: [],
+        vatId: "",
+        zip: "",
+        expireDate: null,
+      },
+    ]);
   });
 });
 

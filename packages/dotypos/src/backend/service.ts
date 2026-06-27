@@ -13,6 +13,7 @@ import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { DotyposRuntimeConfig } from "../config";
 import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import type {
+  CreateCustomerRequest,
   CreateReservationRequest,
   Customer,
   UpdateCustomerRequest,
@@ -126,23 +127,30 @@ const presentCustomerInputFields = (customerData: DotyposCustomerLookupData) =>
     (field) => customerData[field]
   );
 
-const presentCreateCustomerRequestFields = (request: {
-  readonly _cloudId: string;
-  readonly firstName?: string;
-  readonly lastName?: string;
-  readonly email: string;
-  readonly phone: string;
-  readonly expireDate: number;
-}) =>
+const presentCreateCustomerRequestFields = (request: CreateCustomerRequest) =>
   (
     [
       "_cloudId",
+      "addressLine1",
+      "barcode",
+      "companyId",
+      "companyName",
+      "deleted",
+      "display",
       "firstName",
+      "flags",
+      "headerPrint",
+      "hexColor",
+      "internalNote",
       "lastName",
       "email",
       "phone",
+      "points",
+      "tags",
+      "vatId",
+      "zip",
       "expireDate",
-    ] as const
+    ] as const satisfies readonly (keyof CreateCustomerRequest)[]
   ).filter((field) => request[field] !== undefined);
 
 const addUniqueCustomer = (customers: Customer[], customer: Customer) => {
@@ -693,13 +701,27 @@ const makeDotyposService = Effect.gen(function* () {
         );
       }
 
-      const createRequest = {
+      const createRequest: CreateCustomerRequest = {
         _cloudId: config.cloudId,
+        addressLine1: "",
+        barcode: "",
+        companyId: "",
+        companyName: "",
+        deleted: false,
+        display: true,
         firstName: normalizedCustomerData.firstName,
-        lastName: normalizedCustomerData.lastName,
+        flags: "0",
+        headerPrint: "",
+        hexColor: "#000000",
+        internalNote: "",
+        lastName: normalizedCustomerData.lastName ?? "",
         email: normalizedCustomerData.email,
         phone: normalizedCustomerData.phone,
-        expireDate: Date.now() + 365 * 24 * 60 * 60 * 1000,
+        points: "0",
+        tags: [],
+        vatId: "",
+        zip: "",
+        expireDate: null,
       };
 
       const createCustomerRequestFields =
