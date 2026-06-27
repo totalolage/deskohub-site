@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
+import { getAcceptedConsentCategoriesFromCookie } from "@/shared/utils/consent-cookie";
 import type { ConsentCategory } from "../config/consent-config";
-import { getAcceptedConsentCategoriesFromCookie } from "../utils/consent-cookie";
 import { CONSENT_UPDATED_EVENT } from "../utils/consent-event";
 
 export function useCookieConsent() {
