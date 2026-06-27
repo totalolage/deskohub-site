@@ -64,7 +64,10 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
   }, [state.status]);
 
   return (
-    <Card className="relative overflow-hidden rounded-4xl border-white/50 bg-white/92 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm">
+    <Card
+      id="contact-form"
+      className="relative overflow-hidden rounded-4xl border-white/50 bg-white/92 shadow-[0_40px_120px_-52px_rgba(0,2,79,0.55)] backdrop-blur-sm"
+    >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/70 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
         <CardTitle className="text-3xl sm:text-[2.2rem]">

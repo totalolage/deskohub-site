@@ -10,6 +10,7 @@ import { ReservationButton } from "./reservation-button";
 
 export function Header() {
   const locale = useLocale();
+  const ttrpgRoomHref = `https://workspace.deskohub.cz/${locale}/ttrpg-room`;
   setLocale(locale, { reload: false });
 
   useEffect(() => {
@@ -59,12 +60,12 @@ export function Header() {
           >
             {m["nav.menu"]()}
           </LocalizedLink>
-          <LocalizedLink
-            href="/training-room"
+          <a
+            href={ttrpgRoomHref}
             className="hover:text-green-400 transition-colors"
           >
             {m["nav.trainingRoom"]()}
-          </LocalizedLink>
+          </a>
           <LocalizedLink
             href="/contact"
             className="hover:text-green-400 transition-colors"
