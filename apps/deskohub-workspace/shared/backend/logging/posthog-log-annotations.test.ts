@@ -110,4 +110,16 @@ describe("PostHog log annotations", () => {
       )
     ).toEqual({});
   });
+
+  test("ignores request annotations when any duplicate consent cookie revokes analytics", () => {
+    expect(
+      getPostHogLogAnnotationsFromRequestHeaders(
+        new Headers({
+          cookie: `${analyticsConsentCookie}; ${necessaryConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+          "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
+          "X-POSTHOG-SESSION-ID": "header-session-id",
+        })
+      )
+    ).toEqual({});
+  });
 });

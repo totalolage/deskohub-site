@@ -86,6 +86,8 @@ function decodeCookieValue(value: string) {
 function hasAnalyticsConsent(cookieHeader: string | null | undefined) {
   if (!cookieHeader) return false;
 
+  let foundConsentCookie = false;
+
   for (const cookie of cookieHeader.split(";")) {
     const separatorIndex = cookie.indexOf("=");
     if (separatorIndex === -1) continue;
@@ -93,21 +95,24 @@ function hasAnalyticsConsent(cookieHeader: string | null | undefined) {
     const name = cookie.slice(0, separatorIndex).trim();
     if (name !== CONSENT_COOKIE) continue;
 
+    foundConsentCookie = true;
+
     try {
       const value = JSON.parse(
         decodeCookieValue(cookie.slice(separatorIndex + 1).trim())
       );
 
-      return (
+      const hasAnalytics =
         typeof value === "object" &&
         value !== null &&
         Array.isArray((value as { categories?: unknown }).categories) &&
-        (value as { categories: unknown[] }).categories.includes("analytics")
-      );
+        (value as { categories: unknown[] }).categories.includes("analytics");
+
+      if (!hasAnalytics) return false;
     } catch {
       return false;
     }
   }
 
-  return false;
+  return foundConsentCookie;
 }
