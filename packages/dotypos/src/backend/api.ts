@@ -16,10 +16,6 @@ import {
   make,
 } from "../generated/effect.gen";
 
-const PROVIDER_ERROR_TEXT_LIMIT = 500;
-const PROVIDER_ERROR_VALUE_LIMIT = 120;
-const REDACTED_PROVIDER_VALUE = "[REDACTED]";
-
 const DiscountGroup = Schema.Struct({
   discountPercent: Schema.optionalKey(
     Schema.Union([Schema.Number, Schema.String, Schema.Null])
@@ -254,7 +250,7 @@ const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>
 
 const parseProviderError = (error: unknown) => {
   const decoded = Schema.decodeUnknownOption(ErrorResponse)(error);
-  if (Option.isSome(decoded)) return toSafeProviderError(decoded.value);
+  if (Option.isSome(decoded)) return toProviderError(decoded.value);
 
   if (!Predicate.isString(error)) return undefined;
 
@@ -262,44 +258,19 @@ const parseProviderError = (error: unknown) => {
     const parsed = JSON.parse(error);
     const parsedDecoded = Schema.decodeUnknownOption(ErrorResponse)(parsed);
     return Option.isSome(parsedDecoded)
-      ? toSafeProviderError(parsedDecoded.value)
+      ? toProviderError(parsedDecoded.value)
       : undefined;
   } catch {
     return undefined;
   }
 };
 
-const redactProviderText = (value: string) =>
-  value
-    .replace(
-      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
-      REDACTED_PROVIDER_VALUE
-    )
-    .replace(/\+?\d[\d\s().-]{6,}\d/g, REDACTED_PROVIDER_VALUE)
-    .replace(
-      /\b(firstName|lastName|first name|last name|name|email|phone)\s*[:=]\s*("[^"]*"|'[^']*'|[^,;.]+)/gi,
-      `$1=${REDACTED_PROVIDER_VALUE}`
-    );
-
-const sanitizeProviderText = (value: string | undefined, limit: number) => {
-  if (!value) return undefined;
-
-  const redacted = redactProviderText(value).trim();
-  if (!redacted) return undefined;
-  if (redacted.length <= limit) return redacted;
-
-  return `${redacted.slice(0, limit - 3)}...`;
-};
-
-const toSafeProviderError = (
+const toProviderError = (
   error: DotyposErrorResponse
 ): DotyposProviderError | undefined => {
   const providerError = {
-    error: sanitizeProviderText(error.error, PROVIDER_ERROR_VALUE_LIMIT),
-    errorDescription: sanitizeProviderText(
-      error.error_description,
-      PROVIDER_ERROR_TEXT_LIMIT
-    ),
+    error: error.error,
+    errorDescription: error.error_description,
     code: error.code,
   } satisfies DotyposProviderError;
 

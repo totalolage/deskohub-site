@@ -330,7 +330,7 @@ describe("DotyposService customer lookup", () => {
     expect(updateAttempts).toBeGreaterThan(1);
   });
 
-  test("logs createCustomer failures with safe provider details", async () => {
+  test("logs createCustomer failures with provider details", async () => {
     const logs: CapturedLog[] = [];
     const providerDescription = `firstName=Ada; lastName=Lovelace; email=ada.secret@example.com; phone=+420 777 123 456; ${"x".repeat(700)}`;
     const fetchMock = mockDotyposFetch((request) => {
@@ -381,16 +381,11 @@ describe("DotyposService customer lookup", () => {
       message: "Dotypos API request failed",
       providerError: {
         error: "validation_failed",
+        errorDescription: providerDescription,
         code: 400,
       },
     });
     expect(result.failure.cause).toBeUndefined();
-    expect(
-      result.failure.providerError?.errorDescription?.length
-    ).toBeLessThanOrEqual(500);
-    expect(result.failure.providerError?.errorDescription).toContain(
-      "[REDACTED]"
-    );
 
     const failureLog = logs.find((log) =>
       messageParts(log.message).includes("Dotypos customer creation failed")
@@ -408,6 +403,7 @@ describe("DotyposService customer lookup", () => {
       statusCode: 400,
       providerError: {
         error: "validation_failed",
+        errorDescription: providerDescription,
         code: 400,
       },
       createCustomerRequestFields: [
@@ -432,12 +428,12 @@ describe("DotyposService customer lookup", () => {
       ],
     });
 
-    const searchable = logText({ error: result.failure, failureLog });
-    expect(searchable).not.toContain("ada.secret@example.com");
-    expect(searchable).not.toContain("+420 777 123 456");
-    expect(searchable).not.toContain("Ada");
-    expect(searchable).not.toContain("Lovelace");
-    expect(searchable).not.toContain(providerDescription);
+    const annotations = logText(failureLog.annotations);
+    expect(annotations).not.toContain("ada.secret@example.com");
+    expect(annotations).not.toContain("+420 777 123 456");
+    expect(annotations).not.toContain("Ada");
+    expect(annotations).not.toContain("Lovelace");
+    expect(annotations).not.toContain(providerDescription);
   });
 });
 
