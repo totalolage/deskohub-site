@@ -1,10 +1,14 @@
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import {
+  WorkspaceAvailabilityInventoryService,
+  WorkspaceAvailabilityInventoryServiceLiveWithDependencies,
+} from "@/features/reservation/backend/workspace-availability.service";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const cronBatchLimit = 25;
@@ -18,6 +22,7 @@ const isAuthorizedCronRequest = (request: Request) => {
 const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
   function* () {
     const cleanup = yield* ReservationHoldCleanupService;
+    const availabilityInventory = yield* WorkspaceAvailabilityInventoryService;
     const input = {
       now: new Date(),
       limit: cronBatchLimit,
@@ -28,6 +33,13 @@ const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
     const result = yield* cleanup.sweepExpiredHolds(input);
     yield* Effect.annotateLogsScoped({ result });
     yield* Effect.logInfo("Reservation hold cleanup sweep completed");
+
+    if (result.cancelled > 0) {
+      yield* availabilityInventory.invalidateAdvisory();
+      yield* Effect.logInfo(
+        "Reservation hold cleanup invalidated advisory availability"
+      );
+    }
 
     return NextResponse.json(result);
   },
@@ -78,7 +90,12 @@ export async function GET(request: Request): Promise<NextResponse> {
   return runWorkspaceRequestEffect(
     request,
     sweepExpiredReservationHolds().pipe(
-      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+      Effect.provide(
+        Layer.mergeAll(
+          ReservationHoldCleanupServiceLiveWithDependencies,
+          WorkspaceAvailabilityInventoryServiceLiveWithDependencies
+        )
+      ),
       Effect.catch(handleReservationHoldCleanupCronError)
     )
   );
