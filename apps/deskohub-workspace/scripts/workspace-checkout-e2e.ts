@@ -828,13 +828,13 @@ const validatePostgres = async (
     const row = await poll(
       async () => {
         const row = await readCheckoutRow(pool, orderId);
+        if (row) onRow?.(row);
         return row && isPostgresComplete(row, config) ? row : undefined;
       },
       DATASOURCE_TIMEOUT_MS,
       `Postgres checkout rows for ${orderId}`
     );
 
-    onRow?.(row);
     assertPostgresRow(row, data, config);
     await assertLegalEvidence(pool, orderId);
     await assertOperationalEvents(pool, orderId, row.payment_attempt_id, data);
