@@ -530,6 +530,77 @@ describe("DotyposService customer lookup", () => {
       },
     ]);
   });
+
+  test("does not create or reuse a customer when lookup is ambiguous", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") {
+          return Response.json({
+            data: [
+              customer({ id: "first", email: "ada@example.com" }),
+              customer({ id: "second", email: "ada@example.com" }),
+            ],
+          });
+        }
+        if (request.method === "POST") throw new Error("unused");
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
+      }).pipe(Effect.flip),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(error, "ValidationError")).toBe(true);
+  });
+
+  test("ignores deleted customers when checking lookup ambiguity", async () => {
+    const active = customer({ id: "active", email: "ada@example.com" });
+    const deleted = customer({
+      deleted: true,
+      id: "deleted",
+      email: "ada@example.com",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") {
+          return Response.json({ data: [active, deleted] });
+        }
+        if (request.method === "POST") throw new Error("unused");
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            email: "ada@example.com",
+          },
+          undefined
+        );
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual(active);
+  });
 });
 
 describe("DotyposService reservations", () => {

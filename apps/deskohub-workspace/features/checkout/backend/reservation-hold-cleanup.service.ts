@@ -1,5 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   OperationalEventRepository,
@@ -318,25 +318,33 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             }).pipe(Effect.result);
             yield* Effect.annotateLogsScoped({ order, result });
 
-            if (result._tag === "Success") {
-              cancelled += 1;
-              yield* Effect.logInfo(
-                "Expired reservation hold cleanup completed",
-                {
-                  orderId: order.id,
-                  result: "cancelled",
-                }
-              );
-            } else {
-              failed += 1;
-              yield* Effect.logError(
-                "Expired reservation hold cleanup failed",
-                {
-                  orderId: order.id,
-                  cause: result.failure,
-                }
-              );
-            }
+            yield* Match.value(result).pipe(
+              Match.tag("Success", () =>
+                Effect.gen(function* () {
+                  cancelled += 1;
+                  yield* Effect.logInfo(
+                    "Expired reservation hold cleanup completed",
+                    {
+                      orderId: order.id,
+                      result: "cancelled",
+                    }
+                  );
+                })
+              ),
+              Match.tag("Failure", ({ failure }) =>
+                Effect.gen(function* () {
+                  failed += 1;
+                  yield* Effect.logError(
+                    "Expired reservation hold cleanup failed",
+                    {
+                      orderId: order.id,
+                      cause: failure,
+                    }
+                  );
+                })
+              ),
+              Match.exhaustive
+            );
           }
 
           const summary = { cancelled, failed };

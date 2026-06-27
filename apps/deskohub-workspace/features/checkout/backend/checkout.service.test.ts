@@ -162,6 +162,7 @@ describe("CheckoutService", () => {
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {
       findCustomer: mock(() => Effect.succeed({ _tag: "NotFound" as const })),
+      getCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
       getCustomerDiscount: mock(() => Effect.succeed(undefined)),
     } as unknown as typeof DotyposService.Service;
     const nexi = {

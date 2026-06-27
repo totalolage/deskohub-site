@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Match } from "effect";
 import {
   type DatabaseError,
   WorkspaceDatabaseLive,
@@ -274,10 +274,22 @@ export const CheckoutStatusServiceLive = Layer.effect(
             Effect.option
           );
 
-        if (dotyposReservation._tag === "None") {
-          yield* Effect.logWarning(
-            "Checkout status summary missing Dotypos reservation"
-          );
+        const dotyposReservationValue = yield* Match.value(
+          dotyposReservation
+        ).pipe(
+          Match.tag("None", () =>
+            Effect.gen(function* () {
+              yield* Effect.logWarning(
+                "Checkout status summary missing Dotypos reservation"
+              );
+              return undefined;
+            })
+          ),
+          Match.tag("Some", ({ value }) => Effect.succeed(value)),
+          Match.exhaustive
+        );
+
+        if (!dotyposReservationValue) {
           return {} satisfies CheckoutStatusReconstruction;
         }
         yield* Effect.annotateLogsScoped({ dotyposReservation });
@@ -295,16 +307,16 @@ export const CheckoutStatusServiceLive = Layer.effect(
           ),
           Effect.option
         );
-        const tableMap =
-          tables._tag === "Some"
-            ? getWorkspaceTableMap(
-                dotyposReservation.value.reservation,
-                tables.value
-              )
-            : undefined;
+        const tableMap = Match.value(tables).pipe(
+          Match.tag("Some", ({ value }) =>
+            getWorkspaceTableMap(dotyposReservationValue.reservation, value)
+          ),
+          Match.tag("None", () => undefined),
+          Match.exhaustive
+        );
 
         const date = toPragueReservationDate(
-          dotyposReservation.value.reservation.startDate
+          dotyposReservationValue.reservation.startDate
         );
 
         if (!date) {
@@ -314,7 +326,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return {
             ...(tableMap ? { tableMap } : {}),
             supportContactPrefill: getSupportContactPrefill(
-              dotyposReservation.value.customer
+              dotyposReservationValue.customer
             ),
           } satisfies CheckoutStatusReconstruction;
         }
@@ -338,7 +350,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           summary,
           ...(tableMap ? { tableMap } : {}),
           supportContactPrefill: getSupportContactPrefill(
-            dotyposReservation.value.customer
+            dotyposReservationValue.customer
           ),
         } satisfies CheckoutStatusReconstruction;
       },

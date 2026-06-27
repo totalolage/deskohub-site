@@ -552,7 +552,11 @@ const makeDotyposService = Effect.gen(function* () {
         }
       }
 
-      if (matchingCustomers.length === 0) {
+      const activeMatchingCustomers = matchingCustomers.filter(
+        (customer) => !customer.deleted
+      );
+
+      if (activeMatchingCustomers.length === 0) {
         return {
           _tag: "NotFound" as const,
           matches: [],
@@ -560,18 +564,18 @@ const makeDotyposService = Effect.gen(function* () {
         };
       }
 
-      if (hasAtLeastTwoCustomers(matchingCustomers)) {
+      if (hasAtLeastTwoCustomers(activeMatchingCustomers)) {
         return {
           _tag: "Ambiguous" as const,
-          matches: matchingCustomers,
+          matches: activeMatchingCustomers,
           normalizedCustomerData,
         };
       }
 
       return {
         _tag: "Matched" as const,
-        customer: matchingCustomers[0]!,
-        matches: matchingCustomers,
+        customer: activeMatchingCustomers[0]!,
+        matches: activeMatchingCustomers,
         normalizedCustomerData,
       };
     },
@@ -589,17 +593,21 @@ const makeDotyposService = Effect.gen(function* () {
         options
       );
 
-      switch (result._tag) {
-        case "Matched":
-          return FindCustomerResult.Matched({
-            customer: result.customer,
-            matches: result.matches,
-          });
-        case "Ambiguous":
-          return FindCustomerResult.Ambiguous({ matches: result.matches });
-        case "NotFound":
-          return FindCustomerResult.NotFound({ matches: [] });
-      }
+      return Match.value(result).pipe(
+        Match.tag("Matched", (matched) =>
+          FindCustomerResult.Matched({
+            customer: matched.customer,
+            matches: matched.matches,
+          })
+        ),
+        Match.tag("Ambiguous", (ambiguous) =>
+          FindCustomerResult.Ambiguous({ matches: ambiguous.matches })
+        ),
+        Match.tag("NotFound", () =>
+          FindCustomerResult.NotFound({ matches: [] })
+        ),
+        Match.exhaustive
+      );
     },
     (effect, _input, options) =>
       effect.pipe(Effect.annotateLogs(getCustomerLookupLogAnnotations(options)))
@@ -620,7 +628,29 @@ const makeDotyposService = Effect.gen(function* () {
       yield* Effect.logDebug("Dotypos customer lookup result", { lookup });
 
       const normalizedCustomerData = lookup.normalizedCustomerData;
-      const existingCustomer = lookup.matches[0];
+      const existingCustomer = yield* Match.value(lookup).pipe(
+        Match.tag("Ambiguous", (ambiguousLookup) =>
+          Effect.gen(function* () {
+            yield* Effect.logError("Ambiguous Dotypos customer lookup", {
+              customerIds: ambiguousLookup.matches.map(
+                (customer) => customer.id
+              ),
+              matchCount: ambiguousLookup.matches.length,
+            });
+
+            return yield* Effect.fail(
+              new ValidationError({
+                message: "Dotypos customer lookup matched multiple customers",
+              })
+            );
+          })
+        ),
+        Match.tag("Matched", (matchedLookup) =>
+          Effect.succeed(matchedLookup.matches[0])
+        ),
+        Match.tag("NotFound", () => Effect.succeed(undefined)),
+        Match.exhaustive
+      );
 
       if (existingCustomer) {
         const needsUpdate =
@@ -750,19 +780,25 @@ const makeDotyposService = Effect.gen(function* () {
         "createCustomer"
       ).pipe(
         Effect.retry(retryPolicy),
-        Effect.tapError((error) =>
-          Effect.logError("Dotypos customer creation failed", {
+        Effect.tapError((error) => {
+          const apiErrorDetails = Match.value(error).pipe(
+            Match.tag("ExternalAPIError", (apiError) => ({
+              providerError: apiError.providerError,
+              statusCode: apiError.statusCode,
+            })),
+            Match.orElse(() => ({
+              providerError: undefined,
+              statusCode: undefined,
+            }))
+          );
+
+          return Effect.logError("Dotypos customer creation failed", {
             errorTag: error._tag,
             operation: "createCustomer",
-            statusCode:
-              error._tag === "ExternalAPIError" ? error.statusCode : undefined,
-            providerError:
-              error._tag === "ExternalAPIError"
-                ? error.providerError
-                : undefined,
+            ...apiErrorDetails,
             createCustomerRequestFields,
-          })
-        )
+          });
+        })
       );
 
       yield* Effect.logInfo("Dotypos customer created", { customer });

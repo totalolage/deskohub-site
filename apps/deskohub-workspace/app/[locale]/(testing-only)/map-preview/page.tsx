@@ -10,6 +10,8 @@ type WorkspaceMapPreviewPageProps = {
   params: Promise<{ locale: string }>;
 };
 
+export const dynamic = "force-dynamic";
+
 export default async function WorkspaceMapPreviewPage({
   params,
 }: WorkspaceMapPreviewPageProps) {

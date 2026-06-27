@@ -22,5 +22,6 @@ process.env.NEXI_API_KEY ??= "nexi";
 process.env.NEXI_API_ORIGIN ??= "https://xpaysandbox.nexigroup.com";
 process.env.RESEND_WEBHOOK_SECRET ??= "whsec_test";
 process.env.VERCEL_ENV ??= "development";
+process.env.VERCEL_PROJECT_PRODUCTION_URL ??= "workspace.deskohub.test";
 process.env.VERCEL_URL ??= "deskohub.test";
 process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME ??= "cloud";

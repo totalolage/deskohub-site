@@ -9,10 +9,14 @@
         "i18n:compile"
       ],
       "env": [
+        "DOTYPOS_API_TIMEOUT",
+        "NEXI_API_ORIGIN",
+        "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
         "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
         "NEXT_PUBLIC_GTM_ID",
         "VERCEL_PROJECT_PRODUCTION_URL",
-        "VERCEL_URL"
+        "VERCEL_URL",
+        "WORKSPACE_CALLBACK_ORIGIN"
       ]
     },
     "db:migrate": {

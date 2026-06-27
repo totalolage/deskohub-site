@@ -224,9 +224,14 @@ const toReadyResult = (input: {
     orderId: input.reservationId,
   });
   const sealedState = sealPayStateForUrl(state);
+  const redirectUrl = new URL(
+    buildCheckoutPayPath(input.locale, sealedState),
+    "https://deskohub.local"
+  );
+  redirectUrl.searchParams.set("orderId", input.reservationId);
   return {
     status: "ready" as const,
-    redirectUrl: buildCheckoutPayPath(input.locale, sealedState),
+    redirectUrl: `${redirectUrl.pathname}${redirectUrl.search}`,
   };
 };
 
