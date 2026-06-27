@@ -28,8 +28,8 @@ export const workspaceServerEnvSchema = z.object({
   POSTHOG_SERVICE_NAMESPACE: z.string().min(1).default("deskohub"),
   VERCEL_ENV: z.enum(["production", "preview", "development"]),
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().optional(),
-  VERCEL_PROJECT_PRODUCTION_URL: z.string().optional(),
-  VERCEL_URL: z.string().optional(),
+  VERCEL_PROJECT_PRODUCTION_URL: z.string().min(1),
+  VERCEL_URL: z.string().min(1),
   WORKSPACE_CALLBACK_ORIGIN: z.url().optional(),
 });
 
