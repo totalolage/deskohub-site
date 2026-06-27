@@ -379,7 +379,7 @@ const completeCheckout = async ({
   });
   await waitForBrowserUrl({
     description: "Nexi hosted payment page",
-    matches: (url) => url.includes("nexigroup.com"),
+    matches: (url) => url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
     run,
     session,
     timeoutMs: getCheckoutTimeoutMs(),
