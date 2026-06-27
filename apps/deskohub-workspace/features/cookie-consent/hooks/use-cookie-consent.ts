@@ -15,7 +15,14 @@ export function useCookieConsent() {
   );
 
   useEffect(() => {
-    const syncAcceptedCategories = () => {
+    const syncAcceptedCategories = (event?: Event) => {
+      if (event instanceof CustomEvent && event.detail?.acceptedCategories) {
+        setAcceptedCategories(
+          event.detail.acceptedCategories as ConsentCategory[]
+        );
+        return;
+      }
+
       const preferences = CookieConsent.getUserPreferences();
       const preferenceCategories = (preferences?.acceptedCategories ||
         []) as ConsentCategory[];
