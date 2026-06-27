@@ -2,11 +2,7 @@ import type CookieConsent from "vanilla-cookieconsent";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 
-export type ConsentCategory =
-  | "necessary"
-  | "analytics"
-  | "marketing"
-  | "preferences";
+export type { ConsentCategory } from "@/shared/utils/consent-cookie";
 
 export function createConsentConfig(
   locale: Locale

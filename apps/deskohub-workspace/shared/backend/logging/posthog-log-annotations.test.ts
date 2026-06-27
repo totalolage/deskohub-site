@@ -111,6 +111,19 @@ describe("PostHog log annotations", () => {
     ).toEqual({});
   });
 
+  test("uses the request cookie parser for consent", () => {
+    expect(
+      getPostHogLogAnnotationsFromRequestHeaders(
+        new Headers({
+          cookie: `${analyticsConsentCookie}; ${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
+        })
+      )
+    ).toEqual({
+      posthogDistinctId: "cookie-distinct-id",
+      sessionId: "cookie-session-id",
+    });
+  });
+
   test("ignores request annotations when any duplicate consent cookie revokes analytics", () => {
     expect(
       getPostHogLogAnnotationsFromRequestHeaders(
