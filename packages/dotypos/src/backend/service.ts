@@ -577,6 +577,11 @@ const makeDotyposService = Effect.gen(function* () {
 
       const normalizedCustomerData = lookup.normalizedCustomerData;
       if (lookup._tag === "Ambiguous") {
+        yield* Effect.logError("Ambiguous Dotypos customer lookup", {
+          customerIds: lookup.matches.map((customer) => customer.id),
+          matchCount: lookup.matches.length,
+        });
+
         return yield* Effect.fail(
           new ValidationError({
             message: "Dotypos customer lookup matched multiple customers",

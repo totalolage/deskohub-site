@@ -20,12 +20,20 @@ export const failClosedOnAmbiguousDotyposCustomer = (
   lookup: FindCustomerResult
 ) =>
   lookup._tag === "Ambiguous"
-    ? Effect.fail(
-        new AmbiguousDotyposCustomerError({
-          message:
-            "Customer discount could not be confirmed. Please contact us to complete checkout.",
-        })
-      )
+    ? Effect.gen(function* () {
+        const matches = lookup.matches ?? [];
+        yield* Effect.logError("Ambiguous Dotypos customer lookup", {
+          customerIds: matches.map((customer) => customer.id),
+          matchCount: matches.length,
+        });
+
+        return yield* Effect.fail(
+          new AmbiguousDotyposCustomerError({
+            message:
+              "Customer discount could not be confirmed. Please contact us to complete checkout.",
+          })
+        );
+      })
     : Effect.succeed(lookup);
 
 export const getConfirmedDotyposCustomerDiscount = Effect.fn(
