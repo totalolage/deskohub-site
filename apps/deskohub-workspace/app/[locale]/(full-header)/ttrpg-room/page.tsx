@@ -86,7 +86,7 @@ function TtrpgRoomPage({
       seats: m.ttrpgRoomBarCapacity({}, { locale }),
       images: barImages,
       href: getContactHref(
-        `https://www.deskohub.cz/${locale}/contact`,
+        `https://bar.deskohub.cz/${locale}/contact`,
         m.ttrpgRoomBarPrefillMessage({}, { locale })
       ),
       cta: m.ttrpgRoomBarCta({}, { locale }),
