@@ -1,9 +1,39 @@
 "use client";
 
+import { cva, type VariantProps } from "class-variance-authority";
 import { motion, type Transition } from "motion/react";
 import { cn } from "@/shared/utils";
 
-type CarouselPositionIndicatorVariant = "light" | "navy";
+const indicatorDotVariants = cva(
+  "h-2.5 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4",
+  {
+    variants: {
+      active: {
+        true: "",
+        false: "",
+      },
+      variant: {
+        light:
+          "border border-white/50 bg-white/45 shadow-sm focus-visible:outline-white",
+        navy: "bg-navy-blue/24 focus-visible:outline-burned-orange",
+      },
+    },
+    compoundVariants: [
+      { active: true, class: "bg-white", variant: "light" },
+      { active: false, class: "hover:bg-white/75", variant: "light" },
+      { active: true, class: "bg-burned-orange", variant: "navy" },
+      { active: false, class: "hover:bg-navy-blue/42", variant: "navy" },
+    ],
+    defaultVariants: {
+      active: false,
+      variant: "light",
+    },
+  }
+);
+
+type CarouselPositionIndicatorVariant = NonNullable<
+  VariantProps<typeof indicatorDotVariants>["variant"]
+>;
 
 type CarouselPositionIndicatorProps = {
   count: number;
@@ -14,23 +44,6 @@ type CarouselPositionIndicatorProps = {
   getKey?: (index: number) => string | number;
   transition?: Transition;
   variant?: CarouselPositionIndicatorVariant;
-};
-
-const variantClasses: Record<
-  CarouselPositionIndicatorVariant,
-  { button: string; active: string; inactive: string }
-> = {
-  light: {
-    button:
-      "border border-white/50 bg-white/45 shadow-sm focus-visible:outline-white",
-    active: "bg-white",
-    inactive: "hover:bg-white/75",
-  },
-  navy: {
-    button: "bg-navy-blue/24 focus-visible:outline-burned-orange",
-    active: "bg-burned-orange",
-    inactive: "hover:bg-navy-blue/42",
-  },
 };
 
 export function CarouselPositionIndicator({
@@ -45,8 +58,6 @@ export function CarouselPositionIndicator({
 }: CarouselPositionIndicatorProps) {
   if (count <= 1) return null;
 
-  const classes = variantClasses[variant];
-
   return (
     <div className={cn("flex gap-2", className)}>
       {Array.from({ length: count }, (_, index) => (
@@ -55,9 +66,10 @@ export function CarouselPositionIndicator({
           aria-current={index === activeIndex ? "true" : undefined}
           aria-label={getLabel(index)}
           className={cn(
-            "h-2.5 rounded-full focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4",
-            classes.button,
-            index === activeIndex ? classes.active : classes.inactive
+            indicatorDotVariants({
+              active: index === activeIndex,
+              variant,
+            })
           )}
           key={getKey?.(index) ?? index}
           onClick={() => onSelect(index)}
