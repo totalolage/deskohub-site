@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { cookies } from "next/headers";
+import { headers } from "next/headers";
 import { after } from "next/server";
 import { runWorkspaceEffect } from "./censorship";
 import { getPostHogLogAnnotationsFromRequestHeaders } from "./posthog-log-annotations";
@@ -10,19 +10,12 @@ export async function runWorkspaceServerActionEffect<A, E>(
 ) {
   schedulePostHogLogsFlush(after);
 
-  const cookieStore = await cookies();
+  const requestHeaders = await headers();
 
   return runWorkspaceEffect(
     effect.pipe(
       Effect.annotateLogs(
-        getPostHogLogAnnotationsFromRequestHeaders(
-          new Headers({
-            cookie: cookieStore
-              .getAll()
-              .map(({ name, value }) => `${name}=${encodeURIComponent(value)}`)
-              .join("; "),
-          })
-        )
+        getPostHogLogAnnotationsFromRequestHeaders(requestHeaders)
       )
     )
   );
