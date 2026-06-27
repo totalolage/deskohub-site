@@ -6,7 +6,10 @@ import {
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import { Effect, Logger, type LogLevel, References } from "effect";
 import { after } from "next/server";
-import { getPostHogLogAnnotationsFromRequestHeaders } from "./posthog-log-annotations";
+import {
+  getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics,
+  logUnexpectedConsentCookieReasons,
+} from "./posthog-log-annotations";
 import {
   postHogLoggerProvider,
   schedulePostHogLogsFlush,
@@ -431,9 +434,14 @@ export const runWorkspaceRequestEffect = <A, E>(
   effect: Effect.Effect<A, E, never>
 ) => {
   schedulePostHogLogsFlush(after);
+  const { annotations, unexpectedConsentCookieReasons } =
+    getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics(request.headers);
 
   return runWorkspaceEffectWithLogAnnotations(
-    effect,
-    getPostHogLogAnnotationsFromRequestHeaders(request.headers)
+    Effect.gen(function* () {
+      yield* logUnexpectedConsentCookieReasons(unexpectedConsentCookieReasons);
+      return yield* effect;
+    }),
+    annotations
   );
 };

@@ -1,5 +1,9 @@
 import { describe, expect, test } from "bun:test";
-import { getAcceptedConsentCategoriesFromCookie } from "./consent-cookie";
+import {
+  getAcceptedConsentCategoriesFromCookie,
+  getAcceptedConsentCategoriesFromCookieValue,
+  type UnexpectedConsentCookieReason,
+} from "./consent-cookie";
 
 describe("getAcceptedConsentCategoriesFromCookie", () => {
   test("reads accepted categories from the CookieConsent cookie", () => {
@@ -18,8 +22,32 @@ describe("getAcceptedConsentCategoriesFromCookie", () => {
       JSON.stringify({ categories: ["analytics", "unknown", 1] })
     )}`;
 
-    expect(getAcceptedConsentCategoriesFromCookie(cookie)).toEqual([
-      "analytics",
-    ]);
+    const reasons: UnexpectedConsentCookieReason[] = [];
+
+    expect(
+      getAcceptedConsentCategoriesFromCookie(cookie, {
+        onUnexpectedValue: (reason) => reasons.push(reason),
+      })
+    ).toEqual(["analytics"]);
+
+    expect(reasons).toEqual(["unknown_category", "invalid_category_type"]);
+  });
+
+  test("warns when the consent cookie shape is unexpected", () => {
+    const reasons: UnexpectedConsentCookieReason[] = [];
+
+    expect(
+      getAcceptedConsentCategoriesFromCookieValue("not-json", {
+        onUnexpectedValue: (reason) => reasons.push(reason),
+      })
+    ).toEqual([]);
+    expect(
+      getAcceptedConsentCategoriesFromCookieValue(
+        JSON.stringify({ categories: "analytics" }),
+        { onUnexpectedValue: (reason) => reasons.push(reason) }
+      )
+    ).toEqual([]);
+
+    expect(reasons).toEqual(["invalid_json", "invalid_categories_type"]);
   });
 });

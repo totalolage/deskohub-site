@@ -13,10 +13,24 @@ export type ConsentCategory =
   | "marketing"
   | "preferences";
 
-export function getAcceptedConsentCategoriesFromCookie(cookieString: string) {
+export type UnexpectedConsentCookieReason =
+  | "invalid_json"
+  | "invalid_value_type"
+  | "invalid_categories_type"
+  | "invalid_category_type"
+  | "unknown_category";
+
+type ConsentCookieDiagnostics = {
+  readonly onUnexpectedValue?: (reason: UnexpectedConsentCookieReason) => void;
+};
+
+export function getAcceptedConsentCategoriesFromCookie(
+  cookieString: string,
+  diagnostics?: ConsentCookieDiagnostics
+) {
   const cookieValue = getConsentCookieValuesFromCookie(cookieString)[0];
 
-  return getAcceptedConsentCategoriesFromCookieValue(cookieValue);
+  return getAcceptedConsentCategoriesFromCookieValue(cookieValue, diagnostics);
 }
 
 export function getConsentCookieValuesFromCookie(cookieString: string) {
@@ -26,20 +40,43 @@ export function getConsentCookieValuesFromCookie(cookieString: string) {
 }
 
 export function getAcceptedConsentCategoriesFromCookieValue(
-  cookieValue: string | null | undefined
+  cookieValue: string | null | undefined,
+  diagnostics?: ConsentCookieDiagnostics
 ) {
   if (!cookieValue) return [];
 
   const value = parseConsentCookieValue(cookieValue);
-  if (typeof value !== "object" || value === null) return [];
+  if (value === undefined) {
+    diagnostics?.onUnexpectedValue?.("invalid_json");
+    return [];
+  }
+  if (typeof value !== "object" || value === null) {
+    diagnostics?.onUnexpectedValue?.("invalid_value_type");
+    return [];
+  }
 
   const { categories } = value as { categories?: unknown };
-  if (!Array.isArray(categories)) return [];
+  if (!Array.isArray(categories)) {
+    diagnostics?.onUnexpectedValue?.("invalid_categories_type");
+    return [];
+  }
 
-  return categories.filter(
-    (category): category is ConsentCategory =>
-      typeof category === "string" && consentCategories.has(category)
-  );
+  const acceptedCategories: ConsentCategory[] = [];
+
+  for (const category of categories) {
+    if (typeof category !== "string") {
+      diagnostics?.onUnexpectedValue?.("invalid_category_type");
+      continue;
+    }
+    if (!consentCategories.has(category)) {
+      diagnostics?.onUnexpectedValue?.("unknown_category");
+      continue;
+    }
+
+    acceptedCategories.push(category as ConsentCategory);
+  }
+
+  return acceptedCategories;
 }
 
 function parseConsentCookieValue(cookieValue: string) {

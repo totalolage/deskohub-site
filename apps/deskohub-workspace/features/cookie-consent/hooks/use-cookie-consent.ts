@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import type { ConsentCategory } from "../config/consent-config";
 import { getAcceptedConsentCategoriesFromCookie } from "../utils/consent-cookie";
+import { CONSENT_UPDATED_EVENT } from "../utils/consent-event";
 
 export function useCookieConsent() {
   const [acceptedCategories, setAcceptedCategories] = useState<
@@ -15,14 +16,7 @@ export function useCookieConsent() {
   );
 
   useEffect(() => {
-    const syncAcceptedCategories = (event?: Event) => {
-      if (event instanceof CustomEvent && event.detail?.acceptedCategories) {
-        setAcceptedCategories(
-          event.detail.acceptedCategories as ConsentCategory[]
-        );
-        return;
-      }
-
+    const syncAcceptedCategories = () => {
       const preferences = CookieConsent.getUserPreferences();
       const preferenceCategories = (preferences?.acceptedCategories ||
         []) as ConsentCategory[];
@@ -32,6 +26,9 @@ export function useCookieConsent() {
 
       setAcceptedCategories(acceptedCategories);
     };
+    const syncAcceptedCategoriesFromEvent = (
+      event: WindowEventMap[typeof CONSENT_UPDATED_EVENT]
+    ) => setAcceptedCategories(event.detail.acceptedCategories);
 
     syncAcceptedCategories();
     const syncAfterConsentProviderInit = window.setTimeout(
@@ -39,11 +36,17 @@ export function useCookieConsent() {
       0
     );
 
-    window.addEventListener("consentUpdated", syncAcceptedCategories);
+    window.addEventListener(
+      CONSENT_UPDATED_EVENT,
+      syncAcceptedCategoriesFromEvent
+    );
 
     return () => {
       window.clearTimeout(syncAfterConsentProviderInit);
-      window.removeEventListener("consentUpdated", syncAcceptedCategories);
+      window.removeEventListener(
+        CONSENT_UPDATED_EVENT,
+        syncAcceptedCategoriesFromEvent
+      );
     };
   }, []);
 

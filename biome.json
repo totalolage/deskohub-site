@@ -45,6 +45,18 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["apps/deskohub-workspace/**"],
+      "linter": {
+        "rules": {
+          "suspicious": {
+            "noConsole": "error"
+          }
+        }
+      }
+    }
+  ],
   "javascript": {
     "formatter": {
       "quoteStyle": "double",
