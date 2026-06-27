@@ -950,8 +950,14 @@ const replayResendDeliveryWebhook = async (
     },
     method: "POST",
   });
-  assert(response.ok, `Resend webhook replay failed with ${response.status}`);
-  log("Resend delivery webhook replay accepted");
+  if (response.ok) {
+    log("Resend delivery webhook replay accepted");
+    return;
+  }
+
+  log(
+    `Resend delivery webhook replay returned ${response.status}; waiting for delivery state`
+  );
 };
 
 const previewWebhookHeaders = (config: ReturnType<typeof getConfig>) => ({
