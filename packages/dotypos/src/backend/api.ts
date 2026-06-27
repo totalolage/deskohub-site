@@ -4,12 +4,21 @@ import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
-import { ExternalAPIError, NetworkError } from "../errors";
+import {
+  type DotyposProviderError,
+  ExternalAPIError,
+  NetworkError,
+} from "../errors";
 import {
   type DotyposClient,
+  type ErrorResponse as DotyposErrorResponse,
   ErrorResponse,
   make,
 } from "../generated/effect.gen";
+
+const PROVIDER_ERROR_TEXT_LIMIT = 500;
+const PROVIDER_ERROR_VALUE_LIMIT = 120;
+const REDACTED_PROVIDER_VALUE = "[REDACTED]";
 
 const DiscountGroup = Schema.Struct({
   discountPercent: Schema.optionalKey(
@@ -181,8 +190,6 @@ export const mapDotyposClientError = (
         : undefined
     );
     return toExternalApiError({
-      cause: providerError?.error ?? reason.cause,
-      message: providerError?.error_description,
       operation,
       providerError,
       statusCode: error.response?.status,
@@ -192,8 +199,6 @@ export const mapDotyposClientError = (
   if (isGeneratedClientError(error)) {
     const providerError = parseProviderError(error.cause);
     return toExternalApiError({
-      cause: providerError?.error ?? error.cause,
-      message: providerError?.error_description,
       operation,
       providerError,
       statusCode: error.response.status,
@@ -217,8 +222,6 @@ export const mapDotyposClientError = (
   const providerError = parseProviderError(error);
   if (providerError) {
     return toExternalApiError({
-      cause: providerError.error,
-      message: providerError.error_description,
       operation,
       providerError,
       statusCode: providerError.code ?? 500,
@@ -251,17 +254,60 @@ const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>
 
 const parseProviderError = (error: unknown) => {
   const decoded = Schema.decodeUnknownOption(ErrorResponse)(error);
-  if (Option.isSome(decoded)) return decoded.value;
+  if (Option.isSome(decoded)) return toSafeProviderError(decoded.value);
 
   if (!Predicate.isString(error)) return undefined;
 
   try {
     const parsed = JSON.parse(error);
     const parsedDecoded = Schema.decodeUnknownOption(ErrorResponse)(parsed);
-    return Option.isSome(parsedDecoded) ? parsedDecoded.value : undefined;
+    return Option.isSome(parsedDecoded)
+      ? toSafeProviderError(parsedDecoded.value)
+      : undefined;
   } catch {
     return undefined;
   }
+};
+
+const redactProviderText = (value: string) =>
+  value
+    .replace(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+      REDACTED_PROVIDER_VALUE
+    )
+    .replace(/\+?\d[\d\s().-]{6,}\d/g, REDACTED_PROVIDER_VALUE)
+    .replace(
+      /\b(firstName|lastName|first name|last name|name|email|phone)\s*[:=]\s*("[^"]*"|'[^']*'|[^,;.]+)/gi,
+      `$1=${REDACTED_PROVIDER_VALUE}`
+    );
+
+const sanitizeProviderText = (value: string | undefined, limit: number) => {
+  if (!value) return undefined;
+
+  const redacted = redactProviderText(value).trim();
+  if (!redacted) return undefined;
+  if (redacted.length <= limit) return redacted;
+
+  return `${redacted.slice(0, limit - 3)}...`;
+};
+
+const toSafeProviderError = (
+  error: DotyposErrorResponse
+): DotyposProviderError | undefined => {
+  const providerError = {
+    error: sanitizeProviderText(error.error, PROVIDER_ERROR_VALUE_LIMIT),
+    errorDescription: sanitizeProviderText(
+      error.error_description,
+      PROVIDER_ERROR_TEXT_LIMIT
+    ),
+    code: error.code,
+  } satisfies DotyposProviderError;
+
+  return providerError.error ||
+    providerError.errorDescription ||
+    providerError.code !== undefined
+    ? providerError
+    : undefined;
 };
 
 const isGeneratedClientError = (
@@ -271,22 +317,18 @@ const isGeneratedClientError = (
   Predicate.hasProperty(error, "cause");
 
 const toExternalApiError = ({
-  cause,
-  message,
   operation,
   providerError,
   statusCode,
 }: {
-  cause: unknown;
-  message: string | undefined;
   operation: string;
-  providerError: ErrorResponse | undefined;
+  providerError: DotyposProviderError | undefined;
   statusCode: number | undefined;
 }) =>
   new ExternalAPIError({
     service: "Dotypos",
     operation,
     statusCode: statusCode ?? providerError?.code,
-    message,
-    cause,
+    message: "Dotypos API request failed",
+    providerError,
   });
