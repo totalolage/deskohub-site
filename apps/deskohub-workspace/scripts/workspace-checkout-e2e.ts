@@ -142,7 +142,6 @@ const main = async () => {
       }
     );
     await replayNexiWebhook(config, replayRow);
-    await replayResendDeliveryWebhook(config, replayRow);
     checkoutRow = await validatePostgres(datasourceConfig, data, orderId, (row) => {
       checkoutRow = row;
     });
@@ -910,54 +909,6 @@ const replayNexiWebhook = async (
   });
   assert(response.ok, `Nexi webhook replay failed with ${response.status}`);
   log("Nexi webhook replay accepted");
-};
-
-const replayResendDeliveryWebhook = async (
-  config: ReturnType<typeof getConfig>,
-  row: CheckoutRow
-) => {
-  assert(
-    config.bypassSecret,
-    "VERCEL_AUTOMATION_BYPASS_SECRET is required for Resend webhook replay"
-  );
-  const response = await fetch(new URL("/api/webhooks/resend", config.aliasUrl), {
-    body: JSON.stringify({
-      type: "email.delivered",
-      data: {
-        email_id: `workspace-e2e-${row.reservation_id}`,
-        tags: [
-          { name: "source", value: "workspace-paid-fulfillment" },
-          { name: "category", value: "workspace-paid-reservation-access" },
-          { name: "workspaceReservationId", value: row.reservation_id },
-          ...(row.dotypos_reservation_id
-            ? [
-                {
-                  name: "dotyposReservationId",
-                  value: row.dotypos_reservation_id,
-                },
-              ]
-            : []),
-          ...(row.dotypos_customer_id
-            ? [{ name: "dotyposCustomerId", value: row.dotypos_customer_id }]
-            : []),
-        ],
-      },
-    }),
-    headers: {
-      ...previewWebhookHeaders(config),
-      "x-workspace-e2e-event-id": `workspace-e2e-resend-${row.reservation_id}`,
-      "x-workspace-e2e-resend-delivery": config.bypassSecret,
-    },
-    method: "POST",
-  });
-  if (response.ok) {
-    log("Resend delivery webhook replay accepted");
-    return;
-  }
-
-  log(
-    `Resend delivery webhook replay returned ${response.status}; waiting for delivery state`
-  );
 };
 
 const previewWebhookHeaders = (config: ReturnType<typeof getConfig>) => ({

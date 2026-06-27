@@ -9,6 +9,7 @@ export const ResendWebhookRuntimeConfigLive = Layer.succeed(
   ResendWebhookRuntimeConfig,
   {
     apiKey: env.EMAIL_API_KEY,
+    deploymentEnvironment: env.VERCEL_ENV,
     webhookSecret: env.RESEND_WEBHOOK_SECRET,
   } satisfies ResendWebhookRuntimeConfigObj
 );

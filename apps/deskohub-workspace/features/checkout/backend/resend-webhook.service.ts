@@ -86,13 +86,6 @@ export interface ResendWebhookService {
     ResendWebhookProcessingResult,
     ResendWebhookProcessingError
   >;
-  readonly processVerifiedEvent: (input: {
-    readonly eventId: string;
-    readonly event: unknown;
-  }) => Effect.Effect<
-    ResendWebhookProcessingResult,
-    ResendWebhookProcessingError
-  >;
 }
 
 export const ResendWebhookService = Context.Service<ResendWebhookService>(
@@ -155,6 +148,14 @@ export const ResendWebhookServiceLive = Layer.effect(
           !workspaceReservationId
         ) {
           return ignored("unrelated_email");
+        }
+
+        const deploymentEnvironment = tags.get("deploymentEnvironment");
+        if (
+          deploymentEnvironment &&
+          deploymentEnvironment !== config.deploymentEnvironment
+        ) {
+          return ignored("deployment_environment_mismatch");
         }
 
         const reservation = yield* reservations.findById(workspaceReservationId).pipe(
@@ -295,7 +296,6 @@ export const ResendWebhookServiceLive = Layer.effect(
       );
 
     return ResendWebhookService.of({
-      processVerifiedEvent,
       processWebhook: Effect.fn("resendWebhook.processWebhook")(
         function* (input) {
           const { id, timestamp, signature } = input.headers;

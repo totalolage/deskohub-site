@@ -847,6 +847,7 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           internalNotificationLocale
         );
         const metadata = {
+          deploymentEnvironment: env.VERCEL_ENV,
           source: "workspace-paid-fulfillment",
           workspaceReservationId: reservation.id,
           dotyposReservationId: reservation.dotyposReservationId,

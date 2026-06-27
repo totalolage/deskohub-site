@@ -94,6 +94,7 @@ const customerWebhookPayload = (
     tags: [
       { name: "source", value: "workspace-paid-fulfillment" },
       { name: "category", value: "workspace-paid-reservation-access" },
+      { name: "deploymentEnvironment", value: "development" },
       { name: "workspaceReservationId", value: "reservation-id" },
       { name: "dotyposReservationId", value: "dotypos-reservation-id" },
       { name: "dotyposCustomerId", value: "dotypos-customer-id" },
@@ -112,6 +113,7 @@ const internalFailurePayload = {
     tags: [
       { name: "source", value: "workspace-paid-fulfillment" },
       { name: "category", value: "workspace-paid-reservation-internal" },
+      { name: "deploymentEnvironment", value: "development" },
       { name: "workspaceReservationId", value: "reservation-id" },
     ],
   },
@@ -158,6 +160,7 @@ const processWebhookEffect = async (input: {
 
   const config = input.config ?? {
     apiKey: "re_test",
+    deploymentEnvironment: "development",
     webhookSecret: "whsec_test",
   };
 
@@ -246,7 +249,10 @@ describe("ResendWebhookService", () => {
     const error = await processWebhookError({
       reservations,
       operationalEvents,
-      config: { webhookSecret: "whsec_test" },
+      config: {
+        deploymentEnvironment: "development",
+        webhookSecret: "whsec_test",
+      },
     });
 
     expect(error).toMatchObject({
@@ -371,6 +377,38 @@ describe("ResendWebhookService", () => {
     expect(reservations.markFulfillmentDeliveryFailed).not.toHaveBeenCalled();
     expect(operationalEvents.record).not.toHaveBeenCalled();
   });
+
+  test("ignores delivery events from another deployment environment", async () => {
+    verifiedPayload = {
+      ...customerDeliveredPayload,
+      data: {
+        ...customerDeliveredPayload.data,
+        tags: customerDeliveredPayload.data.tags.map((tag) =>
+          tag.name === "deploymentEnvironment"
+            ? { ...tag, value: "production" }
+            : tag
+        ),
+      },
+    };
+    const reservations = {
+      findById: mock(() => Effect.die("should not load reservation")),
+      markFulfilled: mock(() => Effect.die("should not update")),
+    } as unknown as WorkspaceReservationRepositoryType;
+    const operationalEvents = {
+      record: mock(() => Effect.die("should not record")),
+    } as unknown as OperationalEventRepositoryType;
+
+    const result = await processWebhook({ reservations, operationalEvents });
+
+    expect(result).toEqual({
+      status: "ignored",
+      reason: "deployment_environment_mismatch",
+    });
+    expect(reservations.findById).not.toHaveBeenCalled();
+    expect(reservations.markFulfilled).not.toHaveBeenCalled();
+    expect(operationalEvents.record).not.toHaveBeenCalled();
+  });
+
   test("keeps customer fulfillment successful when internal notification fails", async () => {
     const { EmailConfigTag, EmailServiceError, EmailServiceTag } = await import(
       "@deskohub/email/backend/service"
@@ -460,6 +498,7 @@ describe("ResendWebhookService", () => {
       "workspace-paid-reservation-internal",
     ]);
     expect(sentMessages[0]?.metadata).toMatchObject({
+      deploymentEnvironment: "development",
       source: "workspace-paid-fulfillment",
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
@@ -825,6 +864,7 @@ describe("ResendWebhookService", () => {
         },
         tags: ["workspace-paid-reservation-access", "unsafe category"],
         metadata: {
+          deploymentEnvironment: "development",
           source: "workspace-paid-fulfillment",
           workspaceReservationId: "reservation-id",
           ignoredNumber: 42,
@@ -848,6 +888,7 @@ describe("ResendWebhookService", () => {
       ],
       tags: [
         { name: "category", value: "workspace-paid-reservation-access" },
+        { name: "deploymentEnvironment", value: "development" },
         { name: "source", value: "workspace-paid-fulfillment" },
         { name: "workspaceReservationId", value: "reservation-id" },
       ],
