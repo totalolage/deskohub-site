@@ -50,7 +50,7 @@ export function ContactForm({ initialValues }: ContactFormProps) {
     onSuccess: () => {
       track("Contact Form Success");
       toast.success(m["contact.successMessage"]());
-      form.reset();
+      form.reset(contactDefaultValues);
     },
     onError: ({ error }) => {
       track("Contact Form Error", {
