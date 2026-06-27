@@ -71,6 +71,7 @@ const main = async () => {
   const session = `workspace-checkout-e2e-${Date.now()}`;
   let datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
   let checkoutRow: CheckoutRow | undefined;
+  let checkoutOrderId: string | undefined;
   let workflowError: unknown;
 
   try {
@@ -131,7 +132,16 @@ const main = async () => {
     ])
       addRedaction(value);
 
-    const orderId = await completeCheckout({ config, data, run, session });
+    const orderId = await completeCheckout({
+      config,
+      data,
+      onOrderId: (orderId) => {
+        checkoutOrderId = orderId;
+      },
+      run,
+      session,
+    });
+    checkoutOrderId = orderId;
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
     const replayRow = await waitForWebhookReplayRow(
@@ -155,6 +165,22 @@ const main = async () => {
     throw cause;
   } finally {
     let cleanupError: unknown;
+    if (
+      datasourceConfig &&
+      !checkoutRow?.dotypos_reservation_id &&
+      checkoutOrderId
+    ) {
+      try {
+        checkoutRow = await readCleanupCheckoutRow(
+          datasourceConfig,
+          checkoutOrderId
+        );
+      } catch (cause) {
+        cleanupError = cause;
+        if (workflowError)
+          log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
+      }
+    }
     if (datasourceConfig && checkoutRow?.dotypos_reservation_id) {
       try {
         await cancelDotyposReservation(
@@ -234,7 +260,7 @@ const readCappedTimeoutMs = (name: string, fallbackMs: number) => {
 
 const assertNexiSandbox = (origin: string) =>
   assert(
-    origin.includes("xpaysandbox.nexigroup.com"),
+    parseUrl(origin)?.hostname === "xpaysandbox.nexigroup.com",
     "NEXI_API_ORIGIN must point at Nexi sandbox for workspace checkout e2e"
   );
 
@@ -355,11 +381,13 @@ const baseChildEnv = () =>
 const completeCheckout = async ({
   config,
   data,
+  onOrderId,
   run,
   session,
 }: {
   config: ReturnType<typeof getConfig>;
   data: ReturnType<typeof makeCheckoutData>;
+  onOrderId?: (orderId: string) => void;
   run: ReturnType<typeof makeRunner>;
   session: string;
 }) => {
@@ -391,6 +419,8 @@ const completeCheckout = async ({
     session,
     timeoutMs: getCheckoutTimeoutMs(),
   });
+  const payPageOrderId = await readPayPageOrderId(run, session);
+  onOrderId?.(payPageOrderId);
   await submitPaymentAndWaitForHostedPage({ run, session });
   await completeNexiHostedPayment({ data, run, session });
   await waitForBrowserUrl({
@@ -410,6 +440,24 @@ const completeCheckout = async ({
   const url = await run("agent-browser", ["--session", session, "get", "url"]);
   const orderId = extractOrderId(url.stdout);
   log(`Reached checkout status for order ${orderId}`);
+  return orderId;
+};
+
+const readPayPageOrderId = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "eval", "--stdin"],
+    {
+      input: payPageOrderIdScript,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  );
+  const orderId = result.stdout.trim();
+  assert(orderId, "checkout pay page order id missing");
   return orderId;
 };
 
@@ -1040,6 +1088,24 @@ const readCheckoutRow = async (pool: Pool, orderId: string) => {
     [orderId]
   );
   return result.rows[0];
+};
+
+const readCleanupCheckoutRow = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  orderId: string
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
+  });
+
+  try {
+    return await readCheckoutRow(pool, orderId);
+  } finally {
+    await pool.end();
+  }
 };
 
 const isPostgresComplete = (
@@ -1756,6 +1822,14 @@ const submitPaymentScript = String.raw`
   await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
   setTimeout(() => button.click(), 0);
   return location.href;
+})()
+`;
+
+const payPageOrderIdScript = String.raw`
+(() => {
+  const idPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+  const match = (document.body?.innerText ?? '').match(idPattern);
+  return match?.[0] ?? '';
 })()
 `;
 

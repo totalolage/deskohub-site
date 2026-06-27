@@ -534,7 +534,11 @@ const makeDotyposService = Effect.gen(function* () {
         }
       }
 
-      if (matchingCustomers.length === 0) {
+      const activeMatchingCustomers = matchingCustomers.filter(
+        (customer) => !customer.deleted
+      );
+
+      if (activeMatchingCustomers.length === 0) {
         return {
           _tag: "NotFound" as const,
           matches: [],
@@ -542,18 +546,18 @@ const makeDotyposService = Effect.gen(function* () {
         };
       }
 
-      if (hasAtLeastTwoCustomers(matchingCustomers)) {
+      if (hasAtLeastTwoCustomers(activeMatchingCustomers)) {
         return {
           _tag: "Ambiguous" as const,
-          matches: matchingCustomers,
+          matches: activeMatchingCustomers,
           normalizedCustomerData,
         };
       }
 
       return {
         _tag: "Matched" as const,
-        customer: matchingCustomers[0]!,
-        matches: matchingCustomers,
+        customer: activeMatchingCustomers[0]!,
+        matches: activeMatchingCustomers,
         normalizedCustomerData,
       };
     },
