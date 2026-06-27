@@ -1,10 +1,14 @@
 import { randomUUID } from "node:crypto";
+import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
-import type { AmbiguousDotyposCustomerError } from "@/features/checkout/backend/dotypos-customer-policy";
+import {
+  type AmbiguousDotyposCustomerError,
+  getConfirmedDotyposCustomerDiscount,
+} from "@/features/checkout/backend/dotypos-customer-policy";
 import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
@@ -55,6 +59,7 @@ import {
   PostHogEventService,
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
+import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 import {
   getWorkspaceRuntimeCallbackOrigin,
@@ -355,6 +360,7 @@ const isReusableAttemptState = (state: string) =>
 export const CheckoutServiceLive = Layer.effect(
   CheckoutService,
   Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
     const nexi = yield* NexiService;
     const reservations = yield* WorkspaceReservationRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
@@ -619,8 +625,11 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
+          const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
+            data
+          ).pipe(Effect.provideService(DotyposService, dotypos));
           const quote = yield* buildWorkspaceCheckoutQuoteEffect(data, {
-            customerDiscount: state.quote.payment.customerDiscount,
+            customerDiscount,
             currencyOverride: getNexiCheckoutCurrencyOverride(),
           });
           yield* Effect.annotateLogsScoped({ quote });
@@ -729,5 +738,6 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(PaymentAttemptRepositoryLive),
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
+  Layer.provide(DotyposServiceLive),
   Layer.provide(NexiServiceLive)
 );
