@@ -749,20 +749,22 @@ const clickHostedPaymentTarget = async (
     );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    const snapshot = await readInteractiveSnapshot(run, session);
+    const snapshot = await readInteractiveSnapshot(run, session, true);
     throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
   }
 };
 
 const readInteractiveSnapshot = async (
   run: ReturnType<typeof makeRunner>,
-  session: string
+  session: string,
+  allowFailure = false
 ) => {
   const result = await run(
     "agent-browser",
     ["--session", session, "snapshot", "-i"],
-    { logOutput: false, timeoutMs: 60_000 }
+    { allowFailure, logOutput: false, timeoutMs: 60_000 }
   );
+  if (result.exitCode !== 0) return "";
   return result.stdout;
 };
 
