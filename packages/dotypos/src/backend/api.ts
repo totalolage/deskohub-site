@@ -4,9 +4,14 @@ import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
-import { ExternalAPIError, NetworkError } from "../errors";
+import {
+  type DotyposProviderError,
+  ExternalAPIError,
+  NetworkError,
+} from "../errors";
 import {
   type DotyposClient,
+  type ErrorResponse as DotyposErrorResponse,
   ErrorResponse,
   make,
 } from "../generated/effect.gen";
@@ -35,6 +40,8 @@ type GeneratedClientError = {
   readonly response: HttpClientResponse.HttpClientResponse;
   readonly cause: unknown;
 };
+
+type ProviderErrorInput = DotyposErrorResponse | string | undefined;
 
 export const makeDotyposClient = ({
   config,
@@ -175,14 +182,16 @@ export const mapDotyposClientError = (
       });
     }
 
+    const providerErrorInput = Predicate.hasProperty(reason, "description")
+      ? reason.description
+      : undefined;
     const providerError = parseProviderError(
-      Predicate.hasProperty(reason, "description")
-        ? reason.description
+      Predicate.isString(providerErrorInput) ||
+        Schema.is(ErrorResponse)(providerErrorInput)
+        ? providerErrorInput
         : undefined
     );
     return toExternalApiError({
-      cause: providerError?.error ?? reason.cause,
-      message: providerError?.error_description,
       operation,
       providerError,
       statusCode: error.response?.status,
@@ -190,10 +199,12 @@ export const mapDotyposClientError = (
   }
 
   if (isGeneratedClientError(error)) {
-    const providerError = parseProviderError(error.cause);
+    const providerError = parseProviderError(
+      Predicate.isString(error.cause) || Schema.is(ErrorResponse)(error.cause)
+        ? error.cause
+        : undefined
+    );
     return toExternalApiError({
-      cause: providerError?.error ?? error.cause,
-      message: providerError?.error_description,
       operation,
       providerError,
       statusCode: error.response.status,
@@ -214,11 +225,13 @@ export const mapDotyposClientError = (
     }
   }
 
-  const providerError = parseProviderError(error);
+  const providerError = parseProviderError(
+    Predicate.isString(error) || Schema.is(ErrorResponse)(error)
+      ? error
+      : undefined
+  );
   if (providerError) {
     return toExternalApiError({
-      cause: providerError.error,
-      message: providerError.error_description,
       operation,
       providerError,
       statusCode: providerError.code ?? 500,
@@ -249,19 +262,35 @@ const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>
       )
   );
 
-const parseProviderError = (error: unknown) => {
-  const decoded = Schema.decodeUnknownOption(ErrorResponse)(error);
-  if (Option.isSome(decoded)) return decoded.value;
-
-  if (!Predicate.isString(error)) return undefined;
+const parseProviderError = (error: ProviderErrorInput) => {
+  if (!error) return undefined;
+  if (!Predicate.isString(error)) return toProviderError(error);
 
   try {
     const parsed = JSON.parse(error);
     const parsedDecoded = Schema.decodeUnknownOption(ErrorResponse)(parsed);
-    return Option.isSome(parsedDecoded) ? parsedDecoded.value : undefined;
+    return Option.isSome(parsedDecoded)
+      ? toProviderError(parsedDecoded.value)
+      : undefined;
   } catch {
     return undefined;
   }
+};
+
+const toProviderError = (
+  error: DotyposErrorResponse
+): DotyposProviderError | undefined => {
+  const providerError: DotyposProviderError = {
+    error: error.error,
+    errorDescription: error.error_description,
+    code: error.code,
+  };
+
+  return providerError.error ||
+    providerError.errorDescription ||
+    providerError.code !== undefined
+    ? providerError
+    : undefined;
 };
 
 const isGeneratedClientError = (
@@ -271,22 +300,18 @@ const isGeneratedClientError = (
   Predicate.hasProperty(error, "cause");
 
 const toExternalApiError = ({
-  cause,
-  message,
   operation,
   providerError,
   statusCode,
 }: {
-  cause: unknown;
-  message: string | undefined;
   operation: string;
-  providerError: ErrorResponse | undefined;
+  providerError: DotyposProviderError | undefined;
   statusCode: number | undefined;
 }) =>
   new ExternalAPIError({
     service: "Dotypos",
     operation,
     statusCode: statusCode ?? providerError?.code,
-    message,
-    cause,
+    message: "Dotypos API request failed",
+    providerError,
   });

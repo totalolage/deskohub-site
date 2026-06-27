@@ -45,6 +45,7 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("session-token")).toBe(true);
     expect(isSensitiveLogKey("name")).toBe(true);
     expect(isSensitiveLogKey("message")).toBe(true);
+    expect(isSensitiveLogKey("errorDescription")).toBe(true);
     expect(isSensitiveLogKey("email")).toBe(true);
     expect(isSensitiveLogKey("phone")).toBe(true);
     expect(isSensitiveLogKey("firstName")).toBe(true);
@@ -98,6 +99,7 @@ describe("censorLogValue", () => {
         requestAuthorization: "Bearer secret",
         name: "Ada Lovelace",
         message: "private form message",
+        errorDescription: "provider echoed private payload",
         visible: "safe",
         email: "ada@example.com",
         phone: "+420777123456",
@@ -124,6 +126,7 @@ describe("censorLogValue", () => {
         requestAuthorization: CENSORED_LOG_VALUE,
         name: CENSORED_LOG_VALUE,
         message: CENSORED_LOG_VALUE,
+        errorDescription: CENSORED_LOG_VALUE,
         visible: "safe",
         email: CENSORED_LOG_VALUE,
         phone: CENSORED_LOG_VALUE,

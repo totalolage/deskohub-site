@@ -35,6 +35,7 @@ const sensitiveLogKeyFragments = [
   "session token",
   "name",
   "message",
+  "error description",
   "email",
   "phone",
   "first name",
