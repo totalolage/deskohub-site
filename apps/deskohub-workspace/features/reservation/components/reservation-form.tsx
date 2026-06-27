@@ -284,6 +284,7 @@ export function ReservationForm({
     queryFn: ({ signal }) =>
       loadWorkspaceAvailability({ query: availabilityQuery, signal }),
     placeholderData: keepPreviousData,
+    retry: (failureCount) => failureCount < 3,
     staleTime: 30_000,
   });
   const availability = availabilityQueryResult.isError

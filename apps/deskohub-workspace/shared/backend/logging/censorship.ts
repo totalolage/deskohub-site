@@ -6,7 +6,10 @@ import {
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import { Effect, Logger, type LogLevel, References } from "effect";
 import { after } from "next/server";
-import { getPostHogLogAnnotationsFromCookieHeader } from "./posthog-log-annotations";
+import {
+  getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics,
+  logUnexpectedConsentCookieReasons,
+} from "./posthog-log-annotations";
 import {
   postHogLoggerProvider,
   schedulePostHogLogsFlush,
@@ -26,6 +29,7 @@ const sensitiveLogKeyFragments = [
   "secret",
   "client secret",
   "api key",
+  "signature",
   "authorization",
   "auth",
   "cookie",
@@ -41,6 +45,8 @@ const sensitiveLogKeyFragments = [
   "first name",
   "last name",
 ] as const;
+
+const sensitiveLogExactKeys = new Set(["x-vercel-sc-headers"]);
 
 const sensitiveLogUrlSearchParams = new Set([
   "checkouttoken",
@@ -122,6 +128,7 @@ const endsWithSensitiveLogKeyFragment = (key: string): boolean => {
 };
 
 export const isSensitiveLogKey = (key: string): boolean =>
+  sensitiveLogExactKeys.has(key.toLowerCase()) ||
   containsSensitiveLogKeyFragmentSegment(key) ||
   endsWithSensitiveLogKeyFragment(key);
 
@@ -428,9 +435,14 @@ export const runWorkspaceRequestEffect = <A, E>(
   effect: Effect.Effect<A, E, never>
 ) => {
   schedulePostHogLogsFlush(after);
+  const { annotations, unexpectedConsentCookieReasons } =
+    getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics(request.headers);
 
   return runWorkspaceEffectWithLogAnnotations(
-    effect,
-    getPostHogLogAnnotationsFromCookieHeader(request.headers.get("cookie"))
+    Effect.gen(function* () {
+      yield* logUnexpectedConsentCookieReasons(unexpectedConsentCookieReasons);
+      return yield* effect;
+    }),
+    annotations
   );
 };

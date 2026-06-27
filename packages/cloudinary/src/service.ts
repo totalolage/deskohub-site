@@ -1,7 +1,7 @@
 import "server-only";
 
 import { v2 as cloudinary } from "cloudinary";
-import { Context, Effect, Layer, pipe, Schedule } from "effect";
+import { Context, Duration, Effect, Layer, pipe, Schedule } from "effect";
 import * as Schema from "effect/Schema";
 import {
   type CloudinaryConfig,
@@ -140,9 +140,16 @@ export class CloudinaryService extends Context.Service<
 
 const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
   Schedule.jittered,
-  Schedule.both(Schedule.recurs(2)),
-  Schedule.while<CloudinarySearchError, unknown>(
+  Schedule.while<CloudinarySearchError, Duration.Duration>(
     ({ input }) => input.httpCode !== undefined && input.httpCode >= 500
+  ),
+  Schedule.both(Schedule.recurs(2)),
+  Schedule.tapOutput(([delay, attempt]) =>
+    Effect.logWarning(`Cloudinary search retry attempt #${attempt + 1}`, {
+      attemptNumber: attempt + 1,
+      delayMs: Duration.toMillis(delay),
+      maxRetries: 2,
+    })
   )
 );
 

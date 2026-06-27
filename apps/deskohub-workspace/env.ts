@@ -50,11 +50,9 @@ export const env = createEnv({
   },
   emptyStringAsUndefined: true,
   onValidationError: (error) => {
-    console.error(
-      "Invalid workspace environment variables:",
-      JSON.stringify(error, null, 2)
+    throw new Error(
+      `Invalid workspace environment variables: ${JSON.stringify(error, null, 2)}`
     );
-    throw new Error("Invalid workspace environment variables");
   },
   onInvalidAccess: (variable) => {
     throw new Error(

@@ -114,13 +114,13 @@ export function SiteHeader({
 
         <nav aria-label="Primary" className="hidden items-center gap-6 xl:flex">
           {links.map((link) => (
-            <a
+            <Link
               key={link.href}
               href={link.href}
-              className="text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
+              className="text-balance text-center text-sm uppercase tracking-[0.12em] text-white/76 transition-colors hover:text-sunset-yellow"
             >
               {link.label}
-            </a>
+            </Link>
           ))}
         </nav>
 

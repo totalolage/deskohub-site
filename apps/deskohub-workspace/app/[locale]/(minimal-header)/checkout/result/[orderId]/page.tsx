@@ -38,7 +38,13 @@ const loadCheckoutStatusAttempt = (
 ) =>
   Effect.gen(function* () {
     const attempt = yield* Ref.updateAndGet(attempts, (value) => value + 1);
-    if (attempt > 1) yield* Effect.sleep("1500 millis");
+    if (attempt > 1) {
+      yield* Effect.logWarning("Retrying checkout status refresh", {
+        orderId,
+        attempt,
+      });
+      yield* Effect.sleep("1500 millis");
+    }
 
     return yield* loadCheckoutStatusEffect(orderId).pipe(
       Effect.catchCause((cause) =>

@@ -69,6 +69,7 @@ function PostHogClient({
     if (!analyticsAccepted) {
       analyticsSendingEnabled = false;
       if (hasInitializedPostHog) {
+        posthog.set_config({ tracing_headers: [] });
         posthog.stopSessionRecording();
         posthog.opt_out_capturing();
         posthog.reset(true);
@@ -102,9 +103,12 @@ function PostHogClient({
           maskAllInputs: true,
           maskTextSelector: "body",
         },
+        tracing_headers: [window.location.hostname],
       });
       posthog.stopSessionRecording();
       hasInitializedPostHog = true;
+    } else {
+      posthog.set_config({ tracing_headers: [window.location.hostname] });
     }
 
     posthog.opt_in_capturing();
