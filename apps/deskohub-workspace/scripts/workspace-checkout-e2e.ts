@@ -278,6 +278,7 @@ const makeRunner =
     options: {
       allowFailure?: boolean;
       cwd?: string;
+      env?: Record<string, string | undefined>;
       input?: string;
       logCommand?: boolean;
       logOutput?: boolean;
@@ -290,9 +291,10 @@ const makeRunner =
     const child = Bun.spawn([command, ...args], {
       cwd: options.cwd,
       env: {
-        ...process.env,
+        ...baseChildEnv(),
         VERCEL_ORG_ID: config.vercelTeamId,
         VERCEL_PROJECT_ID: config.vercelProjectId,
+        ...options.env,
       },
       stderr: "pipe",
       stdin: options.input ? "pipe" : "ignore",
@@ -333,6 +335,14 @@ const makeRunner =
 
     return result;
   };
+
+const baseChildEnv = () =>
+  Object.fromEntries(
+    ["CI", "HOME", "LANG", "PATH", "TMPDIR", "USER"].flatMap((key) => {
+      const value = process.env[key];
+      return value ? [[key, value]] : [];
+    })
+  );
 
 const completeCheckout = async ({
   config,
@@ -927,11 +937,10 @@ const isPostgresComplete = (
 ) =>
   row.reservation_state === "confirmed" &&
   row.payment_state === "paid" &&
-  // Preview E2E can finish via return-page finalization; external webhooks may route globally.
-  ["processing", "fulfilled"].includes(row.fulfillment_state) &&
+  row.fulfillment_state === "fulfilled" &&
   row.payment_attempt_state === "paid" &&
   row.currency === config.expectedCurrency &&
-  row.last_provider_status === "EXECUTED";
+  row.webhook_state === "processed";
 
 const assertPostgresRow = (
   row: CheckoutRow,
@@ -948,8 +957,8 @@ const assertPostgresRow = (
   );
   assert(row.payment_state === "paid", "reservation payment was not paid");
   assert(
-    ["processing", "fulfilled"].includes(row.fulfillment_state),
-    "reservation fulfillment did not start"
+    row.fulfillment_state === "fulfilled",
+    "reservation fulfillment was not fulfilled"
   );
   assert(row.active_payment_attempt_id, "active payment attempt missing");
   assert(row.dotypos_customer_id, "Dotypos customer id missing");
@@ -957,8 +966,7 @@ const assertPostgresRow = (
   assert(row.reservation_created_at, "reservation_created_at missing");
   assert(row.reservation_confirmed_at, "reservation_confirmed_at missing");
   assert(row.paid_at, "paid_at missing");
-  if (row.fulfillment_state === "fulfilled")
-    assert(row.fulfilled_at, "fulfilled_at missing");
+  assert(row.fulfilled_at, "fulfilled_at missing");
   assert(
     row.reservation_cancelled_at === null,
     "reservation_cancelled_at should be null"
@@ -1001,6 +1009,7 @@ const assertPostgresRow = (
     `expected ${config.expectedCurrency} currency`
   );
   assert(row.provider_redirect_url, "provider redirect URL missing");
+  assert(row.last_webhook_event_id, "last webhook event id missing");
   assert(row.last_provider_operation_id, "last provider operation id missing");
   assert(
     row.last_provider_status === "EXECUTED",
@@ -1010,24 +1019,19 @@ const assertPostgresRow = (
     row.payment_failure_code === null,
     "payment failure code should be null"
   );
-  if (row.last_webhook_event_id) {
-    assert(row.webhook_id, "webhook id missing");
-    assert(
-      row.webhook_event_id === row.last_webhook_event_id,
-      "webhook event id mismatch"
-    );
-    assert(row.webhook_provider === "nexi", "webhook provider should be nexi");
-    assert(
-      row.webhook_provider_order_id === row.provider_order_id,
-      "webhook order id mismatch"
-    );
-    assert(row.webhook_processed_at, "webhook processed_at missing");
-    assert(row.webhook_state === "processed", "webhook was not processed");
-    assert(
-      row.webhook_error_code === null,
-      "webhook error code should be null"
-    );
-  }
+  assert(row.webhook_id, "webhook id missing");
+  assert(
+    row.webhook_event_id === row.last_webhook_event_id,
+    "webhook event id mismatch"
+  );
+  assert(row.webhook_provider === "nexi", "webhook provider should be nexi");
+  assert(
+    row.webhook_provider_order_id === row.provider_order_id,
+    "webhook order id mismatch"
+  );
+  assert(row.webhook_processed_at, "webhook processed_at missing");
+  assert(row.webhook_state === "processed", "webhook was not processed");
+  assert(row.webhook_error_code === null, "webhook error code should be null");
 };
 
 const assertLegalEvidence = async (pool: Pool, orderId: string) => {
@@ -1405,7 +1409,7 @@ const makeCheckoutData = (aliasUrl: string, date: string) => {
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
   const name = `Workspace E2E ${runId}`;
-  const phone = `+4207${runId.slice(-8)}`;
+  const phone = `+420735${runId.slice(6, 12)}`;
   const email = "delivered@resend.dev";
   const message = `Automated checkout e2e ${runId}`;
   const params = new URLSearchParams({
@@ -1675,9 +1679,9 @@ const browserDiagnosticsScript = String.raw`
 const assertFulfilledStatusScript = String.raw`
 (() => {
   const text = document.body?.textContent ?? '';
-  const fulfilled = /Your workspace access is ready\./i.test(text) && /sent by email/i.test(text);
-  const sending = /We are sending your access codes now!/i.test(text) && /email your access codes/i.test(text);
-  if (!fulfilled && !sending) throw new Error('checkout status success copy not visible');
+  if (!/Your workspace access is ready\./i.test(text) || !/sent by email/i.test(text)) {
+    throw new Error('fulfilled checkout status copy not visible');
+  }
   return location.href;
 })()
 `;

@@ -7,7 +7,7 @@ import { env } from "@/env";
 import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
 import {
   type AmbiguousDotyposCustomerError,
-  getConfirmedDotyposCustomerDiscount,
+  getConfirmedDotyposCustomerDiscountById,
 } from "@/features/checkout/backend/dotypos-customer-policy";
 import {
   LegalEvidenceEventRepository,
@@ -625,10 +625,11 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
-          const customerDiscount =
-            yield* getConfirmedDotyposCustomerDiscount(data).pipe(
-              Effect.provideService(DotyposService, dotypos)
-            );
+          const customerDiscount = reservation.dotyposCustomerId
+            ? yield* getConfirmedDotyposCustomerDiscountById(
+                reservation.dotyposCustomerId
+              ).pipe(Effect.provideService(DotyposService, dotypos))
+            : undefined;
           const quote = yield* buildWorkspaceCheckoutQuoteEffect(data, {
             customerDiscount,
             currencyOverride: getNexiCheckoutCurrencyOverride(),
