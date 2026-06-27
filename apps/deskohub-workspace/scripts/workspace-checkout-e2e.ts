@@ -911,11 +911,11 @@ const isPostgresComplete = (
 ) =>
   row.reservation_state === "confirmed" &&
   row.payment_state === "paid" &&
-  // Resend delivery webhooks are global, so preview E2E stops once email fulfillment has started.
+  // Preview E2E can finish via return-page finalization; external webhooks may route globally.
   ["processing", "fulfilled"].includes(row.fulfillment_state) &&
   row.payment_attempt_state === "paid" &&
   row.currency === config.expectedCurrency &&
-  row.webhook_state === "processed";
+  row.last_provider_status === "EXECUTED";
 
 const assertPostgresRow = (
   row: CheckoutRow,
@@ -985,7 +985,6 @@ const assertPostgresRow = (
     `expected ${config.expectedCurrency} currency`
   );
   assert(row.provider_redirect_url, "provider redirect URL missing");
-  assert(row.last_webhook_event_id, "last webhook event id missing");
   assert(row.last_provider_operation_id, "last provider operation id missing");
   assert(
     row.last_provider_status === "EXECUTED",
@@ -995,19 +994,24 @@ const assertPostgresRow = (
     row.payment_failure_code === null,
     "payment failure code should be null"
   );
-  assert(row.webhook_id, "webhook id missing");
-  assert(
-    row.webhook_event_id === row.last_webhook_event_id,
-    "webhook event id mismatch"
-  );
-  assert(row.webhook_provider === "nexi", "webhook provider should be nexi");
-  assert(
-    row.webhook_provider_order_id === row.provider_order_id,
-    "webhook order id mismatch"
-  );
-  assert(row.webhook_processed_at, "webhook processed_at missing");
-  assert(row.webhook_state === "processed", "webhook was not processed");
-  assert(row.webhook_error_code === null, "webhook error code should be null");
+  if (row.last_webhook_event_id) {
+    assert(row.webhook_id, "webhook id missing");
+    assert(
+      row.webhook_event_id === row.last_webhook_event_id,
+      "webhook event id mismatch"
+    );
+    assert(row.webhook_provider === "nexi", "webhook provider should be nexi");
+    assert(
+      row.webhook_provider_order_id === row.provider_order_id,
+      "webhook order id mismatch"
+    );
+    assert(row.webhook_processed_at, "webhook processed_at missing");
+    assert(row.webhook_state === "processed", "webhook was not processed");
+    assert(
+      row.webhook_error_code === null,
+      "webhook error code should be null"
+    );
+  }
 };
 
 const assertLegalEvidence = async (pool: Pool, orderId: string) => {
