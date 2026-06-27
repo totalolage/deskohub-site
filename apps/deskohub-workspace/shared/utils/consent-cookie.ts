@@ -1,17 +1,14 @@
 export const CONSENT_COOKIE_NAME = "cc_cookie";
 
-const consentCategories = new Set<string>([
+const consentCategories = [
   "necessary",
   "analytics",
   "marketing",
   "preferences",
-]);
-
-export type ConsentCategory =
-  | "necessary"
-  | "analytics"
-  | "marketing"
-  | "preferences";
+] as const;
+export const isConsentCategory = (value: unknown): value is ConsentCategory =>
+  typeof value === "string" && consentCategories.includes(value);
+export type ConsentCategory = (typeof consentCategories)[number];
 
 export type UnexpectedConsentCookieReason =
   | "invalid_json"
@@ -68,12 +65,12 @@ export function getAcceptedConsentCategoriesFromCookieValue(
       diagnostics?.onUnexpectedValue?.("invalid_category_type");
       continue;
     }
-    if (!consentCategories.has(category)) {
+    if (!isConsentCategory(category)) {
       diagnostics?.onUnexpectedValue?.("unknown_category");
       continue;
     }
 
-    acceptedCategories.push(category as ConsentCategory);
+    acceptedCategories.push(category);
   }
 
   return acceptedCategories;

@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import * as CookieConsent from "vanilla-cookieconsent";
 import "vanilla-cookieconsent/dist/cookieconsent.css";
 import type { Locale } from "@/features/i18n";
-import type { ConsentCategory } from "../config/consent-config";
+import { isConsentCategory } from "@/shared/utils/consent-cookie";
 import { createConsentConfig } from "../config/consent-config";
 import { dispatchConsentUpdatedEvent } from "../utils/consent-event";
 import {
@@ -48,10 +48,6 @@ type HandleConsentChangeOptions = {
 function handleConsentChange({
   emitGtmConsentUpdateEvent,
 }: HandleConsentChangeOptions) {
-  const preferences = CookieConsent.getUserPreferences();
-  const acceptedCategories = (preferences?.acceptedCategories ||
-    []) as ConsentCategory[];
-
   if (CookieConsent.acceptedCategory("analytics")) {
     grantAnalyticsConsent();
   } else {
@@ -74,5 +70,8 @@ function handleConsentChange({
     queueMicrotask(pushConsentUpdateEvent);
   }
 
+  const acceptedCategories = (
+    CookieConsent.getUserPreferences().acceptedCategories || []
+  ).filter(isConsentCategory);
   dispatchConsentUpdatedEvent(acceptedCategories);
 }
