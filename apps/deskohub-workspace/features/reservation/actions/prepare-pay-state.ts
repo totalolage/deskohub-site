@@ -483,7 +483,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         email: input.reservation.email,
         phone: input.reservation.phone,
       },
-      { lookupFields: ["email"] }
+      {}
     );
     yield* Effect.annotateLogsScoped({ customer });
     const dotyposCustomerId = yield* getDotyposCustomerId(customer);

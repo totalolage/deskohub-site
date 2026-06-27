@@ -9,12 +9,6 @@ import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 const WORKSPACE_PROJECT_ID = "prj_7FliQBcbBiBwGaO2JLrigicnXCRd";
 const WORKSPACE_TEAM_ID = "team_MgMQ4MEWijWnYa1R48C2JU5e";
 const DEFAULT_ALIAS = "new.workspace.deskohub.cz";
-const CHECKOUT_TIMEOUT_MS = Number(
-  process.env.WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS ?? 10 * 60 * 1000
-);
-const DATASOURCE_TIMEOUT_MS = Number(
-  process.env.WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS ?? 4 * 60 * 1000
-);
 const NEXI_TEST_CARD_NUMBER = "4509034543615006";
 const NEXI_TEST_CVV = "298";
 const NEXI_TEST_EXPIRY = "1028";
@@ -99,6 +93,7 @@ const main = async () => {
       datasourceConfig.databaseUrlUnpooled,
       "DATABASE_URL_UNPOOLED"
     );
+    assertNexiSandbox(datasourceConfig.nexiApiOrigin);
 
     const deploy = await run(
       "bunx",
@@ -212,8 +207,21 @@ const getDatasourceConfig = () => {
       refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
     },
     expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
+    nexiApiOrigin: requireEnv("NEXI_API_ORIGIN"),
   };
 };
+
+const getCheckoutTimeoutMs = () =>
+  Number(env("WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS") ?? 10 * 60 * 1000);
+
+const getDatasourceTimeoutMs = () =>
+  Number(env("WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS") ?? 4 * 60 * 1000);
+
+const assertNexiSandbox = (origin: string) =>
+  assert(
+    origin.includes("xpaysandbox.nexigroup.com"),
+    "NEXI_API_ORIGIN must point at Nexi sandbox for workspace checkout e2e"
+  );
 
 const getVercelDeployEnvArgs = (
   config: ReturnType<typeof getConfig>,
@@ -230,6 +238,7 @@ const getVercelDeployEnvArgs = (
     DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
     DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
     DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
+    NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
     WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
     ...(config.bypassSecret
@@ -343,7 +352,7 @@ const completeCheckout = async ({
     "agent-browser",
     ["--session", session, ...headers, "open", data.checkoutUrl],
     {
-      timeoutMs: CHECKOUT_TIMEOUT_MS,
+      timeoutMs: getCheckoutTimeoutMs(),
     }
   );
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
@@ -355,7 +364,7 @@ const completeCheckout = async ({
     matches: (url) => url.includes("/checkout/pay"),
     run,
     session,
-    timeoutMs: CHECKOUT_TIMEOUT_MS,
+    timeoutMs: getCheckoutTimeoutMs(),
   });
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: submitPaymentScript,
@@ -366,7 +375,7 @@ const completeCheckout = async ({
     matches: (url) => url.includes("nexigroup.com"),
     run,
     session,
-    timeoutMs: CHECKOUT_TIMEOUT_MS,
+    timeoutMs: getCheckoutTimeoutMs(),
   });
   await completeNexiHostedPayment({ data, run, session });
   await waitForBrowserUrl({
@@ -380,7 +389,7 @@ const completeCheckout = async ({
     },
     run,
     session,
-    timeoutMs: CHECKOUT_TIMEOUT_MS,
+    timeoutMs: getCheckoutTimeoutMs(),
   });
 
   const url = await run("agent-browser", ["--session", session, "get", "url"]);
@@ -632,7 +641,7 @@ const clickHostedPaymentTarget = async (
           if (target.framed) await switchToMainFrame(run, session);
         }
       },
-      CHECKOUT_TIMEOUT_MS,
+      getCheckoutTimeoutMs(),
       `Nexi ${label} action`
     );
   } catch (error) {
@@ -668,7 +677,7 @@ const switchToMainFrame = async (
 const findFirstTextFieldRef = (snapshot: string) => {
   for (const line of snapshot.split("\n")) {
     const ref = getSnapshotRef(line);
-    if (ref && /\[(textbox|input)\b/i.test(line)) return ref;
+    if (ref && /\b(textbox|input)\b/i.test(line)) return ref;
   }
 };
 
@@ -802,11 +811,11 @@ const assertFulfilledStatusPage = async ({
       "open",
       `${config.aliasUrl}/en-US/checkout/status/${orderId}`,
     ],
-    { timeoutMs: CHECKOUT_TIMEOUT_MS }
+    { timeoutMs: getCheckoutTimeoutMs() }
   );
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
     input: assertFulfilledStatusScript,
-    timeoutMs: CHECKOUT_TIMEOUT_MS,
+    timeoutMs: getCheckoutTimeoutMs(),
   });
   log("Checkout status page validated");
 };
@@ -819,9 +828,9 @@ const validatePostgres = async (
 ) => {
   const pool = new Pool({
     connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
-    connectionTimeoutMillis: DATASOURCE_TIMEOUT_MS,
-    query_timeout: DATASOURCE_TIMEOUT_MS,
-    statement_timeout: DATASOURCE_TIMEOUT_MS,
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
   });
 
   try {
@@ -831,7 +840,7 @@ const validatePostgres = async (
         if (row) onRow?.(row);
         return row && isPostgresComplete(row, config) ? row : undefined;
       },
-      DATASOURCE_TIMEOUT_MS,
+      getDatasourceTimeoutMs(),
       `Postgres checkout rows for ${orderId}`
     );
 
@@ -1483,9 +1492,13 @@ const dotyposDateCovers = (
 ) => {
   const selected = new Date(`${expectedDate}T12:00:00.000Z`).getTime();
   return (
-    new Date(start).getTime() <= selected && selected <= new Date(end).getTime()
+    parseDotyposTimestamp(start) <= selected &&
+    selected <= parseDotyposTimestamp(end)
   );
 };
+
+const parseDotyposTimestamp = (value: string) =>
+  /^\d+$/.test(value) ? Number(value) : new Date(value).getTime();
 
 const parseUrl = (value: string) => {
   try {
