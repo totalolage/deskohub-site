@@ -12,6 +12,7 @@ import {
 import { use, useEffect, useMemo, useRef, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
 
@@ -414,32 +415,19 @@ export function LandingPagePhotoCarousel({
           );
         })}
       </motion.div>
-      {images.length > 1 && (
-        <div className="flex justify-center gap-2 px-4">
-          {images.map((image, index) => (
-            <motion.button
-              animate={{ width: index === currentLogicalIndex ? 40 : 10 }}
-              aria-label={`Show carousel image ${index + 1}`}
-              className={cn(
-                "h-2.5 rounded-full border border-white/50 bg-white/45 shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-white",
-                index === currentLogicalIndex ? "bg-white" : "hover:bg-white/75"
-              )}
-              key={image.public_id}
-              onClick={() =>
-                moveToAnimationIndex(
-                  getClosestVirtualIndex(
-                    index,
-                    animationTimelineIndex,
-                    images.length
-                  )
-                )
-              }
-              transition={activeDotTransition}
-              type="button"
-            />
-          ))}
-        </div>
-      )}
+      <CarouselPositionIndicator
+        activeIndex={currentLogicalIndex}
+        className="justify-center px-4"
+        count={images.length}
+        getKey={(index) => images[index]?.public_id ?? index}
+        getLabel={(index) => `Show carousel image ${index + 1}`}
+        onSelect={(index) =>
+          moveToAnimationIndex(
+            getClosestVirtualIndex(index, animationTimelineIndex, images.length)
+          )
+        }
+        transition={activeDotTransition}
+      />
       <Lightbox
         animation={lightboxAnimation}
         close={() => setLightboxIndex(-1)}

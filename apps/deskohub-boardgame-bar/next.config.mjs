@@ -1,4 +1,5 @@
 import { withBotId } from "botid/next/config";
+import { redirects } from "./next-config/redirects.mjs";
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -13,18 +14,7 @@ const nextConfig = {
     useCache: true,
   },
   async redirects() {
-    return [
-      {
-        source: '/workspace',
-        destination: 'https://workspace.deskohub.cz',
-        permanent: true,
-      },
-      {
-        source: '/workspace/:path*',
-        destination: 'https://workspace.deskohub.cz/:path*',
-        permanent: true,
-      },
-    ];
+    return redirects;
   },
   images: {
     remotePatterns: [

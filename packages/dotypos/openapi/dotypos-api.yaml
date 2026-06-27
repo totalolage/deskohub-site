@@ -1674,9 +1674,24 @@ components:
       type: object
       required:
         - _cloudId
-        - firstName
+        - addressLine1
+        - barcode
+        - companyId
+        - companyName
+        - deleted
+        - display
         - email
+        - firstName
+        - flags
+        - headerPrint
+        - hexColor
+        - internalNote
+        - lastName
         - phone
+        - points
+        - tags
+        - vatId
+        - zip
       properties:
         _cloudId:
           type: string
@@ -1689,10 +1704,9 @@ components:
           description: Last name
           default: ""
         flags:
-          type: integer
-          minimum: 0
+          type: string
           description: Customer flags (bitwise flags)
-          default: 0
+          default: "0"
         email:
           type: string
           description: Email address
@@ -1744,10 +1758,9 @@ components:
           description: Is deleted
           default: false
         points:
-          type: integer
+          type: string
           description: Customer points
-          nullable: true
-          default: 0
+          default: "0"
         internalNote:
           type: string
           description: Internal note
@@ -1759,7 +1772,7 @@ components:
         hexColor:
           type: string
           description: Hex color for customer
-          default: "#2196F3"
+          default: "#000000"
         headerPrint:
           type: string
           description: Header print text
