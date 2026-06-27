@@ -121,6 +121,30 @@ const getCustomerLookupLogAnnotations = (
   lookupFields: options?.lookupFields ?? defaultCustomerLookupFields,
 });
 
+const presentCustomerInputFields = (customerData: DotyposCustomerLookupData) =>
+  (["firstName", "lastName", "email", "phone"] as const).filter(
+    (field) => customerData[field]
+  );
+
+const presentCreateCustomerRequestFields = (request: {
+  readonly _cloudId: string;
+  readonly firstName?: string;
+  readonly lastName?: string;
+  readonly email: string;
+  readonly phone: string;
+  readonly expireDate: number;
+}) =>
+  (
+    [
+      "_cloudId",
+      "firstName",
+      "lastName",
+      "email",
+      "phone",
+      "expireDate",
+    ] as const
+  ).filter((field) => request[field] !== undefined);
+
 const addUniqueCustomer = (customers: Customer[], customer: Customer) => {
   const isDuplicate = customers.find((existing) =>
     customer.id ? existing.id === customer.id : existing === customer
@@ -568,7 +592,9 @@ const makeDotyposService = Effect.gen(function* () {
       customerData: DotyposCustomerLookupData,
       options?: FindCustomerOptions
     ) {
-      yield* Effect.annotateLogsScoped({ input: customerData });
+      yield* Effect.annotateLogsScoped({
+        customerInputFields: presentCustomerInputFields(customerData),
+      });
       yield* Effect.logInfo("Dotypos customer lookup started");
 
       const lookup = yield* lookupCustomer(customerData, options);
@@ -689,7 +715,10 @@ const makeDotyposService = Effect.gen(function* () {
         expireDate: Date.now() + 365 * 24 * 60 * 60 * 1000,
       };
 
-      yield* Effect.annotateLogsScoped({ createRequest });
+      const createCustomerRequestFields =
+        presentCreateCustomerRequestFields(createRequest);
+
+      yield* Effect.annotateLogsScoped({ createCustomerRequestFields });
 
       const customer = yield* runDotyposRequest(
         client
@@ -700,7 +729,22 @@ const makeDotyposService = Effect.gen(function* () {
             )
           ),
         "createCustomer"
-      ).pipe(Effect.retry(retryPolicy));
+      ).pipe(
+        Effect.retry(retryPolicy),
+        Effect.tapError((error) =>
+          Effect.logError("Dotypos customer creation failed", {
+            errorTag: error._tag,
+            operation: "createCustomer",
+            statusCode:
+              error._tag === "ExternalAPIError" ? error.statusCode : undefined,
+            providerError:
+              error._tag === "ExternalAPIError"
+                ? error.providerError
+                : undefined,
+            createCustomerRequestFields,
+          })
+        )
+      );
 
       yield* Effect.logInfo("Dotypos customer created", { customer });
 

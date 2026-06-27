@@ -51,7 +51,7 @@ export function LandingPageFaqContactSection({
   return (
     <section
       id={faqContactSectionId}
-      className="bg-white pb-20 pt-20 sm:pb-24 sm:pt-24"
+      className="bg-[linear-gradient(180deg,#05083f_0%,#0d1258_45%,#15123e_100%)] pb-20 pt-20 sm:pb-24 sm:pt-24"
     >
       <Container>
         <div className="grid gap-8 lg:grid-cols-[0.95fr_1.05fr] lg:items-start">

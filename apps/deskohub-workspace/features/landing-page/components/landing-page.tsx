@@ -1,7 +1,6 @@
 import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
-import { LandingPageExperiencesSection } from "./landing-page-experiences-section";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
 import {
   LandingPageHeroSection,
@@ -30,12 +29,15 @@ export function LandingPage({ locale }: LandingPageProps) {
         locale={locale}
         overviewSectionId={siteHeaderSectionIds.overview}
         reservationHref={reservationHref}
-        eventsHref={localizedHash(`#${siteHeaderSectionIds.events}`)}
+        eventsHref={contactHref}
       />
 
       <LandingPagePhotoCarouselSection />
 
-      <LandingPageLocationMapSection locale={locale} />
+      <LandingPageLocationMapSection
+        locale={locale}
+        locationMapSectionId={siteHeaderSectionIds.locationMap}
+      />
 
       <LandingPageWorkspaceSection
         locale={locale}
@@ -44,17 +46,29 @@ export function LandingPage({ locale }: LandingPageProps) {
         contactEmail={contactEmail}
       />
 
-      <LandingPageExperiencesSection
-        locale={locale}
-        ttrpgSectionId={siteHeaderSectionIds.ttrpg}
-        eventsSectionId={siteHeaderSectionIds.events}
-        contactHref={contactHref}
-      />
+      {/* <LandingPageExperiencesSection */}
+      {/*   locale={locale} */}
+      {/*   ttrpgSectionId={siteHeaderSectionIds.ttrpg} */}
+      {/*   eventsSectionId={siteHeaderSectionIds.events} */}
+      {/*   contactHref={contactHref} */}
+      {/* /> */}
 
       <LandingPageTeambuildingsSection
         locale={locale}
         teambuildingsSectionId={siteHeaderSectionIds.teambuildings}
         contactHref={contactHref}
+      />
+
+      {/* Legacy event/TTRPG hashes land by contact while those sections are hidden. */}
+      <div
+        id={siteHeaderSectionIds.events}
+        aria-hidden="true"
+        className="scroll-mt-[var(--anchor-scroll-offset)]"
+      />
+      <div
+        id={siteHeaderSectionIds.ttrpg}
+        aria-hidden="true"
+        className="scroll-mt-[var(--anchor-scroll-offset)]"
       />
 
       <LandingPageFaqContactSection

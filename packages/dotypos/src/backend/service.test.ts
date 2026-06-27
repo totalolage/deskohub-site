@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Predicate } from "effect";
+import { Effect, Layer, Logger, Predicate, References } from "effect";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import { makeDotyposRuntimeConfigLayer } from "../config";
 import type { Category, Customer, Reservation } from "../generated/effect.gen";
@@ -50,6 +50,26 @@ const category = (overrides: Partial<Category> = {}): Category => ({
 });
 
 type FetchCall = [RequestInfo | URL, RequestInit?];
+
+type CapturedLog = {
+  readonly message: unknown;
+  readonly annotations: Readonly<Record<string, unknown>>;
+};
+
+const captureLogs = (logs: CapturedLog[]) =>
+  Logger.make((options) => {
+    logs.push({
+      message: options.message,
+      annotations: options.fiber.getRef(
+        References.CurrentLogAnnotations
+      ) as Readonly<Record<string, unknown>>,
+    });
+  });
+
+const logText = (value: unknown) => JSON.stringify(value);
+
+const messageParts = (message: unknown): readonly unknown[] =>
+  Array.isArray(message) ? message : [message];
 
 const getRequest = ([input, init]: FetchCall) =>
   input instanceof Request ? input : new Request(input, init);
@@ -308,6 +328,112 @@ describe("DotyposService customer lookup", () => {
 
     expect(result).toEqual(matched);
     expect(updateAttempts).toBeGreaterThan(1);
+  });
+
+  test("logs createCustomer failures with provider details", async () => {
+    const logs: CapturedLog[] = [];
+    const providerDescription = `firstName=Ada; lastName=Lovelace; email=ada.secret@example.com; phone=+420 777 123 456; ${"x".repeat(700)}`;
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers") {
+        if (request.method === "GET") return Response.json({ data: [] });
+        if (request.method === "POST") {
+          return Response.json(
+            {
+              error: "validation_failed",
+              error_description: providerDescription,
+              code: 400,
+            },
+            { status: 400 }
+          );
+        }
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.findOrCreateCustomer(
+          {
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada.secret@example.com",
+            phone: "+420 777 123 456",
+          },
+          undefined
+        );
+      }).pipe(Effect.result, Effect.provide(Logger.layer([captureLogs(logs)]))),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (!Predicate.isTagged(result, "Failure")) return;
+    expect(Predicate.isTagged(result.failure, "ExternalAPIError")).toBe(true);
+    if (!Predicate.isTagged(result.failure, "ExternalAPIError")) return;
+
+    expect(result.failure).toMatchObject({
+      _tag: "ExternalAPIError",
+      service: "Dotypos",
+      operation: "createCustomer",
+      statusCode: 400,
+      message: "Dotypos API request failed",
+      providerError: {
+        error: "validation_failed",
+        errorDescription: providerDescription,
+        code: 400,
+      },
+    });
+    expect(result.failure.cause).toBeUndefined();
+
+    const failureLog = logs.find((log) =>
+      messageParts(log.message).includes("Dotypos customer creation failed")
+    );
+    expect(failureLog).toBeDefined();
+    if (!failureLog) return;
+
+    const payload = messageParts(failureLog.message).find(
+      (part): part is Record<string, unknown> =>
+        typeof part === "object" && part !== null
+    );
+    expect(payload).toMatchObject({
+      errorTag: "ExternalAPIError",
+      operation: "createCustomer",
+      statusCode: 400,
+      providerError: {
+        error: "validation_failed",
+        errorDescription: providerDescription,
+        code: 400,
+      },
+      createCustomerRequestFields: [
+        "_cloudId",
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "expireDate",
+      ],
+    });
+    expect(failureLog.annotations).toMatchObject({
+      lookupFields: ["email", "phone"],
+      customerInputFields: ["firstName", "lastName", "email", "phone"],
+      createCustomerRequestFields: [
+        "_cloudId",
+        "firstName",
+        "lastName",
+        "email",
+        "phone",
+        "expireDate",
+      ],
+    });
+
+    const annotations = logText(failureLog.annotations);
+    expect(annotations).not.toContain("ada.secret@example.com");
+    expect(annotations).not.toContain("+420 777 123 456");
+    expect(annotations).not.toContain("Ada");
+    expect(annotations).not.toContain("Lovelace");
+    expect(annotations).not.toContain(providerDescription);
   });
 
   test("does not create or reuse a customer when lookup is ambiguous", async () => {
