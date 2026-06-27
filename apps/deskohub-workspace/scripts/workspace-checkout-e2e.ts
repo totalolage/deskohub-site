@@ -139,7 +139,9 @@ const main = async () => {
     const orderId = await completeCheckout({ config, data, run, session });
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
-    checkoutRow = await validatePostgres(datasourceConfig, data, orderId);
+    checkoutRow = await validatePostgres(datasourceConfig, data, orderId, (row) => {
+      checkoutRow = row;
+    });
     await verifyAlias(config, deployment.id);
     await assertFulfilledStatusPage({ config, orderId, run, session });
     await validateDotypos(datasourceConfig, data, checkoutRow);
@@ -812,7 +814,8 @@ const assertFulfilledStatusPage = async ({
 const validatePostgres = async (
   config: ReturnType<typeof getDatasourceConfig>,
   data: ReturnType<typeof makeCheckoutData>,
-  orderId: string
+  orderId: string,
+  onRow?: (row: CheckoutRow) => void
 ) => {
   const pool = new Pool({
     connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
@@ -831,6 +834,7 @@ const validatePostgres = async (
       `Postgres checkout rows for ${orderId}`
     );
 
+    onRow?.(row);
     assertPostgresRow(row, data, config);
     await assertLegalEvidence(pool, orderId);
     await assertOperationalEvents(pool, orderId, row.payment_attempt_id, data);
