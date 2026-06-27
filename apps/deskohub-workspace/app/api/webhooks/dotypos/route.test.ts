@@ -26,6 +26,25 @@ const request = (body: BodyInit, secret = webhookSecret) =>
 const jsonRequest = (body: unknown, secret = webhookSecret) =>
   request(JSON.stringify(body), secret);
 
+const reservationRecord = {
+  branchid: 123,
+  cloudid: "123456789",
+  created: 1782552480000,
+  customerid: 456,
+  deleted: 0,
+  employeeid: 789,
+  enddate: 1782638880000,
+  flags: 0,
+  note: null,
+  reservationid: 321,
+  seats: 1,
+  startdate: 1782552480000,
+  status: 1,
+  tableid: 654,
+  taglist: null,
+  versiondate: 1782552480000,
+};
+
 describe("Dotypos webhook route", () => {
   beforeEach(() => {
     revalidateTag.mockClear();
@@ -36,9 +55,7 @@ describe("Dotypos webhook route", () => {
     const { POST } = await import("./route");
 
     for (const secret of ["", "wrong-secret"]) {
-      const response = await POST(
-        jsonRequest([{ id: "reservation-1" }], secret)
-      );
+      const response = await POST(jsonRequest([reservationRecord], secret));
       expect(response.status).toBe(401);
     }
 
@@ -62,16 +79,31 @@ describe("Dotypos webhook route", () => {
   test("reservation record list expires workspace availability cache", async () => {
     const { POST } = await import("./route");
 
-    const response = await POST(jsonRequest([{ id: "reservation-1" }]));
+    const response = await POST(jsonRequest([reservationRecord]));
 
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       success: true,
       invalidatedTag: workspaceAvailabilityTag,
+      recordCount: 1,
     });
     expect(revalidateTag).toHaveBeenCalledWith(workspaceAvailabilityTag, {
       expire: 0,
     });
+  });
+
+  test("unknown Dotypos record lists are ignored without invalidation", async () => {
+    const { POST } = await import("./route");
+
+    const response = await POST(jsonRequest([{ productid: 123 }]));
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      success: true,
+      ignored: true,
+      payloadKind: "unknown",
+    });
+    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   test("invalidation failures return 500", async () => {
@@ -80,7 +112,7 @@ describe("Dotypos webhook route", () => {
       throw new Error("cache failed");
     });
 
-    const response = await POST(jsonRequest([{ id: "reservation-1" }]));
+    const response = await POST(jsonRequest([reservationRecord]));
 
     expect(response.status).toBe(500);
   });

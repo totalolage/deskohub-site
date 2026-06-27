@@ -1,3 +1,4 @@
+import { parseDotyposWebhookPayload } from "@deskohub/dotypos";
 import { Data, Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
@@ -58,12 +59,38 @@ const parseWebhookBody = (request: Request) =>
       }),
   });
 
+const decodeWebhookPayload = (payload: unknown) =>
+  parseDotyposWebhookPayload(payload).pipe(
+    Effect.mapError(
+      (error) =>
+        new DotyposWebhookValidationError({
+          message: error.message,
+          issues: error.issues,
+        })
+    )
+  );
+
 const processWebhookRequest = Effect.fn("processDotyposWebhookRequest")(
   function* (request: Request) {
     yield* Effect.logInfo("Dotypos webhook invoked");
 
     yield* validateWebhookSecret(new URL(request.url));
-    yield* parseWebhookBody(request);
+    const payload = yield* parseWebhookBody(request).pipe(
+      Effect.flatMap(decodeWebhookPayload)
+    );
+
+    if (payload.kind !== "reservation") {
+      yield* Effect.logInfo("Dotypos webhook ignored", {
+        payloadKind: payload.kind,
+        recordCount: payload.records.length,
+      });
+
+      return NextResponse.json({
+        success: true,
+        ignored: true,
+        payloadKind: payload.kind,
+      });
+    }
 
     const tag = workspaceAvailabilityTags.all();
     yield* Effect.try({
@@ -73,9 +100,14 @@ const processWebhookRequest = Effect.fn("processDotyposWebhookRequest")(
 
     yield* Effect.logInfo("Dotypos reservation webhook processed", {
       invalidatedTag: tag,
+      recordCount: payload.records.length,
     });
 
-    return NextResponse.json({ success: true, invalidatedTag: tag });
+    return NextResponse.json({
+      success: true,
+      invalidatedTag: tag,
+      recordCount: payload.records.length,
+    });
   },
   (effect) =>
     effect.pipe(
