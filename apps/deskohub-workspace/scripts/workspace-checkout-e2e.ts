@@ -391,17 +391,7 @@ const completeCheckout = async ({
     session,
     timeoutMs: getCheckoutTimeoutMs(),
   });
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: submitPaymentScript,
-    logOutput: false,
-  });
-  await waitForBrowserUrl({
-    description: "Nexi hosted payment page",
-    matches: (url) => url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
-    run,
-    session,
-    timeoutMs: getCheckoutTimeoutMs(),
-  });
+  await submitPaymentAndWaitForHostedPage({ run, session });
   await completeNexiHostedPayment({ data, run, session });
   await waitForBrowserUrl({
     description: "checkout status page",
@@ -422,6 +412,46 @@ const completeCheckout = async ({
   log(`Reached checkout status for order ${orderId}`);
   return orderId;
 };
+
+const submitPaymentAndWaitForHostedPage = async ({
+  run,
+  session,
+}: {
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  const timeoutMs = Math.min(getCheckoutTimeoutMs(), 2 * 60 * 1000);
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+      input: submitPaymentScript,
+      logOutput: false,
+    });
+
+    try {
+      return await waitForBrowserUrl({
+        description: "Nexi hosted payment page",
+        matches: (url) =>
+          url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
+        run,
+        session,
+        timeoutMs,
+      });
+    } catch (error) {
+      const diagnostics = String(
+        error instanceof Error ? error.message : error
+      );
+      if (attempt === 3 || !isRetryablePaymentStartFailure(diagnostics))
+        throw error;
+
+      log(`Retrying payment start after client-side failure (${attempt}/3)`);
+    }
+  }
+};
+
+const isRetryablePaymentStartFailure = (diagnostics: string) =>
+  diagnostics.includes("/checkout/pay") &&
+  /Payment could not be started/i.test(diagnostics);
 
 const completeNexiHostedPayment = async ({
   data,
