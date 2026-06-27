@@ -217,4 +217,138 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(token).toBeTruthy();
     expect(openPayState(token ?? "").orderId).toBe("reservation-id");
   });
+
+  test("invalidates advisory availability after cancelling an expired existing hold", async () => {
+    const { prepareWorkspacePayStateEffect } = await import(
+      "./prepare-pay-state"
+    );
+    const { WorkspaceCheckoutAccessCodeService } = await import(
+      "@/features/checkout/backend/access-code.service"
+    );
+    const { LegalEvidenceEventRepository } = await import(
+      "@/features/checkout/backend/legal-evidence-event.repository"
+    );
+    const { OperationalEventRepository } = await import(
+      "@/features/checkout/backend/operational-event.repository"
+    );
+    const { ReservationHoldCleanupService } = await import(
+      "@/features/checkout/backend/reservation-hold-cleanup.service"
+    );
+    const { WorkspaceTableAssignmentService } = await import(
+      "@/features/checkout/backend/workspace-table-assignment.service"
+    );
+    const {
+      WorkspaceAvailabilityInventoryService,
+      WorkspaceAvailabilityService,
+    } = await import(
+      "@/features/reservation/backend/workspace-availability.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+
+    const expiredReservation = {
+      id: "expired-reservation-id",
+      reservationState: "held",
+      paymentState: "not_started",
+      dotyposReservationId: "dotypos-reservation-id",
+      reservationHoldExpiresAt: new Date("2026-06-20T10:00:00.000Z"),
+    } as never;
+    const cancelledReservation = {
+      ...expiredReservation,
+      reservationState: "cancelled",
+    } as never;
+    const cancelOrderHold = mock(() => Effect.void);
+    const invalidateAdvisory = mock(() => Effect.void);
+    const recordMany = mock((input) => Effect.succeed(input as never));
+
+    const result = await prepareWorkspacePayStateEffect({
+      locale: "en-US",
+      reservationIntentId: "intent-id",
+      reservation,
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(
+        Layer.succeed(WorkspaceAvailabilityService, {
+          getAdvisoryAvailability: mock(() => Effect.die("unused")),
+          getAvailability: mock(() => Effect.die("unused")),
+          ensureAvailable: mock(() => Effect.die("unused")),
+        } satisfies WorkspaceAvailabilityServiceType)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceAvailabilityInventoryService, {
+          invalidateAdvisory,
+          loadAdvisory: mock(() => Effect.die("unused")),
+          loadFresh: mock(() => Effect.die("unused")),
+        } satisfies IWorkspaceAvailabilityInventoryService)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, {
+          findByIntentKey: mock(() => Effect.succeed(expiredReservation)),
+          findById: mock(() => Effect.succeed(cancelledReservation)),
+          createDraft: mock(() => Effect.die("unused")),
+          claimHoldCreation: mock(() => Effect.die("unused")),
+          attachHold: mock(() => Effect.die("unused")),
+          releaseHoldCreation: mock(() => Effect.void),
+          updateProductIntent: mock(() => Effect.die("unused")),
+          markAttachFailedCancellationRequired: mock(() => Effect.void),
+        } as unknown as WorkspaceReservationRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+          generateCustomerAccessCode: mock(() => Effect.die("unused")),
+        } satisfies WorkspaceCheckoutAccessCodeServiceType)
+      ),
+      Effect.provide(
+        Layer.succeed(LegalEvidenceEventRepository, {
+          record: mock(() => Effect.die("unused")),
+          recordMany,
+        } as unknown as LegalEvidenceEventRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspaceTableAssignmentService, {
+          assignTableId: mock(() => Effect.die("unused")),
+        } satisfies WorkspaceTableAssignmentServiceType)
+      ),
+      Effect.provide(
+        Layer.succeed(ReservationHoldCleanupService, {
+          cancelOrderHold,
+          sweepExpiredHolds: mock(() => Effect.die("unused")),
+        } satisfies ReservationHoldCleanupServiceType)
+      ),
+      Effect.provide(
+        Layer.succeed(OperationalEventRepository, {
+          record: mock(() => Effect.die("unused")),
+        } as unknown as OperationalEventRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(DotyposService, {
+          findCustomer: mock(() => Effect.die("unused")),
+          getCustomerDiscount: mock(() => Effect.die("unused")),
+          findOrCreateCustomer: mock(() => Effect.die("unused")),
+          createReservation: mock(() => Effect.die("unused")),
+        } as unknown as typeof DotyposService.Service)
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: mock(() => Effect.void) })
+      ),
+      Effect.runPromise
+    );
+
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId: "expired-reservation-id",
+      holdExpiredAt: expect.any(Date),
+    });
+    expect(invalidateAdvisory).toHaveBeenCalledTimes(1);
+    expect(recordMany).toHaveBeenCalledWith([
+      expect.objectContaining({
+        workspaceReservationId: "expired-reservation-id",
+        evidence: expect.objectContaining({ documentHash: "privacy-hash" }),
+      }),
+    ]);
+    expect(result.status).toBe("error");
+  });
 });

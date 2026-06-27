@@ -382,7 +382,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
       const existingReservationId = existingReservation.id;
       const holdCleanup = yield* ReservationHoldCleanupService;
-      yield* holdCleanup
+      const cancellationResult = yield* holdCleanup
         .cancelOrderHold({
           orderId: existingReservationId,
           holdExpiredAt: new Date(),
@@ -396,8 +396,21 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
               }
             )
           ),
+          Effect.result
+        );
+      if (cancellationResult._tag === "Success") {
+        const availabilityInventory =
+          yield* WorkspaceAvailabilityInventoryService;
+        yield* availabilityInventory.invalidateAdvisory().pipe(
+          Effect.tapError((cause) =>
+            Effect.logError(
+              "Workspace availability advisory cache invalidation failed after expired hold cleanup",
+              { cause }
+            )
+          ),
           Effect.ignore
         );
+      }
       existingReservation = yield* reservations.findById(existingReservationId);
       yield* Effect.annotateLogsScoped({ existingReservation });
       yield* Effect.logInfo(
