@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -112,6 +112,7 @@ export interface WorkspaceReservationRepository {
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
   readonly selectExpiredHolds: (input: {
     readonly now: Date;
+    readonly limit: number;
   }) => Effect.Effect<readonly WorkspaceReservation[], DatabaseError>;
 }
 
@@ -698,6 +699,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   lte(workspaceReservations.reservationHoldExpiresAt, input.now)
                 )
               )
+              .orderBy(
+                asc(workspaceReservations.reservationHoldExpiresAt),
+                asc(workspaceReservations.id)
+              )
+              .limit(input.limit)
           );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))

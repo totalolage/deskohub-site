@@ -5,6 +5,10 @@ import {
   OperationalEventRepository,
   OperationalEventRepositoryLive,
 } from "@/features/checkout/backend/operational-event.repository";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "@/features/checkout/backend/payment-attempt.repository";
 import { captureReservationAbandoned } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   ProviderPaymentFinalizationService,
@@ -51,6 +55,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
     const operationalEvents = yield* OperationalEventRepository;
+    const paymentAttempts = yield* PaymentAttemptRepository;
     const finalization = yield* ProviderPaymentFinalizationService;
     const dotypos = yield* DotyposService;
     const posthogEvents = yield* PostHogEventService;
@@ -83,12 +88,13 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           active.paymentState === "pending" &&
           active.activePaymentAttemptId
         ) {
+          const paymentAttemptId = active.activePaymentAttemptId;
           yield* Effect.logInfo(
             "Reservation hold cancellation provider finalization started"
           );
           const result = yield* finalization.finalizePendingProviderPayment({
             orderId: active.id,
-            paymentAttemptId: active.activePaymentAttemptId,
+            paymentAttemptId,
           });
           yield* Effect.annotateLogsScoped({
             providerFinalizationResult: result,
@@ -97,20 +103,11 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             "Reservation hold cancellation provider finalization completed"
           );
 
-          if (result === "paid") {
-            yield* Effect.logWarning(
-              "Reservation hold cancellation skipped: provider finalized paid"
-            );
-            return;
-          }
-          if (result !== "terminal") {
-            yield* Effect.logWarning(
-              "Reservation hold cancellation skipped: payment outcome unconfirmed"
-            );
-            yield* operationalEvents
+          const recordUnconfirmedPaymentOutcome = () =>
+            operationalEvents
               .record({
                 workspaceReservationId: active.id,
-                paymentAttemptId: active.activePaymentAttemptId,
+                paymentAttemptId,
                 eventType:
                   "workspace_payment_outcome_unconfirmed_before_cleanup",
                 severity: "warning",
@@ -121,13 +118,62 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                     "Payment outcome unconfirmed cleanup event recording failed",
                     {
                       orderId: active.id,
-                      paymentAttemptId: active.activePaymentAttemptId,
+                      paymentAttemptId,
                       cause,
                     }
                   )
                 ),
                 Effect.ignore
               );
+
+          if (result === "paid") {
+            yield* Effect.logWarning(
+              "Reservation hold cancellation skipped: provider finalized paid"
+            );
+            return;
+          }
+          if (result === "not_verifiable") {
+            yield* Effect.logInfo(
+              "Reservation hold cancellation expiring not-verifiable payment attempt"
+            );
+            const expired = yield* paymentAttempts
+              .markTerminalForReservation({
+                id: paymentAttemptId,
+                workspaceReservationId: active.id,
+                state: "expired",
+                failureCode: "payment_not_verifiable_before_cleanup",
+              })
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Reservation hold cancellation payment attempt expiration failed",
+                    {
+                      orderId: active.id,
+                      paymentAttemptId,
+                      cause,
+                    }
+                  )
+                ),
+                Effect.result
+              );
+            if (expired._tag === "Failure") {
+              yield* Effect.logWarning(
+                "Reservation hold cancellation skipped: payment attempt expiration failed"
+              );
+              yield* recordUnconfirmedPaymentOutcome();
+              return;
+            }
+            yield* Effect.annotateLogsScoped({
+              paymentAttemptExpirationChanged: expired.success.changed,
+            });
+            yield* Effect.logInfo(
+              "Reservation hold cancellation expired not-verifiable payment attempt"
+            );
+          } else if (result !== "terminal") {
+            yield* Effect.logWarning(
+              "Reservation hold cancellation skipped: payment outcome unconfirmed"
+            );
+            yield* recordUnconfirmedPaymentOutcome();
             return;
           }
         }
@@ -357,6 +403,7 @@ export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
     Layer.provide(OperationalEventRepositoryLive),
+    Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
