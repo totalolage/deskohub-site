@@ -134,6 +134,15 @@ const main = async () => {
     const orderId = await completeCheckout({ config, data, run, session });
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
+    const replayRow = await waitForWebhookReplayRow(
+      datasourceConfig,
+      orderId,
+      (row) => {
+        checkoutRow = row;
+      }
+    );
+    await replayNexiWebhook(config, replayRow);
+    await replayResendDeliveryWebhook(config, replayRow);
     checkoutRow = await validatePostgres(datasourceConfig, data, orderId, (row) => {
       checkoutRow = row;
     });
@@ -836,6 +845,121 @@ const assertFulfilledStatusPage = async ({
   });
   log("Checkout status page validated");
 };
+
+const waitForWebhookReplayRow = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  orderId: string,
+  onRow?: (row: CheckoutRow) => void
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
+  });
+
+  try {
+    return await poll(
+      async () => {
+        const row = await readCheckoutRow(pool, orderId);
+        if (row) onRow?.(row);
+        return row && isWebhookReplayReady(row) ? row : undefined;
+      },
+      getDatasourceTimeoutMs(),
+      `webhook replay checkout row for ${orderId}`
+    );
+  } finally {
+    await pool.end();
+  }
+};
+
+const isWebhookReplayReady = (row: CheckoutRow) =>
+  !!row.provider_order_id &&
+  !!row.security_token &&
+  !!row.amount_value &&
+  !!row.currency &&
+  !!row.payment_attempt_id;
+
+const replayNexiWebhook = async (
+  config: ReturnType<typeof getConfig>,
+  row: CheckoutRow
+) => {
+  assert(row.provider_order_id, "provider order id missing before replay");
+  assert(row.security_token, "security token missing before replay");
+  assert(row.amount_value, "amount missing before replay");
+  assert(row.currency, "currency missing before replay");
+
+  const response = await fetch(new URL("/api/webhooks/nexi", config.aliasUrl), {
+    body: JSON.stringify({
+      eventId: `workspace-e2e-nexi-${row.reservation_id}`,
+      eventTime: new Date().toISOString(),
+      securityToken: row.security_token,
+      operation: {
+        orderId: row.provider_order_id,
+        operationId:
+          row.last_provider_operation_id ?? `workspace-e2e-${row.reservation_id}`,
+        operationType: "CAPTURE",
+        operationResult: "EXECUTED",
+        operationTime: new Date().toISOString(),
+        operationAmount: String(row.amount_value),
+        operationCurrency: row.currency,
+      },
+    }),
+    headers: previewWebhookHeaders(config),
+    method: "POST",
+  });
+  assert(response.ok, `Nexi webhook replay failed with ${response.status}`);
+  log("Nexi webhook replay accepted");
+};
+
+const replayResendDeliveryWebhook = async (
+  config: ReturnType<typeof getConfig>,
+  row: CheckoutRow
+) => {
+  assert(
+    config.bypassSecret,
+    "VERCEL_AUTOMATION_BYPASS_SECRET is required for Resend webhook replay"
+  );
+  const response = await fetch(new URL("/api/webhooks/resend", config.aliasUrl), {
+    body: JSON.stringify({
+      type: "email.delivered",
+      data: {
+        email_id: `workspace-e2e-${row.reservation_id}`,
+        tags: [
+          { name: "source", value: "workspace-paid-fulfillment" },
+          { name: "category", value: "workspace-paid-reservation-access" },
+          { name: "workspaceReservationId", value: row.reservation_id },
+          ...(row.dotypos_reservation_id
+            ? [
+                {
+                  name: "dotyposReservationId",
+                  value: row.dotypos_reservation_id,
+                },
+              ]
+            : []),
+          ...(row.dotypos_customer_id
+            ? [{ name: "dotyposCustomerId", value: row.dotypos_customer_id }]
+            : []),
+        ],
+      },
+    }),
+    headers: {
+      ...previewWebhookHeaders(config),
+      "x-workspace-e2e-event-id": `workspace-e2e-resend-${row.reservation_id}`,
+      "x-workspace-e2e-resend-delivery": config.bypassSecret,
+    },
+    method: "POST",
+  });
+  assert(response.ok, `Resend webhook replay failed with ${response.status}`);
+  log("Resend delivery webhook replay accepted");
+};
+
+const previewWebhookHeaders = (config: ReturnType<typeof getConfig>) => ({
+  "content-type": "application/json",
+  ...(config.bypassSecret
+    ? { "x-vercel-protection-bypass": config.bypassSecret }
+    : {}),
+});
 
 const validatePostgres = async (
   config: ReturnType<typeof getDatasourceConfig>,

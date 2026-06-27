@@ -86,6 +86,13 @@ export interface ResendWebhookService {
     ResendWebhookProcessingResult,
     ResendWebhookProcessingError
   >;
+  readonly processVerifiedEvent: (input: {
+    readonly eventId: string;
+    readonly event: unknown;
+  }) => Effect.Effect<
+    ResendWebhookProcessingResult,
+    ResendWebhookProcessingError
+  >;
 }
 
 export const ResendWebhookService = Context.Service<ResendWebhookService>(
@@ -117,7 +124,178 @@ export const ResendWebhookServiceLive = Layer.effect(
     const config = yield* ResendWebhookRuntimeConfig;
     const posthogEvents = yield* PostHogEventService;
 
+    const processVerifiedEvent = Effect.fn("resendWebhook.processVerifiedEvent")(
+      function* (input: { readonly eventId: string; readonly event: unknown }) {
+        const event = yield* Effect.try({
+          try: () => resendWebhookEventSchema.parse(input.event),
+          catch: (cause) =>
+            new ResendWebhookProcessingError({
+              errorCode: "resend_webhook_payload_invalid",
+              message: "Resend webhook payload was invalid.",
+              eventId: input.eventId,
+              cause,
+            }),
+        });
+        yield* Effect.annotateLogsScoped({
+          eventId: input.eventId,
+          eventType: event.type,
+          resendEmailId: event.data.email_id,
+        });
+
+        if (!isReservationDeliveryEvent(event)) {
+          return ignored("non_delivery_event");
+        }
+
+        const tags = toTags(event.data.tags);
+        const workspaceReservationId = tags.get("workspaceReservationId");
+
+        if (
+          tags.get("source") !== workspaceFulfillmentSource ||
+          tags.get("category") !== customerAccessCategory ||
+          !workspaceReservationId
+        ) {
+          return ignored("unrelated_email");
+        }
+
+        const reservation = yield* reservations.findById(workspaceReservationId).pipe(
+          Effect.mapError(
+            (cause) =>
+              new ResendWebhookProcessingError({
+                errorCode: "resend_webhook_reservation_load_failed",
+                message:
+                  "Resend webhook could not load referenced reservation.",
+                eventId: input.eventId,
+                workspaceReservationId,
+                cause,
+              })
+          )
+        );
+
+        if (!reservation) {
+          yield* Effect.logWarning(
+            "Resend webhook referenced unknown workspace reservation",
+            { eventId: input.eventId, workspaceReservationId }
+          );
+
+          return ignored("reservation_not_found");
+        }
+
+        if (reservation.paymentState !== "paid") {
+          return ignored("reservation_not_paid");
+        }
+
+        if (isDeliverySuccessEvent(event)) {
+          if (reservation.fulfillmentState === "fulfilled") {
+            return ignored("reservation_already_fulfilled");
+          }
+
+          if (reservation.fulfillmentState === "failed") {
+            yield* Effect.logInfo(
+              "Resend delivery success ignored: reservation already failed",
+              { eventId: input.eventId, workspaceReservationId }
+            );
+
+            return ignored("reservation_already_failed");
+          }
+
+          if (reservation.fulfillmentState !== "processing") {
+            yield* Effect.logInfo(
+              "Resend delivery success ignored: reservation not processing",
+              {
+                eventId: input.eventId,
+                workspaceReservationId,
+                fulfillmentState: reservation.fulfillmentState,
+              }
+            );
+
+            return ignored("reservation_not_processing");
+          }
+
+          const fulfilledAt = new Date();
+          yield* reservations
+            .markFulfilled({
+              id: workspaceReservationId,
+              fulfilledAt,
+            })
+            .pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ResendWebhookProcessingError({
+                    errorCode: "resend_webhook_reservation_update_failed",
+                    message:
+                      "Resend webhook could not mark reservation fulfilled.",
+                    eventId: input.eventId,
+                    workspaceReservationId,
+                    cause,
+                  })
+              )
+            );
+          yield* captureReservationFulfilled({
+            reservation,
+            timestamp: fulfilledAt,
+          }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+
+          return {
+            status: "processed",
+          } satisfies ResendWebhookProcessingResult;
+        }
+
+        if (reservation.fulfillmentState === "failed") {
+          return ignored("reservation_already_failed");
+        }
+
+        if (
+          reservation.fulfillmentState !== "processing" &&
+          reservation.fulfillmentState !== "fulfilled"
+        ) {
+          return ignored("reservation_not_fulfillable");
+        }
+
+        yield* operationalEvents
+          .record({
+            workspaceReservationId,
+            eventType: "workspace_paid_fulfillment_email_failed",
+            severity: "error",
+            failureCode: fulfillmentEmailFailureCode,
+            dotyposReservationId: tags.get("dotyposReservationId"),
+            dotyposCustomerId: tags.get("dotyposCustomerId"),
+            webhookEventId: input.eventId,
+          })
+          .pipe(Effect.ignore);
+
+        yield* reservations
+          .markFulfillmentDeliveryFailed({
+            id: workspaceReservationId,
+            failureCode: fulfillmentEmailFailureCode,
+            failedAt: new Date(),
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new ResendWebhookProcessingError({
+                  errorCode: "resend_webhook_reservation_update_failed",
+                  message:
+                    "Resend webhook could not mark reservation fulfillment failed.",
+                  eventId: input.eventId,
+                  workspaceReservationId,
+                  cause,
+                })
+            )
+          );
+
+        return {
+          status: "processed",
+        } satisfies ResendWebhookProcessingResult;
+        },
+        (effect) =>
+          effect.pipe(
+            Effect.scoped,
+            Effect.annotateLogs({ operation: "resendWebhook" })
+          )
+      );
+
     return ResendWebhookService.of({
+      processVerifiedEvent,
       processWebhook: Effect.fn("resendWebhook.processWebhook")(
         function* (input) {
           const { id, timestamp, signature } = input.headers;
@@ -171,168 +349,10 @@ export const ResendWebhookServiceLive = Layer.effect(
               }),
           });
 
-          const event = yield* Effect.try({
-            try: () => resendWebhookEventSchema.parse(verifiedPayload),
-            catch: (cause) =>
-              new ResendWebhookProcessingError({
-                errorCode: "resend_webhook_payload_invalid",
-                message: "Resend webhook payload was invalid.",
-                eventId: id,
-                cause,
-              }),
-          });
-          yield* Effect.annotateLogsScoped({
+          return yield* processVerifiedEvent({
             eventId: id,
-            eventType: event.type,
-            resendEmailId: event.data.email_id,
+            event: verifiedPayload,
           });
-
-          if (!isReservationDeliveryEvent(event)) {
-            return ignored("non_delivery_event");
-          }
-
-          const tags = toTags(event.data.tags);
-          const workspaceReservationId = tags.get("workspaceReservationId");
-
-          if (
-            tags.get("source") !== workspaceFulfillmentSource ||
-            tags.get("category") !== customerAccessCategory ||
-            !workspaceReservationId
-          ) {
-            return ignored("unrelated_email");
-          }
-
-          const reservation = yield* reservations
-            .findById(workspaceReservationId)
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ResendWebhookProcessingError({
-                    errorCode: "resend_webhook_reservation_load_failed",
-                    message:
-                      "Resend webhook could not load referenced reservation.",
-                    eventId: id,
-                    workspaceReservationId,
-                    cause,
-                  })
-              )
-            );
-
-          if (!reservation) {
-            yield* Effect.logWarning(
-              "Resend webhook referenced unknown workspace reservation",
-              { eventId: id, workspaceReservationId }
-            );
-
-            return ignored("reservation_not_found");
-          }
-
-          if (reservation.paymentState !== "paid") {
-            return ignored("reservation_not_paid");
-          }
-
-          if (isDeliverySuccessEvent(event)) {
-            if (reservation.fulfillmentState === "fulfilled") {
-              return ignored("reservation_already_fulfilled");
-            }
-
-            if (reservation.fulfillmentState === "failed") {
-              yield* Effect.logInfo(
-                "Resend delivery success ignored: reservation already failed",
-                { eventId: id, workspaceReservationId }
-              );
-
-              return ignored("reservation_already_failed");
-            }
-
-            if (reservation.fulfillmentState !== "processing") {
-              yield* Effect.logInfo(
-                "Resend delivery success ignored: reservation not processing",
-                {
-                  eventId: id,
-                  workspaceReservationId,
-                  fulfillmentState: reservation.fulfillmentState,
-                }
-              );
-
-              return ignored("reservation_not_processing");
-            }
-
-            const fulfilledAt = new Date();
-            yield* reservations
-              .markFulfilled({
-                id: workspaceReservationId,
-                fulfilledAt,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new ResendWebhookProcessingError({
-                      errorCode: "resend_webhook_reservation_update_failed",
-                      message:
-                        "Resend webhook could not mark reservation fulfilled.",
-                      eventId: id,
-                      workspaceReservationId,
-                      cause,
-                    })
-                )
-              );
-            yield* captureReservationFulfilled({
-              reservation,
-              timestamp: fulfilledAt,
-            }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
-
-            return {
-              status: "processed",
-            } satisfies ResendWebhookProcessingResult;
-          }
-
-          if (reservation.fulfillmentState === "failed") {
-            return ignored("reservation_already_failed");
-          }
-
-          if (
-            reservation.fulfillmentState !== "processing" &&
-            reservation.fulfillmentState !== "fulfilled"
-          ) {
-            return ignored("reservation_not_fulfillable");
-          }
-
-          yield* operationalEvents
-            .record({
-              workspaceReservationId,
-              eventType: "workspace_paid_fulfillment_email_failed",
-              severity: "error",
-              failureCode: fulfillmentEmailFailureCode,
-              dotyposReservationId: tags.get("dotyposReservationId"),
-              dotyposCustomerId: tags.get("dotyposCustomerId"),
-              webhookEventId: id,
-            })
-            .pipe(Effect.ignore);
-
-          yield* reservations
-            .markFulfillmentDeliveryFailed({
-              id: workspaceReservationId,
-              failureCode: fulfillmentEmailFailureCode,
-              failedAt: new Date(),
-            })
-            .pipe(
-              Effect.mapError(
-                (cause) =>
-                  new ResendWebhookProcessingError({
-                    errorCode: "resend_webhook_reservation_update_failed",
-                    message:
-                      "Resend webhook could not mark reservation fulfillment failed.",
-                    eventId: id,
-                    workspaceReservationId,
-                    cause,
-                  })
-              )
-            );
-
-          return {
-            status: "processed",
-          } satisfies ResendWebhookProcessingResult;
         },
         (effect) =>
           effect.pipe(

@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { NextResponse } from "next/server";
+import { env } from "@/env";
 import {
   ResendWebhookProcessingError,
   ResendWebhookService,
@@ -20,6 +21,24 @@ const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
     });
 
     const webhooks = yield* ResendWebhookService;
+    if (isPreviewE2eResendReplay(request)) {
+      const event = yield* Effect.try({
+        try: () => JSON.parse(payload) as unknown,
+        catch: (cause) =>
+          new ResendWebhookProcessingError({
+            errorCode: "resend_webhook_payload_invalid",
+            message: "Resend webhook request body could not be parsed.",
+            cause,
+          }),
+      });
+
+      return yield* webhooks.processVerifiedEvent({
+        eventId:
+          request.headers.get("x-workspace-e2e-event-id") ?? crypto.randomUUID(),
+        event,
+      });
+    }
+
     return yield* webhooks.processWebhook({
       payload,
       headers: {
@@ -35,6 +54,12 @@ const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
       Effect.annotateLogs({ method: "POST", operation: "resendWebhook" })
     )
 );
+
+const isPreviewE2eResendReplay = (request: Request) =>
+  env.VERCEL_ENV !== "production" &&
+  !!env.VERCEL_AUTOMATION_BYPASS_SECRET &&
+  request.headers.get("x-workspace-e2e-resend-delivery") ===
+    env.VERCEL_AUTOMATION_BYPASS_SECRET;
 
 const handleResendWebhookProcessingError = Effect.fn(
   "handleResendWebhookProcessingError"
