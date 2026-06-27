@@ -8,7 +8,7 @@ permissions: {}
 
 jobs:
   delete-branch:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+    if: ${{ false }}
     runs-on: ubuntu-latest
     steps:
       - name: Validate branch name
