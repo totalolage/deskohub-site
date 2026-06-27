@@ -212,10 +212,17 @@ const getDatasourceConfig = () => {
 };
 
 const getCheckoutTimeoutMs = () =>
-  Number(env("WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS") ?? 10 * 60 * 1000);
+  readCappedTimeoutMs("WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS", 10 * 60 * 1000);
 
 const getDatasourceTimeoutMs = () =>
-  Number(env("WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS") ?? 4 * 60 * 1000);
+  readCappedTimeoutMs("WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS", 4 * 60 * 1000);
+
+const readCappedTimeoutMs = (name: string, fallbackMs: number) => {
+  const raw = env(name);
+  const value = raw ? Number(raw) : fallbackMs;
+  if (!Number.isFinite(value) || value <= 0) return fallbackMs;
+  return Math.min(value, fallbackMs);
+};
 
 const assertNexiSandbox = (origin: string) =>
   assert(
