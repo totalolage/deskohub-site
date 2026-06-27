@@ -54,8 +54,17 @@ export function getPostHogLogAnnotationsFromCookieHeader(
 export function getPostHogLogAnnotationsFromRequestHeaders(
   headers: Headers
 ): PostHogLogAnnotations {
+  const cookieAnnotations = getPostHogLogAnnotationsFromCookieHeader(
+    headers.get("cookie")
+  );
+
+  // PostHog tracing headers can outlive a no-reload consent revoke in the browser.
+  if (!cookieAnnotations.posthogDistinctId || !cookieAnnotations.sessionId) {
+    return cookieAnnotations;
+  }
+
   return {
-    ...getPostHogLogAnnotationsFromCookieHeader(headers.get("cookie")),
+    ...cookieAnnotations,
     ...getPostHogLogAnnotationsFromCookieValues({
       distinctId: headers.get(POSTHOG_DISTINCT_ID_HEADER) ?? undefined,
       sessionId: headers.get(POSTHOG_SESSION_ID_HEADER) ?? undefined,

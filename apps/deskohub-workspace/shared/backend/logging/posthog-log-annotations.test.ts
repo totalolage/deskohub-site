@@ -37,10 +37,11 @@ describe("PostHog log annotations", () => {
     expect(getPostHogLogAnnotationsFromCookieHeader("other=value")).toEqual({});
   });
 
-  test("parses PostHog tracing headers from request headers", () => {
+  test("parses PostHog tracing headers when first-party cookies are present", () => {
     expect(
       getPostHogLogAnnotationsFromRequestHeaders(
         new Headers({
+          cookie: `${POSTHOG_DISTINCT_ID_COOKIE}=cookie-distinct-id; ${POSTHOG_SESSION_ID_COOKIE}=cookie-session-id`,
           "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
           "X-POSTHOG-SESSION-ID": "header-session-id",
         })
@@ -49,6 +50,17 @@ describe("PostHog log annotations", () => {
       posthogDistinctId: "header-distinct-id",
       sessionId: "header-session-id",
     });
+  });
+
+  test("ignores PostHog tracing headers without first-party cookies", () => {
+    expect(
+      getPostHogLogAnnotationsFromRequestHeaders(
+        new Headers({
+          "X-POSTHOG-DISTINCT-ID": "header-distinct-id",
+          "X-POSTHOG-SESSION-ID": "header-session-id",
+        })
+      )
+    ).toEqual({});
   });
 
   test("uses cookies as fallback when tracing headers are absent", () => {
