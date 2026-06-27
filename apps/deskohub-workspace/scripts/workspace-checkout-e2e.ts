@@ -287,10 +287,11 @@ const getVercelDeployEnvArgs = (
       : {}),
   };
 
-  const buildValues = {
-    DATABASE_URL: datasourceConfig.databaseUrl,
-    DATABASE_URL_UNPOOLED: datasourceConfig.databaseUrlUnpooled,
-  };
+  const buildValues = Object.fromEntries(
+    Object.entries(values).filter(
+      ([key]) => key !== "VERCEL_AUTOMATION_BYPASS_SECRET"
+    )
+  );
 
   return [
     ...Object.entries(buildValues).flatMap(([key, value]) => [
@@ -412,14 +413,23 @@ const completeCheckout = async ({
     input: submitReservationScript,
     logOutput: false,
   });
-  await waitForBrowserUrl({
-    description: "checkout pay page",
-    matches: (url) => url.includes("/checkout/pay"),
-    run,
-    session,
-    timeoutMs: getCheckoutTimeoutMs(),
-  });
-  const payPageOrderId = await readPayPageOrderId(run, session);
+  let payPageUrl: string;
+  try {
+    payPageUrl = await waitForBrowserUrl({
+      description: "checkout pay page",
+      matches: (url) => url.includes("/checkout/pay"),
+      run,
+      session,
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+  } catch (cause) {
+    const currentUrl = await readBrowserUrl(run, session);
+    const orderId = getSearchOrderId(currentUrl);
+    if (orderId) onOrderId?.(orderId);
+    throw cause;
+  }
+  const payPageOrderId =
+    getSearchOrderId(payPageUrl) ?? (await readPayPageOrderId(run, session));
   onOrderId?.(payPageOrderId);
   await submitPaymentAndWaitForHostedPage({ run, session });
   await completeNexiHostedPayment({ data, run, session });
@@ -459,6 +469,18 @@ const readPayPageOrderId = async (
   const orderId = result.stdout.trim();
   assert(orderId, "checkout pay page order id missing");
   return orderId;
+};
+
+const readBrowserUrl = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "get", "url"],
+    { allowFailure: true, logOutput: false }
+  );
+  return result.exitCode === 0 ? result.stdout.trim() : undefined;
 };
 
 const submitPaymentAndWaitForHostedPage = async ({
@@ -1673,6 +1695,12 @@ const extractOrderId = (stdout: string) => {
   const match = stdout.match(/\/checkout\/status\/([^\s/?#]+)/);
   assert(match?.[1], "could not extract checkout status order id");
   return match[1];
+};
+
+const getSearchOrderId = (value: string | undefined) => {
+  if (!value) return undefined;
+  const url = parseUrl(value);
+  return url?.searchParams.get("orderId") ?? undefined;
 };
 
 const dotyposDateCovers = (
