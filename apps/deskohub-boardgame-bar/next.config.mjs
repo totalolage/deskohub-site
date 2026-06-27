@@ -1,4 +1,15 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { withBotId } from "botid/next/config";
+
+const appDirectory = dirname(fileURLToPath(import.meta.url));
+const { locales } = JSON.parse(
+  readFileSync(join(appDirectory, 'project.inlang/settings.json'), 'utf8')
+);
+const localeRedirectPattern = locales
+  .map((locale) => locale.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+  .join('|');
 
 const trainingRoomReservationQueryKeys = [
   'company',
@@ -26,7 +37,7 @@ const trainingRoomReservationRedirects = trainingRoomReservationQueryKeys.flatMa
       permanent: true,
     },
     {
-      source: '/:locale(cs-CZ|en-US)/training-room/reservation/:path*',
+      source: `/:locale(${localeRedirectPattern})/training-room/reservation/:path*`,
       has: [{ type: 'query', key }],
       destination: `https://workspace.deskohub.cz/:locale/ttrpg-room?${trainingRoomReservationQuery}`,
       permanent: true,
@@ -60,12 +71,12 @@ const nextConfig = {
         permanent: true,
       },
       {
-        source: '/:locale(cs-CZ|en-US)/training-room',
+        source: `/:locale(${localeRedirectPattern})/training-room`,
         destination: 'https://workspace.deskohub.cz/:locale/ttrpg-room',
         permanent: true,
       },
       {
-        source: '/:locale(cs-CZ|en-US)/training-room/:path*',
+        source: `/:locale(${localeRedirectPattern})/training-room/:path*`,
         destination: 'https://workspace.deskohub.cz/:locale/ttrpg-room',
         permanent: true,
       },
