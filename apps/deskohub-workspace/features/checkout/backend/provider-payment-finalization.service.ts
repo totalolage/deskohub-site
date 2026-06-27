@@ -4,7 +4,7 @@ import {
   NexiCurrencySchema,
   NexiService,
 } from "@deskohub/nexi";
-import { Context, Effect, Layer, Schema } from "effect";
+import { Context, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   WorkspacePaidFulfillmentService,
@@ -232,17 +232,27 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               })
               .pipe(Effect.result);
 
-            if (paid._tag === "Failure") {
-              yield* Effect.logWarning(
-                "Payment finalization mark paid returned not_pending",
-                { paid }
-              );
+            const paidSuccess = yield* Match.value(paid).pipe(
+              Match.tag("Failure", (failure) =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(
+                    "Payment finalization mark paid returned not_pending",
+                    { paid: failure }
+                  );
+                  return undefined;
+                })
+              ),
+              Match.tag("Success", ({ success }) => Effect.succeed(success)),
+              Match.exhaustive
+            );
+
+            if (!paidSuccess) {
               return "not_pending";
             }
-            if (paid.success.changed) {
+            if (paidSuccess.changed) {
               yield* capturePaymentCompleted({
-                attempt: paid.success.attempt,
-                timestamp: paid.success.timestamp,
+                attempt: paidSuccess.attempt,
+                timestamp: paidSuccess.timestamp,
               }).pipe(
                 Effect.provideService(PostHogEventService, posthogEvents)
               );
@@ -287,30 +297,40 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               })
               .pipe(Effect.result);
 
-            if (terminal._tag === "Failure") {
-              yield* Effect.logWarning(
-                "Payment finalization mark terminal returned not_pending",
-                { terminal }
-              );
+            const terminalSuccess = yield* Match.value(terminal).pipe(
+              Match.tag("Failure", (failure) =>
+                Effect.gen(function* () {
+                  yield* Effect.logWarning(
+                    "Payment finalization mark terminal returned not_pending",
+                    { terminal: failure }
+                  );
+                  return undefined;
+                })
+              ),
+              Match.tag("Success", ({ success }) => Effect.succeed(success)),
+              Match.exhaustive
+            );
+
+            if (!terminalSuccess) {
               return "not_pending";
             }
-            if (terminal.success.changed) {
+            if (terminalSuccess.changed) {
               if (terminalState === "failed") {
                 yield* capturePaymentFailed({
-                  attempt: terminal.success.attempt,
+                  attempt: terminalSuccess.attempt,
                   failureCode:
-                    terminal.success.attempt.lastProviderStatus ??
-                    terminal.success.attempt.failureCode ??
+                    terminalSuccess.attempt.lastProviderStatus ??
+                    terminalSuccess.attempt.failureCode ??
                     "nexi_payment_failed",
                   failureReason: "nexi_payment_failed",
-                  timestamp: terminal.success.timestamp,
+                  timestamp: terminalSuccess.timestamp,
                 }).pipe(
                   Effect.provideService(PostHogEventService, posthogEvents)
                 );
               } else {
                 yield* capturePaymentAbandoned({
-                  attempt: terminal.success.attempt,
-                  timestamp: terminal.success.timestamp,
+                  attempt: terminalSuccess.attempt,
+                  timestamp: terminalSuccess.timestamp,
                 }).pipe(
                   Effect.provideService(PostHogEventService, posthogEvents)
                 );

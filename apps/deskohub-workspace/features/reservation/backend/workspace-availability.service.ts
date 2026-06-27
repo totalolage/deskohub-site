@@ -6,7 +6,7 @@ import {
 } from "@deskohub/dotypos";
 import type { Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Match } from "effect";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
@@ -266,7 +266,10 @@ const getFullyOccupiedCalendarDates = (
 ) =>
   new Set(
     limitations.flatMap((limitation) =>
-      limitation._tag === "FullyOccupied" ? [limitation.date] : []
+      Match.value(limitation).pipe(
+        Match.tag("FullyOccupied", ({ date }) => [date]),
+        Match.orElse(() => [])
+      )
     )
   );
 
@@ -275,16 +278,17 @@ const getCalendarNotices = (
 ): readonly WorkspaceAvailabilityNotice[] =>
   limitations
     .flatMap((limitation) =>
-      limitation._tag === "PartiallyOccupied"
-        ? [
-            {
-              date: limitation.date,
-              startsAt: limitation.startsAt,
-              endsAt: limitation.endsAt,
-              ...(limitation.summary && { summary: limitation.summary }),
-            },
-          ]
-        : []
+      Match.value(limitation).pipe(
+        Match.tag("PartiallyOccupied", (partial) => [
+          {
+            date: partial.date,
+            startsAt: partial.startsAt,
+            endsAt: partial.endsAt,
+            ...(partial.summary && { summary: partial.summary }),
+          },
+        ]),
+        Match.orElse(() => [])
+      )
     )
     .sort((a, b) =>
       a.date === b.date

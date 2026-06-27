@@ -1,5 +1,5 @@
 import { DotyposService, type FindCustomerResult } from "@deskohub/dotypos";
-import { Data, Effect } from "effect";
+import { Data, Effect, Match } from "effect";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 
 export class AmbiguousDotyposCustomerError extends Data.TaggedError(
@@ -19,9 +19,10 @@ export const splitCustomerName = (name: string) => {
 export const failClosedOnAmbiguousDotyposCustomer = (
   lookup: FindCustomerResult
 ) =>
-  lookup._tag === "Ambiguous"
-    ? Effect.gen(function* () {
-        const matches = lookup.matches ?? [];
+  Match.value(lookup).pipe(
+    Match.tag("Ambiguous", (ambiguousLookup) =>
+      Effect.gen(function* () {
+        const matches = ambiguousLookup.matches ?? [];
         yield* Effect.logError("Ambiguous Dotypos customer lookup", {
           customerIds: matches.map((customer) => customer.id),
           matchCount: matches.length,
@@ -34,7 +35,11 @@ export const failClosedOnAmbiguousDotyposCustomer = (
           })
         );
       })
-    : Effect.succeed(lookup);
+    ),
+    Match.tag("Matched", (matchedLookup) => Effect.succeed(matchedLookup)),
+    Match.tag("NotFound", (notFoundLookup) => Effect.succeed(notFoundLookup)),
+    Match.exhaustive
+  );
 
 export const getConfirmedDotyposCustomerDiscount = Effect.fn(
   "checkout.getConfirmedDotyposCustomerDiscount"
@@ -51,9 +56,13 @@ export const getConfirmedDotyposCustomerDiscount = Effect.fn(
 
   const confirmedLookup = yield* failClosedOnAmbiguousDotyposCustomer(lookup);
 
-  return confirmedLookup._tag === "Matched"
-    ? yield* dotypos.getCustomerDiscount(confirmedLookup.customer)
-    : undefined;
+  return yield* Match.value(confirmedLookup).pipe(
+    Match.tag("Matched", (matchedLookup) =>
+      dotypos.getCustomerDiscount(matchedLookup.customer)
+    ),
+    Match.tag("NotFound", () => Effect.succeed(undefined)),
+    Match.exhaustive
+  );
 });
 
 export const getConfirmedDotyposCustomerDiscountById = Effect.fn(
