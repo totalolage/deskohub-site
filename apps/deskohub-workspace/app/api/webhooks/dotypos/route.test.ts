@@ -5,8 +5,13 @@ const webhookSecret = "workspace-dotypos-webhook-secret";
 const workspaceAvailabilityTag = "workspace-availability:all";
 const revalidateTag = mock(() => undefined);
 
-process.env.VERCEL_ENV = "production";
-process.env.DOTYPOS_WEBHOOK_SECRET = webhookSecret;
+mock.module("@/env", () => ({
+  env: {
+    ...process.env,
+    DOTYPOS_WEBHOOK_SECRET: webhookSecret,
+    VERCEL_ENV: "production",
+  },
+}));
 
 mock.module("next/cache", () => ({
   cacheLife: mock(() => undefined),

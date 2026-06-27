@@ -19,17 +19,12 @@ class DotyposWebhookValidationError extends Data.TaggedError(
   readonly issues?: unknown;
 }> {}
 
-const getVercelEnv = () => process.env.VERCEL_ENV ?? env.VERCEL_ENV;
-
-const getDotyposWebhookSecret = () =>
-  process.env.DOTYPOS_WEBHOOK_SECRET ?? env.DOTYPOS_WEBHOOK_SECRET;
-
 const validateWebhookSecret = (url: URL) =>
   Effect.gen(function* () {
-    if (getVercelEnv() === "development") return;
+    if (env.VERCEL_ENV === "development") return;
 
     const providedSecret = url.searchParams.get("secret");
-    const configuredSecret = getDotyposWebhookSecret();
+    const configuredSecret = env.DOTYPOS_WEBHOOK_SECRET;
 
     if (!providedSecret) {
       return yield* new DotyposWebhookAuthError({
