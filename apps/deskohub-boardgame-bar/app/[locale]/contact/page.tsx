@@ -6,10 +6,9 @@ import {
   ContactMap,
 } from "@/features/contact";
 import { type Locale, m, setLocale } from "@/features/i18n";
+import { getSearchParam, type SearchParamsRecord } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
-
-type SearchParamsRecord = Record<string, string | string[] | undefined>;
 
 type ContactPageProps = {
   params: Promise<{ locale: Locale }>;
@@ -20,12 +19,7 @@ const getPrefillValue = (
   searchParams: SearchParamsRecord,
   key: keyof ContactFormInitialValues,
   maxLength: number
-) => {
-  const value = searchParams[key];
-  const rawValue = Array.isArray(value) ? value[0] : value;
-
-  return rawValue?.slice(0, maxLength) ?? "";
-};
+) => getSearchParam(searchParams, key)?.slice(0, maxLength) ?? "";
 
 const getContactInitialValues = (
   searchParams: SearchParamsRecord
