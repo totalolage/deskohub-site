@@ -26,6 +26,7 @@ const sensitiveLogKeyFragments = [
   "secret",
   "client secret",
   "api key",
+  "signature",
   "authorization",
   "auth",
   "cookie",
@@ -40,6 +41,8 @@ const sensitiveLogKeyFragments = [
   "first name",
   "last name",
 ] as const;
+
+const sensitiveLogExactKeys = new Set(["x-vercel-sc-headers"]);
 
 const sensitiveLogUrlSearchParams = new Set([
   "checkouttoken",
@@ -121,6 +124,7 @@ const endsWithSensitiveLogKeyFragment = (key: string): boolean => {
 };
 
 export const isSensitiveLogKey = (key: string): boolean =>
+  sensitiveLogExactKeys.has(key.toLowerCase()) ||
   containsSensitiveLogKeyFragmentSegment(key) ||
   endsWithSensitiveLogKeyFragment(key);
 

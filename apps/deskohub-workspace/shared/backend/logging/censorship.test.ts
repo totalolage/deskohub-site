@@ -33,6 +33,8 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("apiKey")).toBe(true);
     expect(isSensitiveLogKey("api key")).toBe(true);
     expect(isSensitiveLogKey("api.key")).toBe(true);
+    expect(isSensitiveLogKey("x-vercel-proxy-signature")).toBe(true);
+    expect(isSensitiveLogKey("x-vercel-sc-headers")).toBe(true);
     expect(isSensitiveLogKey("authorization")).toBe(true);
     expect(isSensitiveLogKey("auth")).toBe(true);
     expect(isSensitiveLogKey("cookie")).toBe(true);
@@ -89,6 +91,9 @@ describe("censorLogValue", () => {
       user: "deskohub",
       nested: {
         apiKey: "secret-api-key",
+        "x-vercel-sc-headers": JSON.stringify({
+          authorization: "Bearer secret",
+        }),
         stripeApiKey: "secret-stripe-api-key",
         githubAccessToken: "secret-github-access-token",
         userRefreshToken: "secret-user-refresh-token",
@@ -115,6 +120,7 @@ describe("censorLogValue", () => {
       user: "deskohub",
       nested: {
         apiKey: CENSORED_LOG_VALUE,
+        "x-vercel-sc-headers": CENSORED_LOG_VALUE,
         stripeApiKey: CENSORED_LOG_VALUE,
         githubAccessToken: CENSORED_LOG_VALUE,
         userRefreshToken: CENSORED_LOG_VALUE,
@@ -242,6 +248,11 @@ describe("censorLogValue", () => {
   test("redacts Headers and URLSearchParams by key without mutating input", () => {
     const headers = new Headers([
       ["authorization", "Bearer secret"],
+      ["x-vercel-proxy-signature", "secret-signature"],
+      [
+        "x-vercel-sc-headers",
+        JSON.stringify({ authorization: "Bearer secret" }),
+      ],
       ["x-visible", "safe"],
     ]);
     const searchParams = new URLSearchParams([
@@ -265,6 +276,12 @@ describe("censorLogValue", () => {
 
     expect(censored.headers).not.toBe(headers);
     expect(censored.headers.get("authorization")).toBe(CENSORED_LOG_VALUE);
+    expect(censored.headers.get("x-vercel-proxy-signature")).toBe(
+      CENSORED_LOG_VALUE
+    );
+    expect(censored.headers.get("x-vercel-sc-headers")).toBe(
+      CENSORED_LOG_VALUE
+    );
     expect(censored.headers.get("x-visible")).toBe("safe");
     expect(headers.get("authorization")).toBe("Bearer secret");
     expect(censored.searchParams).not.toBe(searchParams);
