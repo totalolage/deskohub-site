@@ -220,7 +220,7 @@ export const NexiWebhookServiceLive = Layer.effect(
               };
             }
 
-            yield* Effect.logInfo(
+            yield* Effect.logWarning(
               "Retrying unprocessed duplicate Nexi webhook",
               {
                 eventId,

@@ -50,9 +50,7 @@ export interface EmailTemplateService {
 export class EmailTemplateServiceTag extends Context.Service<
   EmailTemplateServiceTag,
   EmailTemplateService
->()(
-  "EmailTemplateService"
-) {}
+>()("EmailTemplateService") {}
 
 export interface EmailService {
   readonly send: (
@@ -95,12 +93,12 @@ const getEmailRetryPolicyDescription = (
 
 const emailRetryPolicy = Schedule.exponential("1 second").pipe(
   Schedule.jittered,
-  Schedule.while<EmailServiceError | NetworkError, Duration.Duration>(({ input }) =>
-    isRetryableEmailError(input)
+  Schedule.while<EmailServiceError | NetworkError, Duration.Duration>(
+    ({ input }) => isRetryableEmailError(input)
   ),
   Schedule.both(Schedule.recurs(3)),
   Schedule.tapOutput(([duration, attempt]) =>
-    Effect.logInfo(
+    Effect.logWarning(
       `Email retry attempt #${attempt + 1} starting after ${Duration.toMillis(duration)}ms delay`,
       {
         attemptNumber: attempt + 1,

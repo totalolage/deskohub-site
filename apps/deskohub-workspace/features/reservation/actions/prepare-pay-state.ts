@@ -280,7 +280,7 @@ const waitForPendingHoldCreation = Effect.fn(
           return Effect.succeed(reservation);
         }
 
-        return Effect.logDebug(
+        return Effect.logWarning(
           "Waiting for in-flight workspace reservation hold creation"
         ).pipe(
           Effect.andThen(Effect.fail(new PendingHoldCreation({ reservation })))
@@ -691,6 +691,14 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
                         )
                       )
                     );
+
+                  yield* Effect.logWarning(
+                    "Workspace reservation hold cancellation marked for retry",
+                    {
+                      reservationDraftId: reservationDraft.id,
+                      dotyposReservationId,
+                    }
+                  );
                   return yield* Effect.fail(cancelCause);
                 })
               )

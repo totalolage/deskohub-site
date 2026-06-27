@@ -1,6 +1,6 @@
-import { Context, Effect, Layer, Match, Schedule } from "effect";
+import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import { NetworkError, type ExternalAPIError } from "../errors";
+import type { ExternalAPIError, NetworkError } from "../errors";
 import type { CreateHostedPaymentPageRequest } from "../generated/effect.gen";
 import type {
   CreateHostedPaymentPageInput,
@@ -46,9 +46,18 @@ const isRetryableNexiError = (error: ExternalAPIError | NetworkError) =>
 const retryPolicy = {
   schedule: Schedule.exponential("100 millis").pipe(
     Schedule.jittered,
-    Schedule.both(Schedule.recurs(3))
+    Schedule.while<ExternalAPIError | NetworkError, Duration.Duration>(
+      ({ input }) => isRetryableNexiError(input)
+    ),
+    Schedule.both(Schedule.recurs(3)),
+    Schedule.tapOutput(([delay, attempt]) =>
+      Effect.logWarning(`Nexi retry attempt #${attempt + 1}`, {
+        attemptNumber: attempt + 1,
+        delayMs: Duration.toMillis(delay),
+        maxRetries: 3,
+      })
+    )
   ),
-  while: isRetryableNexiError,
 };
 
 const getPaymentOutcomeLogAnnotations = (input: VerifyPaymentOutcomeInput) => ({
@@ -122,7 +131,10 @@ const makeNexiService = Effect.gen(function* () {
       yield* Effect.logInfo("Nexi order lookup started");
 
       const order = yield* nexiClient
-        .getOrder({ correlationId: input.correlationId, orderId: input.orderId })
+        .getOrder({
+          correlationId: input.correlationId,
+          orderId: input.orderId,
+        })
         .pipe(
           Effect.retry(retryPolicy),
           Effect.tapError((error) =>
@@ -155,9 +167,8 @@ const makeNexiService = Effect.gen(function* () {
         failedOperation,
       });
 
-      const mismatches: Array<
-        PaymentVerificationResult["mismatches"][number]
-      > = [];
+      const mismatches: Array<PaymentVerificationResult["mismatches"][number]> =
+        [];
       if (providerOrderId !== input.orderId) mismatches.push("orderId");
       if (providerAmount?.amount !== input.amount) mismatches.push("amount");
       if (providerAmount?.currency !== input.currency)

@@ -1,6 +1,7 @@
 import {
   Context,
   Data,
+  Duration,
   Effect,
   Layer,
   Match,
@@ -45,9 +46,18 @@ const isRetryableDotyposError = (error: DotyposError) =>
 const retryPolicy = {
   schedule: Schedule.exponential("100 millis").pipe(
     Schedule.jittered,
-    Schedule.both(Schedule.recurs(3))
+    Schedule.while<DotyposError, Duration.Duration>(({ input }) =>
+      isRetryableDotyposError(input)
+    ),
+    Schedule.both(Schedule.recurs(3)),
+    Schedule.tapOutput(([delay, attempt]) =>
+      Effect.logWarning(`Dotypos retry attempt #${attempt + 1}`, {
+        attemptNumber: attempt + 1,
+        delayMs: Duration.toMillis(delay),
+        maxRetries: 3,
+      })
+    )
   ),
-  while: isRetryableDotyposError,
 };
 
 const catchUnexpectedDotyposError = (operation: string) =>

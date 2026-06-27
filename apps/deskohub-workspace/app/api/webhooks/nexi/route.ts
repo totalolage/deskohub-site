@@ -102,21 +102,40 @@ export async function POST(request: Request): Promise<NextResponse> {
           status: result.status,
         })
       ),
-      Effect.catchTag("NexiWebhookProcessingError", (error) =>
-        Effect.succeed(
-          NextResponse.json(
+      Effect.catchTag(
+        "NexiWebhookProcessingError",
+        Effect.fn("handleNexiWebhookProcessingResponse")(function* (error) {
+          const status = nexiWebhookProcessingErrorStatuses[error.errorCode];
+          if (status === 500) {
+            yield* Effect.logWarning(
+              "Nexi webhook response will trigger provider retry",
+              {
+                errorCode: error.errorCode,
+                eventId: error.eventId,
+                orderId: error.orderId,
+              }
+            );
+          }
+
+          return NextResponse.json(
             {
               error: "Webhook processing failed",
               code: error.errorCode,
             },
-            {
-              status: nexiWebhookProcessingErrorStatuses[error.errorCode],
-            }
-          )
-        )
+            { status }
+          );
+        })
       ),
       Effect.catch((cause) =>
         Effect.logError("Nexi webhook route failed", { cause }).pipe(
+          Effect.andThen(
+            Effect.logWarning(
+              "Nexi webhook response will trigger provider retry",
+              {
+                errorCode: "nexi_webhook_internal_error",
+              }
+            )
+          ),
           Effect.as(
             NextResponse.json(
               {

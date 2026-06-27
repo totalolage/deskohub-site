@@ -39,6 +39,13 @@ const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
 const handleResendWebhookProcessingError = Effect.fn(
   "handleResendWebhookProcessingError"
 )(function* (error: ResendWebhookProcessingError) {
+  const status =
+    error.errorCode === "resend_webhook_headers_missing" ||
+    error.errorCode === "resend_webhook_verification_failed" ||
+    error.errorCode === "resend_webhook_payload_invalid"
+      ? 400
+      : 500;
+
   yield* Effect.logError("Resend webhook processing failed", {
     errorCode: error.errorCode,
     eventId: error.eventId,
@@ -46,19 +53,20 @@ const handleResendWebhookProcessingError = Effect.fn(
     cause: error.cause,
   });
 
+  if (status === 500) {
+    yield* Effect.logWarning("Resend webhook response will trigger retry", {
+      errorCode: error.errorCode,
+      eventId: error.eventId,
+      workspaceReservationId: error.workspaceReservationId,
+    });
+  }
+
   return NextResponse.json(
     {
       error: "Webhook processing failed",
       code: error.errorCode,
     },
-    {
-      status:
-        error.errorCode === "resend_webhook_headers_missing" ||
-        error.errorCode === "resend_webhook_verification_failed" ||
-        error.errorCode === "resend_webhook_payload_invalid"
-          ? 400
-          : 500,
-    }
+    { status }
   );
 });
 
@@ -66,6 +74,9 @@ const handleResendWebhookRouteError = Effect.fn(
   "handleResendWebhookRouteError"
 )(function* (cause: unknown) {
   yield* Effect.logError("Resend webhook route failed", { cause });
+  yield* Effect.logWarning("Resend webhook response will trigger retry", {
+    errorCode: "resend_webhook_internal_error",
+  });
 
   return NextResponse.json(
     {
