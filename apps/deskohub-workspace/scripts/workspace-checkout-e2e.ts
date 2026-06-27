@@ -72,6 +72,7 @@ const main = async () => {
   let datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
   let checkoutRow: CheckoutRow | undefined;
   let checkoutOrderId: string | undefined;
+  let checkoutStartedAt: Date | undefined;
   let workflowError: unknown;
 
   try {
@@ -132,6 +133,7 @@ const main = async () => {
     ])
       addRedaction(value);
 
+    checkoutStartedAt = new Date();
     const orderId = await completeCheckout({
       config,
       data,
@@ -179,6 +181,24 @@ const main = async () => {
         cleanupError = cause;
         if (workflowError)
           log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
+      }
+    }
+    if (
+      datasourceConfig &&
+      !checkoutRow?.dotypos_reservation_id &&
+      checkoutStartedAt
+    ) {
+      try {
+        checkoutRow = await readLatestCleanupCheckoutRow(
+          datasourceConfig,
+          checkoutStartedAt
+        );
+      } catch (cause) {
+        cleanupError = cause;
+        if (workflowError)
+          log(
+            `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
+          );
       }
     }
     if (datasourceConfig && checkoutRow?.dotypos_reservation_id) {
@@ -1127,6 +1147,39 @@ const readCleanupCheckoutRow = async (
 
   try {
     return await readCheckoutRow(pool, orderId);
+  } finally {
+    await pool.end();
+  }
+};
+
+const readLatestCleanupCheckoutRow = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  createdAfter: Date
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
+  });
+
+  try {
+    const result = await pool.query<{ id: string }>(
+      `select wr.id
+      from workspace_reservations wr
+      where wr.reservation_created_at >= $1
+        and wr.dotypos_reservation_id is not null
+        and wr.payment_state <> 'paid'
+        and wr.product_tier = 'basic'
+        and wr.product_coffee = false
+        and wr.locale = 'en-US'
+      order by wr.reservation_created_at desc
+      limit 1`,
+      [createdAfter]
+    );
+
+    const orderId = result.rows[0]?.id;
+    return orderId ? await readCheckoutRow(pool, orderId) : undefined;
   } finally {
     await pool.end();
   }
