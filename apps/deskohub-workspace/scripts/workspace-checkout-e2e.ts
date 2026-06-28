@@ -1871,8 +1871,15 @@ const submitReservationScript = `
     }
     throw new Error(label);
   };
-  const checkbox = document.querySelector('#reservation-privacy-consent');
-  if (!(checkbox instanceof HTMLButtonElement)) throw new Error('privacy consent checkbox not found');
+  let checkbox;
+  await waitUntil(() => {
+    const candidate = document.querySelector('#reservation-privacy-consent');
+    if (candidate instanceof HTMLButtonElement) {
+      checkbox = candidate;
+      return true;
+    }
+    return false;
+  }, 'privacy consent checkbox not found');
   if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
   await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'privacy consent checkbox did not check');
   const form = checkbox.closest('form') ?? document.querySelector('form');
