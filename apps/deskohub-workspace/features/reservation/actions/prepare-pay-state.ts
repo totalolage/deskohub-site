@@ -283,8 +283,7 @@ const enqueueReservationHoldCleanup = Effect.fn(
           orderId: input.orderId,
           cause,
         })
-      ),
-      Effect.ignore
+      )
     );
 });
 
