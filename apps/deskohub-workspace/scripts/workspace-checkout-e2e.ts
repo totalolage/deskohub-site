@@ -1819,7 +1819,7 @@ const loadEnvFile = async (path: string) => {
     const key = trimmed.slice(0, equals).trim();
     const value = unquoteEnv(trimmed.slice(equals + 1).trim());
     values.set(key, value);
-    process.env[key] ??= value;
+    if (!env(key)) process.env[key] = value;
   }
 
   return values;
