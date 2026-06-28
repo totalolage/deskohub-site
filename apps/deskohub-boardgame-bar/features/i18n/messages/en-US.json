@@ -154,6 +154,59 @@
     "title": "Deskohub - Board Game Club & Training Room",
     "description": "A place where fantasy meets reality. Board games, training room and board gamer community in Prague."
   },
+  "palmovcon2026": {
+    "pageTitle": "Palmovcon 2026",
+    "pageDescription": "The second Palmovka board game festival at Deskohub from July 16 to 19, 2026.",
+    "date": "16 Jul - 19 Jul 2026",
+    "title": "PALMOVCON 2026",
+    "subtitle": "The second Palmovka board game festival.",
+    "intro": "Meet your destined gaming partner. Whether you are a hardcore strategist, a creative geek, or a whole nerdy family, come soak up the summer board game atmosphere. No need to read thick rulebooks, our game guides will teach you everything right at the table.",
+    "reservationCta": "I want to reserve a table",
+    "secondaryReservationCta": "Reserve a table",
+    "location": "Deskohub, Prague - Palmovka",
+    "quickSummaryTitle": "Quick overview",
+    "dateLabel": "When",
+    "locationLabel": "Where",
+    "venue": "Deskohub at Palmovka",
+    "entryFeeLabel": "Entry fee",
+    "entryFeeShort": "CZK 50 with bar purchase / CZK 100 without",
+    "practicalInfoEyebrow": "Practical info",
+    "practicalInfoTitle": "How it works",
+    "entryFeeTitle": "Entry fee",
+    "entryFeeDescription": "Standard Deskohub entry: CZK 50 per person with a bar purchase, or CZK 100 per person if you do not order anything.",
+    "complexGamesTitle": "Complex games",
+    "complexGamesDescription": "Want to play something heavier? The rules explanation signup will be added soon.",
+    "scheduleEyebrow": "Event program",
+    "scheduleTitle": "What will be played",
+    "scheduleDescription": "We are still tuning and expanding the program. Registrations will open gradually.",
+    "schedule": {
+      "miniaturePainting": {
+        "title": "Miniature painting workshop",
+        "time": "Thursday, 16 Jul at 17:00",
+        "description": "Want to try painting your own miniature? We will gladly lend you paints and figures, just show up!"
+      },
+      "witcher": {
+        "title": "Open Witcher play session",
+        "time": "Thursday, 16 Jul at 17:00",
+        "description": "A legendary fantasy world on your table. Capacity is limited and advance registration is required.",
+        "note": "The registration form will be added soon."
+      },
+      "bloodOnTheClocktower": {
+        "title": "Blood on the Clocktower",
+        "time": "Saturday, 18 Jul at 12:00",
+        "description": "A brilliant deduction game full of bluffing, deduction, and intrigue.",
+        "note": "Registration will open soon."
+      },
+      "bazaar": {
+        "title": "Big board game bazaar",
+        "time": "Saturday, 18 Jul all day",
+        "description": "Are your shelves bursting at home? Bring games you no longer play, or come hunt for a new one at a great price."
+      }
+    },
+    "footerEyebrow": "Follow along and stay informed",
+    "footerTitle": "Do not miss any news or upcoming registrations.",
+    "facebookCta": "View Facebook event"
+  },
   "reservation": {
     "pageTitle": "Table Reservation",
     "pageDescription": "Reserve your table at Deskohub board game bar. Choose your preferred date, time, and table type for the perfect gaming experience."

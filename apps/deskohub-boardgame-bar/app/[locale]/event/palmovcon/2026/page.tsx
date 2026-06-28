@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
-import { setLocale } from "@/features/i18n";
+import { m, setLocale } from "@/features/i18n";
 import { LocalizedLink } from "@/features/i18n/components/localized-link";
 import { Button } from "@/shared/components/ui/button";
 import { metadata } from "@/shared/utils/metadata";
@@ -10,38 +10,34 @@ import { isPalmovconPageExpired } from "./page-availability";
 const reservationHref = "/reservation?message=Palmovcon";
 const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
 
-const schedule = [
+const getSchedule = () => [
   {
-    title: "Workshop malování figurek",
-    time: "Čtvrtek 16. 7. v 17:00",
-    description:
-      "Chceš si vyzkoušet nabarvit vlastní miniaturu? Barvy i figurky ti rádi půjčíme, stačí dorazit!",
+    title: m["palmovcon2026.schedule.miniaturePainting.title"](),
+    time: m["palmovcon2026.schedule.miniaturePainting.time"](),
+    description: m["palmovcon2026.schedule.miniaturePainting.description"](),
   },
   {
-    title: "Otevřené hraní Zaklínače",
-    time: "Čtvrtek 16. 7. v 17:00",
-    description:
-      "Legendární fantasy svět na tvém stole. Kapacita je omezená a registrace je nutná předem.",
-    note: "Registrační formulář doplníme brzy.",
+    title: m["palmovcon2026.schedule.witcher.title"](),
+    time: m["palmovcon2026.schedule.witcher.time"](),
+    description: m["palmovcon2026.schedule.witcher.description"](),
+    note: m["palmovcon2026.schedule.witcher.note"](),
   },
   {
-    title: "Krvavá hodinka (Blood on the Clocktower)",
-    time: "Sobota 18. 7. ve 12:00",
-    description: "Geniální detektivní hra plná blafování, dedukce a intrik.",
-    note: "Registrace bude spuštěna již brzy.",
+    title: m["palmovcon2026.schedule.bloodOnTheClocktower.title"](),
+    time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
+    description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
+    note: m["palmovcon2026.schedule.bloodOnTheClocktower.note"](),
   },
   {
-    title: "Velká deskoherní burza",
-    time: "Sobota 18. 7. celý den",
-    description:
-      "Praskají ti doma poličky ve švech? Přines hry, které už nehraješ, nebo přijď ulovit nový kousek za super cenu.",
+    title: m["palmovcon2026.schedule.bazaar.title"](),
+    time: m["palmovcon2026.schedule.bazaar.time"](),
+    description: m["palmovcon2026.schedule.bazaar.description"](),
   },
 ];
 
 export const generateMetadata = metadata({
-  title: "Palmovcon 2026",
-  description:
-    "Druhý ročník deskoherního festivalu na Palmovce v Deskohubu od 16. do 19. července 2026.",
+  title: m["palmovcon2026.pageTitle"](),
+  description: m["palmovcon2026.pageDescription"](),
 });
 
 export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
@@ -53,6 +49,8 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
     notFound();
   }
 
+  const schedule = getSchedule();
+
   return (
     <main className="min-h-screen overflow-hidden bg-[#140b20] text-amber-50">
       <section className="relative px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
@@ -62,19 +60,16 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         <div className="relative mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div>
             <p className="mb-4 inline-flex rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.28em]">
-              16. 7. - 19. 7. 2026
+              {m["palmovcon2026.date"]()}
             </p>
             <h1 className="max-w-4xl font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
-              PALMOVCON 2026
+              {m["palmovcon2026.title"]()}
             </h1>
             <p className="mt-5 max-w-2xl text-2xl text-amber-100/90">
-              Druhý ročník deskoherního festivalu na Palmovce.
+              {m["palmovcon2026.subtitle"]()}
             </p>
             <p className="mt-8 max-w-2xl text-lg text-amber-50/80 leading-8">
-              Potkej svého osudového spoluhráče. Ať už jsi hardcore stratég,
-              tvořivý geek, nebo celá nerdská rodina, doraz nasát tu správnou
-              letní herní atmosféru. Nemusíš číst tlusté manuály, naši herní
-              průvodci tě všechno naučí přímo u stolu.
+              {m["palmovcon2026.intro"]()}
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
               <Button
@@ -83,38 +78,38 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 size="lg"
               >
                 <LocalizedLink href={reservationHref}>
-                  Chci si rezervovat stůl
+                  {m["palmovcon2026.reservationCta"]()}
                 </LocalizedLink>
               </Button>
               <span className="text-amber-100/70 text-sm">
-                Deskohub, Praha - Palmovka
+                {m["palmovcon2026.location"]()}
               </span>
             </div>
           </div>
 
           <aside className="rounded-[2rem] border border-amber-200/20 bg-black/25 p-6 shadow-2xl shadow-fuchsia-950/50 backdrop-blur">
             <h2 className="font-black text-2xl text-amber-200">
-              Nejrychlejší přehled
+              {m["palmovcon2026.quickSummaryTitle"]()}
             </h2>
             <dl className="mt-6 grid gap-5">
               <div>
                 <dt className="font-semibold text-amber-100/60 text-sm uppercase tracking-[0.2em]">
-                  Kdy
+                  {m["palmovcon2026.dateLabel"]()}
                 </dt>
-                <dd className="mt-1 text-2xl">16. 7. - 19. 7. 2026</dd>
+                <dd className="mt-1 text-2xl">{m["palmovcon2026.date"]()}</dd>
               </div>
               <div>
                 <dt className="font-semibold text-amber-100/60 text-sm uppercase tracking-[0.2em]">
-                  Kde
+                  {m["palmovcon2026.locationLabel"]()}
                 </dt>
-                <dd className="mt-1 text-2xl">Deskohub na Palmovce</dd>
+                <dd className="mt-1 text-2xl">{m["palmovcon2026.venue"]()}</dd>
               </div>
               <div>
                 <dt className="font-semibold text-amber-100/60 text-sm uppercase tracking-[0.2em]">
-                  Vstupné
+                  {m["palmovcon2026.entryFeeLabel"]()}
                 </dt>
                 <dd className="mt-1 text-2xl">
-                  50 Kč s konzumací / 100 Kč bez
+                  {m["palmovcon2026.entryFeeShort"]()}
                 </dd>
               </div>
             </dl>
@@ -125,23 +120,27 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       <section className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-3 lg:px-8">
         <div className="rounded-3xl border border-white/10 bg-white/10 p-6 lg:col-span-1">
           <p className="font-semibold text-amber-200 text-sm uppercase tracking-[0.22em]">
-            Praktické info
+            {m["palmovcon2026.practicalInfoEyebrow"]()}
           </p>
-          <h2 className="mt-3 font-black text-3xl">Jak to funguje</h2>
+          <h2 className="mt-3 font-black text-3xl">
+            {m["palmovcon2026.practicalInfoTitle"]()}
+          </h2>
         </div>
         <div className="grid gap-4 lg:col-span-2 sm:grid-cols-2">
           <article className="rounded-3xl bg-amber-100 p-6 text-[#211326]">
-            <h3 className="font-black text-xl">Vstupné</h3>
+            <h3 className="font-black text-xl">
+              {m["palmovcon2026.entryFeeTitle"]()}
+            </h3>
             <p className="mt-3 text-[#211326]/80">
-              Standardní jako do Deskohubu: 50 Kč za osobu při konzumaci na
-              baru, 100 Kč za osobu, pokud si nic nedáte.
+              {m["palmovcon2026.entryFeeDescription"]()}
             </p>
           </article>
           <article className="rounded-3xl bg-fuchsia-200 p-6 text-[#211326]">
-            <h3 className="font-black text-xl">Komplexní hry</h3>
+            <h3 className="font-black text-xl">
+              {m["palmovcon2026.complexGamesTitle"]()}
+            </h3>
             <p className="mt-3 text-[#211326]/80">
-              Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel
-              doplníme brzy.
+              {m["palmovcon2026.complexGamesDescription"]()}
             </p>
           </article>
         </div>
@@ -151,12 +150,14 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="font-semibold text-amber-200 text-sm uppercase tracking-[0.22em]">
-              Program akce
+              {m["palmovcon2026.scheduleEyebrow"]()}
             </p>
-            <h2 className="mt-3 font-black text-4xl">Co se bude hrát</h2>
+            <h2 className="mt-3 font-black text-4xl">
+              {m["palmovcon2026.scheduleTitle"]()}
+            </h2>
           </div>
           <p className="max-w-xl text-amber-50/65">
-            Program stále doplňujeme a ladíme. Registrace otevřeme postupně.
+            {m["palmovcon2026.scheduleDescription"]()}
           </p>
         </div>
 
@@ -186,10 +187,10 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
           <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
               <p className="font-semibold text-sm uppercase tracking-[0.22em] text-[#140b20]/70">
-                Sledujte nás a buďte v obraze
+                {m["palmovcon2026.footerEyebrow"]()}
               </p>
               <h2 className="mt-3 font-black text-3xl">
-                Neuteče vám žádná novinka ani další registrace.
+                {m["palmovcon2026.footerTitle"]()}
               </h2>
             </div>
             <div className="flex flex-col gap-3 sm:flex-row">
@@ -198,7 +199,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 className="h-12 rounded-full bg-[#140b20] px-6 font-bold text-amber-50 hover:bg-[#2a1644]"
               >
                 <a href={facebookEventHref} rel="noreferrer" target="_blank">
-                  Zobrazit Facebook událost
+                  {m["palmovcon2026.facebookCta"]()}
                 </a>
               </Button>
               <Button
@@ -207,7 +208,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 variant="outline"
               >
                 <LocalizedLink href={reservationHref}>
-                  Rezervovat stůl
+                  {m["palmovcon2026.secondaryReservationCta"]()}
                 </LocalizedLink>
               </Button>
             </div>
