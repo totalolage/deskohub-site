@@ -1,4 +1,5 @@
 .next/
+e2e-artifacts/
 node_modules/
 .vercel
 .env*.local
