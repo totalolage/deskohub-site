@@ -592,11 +592,13 @@ const completeNexiHostedPayment = async ({
     data.email
   );
 
-  await clickHostedPaymentTarget(run, session, "continue", [
-    { value: "CONTINUE" },
-    { value: "Continue" },
-    { value: "CONTINUA" },
-  ]);
+  await clickHostedPaymentTarget(
+    run,
+    session,
+    "continue",
+    [{ value: "CONTINUE" }, { value: "Continue" }, { value: "CONTINUA" }],
+    { optional: true, timeoutMs: Math.min(getCheckoutTimeoutMs(), 15_000) }
+  );
   await clickHostedPaymentTarget(run, session, "pay", [
     { value: "PAY" },
     { value: "Pay" },
@@ -755,7 +757,8 @@ const clickHostedPaymentTarget = async (
   run: ReturnType<typeof makeRunner>,
   session: string,
   label: string,
-  targets: readonly HostedPaymentClickTarget[]
+  targets: readonly HostedPaymentClickTarget[],
+  options: { readonly optional?: boolean; readonly timeoutMs?: number } = {}
 ) => {
   const labels = targets.map((target) => target.value);
 
@@ -786,10 +789,12 @@ const clickHostedPaymentTarget = async (
           if (target.framed) await switchToMainFrame(run, session);
         }
       },
-      getCheckoutTimeoutMs(),
+      options.timeoutMs ?? getCheckoutTimeoutMs(),
       `Nexi ${label} action`
     );
   } catch (error) {
+    if (options.optional) return;
+
     const message = error instanceof Error ? error.message : String(error);
     const snapshot = await readInteractiveSnapshot(run, session, true);
     throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
