@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
@@ -29,9 +28,7 @@ export function ContactPage({ locale, initialValues }: ContactPageProps) {
           </div>
 
           <div className="mx-auto mt-14 max-w-3xl">
-            <Suspense fallback={null}>
-              <ContactForm locale={locale} initialValues={initialValues} />
-            </Suspense>
+            <ContactForm locale={locale} initialValues={initialValues} />
           </div>
         </Container>
       </section>

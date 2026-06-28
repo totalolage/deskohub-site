@@ -9,7 +9,6 @@ import {
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
-import { CheckoutOrderReturnRedirect } from "./checkout-order-return-redirect";
 
 type CheckoutOrderPageProps = {
   locale: Locale;
@@ -22,7 +21,6 @@ export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
 
   return (
     <CheckoutFlowLayout activeStepKey="order" locale={locale}>
-      <CheckoutOrderReturnRedirect locale={locale} />
       {/* Suspense isolates useSearchParams() hydration, not data fetching or lazy loading. */}
       <Suspense
         fallback={

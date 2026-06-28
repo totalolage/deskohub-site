@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { isValidElement, type ReactNode } from "react";
 
 mock.module("server-only", () => ({}));
 mock.module("@/features/reservation/components/reservation-form", () => ({
@@ -17,7 +17,8 @@ const getFallbackProps = async () => {
     throw new Error("CheckoutOrderPage did not return a React element");
   }
 
-  const children = (page.props as { children: ReactElement[] }).children;
+  const rawChildren = (page.props as { children: ReactNode }).children;
+  const children = Array.isArray(rawChildren) ? rawChildren : [rawChildren];
   const suspense = children.find(
     (child) => isValidElement(child) && "fallback" in child.props
   );

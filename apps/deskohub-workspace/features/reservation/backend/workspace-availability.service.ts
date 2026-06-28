@@ -27,6 +27,7 @@ import {
 } from "@/features/checkout/product-catalog";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
+import { runWorkspaceEffectWithLogAnnotations } from "@/shared/backend/logging/censorship";
 import {
   applyCacheTags,
   workspaceAvailabilityTags,
@@ -403,21 +404,23 @@ async function loadCachedWorkspaceAvailabilityInventory(
   cacheLife({ stale: 30, revalidate: 60, expire: 300 });
   applyCacheTags(workspaceAvailabilityTags.all());
 
-  return Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    const calendarLimitations =
-      yield* GoogleCalendarWorkspaceLimitationsService;
+  return runWorkspaceEffectWithLogAnnotations(
+    Effect.gen(function* () {
+      const dotypos = yield* DotyposService;
+      const calendarLimitations =
+        yield* GoogleCalendarWorkspaceLimitationsService;
 
-    return yield* loadFreshWorkspaceAvailabilityInventory({
-      calendarLimitations,
-      dotypos,
-      query,
-    });
-  }).pipe(
-    Effect.provide(GoogleCalendarWorkspaceLimitationsLive),
-    Effect.provide(DotyposServiceLive),
-    Effect.scoped,
-    Effect.runPromise
+      return yield* loadFreshWorkspaceAvailabilityInventory({
+        calendarLimitations,
+        dotypos,
+        query,
+      });
+    }).pipe(
+      Effect.provide(GoogleCalendarWorkspaceLimitationsLive),
+      Effect.provide(DotyposServiceLive),
+      Effect.scoped
+    ),
+    { workspaceAvailabilityCache: "advisory" }
   );
 }
 

@@ -3,7 +3,7 @@
 import { Send } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useActionState, useEffect, useRef, useState } from "react";
+import { Suspense, useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   type ContactFormState,
@@ -53,8 +53,6 @@ const getContactQueryInitialValues = (params: Pick<URLSearchParams, "get">) => {
 };
 
 export function ContactForm({ locale, initialValues }: ContactFormProps) {
-  const searchParams = useSearchParams();
-  const queryString = searchParams.toString();
   const [state, formAction] = useActionState(
     submitContactForm,
     initialContactFormState
@@ -85,14 +83,6 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
     }
   }, [state.status]);
 
-  useEffect(() => {
-    if (!initialValues) {
-      setQueryInitialValues(
-        getContactQueryInitialValues(new URLSearchParams(queryString))
-      );
-    }
-  }, [initialValues, queryString]);
-
   return (
     <Card
       id="contact-form"
@@ -109,6 +99,12 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
       </CardHeader>
 
       <CardContent>
+        {!initialValues && (
+          <Suspense fallback={null}>
+            <ContactQueryInitialValuesSync onChange={setQueryInitialValues} />
+          </Suspense>
+        )}
+
         <form ref={formRef} action={formAction} className="space-y-5">
           <div key={fieldRemountKey} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
@@ -186,6 +182,21 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
       </CardContent>
     </Card>
   );
+}
+
+function ContactQueryInitialValuesSync({
+  onChange,
+}: {
+  readonly onChange: (values: ContactFormInitialValues | undefined) => void;
+}) {
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
+
+  useEffect(() => {
+    onChange(getContactQueryInitialValues(new URLSearchParams(queryString)));
+  }, [onChange, queryString]);
+
+  return null;
 }
 
 type FieldProps = {
