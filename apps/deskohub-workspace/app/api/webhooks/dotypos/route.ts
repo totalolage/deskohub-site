@@ -1,78 +1,23 @@
-import { parseDotyposWebhookPayload } from "@deskohub/dotypos";
-import { Data, Effect } from "effect";
+import {
+  type DotyposWebhookAuthError,
+  type DotyposWebhookPayloadError,
+  verifyDotyposWebhookRequest,
+} from "@deskohub/dotypos";
+import { Effect } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 import { workspaceAvailabilityTags } from "@/shared/utils/cache-tags";
 
-class DotyposWebhookAuthError extends Data.TaggedError(
-  "DotyposWebhookAuthError"
-)<{
-  readonly message: string;
-}> {}
-
-class DotyposWebhookValidationError extends Data.TaggedError(
-  "DotyposWebhookValidationError"
-)<{
-  readonly message: string;
-  readonly issues?: unknown;
-}> {}
-
-const validateWebhookSecret = (url: URL) =>
-  Effect.gen(function* () {
-    if (env.VERCEL_ENV === "development") return;
-
-    const providedSecret = url.searchParams.get("secret");
-    const configuredSecret = env.DOTYPOS_WEBHOOK_SECRET;
-
-    if (!providedSecret) {
-      return yield* new DotyposWebhookAuthError({
-        message: "Missing webhook secret",
-      });
-    }
-
-    if (!configuredSecret) {
-      return yield* new DotyposWebhookAuthError({
-        message: "Webhook secret is not configured",
-      });
-    }
-
-    if (providedSecret !== configuredSecret) {
-      return yield* new DotyposWebhookAuthError({
-        message: "Invalid webhook secret",
-      });
-    }
-  });
-
-const parseWebhookBody = (request: Request) =>
-  Effect.tryPromise({
-    try: () => request.json(),
-    catch: () =>
-      new DotyposWebhookValidationError({
-        message: "Failed to parse request body",
-      }),
-  });
-
-const decodeWebhookPayload = (payload: unknown) =>
-  parseDotyposWebhookPayload(payload).pipe(
-    Effect.mapError(
-      (error) =>
-        new DotyposWebhookValidationError({
-          message: error.message,
-          issues: error.issues,
-        })
-    )
-  );
-
 const processWebhookRequest = Effect.fn("processDotyposWebhookRequest")(
   function* (request: Request) {
     yield* Effect.logInfo("Dotypos webhook invoked");
 
-    yield* validateWebhookSecret(new URL(request.url));
-    const payload = yield* parseWebhookBody(request).pipe(
-      Effect.flatMap(decodeWebhookPayload)
-    );
+    const payload = yield* verifyDotyposWebhookRequest(request, {
+      requireSecret: env.VERCEL_ENV !== "development",
+      secret: env.DOTYPOS_WEBHOOK_SECRET,
+    });
 
     if (payload.kind !== "reservation") {
       yield* Effect.logInfo("Dotypos webhook ignored", {
@@ -119,7 +64,7 @@ const processWebhookRequest = Effect.fn("processDotyposWebhookRequest")(
               { status: 401 }
             )
           ),
-        DotyposWebhookValidationError: (error: DotyposWebhookValidationError) =>
+        DotyposWebhookPayloadError: (error: DotyposWebhookPayloadError) =>
           Effect.succeed(
             NextResponse.json(
               {

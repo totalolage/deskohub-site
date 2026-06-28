@@ -23,8 +23,11 @@ export type {
   DotyposReservationWebhookRecord,
   DotyposWebhookPayload,
   DotyposWebhookRecord,
+  DotyposWebhookRequestOptions,
 } from "./webhook";
 export {
+  DotyposWebhookAuthError,
   DotyposWebhookPayloadError,
   parseDotyposWebhookPayload,
+  verifyDotyposWebhookRequest,
 } from "./webhook";

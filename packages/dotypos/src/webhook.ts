@@ -5,6 +5,13 @@ export class DotyposWebhookPayloadError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly issues?: unknown;
+  readonly cause?: unknown;
+}> {}
+
+export class DotyposWebhookAuthError extends Data.TaggedError(
+  "DotyposWebhookAuthError"
+)<{
+  readonly message: string;
 }> {}
 
 export type DotyposWebhookRecord = Readonly<Record<string, unknown>>;
@@ -37,6 +44,11 @@ export type DotyposWebhookPayload =
       readonly kind: "unknown";
       readonly records: readonly DotyposWebhookRecord[];
     };
+
+export interface DotyposWebhookRequestOptions {
+  readonly requireSecret: boolean;
+  readonly secret?: string;
+}
 
 const isRecord = (value: unknown): value is DotyposWebhookRecord =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -113,4 +125,52 @@ export const parseDotyposWebhookPayload = (payload: unknown) =>
     }
 
     return { kind: "unknown", records } as const;
+  });
+
+const validateDotyposWebhookSecret = (
+  request: Request,
+  options: DotyposWebhookRequestOptions
+) =>
+  Effect.gen(function* () {
+    if (!options.requireSecret) return;
+
+    const providedSecret = new URL(request.url).searchParams.get("secret");
+
+    if (!providedSecret) {
+      return yield* new DotyposWebhookAuthError({
+        message: "Missing webhook secret",
+      });
+    }
+
+    if (!options.secret) {
+      return yield* new DotyposWebhookAuthError({
+        message: "Webhook secret is not configured",
+      });
+    }
+
+    if (providedSecret !== options.secret) {
+      return yield* new DotyposWebhookAuthError({
+        message: "Invalid webhook secret",
+      });
+    }
+  });
+
+const readDotyposWebhookJson = (request: Request) =>
+  Effect.tryPromise({
+    try: () => request.json(),
+    catch: (cause) =>
+      new DotyposWebhookPayloadError({
+        message: "Failed to parse request body",
+        cause,
+      }),
+  });
+
+export const verifyDotyposWebhookRequest = (
+  request: Request,
+  options: DotyposWebhookRequestOptions
+) =>
+  Effect.gen(function* () {
+    yield* validateDotyposWebhookSecret(request, options);
+    const payload = yield* readDotyposWebhookJson(request);
+    return yield* parseDotyposWebhookPayload(payload);
   });

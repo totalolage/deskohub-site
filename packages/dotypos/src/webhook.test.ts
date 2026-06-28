@@ -1,6 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { parseDotyposWebhookPayload } from "./webhook";
+import {
+  parseDotyposWebhookPayload,
+  verifyDotyposWebhookRequest,
+} from "./webhook";
 
 const reservationRecord = {
   branchid: 123,
@@ -46,5 +49,75 @@ describe("parseDotyposWebhookPayload", () => {
     );
 
     expect(result._tag).toBe("Failure");
+  });
+});
+
+describe("verifyDotyposWebhookRequest", () => {
+  const request = (body: BodyInit, secret = "webhook-secret") =>
+    new Request(
+      `https://example.test/dotypos${secret ? `?secret=${secret}` : ""}`,
+      { method: "POST", body }
+    );
+
+  test("verifies the secret and parses reservation records", async () => {
+    const payload = await Effect.runPromise(
+      verifyDotyposWebhookRequest(
+        request(JSON.stringify([reservationRecord])),
+        {
+          requireSecret: true,
+          secret: "webhook-secret",
+        }
+      )
+    );
+
+    expect(payload.kind).toBe("reservation");
+    expect(payload.records[0]?.reservationid).toBe(321);
+  });
+
+  test("rejects missing or invalid secrets", async () => {
+    for (const secret of ["", "wrong-secret"]) {
+      const result = await Effect.runPromise(
+        verifyDotyposWebhookRequest(
+          request(JSON.stringify([reservationRecord]), secret),
+          {
+            requireSecret: true,
+            secret: "webhook-secret",
+          }
+        ).pipe(Effect.result)
+      );
+
+      expect(result._tag).toBe("Failure");
+      if (result._tag === "Failure") {
+        expect(result.failure._tag).toBe("DotyposWebhookAuthError");
+      }
+    }
+  });
+
+  test("skips secret checks when not required", async () => {
+    const payload = await Effect.runPromise(
+      verifyDotyposWebhookRequest(
+        request(JSON.stringify([reservationRecord]), ""),
+        {
+          requireSecret: false,
+        }
+      )
+    );
+
+    expect(payload.kind).toBe("reservation");
+  });
+
+  test("rejects invalid JSON", async () => {
+    const result = await Effect.runPromise(
+      verifyDotyposWebhookRequest(request("not json"), {
+        requireSecret: true,
+        secret: "webhook-secret",
+      }).pipe(Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("DotyposWebhookPayloadError");
+      expect(result.failure.message).toBe("Failed to parse request body");
+    }
   });
 });
