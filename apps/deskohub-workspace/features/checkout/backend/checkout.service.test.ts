@@ -215,6 +215,7 @@ describe("CheckoutService", () => {
       failureCode: "nexi_hpp_create_failed",
       providerStatus: "hpp_create_failed",
     });
+    expect(holdCleanup.sweepExpiredHolds).not.toHaveBeenCalled();
     expect(markTerminal).not.toHaveBeenCalled();
     expect(markPaymentTerminal).not.toHaveBeenCalled();
   });

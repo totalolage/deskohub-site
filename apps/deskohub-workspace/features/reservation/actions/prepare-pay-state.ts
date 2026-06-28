@@ -43,6 +43,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { ReservationHoldCleanupQueueService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
 import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import { WorkspaceTableAssignmentServiceLive } from "@/features/checkout/backend/workspace-table-assignment.service";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
@@ -256,6 +257,37 @@ const getExistingReservationSubmitMessage = (
     ? m.reservationAlreadyPaidMessage({}, { locale })
     : m.reservationErrorMessage({}, { locale });
 
+const enqueueReservationHoldCleanup = Effect.fn(
+  "prepareWorkspacePayState.enqueueReservationHoldCleanup"
+)(function* (input: {
+  readonly orderId: string;
+  readonly reservationHoldExpiresAt: Date | null;
+}) {
+  if (!input.reservationHoldExpiresAt) {
+    yield* Effect.logWarning(
+      "Workspace reservation hold cleanup enqueue skipped: missing hold expiry",
+      { orderId: input.orderId }
+    );
+    return;
+  }
+
+  const queue = yield* ReservationHoldCleanupQueueService;
+  yield* queue
+    .enqueueCleanup({
+      orderId: input.orderId,
+      reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+    })
+    .pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Workspace reservation hold cleanup enqueue failed", {
+          orderId: input.orderId,
+          cause,
+        })
+      ),
+      Effect.ignore
+    );
+});
+
 class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
   readonly reservation: WorkspaceReservation;
 }> {}
@@ -463,6 +495,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           evidence,
         }))
       );
+      yield* enqueueReservationHoldCleanup({
+        orderId: existingReservation.id,
+        reservationHoldExpiresAt: existingReservation.reservationHoldExpiresAt,
+      });
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
       return toReadyResult({
@@ -541,6 +577,11 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
             evidence,
           }))
         );
+        yield* enqueueReservationHoldCleanup({
+          orderId: claimConflictReservation.id,
+          reservationHoldExpiresAt:
+            claimConflictReservation.reservationHoldExpiresAt,
+        });
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
         return toReadyResult({
@@ -736,6 +777,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         evidence,
       }))
     );
+    yield* enqueueReservationHoldCleanup({
+      orderId: reservationDraft.id,
+      reservationHoldExpiresAt: holdExpiresAt,
+    });
 
     yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
@@ -778,6 +823,7 @@ const preparePayStateAction = createEffectSafeAction(
     ),
     WorkspaceTableAssignmentServiceLive.pipe(Layer.provide(DotyposServiceLive)),
     WorkspaceCheckoutAccessCodeServiceLive,
+    ReservationHoldCleanupQueueService.Live,
     PostHogEventServiceLive,
     DotyposServiceLive
   )

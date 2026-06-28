@@ -500,17 +500,6 @@ export const CheckoutServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ input, locale });
           yield* Effect.logInfo("Hosted payment checkout creation started");
 
-          yield* holdCleanup
-            .sweepExpiredHolds({ now: new Date(), limit: 10 })
-            .pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning("Checkout expired hold sweep failed", {
-                  cause,
-                })
-              ),
-              Effect.ignore
-            );
-
           if (input.legalConsent !== true) {
             yield* Effect.logInfo(
               "Hosted payment checkout rejected: missing legal consent"
