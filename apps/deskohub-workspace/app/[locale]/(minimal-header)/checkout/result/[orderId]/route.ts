@@ -1,6 +1,5 @@
 import { Effect, Option, Ref, Schema } from "effect";
-import { notFound, redirect } from "next/navigation";
-import { connection } from "next/server";
+import { NextResponse } from "next/server";
 import {
   CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
@@ -14,9 +13,8 @@ import type { SearchParamsRecord } from "@/shared/utils";
 
 export const maxDuration = 45;
 
-type LocalizedCheckoutResultPageProps = {
-  params: Promise<{ locale: string; orderId: string }>;
-  searchParams: Promise<SearchParamsRecord>;
+type LocalizedCheckoutResultRouteContext = {
+  readonly params: Promise<{ locale: string; orderId: string }>;
 };
 
 const decodeCheckoutResultParams = getParamsDecoder({
@@ -113,32 +111,37 @@ const getCheckoutStatusRedirectPath = (input: {
   return `${url.pathname}${url.search}`;
 };
 
-export default async function LocalizedCheckoutResultPage({
-  params,
-  searchParams,
-}: LocalizedCheckoutResultPageProps) {
-  await connection();
+const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
+  Object.fromEntries(url.searchParams);
+
+export async function GET(
+  request: Request,
+  { params }: LocalizedCheckoutResultRouteContext
+): Promise<NextResponse> {
   const decodedParams = decodeCheckoutResultParams(await params);
-  const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
-  const rawSearchParams = await searchParams;
+  const routeParams = Option.getOrUndefined(decodedParams);
+  if (!routeParams) return new NextResponse(null, { status: 404 });
+
+  const { locale, orderId } = routeParams;
+  const rawSearchParams = getSearchParamsRecord(new URL(request.url));
   const status = await loadCheckoutStatusWithBriefRetry(orderId);
   const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 
   if (retryOutcome) {
-    redirect(
-      getCheckoutPaymentRetryRedirectPath({
-        locale,
-        orderId,
-        outcome: retryOutcome,
-        searchParams: rawSearchParams,
-      })
+    return NextResponse.redirect(
+      new URL(
+        getCheckoutPaymentRetryRedirectPath({
+          locale,
+          orderId,
+          outcome: retryOutcome,
+          searchParams: rawSearchParams,
+        }),
+        request.url
+      )
     );
   }
 
-  redirect(
-    getCheckoutStatusRedirectPath({
-      locale,
-      orderId,
-    })
+  return NextResponse.redirect(
+    new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
   );
 }

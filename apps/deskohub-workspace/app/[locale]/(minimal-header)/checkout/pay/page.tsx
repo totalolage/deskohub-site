@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { Suspense } from "react";
 import {
   openPayState,
   payStateTokenQueryParam,
@@ -72,10 +73,24 @@ export default async function LocalizedCheckoutPayPage({
   params,
   searchParams,
 }: LocalizedCheckoutPayPageProps) {
-  await connection();
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
+  return runWithRequestLocale(locale, () => (
+    <Suspense fallback={null}>
+      <CheckoutPayContent locale={locale} searchParams={searchParams} />
+    </Suspense>
+  ));
+}
+
+async function CheckoutPayContent({
+  locale,
+  searchParams,
+}: {
+  readonly locale: Locale;
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
+  await connection();
   const payStateToken = getSearchParam(
     await searchParams,
     payStateTokenQueryParam
