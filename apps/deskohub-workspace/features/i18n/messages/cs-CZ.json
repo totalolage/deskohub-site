@@ -329,7 +329,7 @@
   "checkoutPayPricingChangedBanner": "Cenu jsme aktualizovali podle aktuálních údajů rezervace. Pokračujte jen tehdy, pokud je částka v pořádku.",
   "checkoutPayReviewUpdatedPriceButton": "Zkontrolovat aktualizovanou cenu",
   "checkoutPayInvalidStateTitle": "Tento platební odkaz vypršel.",
-  "checkoutPayInvalidStateLead": "Pro pokračování prosím spusťte novou rezervaci.",
+  "checkoutPayInvalidStateLead": ":(",
   "checkoutPayRestartButton": "Začít znovu",
   "checkoutPayStateTooLarge": "Pro pokračování k platbě prosím zkraťte zprávu a zkuste to znovu.",
   "checkoutPaymentRetryMetadataTitle": "Opakovat platbu | Deskohub Workspace",
