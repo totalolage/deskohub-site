@@ -60,14 +60,14 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
     : undefined;
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#140b20] text-amber-50">
+    <main className="min-h-screen overflow-hidden bg-[#060950] text-[#FFFFFE]">
       <section className="relative pb-16 lg:pb-24">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.35),_transparent_34%),radial-gradient(circle_at_80%_10%,_rgba(217,70,239,0.28),_transparent_30%),linear-gradient(135deg,_rgba(20,11,32,0.95),_rgba(48,16,72,0.92))]" />
-        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#140b20] to-transparent" />
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(109,170,156,0.26),_transparent_34%),radial-gradient(circle_at_80%_10%,_rgba(137,158,40,0.22),_transparent_30%),linear-gradient(135deg,_rgba(6,9,80,0.96),_rgba(35,35,33,0.93))]" />
+        <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#060950] to-transparent" />
 
         <h1 className="sr-only">{m["palmovcon2026.title"]()}</h1>
         {heroImage ? (
-          <div className="relative h-[500px] overflow-hidden bg-[linear-gradient(90deg,_#060950_0_50%,_#242321_50%_100%)]">
+          <div className="relative h-[500px] overflow-hidden bg-[linear-gradient(90deg,_#060950_0_50%,_#232321_50%_100%)]">
             <CloudinaryImage
               alt={m["palmovcon2026.heroAlt"]()}
               asset={heroImage}
@@ -79,7 +79,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
             />
           </div>
         ) : (
-          <div className="relative flex h-[500px] items-center bg-[linear-gradient(90deg,_#060950_0_50%,_#242321_50%_100%)] px-4 sm:px-6 lg:px-8">
+          <div className="relative flex h-[500px] items-center bg-[linear-gradient(90deg,_#060950_0_50%,_#232321_50%_100%)] px-4 sm:px-6 lg:px-8">
             <h1 className="max-w-4xl font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
               {m["palmovcon2026.title"]()}
             </h1>
@@ -88,50 +88,50 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
 
         <div className="relative mx-auto mt-12 grid max-w-6xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:px-8">
           <div>
-            <p className="inline-flex rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.28em]">
+            <p className="inline-flex rounded-full border border-[#6DAA9C]/50 bg-[#6DAA9C]/15 px-4 py-2 font-semibold text-[#FFFFFE] text-sm uppercase tracking-[0.28em]">
               {m["palmovcon2026.date"]()}
             </p>
-            <p className="mt-5 max-w-2xl text-2xl text-amber-100/90">
+            <p className="mt-5 max-w-2xl text-2xl text-[#FFFFFE]/90">
               {m["palmovcon2026.subtitle"]()}
             </p>
-            <p className="mt-8 max-w-2xl text-lg text-amber-50/80 leading-8">
+            <p className="mt-8 max-w-2xl text-lg text-[#FFFFFE]/80 leading-8">
               {m["palmovcon2026.intro"]()}
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
               <Button
                 asChild
-                className="h-14 rounded-full bg-amber-300 px-8 font-black text-[#140b20] text-base hover:bg-amber-200"
+                className="h-14 rounded-full bg-[#899E28] px-8 font-black text-[#060950] text-base hover:bg-[#6DAA9C]"
                 size="lg"
               >
                 <LocalizedLink href={reservationHref}>
                   {m["palmovcon2026.reservationCta"]()}
                 </LocalizedLink>
               </Button>
-              <span className="text-amber-100/70 text-sm">
+              <span className="text-[#FFFFFE]/70 text-sm">
                 {m["palmovcon2026.location"]()}
               </span>
             </div>
           </div>
 
-          <aside className="rounded-[2rem] border border-amber-200/20 bg-black/25 p-6 shadow-2xl shadow-fuchsia-950/50 backdrop-blur">
-            <h2 className="font-black text-2xl text-amber-200">
+          <aside className="rounded-[2rem] border border-[#6DAA9C]/25 bg-[#232321]/70 p-6 shadow-2xl shadow-[#060950]/50 backdrop-blur">
+            <h2 className="font-black text-2xl text-[#6DAA9C]">
               {m["palmovcon2026.quickSummaryTitle"]()}
             </h2>
             <dl className="mt-6 grid gap-5">
               <div>
-                <dt className="font-semibold text-amber-100/60 text-sm uppercase tracking-[0.2em]">
+                <dt className="font-semibold text-[#FFFFFE]/60 text-sm uppercase tracking-[0.2em]">
                   {m["palmovcon2026.dateLabel"]()}
                 </dt>
                 <dd className="mt-1 text-2xl">{m["palmovcon2026.date"]()}</dd>
               </div>
               <div>
-                <dt className="font-semibold text-amber-100/60 text-sm uppercase tracking-[0.2em]">
+                <dt className="font-semibold text-[#FFFFFE]/60 text-sm uppercase tracking-[0.2em]">
                   {m["palmovcon2026.locationLabel"]()}
                 </dt>
                 <dd className="mt-1 text-2xl">{m["palmovcon2026.venue"]()}</dd>
               </div>
               <div>
-                <dt className="font-semibold text-amber-100/60 text-sm uppercase tracking-[0.2em]">
+                <dt className="font-semibold text-[#FFFFFE]/60 text-sm uppercase tracking-[0.2em]">
                   {m["palmovcon2026.entryFeeLabel"]()}
                 </dt>
                 <dd className="mt-1 text-2xl">
@@ -144,8 +144,8 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       </section>
 
       <section className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-3 lg:px-8">
-        <div className="rounded-3xl border border-white/10 bg-white/10 p-6 lg:col-span-1">
-          <p className="font-semibold text-amber-200 text-sm uppercase tracking-[0.22em]">
+        <div className="rounded-3xl border border-[#6DAA9C]/20 bg-[#232321]/70 p-6 lg:col-span-1">
+          <p className="font-semibold text-[#6DAA9C] text-sm uppercase tracking-[0.22em]">
             {m["palmovcon2026.practicalInfoEyebrow"]()}
           </p>
           <h2 className="mt-3 font-black text-3xl">
@@ -153,19 +153,19 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
           </h2>
         </div>
         <div className="grid gap-4 lg:col-span-2 sm:grid-cols-2">
-          <article className="rounded-3xl bg-amber-100 p-6 text-[#211326]">
+          <article className="rounded-3xl bg-[#FFFFFE] p-6 text-[#060950]">
             <h3 className="font-black text-xl">
               {m["palmovcon2026.entryFeeTitle"]()}
             </h3>
-            <p className="mt-3 text-[#211326]/80">
+            <p className="mt-3 text-[#060950]/75">
               {m["palmovcon2026.entryFeeDescription"]()}
             </p>
           </article>
-          <article className="rounded-3xl bg-fuchsia-200 p-6 text-[#211326]">
+          <article className="rounded-3xl bg-[#6DAA9C] p-6 text-[#060950]">
             <h3 className="font-black text-xl">
               {m["palmovcon2026.complexGamesTitle"]()}
             </h3>
-            <p className="mt-3 text-[#211326]/80">
+            <p className="mt-3 text-[#060950]/80">
               {m["palmovcon2026.complexGamesDescription"]()}
             </p>
           </article>
@@ -175,14 +175,14 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       <section className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <p className="font-semibold text-amber-200 text-sm uppercase tracking-[0.22em]">
+            <p className="font-semibold text-[#899E28] text-sm uppercase tracking-[0.22em]">
               {m["palmovcon2026.scheduleEyebrow"]()}
             </p>
             <h2 className="mt-3 font-black text-4xl">
               {m["palmovcon2026.scheduleTitle"]()}
             </h2>
           </div>
-          <p className="max-w-xl text-amber-50/65">
+          <p className="max-w-xl text-[#FFFFFE]/65">
             {m["palmovcon2026.scheduleDescription"]()}
           </p>
         </div>
@@ -190,16 +190,16 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         <div className="mt-8 grid gap-5 md:grid-cols-2">
           {schedule.map((item) => (
             <article
-              className="rounded-[1.75rem] border border-amber-100/15 bg-[#211326] p-6 shadow-xl shadow-black/20"
+              className="rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#232321] p-6 shadow-xl shadow-[#060950]/25"
               key={item.title}
             >
-              <p className="font-bold text-amber-200">{item.time}</p>
+              <p className="font-bold text-[#6DAA9C]">{item.time}</p>
               <h3 className="mt-3 font-black text-2xl">{item.title}</h3>
-              <p className="mt-4 text-amber-50/75 leading-7">
+              <p className="mt-4 text-[#FFFFFE]/75 leading-7">
                 {item.description}
               </p>
               {item.note ? (
-                <p className="mt-5 rounded-2xl bg-amber-300/15 px-4 py-3 font-semibold text-amber-100">
+                <p className="mt-5 rounded-2xl bg-[#899E28]/25 px-4 py-3 font-semibold text-[#FFFFFE]">
                   {item.note}
                 </p>
               ) : null}
@@ -209,10 +209,10 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       </section>
 
       <section className="px-4 py-16 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl rounded-[2rem] bg-amber-300 p-8 text-[#140b20] shadow-2xl shadow-amber-950/30 lg:p-10">
+        <div className="mx-auto max-w-6xl rounded-[2rem] bg-[#899E28] p-8 text-[#060950] shadow-2xl shadow-[#060950]/30 lg:p-10">
           <div className="grid gap-8 lg:grid-cols-[1fr_auto] lg:items-center">
             <div>
-              <p className="font-semibold text-sm uppercase tracking-[0.22em] text-[#140b20]/70">
+              <p className="font-semibold text-sm uppercase tracking-[0.22em] text-[#060950]/70">
                 {m["palmovcon2026.footerEyebrow"]()}
               </p>
               <h2 className="mt-3 font-black text-3xl">
@@ -222,7 +222,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button
                 asChild
-                className="h-12 rounded-full bg-[#140b20] px-6 font-bold text-amber-50 hover:bg-[#2a1644]"
+                className="h-12 rounded-full bg-[#060950] px-6 font-bold text-[#FFFFFE] hover:bg-[#232321]"
               >
                 <a href={facebookEventHref} rel="noreferrer" target="_blank">
                   {m["palmovcon2026.facebookCta"]()}
@@ -230,7 +230,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
               </Button>
               <Button
                 asChild
-                className="h-12 rounded-full border-[#140b20] px-6 font-bold text-[#140b20] hover:bg-[#140b20]/10"
+                className="h-12 rounded-full border-[#060950] px-6 font-bold text-[#060950] hover:bg-[#060950]/10"
                 variant="outline"
               >
                 <LocalizedLink href={reservationHref}>
