@@ -217,7 +217,7 @@ describe("ReservationHoldCleanupQueueService", () => {
     );
   });
 
-  test("vercel config wires the queue trigger and hourly repair cron", async () => {
+  test("vercel config wires the queue trigger and daily repair cron", async () => {
     const { reservationHoldCleanupQueueTopic } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
@@ -227,7 +227,7 @@ describe("ReservationHoldCleanupQueueService", () => {
 
     expect(config.crons).toContainEqual({
       path: "/api/cron/workspace/reservation-holds",
-      schedule: "0 * * * *",
+      schedule: "0 0 * * *",
     });
     expect(
       config.functions[
