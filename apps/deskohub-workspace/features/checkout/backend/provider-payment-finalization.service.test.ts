@@ -305,4 +305,137 @@ describe("ProviderPaymentFinalizationService", () => {
       }
     });
   }
+
+  test("returns not_verifiable for pending attempts missing local verification data", async () => {
+    const {
+      ProviderPaymentFinalizationService,
+      ProviderPaymentFinalizationServiceLive,
+    } = await import("./provider-payment-finalization.service");
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+
+    const verifyPaymentOutcome = mock(() => Effect.die("not used"));
+    const result = await Effect.gen(function* () {
+      const service = yield* ProviderPaymentFinalizationService;
+      return yield* service.finalizePendingProviderPayment({
+        orderId: "reservation-id",
+        paymentAttemptId: "attempt-id",
+      });
+    }).pipe(
+      Effect.provide(ProviderPaymentFinalizationServiceLive),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, {
+          findById: mock(() => Effect.succeed(pendingReservation)),
+        } as unknown as WorkspaceReservationRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspacePaidFulfillmentService, {
+          fulfillPaidOrder: mock(() => Effect.void),
+        })
+      ),
+      Effect.provide(
+        Layer.succeed(PaymentAttemptRepository, {
+          findById: mock(() =>
+            Effect.succeed({ ...pendingAttempt, securityToken: null })
+          ),
+        } as unknown as PaymentAttemptRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
+      ),
+      Effect.provide(
+        Layer.succeed(NexiService, {
+          verifyPaymentOutcome,
+        } as unknown as NexiServiceType)
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toBe("not_verifiable");
+    expect(verifyPaymentOutcome).not.toHaveBeenCalled();
+  });
+
+  test("returns provider_verification_failed when Nexi verification errors", async () => {
+    const {
+      ProviderPaymentFinalizationService,
+      ProviderPaymentFinalizationServiceLive,
+    } = await import("./provider-payment-finalization.service");
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+    const { WorkspacePaidFulfillmentService } = await import(
+      "./paid-fulfillment.service"
+    );
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { NexiService } = await import("@deskohub/nexi");
+
+    const markPaidForReservation = mock(() => Effect.die("not used"));
+    const markTerminalForReservation = mock(() => Effect.die("not used"));
+    const verifyPaymentOutcome = mock(() =>
+      Effect.fail(new Error("nexi down"))
+    );
+
+    const result = await Effect.gen(function* () {
+      const service = yield* ProviderPaymentFinalizationService;
+      return yield* service.finalizePendingProviderPayment({
+        orderId: "reservation-id",
+        paymentAttemptId: "attempt-id",
+      });
+    }).pipe(
+      Effect.provide(ProviderPaymentFinalizationServiceLive),
+      Effect.provide(
+        Layer.succeed(WorkspaceReservationRepository, {
+          findById: mock(() => Effect.succeed(pendingReservation)),
+        } as unknown as WorkspaceReservationRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(WorkspacePaidFulfillmentService, {
+          fulfillPaidOrder: mock(() => Effect.void),
+        })
+      ),
+      Effect.provide(
+        Layer.succeed(PaymentAttemptRepository, {
+          findById: mock(() => Effect.succeed(pendingAttempt)),
+          markPaidForReservation,
+          markTerminalForReservation,
+        } as unknown as PaymentAttemptRepositoryType)
+      ),
+      Effect.provide(
+        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
+      ),
+      Effect.provide(
+        Layer.succeed(NexiService, {
+          verifyPaymentOutcome,
+        } as unknown as NexiServiceType)
+      ),
+      Effect.runPromise
+    );
+
+    expect(result).toBe("provider_verification_failed");
+    expect(verifyPaymentOutcome).toHaveBeenCalledWith({
+      orderId: "provider-order-id",
+      correlationId: "correlation-id",
+      amount: "35000",
+      currency: "CZK",
+      securityToken: "security-token",
+    });
+    expect(markPaidForReservation).not.toHaveBeenCalled();
+    expect(markTerminalForReservation).not.toHaveBeenCalled();
+  });
 });

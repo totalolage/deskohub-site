@@ -33,6 +33,7 @@ export type ProviderPaymentFinalizationResult =
   | "not_found"
   | "not_pending"
   | "not_verifiable"
+  | "provider_verification_failed"
   | "verification_mismatch"
   | "pending"
   | "paid"
@@ -199,9 +200,9 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
 
           if (!verification) {
             yield* Effect.logWarning(
-              "Payment finalization returned not_verifiable"
+              "Payment finalization returned provider_verification_failed"
             );
-            return "not_verifiable";
+            return "provider_verification_failed";
           }
           if (verification.mismatches.length > 0) {
             yield* Effect.logWarning(
