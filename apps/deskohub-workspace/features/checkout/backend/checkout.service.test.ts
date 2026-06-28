@@ -172,9 +172,9 @@ describe("CheckoutService", () => {
       verifyPaymentOutcome: mock(() => Effect.die("not used")),
     } as unknown as typeof NexiService.Service;
     const holdCleanup: ReservationHoldCleanupServiceType = {
-      cancelOrderHold: mock(() => Effect.void),
+      cancelOrderHold: mock(() => Effect.succeed("cancelled" as const)),
       sweepExpiredHolds: mock(() =>
-        Effect.succeed({ cancelled: 0, failed: 0 })
+        Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
       ),
     };
 

@@ -99,20 +99,9 @@ const runWithInventory = async <A>(
   } = {}
 ) => {
   const availability = await import("./workspace-availability.service");
-  const cleanup = await import(
-    "@/features/checkout/backend/reservation-hold-cleanup.service"
-  );
 
   return effect.pipe(
     Effect.provide(availability.WorkspaceAvailabilityServiceLive),
-    Effect.provide(
-      Layer.succeed(cleanup.ReservationHoldCleanupService, {
-        cancelOrderHold: mock(() => Effect.void),
-        sweepExpiredHolds: mock(() =>
-          Effect.succeed({ cancelled: 0, failed: 0 })
-        ),
-      })
-    ),
     Effect.provide(
       Layer.succeed(DotyposService, {
         getTables: mock(() =>

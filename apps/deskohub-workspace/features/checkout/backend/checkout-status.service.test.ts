@@ -110,9 +110,9 @@ describe("CheckoutStatusService", () => {
       finalizePendingProviderPayment,
     };
     const holdCleanup: ReservationHoldCleanupServiceType = {
-      cancelOrderHold: mock(() => Effect.void),
+      cancelOrderHold: mock(() => Effect.succeed("cancelled" as const)),
       sweepExpiredHolds: mock(() =>
-        Effect.succeed({ cancelled: 0, failed: 0 })
+        Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
       ),
     };
     const paymentAttempts = {
@@ -165,7 +165,7 @@ describe("CheckoutStatusService", () => {
     );
 
     const orderId = "reservation-provider-return";
-    const cancelOrderHold = mock(() => Effect.void);
+    const cancelOrderHold = mock(() => Effect.succeed("cancelled" as const));
     const finalization: ProviderPaymentFinalizationServiceType = {
       finalizePendingProviderPayment: mock(() => Effect.succeed("terminal")),
     };
@@ -175,7 +175,7 @@ describe("CheckoutStatusService", () => {
     const holdCleanup: ReservationHoldCleanupServiceType = {
       cancelOrderHold,
       sweepExpiredHolds: mock(() =>
-        Effect.succeed({ cancelled: 0, failed: 0 })
+        Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
       ),
     };
     const paymentAttempts = {

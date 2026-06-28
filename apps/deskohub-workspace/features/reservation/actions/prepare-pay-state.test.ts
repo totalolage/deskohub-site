@@ -138,9 +138,9 @@ describe("prepareWorkspacePayStateEffect", () => {
       ),
       Effect.provide(
         Layer.succeed(ReservationHoldCleanupService, {
-          cancelOrderHold: mock(() => Effect.void),
+          cancelOrderHold: mock(() => Effect.succeed("cancelled" as const)),
           sweepExpiredHolds: mock(() =>
-            Effect.succeed({ cancelled: 0, failed: 0 })
+            Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
           ),
         } satisfies ReservationHoldCleanupServiceType)
       ),

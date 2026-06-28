@@ -27,16 +27,25 @@ export class ReservationHoldCleanupError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+export type ReservationHoldCleanupOutcome = "cancelled" | "skipped";
+
 export interface ReservationHoldCleanupService {
   readonly cancelOrderHold: (input: {
     readonly orderId: string;
     readonly holdExpiredAt?: Date;
-  }) => Effect.Effect<void, ReservationHoldCleanupError>;
+  }) => Effect.Effect<
+    ReservationHoldCleanupOutcome,
+    ReservationHoldCleanupError
+  >;
   readonly sweepExpiredHolds: (input: {
     readonly now: Date;
     readonly limit: number;
   }) => Effect.Effect<
-    { readonly cancelled: number; readonly failed: number },
+    {
+      readonly cancelled: number;
+      readonly skipped: number;
+      readonly failed: number;
+    },
     ReservationHoldCleanupError
   >;
 }
@@ -101,7 +110,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             yield* Effect.logWarning(
               "Reservation hold cancellation skipped: provider finalized paid"
             );
-            return;
+            return "skipped";
           }
           if (result !== "terminal") {
             yield* Effect.logWarning(
@@ -128,7 +137,26 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                 ),
                 Effect.ignore
               );
-            return;
+
+            if (input.holdExpiredAt) {
+              yield* reservations
+                .recordHoldCleanupSkipped({
+                  id: active.id,
+                  holdExpiredAt: input.holdExpiredAt,
+                  failureCode: "payment_outcome_unconfirmed_before_cleanup",
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new ReservationHoldCleanupError({
+                        message:
+                          "Skipped reservation hold cleanup marker could not be stored.",
+                        cause,
+                      })
+                  )
+                );
+            }
+            return "skipped";
           }
         }
 
@@ -165,19 +193,19 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: claim not cancellable"
           );
-          return;
+          return "skipped";
         }
         if (!claimed.dotyposReservationId) {
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: missing Dotypos reservation"
           );
-          return;
+          return "skipped";
         }
         if (claimed.paymentState === "paid") {
           yield* Effect.logWarning(
             "Reservation hold cancellation skipped: reservation paid"
           );
-          return;
+          return "skipped";
         }
 
         yield* Effect.logInfo("Dotypos reservation hold cancellation started");
@@ -221,18 +249,19 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 
         yield* Effect.logInfo("Reservation hold cancelled marker started");
         const cancelledAt = new Date();
-        yield* reservations
+        const markedCancelled = yield* reservations
           .markCancelled({
             id: claimed.id,
             cancelledAt,
             holdExpiredAt: input.holdExpiredAt,
           })
           .pipe(
+            Effect.as(true),
             Effect.catchTag("WorkspaceReservationStateError", () =>
               Effect.logWarning(
                 "Reservation hold cancellation marker skipped: reservation state changed",
                 { orderId: claimed.id }
-              )
+              ).pipe(Effect.as(false))
             ),
             Effect.mapError(
               (cause) =>
@@ -243,6 +272,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                 })
             )
           );
+        if (!markedCancelled) return "skipped";
         yield* Effect.logInfo("Reservation hold marked cancelled");
         yield* captureReservationAbandoned({
           reservation: claimed,
@@ -273,6 +303,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             Effect.ignore
           );
         yield* Effect.logInfo("Reservation hold cancellation event recorded");
+        return "cancelled";
       },
       (effect, input) => effect.pipe(Effect.scoped, Effect.annotateLogs(input))
     );
@@ -306,6 +337,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             }
           );
           let cancelled = 0;
+          let skipped = 0;
           let failed = 0;
 
           for (const order of orders) {
@@ -319,14 +351,15 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ order, result });
 
             yield* Match.value(result).pipe(
-              Match.tag("Success", () =>
+              Match.tag("Success", ({ success }) =>
                 Effect.gen(function* () {
-                  cancelled += 1;
+                  if (success === "cancelled") cancelled += 1;
+                  else skipped += 1;
                   yield* Effect.logInfo(
                     "Expired reservation hold cleanup completed",
                     {
                       orderId: order.id,
-                      result: "cancelled",
+                      result: success,
                     }
                   );
                 })
@@ -347,7 +380,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             );
           }
 
-          const summary = { cancelled, failed };
+          const summary = { cancelled, skipped, failed };
           yield* Effect.logInfo(
             "Expired reservation hold sweep completed",
             summary

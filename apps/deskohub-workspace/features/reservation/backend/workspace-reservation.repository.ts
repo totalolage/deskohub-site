@@ -1,4 +1,4 @@
-import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { Context, Data, Effect, Layer } from "effect";
 import {
   type DatabaseError,
@@ -77,6 +77,11 @@ export interface WorkspaceReservationRepository {
     readonly id: string;
     readonly failureCode: string;
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  readonly recordHoldCleanupSkipped: (input: {
+    readonly id: string;
+    readonly holdExpiredAt: Date;
+    readonly failureCode: string;
+  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
   readonly markPaymentPaid: (input: {
     readonly id: string;
     readonly paymentAttemptId: string;
@@ -112,6 +117,7 @@ export interface WorkspaceReservationRepository {
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
   readonly selectExpiredHolds: (input: {
     readonly now: Date;
+    readonly limit: number;
   }) => Effect.Effect<readonly WorkspaceReservation[], DatabaseError>;
 }
 
@@ -462,6 +468,39 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           "Workspace reservation was not found."
         );
       }),
+      recordHoldCleanupSkipped: Effect.fn(
+        "workspaceReservations.recordHoldCleanupSkipped"
+      )(function* (input) {
+        const updated = yield* runDb(
+          "workspaceReservations.recordHoldCleanupSkipped",
+          () =>
+            db
+              .update(workspaceReservations)
+              .set({
+                reservationHoldExpiredAt: input.holdExpiredAt,
+                failureCode: input.failureCode,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  eq(workspaceReservations.reservationState, "held"),
+                  sql`${workspaceReservations.paymentState} <> 'paid'`,
+                  lte(
+                    workspaceReservations.reservationHoldExpiresAt,
+                    input.holdExpiredAt
+                  )
+                )
+              )
+              .returning({ id: workspaceReservations.id })
+        );
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.recordHoldCleanupSkipped",
+          input.id,
+          "Only unpaid expired held reservations can record skipped cleanup."
+        );
+      }),
       markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")(
         function* (input) {
           const updated = yield* runDb(
@@ -698,6 +737,13 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   lte(workspaceReservations.reservationHoldExpiresAt, input.now)
                 )
               )
+              .orderBy(
+                sql`${workspaceReservations.reservationHoldExpiredAt} is not null`,
+                asc(workspaceReservations.reservationHoldExpiredAt),
+                asc(workspaceReservations.reservationHoldExpiresAt),
+                asc(workspaceReservations.id)
+              )
+              .limit(input.limit)
           );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))

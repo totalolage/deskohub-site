@@ -773,7 +773,6 @@ const preparePayStateAction = createEffectSafeAction(
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
     ReservationHoldCleanupServiceLiveWithDependencies,
     WorkspaceAvailabilityServiceLive.pipe(
-      Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
       Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
       Layer.provide(DotyposServiceLive)
     ),
