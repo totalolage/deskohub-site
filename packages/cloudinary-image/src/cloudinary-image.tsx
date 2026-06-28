@@ -9,6 +9,7 @@ type CloudinaryImageVariant = "hero" | "gallery" | "thumbnail" | "full";
 interface CloudinaryImageProps
   extends Omit<CldImageProps, "src" | "alt" | "width" | "height" | "fill"> {
   asset: CloudinaryAsset;
+  alt?: string;
   variant?: CloudinaryImageVariant;
   size?: {
     width: ImageSize;
@@ -54,6 +55,7 @@ const classNames = (...values: Array<string | undefined>) =>
 
 export function CloudinaryImage({
   asset,
+  alt,
   variant = "gallery",
   size,
   blurDataURL,
@@ -103,7 +105,7 @@ export function CloudinaryImage({
   return (
     <CldImage
       src={asset.public_id}
-      alt={asset.context?.custom?.alt || asset.public_id}
+      alt={alt ?? asset.context?.custom?.alt ?? asset.public_id}
       blurDataURL={blurDataURL}
       placeholder={blurDataURL ? "blur" : "empty"}
       className={finalClassName}

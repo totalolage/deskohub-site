@@ -10,12 +10,34 @@ type SearchCall = {
   sort?: readonly [string, string];
 };
 
+type ResourceCall = {
+  publicId: string;
+  options: Record<string, unknown>;
+};
+
 const searchCalls: SearchCall[] = [];
+const resourceCalls: ResourceCall[] = [];
 let queuedResults: unknown[] = [];
+let queuedResourceResults: unknown[] = [];
 let executeAttempts = 0;
+let resourceAttempts = 0;
 
 const cloudinary = {
   config: mock(() => undefined),
+  api: {
+    resource: mock(
+      async (publicId: string, options: Record<string, unknown>) => {
+        resourceCalls.push({ publicId, options });
+        resourceAttempts += 1;
+        const next = queuedResourceResults.shift();
+        if (next instanceof Error) throw next;
+        if (next && typeof next === "object" && "throw" in next) {
+          throw next.throw;
+        }
+        return next;
+      }
+    ),
+  },
   search: {
     expression: mock((expression: string) => {
       const call: SearchCall = { expression, fields: [] };
@@ -77,9 +99,13 @@ const asset = {
 
 beforeEach(() => {
   searchCalls.length = 0;
+  resourceCalls.length = 0;
   queuedResults = [];
+  queuedResourceResults = [];
   executeAttempts = 0;
+  resourceAttempts = 0;
   cloudinary.config.mockClear();
+  cloudinary.api.resource.mockClear();
   cloudinary.search.expression.mockClear();
 });
 
@@ -94,6 +120,43 @@ const makeService = () =>
   );
 
 describe("CloudinaryService", () => {
+  test("gets an image by public ID", async () => {
+    queuedResourceResults = [asset];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.getByPublicId("gallery/image")
+    );
+
+    expect(result).toEqual(asset);
+    expect(resourceCalls).toEqual([
+      {
+        publicId: "gallery/image",
+        options: {
+          resource_type: "image",
+          type: "upload",
+          tags: true,
+          context: true,
+        },
+      },
+    ]);
+  });
+
+  test("retries 500 public ID lookup failures", async () => {
+    queuedResourceResults = [
+      { throw: { http_code: 500, message: "first" } },
+      asset,
+    ];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.getByPublicId("gallery/image")
+    );
+
+    expect(result).toEqual(asset);
+    expect(resourceAttempts).toBe(2);
+  });
+
   test("searches with default options and decodes assets", async () => {
     queuedResults = [{ resources: [asset] }];
 

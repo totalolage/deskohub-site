@@ -30,9 +30,7 @@ export const CloudinarySearchResponseSchema = Schema.Struct({
 });
 
 export const SearchOptionsSchema = Schema.Struct({
-  maxResults: Schema.optional(
-    Schema.Number.check(Schema.isGreaterThan(0))
-  ),
+  maxResults: Schema.optional(Schema.Number.check(Schema.isGreaterThan(0))),
   sortBy: Schema.optional(
     Schema.Literals(["created_at", "updated_at", "public_id"])
   ),

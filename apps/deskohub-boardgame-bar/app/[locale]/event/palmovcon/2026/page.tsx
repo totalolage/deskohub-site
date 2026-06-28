@@ -1,5 +1,8 @@
+import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
+import { generateBlurDataUrlCached } from "@/features/gallery/actions/generate-blur-data-url";
+import { getCloudinaryImageByPublicId } from "@/features/gallery/actions/get-cloudinary-image-by-public-id";
 import { m, setLocale } from "@/features/i18n";
 import { LocalizedLink } from "@/features/i18n/components/localized-link";
 import { Button } from "@/shared/components/ui/button";
@@ -9,6 +12,7 @@ import { isPalmovconPageExpired } from "./page-availability";
 
 const reservationHref = "/reservation?message=Palmovcon";
 const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
+const heroPublicId = "palmovcon-2026-hero";
 
 const getSchedule = () => [
   {
@@ -50,6 +54,10 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
   }
 
   const schedule = getSchedule();
+  const heroImage = await getCloudinaryImageByPublicId(heroPublicId);
+  const heroBlurDataURL = heroImage
+    ? await generateBlurDataUrlCached(heroImage).catch(() => undefined)
+    : undefined;
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#140b20] text-amber-50">
@@ -59,12 +67,27 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
 
         <div className="relative mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
           <div>
-            <p className="mb-4 inline-flex rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.28em]">
+            <h1 className="sr-only">{m["palmovcon2026.title"]()}</h1>
+            {heroImage ? (
+              <div className="overflow-hidden rounded-[2rem] border border-amber-200/20 bg-black/30 shadow-2xl shadow-fuchsia-950/50">
+                <CloudinaryImage
+                  alt={m["palmovcon2026.heroAlt"]()}
+                  asset={heroImage}
+                  blurDataURL={heroBlurDataURL}
+                  className="h-auto w-full"
+                  priority
+                  sizes="(min-width: 1024px) 58vw, 100vw"
+                  variant="full"
+                />
+              </div>
+            ) : (
+              <h1 className="max-w-4xl font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
+                {m["palmovcon2026.title"]()}
+              </h1>
+            )}
+            <p className="mt-8 inline-flex rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.28em]">
               {m["palmovcon2026.date"]()}
             </p>
-            <h1 className="max-w-4xl font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
-              {m["palmovcon2026.title"]()}
-            </h1>
             <p className="mt-5 max-w-2xl text-2xl text-amber-100/90">
               {m["palmovcon2026.subtitle"]()}
             </p>

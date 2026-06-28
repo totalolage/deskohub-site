@@ -13,6 +13,7 @@ import { CloudinarySearchError } from "./errors";
 import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
 import {
   type CloudinaryAsset,
+  CloudinaryAssetSchema,
   CloudinarySearchResponseSchema,
   type SearchOptions,
   SearchOptionsSchema,
@@ -21,6 +22,9 @@ import {
 export type { CloudinaryConfig } from "./config";
 
 export interface ICloudinaryService {
+  readonly getByPublicId: (
+    publicId: string
+  ) => Effect.Effect<CloudinaryAsset, CloudinarySearchError>;
   readonly searchByTag: (
     tag: string,
     options?: SearchOptions
@@ -59,6 +63,7 @@ export class CloudinaryService extends Context.Service<
       });
 
       const executeSearch = createSearchExecutor(config);
+      const getByPublicId = createPublicIdLookupExecutor();
 
       const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
         executeSearch(`tags=${tag} AND resource_type:image`, options);
@@ -128,6 +133,7 @@ export class CloudinaryService extends Context.Service<
       };
 
       return {
+        getByPublicId,
         searchByTag,
         searchByFolder,
         searchAll,
@@ -135,6 +141,19 @@ export class CloudinaryService extends Context.Service<
         searchWithTags,
       } satisfies ICloudinaryService;
     })
+  );
+}
+
+function decodeAssetResponse(result: unknown, publicId: string) {
+  return pipe(
+    Schema.decodeUnknownEffect(CloudinaryAssetSchema)(result),
+    Effect.mapError(
+      () =>
+        new CloudinarySearchError({
+          message: "Cloudinary response did not match the asset schema",
+          expression: `public_id=${publicId}`,
+        })
+    )
   );
 }
 
@@ -154,6 +173,15 @@ const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
 );
 
 function readCloudinaryHttpCode(error: unknown): number | undefined {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "http_code" in error &&
+    typeof error.http_code === "number"
+  ) {
+    return error.http_code;
+  }
+
   if (
     typeof error === "object" &&
     error !== null &&
@@ -305,6 +333,71 @@ function createSearchExecutor(config: CloudinaryConfig) {
     },
     (effect, expression, options) =>
       effect.pipe(Effect.scoped, Effect.annotateLogs({ expression, options }))
+  );
+}
+
+function createPublicIdLookupExecutor() {
+  return Effect.fn("cloudinary.api.resource")(
+    function* (publicId: string) {
+      if (!publicId.trim()) {
+        return yield* Effect.fail(
+          new CloudinarySearchError({
+            message: "Cloudinary publicId is required",
+            expression: "public_id=",
+          })
+        );
+      }
+
+      yield* Effect.annotateLogsScoped({ publicId });
+      yield* Effect.logInfo("Cloudinary public ID lookup started", {
+        publicId,
+      });
+
+      return yield* pipe(
+        Effect.tryPromise({
+          try: () =>
+            cloudinary.api.resource(publicId, {
+              resource_type: "image",
+              type: "upload",
+              tags: true,
+              context: true,
+            }),
+          catch: (error) =>
+            new CloudinarySearchError({
+              message: stringifyUnknownError(error),
+              expression: `public_id=${publicId}`,
+              httpCode: readCloudinaryHttpCode(error),
+            }),
+        }),
+        Effect.tap((rawResult) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ rawResult });
+            yield* Effect.logDebug("Cloudinary provider response received", {
+              rawResult,
+            });
+          })
+        ),
+        Effect.flatMap((result) => decodeAssetResponse(result, publicId)),
+        Effect.tap((asset) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ result: asset });
+            yield* Effect.logInfo("Cloudinary public ID lookup completed", {
+              publicId,
+            });
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary public ID lookup failed", {
+            publicId,
+            errorMessage: error.message,
+            httpCode: error.httpCode,
+          })
+        ),
+        Effect.retry(cloudinaryRetryPolicy)
+      );
+    },
+    (effect, publicId) =>
+      effect.pipe(Effect.scoped, Effect.annotateLogs({ publicId }))
   );
 }
 
