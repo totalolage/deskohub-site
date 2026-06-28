@@ -97,17 +97,9 @@ const runWithInventory = async <A>(
     readonly advisoryTables?: readonly Table[];
     readonly advisoryReservations?: readonly Reservation[];
     readonly advisoryLimitations?: readonly WorkspaceCalendarLimitationType[];
-    readonly sweepResult?: {
-      readonly cancelled: number;
-      readonly failed: number;
-    };
-    readonly onInvalidateAdvisory?: () => void;
   } = {}
 ) => {
   const availability = await import("./workspace-availability.service");
-  const cleanup = await import(
-    "@/features/checkout/backend/reservation-hold-cleanup.service"
-  );
   const freshInventory = {
     tables: [...(input.tables ?? defaultTables)],
     reservations: [...(input.reservations ?? [])],
@@ -125,17 +117,7 @@ const runWithInventory = async <A>(
       Layer.succeed(availability.WorkspaceAvailabilityInventoryService, {
         loadFresh: mock(() => Effect.succeed(freshInventory)),
         loadAdvisory: mock(() => Effect.succeed(advisoryInventory)),
-        invalidateAdvisory: mock(() =>
-          Effect.sync(() => input.onInvalidateAdvisory?.())
-        ),
-      })
-    ),
-    Effect.provide(
-      Layer.succeed(cleanup.ReservationHoldCleanupService, {
-        cancelOrderHold: mock(() => Effect.void),
-        sweepExpiredHolds: mock(() =>
-          Effect.succeed(input.sweepResult ?? { cancelled: 0, failed: 0 })
-        ),
+        invalidateAdvisory: mock(() => Effect.void),
       })
     ),
     Effect.runPromise
@@ -388,36 +370,5 @@ describe("WorkspaceAvailabilityService", () => {
     );
 
     expect(availability.unavailableDates).toContain(testDate);
-  });
-
-  test("bypasses advisory cache when expired holds were cancelled", async () => {
-    let invalidated = false;
-    const availability = await runWithInventory(
-      Effect.gen(function* () {
-        const availabilityModule = yield* Effect.promise(
-          () => import("./workspace-availability.service")
-        );
-        const service = yield* availabilityModule.WorkspaceAvailabilityService;
-        return yield* service.getAdvisoryAvailability({
-          date: testDate,
-          from: testDate,
-          to: testDate,
-          entryTier: "basic",
-        });
-      }),
-      {
-        advisoryReservations: [
-          makeReservation({ tableId: "basic-1", status: "NEW" }),
-          makeReservation({ tableId: "basic-2", status: "CONFIRMED" }),
-        ],
-        onInvalidateAdvisory: () => {
-          invalidated = true;
-        },
-        sweepResult: { cancelled: 1, failed: 0 },
-      }
-    );
-
-    expect(invalidated).toBe(true);
-    expect(availability.unavailableDates).not.toContain(testDate);
   });
 });

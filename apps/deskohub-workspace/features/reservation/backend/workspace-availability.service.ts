@@ -9,10 +9,6 @@ import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { cacheLife, revalidateTag } from "next/cache";
 import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import {
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
 } from "@/features/checkout/backend/workspace-table-occupancy";
@@ -164,7 +160,6 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
   Effect.gen(function* () {
     const inventoryService = yield* WorkspaceAvailabilityInventoryService;
-    const holdCleanup = yield* ReservationHoldCleanupService;
 
     const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
       function* (
@@ -172,32 +167,9 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         options: { readonly cached?: boolean } = {}
       ) {
         yield* Effect.logInfo("Workspace availability inventory load started");
-
-        const sweepResult = yield* holdCleanup
-          .sweepExpiredHolds({ now: new Date(), limit: 10 })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning("Availability expired hold sweep failed", {
-                cause,
-              })
-            ),
-            Effect.result
-          );
-        yield* Effect.annotateLogsScoped({ sweepResult });
-        yield* Effect.logInfo(
-          "Workspace availability expired hold sweep completed"
-        );
-
-        const expiredHoldsWereCancelled =
-          sweepResult._tag === "Success" && sweepResult.success.cancelled > 0;
-        if (expiredHoldsWereCancelled) {
-          yield* inventoryService.invalidateAdvisory();
-        }
-
-        const inventory =
-          options.cached && !expiredHoldsWereCancelled
-            ? yield* inventoryService.loadAdvisory(query)
-            : yield* inventoryService.loadFresh(query);
+        const inventory = options.cached
+          ? yield* inventoryService.loadAdvisory(query)
+          : yield* inventoryService.loadFresh(query);
         const { tables, reservations, limitations } = inventory;
         yield* Effect.annotateLogsScoped({ tables, reservations, limitations });
         yield* Effect.logInfo(
@@ -437,7 +409,6 @@ export const WorkspaceAvailabilityInventoryServiceLiveWithDependencies =
 
 export const WorkspaceAvailabilityServiceLiveWithDependencies =
   WorkspaceAvailabilityServiceLive.pipe(
-    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(WorkspaceAvailabilityInventoryServiceLiveWithDependencies)
   );
 
