@@ -10,6 +10,7 @@
       ],
       "env": [
         "DOTYPOS_API_TIMEOUT",
+        "DOTYPOS_WEBHOOK_SECRET",
         "NEXI_API_ORIGIN",
         "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
         "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",

@@ -24,6 +24,7 @@ This supports server-side checks and local-network device testing.
 ## Security Note
 
 - In development, webhook UUID validation is intentionally skipped (`shared/backend/utils/webhook.ts`).
+- `DOTYPOS_WEBHOOK_SECRET` is required in every environment; local development can use a dummy value.
 - In non-development environments, webhook requests must include `?secret=<DOTYPOS_WEBHOOK_SECRET>`.
 
 ## Recommended Usage

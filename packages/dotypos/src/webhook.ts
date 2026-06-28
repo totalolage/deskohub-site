@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Data, Effect, Schema, SchemaGetter } from "effect";
 
 export class DotyposWebhookPayloadError extends Data.TaggedError(
   "DotyposWebhookPayloadError"
@@ -14,26 +14,75 @@ export class DotyposWebhookAuthError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
-export type DotyposWebhookRecord = Readonly<Record<string, unknown>>;
+const DotyposWebhookRecordSchema = Schema.Record(Schema.String, Schema.Unknown);
 
-export interface DotyposReservationWebhookRecord extends DotyposWebhookRecord {
-  readonly reservationid: number;
-  readonly branchid?: number;
-  readonly cloudid?: string;
-  readonly created?: number;
-  readonly customerid?: number;
-  readonly deleted?: number;
-  readonly employeeid?: number;
-  readonly enddate?: number;
-  readonly flags?: number;
-  readonly note?: string | null;
-  readonly seats?: number;
-  readonly startdate?: number;
-  readonly status?: number;
-  readonly tableid?: number;
-  readonly taglist?: string | null;
-  readonly versiondate?: number;
-}
+const DotyposWebhookRecordArraySchema = Schema.Array(
+  DotyposWebhookRecordSchema
+);
+
+const finiteNumber = Schema.Number.check(Schema.isFinite());
+const stringOrNull = Schema.Union([Schema.String, Schema.Null]);
+const optionalFiniteNumber = Schema.optional(
+  Schema.Unknown.pipe(
+    Schema.decodeTo(Schema.UndefinedOr(finiteNumber), {
+      decode: SchemaGetter.transform((value) =>
+        typeof value === "number" && Number.isFinite(value) ? value : undefined
+      ),
+      encode: SchemaGetter.transform((value) => value),
+    })
+  )
+);
+const optionalString = Schema.optional(
+  Schema.Unknown.pipe(
+    Schema.decodeTo(Schema.UndefinedOr(Schema.String), {
+      decode: SchemaGetter.transform((value) =>
+        typeof value === "string" ? value : undefined
+      ),
+      encode: SchemaGetter.transform((value) => value),
+    })
+  )
+);
+const optionalStringOrNull = Schema.optional(
+  Schema.Unknown.pipe(
+    Schema.decodeTo(Schema.UndefinedOr(stringOrNull), {
+      decode: SchemaGetter.transform((value) =>
+        typeof value === "string" || value === null ? value : undefined
+      ),
+      encode: SchemaGetter.transform((value) => value),
+    })
+  )
+);
+
+const DotyposReservationWebhookRecordSchema = Schema.Struct({
+  reservationid: finiteNumber,
+  branchid: optionalFiniteNumber,
+  cloudid: optionalString,
+  created: optionalFiniteNumber,
+  customerid: optionalFiniteNumber,
+  deleted: optionalFiniteNumber,
+  employeeid: optionalFiniteNumber,
+  enddate: optionalFiniteNumber,
+  flags: optionalFiniteNumber,
+  note: optionalStringOrNull,
+  seats: optionalFiniteNumber,
+  startdate: optionalFiniteNumber,
+  status: optionalFiniteNumber,
+  tableid: optionalFiniteNumber,
+  taglist: optionalStringOrNull,
+  versiondate: optionalFiniteNumber,
+});
+
+const DotyposReservationWebhookRecordArraySchema = Schema.Array(
+  DotyposReservationWebhookRecordSchema
+);
+
+export type DotyposWebhookRecord = Schema.Schema.Type<
+  typeof DotyposWebhookRecordSchema
+>;
+
+export type DotyposReservationWebhookRecord = Schema.Schema.Type<
+  typeof DotyposReservationWebhookRecordSchema
+>;
 
 export type DotyposWebhookPayload =
   | {
@@ -47,80 +96,36 @@ export type DotyposWebhookPayload =
 
 export interface DotyposWebhookRequestOptions {
   readonly requireSecret: boolean;
-  readonly secret?: string;
+  readonly secret: string;
 }
 
-const isRecord = (value: unknown): value is DotyposWebhookRecord =>
-  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+const mapPayloadParseError = (issues: unknown) =>
+  new DotyposWebhookPayloadError({
+    message: "Invalid Dotypos webhook payload",
+    issues,
+  });
 
-const isFiniteNumber = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value);
+const decodeDotyposWebhookRecords = Schema.decodeUnknownEffect(
+  DotyposWebhookRecordArraySchema
+);
 
-const optionalNumberField = (
-  record: DotyposWebhookRecord,
-  key: keyof DotyposReservationWebhookRecord
-) => {
-  const value = record[key];
-  return isFiniteNumber(value) ? value : undefined;
-};
-
-const optionalStringOrNullField = (
-  record: DotyposWebhookRecord,
-  key: keyof DotyposReservationWebhookRecord
-) => {
-  const value = record[key];
-  return typeof value === "string" || value === null ? value : undefined;
-};
-
-const toReservationWebhookRecord = (
-  record: DotyposWebhookRecord
-): DotyposReservationWebhookRecord => ({
-  ...record,
-  reservationid: record.reservationid as number,
-  branchid: optionalNumberField(record, "branchid"),
-  cloudid: typeof record.cloudid === "string" ? record.cloudid : undefined,
-  created: optionalNumberField(record, "created"),
-  customerid: optionalNumberField(record, "customerid"),
-  deleted: optionalNumberField(record, "deleted"),
-  employeeid: optionalNumberField(record, "employeeid"),
-  enddate: optionalNumberField(record, "enddate"),
-  flags: optionalNumberField(record, "flags"),
-  note: optionalStringOrNullField(record, "note"),
-  seats: optionalNumberField(record, "seats"),
-  startdate: optionalNumberField(record, "startdate"),
-  status: optionalNumberField(record, "status"),
-  tableid: optionalNumberField(record, "tableid"),
-  taglist: optionalStringOrNullField(record, "taglist"),
-  versiondate: optionalNumberField(record, "versiondate"),
-});
+const decodeDotyposReservationWebhookRecords = Schema.decodeUnknownEffect(
+  DotyposReservationWebhookRecordArraySchema
+);
 
 export const parseDotyposWebhookPayload = (payload: unknown) =>
   Effect.gen(function* () {
-    if (!Array.isArray(payload)) {
-      return yield* new DotyposWebhookPayloadError({
-        message: "Dotypos webhook payload must be an array",
-      });
-    }
+    const records = yield* decodeDotyposWebhookRecords(payload).pipe(
+      Effect.mapError(mapPayloadParseError)
+    );
+    const reservationRecords = yield* decodeDotyposReservationWebhookRecords(
+      payload
+    ).pipe(Effect.result);
 
-    const records: DotyposWebhookRecord[] = [];
-    for (const [index, item] of payload.entries()) {
-      if (!isRecord(item)) {
-        return yield* new DotyposWebhookPayloadError({
-          message: "Dotypos webhook records must be objects",
-          issues: { index },
-        });
-      }
-
-      records.push(item);
-    }
-
-    if (
-      records.length > 0 &&
-      records.every((record) => isFiniteNumber(record.reservationid))
-    ) {
+    if (records.length > 0 && reservationRecords._tag === "Success") {
       return {
         kind: "reservation",
-        records: records.map(toReservationWebhookRecord),
+        records: reservationRecords.success,
       } as const;
     }
 
@@ -139,12 +144,6 @@ const validateDotyposWebhookSecret = (
     if (!providedSecret) {
       return yield* new DotyposWebhookAuthError({
         message: "Missing webhook secret",
-      });
-    }
-
-    if (!options.secret) {
-      return yield* new DotyposWebhookAuthError({
-        message: "Webhook secret is not configured",
       });
     }
 

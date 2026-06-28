@@ -35,6 +35,19 @@ describe("parseDotyposWebhookPayload", () => {
     expect(payload.records[0]?.reservationid).toBe(321);
   });
 
+  test("classifies reservation records when optional fields drift", async () => {
+    const payload = await Effect.runPromise(
+      parseDotyposWebhookPayload([
+        { ...reservationRecord, created: null, note: 123 },
+      ])
+    );
+
+    expect(payload.kind).toBe("reservation");
+    expect(payload.records[0]?.reservationid).toBe(321);
+    expect(payload.records[0]?.created).toBeUndefined();
+    expect(payload.records[0]?.note).toBeUndefined();
+  });
+
   test("accepts unknown Dotypos record arrays without classifying them", async () => {
     const payload = await Effect.runPromise(
       parseDotyposWebhookPayload([{ productid: 123, name: "Coffee" }])
@@ -99,6 +112,7 @@ describe("verifyDotyposWebhookRequest", () => {
         request(JSON.stringify([reservationRecord]), ""),
         {
           requireSecret: false,
+          secret: "unused-test-secret",
         }
       )
     );
