@@ -398,6 +398,36 @@ describe("WorkspaceAvailabilityService", () => {
     expect(availability.unavailableDates).toContain(testDate);
   });
 
+  test("sweeps expired holds before ensuring availability", async () => {
+    const calls: string[] = [];
+    const sweepExpiredHolds = mock((_input: { readonly limit: number }) =>
+      Effect.sync(() => {
+        calls.push("sweep");
+        return { cancelled: 0, failed: 0 };
+      })
+    );
+
+    await runWithInventory(
+      Effect.gen(function* () {
+        const availabilityModule = yield* Effect.promise(
+          () => import("./workspace-availability.service")
+        );
+        const service = yield* availabilityModule.WorkspaceAvailabilityService;
+        return yield* service.ensureAvailable({
+          date: testDate,
+          entryTier: "basic",
+        });
+      }),
+      {
+        onLoadFresh: () => calls.push("fresh"),
+        sweepExpiredHolds,
+      }
+    );
+
+    expect(calls).toEqual(["sweep", "fresh"]);
+    expect(sweepExpiredHolds.mock.calls[0]?.[0].limit).toBe(10);
+  });
+
   test("sweeps expired holds before loading advisory inventory", async () => {
     const calls: string[] = [];
     const sweepExpiredHolds = mock((_input: { readonly limit: number }) =>
