@@ -89,6 +89,9 @@ const runReusableReservationScenario = async (input: {
   const { LegalEvidenceEventRepository } = await import(
     "@/features/checkout/backend/legal-evidence-event.repository"
   );
+  const { ReservationHoldCleanupService } = await import(
+    "@/features/checkout/backend/reservation-hold-cleanup.service"
+  );
   const { ReservationHoldCleanupQueueService } = await import(
     "@/features/checkout/backend/reservation-hold-cleanup-queue.service"
   );
@@ -142,6 +145,14 @@ const runReusableReservationScenario = async (input: {
         record: mock(() => Effect.die("unused")),
         recordMany,
       } as unknown as LegalEvidenceEventRepositoryType)
+    ),
+    Effect.provide(
+      Layer.succeed(ReservationHoldCleanupService, {
+        cancelOrderHold: mock(() => Effect.die("unused")),
+        sweepExpiredHolds: mock(() =>
+          Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+        ),
+      } satisfies ReservationHoldCleanupServiceType)
     ),
     Effect.provide(
       Layer.succeed(ReservationHoldCleanupQueueService, {
@@ -206,7 +217,12 @@ describe("prepareWorkspacePayStateEffect", () => {
       "@/shared/backend/analytics/posthog-event.service"
     );
 
-    const ensureAvailable = mock(() => Effect.void);
+    const eventOrder: string[] = [];
+    const ensureAvailable = mock(() =>
+      Effect.sync(() => {
+        eventOrder.push("availability");
+      })
+    );
     const createDraft = mock((input) =>
       Effect.succeed({
         id: "reservation-id",
@@ -224,7 +240,6 @@ describe("prepareWorkspacePayStateEffect", () => {
       } as never)
     );
     const claimHoldCreation = mock(() => Effect.succeed(true));
-    const eventOrder: string[] = [];
     const attachHold = mock(() =>
       Effect.sync(() => {
         eventOrder.push("attach");
@@ -240,6 +255,12 @@ describe("prepareWorkspacePayStateEffect", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const assignTableId = mock(() => Effect.succeed("table-id"));
+    const sweepExpiredHolds = mock(() =>
+      Effect.sync(() => {
+        eventOrder.push("sweep");
+        return { cancelled: 0, skipped: 0, failed: 0 };
+      })
+    );
 
     const result = await prepareWorkspacePayStateEffect({
       locale: "en-US",
@@ -284,9 +305,7 @@ describe("prepareWorkspacePayStateEffect", () => {
       Effect.provide(
         Layer.succeed(ReservationHoldCleanupService, {
           cancelOrderHold: mock(() => Effect.succeed("cancelled" as const)),
-          sweepExpiredHolds: mock(() =>
-            Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
-          ),
+          sweepExpiredHolds,
         } satisfies ReservationHoldCleanupServiceType)
       ),
       Effect.provide(
@@ -339,7 +358,11 @@ describe("prepareWorkspacePayStateEffect", () => {
       orderId: "reservation-id",
       reservationHoldExpiresAt: expect.any(Date),
     });
-    expect(eventOrder).toEqual(["attach", "enqueue"]);
+    expect(sweepExpiredHolds).toHaveBeenCalledWith({
+      now: expect.any(Date),
+      limit: 10,
+    });
+    expect(eventOrder).toEqual(["sweep", "availability", "attach", "enqueue"]);
     expect(recordMany).toHaveBeenCalledWith([
       expect.objectContaining({
         workspaceReservationId: "reservation-id",

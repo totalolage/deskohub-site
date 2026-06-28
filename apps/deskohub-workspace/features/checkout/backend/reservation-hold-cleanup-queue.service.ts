@@ -132,7 +132,8 @@ const isDueReservation = (
   reservationHoldExpiresAt: Date,
   now: Date
 ) =>
-  reservation?.reservationState === "held" &&
+  (reservation?.reservationState === "held" ||
+    reservation?.reservationState === "cancellation_failed") &&
   reservation.paymentState !== "paid" &&
   reservation.reservationHoldExpiresAt?.getTime() ===
     reservationHoldExpiresAt.getTime() &&

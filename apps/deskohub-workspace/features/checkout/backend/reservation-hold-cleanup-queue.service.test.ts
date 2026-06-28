@@ -174,6 +174,25 @@ describe("ReservationHoldCleanupQueueService", () => {
       orderId: "order-id",
       holdExpiredAt: dueNow,
     });
+
+    const retryCancelOrderHold = mock(() =>
+      Effect.succeed("cancelled" as const)
+    );
+    const retryResult = await runProcessMessage(duePayload, {
+      cancelOrderHold: retryCancelOrderHold,
+      findById: mock(() =>
+        Effect.succeed(
+          makeReservation({ reservationState: "cancellation_failed" })
+        )
+      ),
+      now: dueNow,
+    });
+
+    expect(retryResult.result).toBe("cancelled");
+    expect(retryCancelOrderHold).toHaveBeenCalledWith({
+      orderId: "order-id",
+      holdExpiredAt: dueNow,
+    });
   });
 
   test("retries skipped cleanup while the reservation is still due", async () => {

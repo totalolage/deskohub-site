@@ -509,6 +509,16 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       });
     }
 
+    const holdCleanup = yield* ReservationHoldCleanupService;
+    yield* holdCleanup.sweepExpiredHolds({ now: new Date(), limit: 10 }).pipe(
+      Effect.tapError((cause) =>
+        Effect.logWarning("Reservation submit expired hold sweep failed", {
+          cause,
+        })
+      ),
+      Effect.ignore
+    );
+
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
       date: input.reservation.date,
@@ -763,6 +773,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       );
     yield* Effect.logInfo("Workspace reservation hold attached");
+    yield* enqueueReservationHoldCleanup({
+      orderId: reservationDraft.id,
+      reservationHoldExpiresAt: holdExpiresAt,
+    });
     yield* captureReservationStarted({
       reservation: {
         id: reservationDraft.id,
@@ -777,10 +791,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         evidence,
       }))
     );
-    yield* enqueueReservationHoldCleanup({
-      orderId: reservationDraft.id,
-      reservationHoldExpiresAt: holdExpiresAt,
-    });
 
     yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
