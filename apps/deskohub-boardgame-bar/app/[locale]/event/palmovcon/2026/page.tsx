@@ -61,31 +61,34 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#140b20] text-amber-50">
-      <section className="relative px-4 py-16 sm:px-6 lg:px-8 lg:py-24">
+      <section className="relative pb-16 lg:pb-24">
         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(249,115,22,0.35),_transparent_34%),radial-gradient(circle_at_80%_10%,_rgba(217,70,239,0.28),_transparent_30%),linear-gradient(135deg,_rgba(20,11,32,0.95),_rgba(48,16,72,0.92))]" />
         <div className="absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-[#140b20] to-transparent" />
 
-        <div className="relative mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+        <h1 className="sr-only">{m["palmovcon2026.title"]()}</h1>
+        {heroImage ? (
+          <div className="relative h-[500px] overflow-hidden bg-[linear-gradient(90deg,_#060950_0_50%,_#242321_50%_100%)]">
+            <CloudinaryImage
+              alt={m["palmovcon2026.heroAlt"]()}
+              asset={heroImage}
+              blurDataURL={heroBlurDataURL}
+              className="mx-auto h-full w-auto max-w-none"
+              priority
+              sizes="100vw"
+              variant="full"
+            />
+          </div>
+        ) : (
+          <div className="relative flex h-[500px] items-center bg-[linear-gradient(90deg,_#060950_0_50%,_#242321_50%_100%)] px-4 sm:px-6 lg:px-8">
+            <h1 className="max-w-4xl font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
+              {m["palmovcon2026.title"]()}
+            </h1>
+          </div>
+        )}
+
+        <div className="relative mx-auto mt-12 grid max-w-6xl gap-10 px-4 sm:px-6 lg:grid-cols-[1.1fr_0.9fr] lg:items-center lg:px-8">
           <div>
-            <h1 className="sr-only">{m["palmovcon2026.title"]()}</h1>
-            {heroImage ? (
-              <div className="overflow-hidden rounded-[2rem] border border-amber-200/20 bg-black/30 shadow-2xl shadow-fuchsia-950/50">
-                <CloudinaryImage
-                  alt={m["palmovcon2026.heroAlt"]()}
-                  asset={heroImage}
-                  blurDataURL={heroBlurDataURL}
-                  className="h-auto w-full"
-                  priority
-                  sizes="(min-width: 1024px) 58vw, 100vw"
-                  variant="full"
-                />
-              </div>
-            ) : (
-              <h1 className="max-w-4xl font-black text-5xl tracking-tight sm:text-7xl lg:text-8xl">
-                {m["palmovcon2026.title"]()}
-              </h1>
-            )}
-            <p className="mt-8 inline-flex rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.28em]">
+            <p className="inline-flex rounded-full border border-amber-200/30 bg-amber-200/10 px-4 py-2 font-semibold text-amber-200 text-sm uppercase tracking-[0.28em]">
               {m["palmovcon2026.date"]()}
             </p>
             <p className="mt-5 max-w-2xl text-2xl text-amber-100/90">
