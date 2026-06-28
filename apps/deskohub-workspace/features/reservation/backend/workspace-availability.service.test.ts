@@ -2,6 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import "@/shared/polyfills/temporal";
 import {
   WorkspaceCalendarLimitation,
@@ -97,9 +98,16 @@ const runWithInventory = async <A>(
     readonly advisoryTables?: readonly Table[];
     readonly advisoryReservations?: readonly Reservation[];
     readonly advisoryLimitations?: readonly WorkspaceCalendarLimitationType[];
+    readonly invalidateAdvisory?: () => Effect.Effect<void, never>;
+    readonly onLoadAdvisory?: () => void;
+    readonly onLoadFresh?: () => void;
+    readonly sweepExpiredHolds?: ReservationHoldCleanupServiceType["sweepExpiredHolds"];
   } = {}
 ) => {
   const availability = await import("./workspace-availability.service");
+  const { ReservationHoldCleanupService } = await import(
+    "@/features/checkout/backend/reservation-hold-cleanup.service"
+  );
   const freshInventory = {
     tables: [...(input.tables ?? defaultTables)],
     reservations: [...(input.reservations ?? [])],
@@ -115,9 +123,27 @@ const runWithInventory = async <A>(
     Effect.provide(availability.WorkspaceAvailabilityServiceLive),
     Effect.provide(
       Layer.succeed(availability.WorkspaceAvailabilityInventoryService, {
-        loadFresh: mock(() => Effect.succeed(freshInventory)),
-        loadAdvisory: mock(() => Effect.succeed(advisoryInventory)),
-        invalidateAdvisory: mock(() => Effect.void),
+        loadFresh: mock(() =>
+          Effect.sync(() => {
+            input.onLoadFresh?.();
+            return freshInventory;
+          })
+        ),
+        loadAdvisory: mock(() =>
+          Effect.sync(() => {
+            input.onLoadAdvisory?.();
+            return advisoryInventory;
+          })
+        ),
+        invalidateAdvisory: input.invalidateAdvisory ?? mock(() => Effect.void),
+      })
+    ),
+    Effect.provide(
+      Layer.succeed(ReservationHoldCleanupService, {
+        cancelOrderHold: mock(() => Effect.die("unused")),
+        sweepExpiredHolds:
+          input.sweepExpiredHolds ??
+          mock(() => Effect.succeed({ cancelled: 0, failed: 0 })),
       })
     ),
     Effect.runPromise
@@ -370,5 +396,80 @@ describe("WorkspaceAvailabilityService", () => {
     );
 
     expect(availability.unavailableDates).toContain(testDate);
+  });
+
+  test("sweeps expired holds before loading advisory inventory", async () => {
+    const calls: string[] = [];
+    const sweepExpiredHolds = mock((_input: { readonly limit: number }) =>
+      Effect.sync(() => {
+        calls.push("sweep");
+        return { cancelled: 0, failed: 0 };
+      })
+    );
+
+    await runWithInventory(
+      Effect.gen(function* () {
+        const availabilityModule = yield* Effect.promise(
+          () => import("./workspace-availability.service")
+        );
+        const service = yield* availabilityModule.WorkspaceAvailabilityService;
+        return yield* service.getAdvisoryAvailability({
+          date: testDate,
+          from: testDate,
+          to: testDate,
+          entryTier: "basic",
+        });
+      }),
+      {
+        onLoadAdvisory: () => calls.push("advisory"),
+        sweepExpiredHolds,
+      }
+    );
+
+    expect(calls).toEqual(["sweep", "advisory"]);
+    expect(sweepExpiredHolds.mock.calls[0]?.[0].limit).toBe(10);
+  });
+
+  test("falls back to fresh inventory when advisory invalidation fails", async () => {
+    const calls: string[] = [];
+    const sweepExpiredHolds = mock(() =>
+      Effect.sync(() => {
+        calls.push("sweep");
+        return { cancelled: 1, failed: 0 };
+      })
+    );
+    const invalidateAdvisory = mock(() =>
+      Effect.sync(() => calls.push("invalidate")).pipe(
+        Effect.flatMap(() => Effect.fail("cache failed" as never))
+      )
+    );
+
+    const availability = await runWithInventory(
+      Effect.gen(function* () {
+        const availabilityModule = yield* Effect.promise(
+          () => import("./workspace-availability.service")
+        );
+        const service = yield* availabilityModule.WorkspaceAvailabilityService;
+        return yield* service.getAdvisoryAvailability({
+          date: testDate,
+          from: testDate,
+          to: testDate,
+          entryTier: "basic",
+        });
+      }),
+      {
+        advisoryReservations: [
+          makeReservation({ tableId: "basic-1", status: "NEW" }),
+          makeReservation({ tableId: "basic-2", status: "NEW" }),
+        ],
+        invalidateAdvisory,
+        onLoadAdvisory: () => calls.push("advisory"),
+        onLoadFresh: () => calls.push("fresh"),
+        sweepExpiredHolds,
+      }
+    );
+
+    expect(calls).toEqual(["sweep", "invalidate", "fresh"]);
+    expect(availability.unavailableDates).not.toContain(testDate);
   });
 });

@@ -35,10 +35,23 @@ const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
     yield* Effect.logInfo("Reservation hold cleanup sweep completed");
 
     if (result.cancelled > 0) {
-      yield* availabilityInventory.invalidateAdvisory();
-      yield* Effect.logInfo(
-        "Reservation hold cleanup invalidated advisory availability"
-      );
+      const invalidated = yield* availabilityInventory
+        .invalidateAdvisory()
+        .pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning(
+              "Reservation hold cleanup advisory availability invalidation failed",
+              { cause }
+            )
+          ),
+          Effect.result
+        );
+
+      if (invalidated._tag === "Success") {
+        yield* Effect.logInfo(
+          "Reservation hold cleanup invalidated advisory availability"
+        );
+      }
     }
 
     return NextResponse.json(result);

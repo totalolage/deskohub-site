@@ -9,6 +9,11 @@ import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { cacheLife, revalidateTag } from "next/cache";
 import {
+  type ReservationHoldCleanupError,
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLiveWithDependencies,
+} from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import {
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
 } from "@/features/checkout/backend/workspace-table-occupancy";
@@ -43,8 +48,11 @@ type WorkspaceAvailabilityError =
   | ExternalAPIError
   | GoogleCalendarError
   | NetworkError
+  | ReservationHoldCleanupError
   | ValidationError
   | WorkspaceAvailabilityInventoryCacheError;
+
+const advisoryCleanupBatchLimit = 10;
 
 type WorkspaceAvailabilityInventory = {
   readonly tables: readonly Table[];
@@ -160,6 +168,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
   Effect.gen(function* () {
     const inventoryService = yield* WorkspaceAvailabilityInventoryService;
+    const holdCleanup = yield* ReservationHoldCleanupService;
 
     const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
       function* (
@@ -290,7 +299,29 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
     const getAdvisoryAvailability = Effect.fn(
       "workspaceAvailability.getAdvisoryAvailability"
     )(function* (query: WorkspaceAvailabilityQuery) {
-      return yield* computeAvailability({ query, cached: true });
+      const sweep = yield* holdCleanup.sweepExpiredHolds({
+        now: new Date(),
+        limit: advisoryCleanupBatchLimit,
+      });
+
+      if (sweep.cancelled === 0) {
+        return yield* computeAvailability({ query, cached: true });
+      }
+
+      const invalidated = yield* inventoryService.invalidateAdvisory().pipe(
+        Effect.tapError((cause) =>
+          Effect.logWarning(
+            "Workspace availability advisory cache invalidation failed after expired hold sweep",
+            { cause, sweep }
+          )
+        ),
+        Effect.result
+      );
+
+      return yield* computeAvailability({
+        query,
+        cached: invalidated._tag === "Success",
+      });
     });
 
     const ensureAvailable = Effect.fn("workspaceAvailability.ensureAvailable")(
@@ -409,6 +440,7 @@ export const WorkspaceAvailabilityInventoryServiceLiveWithDependencies =
 
 export const WorkspaceAvailabilityServiceLiveWithDependencies =
   WorkspaceAvailabilityServiceLive.pipe(
+    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(WorkspaceAvailabilityInventoryServiceLiveWithDependencies)
   );
 
