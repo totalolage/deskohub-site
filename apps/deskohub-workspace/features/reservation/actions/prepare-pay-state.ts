@@ -272,7 +272,7 @@ const enqueueReservationHoldCleanup = Effect.fn(
   }
 
   const queue = yield* ReservationHoldCleanupQueueService;
-  yield* queue
+  const enqueue = queue
     .enqueueCleanup({
       orderId: input.orderId,
       reservationHoldExpiresAt: input.reservationHoldExpiresAt,
@@ -285,6 +285,10 @@ const enqueueReservationHoldCleanup = Effect.fn(
         })
       )
     );
+
+  yield* env.VERCEL_ENV === "production"
+    ? enqueue
+    : enqueue.pipe(Effect.ignore);
 });
 
 class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
