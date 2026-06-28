@@ -523,6 +523,9 @@ const readBrowserUrl = async (
   return result.exitCode === 0 ? result.stdout.trim() : undefined;
 };
 
+const isCheckoutStatusUrl = (url: string | undefined) =>
+  parseUrl(url ?? "")?.pathname.includes("/checkout/status/") ?? false;
+
 const submitPaymentAndWaitForHostedPage = async ({
   run,
   session,
@@ -626,11 +629,21 @@ const completeNexiHostedPayment = async ({
     { value: "AUTENTICAZIONE RIUSCITA" },
     { value: "Authentication successful" },
   ]);
-  await clickHostedPaymentTarget(run, session, "back to shop", [
-    { value: "BACK TO THE SHOP" },
-    { value: "Back to the shop" },
-    { value: "TORNA AL NEGOZIO" },
-  ]);
+  try {
+    await clickHostedPaymentTarget(run, session, "back to shop", [
+      { value: "BACK TO THE SHOP" },
+      { value: "Back to the shop" },
+      { value: "TORNA AL NEGOZIO" },
+    ]);
+  } catch (cause) {
+    if (isCheckoutStatusUrl(await readBrowserUrl(run, session))) {
+      log(
+        "Nexi back-to-shop action skipped; checkout status page already loaded"
+      );
+      return;
+    }
+    throw cause;
+  }
 };
 
 const fillHostedPaymentField = async (
