@@ -766,7 +766,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .where(
                 and(
                   eq(workspaceReservations.reservationState, "held"),
-                  sql`${workspaceReservations.paymentState} <> 'paid'`,
+                  eq(workspaceReservations.paymentState, "not_started"),
                   sql`${workspaceReservations.dotyposReservationId} is not null`,
                   lte(workspaceReservations.reservationHoldExpiresAt, input.now)
                 )

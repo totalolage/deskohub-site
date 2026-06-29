@@ -76,8 +76,9 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain(
       'eq(workspaceReservations.reservationState, "held")'
     );
-    expect(section).toContain("workspaceReservations.paymentState");
-    expect(section).toContain("<> 'paid'");
+    expect(section).toContain(
+      'eq(workspaceReservations.paymentState, "not_started")'
+    );
     expect(section).toContain("dotyposReservationId} is not null");
     expect(section).toContain(
       "lte(workspaceReservations.reservationHoldExpiresAt, input.now)"
