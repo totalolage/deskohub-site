@@ -1,7 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
-import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
+import {
+  Context,
+  Data,
+  Duration,
+  Effect,
+  Layer,
+  Match,
+  Predicate,
+  Schema,
+} from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
@@ -31,6 +40,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
 import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import {
   buildWorkspaceCheckoutQuoteEffect,
@@ -366,11 +376,47 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const holdCleanup = yield* ReservationHoldCleanupService;
+    const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
     const posthogEvents = yield* PostHogEventService;
+
+    const scheduleHoldCleanup = Effect.fn("checkout.scheduleHoldCleanup")(
+      function* (input: {
+        readonly orderId: string;
+        readonly reservationHoldExpiresAt: Date | null;
+      }) {
+        if (!input.reservationHoldExpiresAt) return;
+
+        const enqueue = cleanupSchedule
+          .enqueueCleanup({
+            orderId: input.orderId,
+            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+          })
+          .pipe(
+            Effect.tapError((cause) =>
+              Effect.logWarning("Checkout cleanup schedule enqueue failed", {
+                orderId: input.orderId,
+                cause,
+              })
+            )
+          );
+
+        yield* enqueue.pipe(
+          Effect.timeoutOrElse({
+            duration: Duration.seconds(2),
+            orElse: () =>
+              Effect.logWarning("Checkout cleanup schedule enqueue timed out", {
+                orderId: input.orderId,
+              }),
+          }),
+          Effect.ignore
+        );
+      }
+    );
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
         readonly workspaceReservationId: string;
+        readonly reservationHoldExpiresAt: Date | null;
         readonly correlationId: string;
         readonly locale: Locale;
         readonly total: WorkspaceCheckoutQuote["summary"]["total"];
@@ -482,6 +528,10 @@ export const CheckoutServiceLive = Layer.effect(
           attempt: attachedAttempt,
           timestamp: attachedAttempt.updatedAt,
         }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
+        yield* scheduleHoldCleanup({
+          orderId: input.workspaceReservationId,
+          reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+        });
         yield* Effect.logDebug("Checkout hosted payment page attach completed");
         yield* Effect.logInfo("Checkout provider session started");
 
@@ -606,6 +656,10 @@ export const CheckoutServiceLive = Layer.effect(
               yield* Effect.logInfo(
                 "Hosted payment checkout reused active provider session"
               );
+              yield* scheduleHoldCleanup({
+                orderId: reservation.id,
+                reservationHoldExpiresAt: reservation.reservationHoldExpiresAt,
+              });
 
               return {
                 status: "redirect" as const,
@@ -700,6 +754,7 @@ export const CheckoutServiceLive = Layer.effect(
 
           return yield* startProviderSession({
             workspaceReservationId: reservation.id,
+            reservationHoldExpiresAt: reservation.reservationHoldExpiresAt,
             correlationId: reservation.correlationId,
             locale,
             total: quote.payment.expectedPrice,
@@ -720,6 +775,7 @@ export const CheckoutServiceLive = Layer.effect(
 );
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
+  Layer.provide(ReservationHoldCleanupScheduleService.Live),
   Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
   Layer.provide(OperationalEventRepositoryLive),
   Layer.provide(LegalEvidenceEventRepositoryLive),

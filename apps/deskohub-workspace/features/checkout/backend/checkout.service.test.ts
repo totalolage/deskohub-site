@@ -67,6 +67,9 @@ describe("CheckoutService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { ReservationHoldCleanupScheduleService } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
     );
@@ -203,6 +206,11 @@ describe("CheckoutService", () => {
         })
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        Layer.succeed(ReservationHoldCleanupScheduleService, {
+          enqueueCleanup: mock(() => Effect.void),
+        })
+      ),
       Effect.flip,
       Effect.runPromise
     );

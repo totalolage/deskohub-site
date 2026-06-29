@@ -54,7 +54,7 @@ const runProcessMessage = async (
   const { ReservationHoldCleanupService } = await import(
     "@/features/checkout/backend/reservation-hold-cleanup.service"
   );
-  const { processReservationHoldCleanupQueueMessage } = await import(
+  const { processReservationHoldCleanupScheduleMessage } = await import(
     "./reservation-hold-cleanup-queue.service"
   );
   const { WorkspaceReservationRepository } = await import(
@@ -65,7 +65,7 @@ const runProcessMessage = async (
   const cancelOrderHold =
     input.cancelOrderHold ?? mock(() => Effect.succeed("cancelled" as const));
 
-  const result = await processReservationHoldCleanupQueueMessage(
+  const result = await processReservationHoldCleanupScheduleMessage(
     message,
     input.now ?? now
   ).pipe(
@@ -97,12 +97,12 @@ const duePayload = {
 describe("ReservationHoldCleanupScheduleService", () => {
   test("builds bounded delayed queue messages with idempotency", async () => {
     const {
-      getReservationHoldCleanupQueueMessage,
-      reservationHoldCleanupQueueMaxDelaySeconds,
+      getReservationHoldCleanupScheduleMessage,
+      reservationHoldCleanupScheduleMaxDelaySeconds,
       reservationHoldCleanupQueueTopic,
     } = await import("./reservation-hold-cleanup-queue.service");
 
-    const message = getReservationHoldCleanupQueueMessage(
+    const message = getReservationHoldCleanupScheduleMessage(
       { orderId: "order-id", reservationHoldExpiresAt: expiresAt },
       now
     );
@@ -116,7 +116,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       },
     });
 
-    const clamped = getReservationHoldCleanupQueueMessage(
+    const clamped = getReservationHoldCleanupScheduleMessage(
       {
         orderId: "order-id",
         reservationHoldExpiresAt: new Date("2026-06-09T10:00:01.000Z"),
@@ -124,10 +124,10 @@ describe("ReservationHoldCleanupScheduleService", () => {
       now
     );
     expect(clamped.options.delaySeconds).toBe(
-      reservationHoldCleanupQueueMaxDelaySeconds
+      reservationHoldCleanupScheduleMaxDelaySeconds
     );
     expect(clamped.options.retentionSeconds).toBe(
-      reservationHoldCleanupQueueMaxDelaySeconds
+      reservationHoldCleanupScheduleMaxDelaySeconds
     );
   });
 
@@ -215,14 +215,14 @@ describe("ReservationHoldCleanupScheduleService", () => {
     const { ReservationHoldCleanupService } = await import(
       "@/features/checkout/backend/reservation-hold-cleanup.service"
     );
-    const { processReservationHoldCleanupQueueMessage } = await import(
+    const { processReservationHoldCleanupScheduleMessage } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
 
-    const error = await processReservationHoldCleanupQueueMessage(
+    const error = await processReservationHoldCleanupScheduleMessage(
       duePayload,
       dueNow
     ).pipe(

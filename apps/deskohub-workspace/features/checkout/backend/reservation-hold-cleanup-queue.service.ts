@@ -11,22 +11,22 @@ import { clamp } from "@/shared/utils";
 export const reservationHoldCleanupQueueTopic =
   "workspace-reservation-hold-cleanup";
 
-export const reservationHoldCleanupQueueMaxDelaySeconds = 7 * 24 * 60 * 60;
+export const reservationHoldCleanupScheduleMaxDelaySeconds = 7 * 24 * 60 * 60;
 const reservationHoldCleanupRetryWindowSeconds = 60 * 60;
 
-const ReservationHoldCleanupQueuePayloadSchema = Schema.Struct({
+const ReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   orderId: Schema.String,
   reservationHoldExpiresAtIso: Schema.String,
 });
 
-export type ReservationHoldCleanupQueuePayload = Schema.Schema.Type<
-  typeof ReservationHoldCleanupQueuePayloadSchema
+export type ReservationHoldCleanupSchedulePayload = Schema.Schema.Type<
+  typeof ReservationHoldCleanupSchedulePayloadSchema
 >;
 
-type ReservationHoldCleanupQueueMessage = {
+type ReservationHoldCleanupScheduleMessage = {
   readonly topic: typeof reservationHoldCleanupQueueTopic;
-  readonly payload: ReservationHoldCleanupQueuePayload;
+  readonly payload: ReservationHoldCleanupSchedulePayload;
   readonly options: {
     readonly delaySeconds: number;
     readonly retentionSeconds: number;
@@ -55,13 +55,13 @@ interface IReservationHoldCleanupScheduleService {
   }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
 
-export const getReservationHoldCleanupQueueMessage = (
+export const getReservationHoldCleanupScheduleMessage = (
   input: {
     readonly orderId: string;
     readonly reservationHoldExpiresAt: Date;
   },
   now = new Date()
-): ReservationHoldCleanupQueueMessage => {
+): ReservationHoldCleanupScheduleMessage => {
   const reservationHoldExpiresAtIso =
     input.reservationHoldExpiresAt.toISOString();
   const delaySeconds = clamp(
@@ -69,12 +69,12 @@ export const getReservationHoldCleanupQueueMessage = (
       (input.reservationHoldExpiresAt.getTime() - now.getTime()) / 1000
     ),
     0,
-    reservationHoldCleanupQueueMaxDelaySeconds
+    reservationHoldCleanupScheduleMaxDelaySeconds
   );
   const retentionSeconds = clamp(
     delaySeconds + reservationHoldCleanupRetryWindowSeconds,
     60,
-    reservationHoldCleanupQueueMaxDelaySeconds
+    reservationHoldCleanupScheduleMaxDelaySeconds
   );
 
   return {
@@ -83,7 +83,7 @@ export const getReservationHoldCleanupQueueMessage = (
       schemaVersion: 1,
       orderId: input.orderId,
       reservationHoldExpiresAtIso,
-    } satisfies ReservationHoldCleanupQueuePayload,
+    } satisfies ReservationHoldCleanupSchedulePayload,
     options: {
       delaySeconds,
       retentionSeconds,
@@ -97,9 +97,9 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
   IReservationHoldCleanupScheduleService
 >()("ReservationHoldCleanupScheduleService") {
   static Live = Layer.succeed(this, {
-    enqueueCleanup: Effect.fn("reservationHoldCleanupQueue.enqueueCleanup")(
+    enqueueCleanup: Effect.fn("reservationHoldCleanupSchedule.enqueueCleanup")(
       function* (input) {
-        const message = getReservationHoldCleanupQueueMessage(input);
+        const message = getReservationHoldCleanupScheduleMessage(input);
         yield* Effect.logInfo("Reservation hold cleanup enqueue started", {
           message,
         });
@@ -133,8 +133,8 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
   });
 }
 
-const decodeQueuePayload = Schema.decodeUnknownOption(
-  ReservationHoldCleanupQueuePayloadSchema
+const decodeSchedulePayload = Schema.decodeUnknownOption(
+  ReservationHoldCleanupSchedulePayloadSchema
 );
 
 const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
@@ -151,10 +151,10 @@ const isDueReservation = (
     reservationHoldExpiresAt.getTime() &&
   reservation.reservationHoldExpiresAt <= now;
 
-export const processReservationHoldCleanupQueueMessage = Effect.fn(
-  "reservationHoldCleanupQueue.processMessage"
+export const processReservationHoldCleanupScheduleMessage = Effect.fn(
+  "reservationHoldCleanupSchedule.processMessage"
 )(function* (message: unknown, now = new Date()) {
-  const payload = Option.getOrUndefined(decodeQueuePayload(message));
+  const payload = Option.getOrUndefined(decodeSchedulePayload(message));
   if (!payload) {
     yield* Effect.logWarning(
       "Reservation hold cleanup queue message ignored: invalid payload"

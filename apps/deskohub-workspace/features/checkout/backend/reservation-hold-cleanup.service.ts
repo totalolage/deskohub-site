@@ -29,7 +29,12 @@ export class ReservationHoldCleanupError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static fromError(message: string) {
+    return (cause: unknown) =>
+      new ReservationHoldCleanupError({ message, cause });
+  }
+}
 
 export type ReservationHoldCleanupOutcome = "cancelled" | "skipped";
 
@@ -77,16 +82,15 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ input });
         yield* Effect.logInfo("Reservation hold cancellation started");
 
-        const active = yield* reservations.findById(input.orderId).pipe(
-          Effect.mapError(
-            (cause) =>
-              new ReservationHoldCleanupError({
-                message:
-                  "Reservation hold cancellation state could not be loaded.",
-                cause,
-              })
-          )
-        );
+        const active = yield* reservations
+          .findById(input.orderId)
+          .pipe(
+            Effect.mapError(
+              ReservationHoldCleanupError.fromError(
+                "Reservation hold cancellation state could not be loaded."
+              )
+            )
+          );
         yield* Effect.annotateLogsScoped({ activeReservation: active });
         yield* Effect.logDebug(
           "Reservation hold cancellation active reservation loaded"
@@ -145,12 +149,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
                   })
                   .pipe(
                     Effect.mapError(
-                      (cause) =>
-                        new ReservationHoldCleanupError({
-                          message:
-                            "Skipped reservation hold cleanup marker could not be stored.",
-                          cause,
-                        })
+                      ReservationHoldCleanupError.fromError(
+                        "Skipped reservation hold cleanup marker could not be stored."
+                      )
                     )
                   )
               : Effect.void;
@@ -213,12 +214,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           .claimCancellation(input.orderId)
           .pipe(
             Effect.mapError(
-              (cause) =>
-                new ReservationHoldCleanupError({
-                  message:
-                    "Reservation hold cancellation could not be claimed.",
-                  cause,
-                })
+              ReservationHoldCleanupError.fromError(
+                "Reservation hold cancellation could not be claimed."
+              )
             )
           );
         yield* Effect.annotateLogsScoped({ claimedFromNew });
@@ -226,16 +224,15 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 
         const claimed =
           claimedFromNew ??
-          (yield* reservations.findById(input.orderId).pipe(
-            Effect.mapError(
-              (cause) =>
-                new ReservationHoldCleanupError({
-                  message:
-                    "Reservation hold cancellation state could not be loaded.",
-                  cause,
-                })
-            )
-          ));
+          (yield* reservations
+            .findById(input.orderId)
+            .pipe(
+              Effect.mapError(
+                ReservationHoldCleanupError.fromError(
+                  "Reservation hold cancellation state could not be loaded."
+                )
+              )
+            ));
         yield* Effect.annotateLogsScoped({ claimed });
 
         if (!claimed || claimed.reservationState !== "cancelling") {
@@ -285,11 +282,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             })
           ),
           Effect.mapError(
-            (cause) =>
-              new ReservationHoldCleanupError({
-                message: "Dotypos reservation hold could not be cancelled.",
-                cause,
-              })
+            ReservationHoldCleanupError.fromError(
+              "Dotypos reservation hold could not be cancelled."
+            )
           )
         );
         yield* Effect.logInfo(
@@ -313,12 +308,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               ).pipe(Effect.as(false))
             ),
             Effect.mapError(
-              (cause) =>
-                new ReservationHoldCleanupError({
-                  message:
-                    "Reservation hold cancellation marker could not be stored.",
-                  cause,
-                })
+              ReservationHoldCleanupError.fromError(
+                "Reservation hold cancellation marker could not be stored."
+              )
             )
           );
         if (!markedCancelled) return "skipped";
@@ -371,11 +363,9 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               })
             ),
             Effect.mapError(
-              (cause) =>
-                new ReservationHoldCleanupError({
-                  message: "Expired reservation holds could not be selected.",
-                  cause,
-                })
+              ReservationHoldCleanupError.fromError(
+                "Expired reservation holds could not be selected."
+              )
             )
           );
           yield* Effect.annotateLogsScoped({ orders });
