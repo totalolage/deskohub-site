@@ -234,15 +234,15 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 className="relative overflow-hidden rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#FFFFFE] text-[#060852] shadow-xl shadow-[#060852]/25"
                 key={item.title}
               >
-                {eventImage?.image ? (
+                {eventImage?.image && (
                   <CloudinaryImage
+                    aria-hidden="true"
                     alt=""
                     asset={eventImage.image}
                     blurDataURL={eventImage.blurDataURL}
-                    className="object-left"
+                    className="pointer-events-none absolute inset-y-0 left-0 h-full w-auto max-w-full select-none"
                     preload={false}
-                    sizes="(min-width: 768px) 66vw, 100vw"
-                    size={{ width: "fill", height: "fill" }}
+                    sizes="(min-width: 768px) 40vw, 80vw"
                     style={{
                       objectPosition: "left center",
                       maskImage:
@@ -252,8 +252,8 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                     }}
                     variant="full"
                   />
-                ) : null}
-                <div className="relative grid min-h-[18rem] gap-6 p-6 pt-36 sm:p-8 sm:pt-40 md:pl-[34%] md:pt-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                )}
+                <div className="relative grid min-h-[18rem] gap-6 py-6 pr-6 pl-[40%] sm:py-8 sm:pr-8 lg:grid-cols-[1fr_auto] lg:items-center">
                   <div>
                     <p className="font-bold text-[#060852]/80">{item.time}</p>
                     <h3 className="mt-3 font-black text-2xl text-[#23221E]">
@@ -263,23 +263,23 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                       {item.description}
                     </p>
                   </div>
-                  {item.cta || item.note ? (
+                  {(item.cta || item.note) && (
                     <div className="flex flex-col gap-3 lg:items-end">
-                      {item.cta ? (
+                      {item.cta && (
                         <Button
                           asChild
                           className="h-12 rounded-full bg-[#899E28] px-6 font-bold text-[#060852] hover:bg-[#6DAA9C]"
                         >
                           <a href={item.cta.href}>{item.cta.label}</a>
                         </Button>
-                      ) : null}
-                      {item.note ? (
+                      )}
+                      {item.note && (
                         <p className="rounded-2xl bg-[#899E28]/20 px-4 py-3 font-semibold text-[#060852] lg:max-w-64">
                           {item.note}
                         </p>
-                      ) : null}
+                      )}
                     </div>
-                  ) : null}
+                  )}
                 </div>
               </article>
             );
