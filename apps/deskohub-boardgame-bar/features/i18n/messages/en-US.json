@@ -163,6 +163,7 @@
     "subtitle": "The second Palmovka board game festival.",
     "intro": "Meet your destined gaming partner. Whether you are a hardcore strategist, a creative geek, or a whole nerdy family, come soak up the summer board game atmosphere. No need to read thick rulebooks, our game guides will teach you everything right at the table.",
     "reservationCta": "I want to reserve a table",
+    "registrationCta": "Register",
     "secondaryReservationCta": "Reserve a table",
     "location": "Deskohub, Prague - Palmovka",
     "quickSummaryTitle": "Quick overview",
@@ -171,11 +172,8 @@
     "venue": "Deskohub at Palmovka",
     "entryFeeLabel": "Entry fee",
     "entryFeeShort": "CZK 50 with bar purchase / CZK 100 without",
-    "practicalInfoEyebrow": "Practical info",
-    "practicalInfoTitle": "How it works",
-    "entryFeeTitle": "Entry fee",
-    "entryFeeDescription": "Standard Deskohub entry: CZK 50 per person with a bar purchase, or CZK 100 per person if you do not order anything.",
-    "complexGamesTitle": "Complex games",
+    "complexGamesEyebrow": "Complex games",
+    "complexGamesTitle": "Learn how to play",
     "complexGamesDescription": "Want to play something heavier? The rules explanation signup will be added soon.",
     "scheduleEyebrow": "Event program",
     "scheduleTitle": "What will be played",
@@ -189,8 +187,7 @@
       "witcher": {
         "title": "Open Witcher play session",
         "time": "Thursday, 16 Jul at 17:00",
-        "description": "A legendary fantasy world on your table. Capacity is limited and advance registration is required.",
-        "note": "The registration form will be added soon."
+        "description": "A legendary fantasy world on your table. Capacity is limited and advance registration is required."
       },
       "bloodOnTheClocktower": {
         "title": "Blood on the Clocktower",

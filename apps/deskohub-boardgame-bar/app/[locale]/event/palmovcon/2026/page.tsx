@@ -6,12 +6,15 @@ import { getCloudinaryImageByPublicId } from "@/features/gallery/actions/get-clo
 import { m, setLocale } from "@/features/i18n";
 import { LocalizedLink } from "@/features/i18n/components/localized-link";
 import { Button } from "@/shared/components/ui/button";
+import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../../../route";
 import { isPalmovconPageExpired } from "./page-availability";
 
 const reservationHref = "/reservation";
 const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
+const witcherRegistrationHref = "https://forms.gle/BnmwtDu5gqLx1VWVA";
+const mapHref = `https://www.google.com/maps/dir/?api=1&destination=${siteConstants.contact.coordinates.lat},${siteConstants.contact.coordinates.lng}`;
 const heroPublicId = "palmovcon-2026-hero";
 const eventImagePublicIds = {
   miniaturePainting: "palmovcon-event-miniature-painting",
@@ -43,8 +46,11 @@ const getSchedule = (): ScheduleItem[] => [
     title: m["palmovcon2026.schedule.witcher.title"](),
     time: m["palmovcon2026.schedule.witcher.time"](),
     description: m["palmovcon2026.schedule.witcher.description"](),
-    note: m["palmovcon2026.schedule.witcher.note"](),
     imagePublicId: eventImagePublicIds.witcher,
+    cta: {
+      href: witcherRegistrationHref,
+      label: m["palmovcon2026.registrationCta"](),
+    },
   },
   {
     title: m["palmovcon2026.schedule.bloodOnTheClocktower.title"](),
@@ -165,7 +171,14 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   {m["palmovcon2026.locationLabel"]()}
                 </dt>
                 <dd className="mt-1 text-2xl text-[#060852]">
-                  {m["palmovcon2026.venue"]()}
+                  <a
+                    className="underline decoration-[#899E28] decoration-2 underline-offset-4 hover:text-[#899E28]"
+                    href={mapHref}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {m["palmovcon2026.venue"]()}
+                  </a>
                 </dd>
               </div>
               <div>
@@ -181,32 +194,17 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         </div>
       </section>
 
-      <section className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-3 lg:px-8">
-        <div className="rounded-3xl border border-[#6DAA9C]/20 bg-[#FFFFFE] p-6 text-[#060852] lg:col-span-1">
-          <p className="font-semibold text-[#060852]/70 text-sm uppercase tracking-[0.22em]">
-            {m["palmovcon2026.practicalInfoEyebrow"]()}
+      <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
+        <div>
+          <p className="font-semibold text-[#899E28] text-sm uppercase tracking-[0.22em]">
+            {m["palmovcon2026.complexGamesEyebrow"]()}
           </p>
-          <h2 className="mt-3 font-black text-3xl text-[#23221E]">
-            {m["palmovcon2026.practicalInfoTitle"]()}
+          <h2 className="mt-3 font-black text-4xl">
+            {m["palmovcon2026.complexGamesTitle"]()}
           </h2>
-        </div>
-        <div className="grid gap-4 lg:col-span-2 sm:grid-cols-2">
-          <article className="rounded-3xl bg-[#FFFFFE] p-6 text-[#060852]">
-            <h3 className="font-black text-[#23221E] text-xl">
-              {m["palmovcon2026.entryFeeTitle"]()}
-            </h3>
-            <p className="mt-3 text-[#060852]/75">
-              {m["palmovcon2026.entryFeeDescription"]()}
-            </p>
-          </article>
-          <article className="rounded-3xl bg-[#FFFFFE] p-6 text-[#060852]">
-            <h3 className="font-black text-[#23221E] text-xl">
-              {m["palmovcon2026.complexGamesTitle"]()}
-            </h3>
-            <p className="mt-3 text-[#060852]/80">
-              {m["palmovcon2026.complexGamesDescription"]()}
-            </p>
-          </article>
+          <p className="mt-5 max-w-3xl text-[#FFFFFE] text-lg leading-8">
+            {m["palmovcon2026.complexGamesDescription"]()}
+          </p>
         </div>
       </section>
 
@@ -270,7 +268,13 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                           asChild
                           className="h-12 rounded-full bg-[#899E28] px-6 font-bold text-[#060852] hover:bg-[#6DAA9C]"
                         >
-                          <a href={item.cta.href}>{item.cta.label}</a>
+                          <a
+                            href={item.cta.href}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            {item.cta.label}
+                          </a>
                         </Button>
                       )}
                       {item.note && (

@@ -167,6 +167,7 @@
     "subtitle": "Druhý ročník deskoherního festivalu na Palmovce.",
     "intro": "Potkej svého osudového spoluhráče. Ať už jsi hardcore stratég, tvořivý geek, nebo celá nerdská rodina, doraz nasát tu správnou letní herní atmosféru. Nemusíš číst tlusté manuály, naši herní průvodci tě všechno naučí přímo u stolu.",
     "reservationCta": "Chci si rezervovat stůl",
+    "registrationCta": "Registrovat se",
     "secondaryReservationCta": "Rezervovat stůl",
     "location": "Deskohub, Praha - Palmovka",
     "quickSummaryTitle": "Nejrychlejší přehled",
@@ -175,11 +176,8 @@
     "venue": "Deskohub na Palmovce",
     "entryFeeLabel": "Vstupné",
     "entryFeeShort": "50 Kč s konzumací / 100 Kč bez",
-    "practicalInfoEyebrow": "Praktické info",
-    "practicalInfoTitle": "Jak to funguje",
-    "entryFeeTitle": "Vstupné",
-    "entryFeeDescription": "Standardní jako do Deskohubu: 50 Kč za osobu při konzumaci na baru, 100 Kč za osobu, pokud si nic nedáte.",
-    "complexGamesTitle": "Komplexní hry",
+    "complexGamesEyebrow": "Komplexní hry",
+    "complexGamesTitle": "Nauč se hrát",
     "complexGamesDescription": "Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel doplníme brzy.",
     "scheduleEyebrow": "Program akce",
     "scheduleTitle": "Co se bude hrát",
@@ -193,8 +191,7 @@
       "witcher": {
         "title": "Otevřené hraní Zaklínače",
         "time": "Čtvrtek 16. 7. v 17:00",
-        "description": "Legendární fantasy svět na tvém stole. Kapacita je omezená a registrace je nutná předem.",
-        "note": "Registrační formulář doplníme brzy."
+        "description": "Legendární fantasy svět na tvém stole. Kapacita je omezená a registrace je nutná předem."
       },
       "bloodOnTheClocktower": {
         "title": "Krvavá hodinka (Blood on the Clocktower)",
