@@ -286,7 +286,19 @@ const enqueueReservationHoldCleanup = Effect.fn(
       )
     );
 
-  yield* enqueue.pipe(Effect.ignore);
+  yield* enqueue.pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.seconds(2),
+      orElse: () =>
+        Effect.logWarning(
+          "Workspace reservation hold cleanup enqueue timed out",
+          {
+            orderId: input.orderId,
+          }
+        ),
+    }),
+    Effect.ignore
+  );
 });
 
 class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
