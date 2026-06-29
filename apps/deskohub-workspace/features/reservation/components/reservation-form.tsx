@@ -841,6 +841,8 @@ export function ReservationForm({
                       <Link
                         href={`/${locale}/privacy-policy`}
                         prefetch={false}
+                        target="_blank"
+                        rel="noreferrer"
                         className="font-semibold text-burned-orange underline underline-offset-4 transition-colors hover:text-chilean-fire"
                       >
                         {m.reservationPrivacyNoteLinkLabel({}, { locale })}
