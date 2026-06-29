@@ -286,9 +286,7 @@ const enqueueReservationHoldCleanup = Effect.fn(
       )
     );
 
-  yield* env.VERCEL_ENV === "production"
-    ? enqueue
-    : enqueue.pipe(Effect.ignore);
+  yield* enqueue.pipe(Effect.ignore);
 });
 
 class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
