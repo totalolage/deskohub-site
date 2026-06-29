@@ -4,10 +4,10 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Reservation } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
 import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
 import {
+  excludeExpiredLocalHolds,
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
 } from "@/features/checkout/backend/workspace-table-occupancy";
@@ -190,15 +190,3 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
     });
   })
 );
-
-const excludeExpiredLocalHolds = (
-  reservations: readonly Reservation[],
-  expiredDotyposReservationIds: readonly string[]
-) => {
-  if (expiredDotyposReservationIds.length === 0) return reservations;
-
-  const expiredIds = new Set(expiredDotyposReservationIds);
-  return reservations.filter(
-    (reservation) => !reservation.id || !expiredIds.has(reservation.id)
-  );
-};

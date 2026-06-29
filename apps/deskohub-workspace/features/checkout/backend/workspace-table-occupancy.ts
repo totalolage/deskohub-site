@@ -40,6 +40,18 @@ export const getWorkspaceTableOccupancyById = (
   return occupancyByTableId;
 };
 
+export const excludeExpiredLocalHolds = (
+  reservations: readonly Reservation[],
+  expiredDotyposReservationIds: readonly string[]
+) => {
+  if (expiredDotyposReservationIds.length === 0) return reservations;
+
+  const expiredIds = new Set(expiredDotyposReservationIds);
+  return reservations.filter(
+    (reservation) => !reservation.id || !expiredIds.has(reservation.id)
+  );
+};
+
 const getPragueDayRange = (date: Temporal.PlainDate) => {
   const startMs = date
     .toZonedDateTime({ timeZone: "Europe/Prague" })

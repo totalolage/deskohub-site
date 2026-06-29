@@ -4,7 +4,7 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Reservation, Table } from "@deskohub/dotypos/generated";
+import type { Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import {
@@ -12,6 +12,7 @@ import {
   WorkspaceDatabaseLive,
 } from "@/db/database.service";
 import {
+  excludeExpiredLocalHolds,
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
 } from "@/features/checkout/backend/workspace-table-occupancy";
@@ -276,18 +277,6 @@ export const WorkspaceAvailabilityServiceLiveWithDependencies =
       )
     )
   );
-
-const excludeExpiredLocalHolds = (
-  reservations: readonly Reservation[],
-  expiredDotyposReservationIds: readonly string[]
-) => {
-  if (expiredDotyposReservationIds.length === 0) return reservations;
-
-  const expiredIds = new Set(expiredDotyposReservationIds);
-  return reservations.filter(
-    (reservation) => !reservation.id || !expiredIds.has(reservation.id)
-  );
-};
 
 const getFullyOccupiedCalendarDates = (
   limitations: readonly WorkspaceCalendarLimitationType[]

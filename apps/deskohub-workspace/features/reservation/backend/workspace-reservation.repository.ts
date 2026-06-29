@@ -741,8 +741,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 )
               )
               .orderBy(
-                sql`${workspaceReservations.reservationHoldExpiredAt} is not null`,
-                asc(workspaceReservations.reservationHoldExpiredAt),
+                sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, ${workspaceReservations.reservationHoldExpiresAt})`,
                 asc(workspaceReservations.reservationHoldExpiresAt),
                 asc(workspaceReservations.id)
               )

@@ -31,12 +31,8 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain("workspaceReservations.paymentState");
     expect(section).toContain("<> 'paid'");
     expect(section).toContain(".orderBy(");
-    expect(section).toContain(
-      "workspaceReservations.reservationHoldExpiredAt} is not null"
-    );
-    expect(section).toContain(
-      "asc(workspaceReservations.reservationHoldExpiredAt)"
-    );
+    expect(section).toContain("coalesce(");
+    expect(section).toContain("workspaceReservations.reservationHoldExpiredAt");
     expect(section).toContain(
       "asc(workspaceReservations.reservationHoldExpiresAt)"
     );
