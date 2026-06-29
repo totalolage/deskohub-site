@@ -13,29 +13,51 @@ import { isPalmovconPageExpired } from "./page-availability";
 const reservationHref = "/reservation";
 const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
 const heroPublicId = "palmovcon-2026-hero";
+const eventImagePublicIds = {
+  miniaturePainting: "palmovcon-event-miniature-painting",
+  witcher: "palmovcon-event-witcher-game",
+  bloodOnTheClocktower: "palmovcon-event-blood-on-the-clocktower",
+  bazaar: "palmovcon-event-boardgame-bazar",
+} as const;
 
-const getSchedule = () => [
+type ScheduleItem = {
+  title: string;
+  time: string;
+  description: string;
+  note?: string;
+  imagePublicId: string;
+  cta?: {
+    href: string;
+    label: string;
+  };
+};
+
+const getSchedule = (): ScheduleItem[] => [
   {
     title: m["palmovcon2026.schedule.miniaturePainting.title"](),
     time: m["palmovcon2026.schedule.miniaturePainting.time"](),
     description: m["palmovcon2026.schedule.miniaturePainting.description"](),
+    imagePublicId: eventImagePublicIds.miniaturePainting,
   },
   {
     title: m["palmovcon2026.schedule.witcher.title"](),
     time: m["palmovcon2026.schedule.witcher.time"](),
     description: m["palmovcon2026.schedule.witcher.description"](),
     note: m["palmovcon2026.schedule.witcher.note"](),
+    imagePublicId: eventImagePublicIds.witcher,
   },
   {
     title: m["palmovcon2026.schedule.bloodOnTheClocktower.title"](),
     time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
     description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
     note: m["palmovcon2026.schedule.bloodOnTheClocktower.note"](),
+    imagePublicId: eventImagePublicIds.bloodOnTheClocktower,
   },
   {
     title: m["palmovcon2026.schedule.bazaar.title"](),
     time: m["palmovcon2026.schedule.bazaar.time"](),
     description: m["palmovcon2026.schedule.bazaar.description"](),
+    imagePublicId: eventImagePublicIds.bazaar,
   },
 ];
 
@@ -58,6 +80,18 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
   const heroBlurDataURL = heroImage
     ? await generateBlurDataUrlCached(heroImage).catch(() => undefined)
     : undefined;
+  const eventImages = new Map(
+    await Promise.all(
+      schedule.map(async (item) => {
+        const image = await getCloudinaryImageByPublicId(item.imagePublicId);
+        const blurDataURL = image
+          ? await generateBlurDataUrlCached(image).catch(() => undefined)
+          : undefined;
+
+        return [item.imagePublicId, { image, blurDataURL }] as const;
+      })
+    )
+  );
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#060852] text-[#FFFFFE]">
@@ -191,26 +225,65 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
           </p>
         </div>
 
-        <div className="mt-8 grid gap-5 md:grid-cols-2">
-          {schedule.map((item) => (
-            <article
-              className="rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#FFFFFE] p-6 text-[#060852] shadow-xl shadow-[#060852]/25"
-              key={item.title}
-            >
-              <p className="font-bold text-[#060852]/80">{item.time}</p>
-              <h3 className="mt-3 font-black text-2xl text-[#23221E]">
-                {item.title}
-              </h3>
-              <p className="mt-4 text-[#060852]/75 leading-7">
-                {item.description}
-              </p>
-              {item.note ? (
-                <p className="mt-5 rounded-2xl bg-[#899E28]/20 px-4 py-3 font-semibold text-[#060852]">
-                  {item.note}
-                </p>
-              ) : null}
-            </article>
-          ))}
+        <div className="mt-8 grid gap-5">
+          {schedule.map((item) => {
+            const eventImage = eventImages.get(item.imagePublicId);
+
+            return (
+              <article
+                className="relative overflow-hidden rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#FFFFFE] text-[#060852] shadow-xl shadow-[#060852]/25"
+                key={item.title}
+              >
+                {eventImage?.image ? (
+                  <CloudinaryImage
+                    alt=""
+                    asset={eventImage.image}
+                    blurDataURL={eventImage.blurDataURL}
+                    className="object-left"
+                    preload={false}
+                    sizes="(min-width: 768px) 66vw, 100vw"
+                    size={{ width: "fill", height: "fill" }}
+                    style={{
+                      objectPosition: "left center",
+                      maskImage:
+                        "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
+                      WebkitMaskImage:
+                        "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
+                    }}
+                    variant="full"
+                  />
+                ) : null}
+                <div className="relative grid min-h-[18rem] gap-6 p-6 pt-36 sm:p-8 sm:pt-40 md:pl-[34%] md:pt-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                  <div>
+                    <p className="font-bold text-[#060852]/80">{item.time}</p>
+                    <h3 className="mt-3 font-black text-2xl text-[#23221E]">
+                      {item.title}
+                    </h3>
+                    <p className="mt-4 max-w-2xl text-[#060852]/75 leading-7">
+                      {item.description}
+                    </p>
+                  </div>
+                  {item.cta || item.note ? (
+                    <div className="flex flex-col gap-3 lg:items-end">
+                      {item.cta ? (
+                        <Button
+                          asChild
+                          className="h-12 rounded-full bg-[#899E28] px-6 font-bold text-[#060852] hover:bg-[#6DAA9C]"
+                        >
+                          <a href={item.cta.href}>{item.cta.label}</a>
+                        </Button>
+                      ) : null}
+                      {item.note ? (
+                        <p className="rounded-2xl bg-[#899E28]/20 px-4 py-3 font-semibold text-[#060852] lg:max-w-64">
+                          {item.note}
+                        </p>
+                      ) : null}
+                    </div>
+                  ) : null}
+                </div>
+              </article>
+            );
+          })}
         </div>
       </section>
 
