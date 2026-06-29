@@ -97,9 +97,19 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
               from: query.from,
               to: query.to,
             }),
-            workspaceReservations.selectExpiredHoldDotyposReservationIds({
-              now: new Date(),
-            }),
+            workspaceReservations
+              .selectExpiredHoldDotyposReservationIds({
+                now: new Date(),
+              })
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Workspace availability expired hold filter failed",
+                    { cause }
+                  )
+                ),
+                Effect.orElseSucceed(() => [] as readonly string[])
+              ),
           ],
           { concurrency: 4 }
         );

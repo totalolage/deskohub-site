@@ -99,6 +99,7 @@ const runWithInventory = async <A>(
     readonly tables?: readonly Table[];
     readonly reservations?: readonly Reservation[];
     readonly expiredHoldDotyposReservationIds?: readonly string[];
+    readonly expiredHoldDotyposReservationIdsError?: boolean;
     readonly limitations?: readonly WorkspaceCalendarLimitationType[];
   } = {}
 ) => {
@@ -125,9 +126,15 @@ const runWithInventory = async <A>(
     ),
     Effect.provide(
       Layer.succeed(WorkspaceReservationRepository, {
-        selectExpiredHoldDotyposReservationIds: mock(() =>
-          Effect.succeed([...(input.expiredHoldDotyposReservationIds ?? [])])
-        ),
+        selectExpiredHoldDotyposReservationIds: mock(() => {
+          if (input.expiredHoldDotyposReservationIdsError) {
+            return Effect.fail(new Error("expired hold filter failed"));
+          }
+
+          return Effect.succeed([
+            ...(input.expiredHoldDotyposReservationIds ?? []),
+          ]);
+        }),
       } as never)
     ),
     Effect.runPromise
@@ -141,6 +148,7 @@ const getAvailability = (input: {
   readonly tables?: readonly Table[];
   readonly reservations?: readonly Reservation[];
   readonly expiredHoldDotyposReservationIds?: readonly string[];
+  readonly expiredHoldDotyposReservationIdsError?: boolean;
   readonly limitations?: readonly WorkspaceCalendarLimitationType[];
 }) =>
   runWithInventory(
@@ -216,6 +224,25 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(availability.unavailableDates).not.toContain(testDate);
     expect(availability.unavailableMonitorOptions).not.toContain("2x27-qhd");
+  });
+
+  test("falls back when expired local hold filtering fails", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "profi",
+      monitorOption: "2x27-qhd",
+      reservations: [
+        makeReservation({
+          id: "expired-dotypos-reservation-id",
+          tableId: "profi-27-qhd",
+          status: "NEW",
+        }),
+      ],
+      expiredHoldDotyposReservationIdsError: true,
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.unavailableMonitorOptions).toContain("2x27-qhd");
   });
 
   test("marks a tier unavailable only when all matching tables are occupied", async () => {

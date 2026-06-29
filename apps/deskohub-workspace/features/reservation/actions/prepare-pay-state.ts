@@ -839,7 +839,14 @@ const preparePayStateAction = createEffectSafeAction(
       ),
       Layer.provide(DotyposServiceLive)
     ),
-    WorkspaceTableAssignmentServiceLive.pipe(Layer.provide(DotyposServiceLive)),
+    WorkspaceTableAssignmentServiceLive.pipe(
+      Layer.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(WorkspaceDatabaseLive)
+        )
+      ),
+      Layer.provide(DotyposServiceLive)
+    ),
     WorkspaceCheckoutAccessCodeServiceLive,
     ReservationHoldCleanupQueueService.Live,
     PostHogEventServiceLive,

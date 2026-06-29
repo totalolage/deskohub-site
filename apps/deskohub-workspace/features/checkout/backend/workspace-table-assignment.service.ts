@@ -4,6 +4,7 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
+import type { Reservation } from "@deskohub/dotypos/generated";
 import { Context, Effect, Layer } from "effect";
 import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
 import {
@@ -20,6 +21,7 @@ import {
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 
 export interface WorkspaceTableAssignmentService {
   readonly assignTableId: (
@@ -36,6 +38,7 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
   WorkspaceTableAssignmentService,
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const workspaceReservations = yield* WorkspaceReservationRepository;
 
     return WorkspaceTableAssignmentService.of({
       assignTableId: Effect.fn("workspaceTableAssignment.assignTableId")(
@@ -83,9 +86,28 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             yield* Effect.annotateLogsScoped({ requiredTags });
           }
 
-          const [tables, reservations] = yield* Effect.all(
-            [dotypos.getTables(), dotypos.listReservations()],
-            { concurrency: 2 }
+          const [tables, reservations, expiredDotyposReservationIds] =
+            yield* Effect.all(
+              [
+                dotypos.getTables(),
+                dotypos.listReservations(),
+                workspaceReservations
+                  .selectExpiredHoldDotyposReservationIds({ now: new Date() })
+                  .pipe(
+                    Effect.tapError((cause) =>
+                      Effect.logWarning(
+                        "Workspace table assignment expired hold filter failed",
+                        { cause }
+                      )
+                    ),
+                    Effect.orElseSucceed(() => [] as readonly string[])
+                  ),
+              ],
+              { concurrency: 3 }
+            );
+          const activeReservations = excludeExpiredLocalHolds(
+            reservations,
+            expiredDotyposReservationIds
           );
           yield* Effect.annotateLogsScoped({ tables, reservations });
           yield* Effect.logInfo("Workspace table assignment inventory loaded");
@@ -98,7 +120,7 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               }),
           });
           const occupancyByTableId = getWorkspaceTableOccupancyById(
-            reservations,
+            activeReservations,
             day
           );
           yield* Effect.annotateLogsScoped({
@@ -168,3 +190,15 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
     });
   })
 );
+
+const excludeExpiredLocalHolds = (
+  reservations: readonly Reservation[],
+  expiredDotyposReservationIds: readonly string[]
+) => {
+  if (expiredDotyposReservationIds.length === 0) return reservations;
+
+  const expiredIds = new Set(expiredDotyposReservationIds);
+  return reservations.filter(
+    (reservation) => !reservation.id || !expiredIds.has(reservation.id)
+  );
+};
