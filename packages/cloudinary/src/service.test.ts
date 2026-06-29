@@ -157,6 +157,62 @@ describe("CloudinaryService", () => {
     expect(resourceAttempts).toBe(2);
   });
 
+  test("fails primitive public ID lookup rejections as CloudinarySearchError", async () => {
+    queuedResourceResults = [{ throw: undefined }];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.getByPublicId("gallery/image").pipe(Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinarySearchError");
+      expect(result.failure.message).toBe("undefined");
+      expect(result.failure.httpCode).toBeUndefined();
+    }
+    expect(resourceAttempts).toBe(1);
+  });
+
+  test("ignores malformed public ID lookup error fields", async () => {
+    queuedResourceResults = [{ throw: { message: 123, http_code: "500" } }];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.getByPublicId("gallery/image").pipe(Effect.result)
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("CloudinarySearchError");
+      expect(result.failure.message).toBe(
+        JSON.stringify({ message: 123, http_code: "500" })
+      );
+      expect(result.failure.httpCode).toBeUndefined();
+    }
+    expect(resourceAttempts).toBe(1);
+  });
+
+  test("retries nested HTTP codes after malformed top-level fields", async () => {
+    queuedResourceResults = [
+      {
+        throw: {
+          http_code: "500",
+          error: { http_code: 500, message: "nested" },
+        },
+      },
+      asset,
+    ];
+
+    const service = await makeService();
+    const result = await Effect.runPromise(
+      service.getByPublicId("gallery/image")
+    );
+
+    expect(result).toEqual(asset);
+    expect(resourceAttempts).toBe(2);
+  });
+
   test("searches with default options and decodes assets", async () => {
     queuedResults = [{ resources: [asset] }];
 

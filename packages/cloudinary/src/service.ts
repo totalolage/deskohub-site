@@ -144,6 +144,25 @@ export class CloudinaryService extends Context.Service<
   );
 }
 
+type CloudinaryProviderError = {
+  readonly message?: unknown;
+  readonly http_code?: unknown;
+  readonly error?: {
+    readonly message?: unknown;
+    readonly http_code?: unknown;
+  };
+};
+
+type CloudinaryRejectedValue =
+  | CloudinaryProviderError
+  | string
+  | number
+  | boolean
+  | bigint
+  | symbol
+  | null
+  | undefined;
+
 function decodeAssetResponse(result: unknown, publicId: string) {
   return pipe(
     Schema.decodeUnknownEffect(CloudinaryAssetSchema)(result),
@@ -172,41 +191,48 @@ const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
   )
 );
 
-function readCloudinaryHttpCode(error: unknown): number | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "http_code" in error &&
-    typeof error.http_code === "number"
-  ) {
+function readCloudinaryHttpCode(
+  error: CloudinaryProviderError
+): number | undefined {
+  if (typeof error.http_code === "number") {
     return error.http_code;
   }
 
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "error" in error &&
-    typeof error.error === "object" &&
-    error.error !== null &&
-    "http_code" in error.error &&
-    typeof error.error.http_code === "number"
-  ) {
-    return error.error.http_code;
-  }
+  const httpCode = error.error?.http_code;
 
-  return undefined;
+  return typeof httpCode === "number" ? httpCode : undefined;
 }
 
-function stringifyUnknownError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
+function stringifyCloudinaryError(error: CloudinaryProviderError): string {
+  const message = error.message ?? error.error?.message;
+
+  if (typeof message === "string") {
+    return message;
   }
 
-  if (typeof error === "object" && error !== null) {
-    return JSON.stringify(error);
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function toCloudinarySearchError(
+  error: CloudinaryRejectedValue,
+  expression: string
+) {
+  if (typeof error !== "object" || error === null) {
+    return new CloudinarySearchError({
+      message: String(error),
+      expression,
+    });
   }
 
-  return String(error);
+  return new CloudinarySearchError({
+    message: stringifyCloudinaryError(error),
+    expression,
+    httpCode: readCloudinaryHttpCode(error),
+  });
 }
 
 function decodeSearchResponse(result: unknown, expression: string) {
@@ -280,11 +306,10 @@ function createSearchExecutor(config: CloudinaryConfig) {
             try: () =>
               buildSearchExpression(expression, decodedOptions).execute(),
             catch: (error) =>
-              new CloudinarySearchError({
-                message: stringifyUnknownError(error),
-                expression,
-                httpCode: readCloudinaryHttpCode(error),
-              }),
+              toCloudinarySearchError(
+                error as CloudinaryRejectedValue,
+                expression
+              ),
           })
         ),
         Effect.tap((rawResult) =>
@@ -363,11 +388,10 @@ function createPublicIdLookupExecutor() {
               context: true,
             }),
           catch: (error) =>
-            new CloudinarySearchError({
-              message: stringifyUnknownError(error),
-              expression: `public_id=${publicId}`,
-              httpCode: readCloudinaryHttpCode(error),
-            }),
+            toCloudinarySearchError(
+              error as CloudinaryRejectedValue,
+              `public_id=${publicId}`
+            ),
         }),
         Effect.tap((rawResult) =>
           Effect.gen(function* () {
