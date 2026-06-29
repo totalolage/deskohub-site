@@ -113,28 +113,32 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
             </div>
           </div>
 
-          <aside className="rounded-[2rem] border border-[#6DAA9C]/25 bg-[#23221E]/70 p-6 shadow-2xl shadow-[#060852]/50 backdrop-blur">
-            <h2 className="font-black text-2xl text-[#6DAA9C]">
+          <aside className="rounded-[2rem] border border-[#6DAA9C]/25 bg-[#FFFFFE] p-6 text-[#060852] shadow-2xl shadow-[#060852]/50">
+            <h2 className="font-black text-2xl text-[#23221E]">
               {m["palmovcon2026.quickSummaryTitle"]()}
             </h2>
             <dl className="mt-6 grid gap-5">
               <div>
-                <dt className="font-semibold text-[#FFFFFE]/60 text-sm uppercase tracking-[0.2em]">
+                <dt className="font-semibold text-[#060852]/70 text-sm uppercase tracking-[0.2em]">
                   {m["palmovcon2026.dateLabel"]()}
                 </dt>
-                <dd className="mt-1 text-2xl">{m["palmovcon2026.date"]()}</dd>
+                <dd className="mt-1 text-2xl text-[#060852]">
+                  {m["palmovcon2026.date"]()}
+                </dd>
               </div>
               <div>
-                <dt className="font-semibold text-[#FFFFFE]/60 text-sm uppercase tracking-[0.2em]">
+                <dt className="font-semibold text-[#060852]/70 text-sm uppercase tracking-[0.2em]">
                   {m["palmovcon2026.locationLabel"]()}
                 </dt>
-                <dd className="mt-1 text-2xl">{m["palmovcon2026.venue"]()}</dd>
+                <dd className="mt-1 text-2xl text-[#060852]">
+                  {m["palmovcon2026.venue"]()}
+                </dd>
               </div>
               <div>
-                <dt className="font-semibold text-[#FFFFFE]/60 text-sm uppercase tracking-[0.2em]">
+                <dt className="font-semibold text-[#060852]/70 text-sm uppercase tracking-[0.2em]">
                   {m["palmovcon2026.entryFeeLabel"]()}
                 </dt>
-                <dd className="mt-1 text-2xl">
+                <dd className="mt-1 text-2xl text-[#060852]">
                   {m["palmovcon2026.entryFeeShort"]()}
                 </dd>
               </div>
@@ -144,25 +148,25 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       </section>
 
       <section className="mx-auto grid max-w-6xl gap-6 px-4 py-10 sm:px-6 lg:grid-cols-3 lg:px-8">
-        <div className="rounded-3xl border border-[#6DAA9C]/20 bg-[#23221E]/70 p-6 lg:col-span-1">
-          <p className="font-semibold text-[#6DAA9C] text-sm uppercase tracking-[0.22em]">
+        <div className="rounded-3xl border border-[#6DAA9C]/20 bg-[#FFFFFE] p-6 text-[#060852] lg:col-span-1">
+          <p className="font-semibold text-[#060852]/70 text-sm uppercase tracking-[0.22em]">
             {m["palmovcon2026.practicalInfoEyebrow"]()}
           </p>
-          <h2 className="mt-3 font-black text-3xl">
+          <h2 className="mt-3 font-black text-3xl text-[#23221E]">
             {m["palmovcon2026.practicalInfoTitle"]()}
           </h2>
         </div>
         <div className="grid gap-4 lg:col-span-2 sm:grid-cols-2">
           <article className="rounded-3xl bg-[#FFFFFE] p-6 text-[#060852]">
-            <h3 className="font-black text-xl">
+            <h3 className="font-black text-[#23221E] text-xl">
               {m["palmovcon2026.entryFeeTitle"]()}
             </h3>
             <p className="mt-3 text-[#060852]/75">
               {m["palmovcon2026.entryFeeDescription"]()}
             </p>
           </article>
-          <article className="rounded-3xl bg-[#6DAA9C] p-6 text-[#060852]">
-            <h3 className="font-black text-xl">
+          <article className="rounded-3xl bg-[#FFFFFE] p-6 text-[#060852]">
+            <h3 className="font-black text-[#23221E] text-xl">
               {m["palmovcon2026.complexGamesTitle"]()}
             </h3>
             <p className="mt-3 text-[#060852]/80">
@@ -190,16 +194,18 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         <div className="mt-8 grid gap-5 md:grid-cols-2">
           {schedule.map((item) => (
             <article
-              className="rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#23221E] p-6 shadow-xl shadow-[#060852]/25"
+              className="rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#FFFFFE] p-6 text-[#060852] shadow-xl shadow-[#060852]/25"
               key={item.title}
             >
-              <p className="font-bold text-[#6DAA9C]">{item.time}</p>
-              <h3 className="mt-3 font-black text-2xl">{item.title}</h3>
-              <p className="mt-4 text-[#FFFFFE]/75 leading-7">
+              <p className="font-bold text-[#060852]/80">{item.time}</p>
+              <h3 className="mt-3 font-black text-2xl text-[#23221E]">
+                {item.title}
+              </h3>
+              <p className="mt-4 text-[#060852]/75 leading-7">
                 {item.description}
               </p>
               {item.note ? (
-                <p className="mt-5 rounded-2xl bg-[#899E28]/25 px-4 py-3 font-semibold text-[#FFFFFE]">
+                <p className="mt-5 rounded-2xl bg-[#899E28]/20 px-4 py-3 font-semibold text-[#060852]">
                   {item.note}
                 </p>
               ) : null}
