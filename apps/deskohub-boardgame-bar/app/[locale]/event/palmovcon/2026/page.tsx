@@ -68,8 +68,8 @@ const getSchedule = (): ScheduleItem[] => [
 ];
 
 export const generateMetadata = metadata({
-  title: m["palmovcon2026.pageTitle"](),
-  description: m["palmovcon2026.pageDescription"](),
+  title: () => m["palmovcon2026.pageTitle"](),
+  description: () => m["palmovcon2026.pageDescription"](),
 });
 
 export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
@@ -98,6 +98,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       })
     )
   );
+  const canReserveTable = siteConstants.featureFlags.tableReservations;
 
   return (
     <main className="min-h-screen overflow-hidden bg-[#060852] text-[#FFFFFE]">
@@ -138,15 +139,17 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
               {m["palmovcon2026.intro"]()}
             </p>
             <div className="mt-10 flex flex-col gap-4 sm:flex-row sm:items-center">
-              <Button
-                asChild
-                className="h-14 rounded-full bg-[#899E28] px-8 font-black text-[#060852] text-base hover:bg-[#6DAA9C]"
-                size="lg"
-              >
-                <LocalizedLink href={reservationHref}>
-                  {m["palmovcon2026.reservationCta"]()}
-                </LocalizedLink>
-              </Button>
+              {canReserveTable && (
+                <Button
+                  asChild
+                  className="h-14 rounded-full bg-[#899E28] px-8 font-black text-[#060852] text-base hover:bg-[#6DAA9C]"
+                  size="lg"
+                >
+                  <LocalizedLink href={reservationHref}>
+                    {m["palmovcon2026.reservationCta"]()}
+                  </LocalizedLink>
+                </Button>
+              )}
               <span className="text-[#FFFFFE]/70 text-sm">
                 {m["palmovcon2026.location"]()}
               </span>
@@ -311,15 +314,17 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   {m["palmovcon2026.facebookCta"]()}
                 </a>
               </Button>
-              <Button
-                asChild
-                className="h-12 rounded-full border-[#060852] px-6 font-bold text-[#060852] hover:bg-[#060852]/10"
-                variant="outline"
-              >
-                <LocalizedLink href={reservationHref}>
-                  {m["palmovcon2026.secondaryReservationCta"]()}
-                </LocalizedLink>
-              </Button>
+              {canReserveTable && (
+                <Button
+                  asChild
+                  className="h-12 rounded-full border-[#060852] px-6 font-bold text-[#060852] hover:bg-[#060852]/10"
+                  variant="outline"
+                >
+                  <LocalizedLink href={reservationHref}>
+                    {m["palmovcon2026.secondaryReservationCta"]()}
+                  </LocalizedLink>
+                </Button>
+              )}
             </div>
           </div>
         </div>
