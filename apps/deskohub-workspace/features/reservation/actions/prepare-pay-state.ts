@@ -43,7 +43,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { ReservationHoldCleanupQueueService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
+import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
 import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import { WorkspaceTableAssignmentServiceLive } from "@/features/checkout/backend/workspace-table-assignment.service";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
@@ -271,8 +271,8 @@ const enqueueReservationHoldCleanup = Effect.fn(
     return;
   }
 
-  const queue = yield* ReservationHoldCleanupQueueService;
-  const enqueue = queue
+  const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
+  const enqueue = cleanupSchedule
     .enqueueCleanup({
       orderId: input.orderId,
       reservationHoldExpiresAt: input.reservationHoldExpiresAt,
@@ -858,7 +858,7 @@ const preparePayStateAction = createEffectSafeAction(
       Layer.provide(DotyposServiceLive)
     ),
     WorkspaceCheckoutAccessCodeServiceLive,
-    ReservationHoldCleanupQueueService.Live,
+    ReservationHoldCleanupScheduleService.Live,
     PostHogEventServiceLive,
     DotyposServiceLive
   )

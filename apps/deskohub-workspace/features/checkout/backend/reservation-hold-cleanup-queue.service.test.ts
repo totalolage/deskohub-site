@@ -94,7 +94,7 @@ const duePayload = {
   reservationHoldExpiresAtIso: expiresAt.toISOString(),
 };
 
-describe("ReservationHoldCleanupQueueService", () => {
+describe("ReservationHoldCleanupScheduleService", () => {
   test("builds bounded delayed queue messages with idempotency", async () => {
     const {
       getReservationHoldCleanupQueueMessage,
@@ -209,7 +209,7 @@ describe("ReservationHoldCleanupQueueService", () => {
   });
 
   test("retries skipped cleanup while the reservation is still due", async () => {
-    const { ReservationHoldCleanupQueueError } = await import(
+    const { ReservationHoldCleanupScheduleError } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
     const { ReservationHoldCleanupService } = await import(
@@ -243,7 +243,7 @@ describe("ReservationHoldCleanupQueueService", () => {
       Effect.runPromise
     );
 
-    expect(error).toBeInstanceOf(ReservationHoldCleanupQueueError);
+    expect(error).toBeInstanceOf(ReservationHoldCleanupScheduleError);
     expect(error.message).toBe(
       "Queued reservation hold cleanup skipped while still due."
     );

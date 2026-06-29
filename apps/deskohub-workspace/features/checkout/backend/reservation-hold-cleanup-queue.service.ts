@@ -1,11 +1,12 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import {
   type ReservationHoldCleanupOutcome,
   ReservationHoldCleanupService,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { clamp } from "@/shared/utils";
 
 export const reservationHoldCleanupQueueTopic =
   "workspace-reservation-hold-cleanup";
@@ -13,28 +14,46 @@ export const reservationHoldCleanupQueueTopic =
 export const reservationHoldCleanupQueueMaxDelaySeconds = 7 * 24 * 60 * 60;
 const reservationHoldCleanupRetryWindowSeconds = 60 * 60;
 
-export type ReservationHoldCleanupQueuePayload = {
-  readonly schemaVersion: 1;
-  readonly orderId: string;
-  readonly reservationHoldExpiresAtIso: string;
+const ReservationHoldCleanupQueuePayloadSchema = Schema.Struct({
+  schemaVersion: Schema.Literal(1),
+  orderId: Schema.String,
+  reservationHoldExpiresAtIso: Schema.String,
+});
+
+export type ReservationHoldCleanupQueuePayload = Schema.Schema.Type<
+  typeof ReservationHoldCleanupQueuePayloadSchema
+>;
+
+type ReservationHoldCleanupQueueMessage = {
+  readonly topic: typeof reservationHoldCleanupQueueTopic;
+  readonly payload: ReservationHoldCleanupQueuePayload;
+  readonly options: {
+    readonly delaySeconds: number;
+    readonly retentionSeconds: number;
+    readonly idempotencyKey: string;
+  };
 };
 
-export class ReservationHoldCleanupQueueError extends Data.TaggedError(
-  "ReservationHoldCleanupQueueError"
+type ReservationHoldCleanupEnqueueResult = "duplicate" | "enqueued";
+
+export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
+  "ReservationHoldCleanupScheduleError"
 )<{
   readonly message: string;
   readonly cause?: unknown;
-}> {}
+}> {
+  static fromError(message: string) {
+    return (cause: unknown) =>
+      new ReservationHoldCleanupScheduleError({ message, cause });
+  }
+}
 
-interface IReservationHoldCleanupQueueService {
+interface IReservationHoldCleanupScheduleService {
   readonly enqueueCleanup: (input: {
     readonly orderId: string;
     readonly reservationHoldExpiresAt: Date;
-  }) => Effect.Effect<void, ReservationHoldCleanupQueueError>;
+  }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
-
-const clamp = (value: number, min: number, max: number) =>
-  Math.min(Math.max(value, min), max);
 
 export const getReservationHoldCleanupQueueMessage = (
   input: {
@@ -42,7 +61,7 @@ export const getReservationHoldCleanupQueueMessage = (
     readonly reservationHoldExpiresAt: Date;
   },
   now = new Date()
-) => {
+): ReservationHoldCleanupQueueMessage => {
   const reservationHoldExpiresAtIso =
     input.reservationHoldExpiresAt.toISOString();
   const delaySeconds = clamp(
@@ -73,10 +92,10 @@ export const getReservationHoldCleanupQueueMessage = (
   };
 };
 
-export class ReservationHoldCleanupQueueService extends Context.Service<
-  ReservationHoldCleanupQueueService,
-  IReservationHoldCleanupQueueService
->()("ReservationHoldCleanupQueueService") {
+export class ReservationHoldCleanupScheduleService extends Context.Service<
+  ReservationHoldCleanupScheduleService,
+  IReservationHoldCleanupScheduleService
+>()("ReservationHoldCleanupScheduleService") {
   static Live = Layer.succeed(this, {
     enqueueCleanup: Effect.fn("reservationHoldCleanupQueue.enqueueCleanup")(
       function* (input) {
@@ -97,58 +116,36 @@ export class ReservationHoldCleanupQueueService extends Context.Service<
             () => Effect.succeed("duplicate" as const)
           ),
           Effect.mapError(
-            (cause) =>
-              new ReservationHoldCleanupQueueError({
-                message: "Reservation hold cleanup could not be enqueued.",
-                cause,
-              })
+            ReservationHoldCleanupScheduleError.fromError(
+              "Reservation hold cleanup could not be enqueued."
+            )
           )
         );
 
-        yield* Effect.logInfo(
-          result === "duplicate"
-            ? "Reservation hold cleanup was already enqueued"
-            : "Reservation hold cleanup enqueued",
-          { message }
-        );
+        const enqueueResultMessages = {
+          duplicate: "Reservation hold cleanup was already enqueued",
+          enqueued: "Reservation hold cleanup enqueued",
+        } satisfies Record<ReservationHoldCleanupEnqueueResult, string>;
+
+        yield* Effect.logInfo(enqueueResultMessages[result], { message });
       }
     ),
   });
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null;
+const decodeQueuePayload = Schema.decodeUnknownOption(
+  ReservationHoldCleanupQueuePayloadSchema
+);
 
-const parseQueuePayload = (
-  message: unknown
-): ReservationHoldCleanupQueuePayload | undefined => {
-  if (!isRecord(message)) return undefined;
-  if (message.schemaVersion !== 1) return undefined;
-  if (typeof message.orderId !== "string") return undefined;
-  if (typeof message.reservationHoldExpiresAtIso !== "string") {
-    return undefined;
-  }
-
-  return {
-    schemaVersion: 1,
-    orderId: message.orderId,
-    reservationHoldExpiresAtIso: message.reservationHoldExpiresAtIso,
-  };
-};
-
-const parseIsoDate = (value: string): Date | undefined => {
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? undefined : date;
-};
+const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
 
 const isDueReservation = (
   reservation: WorkspaceReservation | null,
   reservationHoldExpiresAt: Date,
   now: Date
 ) =>
-  (reservation?.reservationState === "held" ||
-    reservation?.reservationState === "cancelling" ||
-    reservation?.reservationState === "cancellation_failed") &&
+  reservation !== null &&
+  dueReservationStates.includes(reservation?.reservationState ?? "") &&
   reservation.paymentState !== "paid" &&
   reservation.reservationHoldExpiresAt?.getTime() ===
     reservationHoldExpiresAt.getTime() &&
@@ -157,7 +154,7 @@ const isDueReservation = (
 export const processReservationHoldCleanupQueueMessage = Effect.fn(
   "reservationHoldCleanupQueue.processMessage"
 )(function* (message: unknown, now = new Date()) {
-  const payload = parseQueuePayload(message);
+  const payload = Option.getOrUndefined(decodeQueuePayload(message));
   if (!payload) {
     yield* Effect.logWarning(
       "Reservation hold cleanup queue message ignored: invalid payload"
@@ -165,28 +162,21 @@ export const processReservationHoldCleanupQueueMessage = Effect.fn(
     return "ignored" as const;
   }
 
-  const reservationHoldExpiresAt = parseIsoDate(
+  const reservationHoldExpiresAt = new Date(
     payload.reservationHoldExpiresAtIso
   );
-  if (!reservationHoldExpiresAt) {
-    yield* Effect.logWarning(
-      "Reservation hold cleanup queue message ignored: invalid expiry",
-      { payload }
-    );
-    return "ignored" as const;
-  }
 
   const reservations = yield* WorkspaceReservationRepository;
   const cleanup = yield* ReservationHoldCleanupService;
-  const reservation = yield* reservations.findById(payload.orderId).pipe(
-    Effect.mapError(
-      (cause) =>
-        new ReservationHoldCleanupQueueError({
-          message: "Queued reservation hold cleanup state could not be loaded.",
-          cause,
-        })
-    )
-  );
+  const reservation = yield* reservations
+    .findById(payload.orderId)
+    .pipe(
+      Effect.mapError(
+        ReservationHoldCleanupScheduleError.fromError(
+          "Queued reservation hold cleanup state could not be loaded."
+        )
+      )
+    );
 
   if (!isDueReservation(reservation, reservationHoldExpiresAt, now)) {
     yield* Effect.logInfo(
@@ -200,32 +190,27 @@ export const processReservationHoldCleanupQueueMessage = Effect.fn(
     .cancelOrderHold({ orderId: payload.orderId, holdExpiredAt: now })
     .pipe(
       Effect.mapError(
-        (cause) =>
-          new ReservationHoldCleanupQueueError({
-            message: "Queued reservation hold cleanup failed.",
-            cause,
-          })
+        ReservationHoldCleanupScheduleError.fromError(
+          "Queued reservation hold cleanup failed."
+        )
       )
     );
 
   if (outcome === "skipped") {
-    const current = yield* reservations.findById(payload.orderId).pipe(
-      Effect.mapError(
-        (cause) =>
-          new ReservationHoldCleanupQueueError({
-            message:
-              "Queued reservation hold cleanup state could not be reloaded.",
-            cause,
-          })
-      )
-    );
+    const current = yield* reservations
+      .findById(payload.orderId)
+      .pipe(
+        Effect.mapError(
+          ReservationHoldCleanupScheduleError.fromError(
+            "Queued reservation hold cleanup state could not be reloaded."
+          )
+        )
+      );
 
     if (isDueReservation(current, reservationHoldExpiresAt, now)) {
-      return yield* Effect.fail(
-        new ReservationHoldCleanupQueueError({
-          message: "Queued reservation hold cleanup skipped while still due.",
-        })
-      );
+      return yield* new ReservationHoldCleanupScheduleError({
+        message: "Queued reservation hold cleanup skipped while still due.",
+      });
     }
   }
 

@@ -92,7 +92,7 @@ const runReusableReservationScenario = async (input: {
   const { ReservationHoldCleanupService } = await import(
     "@/features/checkout/backend/reservation-hold-cleanup.service"
   );
-  const { ReservationHoldCleanupQueueService } = await import(
+  const { ReservationHoldCleanupScheduleService } = await import(
     "@/features/checkout/backend/reservation-hold-cleanup-queue.service"
   );
   const { WorkspaceAvailabilityService } = await import(
@@ -155,7 +155,7 @@ const runReusableReservationScenario = async (input: {
       } satisfies ReservationHoldCleanupServiceType)
     ),
     Effect.provide(
-      Layer.succeed(ReservationHoldCleanupQueueService, {
+      Layer.succeed(ReservationHoldCleanupScheduleService, {
         enqueueCleanup,
       } as never)
     ),
@@ -201,7 +201,7 @@ describe("prepareWorkspacePayStateEffect", () => {
     const { ReservationHoldCleanupService } = await import(
       "@/features/checkout/backend/reservation-hold-cleanup.service"
     );
-    const { ReservationHoldCleanupQueueService } = await import(
+    const { ReservationHoldCleanupScheduleService } = await import(
       "@/features/checkout/backend/reservation-hold-cleanup-queue.service"
     );
     const { WorkspaceTableAssignmentService } = await import(
@@ -309,7 +309,7 @@ describe("prepareWorkspacePayStateEffect", () => {
         } satisfies ReservationHoldCleanupServiceType)
       ),
       Effect.provide(
-        Layer.succeed(ReservationHoldCleanupQueueService, {
+        Layer.succeed(ReservationHoldCleanupScheduleService, {
           enqueueCleanup,
         } as never)
       ),
