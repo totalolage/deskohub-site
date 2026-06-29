@@ -13,6 +13,7 @@ import { CloudinarySearchError } from "./errors";
 import { type CnfExpression, cnfToCloudinaryExpression } from "./expression";
 import {
   type CloudinaryAsset,
+  CloudinaryAssetSchema,
   CloudinarySearchResponseSchema,
   type SearchOptions,
   SearchOptionsSchema,
@@ -21,6 +22,9 @@ import {
 export type { CloudinaryConfig } from "./config";
 
 export interface ICloudinaryService {
+  readonly getByPublicId: (
+    publicId: string
+  ) => Effect.Effect<CloudinaryAsset, CloudinarySearchError>;
   readonly searchByTag: (
     tag: string,
     options?: SearchOptions
@@ -59,6 +63,7 @@ export class CloudinaryService extends Context.Service<
       });
 
       const executeSearch = createSearchExecutor(config);
+      const getByPublicId = createPublicIdLookupExecutor();
 
       const searchByTag: ICloudinaryService["searchByTag"] = (tag, options) =>
         executeSearch(`tags=${tag} AND resource_type:image`, options);
@@ -128,6 +133,7 @@ export class CloudinaryService extends Context.Service<
       };
 
       return {
+        getByPublicId,
         searchByTag,
         searchByFolder,
         searchAll,
@@ -135,6 +141,38 @@ export class CloudinaryService extends Context.Service<
         searchWithTags,
       } satisfies ICloudinaryService;
     })
+  );
+}
+
+type CloudinaryProviderError = {
+  readonly message?: unknown;
+  readonly http_code?: unknown;
+  readonly error?: {
+    readonly message?: unknown;
+    readonly http_code?: unknown;
+  };
+};
+
+type CloudinaryRejectedValue =
+  | CloudinaryProviderError
+  | string
+  | number
+  | boolean
+  | bigint
+  | symbol
+  | null
+  | undefined;
+
+function decodeAssetResponse(result: unknown, publicId: string) {
+  return pipe(
+    Schema.decodeUnknownEffect(CloudinaryAssetSchema)(result),
+    Effect.mapError(
+      () =>
+        new CloudinarySearchError({
+          message: "Cloudinary response did not match the asset schema",
+          expression: `public_id=${publicId}`,
+        })
+    )
   );
 }
 
@@ -153,32 +191,48 @@ const cloudinaryRetryPolicy = Schedule.exponential("100 millis").pipe(
   )
 );
 
-function readCloudinaryHttpCode(error: unknown): number | undefined {
-  if (
-    typeof error === "object" &&
-    error !== null &&
-    "error" in error &&
-    typeof error.error === "object" &&
-    error.error !== null &&
-    "http_code" in error.error &&
-    typeof error.error.http_code === "number"
-  ) {
-    return error.error.http_code;
+function readCloudinaryHttpCode(
+  error: CloudinaryProviderError
+): number | undefined {
+  if (typeof error.http_code === "number") {
+    return error.http_code;
   }
 
-  return undefined;
+  const httpCode = error.error?.http_code;
+
+  return typeof httpCode === "number" ? httpCode : undefined;
 }
 
-function stringifyUnknownError(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
+function stringifyCloudinaryError(error: CloudinaryProviderError): string {
+  const message = error.message ?? error.error?.message;
+
+  if (typeof message === "string") {
+    return message;
   }
 
-  if (typeof error === "object" && error !== null) {
-    return JSON.stringify(error);
+  try {
+    return JSON.stringify(error) ?? String(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function toCloudinarySearchError(
+  error: CloudinaryRejectedValue,
+  expression: string
+) {
+  if (typeof error !== "object" || error === null) {
+    return new CloudinarySearchError({
+      message: String(error),
+      expression,
+    });
   }
 
-  return String(error);
+  return new CloudinarySearchError({
+    message: stringifyCloudinaryError(error),
+    expression,
+    httpCode: readCloudinaryHttpCode(error),
+  });
 }
 
 function decodeSearchResponse(result: unknown, expression: string) {
@@ -252,11 +306,10 @@ function createSearchExecutor(config: CloudinaryConfig) {
             try: () =>
               buildSearchExpression(expression, decodedOptions).execute(),
             catch: (error) =>
-              new CloudinarySearchError({
-                message: stringifyUnknownError(error),
-                expression,
-                httpCode: readCloudinaryHttpCode(error),
-              }),
+              toCloudinarySearchError(
+                error as CloudinaryRejectedValue,
+                expression
+              ),
           })
         ),
         Effect.tap((rawResult) =>
@@ -305,6 +358,70 @@ function createSearchExecutor(config: CloudinaryConfig) {
     },
     (effect, expression, options) =>
       effect.pipe(Effect.scoped, Effect.annotateLogs({ expression, options }))
+  );
+}
+
+function createPublicIdLookupExecutor() {
+  return Effect.fn("cloudinary.api.resource")(
+    function* (publicId: string) {
+      if (!publicId.trim()) {
+        return yield* Effect.fail(
+          new CloudinarySearchError({
+            message: "Cloudinary publicId is required",
+            expression: "public_id=",
+          })
+        );
+      }
+
+      yield* Effect.annotateLogsScoped({ publicId });
+      yield* Effect.logInfo("Cloudinary public ID lookup started", {
+        publicId,
+      });
+
+      return yield* pipe(
+        Effect.tryPromise({
+          try: () =>
+            cloudinary.api.resource(publicId, {
+              resource_type: "image",
+              type: "upload",
+              tags: true,
+              context: true,
+            }),
+          catch: (error) =>
+            toCloudinarySearchError(
+              error as CloudinaryRejectedValue,
+              `public_id=${publicId}`
+            ),
+        }),
+        Effect.tap((rawResult) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ rawResult });
+            yield* Effect.logDebug("Cloudinary provider response received", {
+              rawResult,
+            });
+          })
+        ),
+        Effect.flatMap((result) => decodeAssetResponse(result, publicId)),
+        Effect.tap((asset) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ result: asset });
+            yield* Effect.logInfo("Cloudinary public ID lookup completed", {
+              publicId,
+            });
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Cloudinary public ID lookup failed", {
+            publicId,
+            errorMessage: error.message,
+            httpCode: error.httpCode,
+          })
+        ),
+        Effect.retry(cloudinaryRetryPolicy)
+      );
+    },
+    (effect, publicId) =>
+      effect.pipe(Effect.scoped, Effect.annotateLogs({ publicId }))
   );
 }
 

@@ -158,6 +158,57 @@
     "title": "Deskohub - Deskoherní klub a školící místnost",
     "description": "Místo, kde fantazie potkává realitu. Deskové hry, školící místnost a komunita deskohráčů v Praze."
   },
+  "palmovcon2026": {
+    "pageTitle": "Palmovcon 2026",
+    "pageDescription": "Druhý ročník deskoherního festivalu na Palmovce v Deskohubu od 16. do 19. července 2026.",
+    "heroAlt": "Grafika festivalu Palmovcon 2026 s logem Deskohubu",
+    "date": "16. 7. - 19. 7. 2026",
+    "title": "PALMOVCON 2026",
+    "subtitle": "Druhý ročník deskoherního festivalu na Palmovce.",
+    "intro": "Potkej svého osudového spoluhráče. Ať už jsi hardcore stratég, tvořivý geek, nebo celá nerdská rodina, doraz nasát tu správnou letní herní atmosféru. Nemusíš číst tlusté manuály, naši herní průvodci tě všechno naučí přímo u stolu.",
+    "reservationCta": "Chci si rezervovat stůl",
+    "registrationCta": "Registrovat se",
+    "secondaryReservationCta": "Rezervovat stůl",
+    "location": "Deskohub, Praha - Palmovka",
+    "quickSummaryTitle": "Nejrychlejší přehled",
+    "dateLabel": "Kdy",
+    "locationLabel": "Kde",
+    "venue": "Deskohub na Palmovce",
+    "entryFeeLabel": "Vstupné",
+    "entryFeeShort": "50 Kč s konzumací / 100 Kč bez",
+    "complexGamesEyebrow": "Komplexní hry",
+    "complexGamesTitle": "Nauč se hrát",
+    "complexGamesDescription": "Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel doplníme brzy.",
+    "scheduleEyebrow": "Program akce",
+    "scheduleTitle": "Co se bude hrát",
+    "scheduleDescription": "Program stále doplňujeme a ladíme. Registrace otevřeme postupně.",
+    "schedule": {
+      "miniaturePainting": {
+        "title": "Workshop malování figurek",
+        "time": "Čtvrtek 16. 7. v 17:00",
+        "description": "Chceš si vyzkoušet nabarvit vlastní miniaturu? Barvy i figurky ti rádi půjčíme, stačí dorazit!"
+      },
+      "witcher": {
+        "title": "Otevřené hraní Zaklínače",
+        "time": "Čtvrtek 16. 7. v 17:00",
+        "description": "Legendární fantasy svět na tvém stole. Kapacita je omezená a registrace je nutná předem."
+      },
+      "bloodOnTheClocktower": {
+        "title": "Krvavá hodinka (Blood on the Clocktower)",
+        "time": "Sobota 18. 7. ve 12:00",
+        "description": "Geniální detektivní hra plná blafování, dedukce a intrik.",
+        "note": "Registrace bude spuštěna již brzy."
+      },
+      "bazaar": {
+        "title": "Velká deskoherní burza",
+        "time": "Sobota 18. 7. celý den",
+        "description": "Praskají ti doma poličky ve švech? Přines hry, které už nehraješ, nebo přijď ulovit nový kousek za super cenu."
+      }
+    },
+    "footerEyebrow": "Sledujte nás a buďte v obraze",
+    "footerTitle": "Neuteče vám žádná novinka ani další registrace.",
+    "facebookCta": "Zobrazit Facebook událost"
+  },
   "reservation": {
     "pageTitle": "Rezervace stolu",
     "pageDescription": "Rezervujte si stůl v Deskohub baru s deskovými hrami. Vyberte si preferované datum, čas a typ stolu pro dokonalý herní zážitek."
