@@ -4,6 +4,7 @@ import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   WorkspaceTableAssignmentService,
   WorkspaceTableAssignmentServiceLive,
@@ -39,6 +40,7 @@ const makeTable = (input: {
 });
 
 const makeDotyposReservation = (input: {
+  readonly id?: string;
   readonly tableId: string;
   readonly status: Reservation["status"];
   readonly seats?: string;
@@ -47,6 +49,7 @@ const makeDotyposReservation = (input: {
 }): Reservation => ({
   _branchId: "branch",
   _cloudId: "cloud",
+  id: input.id,
   _tableId: input.tableId,
   startDate: input.startDate ?? "2099-06-09T22:00:00Z",
   endDate: input.endDate ?? "2099-06-10T22:00:00Z",
@@ -57,7 +60,8 @@ const makeDotyposReservation = (input: {
 const assignTableId = (
   reservation: CheckoutDetailsJson["reservation"],
   tables: readonly Table[],
-  dotyposReservations: readonly Reservation[] = []
+  dotyposReservations: readonly Reservation[] = [],
+  expiredHoldDotyposReservationIds: readonly string[] = []
 ) => {
   const dotyposService: DotyposAssignmentTestService = {
     createReservation: mock(() => Effect.die("createReservation not mocked")),
@@ -82,6 +86,13 @@ const assignTableId = (
   }).pipe(
     Effect.provide(WorkspaceTableAssignmentServiceLive),
     Effect.provide(Layer.succeed(DotyposService, dotyposService)),
+    Effect.provide(
+      Layer.succeed(WorkspaceReservationRepository, {
+        selectExpiredHoldDotyposReservationIds: mock(() =>
+          Effect.succeed([...expiredHoldDotyposReservationIds])
+        ),
+      } as never)
+    ),
     Effect.runPromise
   );
 };
@@ -182,6 +193,26 @@ describe("WorkspaceTableAssignmentService", () => {
         [makeDotyposReservation({ tableId: "basic-1", status: "NEW" })]
       )
     ).resolves.toBe("basic-2");
+  });
+
+  test("ignores expired local holds while assigning a table", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        [
+          makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
+          makeTable({ id: "basic-2", name: "2", tags: ["tier:basic"] }),
+        ],
+        [
+          makeDotyposReservation({
+            id: "expired-dotypos-reservation-id",
+            tableId: "basic-1",
+            status: "NEW",
+          }),
+        ],
+        ["expired-dotypos-reservation-id"]
+      )
+    ).resolves.toBe("basic-1");
   });
 
   test("assigns a matching table when existing reservations leave enough capacity", async () => {

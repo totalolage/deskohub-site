@@ -8,10 +8,11 @@ import type { Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
+  type DatabaseError,
+  WorkspaceDatabaseLive,
+} from "@/db/database.service";
 import {
+  excludeExpiredLocalHolds,
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
 } from "@/features/checkout/backend/workspace-table-occupancy";
@@ -35,8 +36,13 @@ import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
 } from "./google-calendar-workspace-limitations.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "./workspace-reservation.repository";
 
 type WorkspaceAvailabilityError =
+  | DatabaseError
   | ExternalAPIError
   | GoogleCalendarError
   | NetworkError
@@ -71,46 +77,50 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const workspaceReservations = yield* WorkspaceReservationRepository;
     const calendarLimitations =
       yield* GoogleCalendarWorkspaceLimitationsService;
-    const holdCleanup = yield* ReservationHoldCleanupService;
 
     const loadInventory = Effect.fn("workspaceAvailability.loadInventory")(
       function* (query: Pick<WorkspaceAvailabilityQuery, "from" | "to">) {
         yield* Effect.logInfo("Workspace availability inventory load started");
 
-        const sweepResult = yield* holdCleanup
-          .sweepExpiredHolds({ now: new Date(), limit: 10 })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning("Availability expired hold sweep failed", {
-                cause,
-              })
+        const [
+          tables,
+          reservations,
+          limitations,
+          expiredDotyposReservationIds,
+        ] = yield* Effect.all([
+          dotypos.getTables(),
+          dotypos.listReservations(),
+          calendarLimitations.listLimitations({
+            from: query.from,
+            to: query.to,
+          }),
+          workspaceReservations
+            .selectExpiredHoldDotyposReservationIds({
+              now: new Date(),
+            })
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning(
+                  "Workspace availability expired hold filter failed",
+                  { cause }
+                )
+              ),
+              Effect.orElseSucceed(() => [] as readonly string[])
             ),
-            Effect.result
-          );
-        yield* Effect.annotateLogsScoped({ sweepResult });
-        yield* Effect.logInfo(
-          "Workspace availability expired hold sweep completed"
-        );
-
-        const [tables, reservations, limitations] = yield* Effect.all(
-          [
-            dotypos.getTables(),
-            dotypos.listReservations(),
-            calendarLimitations.listLimitations({
-              from: query.from,
-              to: query.to,
-            }),
-          ],
-          { concurrency: 3 }
+        ]);
+        const activeReservations = excludeExpiredLocalHolds(
+          reservations,
+          expiredDotyposReservationIds
         );
         yield* Effect.annotateLogsScoped({ tables, reservations, limitations });
         yield* Effect.logInfo(
           "Workspace availability inventory load completed"
         );
 
-        return { tables, reservations, limitations };
+        return { tables, reservations: activeReservations, limitations };
       },
       (effect) =>
         effect.pipe(
@@ -256,9 +266,13 @@ const GoogleCalendarWorkspaceLimitationsLive =
 
 export const WorkspaceAvailabilityServiceLiveWithDependencies =
   WorkspaceAvailabilityServiceLive.pipe(
-    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
-    Layer.provide(DotyposServiceLive)
+    Layer.provide(DotyposServiceLive),
+    Layer.provide(
+      WorkspaceReservationRepositoryLive.pipe(
+        Layer.provide(WorkspaceDatabaseLive)
+      )
+    )
   );
 
 const getFullyOccupiedCalendarDates = (

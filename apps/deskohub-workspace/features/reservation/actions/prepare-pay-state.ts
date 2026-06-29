@@ -43,6 +43,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/reservation-hold-cleanup.service";
+import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
 import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
 import { WorkspaceTableAssignmentServiceLive } from "@/features/checkout/backend/workspace-table-assignment.service";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
@@ -256,6 +257,50 @@ const getExistingReservationSubmitMessage = (
     ? m.reservationAlreadyPaidMessage({}, { locale })
     : m.reservationErrorMessage({}, { locale });
 
+const enqueueReservationHoldCleanup = Effect.fn(
+  "prepareWorkspacePayState.enqueueReservationHoldCleanup"
+)(function* (input: {
+  readonly orderId: string;
+  readonly reservationHoldExpiresAt: Date | null;
+}) {
+  if (!input.reservationHoldExpiresAt) {
+    yield* Effect.logWarning(
+      "Workspace reservation hold cleanup enqueue skipped: missing hold expiry",
+      { orderId: input.orderId }
+    );
+    return;
+  }
+
+  const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
+  const enqueue = cleanupSchedule
+    .enqueueCleanup({
+      orderId: input.orderId,
+      reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+    })
+    .pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Workspace reservation hold cleanup enqueue failed", {
+          orderId: input.orderId,
+          cause,
+        })
+      )
+    );
+
+  yield* enqueue.pipe(
+    Effect.timeoutOrElse({
+      duration: Duration.seconds(2),
+      orElse: () =>
+        Effect.logWarning(
+          "Workspace reservation hold cleanup enqueue timed out",
+          {
+            orderId: input.orderId,
+          }
+        ),
+    }),
+    Effect.ignore
+  );
+});
+
 class PendingHoldCreation extends Data.TaggedError("PendingHoldCreation")<{
   readonly reservation: WorkspaceReservation;
 }> {}
@@ -463,6 +508,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           evidence,
         }))
       );
+      yield* enqueueReservationHoldCleanup({
+        orderId: existingReservation.id,
+        reservationHoldExpiresAt: existingReservation.reservationHoldExpiresAt,
+      });
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
       return toReadyResult({
@@ -472,6 +521,16 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         reservationId: existingReservation.id,
       });
     }
+
+    const holdCleanup = yield* ReservationHoldCleanupService;
+    yield* holdCleanup.sweepExpiredHolds({ now: new Date(), limit: 10 }).pipe(
+      Effect.tapError((cause) =>
+        Effect.logWarning("Reservation submit expired hold sweep failed", {
+          cause,
+        })
+      ),
+      Effect.ignore
+    );
 
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
@@ -541,6 +600,11 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
             evidence,
           }))
         );
+        yield* enqueueReservationHoldCleanup({
+          orderId: claimConflictReservation.id,
+          reservationHoldExpiresAt:
+            claimConflictReservation.reservationHoldExpiresAt,
+        });
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
         return toReadyResult({
@@ -722,6 +786,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       );
     yield* Effect.logInfo("Workspace reservation hold attached");
+    yield* enqueueReservationHoldCleanup({
+      orderId: reservationDraft.id,
+      reservationHoldExpiresAt: holdExpiresAt,
+    });
     yield* captureReservationStarted({
       reservation: {
         id: reservationDraft.id,
@@ -773,12 +841,24 @@ const preparePayStateAction = createEffectSafeAction(
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
     ReservationHoldCleanupServiceLiveWithDependencies,
     WorkspaceAvailabilityServiceLive.pipe(
-      Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
       Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
+      Layer.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(WorkspaceDatabaseLive)
+        )
+      ),
       Layer.provide(DotyposServiceLive)
     ),
-    WorkspaceTableAssignmentServiceLive.pipe(Layer.provide(DotyposServiceLive)),
+    WorkspaceTableAssignmentServiceLive.pipe(
+      Layer.provide(
+        WorkspaceReservationRepositoryLive.pipe(
+          Layer.provide(WorkspaceDatabaseLive)
+        )
+      ),
+      Layer.provide(DotyposServiceLive)
+    ),
     WorkspaceCheckoutAccessCodeServiceLive,
+    ReservationHoldCleanupScheduleService.Live,
     PostHogEventServiceLive,
     DotyposServiceLive
   )

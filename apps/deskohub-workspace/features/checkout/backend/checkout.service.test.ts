@@ -67,8 +67,14 @@ describe("CheckoutService", () => {
     const { ReservationHoldCleanupService } = await import(
       "./reservation-hold-cleanup.service"
     );
+    const { ReservationHoldCleanupScheduleService } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
+    );
+    const { PostResponseTaskService } = await import(
+      "@/shared/backend/post-response-task.service"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
@@ -172,9 +178,9 @@ describe("CheckoutService", () => {
       verifyPaymentOutcome: mock(() => Effect.die("not used")),
     } as unknown as typeof NexiService.Service;
     const holdCleanup: ReservationHoldCleanupServiceType = {
-      cancelOrderHold: mock(() => Effect.void),
+      cancelOrderHold: mock(() => Effect.succeed("cancelled" as const)),
       sweepExpiredHolds: mock(() =>
-        Effect.succeed({ cancelled: 0, failed: 0 })
+        Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
       ),
     };
 
@@ -203,6 +209,16 @@ describe("CheckoutService", () => {
         })
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        Layer.succeed(ReservationHoldCleanupScheduleService, {
+          enqueueCleanup: mock(() => Effect.void),
+        })
+      ),
+      Effect.provide(
+        Layer.succeed(PostResponseTaskService, {
+          run: mock(() => Effect.void),
+        })
+      ),
       Effect.flip,
       Effect.runPromise
     );
@@ -215,6 +231,7 @@ describe("CheckoutService", () => {
       failureCode: "nexi_hpp_create_failed",
       providerStatus: "hpp_create_failed",
     });
+    expect(holdCleanup.sweepExpiredHolds).not.toHaveBeenCalled();
     expect(markTerminal).not.toHaveBeenCalled();
     expect(markPaymentTerminal).not.toHaveBeenCalled();
   });

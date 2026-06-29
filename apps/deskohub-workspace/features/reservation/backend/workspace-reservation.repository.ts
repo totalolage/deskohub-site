@@ -77,6 +77,11 @@ export interface WorkspaceReservationRepository {
     readonly id: string;
     readonly failureCode: string;
   }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  readonly recordHoldCleanupSkipped: (input: {
+    readonly id: string;
+    readonly holdExpiredAt: Date;
+    readonly failureCode: string;
+  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
   readonly markPaymentPaid: (input: {
     readonly id: string;
     readonly paymentAttemptId: string;
@@ -114,6 +119,9 @@ export interface WorkspaceReservationRepository {
     readonly now: Date;
     readonly limit: number;
   }) => Effect.Effect<readonly WorkspaceReservation[], DatabaseError>;
+  readonly selectExpiredHoldDotyposReservationIds: (input: {
+    readonly now: Date;
+  }) => Effect.Effect<readonly string[], DatabaseError>;
 }
 
 export const WorkspaceReservationRepository =
@@ -463,6 +471,39 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           "Workspace reservation was not found."
         );
       }),
+      recordHoldCleanupSkipped: Effect.fn(
+        "workspaceReservations.recordHoldCleanupSkipped"
+      )(function* (input) {
+        const updated = yield* runDb(
+          "workspaceReservations.recordHoldCleanupSkipped",
+          () =>
+            db
+              .update(workspaceReservations)
+              .set({
+                reservationHoldExpiredAt: input.holdExpiredAt,
+                failureCode: input.failureCode,
+                updatedAt: new Date(),
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.id),
+                  eq(workspaceReservations.reservationState, "held"),
+                  sql`${workspaceReservations.paymentState} <> 'paid'`,
+                  lte(
+                    workspaceReservations.reservationHoldExpiresAt,
+                    input.holdExpiredAt
+                  )
+                )
+              )
+              .returning({ id: workspaceReservations.id })
+        );
+        yield* ensureUpdated(
+          updated,
+          "workspaceReservations.recordHoldCleanupSkipped",
+          input.id,
+          "Only unpaid expired held reservations can record skipped cleanup."
+        );
+      }),
       markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")(
         function* (input) {
           const updated = yield* runDb(
@@ -700,6 +741,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 )
               )
               .orderBy(
+                sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, ${workspaceReservations.reservationHoldExpiresAt})`,
                 asc(workspaceReservations.reservationHoldExpiresAt),
                 asc(workspaceReservations.id)
               )
@@ -708,6 +750,37 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
+      selectExpiredHoldDotyposReservationIds: Effect.fn(
+        "workspaceReservations.selectExpiredHoldDotyposReservationIds"
+      )(function* (input) {
+        const rows = yield* runDb(
+          "workspaceReservations.selectExpiredHoldDotyposReservationIds",
+          () =>
+            db
+              .select({
+                dotyposReservationId:
+                  workspaceReservations.dotyposReservationId,
+              })
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(workspaceReservations.reservationState, "held"),
+                  inArray(workspaceReservations.paymentState, [
+                    "not_started",
+                    "failed",
+                    "cancelled",
+                    "expired",
+                  ]),
+                  sql`${workspaceReservations.dotyposReservationId} is not null`,
+                  lte(workspaceReservations.reservationHoldExpiresAt, input.now)
+                )
+              )
+        );
+
+        return rows.flatMap(({ dotyposReservationId }) =>
+          dotyposReservationId ? [dotyposReservationId] : []
+        );
+      }),
     });
   })
 );

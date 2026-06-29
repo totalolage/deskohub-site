@@ -14,11 +14,11 @@ describe("ReservationHoldCleanupService", () => {
     const { OperationalEventRepository } = await import(
       "./operational-event.repository"
     );
-    const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
-    );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -128,7 +128,7 @@ describe("ReservationHoldCleanupService", () => {
       cancelReservation,
     } as unknown as typeof DotyposService.Service;
 
-    await Effect.gen(function* () {
+    const outcome = await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({
         orderId,
@@ -157,10 +157,112 @@ describe("ReservationHoldCleanupService", () => {
       Effect.runPromise
     );
 
+    expect(outcome).toBe("skipped");
     expect(finalization.finalizePendingProviderPayment).toHaveBeenCalledWith({
       orderId,
       paymentAttemptId: attemptId,
     });
+    expect(claimCancellation).not.toHaveBeenCalled();
+    expect(cancelReservation).not.toHaveBeenCalled();
+  });
+
+  test("counts unconfirmed pending payment cleanup as skipped and retries without cancelling", async () => {
+    const { OperationalEventRepository } = await import(
+      "./operational-event.repository"
+    );
+    const { ProviderPaymentFinalizationService } = await import(
+      "./provider-payment-finalization.service"
+    );
+    const { PaymentAttemptRepository } = await import(
+      "./payment-attempt.repository"
+    );
+    const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
+      await import("./reservation-hold-cleanup.service");
+    const { WorkspaceReservationRepository } = await import(
+      "@/features/reservation/backend/workspace-reservation.repository"
+    );
+    const { PostHogEventService } = await import(
+      "@/shared/backend/analytics/posthog-event.service"
+    );
+
+    const orderId = "reservation-cleanup-provider-pending";
+    const attemptId = "attempt-cleanup-provider-pending";
+    const now = new Date("2026-06-02T10:00:00.000Z");
+    const activeReservation = {
+      id: orderId,
+      reservationState: "held",
+      paymentState: "pending",
+      activePaymentAttemptId: attemptId,
+    };
+    const selectExpiredHolds = mock(() =>
+      Effect.succeed([activeReservation] as never)
+    );
+    const recordHoldCleanupSkipped = mock(() => Effect.void);
+    const claimCancellation = mock(() => Effect.die("not used"));
+    const cancelReservation = mock(() => Effect.die("not used"));
+    const finalization: ProviderPaymentFinalizationServiceType = {
+      finalizePendingProviderPayment: mock(() => Effect.succeed("pending")),
+    };
+    const reservations = {
+      selectExpiredHolds,
+      findById: mock(() => Effect.succeed(activeReservation as never)),
+      recordHoldCleanupSkipped,
+      claimCancellation,
+    } as unknown as WorkspaceReservationRepositoryType;
+    const operationalEvents: OperationalEventRepositoryType = {
+      record: mock(() => Effect.succeed({} as never)),
+    };
+    const dotypos = {
+      cancelReservation,
+    } as unknown as typeof DotyposService.Service;
+
+    const runSweep = () =>
+      Effect.gen(function* () {
+        const cleanup = yield* ReservationHoldCleanupService;
+        return yield* cleanup.sweepExpiredHolds({ now, limit: 1 });
+      }).pipe(
+        Effect.provide(ReservationHoldCleanupServiceLive),
+        Effect.provide(
+          Layer.succeed(ProviderPaymentFinalizationService, finalization)
+        ),
+        Effect.provide(
+          Layer.succeed(PaymentAttemptRepository, {
+            markTerminalForReservation: mock(() => Effect.die("not used")),
+          } as unknown as PaymentAttemptRepositoryType)
+        ),
+        Effect.provide(
+          Layer.succeed(WorkspaceReservationRepository, reservations)
+        ),
+        Effect.provide(
+          Layer.succeed(OperationalEventRepository, operationalEvents)
+        ),
+        Effect.provide(
+          Layer.succeed(PostHogEventService, { capture: () => Effect.void })
+        ),
+        Effect.provide(Layer.succeed(DotyposService, dotypos)),
+        Effect.runPromise
+      );
+
+    await expect(runSweep()).resolves.toEqual({
+      cancelled: 0,
+      skipped: 1,
+      failed: 0,
+    });
+    await expect(runSweep()).resolves.toEqual({
+      cancelled: 0,
+      skipped: 1,
+      failed: 0,
+    });
+
+    expect(recordHoldCleanupSkipped).toHaveBeenCalledTimes(2);
+    expect(recordHoldCleanupSkipped).toHaveBeenCalledWith({
+      id: orderId,
+      holdExpiredAt: now,
+      failureCode: "payment_outcome_unconfirmed_before_cleanup",
+    });
+    expect(finalization.finalizePendingProviderPayment).toHaveBeenCalledTimes(
+      2
+    );
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
   });
