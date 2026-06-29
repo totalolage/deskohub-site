@@ -11,6 +11,7 @@ import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../../../route";
 import { isPalmovconPageExpired } from "./page-availability";
 
+// ChoiceQR cannot accept event prefill context, so keep this a plain reservation link.
 const reservationHref = "/reservation";
 const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
 const witcherRegistrationHref = "https://forms.gle/BnmwtDu5gqLx1VWVA";

@@ -101,11 +101,12 @@ export function CloudinaryImage({
     objectFit: config.crop === "fill" ? "cover" : "contain",
     ...style,
   };
+  const fallbackAlt = asset.context?.custom?.alt?.trim() || asset.public_id;
 
   return (
     <CldImage
       src={asset.public_id}
-      alt={alt ?? asset.context?.custom?.alt ?? asset.public_id}
+      alt={alt ?? fallbackAlt}
       blurDataURL={blurDataURL}
       placeholder={blurDataURL ? "blur" : "empty"}
       className={finalClassName}
