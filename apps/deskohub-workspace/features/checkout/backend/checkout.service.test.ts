@@ -73,6 +73,9 @@ describe("CheckoutService", () => {
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
     );
+    const { PostResponseTaskService } = await import(
+      "@/shared/backend/post-response-task.service"
+    );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
     );
@@ -209,6 +212,11 @@ describe("CheckoutService", () => {
       Effect.provide(
         Layer.succeed(ReservationHoldCleanupScheduleService, {
           enqueueCleanup: mock(() => Effect.void),
+        })
+      ),
+      Effect.provide(
+        Layer.succeed(PostResponseTaskService, {
+          run: mock(() => Effect.void),
         })
       ),
       Effect.flip,

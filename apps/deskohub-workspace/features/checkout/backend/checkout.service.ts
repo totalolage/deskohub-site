@@ -75,6 +75,7 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
+import { PostResponseTaskService } from "@/shared/backend/post-response-task.service";
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly message: string;
@@ -377,6 +378,7 @@ export const CheckoutServiceLive = Layer.effect(
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const holdCleanup = yield* ReservationHoldCleanupService;
     const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
+    const postResponseTasks = yield* PostResponseTaskService;
     const posthogEvents = yield* PostHogEventService;
 
     const scheduleHoldCleanup = Effect.fn("checkout.scheduleHoldCleanup")(
@@ -400,15 +402,20 @@ export const CheckoutServiceLive = Layer.effect(
             )
           );
 
-        yield* enqueue.pipe(
-          Effect.timeoutOrElse({
-            duration: Duration.seconds(2),
-            orElse: () =>
-              Effect.logWarning("Checkout cleanup schedule enqueue timed out", {
-                orderId: input.orderId,
-              }),
-          }),
-          Effect.ignore
+        yield* postResponseTasks.run(
+          enqueue.pipe(
+            Effect.timeoutOrElse({
+              duration: Duration.seconds(30),
+              orElse: () =>
+                Effect.logWarning(
+                  "Checkout cleanup schedule enqueue timed out",
+                  {
+                    orderId: input.orderId,
+                  }
+                ),
+            }),
+            Effect.ignore
+          )
         );
       }
     );
@@ -775,6 +782,7 @@ export const CheckoutServiceLive = Layer.effect(
 );
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
+  Layer.provide(PostResponseTaskService.Live),
   Layer.provide(ReservationHoldCleanupScheduleService.Live),
   Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
   Layer.provide(OperationalEventRepositoryLive),
