@@ -131,6 +131,16 @@ describe("ReservationHoldCleanupQueueService", () => {
     );
   });
 
+  test("treats duplicate queue messages as already enqueued", async () => {
+    const source = await Bun.file(
+      new URL("./reservation-hold-cleanup-queue.service.ts", import.meta.url)
+    ).text();
+
+    expect(source).toContain("DuplicateMessageError");
+    expect(source).toContain("cause instanceof DuplicateMessageError");
+    expect(source).toContain('Effect.succeed("duplicate" as const)');
+  });
+
   test("ignores invalid, not-due, changed-expiry, and completed reservations", async () => {
     const invalid = await runProcessMessage({ schemaVersion: 2 });
     expect(invalid.result).toBe("ignored");

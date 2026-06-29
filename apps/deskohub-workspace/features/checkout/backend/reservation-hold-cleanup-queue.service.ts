@@ -1,4 +1,4 @@
-import { send } from "@vercel/queue";
+import { DuplicateMessageError, send } from "@vercel/queue";
 import { Context, Data, Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import {
@@ -85,18 +85,32 @@ export class ReservationHoldCleanupQueueService extends Context.Service<
           message,
         });
 
-        yield* Effect.tryPromise({
+        const result = yield* Effect.tryPromise({
           try: async () => {
             await send(message.topic, message.payload, message.options);
+            return "enqueued" as const;
           },
-          catch: (cause) =>
-            new ReservationHoldCleanupQueueError({
-              message: "Reservation hold cleanup could not be enqueued.",
-              cause,
-            }),
-        });
+          catch: (cause) => cause,
+        }).pipe(
+          Effect.catchIf(
+            (cause) => cause instanceof DuplicateMessageError,
+            () => Effect.succeed("duplicate" as const)
+          ),
+          Effect.mapError(
+            (cause) =>
+              new ReservationHoldCleanupQueueError({
+                message: "Reservation hold cleanup could not be enqueued.",
+                cause,
+              })
+          )
+        );
 
-        yield* Effect.logInfo("Reservation hold cleanup enqueued", { message });
+        yield* Effect.logInfo(
+          result === "duplicate"
+            ? "Reservation hold cleanup was already enqueued"
+            : "Reservation hold cleanup enqueued",
+          { message }
+        );
       }
     ),
   });

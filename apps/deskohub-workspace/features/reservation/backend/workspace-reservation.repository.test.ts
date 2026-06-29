@@ -63,4 +63,24 @@ describe("WorkspaceReservationRepository", () => {
     expect(section).toContain("<> 'paid'");
     expect(section).not.toContain("reservationState:");
   });
+
+  test("selects expired local Dotypos holds for availability filtering", async () => {
+    const source = await readRepository();
+    const section = sliceFrom(
+      source,
+      "selectExpiredHoldDotyposReservationIds: Effect.fn(",
+      "      }),\n    });"
+    );
+
+    expect(section).toContain("dotyposReservationId");
+    expect(section).toContain(
+      'eq(workspaceReservations.reservationState, "held")'
+    );
+    expect(section).toContain("workspaceReservations.paymentState");
+    expect(section).toContain("<> 'paid'");
+    expect(section).toContain("dotyposReservationId} is not null");
+    expect(section).toContain(
+      "lte(workspaceReservations.reservationHoldExpiresAt, input.now)"
+    );
+  });
 });

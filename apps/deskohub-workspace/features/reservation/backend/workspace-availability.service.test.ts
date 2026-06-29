@@ -10,6 +10,7 @@ import {
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
 } from "./google-calendar-workspace-limitations.service";
 import type { WorkspaceAvailabilityService } from "./workspace-availability.service";
+import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
 const testDate = "2099-06-10";
 const testStart = "2099-06-09T22:00:00Z";
@@ -33,6 +34,7 @@ const makeTable = (input: {
 });
 
 const makeReservation = (input: {
+  readonly id?: string;
   readonly tableId: string;
   readonly status: Reservation["status"];
   readonly seats?: string;
@@ -41,6 +43,7 @@ const makeReservation = (input: {
 }): Reservation => ({
   _branchId: "branch",
   _cloudId: "cloud",
+  id: input.id,
   _tableId: input.tableId,
   startDate: input.startDate ?? testStart,
   endDate: input.endDate ?? testEnd,
@@ -95,6 +98,7 @@ const runWithInventory = async <A>(
   input: {
     readonly tables?: readonly Table[];
     readonly reservations?: readonly Reservation[];
+    readonly expiredHoldDotyposReservationIds?: readonly string[];
     readonly limitations?: readonly WorkspaceCalendarLimitationType[];
   } = {}
 ) => {
@@ -119,6 +123,13 @@ const runWithInventory = async <A>(
         ),
       })
     ),
+    Effect.provide(
+      Layer.succeed(WorkspaceReservationRepository, {
+        selectExpiredHoldDotyposReservationIds: mock(() =>
+          Effect.succeed([...(input.expiredHoldDotyposReservationIds ?? [])])
+        ),
+      } as never)
+    ),
     Effect.runPromise
   );
 };
@@ -129,6 +140,7 @@ const getAvailability = (input: {
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
   readonly reservations?: readonly Reservation[];
+  readonly expiredHoldDotyposReservationIds?: readonly string[];
   readonly limitations?: readonly WorkspaceCalendarLimitationType[];
 }) =>
   runWithInventory(
@@ -181,6 +193,25 @@ describe("WorkspaceAvailabilityService", () => {
       reservations: [
         makeReservation({ tableId: "profi-27-qhd", status: "CANCELLED" }),
       ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.unavailableMonitorOptions).not.toContain("2x27-qhd");
+  });
+
+  test("ignores expired local holds that Dotypos still reports", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "profi",
+      monitorOption: "2x27-qhd",
+      reservations: [
+        makeReservation({
+          id: "expired-dotypos-reservation-id",
+          tableId: "profi-27-qhd",
+          status: "NEW",
+        }),
+      ],
+      expiredHoldDotyposReservationIds: ["expired-dotypos-reservation-id"],
     });
 
     expect(availability.unavailableDates).not.toContain(testDate);

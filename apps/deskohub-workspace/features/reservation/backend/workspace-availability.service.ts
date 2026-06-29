@@ -4,9 +4,13 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import type { Table } from "@deskohub/dotypos/generated";
+import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
+import {
+  type DatabaseError,
+  WorkspaceDatabaseLive,
+} from "@/db/database.service";
 import {
   getWorkspaceTableOccupancyById,
   workspaceBookingGuestCount,
@@ -31,8 +35,13 @@ import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,
 } from "./google-calendar-workspace-limitations.service";
+import {
+  WorkspaceReservationRepository,
+  WorkspaceReservationRepositoryLive,
+} from "./workspace-reservation.repository";
 
 type WorkspaceAvailabilityError =
+  | DatabaseError
   | ExternalAPIError
   | GoogleCalendarError
   | NetworkError
@@ -67,6 +76,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
   WorkspaceAvailabilityService,
   Effect.gen(function* () {
     const dotypos = yield* DotyposService;
+    const workspaceReservations = yield* WorkspaceReservationRepository;
     const calendarLimitations =
       yield* GoogleCalendarWorkspaceLimitationsService;
 
@@ -74,7 +84,12 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
       function* (query: Pick<WorkspaceAvailabilityQuery, "from" | "to">) {
         yield* Effect.logInfo("Workspace availability inventory load started");
 
-        const [tables, reservations, limitations] = yield* Effect.all(
+        const [
+          tables,
+          reservations,
+          limitations,
+          expiredDotyposReservationIds,
+        ] = yield* Effect.all(
           [
             dotypos.getTables(),
             dotypos.listReservations(),
@@ -82,15 +97,22 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
               from: query.from,
               to: query.to,
             }),
+            workspaceReservations.selectExpiredHoldDotyposReservationIds({
+              now: new Date(),
+            }),
           ],
-          { concurrency: 3 }
+          { concurrency: 4 }
+        );
+        const activeReservations = excludeExpiredLocalHolds(
+          reservations,
+          expiredDotyposReservationIds
         );
         yield* Effect.annotateLogsScoped({ tables, reservations, limitations });
         yield* Effect.logInfo(
           "Workspace availability inventory load completed"
         );
 
-        return { tables, reservations, limitations };
+        return { tables, reservations: activeReservations, limitations };
       },
       (effect) =>
         effect.pipe(
@@ -237,8 +259,25 @@ const GoogleCalendarWorkspaceLimitationsLive =
 export const WorkspaceAvailabilityServiceLiveWithDependencies =
   WorkspaceAvailabilityServiceLive.pipe(
     Layer.provide(GoogleCalendarWorkspaceLimitationsLive),
-    Layer.provide(DotyposServiceLive)
+    Layer.provide(DotyposServiceLive),
+    Layer.provide(
+      WorkspaceReservationRepositoryLive.pipe(
+        Layer.provide(WorkspaceDatabaseLive)
+      )
+    )
   );
+
+const excludeExpiredLocalHolds = (
+  reservations: readonly Reservation[],
+  expiredDotyposReservationIds: readonly string[]
+) => {
+  if (expiredDotyposReservationIds.length === 0) return reservations;
+
+  const expiredIds = new Set(expiredDotyposReservationIds);
+  return reservations.filter(
+    (reservation) => !reservation.id || !expiredIds.has(reservation.id)
+  );
+};
 
 const getFullyOccupiedCalendarDates = (
   limitations: readonly WorkspaceCalendarLimitationType[]

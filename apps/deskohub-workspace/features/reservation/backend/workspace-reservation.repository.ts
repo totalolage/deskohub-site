@@ -119,6 +119,9 @@ export interface WorkspaceReservationRepository {
     readonly now: Date;
     readonly limit: number;
   }) => Effect.Effect<readonly WorkspaceReservation[], DatabaseError>;
+  readonly selectExpiredHoldDotyposReservationIds: (input: {
+    readonly now: Date;
+  }) => Effect.Effect<readonly string[], DatabaseError>;
 }
 
 export const WorkspaceReservationRepository =
@@ -748,6 +751,32 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
+      selectExpiredHoldDotyposReservationIds: Effect.fn(
+        "workspaceReservations.selectExpiredHoldDotyposReservationIds"
+      )(function* (input) {
+        const rows = yield* runDb(
+          "workspaceReservations.selectExpiredHoldDotyposReservationIds",
+          () =>
+            db
+              .select({
+                dotyposReservationId:
+                  workspaceReservations.dotyposReservationId,
+              })
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(workspaceReservations.reservationState, "held"),
+                  sql`${workspaceReservations.paymentState} <> 'paid'`,
+                  sql`${workspaceReservations.dotyposReservationId} is not null`,
+                  lte(workspaceReservations.reservationHoldExpiresAt, input.now)
+                )
+              )
+        );
+
+        return rows.flatMap(({ dotyposReservationId }) =>
+          dotyposReservationId ? [dotyposReservationId] : []
+        );
+      }),
     });
   })
 );
