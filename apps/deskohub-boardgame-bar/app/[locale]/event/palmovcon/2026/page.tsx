@@ -46,6 +46,7 @@ const getSchedule = (): ScheduleItem[] => [
     time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
     description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
     cta: {
+      // Reenio link verified in production; the date-looking segment is expected.
       href: "https://clocktower-v-praze.reenio.cz/cs/term/2026-07-18/2026-06-30;hideResources=1;hideCalendar=1",
       label: m["palmovcon2026.registrationCta"](),
     },
@@ -89,14 +90,10 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         );
         const [desktopBlurDataURL, mobileBlurDataURL] = await Promise.all([
           desktopImage
-            ? await generateBlurDataUrlCached(desktopImage).catch(
-                () => undefined
-              )
+            ? generateBlurDataUrlCached(desktopImage).catch(() => undefined)
             : undefined,
           mobileImage
-            ? await generateBlurDataUrlCached(mobileImage).catch(
-                () => undefined
-              )
+            ? generateBlurDataUrlCached(mobileImage).catch(() => undefined)
             : undefined,
         ]);
 
@@ -315,9 +312,8 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   <div>
                     <div
                       className={cn(
-                        "bg-[linear-gradient(#000000E0,transparent)] lg:[background-image:unset]",
                         hasMobileEventImage &&
-                          "absolute px-6 pt-6 pb-10 z-10 top-0 left-0 right-0 lg:static"
+                          "absolute top-0 right-0 left-0 z-10 bg-[linear-gradient(#000000E0,transparent)] px-6 pt-6 pb-10 lg:static lg:p-0 lg:[background-image:unset]"
                       )}
                     >
                       <p
