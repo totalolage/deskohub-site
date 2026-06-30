@@ -1,4 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { devNull, tmpdir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
@@ -69,10 +70,14 @@ const main = async () => {
   const config = getConfig();
   const run = makeRunner(config);
   const session = `workspace-checkout-e2e-${Date.now()}`;
+  const artifactDir = resolve(workspaceDir, "e2e-artifacts", session);
   let datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
   let checkoutRow: CheckoutRow | undefined;
   let checkoutOrderId: string | undefined;
   let checkoutStartedAt: Date | undefined;
+  let browserHarStarted = false;
+  let browserHarStopped = false;
+  let cleanupError: unknown;
   let workflowError: unknown;
 
   try {
@@ -133,6 +138,7 @@ const main = async () => {
     ])
       addRedaction(value);
 
+    browserHarStarted = await startBrowserDiagnostics(run, session);
     checkoutStartedAt = new Date();
     const orderId = await completeCheckout({
       config,
@@ -154,9 +160,14 @@ const main = async () => {
       }
     );
     await replayNexiWebhook(config, replayRow);
-    checkoutRow = await validatePostgres(datasourceConfig, data, orderId, (row) => {
-      checkoutRow = row;
-    });
+    checkoutRow = await validatePostgres(
+      datasourceConfig,
+      data,
+      orderId,
+      (row) => {
+        checkoutRow = row;
+      }
+    );
     await verifyAlias(config, deployment.id);
     await assertFulfilledStatusPage({ config, orderId, run, session });
     await validateDotypos(datasourceConfig, data, checkoutRow);
@@ -164,9 +175,7 @@ const main = async () => {
     log(`Checkout e2e passed for order ${orderId}`);
   } catch (cause) {
     workflowError = cause;
-    throw cause;
   } finally {
-    let cleanupError: unknown;
     if (
       datasourceConfig &&
       !checkoutRow?.dotypos_reservation_id &&
@@ -213,11 +222,25 @@ const main = async () => {
           log(`Dotypos cleanup failed: ${redact(String(cause))}`);
       }
     }
-    await run("agent-browser", ["--session", session, "close"], {
-      allowFailure: true,
-    });
-    if (cleanupError && !workflowError) throw cleanupError;
   }
+
+  if (workflowError)
+    browserHarStopped = await captureBrowserFailureArtifacts({
+      artifactDir,
+      cause: workflowError,
+      harStarted: browserHarStarted,
+      run,
+      session,
+    });
+
+  if (browserHarStarted && !browserHarStopped)
+    await stopBrowserHar(run, session, devNull);
+  await run("agent-browser", ["--session", session, "close"], {
+    allowFailure: true,
+  });
+
+  if (workflowError) throw workflowError;
+  if (cleanupError) throw cleanupError;
 };
 
 const getConfig = () => {
@@ -503,6 +526,9 @@ const readBrowserUrl = async (
   return result.exitCode === 0 ? result.stdout.trim() : undefined;
 };
 
+const isCheckoutStatusUrl = (url: string | undefined) =>
+  parseUrl(url ?? "")?.pathname.includes("/checkout/status/") ?? false;
+
 const submitPaymentAndWaitForHostedPage = async ({
   run,
   session,
@@ -606,11 +632,27 @@ const completeNexiHostedPayment = async ({
     { value: "AUTENTICAZIONE RIUSCITA" },
     { value: "Authentication successful" },
   ]);
-  await clickHostedPaymentTarget(run, session, "back to shop", [
-    { value: "BACK TO THE SHOP" },
-    { value: "Back to the shop" },
-    { value: "TORNA AL NEGOZIO" },
-  ]);
+  if (isCheckoutStatusUrl(await readBrowserUrl(run, session))) {
+    log(
+      "Nexi back-to-shop action skipped; checkout status page already loaded"
+    );
+    return;
+  }
+  try {
+    await clickHostedPaymentTarget(run, session, "back to shop", [
+      { value: "BACK TO THE SHOP" },
+      { value: "Back to the shop" },
+      { value: "TORNA AL NEGOZIO" },
+    ]);
+  } catch (cause) {
+    if (isCheckoutStatusUrl(await readBrowserUrl(run, session))) {
+      log(
+        "Nexi back-to-shop action skipped; checkout status page already loaded"
+      );
+      return;
+    }
+    throw cause;
+  }
 };
 
 const fillHostedPaymentField = async (
@@ -810,6 +852,156 @@ const readInteractiveSnapshot = async (
   return result.stdout;
 };
 
+const startBrowserDiagnostics = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  const commands = [
+    ["console", "--clear"],
+    ["errors", "--clear"],
+    ["network", "requests", "--clear"],
+  ];
+
+  for (const args of commands)
+    await run("agent-browser", ["--session", session, ...args], {
+      allowFailure: true,
+      logOutput: false,
+      timeoutMs: 30_000,
+    });
+
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "network", "har", "start"],
+    { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
+  );
+
+  if (result.exitCode !== 0) {
+    log("Browser HAR capture unavailable; continuing checkout e2e");
+    return false;
+  }
+
+  return true;
+};
+
+const captureBrowserFailureArtifacts = async ({
+  artifactDir,
+  cause,
+  harStarted,
+  run,
+  session,
+}: {
+  artifactDir: string;
+  cause: unknown;
+  harStarted: boolean;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  let harStopped = false;
+
+  try {
+    await mkdir(artifactDir, { recursive: true });
+    await writeTextArtifact(
+      artifactDir,
+      "error.txt",
+      cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)
+    );
+    await writeTextArtifact(
+      artifactDir,
+      "browser-diagnostics.txt",
+      await readBrowserDiagnostics(run, session)
+    );
+    await writeCommandArtifact(artifactDir, "network-requests.txt", run, [
+      "--session",
+      session,
+      "network",
+      "requests",
+    ]);
+    await writeCommandArtifact(artifactDir, "console.txt", run, [
+      "--session",
+      session,
+      "console",
+    ]);
+    await writeCommandArtifact(artifactDir, "errors.txt", run, [
+      "--session",
+      session,
+      "errors",
+    ]);
+    await writeTextArtifact(
+      artifactDir,
+      "snapshot-interactive.txt",
+      await readInteractiveSnapshot(run, session, true)
+    );
+    if (harStarted) {
+      const rawHarPath = resolve(tmpdir(), `${session}-network.har`);
+      harStopped = await stopBrowserHar(run, session, rawHarPath);
+      try {
+        if (harStopped)
+          await writeTextArtifact(
+            artifactDir,
+            "network.har",
+            sanitizeHarArtifact(await readFile(rawHarPath, "utf8"))
+          );
+      } finally {
+        await rm(rawHarPath, { force: true });
+      }
+    }
+
+    log(`Checkout e2e failure artifacts saved to ${artifactDir}`);
+  } catch (error) {
+    log(
+      `Checkout e2e failure artifact capture failed: ${redact(String(error))}`
+    );
+  }
+
+  return harStopped;
+};
+
+const stopBrowserHar = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  path?: string
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "network", "har", "stop", ...(path ? [path] : [])],
+    { allowFailure: true, logOutput: false, timeoutMs: 60_000 }
+  );
+
+  return result.exitCode === 0;
+};
+
+const writeCommandArtifact = async (
+  artifactDir: string,
+  fileName: string,
+  run: ReturnType<typeof makeRunner>,
+  args: string[]
+) => {
+  const result = await run("agent-browser", args, {
+    allowFailure: true,
+    logOutput: false,
+    timeoutMs: 60_000,
+  });
+  const text = [
+    `exitCode: ${result.exitCode}`,
+    result.stdout ? `stdout:\n${result.stdout}` : undefined,
+    result.stderr ? `stderr:\n${result.stderr}` : undefined,
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  await writeTextArtifact(artifactDir, fileName, text);
+};
+
+const writeTextArtifact = async (
+  artifactDir: string,
+  fileName: string,
+  text: string
+) =>
+  writeFile(
+    resolve(artifactDir, fileName),
+    `${sanitizeArtifactText(text.trim())}\n`
+  );
+
 const switchToMainFrame = async (
   run: ReturnType<typeof makeRunner>,
   session: string
@@ -847,6 +1039,91 @@ const sanitizeDiagnosticLine = (line: string) =>
   redact(line)
     .replace(/https?:\/\/\S+/g, "[url]")
     .replace(/[A-Za-z0-9_-]{32,}/g, "[token]");
+
+const sanitizeArtifactText = (text: string) =>
+  sanitizeArtifactUrlText(redact(text))
+    .replace(/([?&][^=&#\s]+)=[^&\s",}]+/g, "$1=[redacted]")
+    .replace(/((?:%3F|%26)[^=%&\s]+)(?:%3D|=)[^%&\s",}]+/gi, "$1%3D[redacted]")
+    .replace(/(x-vercel-protection-bypass[=":\s]+)[^&\s",}]+/gi, "$1[redacted]")
+    .replace(/[A-Za-z0-9_-]{96,}/g, "[token]");
+
+const sanitizeArtifactUrlText = (text: string) =>
+  text.replace(/https?:\/\/[^\s"'<>]+/g, (value) => {
+    try {
+      const url = new URL(value);
+      for (const key of url.searchParams.keys())
+        url.searchParams.set(key, "[redacted]");
+      return url.toString();
+    } catch {
+      return value;
+    }
+  });
+
+const sanitizeHarArtifact = (text: string) => {
+  try {
+    const har = JSON.parse(text) as Record<string, unknown>;
+    const log = asRecord(har.log);
+    const entries = Array.isArray(log?.entries) ? log.entries : [];
+
+    for (const entry of entries) {
+      const record = asRecord(entry);
+      if (!record) continue;
+      sanitizeHarRequest(asRecord(record.request));
+      sanitizeHarResponse(asRecord(record.response));
+    }
+
+    return JSON.stringify(har, null, 2);
+  } catch {
+    return sanitizeArtifactText(text);
+  }
+};
+
+const sanitizeHarRequest = (request: Record<string, unknown> | undefined) => {
+  if (!request) return;
+  if (typeof request.url === "string")
+    request.url = sanitizeHarUrl(request.url);
+  request.headers = sanitizeHarNamedValues(request.headers);
+  request.cookies = [];
+  request.queryString = sanitizeHarNamedValues(request.queryString);
+
+  const postData = asRecord(request.postData);
+  if (!postData) return;
+  postData.params = [];
+  if (typeof postData.text === "string") postData.text = "[redacted]";
+};
+
+const sanitizeHarResponse = (response: Record<string, unknown> | undefined) => {
+  if (!response) return;
+  response.headers = sanitizeHarNamedValues(response.headers);
+  response.cookies = [];
+
+  const content = asRecord(response.content);
+  if (content && typeof content.text === "string") content.text = "[redacted]";
+};
+
+const sanitizeHarNamedValues = (value: unknown) =>
+  Array.isArray(value)
+    ? value.map((item) => {
+        const record = asRecord(item);
+        return record ? { ...record, value: "[redacted]" } : item;
+      })
+    : value;
+
+const sanitizeHarUrl = (value: string) => {
+  try {
+    const url = new URL(value);
+    for (const key of url.searchParams.keys())
+      url.searchParams.set(key, "[redacted]");
+    return sanitizeArtifactText(url.toString());
+  } catch {
+    return sanitizeArtifactText(value);
+  }
+};
+
+const asRecord = (value: unknown) =>
+  value && typeof value === "object"
+    ? (value as Record<string, unknown>)
+    : undefined;
 
 const findSnapshotRef = (snapshot: string, labels: readonly string[]) => {
   for (const line of snapshot.split("\n")) {
@@ -921,6 +1198,7 @@ const readBrowserDiagnostics = async (
     {
       allowFailure: true,
       input: browserDiagnosticsScript,
+      logOutput: false,
     }
   );
 
@@ -1018,7 +1296,8 @@ const replayNexiWebhook = async (
       operation: {
         orderId: row.provider_order_id,
         operationId:
-          row.last_provider_operation_id ?? `workspace-e2e-${row.reservation_id}`,
+          row.last_provider_operation_id ??
+          `workspace-e2e-${row.reservation_id}`,
         operationType: "CAPTURE",
         operationResult: "EXECUTED",
         operationTime: new Date().toISOString(),
@@ -1908,7 +2187,7 @@ const submitPaymentScript = String.raw`
 })()
 `;
 
-const payPageOrderIdScript = String.raw`
+const payPageOrderIdScript = `
 (() => {
   const idPattern = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
   const match = (document.body?.innerText ?? '').match(idPattern);
