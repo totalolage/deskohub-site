@@ -123,7 +123,6 @@ async function CheckoutPayContent({
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <CheckoutPayPage
         locale={locale}
-        orderId={state.orderId}
         payStateToken={payStateToken}
         summary={state.quote.summary}
         variant="pay"
