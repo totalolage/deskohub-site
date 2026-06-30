@@ -9,7 +9,11 @@ import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
 } from "@/features/checkout/checkout-quote";
-import { CheckoutSummary } from "@/features/checkout/components/checkout-summary";
+import {
+  CheckoutSummary,
+  CheckoutSummarySection,
+  CheckoutSummarySections,
+} from "@/features/checkout/components/checkout-summary";
 import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import { Button } from "@/shared/components/ui/button";
@@ -18,6 +22,7 @@ import {
   CardContent,
   CardDescription,
   CardHeader,
+  type CardProps,
   CardTitle,
 } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -34,6 +39,8 @@ type CheckoutPayPageProps = {
   readonly variant: "pay" | "retry" | "pricingChanged";
   readonly retryOutcome?: "cancelled" | "failed";
 };
+
+type CheckoutPayActionVariant = "pay" | "retry";
 
 export function CheckoutPayPage({
   changedKeys,
@@ -91,9 +98,117 @@ export function CheckoutPayPage({
     : variant === "retry"
       ? m.checkoutPaymentRetryLead({}, { locale })
       : null;
+  const actionVariant = variant === "retry" ? "retry" : "pay";
+  const isSubmitPending = isExecuting || hasCheckoutRedirect;
 
   return (
-    <Card className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm">
+    <CheckoutPayCard lead={lead} orderId={orderId} title={title}>
+      {!!retryOutcome && (
+        <Banner>
+          {retryOutcome === "cancelled"
+            ? m.checkoutPaymentRetryCancelledBanner({}, { locale })
+            : m.checkoutPaymentRetryFailedBanner({}, { locale })}
+        </Banner>
+      )}
+
+      {isPricingChanged && (
+        <Banner>{m.checkoutPayPricingChangedBanner({}, { locale })}</Banner>
+      )}
+
+      <CheckoutSummary
+        changedKeys={changedKeys}
+        locale={locale}
+        summary={summary}
+      />
+
+      {isPricingChanged ? (
+        <Button
+          asChild
+          className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
+        >
+          <Link href={freshPayUrl ?? `/${locale}/checkout/order`}>
+            {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
+          </Link>
+        </Button>
+      ) : (
+        <>
+          <CheckoutPayConsent
+            checked={legalConsent}
+            id="checkout-pay-legal-consent"
+            locale={locale}
+            onCheckedChange={setLegalConsent}
+            variant={actionVariant}
+          />
+
+          <CheckoutPaySubmitButton
+            disabled={!legalConsent || isSubmitPending}
+            locale={locale}
+            onClick={() => {
+              if (isSubmitPending) return;
+
+              setErrorMessage(null);
+              if (!payStateToken) {
+                setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
+                return;
+              }
+
+              execute({
+                locale,
+                payStateToken,
+                legalConsent,
+              });
+            }}
+            pending={isSubmitPending}
+            variant={actionVariant}
+          />
+        </>
+      )}
+
+      {!!errorMessage && <Banner>{errorMessage}</Banner>}
+    </CheckoutPayCard>
+  );
+}
+
+export function CheckoutPayPageSkeleton({
+  locale,
+}: {
+  readonly locale: Locale;
+}) {
+  return (
+    <CheckoutPayCard
+      aria-busy="true"
+      aria-label={m.checkoutPaymentRetryPending({}, { locale })}
+      aria-live="polite"
+      title={m.checkoutPayTitle({}, { locale })}
+    >
+      <CheckoutPaySummarySkeleton locale={locale} />
+      <CheckoutPayConsent
+        disabled
+        id="checkout-pay-skeleton-legal-consent"
+        locale={locale}
+        variant="pay"
+      />
+      <CheckoutPaySubmitButton disabled locale={locale} variant="pay" />
+    </CheckoutPayCard>
+  );
+}
+
+function CheckoutPayCard({
+  children,
+  lead,
+  orderId,
+  title,
+  ...props
+}: Omit<CardProps, "className"> & {
+  readonly lead?: string | null;
+  readonly orderId?: string;
+  readonly title: string;
+}) {
+  return (
+    <Card
+      {...props}
+      className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm"
+    >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
         {!!orderId && (
@@ -109,209 +224,118 @@ export function CheckoutPayPage({
         )}
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        {!!retryOutcome && (
-          <Banner>
-            {retryOutcome === "cancelled"
-              ? m.checkoutPaymentRetryCancelledBanner({}, { locale })
-              : m.checkoutPaymentRetryFailedBanner({}, { locale })}
-          </Banner>
-        )}
-
-        {isPricingChanged && (
-          <Banner>{m.checkoutPayPricingChangedBanner({}, { locale })}</Banner>
-        )}
-
-        <CheckoutSummary
-          changedKeys={changedKeys}
-          locale={locale}
-          summary={summary}
-        />
-
-        {isPricingChanged ? (
-          <Button
-            asChild
-            className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-          >
-            <Link href={freshPayUrl ?? `/${locale}/checkout/order`}>
-              {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
-            </Link>
-          </Button>
-        ) : (
-          <>
-            <label
-              htmlFor="checkout-pay-legal-consent"
-              className="flex cursor-pointer items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4"
-            >
-              <Checkbox
-                id="checkout-pay-legal-consent"
-                className="mt-1"
-                checked={legalConsent}
-                onCheckedChange={(checked) => setLegalConsent(Boolean(checked))}
-              />
-              <span className="space-y-2 text-sm leading-6 text-navy-blue/66">
-                <span className="block">
-                  {variant === "retry"
-                    ? m.checkoutPaymentRetryConsentBefore({}, { locale })
-                    : m.checkoutPayConsentBefore({}, { locale })}{" "}
-                  <LegalLink
-                    href={`/${locale}/terms-and-conditions`}
-                    label={m.reservationLegalConsentTermsLink({}, { locale })}
-                  />
-                  {", "}
-                  <LegalLink
-                    href={`/${locale}/operating-rules`}
-                    label={m.reservationLegalConsentOperatingRulesLink(
-                      {},
-                      { locale }
-                    )}
-                  />
-                  {"."} {m.reservationLegalConsentNoRefund({}, { locale })}
-                </span>
-              </span>
-            </label>
-
-            <Button
-              type="button"
-              className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-              disabled={!legalConsent || isExecuting || hasCheckoutRedirect}
-              onClick={() => {
-                if (hasCheckoutRedirect) return;
-
-                setErrorMessage(null);
-                if (!payStateToken) {
-                  setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
-                  return;
-                }
-
-                execute({
-                  locale,
-                  payStateToken,
-                  legalConsent,
-                });
-              }}
-            >
-              {isExecuting || hasCheckoutRedirect ? (
-                m.checkoutPaymentRetryPending({}, { locale })
-              ) : (
-                <>
-                  {variant === "retry" ? (
-                    <RotateCcw className="h-4 w-4" />
-                  ) : (
-                    <CreditCard className="h-4 w-4" />
-                  )}
-                  {m.checkoutPayOrderAndPayButton({}, { locale })}
-                </>
-              )}
-            </Button>
-          </>
-        )}
-
-        {!!errorMessage && <Banner>{errorMessage}</Banner>}
-      </CardContent>
+      <CardContent className="space-y-6">{children}</CardContent>
     </Card>
   );
 }
 
-export function CheckoutPayPageSkeleton({
+function CheckoutPaySummarySkeleton({ locale }: { readonly locale: Locale }) {
+  return (
+    <CheckoutSummarySections>
+      <CheckoutSummarySection locale={locale} sectionKey="order">
+        <Skeleton aria-hidden="true" className="h-4 w-full rounded-full" />
+        <Skeleton aria-hidden="true" className="h-4 w-11/12 rounded-full" />
+        <Skeleton aria-hidden="true" className="h-4 w-4/5 rounded-full" />
+      </CheckoutSummarySection>
+
+      <CheckoutSummarySection locale={locale} sectionKey="total">
+        <div className="flex items-start justify-between gap-4">
+          <Skeleton aria-hidden="true" className="h-4 w-32 rounded-full" />
+          <Skeleton aria-hidden="true" className="h-4 w-24 rounded-full" />
+        </div>
+      </CheckoutSummarySection>
+    </CheckoutSummarySections>
+  );
+}
+
+function CheckoutPayConsent({
+  checked,
+  disabled,
+  id,
   locale,
+  onCheckedChange,
+  variant,
 }: {
+  readonly checked?: boolean;
+  readonly disabled?: boolean;
+  readonly id: string;
   readonly locale: Locale;
+  readonly onCheckedChange?: (checked: boolean) => void;
+  readonly variant: CheckoutPayActionVariant;
 }) {
   return (
-    <Card
-      aria-busy="true"
-      aria-label={m.checkoutPaymentRetryPending({}, { locale })}
-      aria-live="polite"
-      className="relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm"
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4",
+        disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer"
+      )}
     >
-      <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      <CardHeader className="space-y-3 pb-6">
-        <CardTitle className="text-3xl sm:text-[2.35rem]">
-          {m.checkoutPayTitle({}, { locale })}
-        </CardTitle>
-      </CardHeader>
-
-      <CardContent className="space-y-6">
-        <section className="space-y-3">
-          <div className="space-y-3">
-            <div className="rounded-2xl border border-navy-blue/10 bg-white p-4">
-              <div className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue/58">
-                <span>{m.checkoutSummarySectionOrder({}, { locale })}</span>
-              </div>
-              <div className="space-y-2">
-                <Skeleton
-                  aria-hidden="true"
-                  className="h-4 w-full rounded-full"
-                />
-                <Skeleton
-                  aria-hidden="true"
-                  className="h-4 w-11/12 rounded-full"
-                />
-                <Skeleton
-                  aria-hidden="true"
-                  className="h-4 w-4/5 rounded-full"
-                />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-navy-blue/10 bg-white p-4">
-              <div className="mb-3 text-sm font-semibold uppercase tracking-[0.12em] text-navy-blue/58">
-                <span>{m.checkoutSummarySectionTotal({}, { locale })}</span>
-              </div>
-              <div className="flex items-start justify-between gap-4">
-                <Skeleton
-                  aria-hidden="true"
-                  className="h-4 w-32 rounded-full"
-                />
-                <Skeleton
-                  aria-hidden="true"
-                  className="h-4 w-24 rounded-full"
-                />
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <label
-          htmlFor="checkout-pay-skeleton-legal-consent"
-          className="flex cursor-not-allowed items-start gap-3 rounded-[1.35rem] border border-navy-blue/10 bg-navy-blue/2.5 p-4 opacity-70"
-        >
-          <Checkbox
-            id="checkout-pay-skeleton-legal-consent"
-            className="mt-1"
-            disabled
+      <Checkbox
+        id={id}
+        className="mt-1"
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={
+          onCheckedChange
+            ? (nextChecked) => onCheckedChange(Boolean(nextChecked))
+            : undefined
+        }
+      />
+      <span className="space-y-2 text-sm leading-6 text-navy-blue/66">
+        <span className="block">
+          {variant === "retry"
+            ? m.checkoutPaymentRetryConsentBefore({}, { locale })
+            : m.checkoutPayConsentBefore({}, { locale })}{" "}
+          <LegalLink
+            href={`/${locale}/terms-and-conditions`}
+            label={m.reservationLegalConsentTermsLink({}, { locale })}
           />
-          <span className="space-y-2 text-sm leading-6 text-navy-blue/66">
-            <span className="block">
-              {m.checkoutPayConsentBefore({}, { locale })}{" "}
-              <LegalLink
-                href={`/${locale}/terms-and-conditions`}
-                label={m.reservationLegalConsentTermsLink({}, { locale })}
-              />
-              {", "}
-              <LegalLink
-                href={`/${locale}/operating-rules`}
-                label={m.reservationLegalConsentOperatingRulesLink(
-                  {},
-                  { locale }
-                )}
-              />
-              {"."} {m.reservationLegalConsentNoRefund({}, { locale })}
-            </span>
-          </span>
-        </label>
+          {", "}
+          <LegalLink
+            href={`/${locale}/operating-rules`}
+            label={m.reservationLegalConsentOperatingRulesLink({}, { locale })}
+          />
+          {"."} {m.reservationLegalConsentNoRefund({}, { locale })}
+        </span>
+      </span>
+    </label>
+  );
+}
 
-        <Button
-          type="button"
-          className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
-          disabled
-        >
-          <CreditCard className="h-4 w-4" />
+function CheckoutPaySubmitButton({
+  disabled,
+  locale,
+  onClick,
+  pending,
+  variant,
+}: {
+  readonly disabled?: boolean;
+  readonly locale: Locale;
+  readonly onClick?: () => void;
+  readonly pending?: boolean;
+  readonly variant: CheckoutPayActionVariant;
+}) {
+  return (
+    <Button
+      type="button"
+      className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
+      disabled={disabled}
+      onClick={onClick}
+    >
+      {pending ? (
+        m.checkoutPaymentRetryPending({}, { locale })
+      ) : (
+        <>
+          {variant === "retry" ? (
+            <RotateCcw className="h-4 w-4" />
+          ) : (
+            <CreditCard className="h-4 w-4" />
+          )}
           {m.checkoutPayOrderAndPayButton({}, { locale })}
-        </Button>
-      </CardContent>
-    </Card>
+        </>
+      )}
+    </Button>
   );
 }
 
