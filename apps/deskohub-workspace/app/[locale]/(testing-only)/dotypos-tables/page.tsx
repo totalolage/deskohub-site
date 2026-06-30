@@ -1,10 +1,10 @@
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { DotyposTablesPreview } from "./dotypos-tables-preview";
-
-export const dynamic = "force-dynamic";
 
 const DotyposLive = Layer.provide(
   DotyposService.Default,
@@ -23,7 +23,16 @@ const loadTables = () =>
     runWorkspaceEffect
   );
 
-export default async function DotyposTablesPreviewPage() {
+export default function DotyposTablesPreviewPage() {
+  return (
+    <Suspense fallback={null}>
+      <DotyposTablesPreviewContent />
+    </Suspense>
+  );
+}
+
+async function DotyposTablesPreviewContent() {
+  await connection();
   const tables = await loadTables();
 
   return (

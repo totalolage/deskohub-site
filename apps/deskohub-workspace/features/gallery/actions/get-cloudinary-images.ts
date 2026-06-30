@@ -5,6 +5,7 @@ import {
   type UnnormalizedLogicalExpression,
 } from "@deskohub/cloudinary";
 import { Effect } from "effect";
+import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
@@ -31,6 +32,13 @@ export async function getCloudinaryImages({
     getGalleryImages(normalizeExpression(tags), { maxResults }),
     CloudinaryServiceLive
   ).pipe(
+    Effect.catch((error) => {
+      if (env.VERCEL_ENV !== "development") return Effect.fail(error);
+
+      return Effect.logWarning(
+        "Workspace Cloudinary gallery search skipped in development"
+      ).pipe(Effect.as([] as readonly CloudinaryAsset[]));
+    }),
     Effect.tapError((error) =>
       Effect.logError("Workspace Cloudinary gallery search failed", error)
     ),

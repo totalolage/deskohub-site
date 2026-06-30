@@ -2,6 +2,8 @@ import { Effect } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import {
   openPayState,
   payStateTokenQueryParam,
@@ -25,8 +27,6 @@ import {
   type SearchParamsRecord,
   workspaceSiteConstants,
 } from "@/shared/utils";
-
-export const dynamic = "force-dynamic";
 
 type LocalizedCheckoutPayPageProps = {
   params: Promise<{ locale: string }>;
@@ -76,6 +76,21 @@ export default async function LocalizedCheckoutPayPage({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
+  return runWithRequestLocale(locale, () => (
+    <Suspense fallback={null}>
+      <CheckoutPayContent locale={locale} searchParams={searchParams} />
+    </Suspense>
+  ));
+}
+
+async function CheckoutPayContent({
+  locale,
+  searchParams,
+}: {
+  readonly locale: Locale;
+  readonly searchParams: Promise<SearchParamsRecord>;
+}) {
+  await connection();
   const payStateToken = getSearchParam(
     await searchParams,
     payStateTokenQueryParam
@@ -108,7 +123,6 @@ export default async function LocalizedCheckoutPayPage({
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <CheckoutPayPage
         locale={locale}
-        orderId={state.orderId}
         payStateToken={payStateToken}
         summary={state.quote.summary}
         variant="pay"

@@ -1,6 +1,8 @@
 import { Effect, Option, Schema } from "effect";
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
+import { connection } from "next/server";
+import { Suspense } from "react";
 import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
 import type {
   CheckoutStatusReturnOutcome,
@@ -25,7 +27,6 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-export const dynamic = "force-dynamic";
 export const maxDuration = 15;
 
 type LocalizedCheckoutStatusPageProps = {
@@ -113,13 +114,25 @@ export async function generateMetadata({
   });
 }
 
-export default async function LocalizedCheckoutStatusPage({
+export default function LocalizedCheckoutStatusPage({
+  params,
+  searchParams,
+}: LocalizedCheckoutStatusPageProps) {
+  return (
+    <Suspense fallback={null}>
+      <CheckoutStatusContent params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function CheckoutStatusContent({
   params,
   searchParams,
 }: LocalizedCheckoutStatusPageProps) {
   const decodedParams = decodeCheckoutStatusParams(await params);
   const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 
+  await connection();
   const rawSearchParams = await searchParams;
   const { outcome: returnOutcome } = Option.getOrElse(
     decodeCheckoutStatusSearchParams(rawSearchParams),

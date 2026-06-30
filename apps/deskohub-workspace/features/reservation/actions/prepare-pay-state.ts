@@ -56,10 +56,9 @@ import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summ
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import { GoogleCalendarWorkspaceLimitationsService } from "@/features/reservation/backend/google-calendar-workspace-limitations.service";
 import {
   WorkspaceAvailabilityService,
-  WorkspaceAvailabilityServiceLive,
+  WorkspaceAvailabilityServiceLiveWithDependencies,
 } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
@@ -68,7 +67,6 @@ import {
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
@@ -345,11 +343,6 @@ const waitForPendingHoldCreation = Effect.fn(
     )
   );
 });
-
-const EarlyReservationGoogleCalendarWorkspaceLimitationsLive =
-  GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(GoogleCalendarServiceLive)
-  );
 
 export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
@@ -840,15 +833,7 @@ const preparePayStateAction = createEffectSafeAction(
       OperationalEventRepositoryLive
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
     ReservationHoldCleanupServiceLiveWithDependencies,
-    WorkspaceAvailabilityServiceLive.pipe(
-      Layer.provide(EarlyReservationGoogleCalendarWorkspaceLimitationsLive),
-      Layer.provide(
-        WorkspaceReservationRepositoryLive.pipe(
-          Layer.provide(WorkspaceDatabaseLive)
-        )
-      ),
-      Layer.provide(DotyposServiceLive)
-    ),
+    WorkspaceAvailabilityServiceLiveWithDependencies,
     WorkspaceTableAssignmentServiceLive.pipe(
       Layer.provide(
         WorkspaceReservationRepositoryLive.pipe(
