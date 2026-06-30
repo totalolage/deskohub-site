@@ -16,6 +16,7 @@ import { isPalmovconPageExpired } from "./page-availability";
 const reservationHref = "/reservation";
 const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
 const witcherRegistrationHref = "https://forms.gle/BnmwtDu5gqLx1VWVA";
+const bloodOnTheClocktowerRegistrationHref = "https://clocktower-v-praze.reenio.cz/cs/term/2026-07-18/2026-06-30;hideResources=1;hideCalendar=1";
 const mapHref = `https://www.google.com/maps/dir/?api=1&destination=${siteConstants.contact.coordinates.lat},${siteConstants.contact.coordinates.lng}`;
 const heroPublicId = "palmovcon-2026-hero";
 const eventImagePublicIds = {
@@ -58,7 +59,10 @@ const getSchedule = (): ScheduleItem[] => [
     title: m["palmovcon2026.schedule.bloodOnTheClocktower.title"](),
     time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
     description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
-    note: m["palmovcon2026.schedule.bloodOnTheClocktower.note"](),
+    cta: {
+      href: bloodOnTheClocktowerRegistrationHref,
+      label: m["palmovcon2026.registrationCta"](),
+    },
     imagePublicId: eventImagePublicIds.bloodOnTheClocktower,
   },
   {
