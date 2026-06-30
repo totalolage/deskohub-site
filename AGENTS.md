@@ -36,3 +36,4 @@ export class FooService extends Context.Service<
 - Workspace checkout E2E for current-code webhook validation must deploy a fresh manual Vercel CLI preview from the current working tree, assign `new.workspace.deskohub.cz` to that deployment, and then run through that alias; do not use whatever the alias already points to unless the user explicitly asks to test the already-live alias.
 - For conditional rendering with no else branch, use `{condition && <Component />}` instead of `{condition ? <Component /> : null}`.
 - Do not hoist JSX `className` strings into local variables when they are used only once; inline them at the usage site.
+- Do not hoist simple one-use literals or lookup objects to module scope; inline them where they are consumed.

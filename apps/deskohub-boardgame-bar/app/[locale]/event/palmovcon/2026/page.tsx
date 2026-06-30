@@ -12,20 +12,6 @@ import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../../../route";
 import { isPalmovconPageExpired } from "./page-availability";
 
-// ChoiceQR cannot accept event prefill context, so keep this a plain reservation link.
-const reservationHref = "/reservation";
-const facebookEventHref = "https://www.facebook.com/share/1D39ZcqBkS/";
-const witcherRegistrationHref = "https://forms.gle/BnmwtDu5gqLx1VWVA";
-const bloodOnTheClocktowerRegistrationHref = "https://clocktower-v-praze.reenio.cz/cs/term/2026-07-18/2026-06-30;hideResources=1;hideCalendar=1";
-const mapHref = `https://www.google.com/maps/dir/?api=1&destination=${siteConstants.contact.coordinates.lat},${siteConstants.contact.coordinates.lng}`;
-const heroPublicId = "palmovcon-2026-hero";
-const eventImagePublicIds = {
-  miniaturePainting: "palmovcon-event-miniature-painting",
-  witcher: "palmovcon-event-witcher-game",
-  bloodOnTheClocktower: "palmovcon-event-blood-on-the-clocktower",
-  bazaar: "palmovcon-event-boardgame-bazar",
-} as const;
-
 type ScheduleItem = {
   title: string;
   time: string;
@@ -43,15 +29,15 @@ const getSchedule = (): ScheduleItem[] => [
     title: m["palmovcon2026.schedule.miniaturePainting.title"](),
     time: m["palmovcon2026.schedule.miniaturePainting.time"](),
     description: m["palmovcon2026.schedule.miniaturePainting.description"](),
-    imagePublicId: eventImagePublicIds.miniaturePainting,
+    imagePublicId: "palmovcon-event-miniature-painting",
   },
   {
     title: m["palmovcon2026.schedule.witcher.title"](),
     time: m["palmovcon2026.schedule.witcher.time"](),
     description: m["palmovcon2026.schedule.witcher.description"](),
-    imagePublicId: eventImagePublicIds.witcher,
+    imagePublicId: "palmovcon-event-witcher-game",
     cta: {
-      href: witcherRegistrationHref,
+      href: "https://forms.gle/BnmwtDu5gqLx1VWVA",
       label: m["palmovcon2026.registrationCta"](),
     },
   },
@@ -60,16 +46,16 @@ const getSchedule = (): ScheduleItem[] => [
     time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
     description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
     cta: {
-      href: bloodOnTheClocktowerRegistrationHref,
+      href: "https://clocktower-v-praze.reenio.cz/cs/term/2026-07-18/2026-06-30;hideResources=1;hideCalendar=1",
       label: m["palmovcon2026.registrationCta"](),
     },
-    imagePublicId: eventImagePublicIds.bloodOnTheClocktower,
+    imagePublicId: "palmovcon-event-blood-on-the-clocktower",
   },
   {
     title: m["palmovcon2026.schedule.bazaar.title"](),
     time: m["palmovcon2026.schedule.bazaar.time"](),
     description: m["palmovcon2026.schedule.bazaar.description"](),
-    imagePublicId: eventImagePublicIds.bazaar,
+    imagePublicId: "palmovcon-event-boardgame-bazar",
   },
 ];
 
@@ -88,19 +74,45 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
   }
 
   const schedule = getSchedule();
-  const heroImage = await getCloudinaryImageByPublicId(heroPublicId);
+  const heroImage = await getCloudinaryImageByPublicId("palmovcon-2026-hero");
   const heroBlurDataURL = heroImage
     ? await generateBlurDataUrlCached(heroImage).catch(() => undefined)
     : undefined;
   const eventImages = new Map(
     await Promise.all(
       schedule.map(async (item) => {
-        const image = await getCloudinaryImageByPublicId(item.imagePublicId);
-        const blurDataURL = image
-          ? await generateBlurDataUrlCached(image).catch(() => undefined)
-          : undefined;
+        const desktopImage = await getCloudinaryImageByPublicId(
+          item.imagePublicId
+        );
+        const mobileImage = await getCloudinaryImageByPublicId(
+          `${item.imagePublicId}-mobile`
+        );
+        const [desktopBlurDataURL, mobileBlurDataURL] = await Promise.all([
+          desktopImage
+            ? await generateBlurDataUrlCached(desktopImage).catch(
+                () => undefined
+              )
+            : undefined,
+          mobileImage
+            ? await generateBlurDataUrlCached(mobileImage).catch(
+                () => undefined
+              )
+            : undefined,
+        ]);
 
-        return [item.imagePublicId, { image, blurDataURL }] as const;
+        return [
+          item.imagePublicId,
+          {
+            image: {
+              desktop: desktopImage,
+              mobile: mobileImage,
+            },
+            blurDataURL: {
+              desktop: desktopBlurDataURL,
+              mobile: mobileBlurDataURL,
+            },
+          },
+        ] as const;
       })
     )
   );
@@ -151,7 +163,8 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   className="h-14 rounded-full bg-[#899E28] px-8 font-black text-[#060852] text-base hover:bg-[#6DAA9C]"
                   size="lg"
                 >
-                  <LocalizedLink href={reservationHref}>
+                  {/* ChoiceQR cannot accept event prefill context. */}
+                  <LocalizedLink href="/reservation">
                     {m["palmovcon2026.reservationCta"]()}
                   </LocalizedLink>
                 </Button>
@@ -182,7 +195,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 <dd className="mt-1 text-2xl text-[#060852]">
                   <a
                     className="underline decoration-[#899E28] decoration-2 underline-offset-4 hover:text-[#899E28]"
-                    href={mapHref}
+                    href={`https://www.google.com/maps/dir/?api=1&destination=${siteConstants.contact.coordinates.lat},${siteConstants.contact.coordinates.lng}`}
                     rel="noreferrer"
                     target="_blank"
                   >
@@ -235,73 +248,82 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         <div className="mt-8 grid gap-5">
           {schedule.map((item) => {
             const eventImage = eventImages.get(item.imagePublicId);
-            const hasEventImage = eventImage?.image !== undefined;
+            const mobileEventImage =
+              eventImage?.image.mobile ?? eventImage?.image.desktop;
+            const mobileEventBlurDataURL = eventImage?.image.mobile
+              ? eventImage.blurDataURL.mobile
+              : eventImage?.blurDataURL.desktop;
+            const hasMobileEventImage = mobileEventImage !== undefined;
+            const hasDesktopEventImage =
+              eventImage?.image.desktop !== undefined;
 
             return (
               <article
                 className="relative overflow-hidden rounded-[1.75rem] border border-[#6DAA9C]/20 bg-[#FFFFFE] text-[#060852] shadow-xl shadow-[#060852]/25"
                 key={item.title}
               >
-                {eventImage?.image && (
-                  <>
-                    <CloudinaryImage
-                      aria-hidden="true"
-                      alt=""
-                      asset={eventImage.image}
-                      blurDataURL={eventImage.blurDataURL}
-                      className="pointer-events-none absolute inset-x-0 top-0 h-auto w-full max-w-none select-none lg:hidden"
-                      preload={false}
-                      sizes="100vw"
-                      style={{
-                        backgroundSize: "contain",
-                        objectFit: "contain",
-                        objectPosition: "left center",
-                        maskImage:
-                          "linear-gradient(180deg, black 0%, black 50%, transparent 100%)",
-                        WebkitMaskImage:
-                          "linear-gradient(180deg, black 0%, black 50%, transparent 100%)",
-                      }}
-                      variant="full"
-                    />
-                    <CloudinaryImage
-                      aria-hidden="true"
-                      alt=""
-                      asset={eventImage.image}
-                      blurDataURL={eventImage.blurDataURL}
-                      className="pointer-events-none absolute inset-y-0 left-0 hidden h-full w-auto max-w-full select-none lg:block"
-                      preload={false}
-                      sizes="40vw"
-                      style={{
-                        objectPosition: "left center",
-                        maskImage:
-                          "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
-                        WebkitMaskImage:
-                          "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
-                      }}
-                      variant="full"
-                    />
-                  </>
+                {mobileEventImage && (
+                  <CloudinaryImage
+                    aria-hidden="true"
+                    alt=""
+                    asset={mobileEventImage}
+                    blurDataURL={mobileEventBlurDataURL}
+                    className="pointer-events-none absolute inset-x-0 top-0 h-[300px] w-full select-none lg:hidden"
+                    preload={false}
+                    sizes="100vw"
+                    style={{
+                      objectFit: "cover",
+                      objectPosition: "center right",
+                      maskImage:
+                        "linear-gradient(180deg, black 0%, black 50%, transparent 100%)",
+                      WebkitMaskImage:
+                        "linear-gradient(180deg, black 0%, black 50%, transparent 100%)",
+                    }}
+                    variant="full"
+                  />
+                )}
+                {eventImage?.image.desktop && (
+                  <CloudinaryImage
+                    aria-hidden="true"
+                    alt=""
+                    asset={eventImage.image.desktop}
+                    blurDataURL={eventImage.blurDataURL.desktop}
+                    className="pointer-events-none absolute inset-y-0 left-0 hidden h-full w-auto max-w-full select-none lg:block"
+                    preload={false}
+                    sizes="40vw"
+                    style={{
+                      objectPosition: "left center",
+                      maskImage:
+                        "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
+                      WebkitMaskImage:
+                        "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
+                    }}
+                    variant="full"
+                  />
                 )}
                 <div
                   className={cn(
                     "relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center",
-                    hasEventImage
-                      ? "min-h-[28rem] px-6 pt-80 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
-                      : "min-h-[18rem] p-6 sm:p-8"
+                    hasMobileEventImage
+                      ? "px-6 pt-80 pb-6 sm:px-8 sm:pt-[300px] sm:pb-8"
+                      : "p-6 sm:p-8",
+                    hasDesktopEventImage
+                      ? "lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
+                      : "lg:p-8"
                   )}
                 >
                   <div>
                     <div
                       className={cn(
                         "bg-[linear-gradient(#000000E0,transparent)] lg:[background-image:unset]",
-                        hasEventImage &&
+                        hasMobileEventImage &&
                           "absolute px-6 pt-6 pb-10 z-10 top-0 left-0 right-0 lg:static"
                       )}
                     >
                       <p
                         className={cn(
                           "font-bold",
-                          hasEventImage
+                          hasMobileEventImage
                             ? "text-[#FFFFFE]/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)] lg:text-[#060852]/80 lg:drop-shadow-none"
                             : "text-[#060852]/80"
                         )}
@@ -311,7 +333,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                       <h3
                         className={cn(
                           "mt-3 font-black",
-                          hasEventImage
+                          hasMobileEventImage
                             ? "text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
                             : "text-2xl text-[#23221E]"
                         )}
@@ -369,7 +391,11 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 asChild
                 className="h-12 rounded-full bg-[#060852] px-6 font-bold text-[#FFFFFE] hover:bg-[#23221E]"
               >
-                <a href={facebookEventHref} rel="noreferrer" target="_blank">
+                <a
+                  href="https://www.facebook.com/share/1D39ZcqBkS/"
+                  rel="noreferrer"
+                  target="_blank"
+                >
                   {m["palmovcon2026.facebookCta"]()}
                 </a>
               </Button>
@@ -379,7 +405,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   className="h-12 rounded-full border-[#060852] px-6 font-bold text-[#060852] hover:bg-[#060852]/10"
                   variant="outline"
                 >
-                  <LocalizedLink href={reservationHref}>
+                  <LocalizedLink href="/reservation">
                     {m["palmovcon2026.secondaryReservationCta"]()}
                   </LocalizedLink>
                 </Button>
