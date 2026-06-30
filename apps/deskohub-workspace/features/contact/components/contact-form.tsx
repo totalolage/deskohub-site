@@ -2,7 +2,8 @@
 
 import { Send } from "lucide-react";
 import Link from "next/link";
-import { useActionState, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useActionState, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
 import {
   type ContactFormState,
@@ -34,18 +35,37 @@ const initialContactFormState: ContactFormState = {
   status: "idle",
 };
 
+const getContactQueryValue = (
+  params: Pick<URLSearchParams, "get">,
+  key: keyof ContactFormInitialValues,
+  maxLength: number
+) => params.get(key)?.slice(0, maxLength);
+
+const getContactQueryInitialValues = (params: Pick<URLSearchParams, "get">) => {
+  const values: ContactFormInitialValues = {
+    name: getContactQueryValue(params, "name", 100),
+    email: getContactQueryValue(params, "email", 255),
+    phone: getContactQueryValue(params, "phone", 20),
+    message: getContactQueryValue(params, "message", 1000),
+  };
+
+  return Object.values(values).some(Boolean) ? values : undefined;
+};
+
 export function ContactForm({ locale, initialValues }: ContactFormProps) {
   const [state, formAction] = useActionState(
     submitContactForm,
     initialContactFormState
   );
   const formRef = useRef<HTMLFormElement>(null);
+  const [queryInitialValues, setQueryInitialValues] =
+    useState<ContactFormInitialValues>();
   const fieldValues =
     state.status === "success"
       ? undefined
       : state.status === "error"
         ? state.values
-        : initialValues;
+        : (initialValues ?? queryInitialValues);
   const fieldRemountKey = fieldValues
     ? [
         fieldValues.name ?? "",
@@ -79,6 +99,12 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
       </CardHeader>
 
       <CardContent>
+        {!initialValues && (
+          <Suspense fallback={null}>
+            <ContactQueryInitialValuesSync onChange={setQueryInitialValues} />
+          </Suspense>
+        )}
+
         <form ref={formRef} action={formAction} className="space-y-5">
           <div key={fieldRemountKey} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
@@ -158,6 +184,21 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
       </CardContent>
     </Card>
   );
+}
+
+function ContactQueryInitialValuesSync({
+  onChange,
+}: {
+  readonly onChange: (values: ContactFormInitialValues | undefined) => void;
+}) {
+  const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
+
+  useEffect(() => {
+    onChange(getContactQueryInitialValues(new URLSearchParams(queryString)));
+  }, [onChange, queryString]);
+
+  return null;
 }
 
 type FieldProps = {

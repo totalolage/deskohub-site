@@ -1,4 +1,6 @@
-import { isLocale, m } from "@/features/i18n";
+import { connection } from "next/server";
+import { Suspense } from "react";
+import { isLocale, type Locale, m } from "@/features/i18n";
 import { generateWorkspaceLocationMapImage } from "@/shared/backend/workspace-location-map";
 import {
   workspaceFormattedAddress,
@@ -10,14 +12,21 @@ type WorkspaceMapPreviewPageProps = {
   params: Promise<{ locale: string }>;
 };
 
-export const dynamic = "force-dynamic";
-
 export default async function WorkspaceMapPreviewPage({
   params,
 }: WorkspaceMapPreviewPageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) return null;
 
+  return (
+    <Suspense fallback={null}>
+      <WorkspaceMapPreviewContent locale={locale} />
+    </Suspense>
+  );
+}
+
+async function WorkspaceMapPreviewContent({ locale }: { locale: Locale }) {
+  await connection();
   const image = await generateWorkspaceLocationMapImage();
   const imageSrc = `data:image/jpeg;base64,${image.toString("base64")}`;
 

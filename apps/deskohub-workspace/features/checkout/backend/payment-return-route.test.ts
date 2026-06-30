@@ -6,7 +6,7 @@ import { join } from "node:path";
 
 const routePath = join(
   import.meta.dirname,
-  "../../../app/[locale]/(minimal-header)/checkout/payment/[orderId]/page.tsx"
+  "../../../app/[locale]/(minimal-header)/checkout/payment/[orderId]/route.ts"
 );
 
 describe("checkout payment return route", () => {
@@ -15,7 +15,7 @@ describe("checkout payment return route", () => {
 
     expect(source).toContain("refreshStatus");
     expect(source).toContain("Checkout payment return refresh failed");
-    expect(source).toContain("redirect(getCheckoutStatusRedirectPath");
+    expect(source).toContain("NextResponse.redirect");
     expect(source).not.toContain("\n  notFound();\n}");
   });
 });
