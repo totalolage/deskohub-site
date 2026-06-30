@@ -144,6 +144,12 @@ export type GetTables200 = PaginatedTables
 export const GetTables200 = PaginatedTables
 export type GetTables401 = ErrorResponse
 export const GetTables401 = ErrorResponse
+export type GetTable200 = Table
+export const GetTable200 = Table
+export type GetTable401 = ErrorResponse
+export const GetTable401 = ErrorResponse
+export type GetTable404 = ErrorResponse
+export const GetTable404 = ErrorResponse
 export type GetProductsParams = { readonly "filter"?: string, readonly "sort"?: string, readonly "page"?: number, readonly "limit"?: number, readonly "include"?: string }
 export const GetProductsParams = Schema.Struct({ "filter": Schema.optionalKey(Schema.String), "sort": Schema.optionalKey(Schema.String), "page": Schema.optionalKey(Schema.Number.annotate({ "default": 1 }).check(Schema.isInt())), "limit": Schema.optionalKey(Schema.Number.annotate({ "default": 100 }).check(Schema.isInt()).check(Schema.isLessThanOrEqualTo(100))), "include": Schema.optionalKey(Schema.String) })
 export type GetProducts200 = PaginatedProducts
@@ -489,6 +495,14 @@ export const make = (
       orElse: unexpectedStatus
     }))
   ),
+    "getTable": (cloudId, tableId, options) => HttpClientRequest.get(`/clouds/${cloudId}/tables/${tableId}`).pipe(
+    withResponse(options?.config)(HttpClientResponse.matchStatus({
+      "2xx": decodeSuccess(GetTable200),
+      "401": decodeError("GetTable401", GetTable401),
+      "404": decodeError("GetTable404", GetTable404),
+      orElse: unexpectedStatus
+    }))
+  ),
     "getProducts": (cloudId, options) => HttpClientRequest.get(`/clouds/${cloudId}/products`).pipe(
     HttpClientRequest.setUrlParams({ "filter": options?.params?.["filter"] as any, "sort": options?.params?.["sort"] as any, "page": options?.params?.["page"] as any, "limit": options?.params?.["limit"] as any, "include": options?.params?.["include"] as any }),
     withResponse(options?.config)(HttpClientResponse.matchStatus({
@@ -717,6 +731,10 @@ readonly "createCustomers": <Config extends OperationConfig>(cloudId: string, op
 * Get tables
 */
 readonly "getTables": <Config extends OperationConfig>(cloudId: string, options: { readonly params?: typeof GetTablesParams.Encoded | undefined; readonly config?: Config | undefined } | undefined) => Effect.Effect<WithOptionalResponse<typeof GetTables200.Type, Config>, HttpClientError.HttpClientError | SchemaError | DotyposClientError<"GetTables401", typeof GetTables401.Type>>
+  /**
+* Get table by ID
+*/
+readonly "getTable": <Config extends OperationConfig>(cloudId: string, tableId: string, options: { readonly config?: Config | undefined } | undefined) => Effect.Effect<WithOptionalResponse<typeof GetTable200.Type, Config>, HttpClientError.HttpClientError | SchemaError | DotyposClientError<"GetTable401", typeof GetTable401.Type> | DotyposClientError<"GetTable404", typeof GetTable404.Type>>
   /**
 * Get products
 */
