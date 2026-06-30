@@ -108,6 +108,7 @@ const main = async () => {
         "vercel@latest",
         "deploy",
         "--yes",
+        "--force",
         "--cwd",
         repoRoot,
         ...getVercelDeployEnvArgs(config, datasourceConfig),
