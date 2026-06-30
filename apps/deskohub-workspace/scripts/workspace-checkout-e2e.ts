@@ -245,7 +245,7 @@ const getDatasourceConfig = () => {
   const databaseUrl = requireEnv("DATABASE_URL");
   const databaseUrlUnpooled =
     env("WORKSPACE_E2E_DATABASE_URL_UNPOOLED") ?? databaseUrl;
-  const dotyposWebhookSecret = requireEnv("DOTYPOS_WEBHOOK_SECRET");
+  const dotyposWebhookSecret = env("DOTYPOS_WEBHOOK_SECRET");
   addRedaction(databaseUrlUnpooled);
   addRedaction(dotyposWebhookSecret);
 
@@ -261,7 +261,7 @@ const getDatasourceConfig = () => {
       cloudId: requireEnv("DOTYPOS_CLOUD_ID"),
       employeeId: requireEnv("DOTYPOS_EMPLOYEE_ID"),
       refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
-      webhookSecret: dotyposWebhookSecret,
+      ...(dotyposWebhookSecret ? { webhookSecret: dotyposWebhookSecret } : {}),
     },
     expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
     nexiApiOrigin: requireEnv("NEXI_API_ORIGIN"),
@@ -302,10 +302,12 @@ const getVercelDeployEnvArgs = (
     DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
     DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
     DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
-    DOTYPOS_WEBHOOK_SECRET: datasourceConfig.dotypos.webhookSecret,
     NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
     WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
+    ...(datasourceConfig.dotypos.webhookSecret
+      ? { DOTYPOS_WEBHOOK_SECRET: datasourceConfig.dotypos.webhookSecret }
+      : {}),
     ...(config.bypassSecret
       ? { VERCEL_AUTOMATION_BYPASS_SECRET: config.bypassSecret }
       : {}),
