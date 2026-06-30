@@ -329,7 +329,7 @@
   "checkoutPayPricingChangedBanner": "We updated the price based on the latest reservation details. Please continue only if the amount looks correct.",
   "checkoutPayReviewUpdatedPriceButton": "Review updated price",
   "checkoutPayInvalidStateTitle": "This payment link expired.",
-  "checkoutPayInvalidStateLead": "Please start a new reservation to continue.",
+  "checkoutPayInvalidStateLead": ":(",
   "checkoutPayRestartButton": "Start again",
   "checkoutPayStateTooLarge": "Please shorten your message so we can continue to payment.",
   "checkoutPaymentRetryMetadataTitle": "Retry payment | Deskohub Workspace",
