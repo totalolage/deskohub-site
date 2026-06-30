@@ -6,6 +6,7 @@ import { getCloudinaryImageByPublicId } from "@/features/gallery/actions/get-clo
 import { m, setLocale } from "@/features/i18n";
 import { LocalizedLink } from "@/features/i18n/components/localized-link";
 import { Button } from "@/shared/components/ui/button";
+import { cn } from "@/shared/utils";
 import { siteConstants } from "@/shared/utils/constants";
 import { metadata } from "@/shared/utils/metadata";
 import type { RouteProps_locale } from "../../../route";
@@ -231,18 +232,27 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
           {schedule.map((item) => {
             const eventImage = eventImages.get(item.imagePublicId);
             const hasEventImage = eventImage?.image !== undefined;
-            const contentClassName = hasEventImage
-              ? "relative grid min-h-[28rem] gap-6 px-6 pt-60 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:grid-cols-[1fr_auto] lg:items-center lg:py-8 lg:pr-8 lg:pl-[40%]"
-              : "relative grid min-h-[18rem] gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center";
-            const titleBlockClassName = hasEventImage
-              ? "absolute top-6 right-6 left-6 z-10 lg:static"
-              : undefined;
-            const timeClassName = hasEventImage
-              ? "font-bold text-[#FFFFFE]/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)] lg:text-[#060852]/80 lg:drop-shadow-none"
-              : "font-bold text-[#060852]/80";
-            const titleClassName = hasEventImage
-              ? "mt-3 font-black text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
-              : "mt-3 font-black text-2xl text-[#23221E]";
+            const contentClassName = cn(
+              "relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center",
+              hasEventImage
+                ? "min-h-[28rem] px-6 pt-60 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
+                : "min-h-[18rem] p-6 sm:p-8"
+            );
+            const titleBlockClassName = cn(
+              hasEventImage && "absolute top-6 right-6 left-6 z-10 lg:static"
+            );
+            const timeClassName = cn(
+              "font-bold",
+              hasEventImage
+                ? "text-[#FFFFFE]/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)] lg:text-[#060852]/80 lg:drop-shadow-none"
+                : "text-[#060852]/80"
+            );
+            const titleClassName = cn(
+              "mt-3 font-black",
+              hasEventImage
+                ? "text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
+                : "text-2xl text-[#23221E]"
+            );
 
             return (
               <article
@@ -260,6 +270,8 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                       preload={false}
                       sizes="100vw"
                       style={{
+                        backgroundSize: "cover",
+                        objectFit: "cover",
                         objectPosition: "left center",
                         maskImage:
                           "linear-gradient(180deg, black 0%, black 58%, transparent 100%)",
