@@ -88,26 +88,35 @@ export function CheckoutPayPage({
     submitReservationResult.data?.status === "pricing_changed" ||
     submitReservationResult.data?.status === "redirect";
   const isPricingChanged = variant === "pricingChanged";
-  const title = isPricingChanged
-    ? m.checkoutPayPricingChangedTitle({}, { locale })
-    : variant === "retry"
-      ? m.checkoutPaymentRetryTitle({}, { locale })
-      : m.checkoutPayTitle({}, { locale });
-  const lead = isPricingChanged
-    ? m.checkoutPayPricingChangedLead({}, { locale })
-    : variant === "retry"
-      ? m.checkoutPaymentRetryLead({}, { locale })
-      : null;
-  const actionVariant = variant === "retry" ? "retry" : "pay";
+  const title = {
+    pay: m.checkoutPayTitle({}, { locale }),
+    retry: m.checkoutPaymentRetryTitle({}, { locale }),
+    pricingChanged: m.checkoutPayPricingChangedTitle({}, { locale }),
+  }[variant];
+  const lead = {
+    pay: null,
+    retry: m.checkoutPaymentRetryLead({}, { locale }),
+    pricingChanged: m.checkoutPayPricingChangedLead({}, { locale }),
+  }[variant];
+  const actionVariant = (
+    {
+      pay: "pay",
+      retry: "retry",
+      pricingChanged: "pay",
+    } as const
+  )[variant];
   const isSubmitPending = isExecuting || hasCheckoutRedirect;
 
   return (
     <CheckoutPayCard lead={lead} orderId={orderId} title={title}>
       {!!retryOutcome && (
         <Banner>
-          {retryOutcome === "cancelled"
-            ? m.checkoutPaymentRetryCancelledBanner({}, { locale })
-            : m.checkoutPaymentRetryFailedBanner({}, { locale })}
+          {
+            {
+              cancelled: m.checkoutPaymentRetryCancelledBanner({}, { locale }),
+              failed: m.checkoutPaymentRetryFailedBanner({}, { locale }),
+            }[retryOutcome]
+          }
         </Banner>
       )}
 
@@ -284,9 +293,12 @@ function CheckoutPayConsent({
       />
       <span className="space-y-2 text-sm leading-6 text-navy-blue/66">
         <span className="block">
-          {variant === "retry"
-            ? m.checkoutPaymentRetryConsentBefore({}, { locale })
-            : m.checkoutPayConsentBefore({}, { locale })}{" "}
+          {
+            {
+              pay: m.checkoutPayConsentBefore({}, { locale }),
+              retry: m.checkoutPaymentRetryConsentBefore({}, { locale }),
+            }[variant]
+          }{" "}
           <LegalLink
             href={`/${locale}/terms-and-conditions`}
             label={m.reservationLegalConsentTermsLink({}, { locale })}
@@ -327,11 +339,12 @@ function CheckoutPaySubmitButton({
         m.checkoutPaymentRetryPending({}, { locale })
       ) : (
         <>
-          {variant === "retry" ? (
-            <RotateCcw className="h-4 w-4" />
-          ) : (
-            <CreditCard className="h-4 w-4" />
-          )}
+          {
+            {
+              pay: <CreditCard className="h-4 w-4" />,
+              retry: <RotateCcw className="h-4 w-4" />,
+            }[variant]
+          }
           {m.checkoutPayOrderAndPayButton({}, { locale })}
         </>
       )}
