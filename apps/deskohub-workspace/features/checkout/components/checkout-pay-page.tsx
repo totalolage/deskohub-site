@@ -33,7 +33,6 @@ type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly freshPayUrl?: string;
   readonly locale: Locale;
-  readonly orderId?: string;
   readonly payStateToken?: string;
   readonly summary: CheckoutSummaryData;
   readonly variant: "pay" | "retry" | "pricingChanged";
@@ -46,7 +45,6 @@ export function CheckoutPayPage({
   changedKeys,
   freshPayUrl,
   locale,
-  orderId,
   payStateToken,
   retryOutcome,
   summary,
@@ -108,7 +106,7 @@ export function CheckoutPayPage({
   const isSubmitPending = isExecuting || hasCheckoutRedirect;
 
   return (
-    <CheckoutPayCard lead={lead} orderId={orderId} title={title}>
+    <CheckoutPayCard lead={lead} title={title}>
       {!!retryOutcome && (
         <Banner>
           {
@@ -205,12 +203,10 @@ export function CheckoutPayPageSkeleton({
 function CheckoutPayCard({
   children,
   lead,
-  orderId,
   title,
   ...props
 }: Omit<CardProps, "className"> & {
   readonly lead?: string | null;
-  readonly orderId?: string;
   readonly title: string;
 }) {
   return (
@@ -220,11 +216,6 @@ function CheckoutPayCard({
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardHeader className="space-y-3 pb-6">
-        {!!orderId && (
-          <div className="w-fit rounded-full border border-burned-orange/20 bg-burned-orange/8 px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-burned-orange">
-            {orderId}
-          </div>
-        )}
         <CardTitle className="text-3xl sm:text-[2.35rem]">{title}</CardTitle>
         {!!lead && (
           <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
