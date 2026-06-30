@@ -245,7 +245,9 @@ const getDatasourceConfig = () => {
   const databaseUrl = requireEnv("DATABASE_URL");
   const databaseUrlUnpooled =
     env("WORKSPACE_E2E_DATABASE_URL_UNPOOLED") ?? databaseUrl;
+  const dotyposWebhookSecret = requireEnv("DOTYPOS_WEBHOOK_SECRET");
   addRedaction(databaseUrlUnpooled);
+  addRedaction(dotyposWebhookSecret);
 
   return {
     databaseUrl,
@@ -259,6 +261,7 @@ const getDatasourceConfig = () => {
       cloudId: requireEnv("DOTYPOS_CLOUD_ID"),
       employeeId: requireEnv("DOTYPOS_EMPLOYEE_ID"),
       refreshToken: requireEnv("DOTYPOS_REFRESH_TOKEN"),
+      webhookSecret: dotyposWebhookSecret,
     },
     expectedCurrency: env("WORKSPACE_E2E_EXPECTED_CURRENCY") ?? "EUR",
     nexiApiOrigin: requireEnv("NEXI_API_ORIGIN"),
@@ -299,6 +302,7 @@ const getVercelDeployEnvArgs = (
     DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
     DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
     DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
+    DOTYPOS_WEBHOOK_SECRET: datasourceConfig.dotypos.webhookSecret,
     NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
     WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
@@ -592,11 +596,13 @@ const completeNexiHostedPayment = async ({
     data.email
   );
 
-  await clickHostedPaymentTarget(run, session, "continue", [
-    { value: "CONTINUE" },
-    { value: "Continue" },
-    { value: "CONTINUA" },
-  ]);
+  await clickHostedPaymentTarget(
+    run,
+    session,
+    "continue",
+    [{ value: "CONTINUE" }, { value: "Continue" }, { value: "CONTINUA" }],
+    { optional: true, timeoutMs: Math.min(getCheckoutTimeoutMs(), 15_000) }
+  );
   await clickHostedPaymentTarget(run, session, "pay", [
     { value: "PAY" },
     { value: "Pay" },
@@ -755,7 +761,8 @@ const clickHostedPaymentTarget = async (
   run: ReturnType<typeof makeRunner>,
   session: string,
   label: string,
-  targets: readonly HostedPaymentClickTarget[]
+  targets: readonly HostedPaymentClickTarget[],
+  options: { readonly optional?: boolean; readonly timeoutMs?: number } = {}
 ) => {
   const labels = targets.map((target) => target.value);
 
@@ -786,10 +793,12 @@ const clickHostedPaymentTarget = async (
           if (target.framed) await switchToMainFrame(run, session);
         }
       },
-      getCheckoutTimeoutMs(),
+      options.timeoutMs ?? getCheckoutTimeoutMs(),
       `Nexi ${label} action`
     );
   } catch (error) {
+    if (options.optional) return;
+
     const message = error instanceof Error ? error.message : String(error);
     const snapshot = await readInteractiveSnapshot(run, session, true);
     throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
@@ -1810,7 +1819,7 @@ const loadEnvFile = async (path: string) => {
     const key = trimmed.slice(0, equals).trim();
     const value = unquoteEnv(trimmed.slice(equals + 1).trim());
     values.set(key, value);
-    process.env[key] ??= value;
+    if (!env(key)) process.env[key] = value;
   }
 
   return values;
@@ -1871,8 +1880,15 @@ const submitReservationScript = `
     }
     throw new Error(label);
   };
-  const checkbox = document.querySelector('#reservation-privacy-consent');
-  if (!(checkbox instanceof HTMLButtonElement)) throw new Error('privacy consent checkbox not found');
+  let checkbox;
+  await waitUntil(() => {
+    const candidate = document.querySelector('#reservation-privacy-consent');
+    if (candidate instanceof HTMLButtonElement) {
+      checkbox = candidate;
+      return true;
+    }
+    return false;
+  }, 'privacy consent checkbox not found');
   if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
   await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'privacy consent checkbox did not check');
   const form = checkbox.closest('form') ?? document.querySelector('form');

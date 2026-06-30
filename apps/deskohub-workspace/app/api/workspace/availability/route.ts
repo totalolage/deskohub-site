@@ -29,7 +29,7 @@ const loadWorkspaceAvailabilityRequest = Effect.fn(
     yield* Effect.logInfo("Workspace availability request parsed");
 
     const service = yield* WorkspaceAvailabilityService;
-    return yield* service.getAvailability(query);
+    return yield* service.getAdvisoryAvailability(query);
   },
   (effect) =>
     effect.pipe(

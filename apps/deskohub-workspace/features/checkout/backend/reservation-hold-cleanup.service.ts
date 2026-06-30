@@ -14,6 +14,7 @@ import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "@/features/checkout/backend/provider-payment-finalization.service";
+import { invalidateWorkspaceAvailabilityAdvisoryCache } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -315,6 +316,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           );
         if (!markedCancelled) return "skipped";
         yield* Effect.logInfo("Reservation hold marked cancelled");
+        yield* invalidateWorkspaceAvailabilityAdvisoryCache();
         yield* captureReservationAbandoned({
           reservation: claimed,
           timestamp: cancelledAt,

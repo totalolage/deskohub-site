@@ -19,3 +19,15 @@ export type {
   DotyposReservationStatus,
 } from "./types";
 export { normalizePhoneNumber } from "./utils/phone-formatting";
+export type {
+  DotyposReservationWebhookRecord,
+  DotyposWebhookPayload,
+  DotyposWebhookRecord,
+  DotyposWebhookRequestOptions,
+} from "./webhook";
+export {
+  DotyposWebhookAuthError,
+  DotyposWebhookPayloadError,
+  parseDotyposWebhookPayload,
+  verifyDotyposWebhookRequest,
+} from "./webhook";
