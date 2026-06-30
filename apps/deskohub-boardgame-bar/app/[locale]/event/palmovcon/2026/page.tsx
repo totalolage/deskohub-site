@@ -232,27 +232,6 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
           {schedule.map((item) => {
             const eventImage = eventImages.get(item.imagePublicId);
             const hasEventImage = eventImage?.image !== undefined;
-            const contentClassName = cn(
-              "relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center",
-              hasEventImage
-                ? "min-h-[28rem] px-6 pt-80 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
-                : "min-h-[18rem] p-6 sm:p-8"
-            );
-            const titleBlockClassName = cn(
-              hasEventImage && "absolute top-6 right-6 left-6 z-10 lg:static"
-            );
-            const timeClassName = cn(
-              "font-bold",
-              hasEventImage
-                ? "text-[#FFFFFE]/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)] lg:text-[#060852]/80 lg:drop-shadow-none"
-                : "text-[#060852]/80"
-            );
-            const titleClassName = cn(
-              "mt-3 font-black",
-              hasEventImage
-                ? "text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
-                : "text-2xl text-[#23221E]"
-            );
 
             return (
               <article
@@ -299,11 +278,41 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                     />
                   </>
                 )}
-                <div className={contentClassName}>
+                <div
+                  className={cn(
+                    "relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center",
+                    hasEventImage
+                      ? "min-h-[28rem] px-6 pt-80 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
+                      : "min-h-[18rem] p-6 sm:p-8"
+                  )}
+                >
                   <div>
-                    <div className={titleBlockClassName}>
-                      <p className={timeClassName}>{item.time}</p>
-                      <h3 className={titleClassName}>{item.title}</h3>
+                    <div
+                      className={cn(
+                        hasEventImage &&
+                          "absolute top-6 right-6 left-6 z-10 lg:static"
+                      )}
+                    >
+                      <p
+                        className={cn(
+                          "font-bold",
+                          hasEventImage
+                            ? "text-[#FFFFFE]/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)] lg:text-[#060852]/80 lg:drop-shadow-none"
+                            : "text-[#060852]/80"
+                        )}
+                      >
+                        {item.time}
+                      </p>
+                      <h3
+                        className={cn(
+                          "mt-3 font-black",
+                          hasEventImage
+                            ? "text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
+                            : "text-2xl text-[#23221E]"
+                        )}
+                      >
+                        {item.title}
+                      </h3>
                     </div>
                     <p className="mt-4 max-w-2xl text-[#060852]/75 leading-7">
                       {item.description}
