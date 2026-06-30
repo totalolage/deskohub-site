@@ -109,6 +109,7 @@ const main = async () => {
         "deploy",
         "--yes",
         "--force",
+        "--archive=tgz",
         "--cwd",
         repoRoot,
         ...getVercelDeployEnvArgs(config, datasourceConfig),
