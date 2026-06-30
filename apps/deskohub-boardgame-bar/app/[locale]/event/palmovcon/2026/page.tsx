@@ -330,7 +330,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                         className={cn(
                           "mt-3 font-black",
                           hasMobileEventImage
-                            ? "text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
+                            ? "text-3xl text-[#FFFFFE] lg:max-w-none md:max-w-[50%] max-w-[66%] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
                             : "text-2xl text-[#23221E]"
                         )}
                       >
