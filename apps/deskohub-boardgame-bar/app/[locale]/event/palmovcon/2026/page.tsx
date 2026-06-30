@@ -230,6 +230,19 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
         <div className="mt-8 grid gap-5">
           {schedule.map((item) => {
             const eventImage = eventImages.get(item.imagePublicId);
+            const hasEventImage = eventImage?.image !== undefined;
+            const contentClassName = hasEventImage
+              ? "relative grid min-h-[28rem] gap-6 px-6 pt-60 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:grid-cols-[1fr_auto] lg:items-center lg:py-8 lg:pr-8 lg:pl-[40%]"
+              : "relative grid min-h-[18rem] gap-6 p-6 sm:p-8 lg:grid-cols-[1fr_auto] lg:items-center";
+            const titleBlockClassName = hasEventImage
+              ? "absolute top-6 right-6 left-6 z-10 lg:static"
+              : undefined;
+            const timeClassName = hasEventImage
+              ? "font-bold text-[#FFFFFE]/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.65)] lg:text-[#060852]/80 lg:drop-shadow-none"
+              : "font-bold text-[#060852]/80";
+            const titleClassName = hasEventImage
+              ? "mt-3 font-black text-3xl text-[#FFFFFE] drop-shadow-[0_2px_16px_rgba(0,0,0,0.75)] lg:text-2xl lg:text-[#23221E] lg:drop-shadow-none"
+              : "mt-3 font-black text-2xl text-[#23221E]";
 
             return (
               <article
@@ -237,30 +250,49 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                 key={item.title}
               >
                 {eventImage?.image && (
-                  <CloudinaryImage
-                    aria-hidden="true"
-                    alt=""
-                    asset={eventImage.image}
-                    blurDataURL={eventImage.blurDataURL}
-                    className="pointer-events-none absolute inset-y-0 left-0 h-full w-auto max-w-full select-none"
-                    preload={false}
-                    sizes="(min-width: 768px) 40vw, 80vw"
-                    style={{
-                      objectPosition: "left center",
-                      maskImage:
-                        "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
-                      WebkitMaskImage:
-                        "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
-                    }}
-                    variant="full"
-                  />
+                  <>
+                    <CloudinaryImage
+                      aria-hidden="true"
+                      alt=""
+                      asset={eventImage.image}
+                      blurDataURL={eventImage.blurDataURL}
+                      className="pointer-events-none absolute inset-x-0 top-0 h-72 w-full max-w-none select-none lg:hidden"
+                      preload={false}
+                      sizes="100vw"
+                      style={{
+                        objectPosition: "left center",
+                        maskImage:
+                          "linear-gradient(180deg, black 0%, black 58%, transparent 100%)",
+                        WebkitMaskImage:
+                          "linear-gradient(180deg, black 0%, black 58%, transparent 100%)",
+                      }}
+                      variant="full"
+                    />
+                    <CloudinaryImage
+                      aria-hidden="true"
+                      alt=""
+                      asset={eventImage.image}
+                      blurDataURL={eventImage.blurDataURL}
+                      className="pointer-events-none absolute inset-y-0 left-0 hidden h-full w-auto max-w-full select-none lg:block"
+                      preload={false}
+                      sizes="40vw"
+                      style={{
+                        objectPosition: "left center",
+                        maskImage:
+                          "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
+                        WebkitMaskImage:
+                          "linear-gradient(90deg, black 0%, black 33%, transparent 100%)",
+                      }}
+                      variant="full"
+                    />
+                  </>
                 )}
-                <div className="relative grid min-h-[18rem] gap-6 py-6 pr-6 pl-[40%] sm:py-8 sm:pr-8 lg:grid-cols-[1fr_auto] lg:items-center">
+                <div className={contentClassName}>
                   <div>
-                    <p className="font-bold text-[#060852]/80">{item.time}</p>
-                    <h3 className="mt-3 font-black text-2xl text-[#23221E]">
-                      {item.title}
-                    </h3>
+                    <div className={titleBlockClassName}>
+                      <p className={timeClassName}>{item.time}</p>
+                      <h3 className={titleClassName}>{item.title}</h3>
+                    </div>
                     <p className="mt-4 max-w-2xl text-[#060852]/75 leading-7">
                       {item.description}
                     </p>
