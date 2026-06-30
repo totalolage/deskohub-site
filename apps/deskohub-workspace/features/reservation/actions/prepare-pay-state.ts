@@ -57,10 +57,8 @@ import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-det
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import {
-  invalidateWorkspaceAvailabilityAdvisoryCache,
-  WorkspaceAvailabilityInventoryServiceLiveWithDependencies,
   WorkspaceAvailabilityService,
-  WorkspaceAvailabilityServiceLive,
+  WorkspaceAvailabilityServiceLiveWithDependencies,
 } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
@@ -781,7 +779,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         )
       );
     yield* Effect.logInfo("Workspace reservation hold attached");
-    yield* invalidateWorkspaceAvailabilityAdvisoryCache();
     yield* enqueueReservationHoldCleanup({
       orderId: reservationDraft.id,
       reservationHoldExpiresAt: holdExpiresAt,
@@ -836,9 +833,7 @@ const preparePayStateAction = createEffectSafeAction(
       OperationalEventRepositoryLive
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
     ReservationHoldCleanupServiceLiveWithDependencies,
-    WorkspaceAvailabilityServiceLive.pipe(
-      Layer.provide(WorkspaceAvailabilityInventoryServiceLiveWithDependencies)
-    ),
+    WorkspaceAvailabilityServiceLiveWithDependencies,
     WorkspaceTableAssignmentServiceLive.pipe(
       Layer.provide(
         WorkspaceReservationRepositoryLive.pipe(

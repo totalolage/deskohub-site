@@ -107,7 +107,6 @@ const runWithInventory = async <A>(
 
   return effect.pipe(
     Effect.provide(availability.WorkspaceAvailabilityServiceLive),
-    Effect.provide(availability.WorkspaceAvailabilityInventoryService.Live),
     Effect.provide(
       Layer.succeed(DotyposService, {
         getTables: mock(() =>
@@ -137,54 +136,6 @@ const runWithInventory = async <A>(
           ]);
         }),
       } as never)
-    ),
-    Effect.runPromise
-  );
-};
-
-const runWithInventoryService = async <A>(
-  effect: Effect.Effect<A, unknown, WorkspaceAvailabilityService>,
-  input: {
-    readonly tables?: readonly Table[];
-    readonly reservations?: readonly Reservation[];
-    readonly limitations?: readonly WorkspaceCalendarLimitationType[];
-    readonly advisoryTables?: readonly Table[];
-    readonly advisoryReservations?: readonly Reservation[];
-    readonly advisoryLimitations?: readonly WorkspaceCalendarLimitationType[];
-    readonly onLoadFresh?: () => void;
-    readonly onLoadAdvisory?: () => void;
-  } = {}
-) => {
-  const availability = await import("./workspace-availability.service");
-  const freshInventory = {
-    tables: [...(input.tables ?? defaultTables)],
-    reservations: [...(input.reservations ?? [])],
-    limitations: [...(input.limitations ?? [])],
-  };
-  const advisoryInventory = {
-    tables: [...(input.advisoryTables ?? input.tables ?? defaultTables)],
-    reservations: [...(input.advisoryReservations ?? input.reservations ?? [])],
-    limitations: [...(input.advisoryLimitations ?? input.limitations ?? [])],
-  };
-
-  return effect.pipe(
-    Effect.provide(availability.WorkspaceAvailabilityServiceLive),
-    Effect.provide(
-      Layer.succeed(availability.WorkspaceAvailabilityInventoryService, {
-        loadFresh: mock(() =>
-          Effect.sync(() => {
-            input.onLoadFresh?.();
-            return freshInventory;
-          })
-        ),
-        loadAdvisory: mock(() =>
-          Effect.sync(() => {
-            input.onLoadAdvisory?.();
-            return advisoryInventory;
-          })
-        ),
-        invalidateAdvisory: mock(() => Effect.void),
-      })
     ),
     Effect.runPromise
   );
@@ -453,61 +404,5 @@ describe("WorkspaceAvailabilityService", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
     }
-  });
-
-  test("uses advisory inventory only for advisory availability", async () => {
-    const calls: string[] = [];
-    const availability = await runWithInventoryService(
-      Effect.gen(function* () {
-        const availabilityModule = yield* Effect.promise(
-          () => import("./workspace-availability.service")
-        );
-        const service = yield* availabilityModule.WorkspaceAvailabilityService;
-        return yield* service.getAdvisoryAvailability({
-          date: testDate,
-          from: testDate,
-          to: testDate,
-          entryTier: "basic",
-        });
-      }),
-      {
-        advisoryReservations: [
-          makeReservation({ tableId: "basic-1", status: "NEW" }),
-          makeReservation({ tableId: "basic-2", status: "NEW" }),
-        ],
-        onLoadAdvisory: () => calls.push("advisory"),
-        onLoadFresh: () => calls.push("fresh"),
-      }
-    );
-
-    expect(calls).toEqual(["advisory"]);
-    expect(availability.unavailableDates).toContain(testDate);
-  });
-
-  test("keeps ensureAvailable on fresh inventory", async () => {
-    const calls: string[] = [];
-
-    await runWithInventoryService(
-      Effect.gen(function* () {
-        const availabilityModule = yield* Effect.promise(
-          () => import("./workspace-availability.service")
-        );
-        const service = yield* availabilityModule.WorkspaceAvailabilityService;
-        return yield* service.ensureAvailable({
-          date: testDate,
-          entryTier: "basic",
-        });
-      }),
-      {
-        advisoryReservations: [
-          makeReservation({ tableId: "basic-1", status: "NEW" }),
-          makeReservation({ tableId: "basic-2", status: "NEW" }),
-        ],
-        onLoadAdvisory: () => calls.push("advisory"),
-        onLoadFresh: () => calls.push("fresh"),
-      }
-    );
-
-    expect(calls).toEqual(["fresh"]);
   });
 });

@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { DatabaseError } from "@/db/database.service";
@@ -9,19 +9,7 @@ import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
-const revalidateTag = mock(() => undefined);
-
-mock.module("next/cache", () => ({
-  cacheLife: mock(() => undefined),
-  cacheTag: mock(() => undefined),
-  revalidateTag,
-}));
-
 describe("ReservationHoldCleanupService", () => {
-  beforeEach(() => {
-    revalidateTag.mockClear();
-  });
-
   test("fails the expired hold sweep when expired hold selection fails", async () => {
     const { OperationalEventRepository } = await import(
       "./operational-event.repository"
@@ -176,7 +164,6 @@ describe("ReservationHoldCleanupService", () => {
     });
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
-    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   test("counts unconfirmed pending payment cleanup as skipped and retries without cancelling", async () => {
@@ -278,7 +265,6 @@ describe("ReservationHoldCleanupService", () => {
     );
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
-    expect(revalidateTag).not.toHaveBeenCalled();
   });
 
   test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
@@ -381,9 +367,6 @@ describe("ReservationHoldCleanupService", () => {
       id: orderId,
       cancelledAt: expect.any(Date),
       holdExpiredAt,
-    });
-    expect(revalidateTag).toHaveBeenCalledWith("workspace-availability:all", {
-      expire: 0,
     });
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({
