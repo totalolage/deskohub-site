@@ -175,14 +175,6 @@ const main = async () => {
     log(`Checkout e2e passed for order ${orderId}`);
   } catch (cause) {
     workflowError = cause;
-    browserHarStopped = await captureBrowserFailureArtifacts({
-      artifactDir,
-      cause,
-      harStarted: browserHarStarted,
-      run,
-      session,
-    });
-    throw cause;
   } finally {
     if (
       datasourceConfig &&
@@ -230,13 +222,24 @@ const main = async () => {
           log(`Dotypos cleanup failed: ${redact(String(cause))}`);
       }
     }
-    if (browserHarStarted && !browserHarStopped)
-      await stopBrowserHar(run, session, devNull);
-    await run("agent-browser", ["--session", session, "close"], {
-      allowFailure: true,
-    });
   }
 
+  if (workflowError)
+    browserHarStopped = await captureBrowserFailureArtifacts({
+      artifactDir,
+      cause: workflowError,
+      harStarted: browserHarStarted,
+      run,
+      session,
+    });
+
+  if (browserHarStarted && !browserHarStopped)
+    await stopBrowserHar(run, session, devNull);
+  await run("agent-browser", ["--session", session, "close"], {
+    allowFailure: true,
+  });
+
+  if (workflowError) throw workflowError;
   if (cleanupError) throw cleanupError;
 };
 
@@ -629,6 +632,12 @@ const completeNexiHostedPayment = async ({
     { value: "AUTENTICAZIONE RIUSCITA" },
     { value: "Authentication successful" },
   ]);
+  if (isCheckoutStatusUrl(await readBrowserUrl(run, session))) {
+    log(
+      "Nexi back-to-shop action skipped; checkout status page already loaded"
+    );
+    return;
+  }
   try {
     await clickHostedPaymentTarget(run, session, "back to shop", [
       { value: "BACK TO THE SHOP" },
@@ -922,18 +931,6 @@ const captureBrowserFailureArtifacts = async ({
       "snapshot-interactive.txt",
       await readInteractiveSnapshot(run, session, true)
     );
-    await run(
-      "agent-browser",
-      [
-        "--session",
-        session,
-        "screenshot",
-        "--full",
-        resolve(artifactDir, "screenshot.png"),
-      ],
-      { allowFailure: true, logOutput: false, timeoutMs: 60_000 }
-    );
-
     if (harStarted) {
       const rawHarPath = resolve(tmpdir(), `${session}-network.har`);
       harStopped = await stopBrowserHar(run, session, rawHarPath);
@@ -1044,13 +1041,23 @@ const sanitizeDiagnosticLine = (line: string) =>
     .replace(/[A-Za-z0-9_-]{32,}/g, "[token]");
 
 const sanitizeArtifactText = (text: string) =>
-  redact(text)
-    .replace(
-      /([?&](?:payState|checkoutToken|_vercel_share)=)[^&\s]+/g,
-      "$1[redacted]"
-    )
+  sanitizeArtifactUrlText(redact(text))
+    .replace(/([?&][^=&#\s]+)=[^&\s",}]+/g, "$1=[redacted]")
+    .replace(/((?:%3F|%26)[^=%&\s]+)(?:%3D|=)[^%&\s",}]+/gi, "$1%3D[redacted]")
     .replace(/(x-vercel-protection-bypass[=":\s]+)[^&\s",}]+/gi, "$1[redacted]")
     .replace(/[A-Za-z0-9_-]{96,}/g, "[token]");
+
+const sanitizeArtifactUrlText = (text: string) =>
+  text.replace(/https?:\/\/[^\s"'<>]+/g, (value) => {
+    try {
+      const url = new URL(value);
+      for (const key of url.searchParams.keys())
+        url.searchParams.set(key, "[redacted]");
+      return url.toString();
+    } catch {
+      return value;
+    }
+  });
 
 const sanitizeHarArtifact = (text: string) => {
   try {
