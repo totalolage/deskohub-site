@@ -235,7 +235,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
             const contentClassName = cn(
               "relative grid gap-6 lg:grid-cols-[1fr_auto] lg:items-center",
               hasEventImage
-                ? "min-h-[28rem] px-6 pt-60 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
+                ? "min-h-[28rem] px-6 pt-80 pb-6 sm:px-8 sm:pt-64 sm:pb-8 lg:min-h-[18rem] lg:py-8 lg:pr-8 lg:pl-[40%]"
                 : "min-h-[18rem] p-6 sm:p-8"
             );
             const titleBlockClassName = cn(
