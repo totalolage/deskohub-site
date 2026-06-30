@@ -110,13 +110,13 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
 
         <h1 className="sr-only">{m["palmovcon2026.title"]()}</h1>
         {heroImage ? (
-          <div className="relative h-[500px] overflow-hidden bg-[linear-gradient(90deg,_#060852_0_50%,_#23221E_50%_100%)]">
+          <div className="relative h-[300px] lg:h-[500px] overflow-hidden bg-[linear-gradient(90deg,_#060852_0_50%,_#23221E_50%_100%)] flex justify-center">
             <CloudinaryImage
               alt={m["palmovcon2026.heroAlt"]()}
               asset={heroImage}
               blurDataURL={heroBlurDataURL}
-              className="mx-auto h-full w-auto max-w-none"
-              priority
+              className="mx-auto h-full w-auto max-w-full"
+              preload
               sizes="100vw"
               variant="full"
             />
@@ -245,17 +245,17 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                       alt=""
                       asset={eventImage.image}
                       blurDataURL={eventImage.blurDataURL}
-                      className="pointer-events-none absolute inset-x-0 top-0 h-72 w-full max-w-none select-none lg:hidden"
+                      className="pointer-events-none absolute inset-x-0 top-0 h-auto w-full max-w-none select-none lg:hidden"
                       preload={false}
                       sizes="100vw"
                       style={{
-                        backgroundSize: "cover",
-                        objectFit: "cover",
+                        backgroundSize: "contain",
+                        objectFit: "contain",
                         objectPosition: "left center",
                         maskImage:
-                          "linear-gradient(180deg, black 0%, black 58%, transparent 100%)",
+                          "linear-gradient(180deg, black 0%, black 50%, transparent 100%)",
                         WebkitMaskImage:
-                          "linear-gradient(180deg, black 0%, black 58%, transparent 100%)",
+                          "linear-gradient(180deg, black 0%, black 50%, transparent 100%)",
                       }}
                       variant="full"
                     />
@@ -289,8 +289,9 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   <div>
                     <div
                       className={cn(
+                        "bg-[linear-gradient(#000000E0,transparent)] lg:[background-image:unset]",
                         hasEventImage &&
-                          "absolute top-6 right-6 left-6 z-10 lg:static"
+                          "absolute px-6 pt-6 pb-10 z-10 top-0 left-0 right-0 lg:static"
                       )}
                     >
                       <p
