@@ -214,16 +214,31 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
       </section>
 
       <section className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8">
-        <div>
-          <p className="font-semibold text-[#899E28] text-sm uppercase tracking-[0.22em]">
-            {m["palmovcon2026.complexGamesEyebrow"]()}
-          </p>
-          <h2 className="mt-3 font-black text-4xl">
-            {m["palmovcon2026.complexGamesTitle"]()}
-          </h2>
-          <p className="mt-5 max-w-3xl text-[#FFFFFE] text-lg leading-8">
-            {m["palmovcon2026.complexGamesDescription"]()}
-          </p>
+        <div className="flex flex-col gap-8 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="font-semibold text-[#899E28] text-sm uppercase tracking-[0.22em]">
+              {m["palmovcon2026.complexGamesEyebrow"]()}
+            </p>
+            <h2 className="mt-3 font-black text-4xl">
+              {m["palmovcon2026.complexGamesTitle"]()}
+            </h2>
+            <p className="mt-5 max-w-3xl text-[#FFFFFE] text-lg leading-8">
+              {m["palmovcon2026.complexGamesDescription"]()}
+            </p>
+          </div>
+          <Button
+            asChild
+            className="h-14 rounded-full bg-[#899E28] px-8 font-black text-[#060852] text-base hover:bg-[#6DAA9C]"
+            size="lg"
+          >
+            <a
+              href="https://www.deskoherni-socka.cz"
+              rel="noreferrer"
+              target="_blank"
+            >
+              {m["palmovcon2026.complexGamesCta"]()}
+            </a>
+          </Button>
         </div>
       </section>
 
