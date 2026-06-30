@@ -90,30 +90,27 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           reservations,
           limitations,
           expiredDotyposReservationIds,
-        ] = yield* Effect.all(
-          [
-            dotypos.getTables(),
-            dotypos.listReservations(),
-            calendarLimitations.listLimitations({
-              from: query.from,
-              to: query.to,
-            }),
-            workspaceReservations
-              .selectExpiredHoldDotyposReservationIds({
-                now: new Date(),
-              })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Workspace availability expired hold filter failed",
-                    { cause }
-                  )
-                ),
-                Effect.orElseSucceed(() => [] as readonly string[])
+        ] = yield* Effect.all([
+          dotypos.getTables(),
+          dotypos.listReservations(),
+          calendarLimitations.listLimitations({
+            from: query.from,
+            to: query.to,
+          }),
+          workspaceReservations
+            .selectExpiredHoldDotyposReservationIds({
+              now: new Date(),
+            })
+            .pipe(
+              Effect.tapError((cause) =>
+                Effect.logWarning(
+                  "Workspace availability expired hold filter failed",
+                  { cause }
+                )
               ),
-          ],
-          { concurrency: 4 }
-        );
+              Effect.orElseSucceed(() => [] as readonly string[])
+            ),
+        ]);
         const activeReservations = excludeExpiredLocalHolds(
           reservations,
           expiredDotyposReservationIds
