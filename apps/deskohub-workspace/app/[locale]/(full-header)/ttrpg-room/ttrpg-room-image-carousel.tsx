@@ -1,10 +1,15 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
+import { motion, type Transition } from "motion/react";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import {
+  useMotionSwipeCarousel,
+  wrapIndex,
+} from "@/features/gallery/hooks/use-motion-swipe-carousel";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 
 type TtrpgRoomImageCarouselProps = {
@@ -13,8 +18,25 @@ type TtrpgRoomImageCarouselProps = {
   openLabel: string;
 };
 
-const wrapIndex = (index: number, length: number) =>
-  ((index % length) + length) % length;
+const slideOffsets = [-1, 0, 1] as const;
+
+const slideTransition: Transition = {
+  type: "spring",
+  stiffness: 260,
+  damping: 32,
+  mass: 0.8,
+};
+
+const instantTransition: Transition = {
+  duration: 0,
+};
+
+const getSlideMotion = (offset: number) => ({
+  opacity: Math.max(0, 1 - Math.abs(offset) * 0.48),
+  scale: 1 - Math.min(Math.abs(offset), 1) * 0.06,
+  x: `${offset * 102}%`,
+  zIndex: Math.abs(offset) < 0.5 ? 2 : 1,
+});
 
 const getAssetLabel = (asset: CloudinaryAsset) =>
   asset.context?.custom?.caption?.trim() ||
@@ -26,10 +48,17 @@ export function TtrpgRoomImageCarousel({
   emptyText,
   openLabel,
 }: TtrpgRoomImageCarouselProps) {
-  const [index, setIndex] = useState(0);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const activeIndex = images.length > 0 ? wrapIndex(index, images.length) : 0;
-  const activeImage = images[activeIndex];
+  const carousel = useMotionSwipeCarousel({ count: images.length });
+  const activeImage = images[carousel.activeIndex];
+  const activeTransition = carousel.shouldReduceMotion
+    ? instantTransition
+    : carousel.isSwiping
+      ? instantTransition
+      : slideTransition;
+  const lightboxAnimation = carousel.shouldReduceMotion
+    ? { fade: 0, navigation: 0, swipe: 0 }
+    : undefined;
   const slides: SlideImage[] = useMemo(
     () =>
       images.map((image) => ({
@@ -51,46 +80,120 @@ export function TtrpgRoomImageCarousel({
     );
   }
 
+  const visibleSlides = (images.length === 1 ? [0] : slideOffsets).map(
+    (offset) => {
+      const virtualIndex = carousel.virtualIndex + offset;
+
+      return {
+        image: images[wrapIndex(virtualIndex, images.length)]!,
+        isCurrent: offset === 0,
+        offset: virtualIndex - carousel.visibleVirtualIndex,
+        virtualIndex,
+      };
+    }
+  );
+
   return (
-    <div className="mb-7 space-y-3">
-      <button
-        aria-label={openLabel}
-        className="group relative block aspect-[4/3] w-full cursor-zoom-in overflow-hidden rounded-[1.25rem] bg-navy-blue text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
-        onClick={() => setLightboxIndex(activeIndex)}
-        type="button"
+    <section
+      aria-label={openLabel}
+      className="mb-7 space-y-3"
+      onBlur={(event) => {
+        const nextTarget = event.relatedTarget;
+
+        if (
+          !(nextTarget instanceof Node) ||
+          !event.currentTarget.contains(nextTarget)
+        ) {
+          carousel.setIsFocusWithin(false);
+        }
+      }}
+      onFocus={() => carousel.setIsFocusWithin(true)}
+      onPointerEnter={() => carousel.setIsPointerOver(true)}
+      onPointerLeave={() => carousel.setIsPointerOver(false)}
+    >
+      <motion.div
+        className="relative aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-[1.25rem] bg-navy-blue"
+        onClickCapture={(event) => {
+          if (!carousel.shouldSuppressClickAfterSwipe()) return;
+
+          event.preventDefault();
+          event.stopPropagation();
+        }}
+        onPointerDownCapture={carousel.startDrag}
+        ref={carousel.stageRef}
       >
-        <CloudinaryImage
-          asset={activeImage}
-          className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
-          preload={activeIndex === 0}
-          size={{ width: "fill", height: "fill" }}
-          sizes="(min-width: 768px) 42vw, 100vw"
-          variant="gallery"
+        <motion.div
+          aria-hidden="true"
+          className="pointer-events-none absolute inset-0"
+          drag="x"
+          dragControls={carousel.dragControls}
+          dragListener={false}
+          dragMomentum={false}
+          onDrag={carousel.handleDragMove}
+          onDragEnd={carousel.handleDragEnd}
+          onDragStart={carousel.handleDragStart}
+          style={{ touchAction: "pan-y", x: carousel.dragX }}
         />
-        {activeImage.context?.custom?.caption && (
-          <span className="absolute inset-x-0 bottom-0 bg-linear-to-t from-navy-blue/78 to-transparent px-4 pb-3 pt-12 text-sm font-medium text-white">
-            {activeImage.context.custom.caption}
-          </span>
-        )}
-      </button>
+        {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
+          const logicalIndex = wrapIndex(virtualIndex, images.length);
+
+          return (
+            <motion.button
+              animate={getSlideMotion(offset)}
+              aria-hidden={isCurrent ? undefined : true}
+              aria-label={openLabel}
+              className="group absolute inset-0 cursor-zoom-in overflow-hidden bg-navy-blue text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
+              disabled={!isCurrent}
+              draggable={false}
+              initial={
+                carousel.shouldReduceMotion ? false : getSlideMotion(offset)
+              }
+              key={virtualIndex}
+              onClick={() => {
+                if (carousel.shouldSuppressClickAfterSwipe()) return;
+
+                setLightboxIndex(logicalIndex);
+              }}
+              tabIndex={isCurrent ? undefined : -1}
+              transition={activeTransition}
+              type="button"
+            >
+              <CloudinaryImage
+                asset={image}
+                className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
+                preload={logicalIndex === carousel.activeIndex}
+                size={{ width: "fill", height: "fill" }}
+                sizes="(min-width: 768px) 42vw, 100vw"
+                variant="gallery"
+              />
+              {image.context?.custom?.caption && (
+                <span className="absolute inset-x-0 bottom-0 bg-linear-to-t from-navy-blue/78 to-transparent px-4 pb-3 pt-12 text-sm font-medium text-white">
+                  {image.context.custom.caption}
+                </span>
+              )}
+            </motion.button>
+          );
+        })}
+      </motion.div>
 
       <div className="flex min-h-10 items-center justify-center">
         <CarouselPositionIndicator
-          activeIndex={activeIndex}
+          activeIndex={carousel.activeIndex}
           count={images.length}
           getKey={(dotIndex) => images[dotIndex]?.public_id ?? dotIndex}
           getLabel={(dotIndex) => getAssetLabel(images[dotIndex]!)}
-          onSelect={setIndex}
+          onSelect={carousel.moveToIndex}
           variant="navy"
         />
       </div>
 
       <Lightbox
+        animation={lightboxAnimation}
         close={() => setLightboxIndex(-1)}
         index={lightboxIndex}
         open={lightboxIndex >= 0}
         slides={slides}
       />
-    </div>
+    </section>
   );
 }
