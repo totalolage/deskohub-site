@@ -12,6 +12,7 @@ import { useEffect, useRef, useState } from "react";
 type UseMotionSwipeCarouselOptions = {
   count: number;
   autoPlayInterval?: number;
+  getSwipeDistance?: (stageWidth: number) => number;
 };
 
 export const swipeTimelineThreshold = 0.32;
@@ -43,6 +44,9 @@ export const getClosestVirtualIndex = (
 
 export const truncateTowardZero = (value: number) =>
   value < 0 ? Math.ceil(value) : Math.floor(value);
+
+export const getDefaultSwipeDistance = (stageWidth: number) =>
+  Math.max(96, Math.min(stageWidth * 0.28, 260));
 
 export const getSwipeTargetVirtualIndex = ({
   currentVirtualIndex,
@@ -87,6 +91,7 @@ export const getSwipeTargetVirtualIndex = ({
 export function useMotionSwipeCarousel({
   count,
   autoPlayInterval,
+  getSwipeDistance = getDefaultSwipeDistance,
 }: UseMotionSwipeCarouselOptions) {
   const shouldReduceMotion = useReducedMotion();
   const [virtualIndex, setVirtualIndex] = useState(0);
@@ -145,7 +150,7 @@ export function useMotionSwipeCarousel({
   const getSwipeTimelineDistance = () => {
     const stageWidth = stageRef.current?.clientWidth ?? 0;
 
-    return Math.max(96, Math.min(stageWidth * 0.28, 260));
+    return Math.max(1, getSwipeDistance(stageWidth));
   };
   const resetDragCarrier = () => {
     dragX.stop();

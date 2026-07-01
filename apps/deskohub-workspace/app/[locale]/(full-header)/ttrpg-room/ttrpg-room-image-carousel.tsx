@@ -32,9 +32,7 @@ const instantTransition: Transition = {
 };
 
 const getSlideMotion = (offset: number) => ({
-  opacity: Math.max(0, 1 - Math.abs(offset) * 0.48),
-  scale: 1 - Math.min(Math.abs(offset), 1) * 0.06,
-  x: `${offset * 102}%`,
+  x: `${offset * 100}%`,
   zIndex: Math.abs(offset) < 0.5 ? 2 : 1,
 });
 
@@ -49,7 +47,10 @@ export function TtrpgRoomImageCarousel({
   openLabel,
 }: TtrpgRoomImageCarouselProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const carousel = useMotionSwipeCarousel({ count: images.length });
+  const carousel = useMotionSwipeCarousel({
+    count: images.length,
+    getSwipeDistance: (stageWidth) => stageWidth,
+  });
   const activeImage = images[carousel.activeIndex];
   const activeTransition = carousel.shouldReduceMotion
     ? instantTransition
