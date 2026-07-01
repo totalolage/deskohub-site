@@ -381,10 +381,7 @@ export function ReservationForm({
   const hasPreparedPayRedirect =
     preparePayStateResult.data?.status === "ready" &&
     Boolean(preparePayStateResult.data.redirectUrl);
-  const isPreparingCheckout =
-    form.formState.isSubmitting ||
-    isSendingReservation ||
-    hasPreparedPayRedirect;
+  const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
   const handleSubmit = form.handleSubmit(async (data) => {
     if (hasPreparedPayRedirect) return;
