@@ -161,6 +161,7 @@ export function TtrpgRoomImageCarousel({
               <CloudinaryImage
                 asset={image}
                 className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
+                draggable={false}
                 preload={logicalIndex === carousel.activeIndex}
                 size={{ width: "fill", height: "fill" }}
                 sizes="(min-width: 768px) 42vw, 100vw"
