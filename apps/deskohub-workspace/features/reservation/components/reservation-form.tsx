@@ -15,6 +15,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
+import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import {
   formatWorkspaceProductCurrencyAmount,
   getWorkspaceProductCoffeeLinePriceForTier,
@@ -386,6 +387,7 @@ export function ReservationForm({
   const hasPreparedPayRedirect =
     preparePayStateResult.data?.status === "ready" &&
     Boolean(preparePayStateResult.data.redirectUrl);
+  const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
   const handleSubmit = form.handleSubmit(async (data) => {
     if (hasPreparedPayRedirect) return;
@@ -412,6 +414,10 @@ export function ReservationForm({
       },
     });
   });
+
+  if (isPreparingCheckout) {
+    return <CheckoutPayPageSkeleton locale={locale} />;
+  }
 
   return (
     <Card className={reservationFormCardClassName}>
