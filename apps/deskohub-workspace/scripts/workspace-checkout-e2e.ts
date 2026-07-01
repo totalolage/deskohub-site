@@ -2187,10 +2187,14 @@ const submitPaymentScript = String.raw`
     }
     throw new Error(label);
   };
+  const isChecked = (element) =>
+    element instanceof HTMLInputElement
+      ? element.checked
+      : element.getAttribute('aria-checked') === 'true' || element.getAttribute('data-state') === 'checked';
   const checkbox = document.querySelector('#checkout-pay-legal-consent');
-  if (!(checkbox instanceof HTMLButtonElement)) throw new Error('payment consent checkbox not found');
-  if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
-  await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'payment consent checkbox did not check');
+  if (!(checkbox instanceof HTMLElement)) throw new Error('payment consent checkbox not found');
+  if (!isChecked(checkbox)) checkbox.click();
+  await waitUntil(() => isChecked(checkbox), 'payment consent checkbox did not check');
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
   await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
