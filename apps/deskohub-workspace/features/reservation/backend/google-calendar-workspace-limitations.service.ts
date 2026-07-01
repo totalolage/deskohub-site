@@ -152,7 +152,7 @@ const getEventDates = (event: GoogleCalendarEvent) => {
     return [];
   }
 
-  return getDateRange(start, end);
+  return getDateRange(start, getExclusiveMidnightEndDate(event) ?? end);
 };
 
 const getEventStartDate = (event: GoogleCalendarEvent) =>
@@ -170,6 +170,22 @@ const getEventEndTime = (event: GoogleCalendarEvent) =>
 const getDateFromDateTime = (dateTime?: string) => dateTime?.slice(0, 10);
 
 const getTimeFromDateTime = (dateTime?: string) => dateTime?.slice(11, 16);
+
+const getExclusiveMidnightEndDate = (event: GoogleCalendarEvent) => {
+  const endDateTime = event.end?.dateTime;
+
+  if (!hasExactMidnightTime(endDateTime)) {
+    return undefined;
+  }
+
+  const endDate = getDateFromDateTime(endDateTime);
+  return endDate ? addDays(endDate, -1) : undefined;
+};
+
+const hasExactMidnightTime = (dateTime?: string) =>
+  /^00:00(?::00(?:\.0+)?)?(?:Z|[+-]\d{2}:\d{2})?$/.test(
+    dateTime?.slice(11) ?? ""
+  );
 
 const getDateRange = (from: string, to: string) => {
   const dates: string[] = [];

@@ -88,4 +88,159 @@ describe("GoogleCalendarWorkspaceLimitationsService", () => {
 
     expect(limitations).toEqual([]);
   });
+
+  test("does not block the following day for full timed events ending at midnight", async () => {
+    const limitations = await runWithEvents([
+      {
+        id: "full-midnight-event",
+        status: "confirmed",
+        description: "[workspace:full]",
+        start: {
+          dateTime: "2026-06-10T00:00:00+02:00",
+          timeZone: "Europe/Prague",
+        },
+        end: {
+          dateTime: "2026-06-11T00:00:00+02:00",
+          timeZone: "Europe/Prague",
+        },
+      },
+    ]);
+
+    expect(limitations).toEqual([
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-10",
+        sourceEventId: "full-midnight-event",
+      }),
+    ]);
+  });
+
+  test("keeps each occupied day before a multi-day timed event ends at midnight", async () => {
+    const limitations = await runWithEvents(
+      [
+        {
+          id: "multi-day-full-midnight-event",
+          status: "confirmed",
+          description: "[workspace:full]",
+          start: {
+            dateTime: "2026-06-10T12:00:00+02:00",
+            timeZone: "Europe/Prague",
+          },
+          end: {
+            dateTime: "2026-06-12T00:00:00+02:00",
+            timeZone: "Europe/Prague",
+          },
+        },
+      ],
+      { from: "2026-06-10", to: "2026-06-12" }
+    );
+
+    expect(limitations).toEqual([
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-10",
+        sourceEventId: "multi-day-full-midnight-event",
+      }),
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-11",
+        sourceEventId: "multi-day-full-midnight-event",
+      }),
+    ]);
+  });
+
+  test("keeps the end day for timed events ending after midnight", async () => {
+    const limitations = await runWithEvents(
+      [
+        {
+          id: "after-midnight-event",
+          status: "confirmed",
+          description: "[workspace:full]",
+          start: {
+            dateTime: "2026-06-10T12:00:00+02:00",
+            timeZone: "Europe/Prague",
+          },
+          end: {
+            dateTime: "2026-06-12T13:00:00+02:00",
+            timeZone: "Europe/Prague",
+          },
+        },
+      ],
+      { from: "2026-06-10", to: "2026-06-12" }
+    );
+
+    expect(limitations).toEqual([
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-10",
+        sourceEventId: "after-midnight-event",
+      }),
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-11",
+        sourceEventId: "after-midnight-event",
+      }),
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-12",
+        sourceEventId: "after-midnight-event",
+      }),
+    ]);
+  });
+
+  test("keeps the end day for timed events ending seconds after midnight", async () => {
+    const limitations = await runWithEvents(
+      [
+        {
+          id: "seconds-after-midnight-event",
+          status: "confirmed",
+          description: "[workspace:full]",
+          start: {
+            dateTime: "2026-06-10T12:00:00+02:00",
+            timeZone: "Europe/Prague",
+          },
+          end: {
+            dateTime: "2026-06-12T00:00:30+02:00",
+            timeZone: "Europe/Prague",
+          },
+        },
+      ],
+      { from: "2026-06-10", to: "2026-06-12" }
+    );
+
+    expect(limitations).toEqual([
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-10",
+        sourceEventId: "seconds-after-midnight-event",
+      }),
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-11",
+        sourceEventId: "seconds-after-midnight-event",
+      }),
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-12",
+        sourceEventId: "seconds-after-midnight-event",
+      }),
+    ]);
+  });
+
+  test("keeps all-day events end-exclusive", async () => {
+    const limitations = await runWithEvents(
+      [
+        {
+          id: "all-day-full-event",
+          status: "confirmed",
+          description: "[workspace:full]",
+          start: { date: "2026-06-10" },
+          end: { date: "2026-06-12" },
+        },
+      ],
+      { from: "2026-06-10", to: "2026-06-12" }
+    );
+
+    expect(limitations).toEqual([
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-10",
+        sourceEventId: "all-day-full-event",
+      }),
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-11",
+        sourceEventId: "all-day-full-event",
+      }),
+    ]);
+  });
 });
