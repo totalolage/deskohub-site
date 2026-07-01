@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import {
   type GoogleCalendarEvent,
@@ -142,6 +143,32 @@ describe("GoogleCalendarWorkspaceLimitationsService", () => {
       WorkspaceCalendarLimitation.FullyOccupied({
         date: "2026-06-11",
         sourceEventId: "multi-day-full-midnight-event",
+      }),
+    ]);
+  });
+
+  test("treats midnight in Prague as end-exclusive", async () => {
+    const limitations = await runWithEvents(
+      [
+        {
+          id: "prague-midnight-event",
+          status: "confirmed",
+          description: "[workspace:full]",
+          start: {
+            dateTime: "2026-06-10T10:00:00Z",
+          },
+          end: {
+            dateTime: "2026-06-10T22:00:00Z",
+          },
+        },
+      ],
+      { from: "2026-06-10", to: "2026-06-11" }
+    );
+
+    expect(limitations).toEqual([
+      WorkspaceCalendarLimitation.FullyOccupied({
+        date: "2026-06-10",
+        sourceEventId: "prague-midnight-event",
       }),
     ]);
   });

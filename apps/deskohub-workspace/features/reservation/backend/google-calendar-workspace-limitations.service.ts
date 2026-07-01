@@ -8,6 +8,7 @@ import { Context, Data, Effect, Layer } from "effect";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
+const workspaceTimeZone = "Europe/Prague";
 
 export type WorkspaceCalendarLimitation = Data.TaggedEnum<{
   FullyOccupied: {
@@ -173,19 +174,38 @@ const getTimeFromDateTime = (dateTime?: string) => dateTime?.slice(11, 16);
 
 const getExclusiveMidnightEndDate = (event: GoogleCalendarEvent) => {
   const endDateTime = event.end?.dateTime;
-
-  if (!hasExactMidnightTime(endDateTime)) {
+  if (!endDateTime) {
     return undefined;
   }
 
-  const endDate = getDateFromDateTime(endDateTime);
-  return endDate ? addDays(endDate, -1) : undefined;
+  const end = toWorkspaceZonedDateTime(endDateTime, event.end?.timeZone);
+
+  if (!isMidnight(end)) {
+    return undefined;
+  }
+
+  return end.toPlainDate().subtract({ days: 1 }).toString();
 };
 
-const hasExactMidnightTime = (dateTime?: string) =>
-  /^00:00(?::00(?:\.0+)?)?(?:Z|[+-]\d{2}:\d{2})?$/.test(
-    dateTime?.slice(11) ?? ""
-  );
+const toWorkspaceZonedDateTime = (dateTime: string, timeZone?: string) => {
+  try {
+    return Temporal.Instant.from(dateTime).toZonedDateTimeISO(
+      workspaceTimeZone
+    );
+  } catch {
+    return Temporal.PlainDateTime.from(dateTime)
+      .toZonedDateTime(timeZone ?? workspaceTimeZone)
+      .withTimeZone(workspaceTimeZone);
+  }
+};
+
+const isMidnight = (dateTime: ReturnType<typeof toWorkspaceZonedDateTime>) =>
+  dateTime.hour === 0 &&
+  dateTime.minute === 0 &&
+  dateTime.second === 0 &&
+  dateTime.millisecond === 0 &&
+  dateTime.microsecond === 0 &&
+  dateTime.nanosecond === 0;
 
 const getDateRange = (from: string, to: string) => {
   const dates: string[] = [];
