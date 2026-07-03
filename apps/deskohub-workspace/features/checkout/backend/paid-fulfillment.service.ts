@@ -3,10 +3,6 @@ import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/network-details.service";
-import {
-  OperationalEventRepository,
-  OperationalEventRepositoryLive,
-} from "@/features/checkout/backend/operational-event.repository";
 import { captureReservationCompleted } from "@/features/checkout/backend/posthog-lifecycle-events";
 import {
   WorkspaceReservationEmailService,
@@ -62,7 +58,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
   WorkspacePaidFulfillmentService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
-    const operationalEvents = yield* OperationalEventRepository;
     const dotypos = yield* DotyposService;
     const reservationEmails = yield* WorkspaceReservationEmailService;
     const workspaceReservations = yield* WorkspaceReservationService;
@@ -72,12 +67,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
       function* (input: {
         readonly orderId: string;
         readonly failureCode: WorkspacePaidFulfillmentFailureCode;
-        readonly eventType:
-          | "workspace_paid_fulfillment_missing_hold"
-          | "workspace_paid_fulfillment_no_longer_confirmable"
-          | "workspace_paid_fulfillment_confirm_failed"
-          | "workspace_paid_fulfillment_email_failed"
-          | "workspace_paid_fulfillment_mark_fulfilled_failed";
         readonly cause?: unknown;
       }) {
         yield* Effect.annotateLogsScoped({ input });
@@ -101,30 +90,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             Effect.ignore
           );
         yield* Effect.logInfo("Paid fulfillment failure marker completed");
-
-        yield* Effect.logInfo(
-          "Paid fulfillment failure event recording started"
-        );
-        yield* operationalEvents
-          .record({
-            workspaceReservationId: input.orderId,
-            eventType: input.eventType,
-            severity: "error",
-            failureCode: input.failureCode,
-          })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logError(
-                "Paid fulfillment failure event recording failed",
-                {
-                  input,
-                  cause,
-                }
-              )
-            ),
-            Effect.ignore
-          );
-        yield* Effect.logInfo("Paid fulfillment failure event recorded");
         yield* Effect.logFatal("Paid fulfillment failure handling completed");
 
         return yield* Effect.fail(
@@ -250,7 +215,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             return yield* failFulfillment({
               orderId: input.orderId,
               failureCode: "dotypos_reservation_unfulfillable",
-              eventType: "workspace_paid_fulfillment_missing_hold",
             });
           }
 
@@ -264,7 +228,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
               return yield* failFulfillment({
                 orderId: input.orderId,
                 failureCode: "dotypos_reservation_unfulfillable",
-                eventType: "workspace_paid_fulfillment_no_longer_confirmable",
               });
             }
 
@@ -284,7 +247,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
                   failFulfillment({
                     orderId: input.orderId,
                     failureCode: "dotypos_reservation_failed",
-                    eventType: "workspace_paid_fulfillment_confirm_failed",
                     cause,
                   })
                 )
@@ -335,7 +297,6 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
               failFulfillment({
                 orderId: input.orderId,
                 failureCode: "fulfillment_email_failed",
-                eventType: "workspace_paid_fulfillment_email_failed",
                 cause,
               })
             )
@@ -377,7 +338,6 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
         )
       )
     ),
-    Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationService.Live),
     Layer.provide(WorkspaceReservationRepositoryLive),

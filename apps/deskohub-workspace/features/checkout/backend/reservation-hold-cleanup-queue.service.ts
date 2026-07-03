@@ -196,23 +196,5 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
       )
     );
 
-  if (outcome === "skipped") {
-    const current = yield* reservations
-      .findById(payload.orderId)
-      .pipe(
-        Effect.mapError(
-          ReservationHoldCleanupScheduleError.fromError(
-            "Queued reservation hold cleanup state could not be reloaded."
-          )
-        )
-      );
-
-    if (isDueReservation(current, reservationHoldExpiresAt, now)) {
-      return yield* new ReservationHoldCleanupScheduleError({
-        message: "Queued reservation hold cleanup skipped while still due.",
-      });
-    }
-  }
-
   return outcome satisfies ReservationHoldCleanupOutcome;
 });

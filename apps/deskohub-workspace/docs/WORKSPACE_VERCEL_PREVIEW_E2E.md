@@ -133,21 +133,21 @@ If the project is not linked yet, run Vercel's link flow from `apps/deskohub-wor
 
 ## Build-Time Migrations
 
-Workspace Vercel builds intentionally run Drizzle migrations before the app build, but that wiring must stay scoped to the Workspace Vercel project. App-root deployments resolve to `bun turbo build:vercel`, where Turbo's `build:vercel` task depends on the Workspace `db:migrate` task and the real Workspace `build` task. The app's `build` script remains the atomic core Next build (`next build --turbo`), while Turbo's Workspace build task is responsible for running `i18n:compile` and upstream generation such as `@deskohub/nexi#generate` before that build starts.
+Workspace production Vercel builds intentionally run Drizzle migrations before the app build. Preview/development builds run `scripts/should-migrate-db.ts` and migrate only when the branch differs from `origin/main` under `db/schema`, `db/migrations`, or `drizzle.config.ts`; if the Git diff check cannot run, the build runs migrations rather than risking a stale preview schema. Keep that wiring scoped to the Workspace Vercel project. The app's `build` script remains the atomic core Next build (`next build --turbo`), while Turbo's Workspace build task is responsible for running `i18n:compile` and upstream generation such as `@deskohub/nexi#generate` before that build starts.
 
 Workspace runtime variables are listed in the root Turbo `globalPassThroughEnv` so tasks can read the same environment Vercel provides without every secret invalidating cache entries. Individual task `env` lists should contain only variables that affect that task's cache key, such as `DATABASE_URL` for `db:migrate` and public/build-url variables for `build`. The Drizzle config intentionally validates only `DATABASE_URL` for `db:migrate`; the later Next build validates the rest of the Workspace runtime environment.
 
 Do not put Workspace migrations in the shared repository-root `vercel.json`: root-linked Vercel projects for other apps must not advance the Workspace database schema or build the Workspace app. If the Workspace Vercel project remains linked at the repository root instead of `apps/deskohub-workspace`, configure that specific Vercel project's Build Command in Vercel project settings to run `bun turbo build:vercel --filter=deskohub-workspace`.
 
-The selected migration policy is all Vercel builds migrate. This is unconditional for production and preview builds, using that deployment environment's `DATABASE_URL`. This is high risk if preview deployments point at the production database; only do that when accepting that preview builds may advance production schema.
+The selected migration policy is: `VERCEL_ENV=production` always runs `db:migrate`; preview/development builds run `db:migrate:if-needed`, which runs `db:migrate` only when Workspace DB schema or migration files differ from `origin/main`, with fail-open migration if the diff check fails. Run `bun run db:migrate` manually for disposable preview/dev databases when needed.
 
 Database requirements and risks:
 
-- `DATABASE_URL` is required in every Vercel environment that builds Workspace.
+- `DATABASE_URL` is required for production builds, preview/dev builds with Workspace DB schema diffs, and any manual preview/dev migration run.
 - Prefer a direct, unpooled Neon Postgres connection URL for migrations. Keep pooled URLs for runtime traffic only when both are configured separately.
 - Review and commit generated SQL in `apps/deskohub-workspace/db/migrations` before deploy.
 - Migrations can advance the schema even if the later Next.js build or deployment fails.
-- Concurrent production and preview builds can race on the same database if they share `DATABASE_URL`.
+- Concurrent production builds can race on the same database; preview builds can also race when they contain Workspace DB schema diffs.
 
 ## Checkout E2E Procedure
 

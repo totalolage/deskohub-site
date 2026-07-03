@@ -7,7 +7,6 @@ import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/access-code.service";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/legal-evidence-event.repository";
-import type { OperationalEventRepository as OperationalEventRepositoryType } from "@/features/checkout/backend/operational-event.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import type { WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType } from "@/features/checkout/backend/workspace-table-assignment.service";
 import type { WorkspaceAvailabilityService as WorkspaceAvailabilityServiceType } from "@/features/reservation/backend/workspace-availability.service";
@@ -195,9 +194,6 @@ describe("prepareWorkspacePayStateEffect", () => {
     const { LegalEvidenceEventRepository } = await import(
       "@/features/checkout/backend/legal-evidence-event.repository"
     );
-    const { OperationalEventRepository } = await import(
-      "@/features/checkout/backend/operational-event.repository"
-    );
     const { ReservationHoldCleanupService } = await import(
       "@/features/checkout/backend/reservation-hold-cleanup.service"
     );
@@ -312,11 +308,6 @@ describe("prepareWorkspacePayStateEffect", () => {
         Layer.succeed(ReservationHoldCleanupScheduleService, {
           enqueueCleanup,
         } as never)
-      ),
-      Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record: mock(() => Effect.die("unused")),
-        } as unknown as OperationalEventRepositoryType)
       ),
       Effect.provide(
         Layer.succeed(DotyposService, {

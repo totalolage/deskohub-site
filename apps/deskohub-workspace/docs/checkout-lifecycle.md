@@ -12,7 +12,6 @@ The target schema has exactly these checkout lifecycle tables:
 - `payment_attempts`
 - `webhook_events`
 - `legal_evidence_events`
-- `operational_events`
 
 Do not recreate `checkout_return_state_tokens` as a state table. Return pages must derive enough context from signed URL state, route parameters, Nexi verification, and the durable rows above.
 
@@ -26,7 +25,6 @@ Do not recreate `checkout_return_state_tokens` as a state table. Return pages mu
 | Payment session and terminal state | Nexi plus Deskohub workflow | Store payment attempts, Nexi order IDs, non-PII security tokens, operation IDs/statuses, redirect URL if needed for retry support, and local payment state. |
 | Nexi webhooks | Nexi plus Deskohub workflow | Store dedupe identity and normalized processing state. Never store raw notification bodies or optional sensitive provider fields. |
 | Legal acceptance | Deskohub legal evidence | Store document keys, paths, hashes, acceptance booleans, timestamps, locale, source, and idempotency keys. Never store rendered legal documents or customer contact data. |
-| Recovery/audit diagnostics | Deskohub operations | Store normalized event type, severity, non-PII entity references, and human-informative non-PII messages. Never store raw Dotypos/Nexi payloads. |
 
 ## No-PII Policy
 
@@ -38,7 +36,7 @@ Allowed local values:
 - Deskohub IDs, correlation IDs, HMAC intent keys, payment attempt IDs, webhook event IDs, and provider operation IDs.
 - Nexi `securityToken`, because it is short-lived non-PII and needed for payment-attempt safety.
 - Legal document paths and hashes.
-- Local state enums, timestamps, normalized failure codes, and short operational messages generated from application-owned templates.
+- Local state enums, timestamps, and normalized failure codes.
 - Payment amounts, currencies, quote fingerprints, and product price metadata needed to verify a Nexi result, provided they do not include customer or reservation facts that Dotypos owns.
 
 Enforcement boundary:
@@ -46,8 +44,7 @@ Enforcement boundary:
 - Server actions may hold customer PII in memory only long enough to find or create the Dotypos customer and derive the transient intent-key payload.
 - Repository inputs must be shaped so PII has no destination field.
 - `jsonb` columns must use schemas that exclude customer contact fields, free-form customer notes, raw provider envelopes, and raw Dotypos responses.
-- Logs may contain PII only under the application's global filtering policy. Database-backed operational events must be stricter and contain no PII.
-- `operational_events.message` is application-derived from an approved `event_type` template. Callers do not pass free-form message text; recovery details must use non-PII IDs, failure codes, and approved event types.
+- Logs may contain PII only under the application's global filtering policy.
 - Any future column or JSON field that can carry customer-authored free text is forbidden unless a separate privacy review explicitly reclassifies it.
 
 ## Table Contracts
@@ -174,26 +171,6 @@ Indexes and constraints:
 - Index on `(idempotency_key, document_hash)`.
 - `hash_algorithm = 'sha256'`.
 - No rendered document bodies or PII-bearing consent payloads.
-
-### `operational_events`
-
-Append-only non-PII operational recovery and audit events.
-
-| Column | Type | Required | Purpose |
-| --- | --- | --- | --- |
-| `id` | text | yes | Local operational event ID. |
-| `workspace_reservation_id` | text | no | Related workflow, if any. |
-| `payment_attempt_id` | text | no | Related payment attempt, if any. |
-| `event_type` | text | yes | Normalized event type. |
-| `severity` | text enum | yes | `info`, `warning`, or `error`. |
-| `message` | text | yes | Short human-informative message derived from an application-owned event template. Callers never provide this text. |
-| `failure_code` | text | no | Normalized non-PII failure code. |
-| `dotypos_reservation_id` | text | no | Related Dotypos reservation ID, if useful for recovery. |
-| `dotypos_customer_id` | text | no | Related Dotypos customer ID, if useful for recovery. |
-| `webhook_event_id` | text | no | Related webhook event identity. |
-| `created_at` | timestamptz | yes | DB-managed creation timestamp. |
-
-This table replaces the narrow `reservation_recovery_events` shape. Repositories must construct events from typed event keys and typed non-PII parameters; the persisted `message` is generated internally from constants/templates for the selected event type. Callers must not pass arbitrary text, user text, raw errors, raw provider text, raw Dotypos text, `String(cause)`, customer names, emails, phones, or customer-authored notes. The no-PII boundary is structural and must not rely on runtime PII-pattern detection or regex scanning.
 
 ## Lifecycle Enums
 
@@ -432,29 +409,11 @@ sequenceDiagram
   alt cancellation succeeds or already cancelled
     Dotypos-->>Job: OK
     Job->>DB: reservation_state=cancelled, reservation_cancelled_at
-    Job->>DB: Insert operational_events(info)
   else cancellation fails
     Dotypos-->>Job: Provider/client error
     Job->>DB: reservation_state=cancellation_failed
-    Job->>DB: Insert operational_events(error, normalized failure code)
   end
   Job->>DB: Later retry selects cancellation_failed rows
-```
-
-### Operational Recovery Events
-
-```mermaid
-sequenceDiagram
-  participant Worker
-  participant DB as Local DB
-  participant Operator
-
-  Worker->>DB: State transition or external side effect fails
-  Worker->>DB: Insert operational_events with references and normalized code
-  Operator->>DB: Query operational_events where severity=error
-  Operator->>DB: Load workspace_reservations/payment_attempts by IDs
-  Operator->>Dotypos: Inspect customer/reservation facts in Dotypos when needed
-  Operator->>DB: Retry transition or mark manual repair event
 ```
 
 ## Recovery Rules
@@ -466,7 +425,7 @@ sequenceDiagram
 | Paid but not fulfilled | `payment_state = 'paid' and fulfillment_state in ('not_started', 'failed')` | Run fulfillment worker. |
 | Fulfillment stuck | `payment_state = 'paid' and fulfillment_state = 'processing'` | Inspect staleness; retry only through guarded repair path. |
 | Expired unpaid hold | `reservation_state = 'held' and payment_state <> 'paid' and reservation_hold_expires_at <= now()` | Cancel Dotypos hold. |
-| Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation; write operational event. |
+| Cancellation failed | `reservation_state = 'cancellation_failed'` | Retry Dotypos cancellation. |
 | Duplicate webhook | Existing `webhook_events.event_id` | Return duplicate/accepted response without reapplying side effects. |
 | Legal rejection | `legal_evidence_events.accepted = false` | Do not create hold/payment; show legal consent error. |
 
@@ -474,13 +433,12 @@ sequenceDiagram
 
 - Confirm the database branch is development/preview, not production, before schema reset or test checkout.
 - Confirm migrations do not create `checkout_return_state_tokens`.
-- Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, `legal_evidence_events`, and `operational_events` have no PII-capable columns or raw payload columns.
+- Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, and `legal_evidence_events` have no PII-capable columns or raw payload columns.
 - Confirm intent-key derivation stores only the HMAC and uses `JSON.stringify` on the fixed object payload.
 - Confirm Dotypos test customer lookup/create is the only persistence destination for customer name, email, and phone.
 - Confirm Dotypos reservation is created as a hold before payment only for the approved hold workflow, and Dotypos remains the source of reservation facts.
-- Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events or operational events.
+- Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events.
 - Confirm webhook handling verifies through Nexi before marking payment paid or terminal unsuccessful.
-- Confirm failure/cancel/expired payment paths cancel unpaid Dotypos holds or create non-PII operational events for retry.
-- Confirm all DB-backed operational messages are non-PII and do not include `String(cause)` when causes may contain provider/customer payloads.
+- Confirm failure/cancel/expired payment paths cancel unpaid Dotypos holds or leave guarded local state for retry.
 - Confirm test data uses clearly fake customers and test payment instruments.
 - Confirm no production Dotypos or Nexi credentials are used for live tests unless an explicit production smoke test has been approved.

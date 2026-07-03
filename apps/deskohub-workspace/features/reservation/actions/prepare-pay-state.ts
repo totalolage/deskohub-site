@@ -29,10 +29,6 @@ import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
 } from "@/features/checkout/backend/legal-evidence-event.repository";
-import {
-  OperationalEventRepository,
-  OperationalEventRepositoryLive,
-} from "@/features/checkout/backend/operational-event.repository";
 import { payStateDefaultTtlMilliseconds } from "@/features/checkout/backend/pay-state";
 import {
   buildSignedPayState,
@@ -700,28 +696,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
               }
             );
 
-            const operationalEvents = yield* OperationalEventRepository;
-            yield* operationalEvents
-              .record({
-                workspaceReservationId: reservationDraft.id,
-                eventType: "workspace_reservation_hold_attach_failed",
-                severity: "error",
-                failureCode: "attach_failed_cancel_required",
-                dotyposReservationId,
-                dotyposCustomerId,
-              })
-              .pipe(
-                Effect.tapError((recordCause) =>
-                  Effect.logError(
-                    "Reservation hold attach failure event recording failed",
-                    {
-                      cause: recordCause,
-                    }
-                  )
-                ),
-                Effect.ignore
-              );
-
             yield* dotypos.cancelReservation(dotyposReservationId).pipe(
               Effect.catch((cancelCause) =>
                 Effect.gen(function* () {
@@ -829,8 +803,7 @@ const preparePayStateAction = createEffectSafeAction(
   Layer.mergeAll(
     Layer.mergeAll(
       WorkspaceReservationRepositoryLive,
-      LegalEvidenceEventRepositoryLive,
-      OperationalEventRepositoryLive
+      LegalEvidenceEventRepositoryLive
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
     ReservationHoldCleanupServiceLiveWithDependencies,
     WorkspaceAvailabilityServiceLiveWithDependencies,

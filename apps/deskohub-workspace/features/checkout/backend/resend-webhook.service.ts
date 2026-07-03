@@ -1,10 +1,6 @@
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { Resend } from "resend";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import {
-  OperationalEventRepository,
-  OperationalEventRepositoryLive,
-} from "@/features/checkout/backend/operational-event.repository";
 import { captureReservationFulfilled } from "@/features/checkout/backend/posthog-lifecycle-events";
 import { ResendWebhookRuntimeConfig } from "@/features/checkout/backend/resend-webhook.config";
 import {
@@ -136,7 +132,6 @@ export const ResendWebhookServiceLive = Layer.effect(
   ResendWebhookService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
-    const operationalEvents = yield* OperationalEventRepository;
     const config = yield* ResendWebhookRuntimeConfig;
     const posthogEvents = yield* PostHogEventService;
 
@@ -280,18 +275,6 @@ export const ResendWebhookServiceLive = Layer.effect(
           return ignored("reservation_not_fulfillable");
         }
 
-        yield* operationalEvents
-          .record({
-            workspaceReservationId,
-            eventType: "workspace_paid_fulfillment_email_failed",
-            severity: "error",
-            failureCode: fulfillmentEmailFailureCode,
-            dotyposReservationId: tags.get("dotyposReservationId"),
-            dotyposCustomerId: tags.get("dotyposCustomerId"),
-            webhookEventId: input.eventId,
-          })
-          .pipe(Effect.ignore);
-
         yield* reservations
           .markFulfillmentDeliveryFailed({
             id: workspaceReservationId,
@@ -395,7 +378,6 @@ export const ResendWebhookServiceLive = Layer.effect(
 export const ResendWebhookServiceLiveWithDependencies =
   ResendWebhookServiceLive.pipe(
     Layer.provide(ResendWebhookRuntimeConfigLive),
-    Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive)

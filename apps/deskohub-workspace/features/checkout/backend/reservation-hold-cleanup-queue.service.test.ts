@@ -208,45 +208,22 @@ describe("ReservationHoldCleanupScheduleService", () => {
     }
   });
 
-  test("retries skipped cleanup while the reservation is still due", async () => {
-    const { ReservationHoldCleanupScheduleError } = await import(
-      "./reservation-hold-cleanup-queue.service"
-    );
-    const { ReservationHoldCleanupService } = await import(
-      "@/features/checkout/backend/reservation-hold-cleanup.service"
-    );
-    const { processReservationHoldCleanupScheduleMessage } = await import(
-      "./reservation-hold-cleanup-queue.service"
-    );
-    const { WorkspaceReservationRepository } = await import(
-      "@/features/reservation/backend/workspace-reservation.repository"
-    );
+  test("acks skipped cleanup while the reservation is still due", async () => {
+    const cancelOrderHold = mock(() => Effect.succeed("skipped" as const));
+    const findById = mock(() => Effect.succeed(makeReservation()));
 
-    const error = await processReservationHoldCleanupScheduleMessage(
-      duePayload,
-      dueNow
-    ).pipe(
-      Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, {
-          findById: mock(() => Effect.succeed(makeReservation())),
-        } as unknown as WorkspaceReservationRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(ReservationHoldCleanupService, {
-          cancelOrderHold: mock(() => Effect.succeed("skipped" as const)),
-          sweepExpiredHolds: mock(() =>
-            Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
-          ),
-        } satisfies ReservationHoldCleanupServiceType)
-      ),
-      Effect.flip,
-      Effect.runPromise
-    );
+    const result = await runProcessMessage(duePayload, {
+      cancelOrderHold,
+      findById,
+      now: dueNow,
+    });
 
-    expect(error).toBeInstanceOf(ReservationHoldCleanupScheduleError);
-    expect(error.message).toBe(
-      "Queued reservation hold cleanup skipped while still due."
-    );
+    expect(result.result).toBe("skipped");
+    expect(cancelOrderHold).toHaveBeenCalledWith({
+      orderId: "order-id",
+      holdExpiredAt: dueNow,
+    });
+    expect(findById).toHaveBeenCalledTimes(1);
   });
 
   test("vercel config wires the queue trigger and daily repair cron", async () => {

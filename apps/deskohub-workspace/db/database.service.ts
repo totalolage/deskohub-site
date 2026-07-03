@@ -13,6 +13,7 @@ export class DatabaseError extends Data.TaggedError("DatabaseError")<{
 
 const pool = new Pool({
   connectionString: normalizePostgresConnectionUrl(env.DATABASE_URL),
+  max: 1,
   connectionTimeoutMillis: 5_000,
   query_timeout: 10_000,
   statement_timeout: 10_000,
