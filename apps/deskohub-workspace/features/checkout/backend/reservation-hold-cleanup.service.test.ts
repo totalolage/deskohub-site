@@ -4,16 +4,12 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { DatabaseError } from "@/db/database.service";
-import type { OperationalEventRepository as OperationalEventRepositoryType } from "@/features/checkout/backend/operational-event.repository";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 describe("ReservationHoldCleanupService", () => {
   test("fails the expired hold sweep when expired hold selection fails", async () => {
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
     );
@@ -63,11 +59,6 @@ describe("ReservationHoldCleanupService", () => {
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
       Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record: unused,
-        } satisfies OperationalEventRepositoryType)
-      ),
-      Effect.provide(
         Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(Layer.succeed(DotyposService, dotypos)),
@@ -85,9 +76,6 @@ describe("ReservationHoldCleanupService", () => {
   });
 
   test("does not cancel an expired hold when the pending provider payment finalizes paid", async () => {
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { ProviderPaymentFinalizationService } = await import(
       "./provider-payment-finalization.service"
     );
@@ -121,9 +109,6 @@ describe("ReservationHoldCleanupService", () => {
       ),
       claimCancellation,
     } as unknown as WorkspaceReservationRepositoryType;
-    const operationalEvents: OperationalEventRepositoryType = {
-      record: mock(() => Effect.die("not used")),
-    };
     const dotypos = {
       cancelReservation,
     } as unknown as typeof DotyposService.Service;
@@ -148,9 +133,6 @@ describe("ReservationHoldCleanupService", () => {
         Layer.succeed(WorkspaceReservationRepository, reservations)
       ),
       Effect.provide(
-        Layer.succeed(OperationalEventRepository, operationalEvents)
-      ),
-      Effect.provide(
         Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(Layer.succeed(DotyposService, dotypos)),
@@ -166,10 +148,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).not.toHaveBeenCalled();
   });
 
-  test("counts unconfirmed pending payment cleanup as skipped and retries without cancelling", async () => {
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
+  test("counts unconfirmed pending payment cleanup as skipped without cancelling", async () => {
     const { ProviderPaymentFinalizationService } = await import(
       "./provider-payment-finalization.service"
     );
@@ -209,9 +188,6 @@ describe("ReservationHoldCleanupService", () => {
       recordHoldCleanupSkipped,
       claimCancellation,
     } as unknown as WorkspaceReservationRepositoryType;
-    const operationalEvents: OperationalEventRepositoryType = {
-      record: mock(() => Effect.succeed({} as never)),
-    };
     const dotypos = {
       cancelReservation,
     } as unknown as typeof DotyposService.Service;
@@ -232,9 +208,6 @@ describe("ReservationHoldCleanupService", () => {
         ),
         Effect.provide(
           Layer.succeed(WorkspaceReservationRepository, reservations)
-        ),
-        Effect.provide(
-          Layer.succeed(OperationalEventRepository, operationalEvents)
         ),
         Effect.provide(
           Layer.succeed(PostHogEventService, { capture: () => Effect.void })
@@ -268,9 +241,6 @@ describe("ReservationHoldCleanupService", () => {
   });
 
   test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
     );
@@ -306,8 +276,6 @@ describe("ReservationHoldCleanupService", () => {
         timestamp: new Date(),
       })
     );
-    const record = mock(() => Effect.void);
-
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({ orderId, holdExpiredAt });
@@ -340,11 +308,6 @@ describe("ReservationHoldCleanupService", () => {
         } as unknown as WorkspaceReservationRepositoryType)
       ),
       Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record,
-        } satisfies OperationalEventRepositoryType)
-      ),
-      Effect.provide(
         Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(
@@ -368,18 +331,9 @@ describe("ReservationHoldCleanupService", () => {
       cancelledAt: expect.any(Date),
       holdExpiredAt,
     });
-    expect(record).toHaveBeenCalledWith(
-      expect.objectContaining({
-        workspaceReservationId: orderId,
-        eventType: "workspace_reservation_hold_cancelled",
-      })
-    );
   });
 
   test("does not cancel when expiring the not-verifiable attempt loses the active-attempt guard", async () => {
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
     );
@@ -399,7 +353,6 @@ describe("ReservationHoldCleanupService", () => {
     const attemptId = "attempt-cleanup-stale-attempt";
     const claimCancellation = mock(() => Effect.succeed(null));
     const cancelReservation = mock(() => Effect.void);
-    const record = mock(() => Effect.void);
 
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
@@ -434,11 +387,6 @@ describe("ReservationHoldCleanupService", () => {
         } as unknown as WorkspaceReservationRepositoryType)
       ),
       Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record,
-        } satisfies OperationalEventRepositoryType)
-      ),
-      Effect.provide(
         Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(
@@ -451,19 +399,9 @@ describe("ReservationHoldCleanupService", () => {
 
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
-    expect(record).toHaveBeenCalledWith(
-      expect.objectContaining({
-        workspaceReservationId: orderId,
-        paymentAttemptId: attemptId,
-        eventType: "workspace_payment_outcome_unconfirmed_before_cleanup",
-      })
-    );
   });
 
   test("does not cancel an expired hold when provider verification fails transiently", async () => {
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { PaymentAttemptRepository } = await import(
       "./payment-attempt.repository"
     );
@@ -484,7 +422,6 @@ describe("ReservationHoldCleanupService", () => {
     const markTerminalForReservation = mock(() => Effect.die("not used"));
     const claimCancellation = mock(() => Effect.succeed(null));
     const cancelReservation = mock(() => Effect.void);
-    const record = mock(() => Effect.void);
 
     await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
@@ -517,11 +454,6 @@ describe("ReservationHoldCleanupService", () => {
         } as unknown as WorkspaceReservationRepositoryType)
       ),
       Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record,
-        } satisfies OperationalEventRepositoryType)
-      ),
-      Effect.provide(
         Layer.succeed(PostHogEventService, { capture: () => Effect.void })
       ),
       Effect.provide(
@@ -535,12 +467,5 @@ describe("ReservationHoldCleanupService", () => {
     expect(markTerminalForReservation).not.toHaveBeenCalled();
     expect(claimCancellation).not.toHaveBeenCalled();
     expect(cancelReservation).not.toHaveBeenCalled();
-    expect(record).toHaveBeenCalledWith(
-      expect.objectContaining({
-        workspaceReservationId: orderId,
-        paymentAttemptId: attemptId,
-        eventType: "workspace_payment_outcome_unconfirmed_before_cleanup",
-      })
-    );
   });
 });

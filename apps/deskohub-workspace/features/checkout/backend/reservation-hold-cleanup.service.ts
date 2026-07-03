@@ -2,10 +2,6 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
-  OperationalEventRepository,
-  OperationalEventRepositoryLive,
-} from "@/features/checkout/backend/operational-event.repository";
-import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "@/features/checkout/backend/payment-attempt.repository";
@@ -68,7 +64,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
   ReservationHoldCleanupService,
   Effect.gen(function* () {
     const reservations = yield* WorkspaceReservationRepository;
-    const operationalEvents = yield* OperationalEventRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
     const finalization = yield* ProviderPaymentFinalizationService;
     const dotypos = yield* DotyposService;
@@ -115,29 +110,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           yield* Effect.logInfo(
             "Reservation hold cancellation provider finalization completed"
           );
-
-          const recordUnconfirmedPaymentOutcome = () =>
-            operationalEvents
-              .record({
-                workspaceReservationId: active.id,
-                paymentAttemptId,
-                eventType:
-                  "workspace_payment_outcome_unconfirmed_before_cleanup",
-                severity: "warning",
-              })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Payment outcome unconfirmed cleanup event recording failed",
-                    {
-                      orderId: active.id,
-                      paymentAttemptId,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.ignore
-              );
 
           const recordSkippedCleanupAttempt = () =>
             input.holdExpiredAt
@@ -190,7 +162,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
               yield* Effect.logWarning(
                 "Reservation hold cancellation skipped: payment attempt expiration failed"
               );
-              yield* recordUnconfirmedPaymentOutcome();
               yield* recordSkippedCleanupAttempt();
               return "skipped";
             }
@@ -204,7 +175,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
             yield* Effect.logWarning(
               "Reservation hold cancellation skipped: payment outcome unconfirmed"
             );
-            yield* recordUnconfirmedPaymentOutcome();
             yield* recordSkippedCleanupAttempt();
             return "skipped";
           }
@@ -319,31 +289,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
           reservation: claimed,
           timestamp: cancelledAt,
         }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
-
-        yield* Effect.logInfo(
-          "Reservation hold cancellation event recording started"
-        );
-        yield* operationalEvents
-          .record({
-            workspaceReservationId: claimed.id,
-            eventType: "workspace_reservation_hold_cancelled",
-            severity: "info",
-            dotyposReservationId: claimed.dotyposReservationId,
-            dotyposCustomerId: claimed.dotyposCustomerId,
-          })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning(
-                "Reservation hold cancelled event recording failed",
-                {
-                  orderId: claimed.id,
-                  cause,
-                }
-              )
-            ),
-            Effect.ignore
-          );
-        yield* Effect.logInfo("Reservation hold cancellation event recorded");
         return "cancelled";
       },
       (effect, input) => effect.pipe(Effect.scoped, Effect.annotateLogs(input))
@@ -436,7 +381,6 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
 export const ReservationHoldCleanupServiceLiveWithDependencies =
   ReservationHoldCleanupServiceLive.pipe(
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
-    Layer.provide(OperationalEventRepositoryLive),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),

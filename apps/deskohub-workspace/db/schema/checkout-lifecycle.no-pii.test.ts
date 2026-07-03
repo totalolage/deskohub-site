@@ -29,7 +29,6 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(schemaIndex).toContain("./payment-attempts");
     expect(schemaIndex).toContain("./webhook-events");
     expect(schemaIndex).toContain("./legal-evidence-events");
-    expect(schemaIndex).toContain("./operational-events");
     expect(schemaIndex).not.toContain("checkout-return-state-tokens");
     expect(schemaIndex).not.toContain("payment-orders");
   });
@@ -57,54 +56,6 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     expect(source).toContain(".update(JSON.stringify(payload))");
     expect(source).not.toContain('.join("\\u001f")');
     expect(source).not.toContain("Effect.annotateLogs(input)");
-  });
-
-  test("operational event messages are derived from typed templates", async () => {
-    const { parseOperationalEventInput } = await import(
-      "@/features/checkout/backend/operational-event.repository"
-    );
-
-    expect(
-      parseOperationalEventInput({
-        eventType: "workspace_reservation_hold_cancelled",
-        severity: "info",
-      }).message
-    ).toBe("Workspace reservation hold was cancelled.");
-    expect(() =>
-      parseOperationalEventInput({
-        eventType: "workspace_reservation_hold_attach_failed",
-        severity: "error",
-        message: "Caller supplied arbitrary recovery detail",
-      } as never)
-    ).toThrow();
-    expect(() =>
-      parseOperationalEventInput({
-        eventType: "workspace_reservation_hold_attach_failed",
-        severity: "error",
-        providerMessage: "Caller supplied provider detail",
-      } as never)
-    ).toThrow();
-
-    const source = await readAppFile(
-      "features/checkout/backend/operational-event.repository.ts"
-    );
-    expect(source).not.toContain("piiLikeMessagePattern");
-    expect(source).not.toContain("messagePattern");
-    expect(source).not.toContain("RegExp");
-  });
-
-  test("operational event messages reject arbitrary non-template text", async () => {
-    const { parseOperationalEventInput } = await import(
-      "@/features/checkout/backend/operational-event.repository"
-    );
-
-    expect(() =>
-      parseOperationalEventInput({
-        eventType: "workspace_reservation_hold_cancelled",
-        severity: "warning",
-        message: "Operator should inspect the customer note manually.",
-      } as never)
-    ).toThrow();
   });
 
   test("repository transitions are state and active-attempt guarded", async () => {

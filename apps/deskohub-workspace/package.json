@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build --turbo",
-    "vercel-build": "bun --sequential db:migrate 'turbo build'",
+    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then bun run db:migrate; else echo \"Skipping db:migrate for VERCEL_ENV=${VERCEL_ENV:-unset}\"; fi && turbo build",
     "dev": "bun --parallel dev:next dev:i18n",
     "dev:next": "next dev --turbo",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",

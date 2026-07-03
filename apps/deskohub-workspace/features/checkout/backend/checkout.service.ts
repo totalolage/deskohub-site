@@ -23,7 +23,6 @@ import {
   LegalEvidenceEventRepositoryLive,
 } from "@/features/checkout/backend/legal-evidence-event.repository";
 import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
-import { OperationalEventRepositoryLive } from "@/features/checkout/backend/operational-event.repository";
 import {
   openPayState,
   type SignedPayState,
@@ -785,7 +784,6 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(PostResponseTaskService.Live),
   Layer.provide(ReservationHoldCleanupScheduleService.Live),
   Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
-  Layer.provide(OperationalEventRepositoryLive),
   Layer.provide(LegalEvidenceEventRepositoryLive),
   Layer.provide(PostHogEventServiceLive),
   Layer.provide(PaymentAttemptRepositoryLive),

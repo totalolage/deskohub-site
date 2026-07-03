@@ -3,7 +3,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { OperationalEventRepository as OperationalEventRepositoryType } from "@/features/checkout/backend/operational-event.repository";
 import type { WorkspaceReservationEmailService as WorkspaceReservationEmailServiceType } from "@/features/checkout/backend/workspace-reservation-email.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
@@ -15,9 +14,6 @@ describe("WorkspacePaidFulfillmentService", () => {
       WorkspacePaidFulfillmentService,
       WorkspacePaidFulfillmentServiceLive,
     } = await import("./paid-fulfillment.service");
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
@@ -78,11 +74,6 @@ describe("WorkspacePaidFulfillmentService", () => {
         } as unknown as WorkspaceReservationRepositoryType)
       ),
       Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record: mock(() => Effect.die("should not record failure")),
-        } as unknown as OperationalEventRepositoryType)
-      ),
-      Effect.provide(
         Layer.succeed(DotyposService, {
           confirmReservation,
         } as unknown as typeof DotyposService.Service)
@@ -122,9 +113,6 @@ describe("WorkspacePaidFulfillmentService", () => {
       WorkspacePaidFulfillmentService,
       WorkspacePaidFulfillmentServiceLive,
     } = await import("./paid-fulfillment.service");
-    const { OperationalEventRepository } = await import(
-      "./operational-event.repository"
-    );
     const { WorkspaceReservationEmailService } = await import(
       "./workspace-reservation-email.service"
     );
@@ -175,11 +163,6 @@ describe("WorkspacePaidFulfillmentService", () => {
           markFulfilled,
           markFulfillmentFailed: mock(() => Effect.void),
         } as unknown as WorkspaceReservationRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(OperationalEventRepository, {
-          record: mock(() => Effect.die("should not record failure")),
-        } as unknown as OperationalEventRepositoryType)
       ),
       Effect.provide(
         Layer.succeed(DotyposService, {

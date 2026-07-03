@@ -1352,7 +1352,6 @@ const validatePostgres = async (
 
     assertPostgresRow(row, data, config);
     await assertLegalEvidence(pool, orderId);
-    await assertOperationalEvents(pool, orderId, row.payment_attempt_id, data);
     await assertNoLocalPii(
       pool,
       orderId,
@@ -1610,37 +1609,6 @@ const assertLegalEvidence = async (pool: Pool, orderId: string) => {
   );
 };
 
-const assertOperationalEvents = async (
-  pool: Pool,
-  orderId: string,
-  paymentAttemptId: string | null,
-  data: ReturnType<typeof makeCheckoutData>
-) => {
-  const errors = await pool.query<{ count: string }>(
-    `select count(*)
-    from operational_events
-    where severity = 'error'
-      and (workspace_reservation_id = $1 or payment_attempt_id = $2)`,
-    [orderId, paymentAttemptId]
-  );
-  assert(
-    Number(errors.rows[0]?.count ?? 0) === 0,
-    "error operational events found"
-  );
-
-  const pii = await pool.query<{ count: string }>(
-    `select count(*)
-    from operational_events
-    where workspace_reservation_id = $1
-      and (message ilike $2 or message ilike $3 or message ilike $4)`,
-    [orderId, `%${data.email}%`, `%${data.phone}%`, `%${data.name}%`]
-  );
-  assert(
-    Number(pii.rows[0]?.count ?? 0) === 0,
-    "operational event messages contain test PII"
-  );
-};
-
 const assertNoLocalPii = async (
   pool: Pool,
   orderId: string,
@@ -1665,10 +1633,6 @@ const assertNoLocalPii = async (
       select to_jsonb(le)::text
       from legal_evidence_events le
       where le.workspace_reservation_id = $1
-      union all
-      select to_jsonb(oe)::text
-      from operational_events oe
-      where oe.workspace_reservation_id = $1 or oe.payment_attempt_id = $2
     )
     select count(*)
       from payloads

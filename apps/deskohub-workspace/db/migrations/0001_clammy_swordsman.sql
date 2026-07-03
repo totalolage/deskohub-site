@@ -1,0 +1,1 @@
+DROP TABLE "operational_events" CASCADE;
