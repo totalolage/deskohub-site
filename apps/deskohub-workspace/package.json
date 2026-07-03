@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build": "next build --turbo",
-    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ]; then bun run db:migrate; else echo \"Skipping db:migrate for VERCEL_ENV=${VERCEL_ENV:-unset}\"; fi && turbo build",
+    "vercel-build": "if [ \"$VERCEL_ENV\" = \"production\" ] || ! git fetch --depth=1 origin main:refs/remotes/origin/main || ! git diff --quiet origin/main -- db/schema db/migrations drizzle.config.ts; then bun run db:migrate; else echo \"Skipping db:migrate for VERCEL_ENV=${VERCEL_ENV:-unset}; no workspace DB schema diff from origin/main\"; fi && turbo build",
     "dev": "bun --parallel dev:next dev:i18n",
     "dev:next": "next dev --turbo",
     "dev:i18n": "chokidar \"features/i18n/messages/*.json\" -c \"bun i18n:compile\"",
