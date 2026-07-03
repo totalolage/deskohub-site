@@ -1,17 +1,14 @@
 "use client";
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
-import {
-  motion,
-  type PanInfo,
-  type Transition,
-  useDragControls,
-  useMotionValue,
-  useReducedMotion,
-} from "motion/react";
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { motion, type Transition } from "motion/react";
+import { use, useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
+import {
+  useMotionSwipeCarousel,
+  wrapIndex,
+} from "@/features/gallery/hooks/use-motion-swipe-carousel";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
 import { cn } from "@/shared/utils";
 import "yet-another-react-lightbox/styles.css";
@@ -20,23 +17,6 @@ type LandingPagePhotoCarouselProps = {
   imagesPromise: Promise<readonly CloudinaryAsset[]>;
   autoPlayInterval?: number;
   className?: string;
-};
-
-const wrapIndex = (index: number, length: number) =>
-  ((index % length) + length) % length;
-
-const getClosestVirtualIndex = (
-  targetIndex: number,
-  currentAnimationIndex: number,
-  length: number
-) => {
-  const currentLogicalIndex = wrapIndex(currentAnimationIndex, length);
-  let delta = targetIndex - currentLogicalIndex;
-
-  if (delta > length / 2) delta -= length;
-  if (delta < -length / 2) delta += length;
-
-  return currentAnimationIndex + delta;
 };
 
 const slideOffsets = [-2, -1, 0, 1, 2] as const;
@@ -62,20 +42,12 @@ const dotTransition: Transition = {
   damping: 32,
 };
 
-const swipeTimelineThreshold = 0.32;
-const swipeVelocityThreshold = 520;
-const swipeClickSuppressionDistance = 8;
-const clickSuppressionAfterSwipeMs = 180;
-
 const instantTransition: Transition = {
   duration: 0,
 };
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
-
-const truncateTowardZero = (value: number) =>
-  value < 0 ? Math.ceil(value) : Math.floor(value);
 
 const interpolateAnchoredValue = (
   offset: number,
@@ -123,161 +95,31 @@ const getSlideZIndex = (offset: number) => {
 const AUTO_PLAY_INTERVAL = 3600;
 export function LandingPagePhotoCarousel({
   imagesPromise,
+  autoPlayInterval = AUTO_PLAY_INTERVAL,
   className,
 }: LandingPagePhotoCarouselProps) {
   const images = use(imagesPromise);
-  const shouldReduceMotion = useReducedMotion();
-  const [animationTimelineIndex, setAnimationTimelineIndex] = useState(0);
-  const [swipeTimelineOffset, setSwipeTimelineOffset] = useState(0);
-  const [isPointerOver, setIsPointerOver] = useState(false);
-  const [isFocusWithin, setIsFocusWithin] = useState(false);
-  const [isDragging, setIsDragging] = useState(false);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const dragControls = useDragControls();
-  const dragX = useMotionValue(0);
-  const stageRef = useRef<HTMLDivElement>(null);
-  const animationTimelineIndexRef = useRef(animationTimelineIndex);
-  const dragStartAnimationTimelineIndexRef = useRef(animationTimelineIndex);
-  const lastSwipeAtRef = useRef(0);
-  const isPaused = isPointerOver || isFocusWithin || isDragging;
-  const isSwiping = swipeTimelineOffset !== 0;
-  const activeSlideTransition = shouldReduceMotion
+  const carousel = useMotionSwipeCarousel({
+    autoPlayInterval,
+    count: images.length,
+  });
+  const activeSlideTransition = carousel.shouldReduceMotion
     ? instantTransition
-    : isSwiping
+    : carousel.isSwiping
       ? instantTransition
       : slideTransition;
-  const activeDotTransition = shouldReduceMotion
+  const activeDotTransition = carousel.shouldReduceMotion
     ? instantTransition
     : dotTransition;
-  const lightboxAnimation = shouldReduceMotion
+  const lightboxAnimation = carousel.shouldReduceMotion
     ? { fade: 0, navigation: 0, swipe: 0 }
     : undefined;
 
-  useEffect(() => {
-    animationTimelineIndexRef.current = animationTimelineIndex;
-  }, [animationTimelineIndex]);
-
-  useEffect(() => {
-    if (images.length <= 1 || isPaused || shouldReduceMotion) return;
-
-    const interval = setInterval(() => {
-      setAnimationTimelineIndex((index) => {
-        const nextIndex = index + 1;
-
-        animationTimelineIndexRef.current = nextIndex;
-
-        return nextIndex;
-      });
-    }, AUTO_PLAY_INTERVAL);
-
-    return () => clearInterval(interval);
-  }, [images.length, isPaused, shouldReduceMotion]);
-
   const hasImages = images.length > 0;
-  const visibleTimelineIndex = animationTimelineIndex + swipeTimelineOffset;
-  const currentLogicalIndex = hasImages
-    ? wrapIndex(Math.round(visibleTimelineIndex), images.length)
-    : 0;
-  const moveToAnimationIndex = (nextIndex: number) => {
-    animationTimelineIndexRef.current = nextIndex;
-    setAnimationTimelineIndex(nextIndex);
-    setSwipeTimelineOffset(0);
-  };
   const openLightbox = (index: number) => {
     setLightboxIndex(index);
   };
-  const getSwipeTimelineDistance = () => {
-    const stageWidth = stageRef.current?.clientWidth ?? 0;
-
-    return Math.max(96, Math.min(stageWidth * 0.28, 260));
-  };
-  const resetDragCarrier = () => {
-    dragX.stop();
-    dragX.set(0);
-  };
-  const applyDragOffset = (offsetX: number) => {
-    const rawTimelineOffset = -offsetX / getSwipeTimelineDistance();
-    const wholeSteps = truncateTowardZero(rawTimelineOffset);
-    const fractionalOffset = rawTimelineOffset - wholeSteps;
-    const nextIndex = dragStartAnimationTimelineIndexRef.current + wholeSteps;
-
-    if (nextIndex !== animationTimelineIndexRef.current) {
-      animationTimelineIndexRef.current = nextIndex;
-      setAnimationTimelineIndex(nextIndex);
-    }
-
-    setSwipeTimelineOffset(fractionalOffset);
-  };
-  const handleDragStart = () => {
-    if (images.length <= 1) return;
-
-    dragStartAnimationTimelineIndexRef.current =
-      animationTimelineIndexRef.current;
-    resetDragCarrier();
-    setIsDragging(true);
-    setSwipeTimelineOffset(0);
-  };
-  const handleDragMove = (
-    _: MouseEvent | TouchEvent | PointerEvent,
-    info: PanInfo
-  ) => {
-    if (images.length <= 1) return;
-
-    const absX = Math.abs(info.offset.x);
-    const absY = Math.abs(info.offset.y);
-
-    if (absX <= absY) {
-      setSwipeTimelineOffset(0);
-      return;
-    }
-
-    if (absX >= swipeClickSuppressionDistance) {
-      lastSwipeAtRef.current = Date.now();
-    }
-
-    applyDragOffset(info.offset.x);
-  };
-  const handleDragEnd = (
-    _: MouseEvent | TouchEvent | PointerEvent,
-    info: PanInfo
-  ) => {
-    if (images.length <= 1) return;
-
-    const rawTimelineOffset = -info.offset.x / getSwipeTimelineDistance();
-    const wholeSteps = truncateTowardZero(rawTimelineOffset);
-    const fractionalOffset = rawTimelineOffset - wholeSteps;
-    const isHorizontalDrag =
-      Math.abs(info.offset.x) >= swipeClickSuppressionDistance &&
-      Math.abs(info.offset.x) > Math.abs(info.offset.y);
-    let nextIndex = dragStartAnimationTimelineIndexRef.current + wholeSteps;
-
-    if (isHorizontalDrag) lastSwipeAtRef.current = Date.now();
-
-    if (!isHorizontalDrag) {
-      moveToAnimationIndex(dragStartAnimationTimelineIndexRef.current);
-      resetDragCarrier();
-      setIsDragging(false);
-      return;
-    }
-
-    if (
-      fractionalOffset >= swipeTimelineThreshold ||
-      info.velocity.x <= -swipeVelocityThreshold
-    ) {
-      nextIndex += 1;
-    } else if (
-      fractionalOffset <= -swipeTimelineThreshold ||
-      info.velocity.x >= swipeVelocityThreshold
-    ) {
-      nextIndex -= 1;
-    }
-
-    moveToAnimationIndex(nextIndex);
-    resetDragCarrier();
-    setIsDragging(false);
-  };
-  const shouldSuppressClickAfterSwipe = () =>
-    Date.now() - lastSwipeAtRef.current < clickSuppressionAfterSwipeMs;
   const lightboxSlides: SlideImage[] = useMemo(
     () =>
       images.map((image) => ({
@@ -293,11 +135,11 @@ export function LandingPagePhotoCarousel({
   const visibleOffsets: readonly SlideOffset[] =
     images.length === 0 ? [] : images.length === 1 ? [0] : slideOffsets;
   const visibleSlides = visibleOffsets.map((offset) => {
-    const virtualIndex = animationTimelineIndex + offset;
+    const virtualIndex = carousel.virtualIndex + offset;
     return {
       image: images[wrapIndex(virtualIndex, images.length)]!,
       isCurrent: offset === 0,
-      offset: virtualIndex - visibleTimelineIndex,
+      offset: virtualIndex - carousel.visibleVirtualIndex,
       virtualIndex,
     };
   });
@@ -315,42 +157,38 @@ export function LandingPagePhotoCarousel({
           !(nextTarget instanceof Node) ||
           !event.currentTarget.contains(nextTarget)
         ) {
-          setIsFocusWithin(false);
+          carousel.setIsFocusWithin(false);
         }
       }}
-      onFocus={() => setIsFocusWithin(true)}
-      onPointerEnter={() => setIsPointerOver(true)}
-      onPointerLeave={() => setIsPointerOver(false)}
+      onFocus={() => carousel.setIsFocusWithin(true)}
+      onPointerEnter={() => carousel.setIsPointerOver(true)}
+      onPointerLeave={() => carousel.setIsPointerOver(false)}
     >
       <motion.div
         className="relative mx-auto h-72 max-w-6xl touch-pan-y @container-[size] sm:h-112 lg:h-136"
         onClickCapture={(event) => {
-          if (!shouldSuppressClickAfterSwipe()) return;
+          if (!carousel.shouldSuppressClickAfterSwipe()) return;
 
           event.preventDefault();
           event.stopPropagation();
         }}
-        onPointerDownCapture={(event) => {
-          if (images.length <= 1 || event.button !== 0) return;
-
-          dragControls.start(event);
-        }}
-        ref={stageRef}
+        onPointerDownCapture={carousel.startDrag}
+        ref={carousel.stageRef}
       >
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
           drag="x"
-          dragControls={dragControls}
+          dragControls={carousel.dragControls}
           dragListener={false}
           dragMomentum={false}
-          onDrag={handleDragMove}
-          onDragEnd={handleDragEnd}
-          onDragStart={handleDragStart}
-          style={{ touchAction: "pan-y", x: dragX }}
+          onDrag={carousel.handleDragMove}
+          onDragEnd={carousel.handleDragEnd}
+          onDragStart={carousel.handleDragStart}
+          style={{ touchAction: "pan-y", x: carousel.dragX }}
         />
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
-          const baseOffset = virtualIndex - animationTimelineIndex;
+          const baseOffset = virtualIndex - carousel.virtualIndex;
           const logicalIndex = wrapIndex(virtualIndex, images.length);
           const isVisibleSide = Math.abs(baseOffset) === 1;
           const isVisible = isCurrent || isVisibleSide;
@@ -375,28 +213,30 @@ export function LandingPagePhotoCarousel({
               )}
               disabled={!isVisible}
               draggable={false}
-              initial={shouldReduceMotion ? false : getSlideMotion(offset)}
+              initial={
+                carousel.shouldReduceMotion ? false : getSlideMotion(offset)
+              }
               key={virtualIndex}
               onClick={() => {
-                if (shouldSuppressClickAfterSwipe()) return;
+                if (carousel.shouldSuppressClickAfterSwipe()) return;
 
                 if (isCurrent) {
                   openLightbox(logicalIndex);
                   return;
                 }
 
-                if (isVisibleSide) moveToAnimationIndex(virtualIndex);
+                if (isVisibleSide) carousel.moveToVirtualIndex(virtualIndex);
               }}
               tabIndex={isVisible ? undefined : -1}
               transition={activeSlideTransition}
               type="button"
               whileHover={
-                isVisibleSide && !shouldReduceMotion
+                isVisibleSide && !carousel.shouldReduceMotion
                   ? { filter: "brightness(0.96)" }
                   : undefined
               }
               whileTap={
-                isVisibleSide && !shouldReduceMotion
+                isVisibleSide && !carousel.shouldReduceMotion
                   ? { opacity: 0.72 }
                   : undefined
               }
@@ -416,16 +256,12 @@ export function LandingPagePhotoCarousel({
         })}
       </motion.div>
       <CarouselPositionIndicator
-        activeIndex={currentLogicalIndex}
+        activeIndex={carousel.activeIndex}
         className="justify-center px-4"
         count={images.length}
         getKey={(index) => images[index]?.public_id ?? index}
         getLabel={(index) => `Show carousel image ${index + 1}`}
-        onSelect={(index) =>
-          moveToAnimationIndex(
-            getClosestVirtualIndex(index, animationTimelineIndex, images.length)
-          )
-        }
+        onSelect={carousel.moveToIndex}
         transition={activeDotTransition}
       />
       <Lightbox
