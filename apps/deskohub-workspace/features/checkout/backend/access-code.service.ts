@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 
-export const workspaceCheckoutPlaceholderAccessCode = "451936";
+export const workspaceCheckoutPlaceholderAccessCode = "841279";
 
 export interface WorkspaceCheckoutAccessCodeService {
   readonly generateCustomerAccessCode: () => Effect.Effect<string>;
