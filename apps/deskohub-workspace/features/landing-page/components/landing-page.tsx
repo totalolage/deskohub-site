@@ -1,3 +1,4 @@
+import { getCoworkReservationPath } from "@/features/checkout/routes";
 import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -19,7 +20,7 @@ export function LandingPage({ locale }: LandingPageProps) {
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
-  const reservationHref = `${localePath}/checkout/order`;
+  const reservationHref = getCoworkReservationPath(locale);
   const contactAddress = workspaceSiteConstants.contact.address;
   const contactEmail = workspaceSiteConstants.contact.infoEmail;
 

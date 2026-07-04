@@ -29,7 +29,7 @@ describe("createPostHogPageUrl", () => {
           $initial_current_url:
             "https://deskohub.test/checkout/result/order-id?payStateRef=secret",
           $initial_referrer:
-            "https://deskohub.test/checkout/order?token=secret&step=details",
+            "https://deskohub.test/checkout/reservation/cowork?token=secret&step=details",
         },
         "preview"
       )
@@ -38,7 +38,8 @@ describe("createPostHogPageUrl", () => {
       $referrer:
         "https://deskohub.test/checkout/payment/order-id?outcome=success",
       $initial_current_url: "https://deskohub.test/checkout/result/order-id",
-      $initial_referrer: "https://deskohub.test/checkout/order?step=details",
+      $initial_referrer:
+        "https://deskohub.test/checkout/reservation/cowork?step=details",
       "deployment.environment.name": "preview",
     });
   });

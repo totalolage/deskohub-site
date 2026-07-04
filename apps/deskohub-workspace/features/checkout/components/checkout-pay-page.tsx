@@ -13,6 +13,7 @@ import {
   CheckoutSummarySection,
   CheckoutSummarySections,
 } from "@/features/checkout/components/checkout-summary";
+import { getCoworkReservationPath } from "@/features/checkout/routes";
 import { type Locale, m } from "@/features/i18n";
 import { submitReservation } from "@/features/reservation/actions/submit-reservation";
 import { Button } from "@/shared/components/ui/button";
@@ -137,7 +138,7 @@ export function CheckoutPayPage({
           asChild
           className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
         >
-          <Link href={freshPayUrl ?? `/${locale}/checkout/order`}>
+          <Link href={freshPayUrl ?? getCoworkReservationPath(locale)}>
             {m.checkoutPayReviewUpdatedPriceButton({}, { locale })}
           </Link>
         </Button>

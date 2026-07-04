@@ -16,6 +16,7 @@ import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import { getCoworkReservationPath } from "@/features/checkout/routes";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
@@ -319,7 +320,7 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={`/${locale}/checkout/order`}>
+            <Link href={getCoworkReservationPath(locale)}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>
