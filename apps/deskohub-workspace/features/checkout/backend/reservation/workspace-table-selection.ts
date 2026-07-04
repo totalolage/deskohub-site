@@ -27,17 +27,24 @@ export const hasAvailableWorkspaceTableCandidate = (
   tables: readonly Table[],
   requiredTags: readonly string[],
   occupancyByTableId: ReadonlyMap<string, number>,
-  guestCount = workspaceBookingGuestCount
+  guestCount = workspaceBookingGuestCount,
+  requireEmpty = false
 ) =>
   getWorkspaceTableCandidates(tables, requiredTags).some((table) =>
-    hasWorkspaceTableCapacity(table, occupancyByTableId, guestCount)
+    hasWorkspaceTableCapacity(
+      table,
+      occupancyByTableId,
+      guestCount,
+      requireEmpty
+    )
   );
 
 export const selectWorkspaceTableFromCandidates = (
   candidates: readonly Table[],
   allTables: readonly Table[],
   occupancyByTableId: ReadonlyMap<string, number>,
-  guestCount = workspaceBookingGuestCount
+  guestCount = workspaceBookingGuestCount,
+  requireEmpty = false
 ) => {
   const scoringTablesByRoom = getWorkspaceScoringTablesByRoom(allTables);
   const maxDistanceByRoom =
@@ -46,7 +53,14 @@ export const selectWorkspaceTableFromCandidates = (
   let selectedScore = Number.NEGATIVE_INFINITY;
 
   for (const table of candidates) {
-    if (!hasWorkspaceTableCapacity(table, occupancyByTableId, guestCount)) {
+    if (
+      !hasWorkspaceTableCapacity(
+        table,
+        occupancyByTableId,
+        guestCount,
+        requireEmpty
+      )
+    ) {
       continue;
     }
 
@@ -87,16 +101,20 @@ const isAssignableWorkspaceTable = (
 const hasWorkspaceTableCapacity = (
   table: Table,
   occupancyByTableId: ReadonlyMap<string, number>,
-  guestCount: number
+  guestCount: number,
+  requireEmpty: boolean
 ) => {
   const tableId = getAssignableDotyposTableId(table);
   if (!tableId) return false;
   const capacity = parsePositiveNumber(table.seats);
   if (!capacity) return false;
+  const occupancy = occupancyByTableId.get(tableId) ?? 0;
+
+  if (requireEmpty) return occupancy === 0;
 
   // Workspace bookings are assigned as whole parties to one table. Splitting a
   // party across multiple tables would need separate assignment logic later.
-  return (occupancyByTableId.get(tableId) ?? 0) + guestCount <= capacity;
+  return occupancy + guestCount <= capacity;
 };
 
 const scoreWorkspaceTableCandidate = (

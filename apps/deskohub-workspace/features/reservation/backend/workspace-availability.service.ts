@@ -29,6 +29,7 @@ import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import {
   getReservationPragueDateRange,
+  isDefaultReservationInterval,
   type ReservationInterval,
   type ReservationIntervalError,
 } from "../schemas/reservation-interval";
@@ -155,10 +156,24 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         });
         const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
         const occupancyByDate = new Map<string, Map<string, number>>();
+        const selectedDate = date ? plainDateToString(date) : undefined;
+        const selectedDateRange = selectedDate
+          ? yield* getAvailabilityDateRange(selectedDate, query)
+          : undefined;
+        const shouldCheckRangeDateSelection =
+          !selectedDate ||
+          isDefaultReservationInterval({
+            date: selectedDate,
+            startsAt: query.startsAt,
+            endsAt: query.endsAt,
+          });
 
         for (const day of dates) {
           const dayKey = plainDateToString(day);
-          const range = yield* getAvailabilityDateRange(dayKey, query);
+          const range =
+            selectedDateRange && dayKey === selectedDate
+              ? selectedDateRange
+              : yield* getAvailabilityDateRange(dayKey, {});
           occupancyByDate.set(
             dayKey,
             getWorkspaceTableOccupancyById(reservations, range)
@@ -170,12 +185,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           .filter(
             (day) =>
               fullyOccupiedDates.has(day) ||
-              isUnavailableForSelection(
-                tables,
-                occupancyByDate.get(day) ?? new Map(),
-                query.entryTier,
-                query.monitorOption
-              )
+              (shouldCheckRangeDateSelection || day === selectedDate
+                ? isUnavailableForSelection(
+                    tables,
+                    occupancyByDate.get(day) ?? new Map(),
+                    query.entryTier,
+                    query.monitorOption
+                  )
+                : false)
           );
 
         const selectedDateOccupancy = date
@@ -378,7 +395,8 @@ const isTierUnavailable = (
     tables,
     [`tier:${tier}`],
     occupancyByTableId,
-    workspaceBookingGuestCount
+    workspaceBookingGuestCount,
+    tier === "meeting-room"
   );
 };
 

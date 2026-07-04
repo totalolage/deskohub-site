@@ -144,9 +144,11 @@ const runWithInventory = async <A>(
 
 const getAvailability = (input: {
   readonly date?: string;
+  readonly from?: string;
   readonly startsAt?: string;
   readonly endsAt?: string;
-  readonly entryTier?: "basic" | "plus" | "profi";
+  readonly to?: string;
+  readonly entryTier?: "basic" | "plus" | "profi" | "meeting-room";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
   readonly reservations?: readonly Reservation[];
@@ -162,8 +164,8 @@ const getAvailability = (input: {
       const service = yield* availability.WorkspaceAvailabilityService;
       return yield* service.getAvailability({
         date: input.date,
-        from: testDate,
-        to: testDate,
+        from: input.from ?? testDate,
+        to: input.to ?? testDate,
         startsAt: input.startsAt,
         endsAt: input.endsAt,
         entryTier: input.entryTier,
@@ -298,6 +300,42 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(fullyOccupied.unavailableDates).toContain(testDate);
     expect(fullyOccupied.unavailableTiers).toContain("basic");
+  });
+
+  test("marks a meeting room unavailable after any overlapping booking", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      entryTier: "meeting-room",
+      tables: [
+        makeTable({ id: "room-1", tags: ["tier:meeting-room"], seats: "12" }),
+      ],
+      reservations: [
+        makeReservation({ tableId: "room-1", status: "NEW", seats: "1" }),
+      ],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.unavailableTiers).toContain("meeting-room");
+  });
+
+  test("keeps non-selected range dates unavailable for cowork date picker", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      to: nextTestDate,
+      entryTier: "basic",
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+      reservations: [
+        makeReservation({
+          tableId: "basic-1",
+          status: "NEW",
+          startDate: "2099-06-10T22:00:00Z",
+          endDate: "2099-06-11T22:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.unavailableDates).toContain(nextTestDate);
   });
 
   test("uses half-open interval overlap for selected availability", async () => {

@@ -4,7 +4,7 @@ import {
   type NetworkError,
   ValidationError,
 } from "@deskohub/dotypos";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Match } from "effect";
 import {
   getWorkspaceProductByTier,
   isWorkspaceProductMonitorOption,
@@ -12,7 +12,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { getReservationPragueDateRange } from "@/features/reservation/schemas/reservation-interval";
+import {
+  getReservationPragueDate,
+  getReservationPragueDateRange,
+} from "@/features/reservation/schemas/reservation-interval";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
   excludeExpiredLocalHolds,
@@ -35,6 +38,25 @@ export const WorkspaceTableAssignmentService =
     "WorkspaceTableAssignmentService"
   );
 
+const getReservationAssignment = (
+  reservation: CheckoutDetailsJson["reservation"]
+) =>
+  Match.value(reservation).pipe(
+    Match.when({ tier: "meeting-room" }, () => ({
+      logProduct: {},
+      monitorOption: undefined,
+      requireEmptyTable: true,
+    })),
+    Match.orElse((coworkReservation) => ({
+      logProduct: {
+        coffee: coworkReservation.coffee,
+        monitorOption: coworkReservation.monitorOption,
+      },
+      monitorOption: coworkReservation.monitorOption,
+      requireEmptyTable: false,
+    }))
+  );
+
 export const WorkspaceTableAssignmentServiceLive = Layer.effect(
   WorkspaceTableAssignmentService,
   Effect.gen(function* () {
@@ -49,9 +71,11 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
 
           const product = getWorkspaceProductByTier(reservation.tier);
           const requiredTags = [`tier:${reservation.tier}`];
+          const reservationAssignment = getReservationAssignment(reservation);
+          const { monitorOption, requireEmptyTable } = reservationAssignment;
           yield* Effect.annotateLogsScoped({ product, requiredTags });
 
-          if (product.requiresMonitorOption && !reservation.monitorOption) {
+          if (product.requiresMonitorOption && !monitorOption) {
             yield* Effect.logWarning(
               "Workspace table assignment rejected: missing monitor option"
             );
@@ -64,8 +88,8 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           }
 
           if (
-            reservation.monitorOption &&
-            !isWorkspaceProductMonitorOption(reservation.monitorOption)
+            monitorOption &&
+            !isWorkspaceProductMonitorOption(monitorOption)
           ) {
             yield* Effect.logWarning(
               "Workspace table assignment rejected: unsupported monitor option"
@@ -73,16 +97,14 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
 
             return yield* Effect.fail(
               new ValidationError({
-                message: `Workspace reservation monitor option is not supported for Dotypos table assignment: ${reservation.monitorOption}`,
+                message: `Workspace reservation monitor option is not supported for Dotypos table assignment: ${monitorOption}`,
               })
             );
           }
 
-          if (reservation.monitorOption) {
+          if (monitorOption) {
             requiredTags.push(
-              ...workspaceProductMonitorOptionTableTags[
-                reservation.monitorOption
-              ]
+              ...workspaceProductMonitorOptionTableTags[monitorOption]
             );
             yield* Effect.annotateLogsScoped({ requiredTags });
           }
@@ -114,7 +136,8 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             Effect.mapError(
               (cause) =>
                 new ValidationError({
-                  message: `Workspace reservation interval must be valid for table assignment: ${reservation.date}`,
+                  message:
+                    "Workspace reservation interval must be valid for table assignment.",
                   cause,
                 })
             )
@@ -137,7 +160,8 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             matchingTables,
             tables,
             occupancyByTableId,
-            workspaceBookingGuestCount
+            workspaceBookingGuestCount,
+            requireEmptyTable
           );
           const matchingTableId = matchingTable
             ? getAssignableDotyposTableId(matchingTable)
@@ -181,9 +205,8 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
             Effect.scoped,
             Effect.annotateLogs({
               tier: reservation.tier,
-              date: reservation.date,
-              coffee: reservation.coffee,
-              monitorOption: reservation.monitorOption,
+              date: getReservationPragueDate(reservation),
+              ...getReservationAssignment(reservation).logProduct,
             })
           )
       ),
