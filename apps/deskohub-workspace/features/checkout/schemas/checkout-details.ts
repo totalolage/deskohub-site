@@ -7,6 +7,11 @@ import {
 import { checkoutSummarySectionSchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
+import {
+  getReservationIntervalValidationIssue,
+  normalizeReservationInterval,
+  reservationIntervalFieldSchemas,
+} from "@/features/reservation/schemas/reservation-interval";
 
 export const legalDocumentKeys = [
   "termsAndConditions",
@@ -78,6 +83,26 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+const checkoutDetailsReservationSchema = z
+  .object({
+    tier: z.enum(workspaceProductTiers),
+    date: z.iso.date(),
+    ...reservationIntervalFieldSchemas,
+    coffee: z.boolean(),
+    monitorOption: z.enum(workspaceProductMonitorOptions).optional(),
+  })
+  .superRefine((reservation, context) => {
+    const intervalIssue = getReservationIntervalValidationIssue(reservation);
+    if (!intervalIssue) return;
+
+    context.addIssue({
+      code: "custom",
+      path: [intervalIssue.path],
+      message: intervalIssue.message,
+    });
+  })
+  .transform(normalizeReservationInterval);
+
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
 // added here or as local database columns.
@@ -85,12 +110,7 @@ export const checkoutDetailsJsonSchema = z.object({
   schema: z.literal("workspace-checkout-details"),
   schemaVersion: z.literal(1),
   locale: z.enum(locales),
-  reservation: z.object({
-    tier: z.enum(workspaceProductTiers),
-    date: z.iso.date(),
-    coffee: z.boolean(),
-    monitorOption: z.enum(workspaceProductMonitorOptions).optional(),
-  }),
+  reservation: checkoutDetailsReservationSchema,
   payment: z.object({
     expectedPrice: nonNegativeWorkspaceMoneySchema,
     undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),

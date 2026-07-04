@@ -17,6 +17,12 @@ import { checkoutReturnStateJsonSchema } from "@/features/checkout/schemas/check
 import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
+import {
+  getReservationIntervalValidationIssue,
+  normalizeReservationInterval,
+  type ReservationInterval,
+  reservationIntervalFieldSchemas,
+} from "@/features/reservation/schemas/reservation-interval";
 
 export const payStateSchemaVersion = 1 as const;
 export const payStateAlgorithm = "A256GCM" as const;
@@ -28,11 +34,23 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const checkoutOrderSchema = z.object({
-  entryTier: z.string().min(1),
-  coffee: z.boolean(),
-  monitorOption: z.string().min(1).optional(),
-});
+const checkoutOrderSchema = z
+  .object({
+    entryTier: z.string().min(1),
+    ...reservationIntervalFieldSchemas,
+    coffee: z.boolean(),
+    monitorOption: z.string().min(1).optional(),
+  })
+  .superRefine((order, context) => {
+    const intervalIssue = getReservationIntervalValidationIssue(order);
+    if (!intervalIssue) return;
+
+    context.addIssue({
+      code: "custom",
+      path: [intervalIssue.path],
+      message: intervalIssue.message,
+    });
+  });
 
 const quoteSnapshotSchema = z.object({
   schema: z.literal("workspace-checkout-quote"),
@@ -128,7 +146,7 @@ export type BuildSignedPayStateInput = {
     readonly email: string;
     readonly phone: string;
     readonly message?: string;
-  };
+  } & Partial<ReservationInterval>;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -253,6 +271,7 @@ export const buildSignedPayState = (
   }
 
   const nowMilliseconds = getNowMilliseconds(options);
+  const reservation = normalizeReservationInterval(input.reservation);
   const iat = Math.floor(nowMilliseconds / 1000);
   const exp = Math.floor(
     (nowMilliseconds +
@@ -269,7 +288,7 @@ export const buildSignedPayState = (
     exp,
     locale: input.locale,
     orderId: input.orderId,
-    reservation: input.reservation,
+    reservation,
     quote: {
       schema: input.quote.schema,
       schemaVersion: input.quote.schemaVersion,

@@ -9,8 +9,15 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
+import {
+  defaultReservationInterval,
+  getReservationIntervalValidationIssue,
+  normalizeReservationInterval,
+  type ReservationInterval,
+  reservationIntervalFieldSchemas,
+} from "@/features/reservation/schemas/reservation-interval";
 
-export type WorkspaceAvailabilityQuery = {
+export type WorkspaceAvailabilityQuery = Partial<ReservationInterval> & {
   readonly date?: string;
   readonly from: string;
   readonly to: string;
@@ -72,6 +79,9 @@ export const parseWorkspaceAvailabilityResponse = (
   );
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const workspaceAvailabilityIntervalSchema = z.object(
+  reservationIntervalFieldSchemas
+);
 
 const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: "Europe/Prague",
@@ -106,6 +116,33 @@ const getMonitorParam = (value: string | null) => {
   return isWorkspaceProductMonitorOption(normalized) ? normalized : undefined;
 };
 
+const getIntervalParam = (
+  searchParams: URLSearchParams,
+  date?: string
+): Partial<ReservationInterval> => {
+  const defaultInterval = () =>
+    date
+      ? normalizeReservationInterval({ date, ...defaultReservationInterval })
+      : {};
+  const startsAt = searchParams.get("startsAt")?.trim() || undefined;
+  const endsAt = searchParams.get("endsAt")?.trim() || undefined;
+
+  if (!startsAt && !endsAt) return defaultInterval();
+
+  const parsed = workspaceAvailabilityIntervalSchema.safeParse({
+    startsAt,
+    endsAt,
+  });
+
+  if (!parsed.success) return defaultInterval();
+  const interval = { date, ...parsed.data };
+  if (getReservationIntervalValidationIssue(interval)) {
+    return defaultInterval();
+  }
+
+  return normalizeReservationInterval(interval);
+};
+
 export const parseWorkspaceAvailabilityQuery = (
   searchParams: URLSearchParams,
   now = new Date()
@@ -118,10 +155,13 @@ export const parseWorkspaceAvailabilityQuery = (
   const date = getDateParam(searchParams, "date");
   const entryTier = getTierParam(searchParams.get("entryTier"));
   const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
+  const interval = getIntervalParam(searchParams, date);
 
   return {
     from,
     to,
+    ...(interval.startsAt && { startsAt: interval.startsAt }),
+    ...(interval.endsAt && { endsAt: interval.endsAt }),
     ...(date && { date }),
     ...(entryTier && { entryTier }),
     ...(monitorOption && { monitorOption }),

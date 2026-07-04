@@ -195,6 +195,53 @@ describe("WorkspaceTableAssignmentService", () => {
     ).resolves.toBe("basic-2");
   });
 
+  test("does not count back-to-back reservations as occupied", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({
+          tier: "basic",
+          date: "2099-06-10",
+          startsAt: "14:00",
+          endsAt: "16:00",
+        }),
+        [makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] })],
+        [
+          makeDotyposReservation({
+            tableId: "basic-1",
+            status: "NEW",
+            startDate: "2099-06-10T06:00:00Z",
+            endDate: "2099-06-10T12:00:00Z",
+          }),
+        ]
+      )
+    ).resolves.toBe("basic-1");
+  });
+
+  test("counts overlapping partial-day reservations as occupied", async () => {
+    await expect(
+      assignTableId(
+        makeReservation({
+          tier: "basic",
+          date: "2099-06-10",
+          startsAt: "14:00",
+          endsAt: "16:00",
+        }),
+        [
+          makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
+          makeTable({ id: "basic-2", name: "2", tags: ["tier:basic"] }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "basic-1",
+            status: "NEW",
+            startDate: "2099-06-10T13:00:00Z",
+            endDate: "2099-06-10T15:00:00Z",
+          }),
+        ]
+      )
+    ).resolves.toBe("basic-2");
+  });
+
   test("ignores expired local holds while assigning a table", async () => {
     await expect(
       assignTableId(

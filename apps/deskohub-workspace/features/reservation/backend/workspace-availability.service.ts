@@ -27,6 +27,11 @@ import {
 } from "@/features/checkout/product-catalog";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
+import {
+  getReservationPragueDateRange,
+  type ReservationInterval,
+  type ReservationIntervalError,
+} from "../schemas/reservation-interval";
 import type {
   WorkspaceAvailability,
   WorkspaceAvailabilityNotice,
@@ -60,11 +65,13 @@ export interface WorkspaceAvailabilityService {
   readonly getAvailability: (
     query: WorkspaceAvailabilityQuery
   ) => Effect.Effect<WorkspaceAvailability, WorkspaceAvailabilityError>;
-  readonly ensureAvailable: (query: {
-    readonly date: string;
-    readonly entryTier: WorkspaceProductTier;
-    readonly monitorOption?: WorkspaceProductMonitorOption;
-  }) => Effect.Effect<
+  readonly ensureAvailable: (
+    query: Partial<ReservationInterval> & {
+      readonly date: string;
+      readonly entryTier: WorkspaceProductTier;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    }
+  ) => Effect.Effect<
     void,
     WorkspaceAvailabilityError | WorkspaceTableUnavailableError
   >;
@@ -150,9 +157,11 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         const occupancyByDate = new Map<string, Map<string, number>>();
 
         for (const day of dates) {
+          const dayKey = plainDateToString(day);
+          const range = yield* getAvailabilityDateRange(dayKey, query);
           occupancyByDate.set(
-            plainDateToString(day),
-            getWorkspaceTableOccupancyById(reservations, day)
+            dayKey,
+            getWorkspaceTableOccupancyById(reservations, range)
           );
         }
 
@@ -170,7 +179,8 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           );
 
         const selectedDateOccupancy = date
-          ? getWorkspaceTableOccupancyById(reservations, date)
+          ? (occupancyByDate.get(plainDateToString(date)) ??
+            new Map<string, number>())
           : new Map<string, number>();
 
         const result = {
@@ -212,6 +222,8 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
             date: query.date,
             from: query.from,
             to: query.to,
+            startsAt: query.startsAt,
+            endsAt: query.endsAt,
             entryTier: query.entryTier,
             monitorOption: query.monitorOption,
           })
@@ -221,6 +233,8 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
     const ensureAvailable = Effect.fn("workspaceAvailability.ensureAvailable")(
       function* (query: {
         readonly date: string;
+        readonly startsAt?: string;
+        readonly endsAt?: string;
         readonly entryTier: WorkspaceProductTier;
         readonly monitorOption?: WorkspaceProductMonitorOption;
       }) {
@@ -231,6 +245,8 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           date: query.date,
           from: query.date,
           to: query.date,
+          startsAt: query.startsAt,
+          endsAt: query.endsAt,
           entryTier: query.entryTier,
           monitorOption: query.monitorOption,
         });
@@ -404,5 +420,41 @@ const parsePlainDate = (date: string) =>
         message: `Availability date must be a valid YYYY-MM-DD date: ${date}`,
       }),
   });
+
+const getAvailabilityDateRange = (
+  date: string,
+  interval: Partial<ReservationInterval>
+) =>
+  getReservationPragueDateRange({
+    date,
+    startsAt: interval.startsAt,
+    endsAt: interval.endsAt,
+  }).pipe(Effect.mapError(toAvailabilityIntervalError(date)));
+
+const getAvailabilityTouchedDateRange = (
+  date: string,
+  interval: Partial<ReservationInterval>
+) =>
+  getReservationPragueDateRange({
+    date,
+    startsAt: interval.startsAt,
+    endsAt: interval.endsAt,
+  }).pipe(
+    Effect.map((range) => {
+      const to = Temporal.Instant.fromEpochMilliseconds(range.endMs - 1)
+        .toZonedDateTimeISO("Europe/Prague")
+        .toPlainDate()
+        .toString();
+
+      return { from: date, to };
+    }),
+    Effect.mapError(toAvailabilityIntervalError(date))
+  );
+
+const toAvailabilityIntervalError =
+  (date: string) => (_error: ReservationIntervalError) =>
+    new ValidationError({
+      message: `Availability interval must be valid for date: ${date}`,
+    });
 
 const plainDateToString = (date: Temporal.PlainDate) => date.toString();

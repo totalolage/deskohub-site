@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
@@ -7,6 +8,13 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
+import {
+  getReservationIntervalValidationIssue,
+  getReservationPragueDateRange,
+  normalizeReservationInterval,
+  reservationIntervalFieldSchemas,
+} from "@/features/reservation/schemas/reservation-interval";
+import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 
 export const RESERVATION_VALIDATION = {
   name: { min: 2, max: 100 },
@@ -56,6 +64,7 @@ const reservationOrderObjectSchema = () =>
       .refine(isTodayOrFuturePragueDate, {
         error: m.reservationValidationDatePast(),
       }),
+    ...reservationIntervalFieldSchemas,
     coffee: z.boolean(),
     monitorOption: z
       .enum(workspaceProductMonitorOptions)
@@ -105,6 +114,38 @@ const validateReservationOrder = (
     z.output<ReturnType<typeof reservationOrderObjectSchema>>
   >
 ) => {
+  const intervalIssue = getReservationIntervalValidationIssue(data);
+  if (intervalIssue) {
+    context.addIssue({
+      code: "custom",
+      path: [intervalIssue.path],
+      message: intervalIssue.message,
+    });
+    return;
+  }
+
+  const productRuleIssue = getReservationProductRuleIssue(data);
+  if (productRuleIssue) {
+    context.addIssue({
+      code: "custom",
+      path: [productRuleIssue.path],
+      message: productRuleIssue.message,
+    });
+    return;
+  }
+
+  if (data.entryTier === "meeting-room") {
+    const range = Effect.runSync(getReservationPragueDateRange(data));
+    if (range.startMs < Date.now()) {
+      context.addIssue({
+        code: "custom",
+        path: ["startsAt"],
+        message: m.reservationValidationDatePast(),
+      });
+      return;
+    }
+  }
+
   const product = getWorkspaceProductByTier(data.entryTier);
 
   if (product.requiresMonitorOption && !data.monitorOption) {
@@ -142,8 +183,11 @@ const normalizeReservationOrder = <
   data: T
 ) => {
   const product = getWorkspaceProductByTier(data.entryTier);
+  const reservation = normalizeReservationInterval(data);
 
-  return product.requiresCoffee ? { ...data, coffee: true } : data;
+  return product.requiresCoffee
+    ? { ...reservation, coffee: true }
+    : reservation;
 };
 
 export const getReservationOrderSchema = () =>
@@ -173,6 +217,8 @@ export type ReservationOrderData = z.output<
 export const reservationDefaultValues: ReservationInput = {
   entryTier: "basic",
   date: "",
+  startsAt: "00:00",
+  endsAt: "24:00",
   coffee: false,
   monitorOption: undefined,
   name: "",

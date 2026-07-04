@@ -1,13 +1,16 @@
 import type { Reservation } from "@deskohub/dotypos/generated";
+import {
+  type ReservationDateRange,
+  reservationDateRangesOverlap,
+} from "@/features/reservation/schemas/reservation-interval";
 
 export const workspaceBookingGuestCount = 1;
 
 export const getWorkspaceTableOccupancyById = (
   reservations: readonly Reservation[],
-  day: Temporal.PlainDate
+  range: Pick<ReservationDateRange, "startMs" | "endMs">
 ) => {
   const occupancyByTableId = new Map<string, number>();
-  const dayRange = getPragueDayRange(day);
 
   for (const reservation of reservations) {
     if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
@@ -26,8 +29,10 @@ export const getWorkspaceTableOccupancyById = (
     }
 
     if (
-      reservationStart < dayRange.endMs &&
-      reservationEnd > dayRange.startMs
+      reservationDateRangesOverlap(
+        { startMs: reservationStart, endMs: reservationEnd },
+        range
+      )
     ) {
       occupancyByTableId.set(
         tableId,
@@ -50,18 +55,6 @@ export const excludeExpiredLocalHolds = (
   return reservations.filter(
     (reservation) => !reservation.id || !expiredIds.has(reservation.id)
   );
-};
-
-const getPragueDayRange = (date: Temporal.PlainDate) => {
-  const startMs = date
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-  const endMs = date
-    .add({ days: 1 })
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-
-  return { startMs, endMs };
 };
 
 const parsePositiveNumber = (value: string | undefined) => {

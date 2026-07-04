@@ -337,6 +337,8 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(assignTableId).toHaveBeenCalledWith({
       tier: "basic",
       date: reservation.date,
+      startsAt: "2026-06-30T22:00:00Z",
+      endsAt: "2026-07-01T22:00:00Z",
       coffee: false,
       monitorOption: undefined,
     });

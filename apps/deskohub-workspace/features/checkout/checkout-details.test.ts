@@ -69,6 +69,45 @@ describe("checkout details persistence", () => {
     expect(serialized).not.toContain("ada@example.com");
     expect(serialized).not.toContain("+420777123456");
     expect(serialized).not.toContain("Please keep this private.");
+    expect(details.reservation).toMatchObject({
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+    });
+    expect(details.reservation).not.toHaveProperty("durationMinutes");
+  });
+
+  test("persists custom reservation intervals", () => {
+    const quote = buildWorkspaceCheckoutQuote({
+      entryTier: "meeting-room",
+      coffee: false,
+      startsAt: "2099-06-10T09:00",
+      endsAt: "2099-06-10T13:00",
+    });
+
+    const details = checkoutDetailsJsonSchema.parse({
+      schema: "workspace-checkout-details",
+      schemaVersion: 1,
+      locale: "en-US",
+      reservation: {
+        tier: "meeting-room",
+        date: "2099-06-10",
+        startsAt: "2099-06-10T09:00",
+        endsAt: "2099-06-10T13:00",
+        coffee: false,
+      },
+      payment: {
+        expectedPrice: quote.payment.expectedPrice,
+        summary: quote.summary,
+      },
+      legal: legalEvidenceMap,
+      fulfillment: { accessCodePolicy: "workspace-static-v1" },
+    });
+
+    expect(details.reservation).toMatchObject({
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+    expect(details.reservation).not.toHaveProperty("durationMinutes");
   });
 
   test("accepts negative discount rows but rejects negative expected totals", () => {

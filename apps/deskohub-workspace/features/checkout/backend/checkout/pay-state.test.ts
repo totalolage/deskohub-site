@@ -99,6 +99,12 @@ describe("Pay URL state", () => {
       openPayState(token, { keys: [fixedKey], now: () => fixedNow })
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
+    expect(state.reservation).toMatchObject({
+      startsAt: "2026-06-19T22:00:00Z",
+      endsAt: "2026-06-20T22:00:00Z",
+    });
+    expect(state.reservation).not.toHaveProperty("durationMinutes");
+    expect(state.quote.order).not.toHaveProperty("startsAt");
   });
 
   test("fails closed when no encryption key is configured", () => {

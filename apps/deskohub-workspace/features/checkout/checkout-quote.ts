@@ -14,6 +14,11 @@ import {
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
+import {
+  isDefaultReservationInterval,
+  normalizeReservationInterval,
+  type ReservationInterval,
+} from "@/features/reservation/schemas/reservation-interval";
 
 export const workspaceCheckoutQuoteSchemaVersion = 1 as const;
 
@@ -21,7 +26,7 @@ export type WorkspaceCheckoutOrder = {
   readonly entryTier: WorkspaceProductTier;
   readonly coffee: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
-};
+} & Partial<ReservationInterval>;
 
 export type CheckoutSummaryItem = {
   readonly key: string;
@@ -69,6 +74,16 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (order: WorkspaceCheckoutOrder) {
   const product = getWorkspaceProductByTier(order.entryTier);
+  const interval = yield* Effect.try({
+    try: () => normalizeReservationInterval(order),
+    catch: (cause) =>
+      new CheckoutQuoteError({
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Invalid reservation interval.",
+      }),
+  });
 
   if (product.requiresMonitorOption && !order.monitorOption) {
     return yield* Effect.fail(
@@ -101,6 +116,11 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   const normalizedOrder: WorkspaceCheckoutOrder = {
     entryTier: order.entryTier,
     coffee: product.requiresCoffee ? true : order.coffee,
+    ...(!isDefaultReservationInterval(interval) && {
+      startsAt: interval.startsAt,
+      endsAt: interval.endsAt,
+      durationMinutes: interval.durationMinutes,
+    }),
     ...(order.monitorOption && { monitorOption: order.monitorOption }),
   };
 
@@ -118,6 +138,7 @@ const getCheckoutQuoteCanonicalPayload = (
   const coffeePriceAmount = getWorkspaceProductCoffeeLinePriceForTier(
     quote.order.entryTier
   ).value;
+  const interval = normalizeReservationInterval(quote.order);
 
   return JSON.stringify({
     schema: quote.schema,
@@ -127,6 +148,7 @@ const getCheckoutQuoteCanonicalPayload = (
       coffee: quote.order.coffee,
       coffeePriceAmount,
       monitorOption: quote.order.monitorOption ?? null,
+      ...(!isDefaultReservationInterval(interval) && { interval }),
     },
     currency: quote.summary.total.currency,
     exponent: quote.summary.total.exponent,

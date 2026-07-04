@@ -61,6 +61,10 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
+import {
+  isDefaultReservationInterval,
+  normalizeReservationInterval,
+} from "@/features/reservation/schemas/reservation-interval";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
@@ -87,12 +91,15 @@ const deriveReservationIntentKey = (input: {
     readonly email: string;
     readonly phone: string;
     readonly date: string;
+    readonly startsAt?: string;
+    readonly endsAt?: string;
     readonly entryTier: string;
     readonly coffee: boolean;
     readonly monitorOption?: string;
   };
 }) => {
-  const payload = {
+  const interval = normalizeReservationInterval(input.reservation);
+  const basePayload = {
     schema: "workspace-reservation-intent-key",
     schemaVersion: 2,
     reservationIntentId: input.reservationIntentId,
@@ -104,6 +111,14 @@ const deriveReservationIntentKey = (input: {
     coffee: input.reservation.coffee,
     monitorOption: input.reservation.monitorOption ?? null,
   };
+  const payload = isDefaultReservationInterval(interval)
+    ? basePayload
+    : {
+        ...basePayload,
+        schemaVersion: 3,
+        startsAt: interval.startsAt,
+        endsAt: interval.endsAt,
+      };
 
   return createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
     .update(JSON.stringify(payload))
@@ -150,6 +165,7 @@ const buildReservationCheckoutDetails = (input: {
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
   const product = getWorkspaceProductByTier(input.reservation.entryTier);
+  const reservation = normalizeReservationInterval(input.reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
 
@@ -158,11 +174,13 @@ const buildReservationCheckoutDetails = (input: {
     schemaVersion: 1,
     locale: input.locale,
     reservation: {
-      tier: input.reservation.entryTier,
-      date: input.reservation.date,
-      coffee: input.reservation.coffee,
+      tier: reservation.entryTier,
+      date: reservation.date,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
+      coffee: reservation.coffee,
       monitorOption: product.requiresMonitorOption
-        ? input.reservation.monitorOption
+        ? reservation.monitorOption
         : undefined,
     },
     payment: {
@@ -524,6 +542,8 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
       date: input.reservation.date,
+      startsAt: input.reservation.startsAt,
+      endsAt: input.reservation.endsAt,
       entryTier: input.reservation.entryTier,
       monitorOption: input.reservation.monitorOption,
     });

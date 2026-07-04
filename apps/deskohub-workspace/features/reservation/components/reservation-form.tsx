@@ -53,6 +53,7 @@ import {
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/schemas/reservation-checkout-query";
+import { normalizeReservationInterval } from "@/features/reservation/schemas/reservation-interval";
 import {
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
@@ -145,20 +146,26 @@ const formatDateForInput = (date: Date) => {
 
 const getWorkspaceAvailabilityQuery = ({
   date,
+  endsAt,
   from,
   monitorOption,
+  startsAt,
   tier,
   to,
 }: {
   date?: string;
+  endsAt?: string;
   from: string;
   monitorOption?: string;
+  startsAt?: string;
   tier: WorkspaceProductTier;
   to: string;
 }): WorkspaceAvailabilityQuery => {
   return {
     from,
     to,
+    ...(startsAt && { startsAt }),
+    ...(endsAt && { endsAt }),
     ...(date && { date }),
     ...(isWorkspaceProductTier(tier) && { entryTier: tier }),
     ...(isWorkspaceProductMonitorOption(monitorOption) && { monitorOption }),
@@ -172,6 +179,8 @@ const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
   });
 
   if (query.date) params.set("date", query.date);
+  if (query.startsAt) params.set("startsAt", query.startsAt);
+  if (query.endsAt) params.set("endsAt", query.endsAt);
   if (query.entryTier) params.set("entryTier", query.entryTier);
   if (query.monitorOption) params.set("monitorOption", query.monitorOption);
 
@@ -257,18 +266,28 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
+  const selectedAvailabilityInterval = useMemo(
+    () =>
+      selectedDate
+        ? normalizeReservationInterval({ date: selectedDate })
+        : null,
+    [selectedDate]
+  );
   const availabilityQuery = useMemo(
     () =>
       getWorkspaceAvailabilityQuery({
         date: selectedDate,
+        endsAt: selectedAvailabilityInterval?.endsAt,
         from: initialAvailabilityQuery.from,
         monitorOption: selectedMonitorOption,
+        startsAt: selectedAvailabilityInterval?.startsAt,
         tier: selectedTier,
         to: initialAvailabilityQuery.to,
       }),
     [
       initialAvailabilityQuery.from,
       initialAvailabilityQuery.to,
+      selectedAvailabilityInterval,
       selectedDate,
       selectedMonitorOption,
       selectedTier,

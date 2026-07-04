@@ -269,6 +269,8 @@ const buildCheckoutDetailsForPayment = (input: {
   reservation: {
     tier: input.data.entryTier,
     date: input.data.date,
+    startsAt: input.data.startsAt,
+    endsAt: input.data.endsAt,
     coffee: input.data.coffee,
     monitorOption: input.data.monitorOption,
   },

@@ -31,4 +31,31 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     });
     expect(query.monitorOption).toBeUndefined();
   });
+
+  test("ignores interval query params for cowork availability", () => {
+    const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
+      date: "2099-06-10",
+      startsAt: "09:00",
+      endsAt: "11:30",
+    });
+
+    expect(query).toMatchObject({
+      date: "2099-06-10",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+    });
+  });
+
+  test("falls back to all-day availability for incomplete interval query params", () => {
+    const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
+      date: "2099-06-10",
+      startsAt: "09:00",
+    });
+
+    expect(query).toMatchObject({
+      date: "2099-06-10",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+    });
+  });
 });

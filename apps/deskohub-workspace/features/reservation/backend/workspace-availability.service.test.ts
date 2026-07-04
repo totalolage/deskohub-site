@@ -13,6 +13,7 @@ import type { WorkspaceAvailabilityService } from "./workspace-availability.serv
 import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
 const testDate = "2099-06-10";
+const nextTestDate = "2099-06-11";
 const testStart = "2099-06-09T22:00:00Z";
 const testEnd = "2099-06-10T22:00:00Z";
 
@@ -143,6 +144,8 @@ const runWithInventory = async <A>(
 
 const getAvailability = (input: {
   readonly date?: string;
+  readonly startsAt?: string;
+  readonly endsAt?: string;
   readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
@@ -161,6 +164,8 @@ const getAvailability = (input: {
         date: input.date,
         from: testDate,
         to: testDate,
+        startsAt: input.startsAt,
+        endsAt: input.endsAt,
         entryTier: input.entryTier,
         monitorOption: input.monitorOption,
       });
@@ -295,6 +300,46 @@ describe("WorkspaceAvailabilityService", () => {
     expect(fullyOccupied.unavailableTiers).toContain("basic");
   });
 
+  test("uses half-open interval overlap for selected availability", async () => {
+    const backToBack = await getAvailability({
+      date: testDate,
+      startsAt: "14:00",
+      endsAt: "16:00",
+      entryTier: "basic",
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+      reservations: [
+        makeReservation({
+          tableId: "basic-1",
+          status: "NEW",
+          startDate: "2099-06-10T06:00:00Z",
+          endDate: "2099-06-10T12:00:00Z",
+        }),
+      ],
+    });
+
+    expect(backToBack.unavailableDates).not.toContain(testDate);
+    expect(backToBack.unavailableTiers).not.toContain("basic");
+
+    const overlapping = await getAvailability({
+      date: testDate,
+      startsAt: "14:00",
+      endsAt: "16:00",
+      entryTier: "basic",
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+      reservations: [
+        makeReservation({
+          tableId: "basic-1",
+          status: "NEW",
+          startDate: "2099-06-10T13:00:00Z",
+          endDate: "2099-06-10T15:00:00Z",
+        }),
+      ],
+    });
+
+    expect(overlapping.unavailableDates).toContain(testDate);
+    expect(overlapping.unavailableTiers).toContain("basic");
+  });
+
   test("ignores inactive, hidden, and untagged tables", async () => {
     const availability = await getAvailability({
       date: testDate,
@@ -404,5 +449,70 @@ describe("WorkspaceAvailabilityService", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
     }
+  });
+
+  test("fails ensureAvailable when an overnight interval touches a fully occupied date", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            date: testDate,
+            startsAt: "22:00",
+            endsAt: "02:00",
+            entryTier: "basic",
+          });
+        })
+      ),
+      {
+        limitations: [
+          WorkspaceCalendarLimitation.FullyOccupied({
+            date: nextTestDate,
+            sourceEventId: "calendar-full-next-day",
+          }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
+      expect(result.failure.date).toBe(nextTestDate);
+    }
+  });
+
+  test("does not shift overnight availability checks onto the following night", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            date: testDate,
+            startsAt: "22:00",
+            endsAt: "02:00",
+            entryTier: "basic",
+          });
+        })
+      ),
+      {
+        tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+        reservations: [
+          makeReservation({
+            tableId: "basic-1",
+            status: "NEW",
+            startDate: "2099-06-11T20:00:00Z",
+            endDate: "2099-06-12T00:00:00Z",
+          }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Success");
   });
 });

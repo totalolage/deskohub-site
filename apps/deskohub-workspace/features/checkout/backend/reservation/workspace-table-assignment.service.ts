@@ -12,6 +12,7 @@ import {
 } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { getReservationPragueDateRange } from "@/features/reservation/schemas/reservation-interval";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
   excludeExpiredLocalHolds,
@@ -109,16 +110,18 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ tables, reservations });
           yield* Effect.logInfo("Workspace table assignment inventory loaded");
 
-          const day = yield* Effect.try({
-            try: () => Temporal.PlainDate.from(reservation.date),
-            catch: () =>
-              new ValidationError({
-                message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${reservation.date}`,
-              }),
-          });
+          const range = yield* getReservationPragueDateRange(reservation).pipe(
+            Effect.mapError(
+              (cause) =>
+                new ValidationError({
+                  message: `Workspace reservation interval must be valid for table assignment: ${reservation.date}`,
+                  cause,
+                })
+            )
+          );
           const occupancyByTableId = getWorkspaceTableOccupancyById(
             activeReservations,
-            day
+            range
           );
           yield* Effect.annotateLogsScoped({
             occupancyByTableId: Object.fromEntries(occupancyByTableId),

@@ -11,6 +11,10 @@ import { Effect } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import {
+  getReservationDurationMinutes,
+  getReservationPragueDateRange,
+} from "@/features/reservation/schemas/reservation-interval";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
@@ -36,8 +40,8 @@ export const createWorkspaceDotyposReservation: (
 
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const { startDate, endDate } = yield* getPragueAllDayRange(
-      input.checkoutDetails.reservation.date
+    const { startDate, endDate } = yield* getReservationDateRange(
+      input.checkoutDetails.reservation
     );
     const tableId = yield* tableAssignments.assignTableId(
       input.checkoutDetails.reservation
@@ -80,27 +84,17 @@ export const createWorkspaceDotyposReservation: (
     )
 );
 
-const getPragueAllDayRange = (
-  date: string
+const getReservationDateRange = (
+  reservation: CheckoutDetailsJson["reservation"]
 ): Effect.Effect<{ startDate: Date; endDate: Date }, ValidationError> =>
-  Effect.try({
-    try: () => {
-      const reservationDate = Temporal.PlainDate.from(date);
-      return {
-        startDate: toPragueMidnightDate(reservationDate),
-        endDate: toPragueMidnightDate(reservationDate.add({ days: 1 })),
-      };
-    },
-    catch: () =>
-      new ValidationError({
-        message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
-      }),
-  });
-
-const toPragueMidnightDate = (plainDate: Temporal.PlainDate) =>
-  new Date(
-    plainDate.toZonedDateTime({ timeZone: "Europe/Prague" }).toInstant()
-      .epochMilliseconds
+  getReservationPragueDateRange(reservation).pipe(
+    Effect.mapError(
+      (cause) =>
+        new ValidationError({
+          message: `Workspace reservation interval must be valid for Dotypos reservation creation: ${reservation.date}`,
+          cause,
+        })
+    )
   );
 
 const formatWorkspaceReservationNote = (
@@ -114,6 +108,8 @@ const formatWorkspaceReservationNote = (
     `Payment order: ${input.paymentOrderId}`,
     `Product: ${product.label}`,
     `Date: ${reservation.date}`,
+    `Time: ${reservation.startsAt}-${reservation.endsAt}`,
+    `Duration: ${getReservationDurationMinutes(reservation)} minutes`,
     `Coffee: ${reservation.coffee ? "yes" : "no"}`,
     reservation.monitorOption ? `Monitor: ${reservation.monitorOption}` : null,
     `Price: ${formatWorkspaceMoney(

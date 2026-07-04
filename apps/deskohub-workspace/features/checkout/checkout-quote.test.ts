@@ -202,6 +202,36 @@ describe("workspace checkout quotes", () => {
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
   });
 
+  test("only fingerprints non-default reservation intervals", () => {
+    const accessOnly = buildWorkspaceCheckoutQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const explicitAllDay = buildWorkspaceCheckoutQuote({
+      entryTier: "basic",
+      coffee: false,
+      startsAt: "00:00",
+      endsAt: "24:00",
+      durationMinutes: 24 * 60,
+    });
+    const morningOnly = buildWorkspaceCheckoutQuote({
+      entryTier: "basic",
+      coffee: false,
+      startsAt: "09:00",
+      endsAt: "12:00",
+      durationMinutes: 180,
+    });
+
+    expect(explicitAllDay.order).toEqual(accessOnly.order);
+    expect(explicitAllDay.fingerprint).toBe(accessOnly.fingerprint);
+    expect(morningOnly.order).toMatchObject({
+      startsAt: "09:00",
+      endsAt: "12:00",
+      durationMinutes: 180,
+    });
+    expect(morningOnly.fingerprint).not.toBe(accessOnly.fingerprint);
+  });
+
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
