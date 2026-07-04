@@ -241,10 +241,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ query });
         yield* Effect.logInfo("Workspace availability assurance started");
 
+        const availabilityRange = yield* getAvailabilityTouchedDateRange(
+          query.date,
+          query
+        );
         const availability = yield* getAvailability({
           date: query.date,
-          from: query.date,
-          to: query.date,
+          from: availabilityRange.from,
+          to: availabilityRange.to,
           startsAt: query.startsAt,
           endsAt: query.endsAt,
           entryTier: query.entryTier,
@@ -252,7 +256,8 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         });
         yield* Effect.annotateLogsScoped({ availability });
 
-        if (!availability.unavailableDates.includes(query.date)) {
+        const unavailableDate = availability.unavailableDates[0];
+        if (!unavailableDate) {
           yield* Effect.logDebug("Workspace availability assurance passed");
           return;
         }
@@ -260,7 +265,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         yield* Effect.logInfo("Workspace availability assurance failed");
 
         return yield* new WorkspaceTableUnavailableError({
-          date: query.date,
+          date: unavailableDate,
           tier: query.entryTier,
           monitorOption: query.monitorOption,
         });

@@ -3,8 +3,8 @@ import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
   getWorkspaceProductByTier,
+  workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
-  workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import {
   isTodayOrFuturePragueDate,
@@ -41,7 +41,7 @@ const queryBooleanSchema = z
   .enum(["true", "false"])
   .transform((value) => value === "true");
 const queryDateSchema = z.iso.date().refine(isTodayOrFuturePragueDate);
-const queryTierSchema = z.enum(workspaceProductTiers);
+const queryTierSchema = z.enum(workspaceCoworkProductTiers);
 const queryMonitorOptionSchema = z.enum(workspaceProductMonitorOptions);
 const queryNameSchema = z
   .string()

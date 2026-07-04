@@ -18,6 +18,18 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     });
   });
 
+  test("keeps cowork checkout query tiers cowork-only", () => {
+    const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
+      date: "2099-06-10",
+      tier: "meeting-room",
+    });
+
+    expect(query).toMatchObject({
+      date: "2099-06-10",
+      entryTier: "basic",
+    });
+  });
+
   test("drops monitor options for tiers that do not use monitors", () => {
     const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
       date: "2099-06-10",
