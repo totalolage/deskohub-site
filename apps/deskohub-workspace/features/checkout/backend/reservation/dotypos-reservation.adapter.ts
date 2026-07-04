@@ -7,12 +7,13 @@ import {
   type Reservation,
   ValidationError,
 } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getReservationDurationMinutes,
+  getReservationPragueDate,
   getReservationPragueDateRange,
 } from "@/features/reservation/schemas/reservation-interval";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
@@ -78,7 +79,7 @@ export const createWorkspaceDotyposReservation: (
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,
         entryTier: input.checkoutDetails.reservation.tier,
-        date: input.checkoutDetails.reservation.date,
+        date: getReservationPragueDate(input.checkoutDetails.reservation),
         reservationStatus: input.status,
       })
     )
@@ -91,7 +92,8 @@ const getReservationDateRange = (
     Effect.mapError(
       (cause) =>
         new ValidationError({
-          message: `Workspace reservation interval must be valid for Dotypos reservation creation: ${reservation.date}`,
+          message:
+            "Workspace reservation interval must be valid for Dotypos reservation creation.",
           cause,
         })
     )
@@ -103,15 +105,23 @@ const formatWorkspaceReservationNote = (
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
   const product = getWorkspaceProductByTier(reservation.tier);
+  const coworkRows = Match.value(reservation).pipe(
+    Match.when({ tier: "meeting-room" }, () => []),
+    Match.orElse((coworkReservation) => [
+      `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
+      ...(coworkReservation.monitorOption
+        ? [`Monitor: ${coworkReservation.monitorOption}`]
+        : []),
+    ])
+  );
   const lines = [
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,
     `Product: ${product.label}`,
-    `Date: ${reservation.date}`,
+    `Date: ${getReservationPragueDate(reservation)}`,
     `Time: ${reservation.startsAt}-${reservation.endsAt}`,
     `Duration: ${getReservationDurationMinutes(reservation)} minutes`,
-    `Coffee: ${reservation.coffee ? "yes" : "no"}`,
-    reservation.monitorOption ? `Monitor: ${reservation.monitorOption}` : null,
+    ...coworkRows,
     `Price: ${formatWorkspaceMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale

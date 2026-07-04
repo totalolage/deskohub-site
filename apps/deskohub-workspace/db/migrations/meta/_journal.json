@@ -15,6 +15,13 @@
       "when": 1783064616624,
       "tag": "0001_clammy_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1783189617021,
+      "tag": "0002_familiar_fenris",
+      "breakpoints": true
     }
   ]
 }

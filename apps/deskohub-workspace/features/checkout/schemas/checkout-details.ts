@@ -1,17 +1,20 @@
-import { Data } from "effect";
+import { Data, Schema as EffectSchema, Option } from "effect";
 import { z } from "zod/v4";
 import {
+  getWorkspaceProductByTier,
+  type WorkspaceProductMonitorOption,
+  workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
-  workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { checkoutSummarySectionSchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
+import { getReservationProductMonitorOption } from "@/features/reservation/schemas/reservation";
 import {
   getReservationIntervalValidationIssue,
-  normalizeReservationInterval,
-  reservationIntervalFieldSchemas,
+  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
+import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 
 export const legalDocumentKeys = [
   "termsAndConditions",
@@ -83,25 +86,146 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-const checkoutDetailsReservationSchema = z
-  .object({
-    tier: z.enum(workspaceProductTiers),
-    date: z.iso.date(),
-    ...reservationIntervalFieldSchemas,
-    coffee: z.boolean(),
-    monitorOption: z.enum(workspaceProductMonitorOptions).optional(),
-  })
-  .superRefine((reservation, context) => {
-    const intervalIssue = getReservationIntervalValidationIssue(reservation);
-    if (!intervalIssue) return;
+const CheckoutDetailsReservationBaseSchema = EffectSchema.Struct({
+  startsAt: EffectSchema.NonEmptyString,
+  endsAt: EffectSchema.NonEmptyString,
+});
 
+type CheckoutDetailsReservationBase =
+  typeof CheckoutDetailsReservationBaseSchema.Type;
+
+type CheckoutDetailsReservationDraft =
+  | (CheckoutDetailsReservationBase & {
+      readonly tier: (typeof workspaceCoworkProductTiers)[number];
+      readonly coffee: boolean;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    })
+  | (CheckoutDetailsReservationBase & {
+      readonly tier: "meeting-room";
+    });
+type CheckoutDetailsReservation =
+  | (CheckoutDetailsReservationBase & {
+      readonly tier: (typeof workspaceCoworkProductTiers)[number];
+      readonly coffee: boolean;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    })
+  | (CheckoutDetailsReservationBase & {
+      readonly tier: "meeting-room";
+    });
+
+const CheckoutDetailsReservationSchema = EffectSchema.Union([
+  EffectSchema.Struct({
+    ...CheckoutDetailsReservationBaseSchema.fields,
+    tier: EffectSchema.Literals(workspaceCoworkProductTiers),
+    coffee: EffectSchema.Boolean,
+    monitorOption: EffectSchema.optional(
+      EffectSchema.Literals(workspaceProductMonitorOptions)
+    ),
+  }),
+  EffectSchema.Struct({
+    ...CheckoutDetailsReservationBaseSchema.fields,
+    tier: EffectSchema.Literal("meeting-room"),
+  }),
+]);
+
+const decodeCheckoutDetailsReservation = EffectSchema.decodeUnknownOption(
+  CheckoutDetailsReservationSchema
+);
+
+const checkoutDetailsReservationInputSchema =
+  z.custom<CheckoutDetailsReservationDraft>((value) =>
+    Option.isSome(decodeCheckoutDetailsReservation(value))
+  );
+
+const validateCheckoutDetailsReservation = (
+  reservation: CheckoutDetailsReservationDraft,
+  context: z.core.$RefinementCtx<CheckoutDetailsReservationDraft>
+) => {
+  const intervalIssue = getReservationIntervalValidationIssue(reservation);
+  if (intervalIssue) {
     context.addIssue({
       code: "custom",
       path: [intervalIssue.path],
       message: intervalIssue.message,
     });
+    return;
+  }
+
+  const productRuleIssue = getReservationProductRuleIssue({
+    ...reservation,
+    entryTier: reservation.tier,
+  });
+  if (productRuleIssue) {
+    context.addIssue({
+      code: "custom",
+      path: [
+        productRuleIssue.path === "entryTier" ? "tier" : productRuleIssue.path,
+      ],
+      message: productRuleIssue.message,
+    });
+    return;
+  }
+
+  const product = getWorkspaceProductByTier(reservation.tier);
+  const monitorOption = getReservationProductMonitorOption({
+    ...reservation,
+    entryTier: reservation.tier,
+  });
+
+  if (product.requiresMonitorOption && !monitorOption) {
+    context.addIssue({
+      code: "custom",
+      path: ["monitorOption"],
+      message: "Monitor option is required for this entry tier.",
+    });
+    return;
+  }
+
+  if (
+    product.requiresMonitorOption &&
+    monitorOption &&
+    !product.allowedMonitorOptions.includes(monitorOption)
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["monitorOption"],
+      message: "Monitor option is unavailable for this entry tier.",
+    });
+    return;
+  }
+
+  if (!product.requiresMonitorOption && monitorOption) {
+    context.addIssue({
+      code: "custom",
+      path: ["monitorOption"],
+      message: "Monitor option is unavailable for this entry tier.",
+    });
+  }
+};
+
+const checkoutDetailsReservationSchema = checkoutDetailsReservationInputSchema
+  .superRefine((reservation, context) => {
+    validateCheckoutDetailsReservation(reservation, context);
   })
-  .transform(normalizeReservationInterval);
+  .transform((reservation): CheckoutDetailsReservation => {
+    if (reservation.tier === "meeting-room") {
+      const normalized = unsafeNormalizeReservationInterval(reservation);
+      return {
+        tier: "meeting-room",
+        startsAt: normalized.startsAt,
+        endsAt: normalized.endsAt,
+      };
+    }
+
+    const normalized = unsafeNormalizeReservationInterval(reservation);
+    return {
+      tier: reservation.tier,
+      startsAt: normalized.startsAt,
+      endsAt: normalized.endsAt,
+      coffee: reservation.coffee,
+      monitorOption: reservation.monitorOption,
+    };
+  });
 
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be

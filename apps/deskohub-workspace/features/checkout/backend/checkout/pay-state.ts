@@ -13,16 +13,15 @@ import type {
   WorkspaceCheckoutOrder,
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
+import {
+  workspaceCoworkProductTiers,
+  workspaceProductMonitorOptions,
+} from "@/features/checkout/product-catalog";
 import { checkoutReturnStateJsonSchema } from "@/features/checkout/schemas/checkout-return-state";
 import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
-import {
-  getReservationIntervalValidationIssue,
-  normalizeReservationInterval,
-  type ReservationInterval,
-  reservationIntervalFieldSchemas,
-} from "@/features/reservation/schemas/reservation-interval";
+import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
 
 export const payStateSchemaVersion = 1 as const;
 export const payStateAlgorithm = "A256GCM" as const;
@@ -34,13 +33,30 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
+const CheckoutOrderSchema = EffectSchema.Union([
+  EffectSchema.Struct({
+    entryTier: EffectSchema.Literals(workspaceCoworkProductTiers),
+    startsAt: EffectSchema.optional(EffectSchema.String),
+    endsAt: EffectSchema.optional(EffectSchema.String),
+    coffee: EffectSchema.Boolean,
+    monitorOption: EffectSchema.optional(
+      EffectSchema.Literals(workspaceProductMonitorOptions)
+    ),
+  }),
+  EffectSchema.Struct({
+    entryTier: EffectSchema.Literal("meeting-room"),
+    startsAt: EffectSchema.NonEmptyString,
+    endsAt: EffectSchema.NonEmptyString,
+  }),
+]);
+
+const decodeCheckoutOrder =
+  EffectSchema.decodeUnknownOption(CheckoutOrderSchema);
+
 const checkoutOrderSchema = z
-  .object({
-    entryTier: z.string().min(1),
-    ...reservationIntervalFieldSchemas,
-    coffee: z.boolean(),
-    monitorOption: z.string().min(1).optional(),
-  })
+  .custom<WorkspaceCheckoutOrder>((value) =>
+    Option.isSome(decodeCheckoutOrder(value))
+  )
   .superRefine((order, context) => {
     const intervalIssue = getReservationIntervalValidationIssue(order);
     if (!intervalIssue) return;
@@ -137,16 +153,12 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
-  readonly reservation: {
-    readonly entryTier: WorkspaceCheckoutOrder["entryTier"];
-    readonly date: string;
-    readonly coffee: boolean;
-    readonly monitorOption?: WorkspaceCheckoutOrder["monitorOption"];
+  readonly reservation: WorkspaceCheckoutOrder & {
     readonly name: string;
     readonly email: string;
     readonly phone: string;
     readonly message?: string;
-  } & Partial<ReservationInterval>;
+  };
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -271,7 +283,9 @@ export const buildSignedPayState = (
   }
 
   const nowMilliseconds = getNowMilliseconds(options);
-  const reservation = normalizeReservationInterval(input.reservation);
+  const reservation = checkoutReturnStateJsonSchema.shape.reservation.parse(
+    input.reservation
+  );
   const iat = Math.floor(nowMilliseconds / 1000);
   const exp = Math.floor(
     (nowMilliseconds +

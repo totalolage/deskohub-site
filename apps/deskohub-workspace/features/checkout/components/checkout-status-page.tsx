@@ -16,7 +16,10 @@ import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
-import { getCoworkReservationPath } from "@/features/checkout/routes";
+import {
+  getCoworkReservationPath,
+  getMeetingRoomReservationPath,
+} from "@/features/checkout/routes";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
@@ -216,6 +219,10 @@ export function CheckoutStatusPage({
   const supportContactHref = getFulfillmentFailedContactHref(status, locale);
   const showSupportButton = !!supportContactHref;
   const Icon = copy.Icon;
+  const reservationPath =
+    status.summary?.tier === "meeting-room"
+      ? getMeetingRoomReservationPath(locale)
+      : getCoworkReservationPath(locale);
 
   return (
     <CheckoutFlowLayout activeStepKey="access" locale={locale}>
@@ -320,7 +327,7 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={getCoworkReservationPath(locale)}>
+            <Link href={reservationPath}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>

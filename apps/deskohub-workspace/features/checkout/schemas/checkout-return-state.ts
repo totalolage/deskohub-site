@@ -1,63 +1,128 @@
+import { Schema as EffectSchema, Option } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
   getWorkspaceProductByTier,
+  type WorkspaceProductMonitorOption,
   workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { RESERVATION_VALIDATION } from "@/features/reservation/schemas/reservation";
+import {
+  getReservationProductMonitorOption,
+  RESERVATION_VALIDATION,
+} from "@/features/reservation/schemas/reservation";
 import {
   getReservationIntervalValidationIssue,
-  normalizeReservationInterval,
-  reservationIntervalFieldSchemas,
+  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
+import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 
-const checkoutReturnStateReservationBaseSchema = z.object({
-  date: z.iso.date(),
-  ...reservationIntervalFieldSchemas,
-  coffee: z.boolean(),
-  monitorOption: z
-    .enum(workspaceProductMonitorOptions)
-    .optional()
-    .or(z.literal("").transform(() => undefined)),
-  name: z
-    .string()
-    .trim()
-    .min(RESERVATION_VALIDATION.name.min)
-    .max(RESERVATION_VALIDATION.name.max),
-  email: z
-    .string()
-    .trim()
-    .max(RESERVATION_VALIDATION.email.max)
-    .pipe(z.email()),
-  phone: z
-    .string()
-    .trim()
-    .min(1)
-    .max(RESERVATION_VALIDATION.phone.max)
-    .refine((phone) => isValidPhoneNumber(phone, "CZ")),
-  message: z
-    .string()
-    .trim()
-    .max(RESERVATION_VALIDATION.message.max)
-    .optional()
-    .or(z.literal("")),
+const CheckoutReturnStateReservationBaseSchema = EffectSchema.Struct({
+  startsAt: EffectSchema.NonEmptyString,
+  endsAt: EffectSchema.NonEmptyString,
+  name: EffectSchema.NonEmptyString,
+  email: EffectSchema.NonEmptyString,
+  phone: EffectSchema.NonEmptyString,
+  message: EffectSchema.optional(EffectSchema.String),
 });
 
+type CheckoutReturnStateReservationBase =
+  typeof CheckoutReturnStateReservationBaseSchema.Type;
+type CheckoutReturnStateReservationDraft =
+  | (CheckoutReturnStateReservationBase & {
+      readonly entryTier: (typeof workspaceCoworkProductTiers)[number];
+      readonly coffee: boolean;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    })
+  | (CheckoutReturnStateReservationBase & {
+      readonly entryTier: "meeting-room";
+    });
+
+const CheckoutReturnStateReservationSchema = EffectSchema.Union([
+  EffectSchema.Struct({
+    ...CheckoutReturnStateReservationBaseSchema.fields,
+    entryTier: EffectSchema.Literals(workspaceCoworkProductTiers),
+    coffee: EffectSchema.Boolean,
+    monitorOption: EffectSchema.optional(
+      EffectSchema.Literals(workspaceProductMonitorOptions)
+    ),
+  }),
+  EffectSchema.Struct({
+    ...CheckoutReturnStateReservationBaseSchema.fields,
+    entryTier: EffectSchema.Literal("meeting-room"),
+  }),
+]);
+
+const decodeCheckoutReturnStateReservation = EffectSchema.decodeUnknownOption(
+  CheckoutReturnStateReservationSchema
+);
+
+const checkoutReturnStateReservationInputSchema =
+  z.custom<CheckoutReturnStateReservationDraft>((value) =>
+    Option.isSome(decodeCheckoutReturnStateReservation(value))
+  );
+type CheckoutReturnStateReservation =
+  | (CheckoutReturnStateReservationBase & {
+      readonly entryTier: (typeof workspaceCoworkProductTiers)[number];
+      readonly coffee: boolean;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    })
+  | (CheckoutReturnStateReservationBase & {
+      readonly entryTier: "meeting-room";
+    });
+
 const validateCheckoutReturnStateReservation = (
-  reservation: z.output<typeof checkoutReturnStateReservationBaseSchema> & {
-    readonly entryTier:
-      | "meeting-room"
-      | (typeof workspaceCoworkProductTiers)[number];
-  },
-  context: z.core.$RefinementCtx<
-    z.output<typeof checkoutReturnStateReservationBaseSchema> & {
-      readonly entryTier:
-        | "meeting-room"
-        | (typeof workspaceCoworkProductTiers)[number];
-    }
-  >
+  reservation: CheckoutReturnStateReservationDraft,
+  context: z.core.$RefinementCtx<CheckoutReturnStateReservationDraft>
 ) => {
+  if (
+    reservation.name.trim().length < RESERVATION_VALIDATION.name.min ||
+    reservation.name.trim().length > RESERVATION_VALIDATION.name.max
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["name"],
+      message: "Invalid reservation customer name.",
+    });
+    return;
+  }
+
+  if (
+    reservation.email.trim().length > RESERVATION_VALIDATION.email.max ||
+    !z.email().safeParse(reservation.email.trim()).success
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["email"],
+      message: "Invalid reservation customer email.",
+    });
+    return;
+  }
+
+  if (
+    reservation.phone.trim().length > RESERVATION_VALIDATION.phone.max ||
+    !isValidPhoneNumber(reservation.phone.trim(), "CZ")
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["phone"],
+      message: "Invalid reservation customer phone.",
+    });
+    return;
+  }
+
+  if (
+    reservation.message &&
+    reservation.message.trim().length > RESERVATION_VALIDATION.message.max
+  ) {
+    context.addIssue({
+      code: "custom",
+      path: ["message"],
+      message: "Invalid reservation message.",
+    });
+    return;
+  }
+
   const intervalIssue = getReservationIntervalValidationIssue(reservation);
   if (intervalIssue) {
     context.addIssue({
@@ -65,11 +130,23 @@ const validateCheckoutReturnStateReservation = (
       path: [intervalIssue.path],
       message: intervalIssue.message,
     });
+    return;
+  }
+
+  const productRuleIssue = getReservationProductRuleIssue(reservation);
+  if (productRuleIssue) {
+    context.addIssue({
+      code: "custom",
+      path: [productRuleIssue.path],
+      message: productRuleIssue.message,
+    });
+    return;
   }
 
   const product = getWorkspaceProductByTier(reservation.entryTier);
+  const monitorOption = getReservationProductMonitorOption(reservation);
 
-  if (product.requiresMonitorOption && !reservation.monitorOption) {
+  if (product.requiresMonitorOption && !monitorOption) {
     context.addIssue({
       code: "custom",
       path: ["monitorOption"],
@@ -79,8 +156,8 @@ const validateCheckoutReturnStateReservation = (
 
   if (
     product.requiresMonitorOption &&
-    reservation.monitorOption &&
-    !product.allowedMonitorOptions.includes(reservation.monitorOption)
+    monitorOption &&
+    !product.allowedMonitorOptions.includes(monitorOption)
   ) {
     context.addIssue({
       code: "custom",
@@ -89,7 +166,7 @@ const validateCheckoutReturnStateReservation = (
     });
   }
 
-  if (!product.requiresMonitorOption && reservation.monitorOption) {
+  if (!product.requiresMonitorOption && monitorOption) {
     context.addIssue({
       code: "custom",
       path: ["monitorOption"],
@@ -98,43 +175,25 @@ const validateCheckoutReturnStateReservation = (
   }
 };
 
-const normalizeCheckoutReturnStateReservation = <
-  T extends {
-    readonly entryTier:
-      | "meeting-room"
-      | (typeof workspaceCoworkProductTiers)[number];
-    readonly coffee: boolean;
-  },
->(
-  reservation: T
-) => {
+const normalizeCheckoutReturnStateReservation = (
+  reservation: CheckoutReturnStateReservationDraft
+): CheckoutReturnStateReservation => {
+  if (reservation.entryTier === "meeting-room") {
+    return unsafeNormalizeReservationInterval(reservation);
+  }
+
   const product = getWorkspaceProductByTier(reservation.entryTier);
-  const normalizedReservation = normalizeReservationInterval(reservation);
+  const normalizedReservation = unsafeNormalizeReservationInterval(reservation);
+
   return product.requiresCoffee
     ? { ...normalizedReservation, coffee: true }
     : normalizedReservation;
 };
 
-export const coworkCheckoutReturnStateReservationSchema =
-  checkoutReturnStateReservationBaseSchema
-    .extend({
-      entryTier: z.enum(workspaceCoworkProductTiers),
-    })
+export const checkoutReturnStateReservationSchema =
+  checkoutReturnStateReservationInputSchema
     .superRefine(validateCheckoutReturnStateReservation)
     .transform(normalizeCheckoutReturnStateReservation);
-
-export const meetingRoomCheckoutReturnStateReservationSchema =
-  checkoutReturnStateReservationBaseSchema
-    .extend({
-      entryTier: z.literal("meeting-room"),
-    })
-    .superRefine(validateCheckoutReturnStateReservation)
-    .transform(normalizeCheckoutReturnStateReservation);
-
-export const checkoutReturnStateReservationSchema = z.union([
-  coworkCheckoutReturnStateReservationSchema,
-  meetingRoomCheckoutReturnStateReservationSchema,
-]);
 
 export const checkoutReturnStateJsonSchema = z.object({
   schema: z.literal("workspace-checkout-return-state"),

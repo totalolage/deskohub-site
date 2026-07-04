@@ -12,9 +12,9 @@ import {
 import {
   defaultReservationInterval,
   getReservationIntervalValidationIssue,
-  normalizeReservationInterval,
   type ReservationInterval,
   reservationIntervalFieldSchemas,
+  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 
 export type WorkspaceAvailabilityQuery = Partial<ReservationInterval> & {
@@ -122,7 +122,10 @@ const getIntervalParam = (
 ): Partial<ReservationInterval> => {
   const defaultInterval = () =>
     date
-      ? normalizeReservationInterval({ date, ...defaultReservationInterval })
+      ? unsafeNormalizeReservationInterval({
+          date,
+          ...defaultReservationInterval,
+        })
       : {};
   const startsAt = searchParams.get("startsAt")?.trim() || undefined;
   const endsAt = searchParams.get("endsAt")?.trim() || undefined;
@@ -140,7 +143,7 @@ const getIntervalParam = (
     return defaultInterval();
   }
 
-  return normalizeReservationInterval(interval);
+  return unsafeNormalizeReservationInterval(interval);
 };
 
 export const parseWorkspaceAvailabilityQuery = (

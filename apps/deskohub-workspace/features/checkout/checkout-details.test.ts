@@ -39,6 +39,8 @@ describe("checkout details persistence", () => {
   test("persists quote summary, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
       coffee: false,
     });
     const details = checkoutDetailsJsonSchema.parse({
@@ -47,9 +49,9 @@ describe("checkout details persistence", () => {
       locale: "en-US",
       reservation: {
         tier: "basic",
-        date: "2099-06-10",
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-10T22:00:00Z",
         coffee: false,
-        message: "Please keep this private.",
       },
       payment: {
         expectedPrice: quote.payment.expectedPrice,
@@ -79,9 +81,8 @@ describe("checkout details persistence", () => {
   test("persists custom reservation intervals", () => {
     const quote = buildWorkspaceCheckoutQuote({
       entryTier: "meeting-room",
-      coffee: false,
-      startsAt: "2099-06-10T09:00",
-      endsAt: "2099-06-10T13:00",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
     });
 
     const details = checkoutDetailsJsonSchema.parse({
@@ -90,10 +91,8 @@ describe("checkout details persistence", () => {
       locale: "en-US",
       reservation: {
         tier: "meeting-room",
-        date: "2099-06-10",
-        startsAt: "2099-06-10T09:00",
-        endsAt: "2099-06-10T13:00",
-        coffee: false,
+        startsAt: "2099-06-10T07:00:00Z",
+        endsAt: "2099-06-10T11:00:00Z",
       },
       payment: {
         expectedPrice: quote.payment.expectedPrice,
@@ -112,7 +111,12 @@ describe("checkout details persistence", () => {
 
   test("accepts negative discount rows but rejects negative expected totals", () => {
     const quote = buildWorkspaceCheckoutQuote(
-      { entryTier: "basic", coffee: false },
+      {
+        entryTier: "basic",
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-10T22:00:00Z",
+        coffee: false,
+      },
       {
         customerDiscount: {
           source: "dotypos-discount-group",
@@ -129,7 +133,8 @@ describe("checkout details persistence", () => {
         locale: "en-US",
         reservation: {
           tier: "basic",
-          date: "2099-06-10",
+          startsAt: "2099-06-09T22:00:00Z",
+          endsAt: "2099-06-10T22:00:00Z",
           coffee: false,
         },
         payment: {
@@ -148,7 +153,8 @@ describe("checkout details persistence", () => {
         locale: "en-US",
         reservation: {
           tier: "basic",
-          date: "2099-06-10",
+          startsAt: "2099-06-09T22:00:00Z",
+          endsAt: "2099-06-10T22:00:00Z",
           coffee: false,
         },
         payment: {

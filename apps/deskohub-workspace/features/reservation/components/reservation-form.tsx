@@ -20,10 +20,11 @@ import {
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
-  workspaceProductCatalog,
+  workspaceCoworkProductCatalog,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -38,8 +39,11 @@ import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
+  calendarDateToReservationPlainDate,
   formatReservationDisplayDate,
+  formatReservationInputDate,
   parseReservationInputDate,
+  reservationPlainDateToCalendarDate,
 } from "@/features/reservation/reservation-date";
 import {
   getAllowedMonitorOptionsForTier,
@@ -53,7 +57,7 @@ import {
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/schemas/reservation-checkout-query";
-import { normalizeReservationInterval } from "@/features/reservation/schemas/reservation-interval";
+import { unsafeNormalizeReservationInterval } from "@/features/reservation/schemas/reservation-interval";
 import {
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
@@ -110,10 +114,10 @@ type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
 const tierOptions: ReadonlyArray<{
   product: WorkspaceProductCatalogItem;
-  value: WorkspaceProductTier;
+  value: WorkspaceCoworkProductTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
-}> = workspaceProductCatalog.map((product) => ({
+}> = workspaceCoworkProductCatalog.map((product) => ({
   product,
   value: product.tier,
   ...workspaceProductTierMessages[product.tier],
@@ -135,14 +139,6 @@ const reservationFormSkeletonClassName =
   "rounded-full bg-navy-blue/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
 
 const fallbackTierCards = ["tier-1", "tier-2", "tier-3"] as const;
-
-const formatDateForInput = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-};
 
 const getWorkspaceAvailabilityQuery = ({
   date,
@@ -200,12 +196,23 @@ const loadWorkspaceAvailability = async ({
   return parseWorkspaceAvailabilityResponse(await response.json());
 };
 
-const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationDisplayDate(
-    date,
-    locale,
-    m.reservationDatePlaceholder({}, { locale })
-  );
+const formatDisplayDate = (date: string, locale: Locale) => {
+  const plainDate = parseReservationInputDate(date);
+
+  return plainDate
+    ? formatReservationDisplayDate(
+        plainDate,
+        locale,
+        m.reservationDatePlaceholder({}, { locale })
+      )
+    : m.reservationDatePlaceholder({}, { locale });
+};
+
+const getCalendarDateFromReservationInput = (date: string) => {
+  const plainDate = parseReservationInputDate(date);
+
+  return plainDate ? reservationPlainDateToCalendarDate(plainDate) : undefined;
+};
 
 const getSanitizedUtmParams = (
   searchParams: URLSearchParams
@@ -269,7 +276,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const selectedAvailabilityInterval = useMemo(
     () =>
       selectedDate
-        ? normalizeReservationInterval({ date: selectedDate })
+        ? unsafeNormalizeReservationInterval({ date: selectedDate })
         : null,
     [selectedDate]
   );
@@ -404,7 +411,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void form.handleSubmit((data) => {
+    void  form.handleSubmit((data) => {
       if (hasPreparedPayRedirect) return;
 
       setSubmissionMessage(null);
@@ -417,17 +424,18 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       }
       hasTrackedSuccessfulSubmission.current = false;
       window.scrollTo({ top: 0, behavior: "instant" });
+      const { date: _date, legalConsent, ...reservation } = data;
       sendReservation({
         locale,
         reservationIntentId,
-        legalConsent: data.legalConsent,
+        legalConsent,
         reservation: {
-          ...data,
-          coffee: tierIncludesCourtesyCoffee(data.entryTier)
+          ...reservation,
+          coffee: tierIncludesCourtesyCoffee(reservation.entryTier)
             ? true
-            : data.coffee,
-          monitorOption: tierRequiresMonitorOption(data.entryTier)
-            ? data.monitorOption
+            : reservation.coffee,
+          monitorOption: tierRequiresMonitorOption(reservation.entryTier)
+            ? reservation.monitorOption
             : undefined,
         },
       });
@@ -925,16 +933,33 @@ function ReservationDateField({
             <PopoverContent align="start" className="w-auto p-3">
               <Calendar
                 mode="single"
-                selected={parseReservationInputDate(field.value)}
+                selected={getCalendarDateFromReservationInput(
+                  field.value
+                )}
                 onSelect={(date) => {
-                  if (!date) return;
+                  const plainDate = date
+                    ? calendarDateToReservationPlainDate(date)
+                    : undefined;
 
-                  field.onChange(formatDateForInput(date));
+                  if (!plainDate) return;
+
+                  field.onChange(
+                    formatReservationInputDate(plainDate)
+                  );
                   setOpen(false);
                 }}
                 disabled={[
                   { before: new Date() },
-                  (date) => unavailableDates.has(formatDateForInput(date)),
+                  (date) => {
+                    const plainDate =
+                      calendarDateToReservationPlainDate(date);
+
+                    return plainDate
+                      ? unavailableDates.has(
+                          formatReservationInputDate(plainDate)
+                        )
+                      : true;
+                  },
                 ]}
               />
             </PopoverContent>

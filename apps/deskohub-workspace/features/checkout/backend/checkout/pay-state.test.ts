@@ -1,8 +1,8 @@
-import { describe, expect, mock, test } from "bun:test";
+import "@/shared/testing/workspace-test-env";
+
+import { describe, expect, test } from "bun:test";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import type { PayStateKey, SignedPayState } from "./pay-state";
-
-mock.module("server-only", () => ({}));
 
 const {
   buildPayStateQueryParams,
@@ -28,7 +28,8 @@ const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 
 const baseReservation = {
   entryTier: "profi" as const,
-  date: "2026-06-20",
+  startsAt: "2026-06-19T22:00:00Z",
+  endsAt: "2026-06-20T22:00:00Z",
   coffee: true,
   monitorOption: "2x27-qhd" as const,
   name: "Ada Lovelace",

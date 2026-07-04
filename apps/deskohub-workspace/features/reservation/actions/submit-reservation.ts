@@ -13,6 +13,7 @@ import {
   type SubmitReservationInput,
 } from "@/features/reservation/actions/submit-reservation-input";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import { getReservationPragueDate } from "@/features/reservation/schemas/reservation-interval";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
@@ -28,7 +29,7 @@ const getSubmitReservationErrorMessage = (
     const payState = openPayState(input.payStateToken);
 
     return getReservationAvailabilityUnavailableMessage({
-      date: payState.reservation.date,
+      date: getReservationPragueDate(payState.reservation),
       locale: input.locale,
       tier: payState.reservation.entryTier,
     });

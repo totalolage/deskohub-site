@@ -33,7 +33,8 @@ mock.module("next/headers", () => ({
 
 const reservation = {
   entryTier: "basic" as const,
-  date: "2026-07-01",
+  startsAt: "2026-06-30T22:00:00Z",
+  endsAt: "2026-07-01T22:00:00Z",
   coffee: false,
   name: "Ada Lovelace",
   email: "ada@example.com",
@@ -328,15 +329,16 @@ describe("prepareWorkspacePayStateEffect", () => {
     );
 
     expect(ensureAvailable).toHaveBeenCalledWith({
-      date: reservation.date,
+      date: "2026-07-01",
       entryTier: reservation.entryTier,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
       monitorOption: undefined,
     });
     expect(createDraft).toHaveBeenCalledTimes(1);
     expect(claimHoldCreation).toHaveBeenCalledWith("reservation-id");
     expect(assignTableId).toHaveBeenCalledWith({
       tier: "basic",
-      date: reservation.date,
       startsAt: "2026-06-30T22:00:00Z",
       endsAt: "2026-07-01T22:00:00Z",
       coffee: false,

@@ -35,7 +35,11 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import {
+  getReservationProductCoffee,
+  getReservationProductMonitorOption,
+  type ReservationOrderData,
+} from "@/features/reservation/schemas/reservation";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -262,30 +266,40 @@ const buildCheckoutDetailsForPayment = (input: {
   readonly data: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: LegalEvidenceMap;
-}): Omit<CheckoutDetailsJson, "fulfillment"> => ({
-  schema: "workspace-checkout-details",
-  schemaVersion: 1,
-  locale: input.locale,
-  reservation: {
-    tier: input.data.entryTier,
-    date: input.data.date,
-    startsAt: input.data.startsAt,
-    endsAt: input.data.endsAt,
-    coffee: input.data.coffee,
-    monitorOption: input.data.monitorOption,
-  },
-  payment: {
-    expectedPrice: input.quote.payment.expectedPrice,
-    summary: checkoutSummarySchema.parse(input.quote.summary),
-    ...(input.quote.payment.customerDiscount && {
-      undiscountedPrice:
-        input.quote.payment.undiscountedPrice ??
-        input.quote.payment.expectedPrice,
-      customerDiscount: input.quote.payment.customerDiscount,
-    }),
-  },
-  legal: input.legalEvidence,
-});
+}): Omit<CheckoutDetailsJson, "fulfillment"> => {
+  const reservation = Match.value(input.data).pipe(
+    Match.when({ entryTier: "meeting-room" }, (reservation) => ({
+      tier: reservation.entryTier,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
+    })),
+    Match.orElse((reservation) => ({
+      tier: reservation.entryTier,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
+      coffee: getReservationProductCoffee(reservation),
+      monitorOption: getReservationProductMonitorOption(reservation),
+    }))
+  );
+
+  return {
+    schema: "workspace-checkout-details",
+    schemaVersion: 1,
+    locale: input.locale,
+    reservation,
+    payment: {
+      expectedPrice: input.quote.payment.expectedPrice,
+      summary: checkoutSummarySchema.parse(input.quote.summary),
+      ...(input.quote.payment.customerDiscount && {
+        undiscountedPrice:
+          input.quote.payment.undiscountedPrice ??
+          input.quote.payment.expectedPrice,
+        customerDiscount: input.quote.payment.customerDiscount,
+      }),
+    },
+    legal: input.legalEvidence,
+  };
+};
 
 const openFinalPayState: (
   payStateToken: string,
@@ -724,8 +738,8 @@ export const CheckoutServiceLive = Layer.effect(
           yield* reservations.updateProductIntent({
             id: reservation.id,
             productTier: data.entryTier,
-            productCoffee: data.coffee,
-            productMonitorOption: data.monitorOption,
+            productCoffee: getReservationProductCoffee(data),
+            productMonitorOption: getReservationProductMonitorOption(data),
             locale,
           });
 

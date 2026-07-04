@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { Data, Effect } from "effect";
 import { z } from "zod/v4";
+import { temporalInstantToPlainDate } from "@/shared/utils/temporal";
 
 export type ReservationInterval = {
   readonly startsAt: string;
@@ -37,6 +38,7 @@ const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const endTimePattern = /^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/;
 const localDateTimePattern =
   /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
+const pragueTimeZone = "Europe/Prague";
 
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
@@ -48,8 +50,10 @@ export const reservationIntervalFieldSchemas = {
 export const isDefaultReservationInterval = (
   interval: ReservationIntervalInput
 ) => {
+  const hasExplicitInterval =
+    interval.startsAt !== undefined || interval.endsAt !== undefined;
   const normalized = getNormalizedReservationInterval({
-    date: "2099-01-01",
+    ...(!hasExplicitInterval && { date: "2099-01-01" }),
     ...interval,
   });
 
@@ -85,7 +89,7 @@ export const getReservationIntervalValidationIssue = (
   return normalized.issue;
 };
 
-export const normalizeReservationInterval = <T extends object>(
+export const unsafeNormalizeReservationInterval = <T extends object>(
   value: T
 ): Omit<T, "durationMinutes"> & ReservationInterval => {
   const normalized = getNormalizedReservationInterval(
@@ -102,12 +106,28 @@ export const normalizeReservationInterval = <T extends object>(
     ReservationInterval;
 };
 
+export const normalizeReservationInterval = Effect.fn(
+  "normalizeReservationInterval"
+)(function* <T extends object>(value: T) {
+  return yield* Effect.try({
+    try: () => unsafeNormalizeReservationInterval(value),
+    catch: (cause) =>
+      new ReservationIntervalError({
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Reservation start and end must be valid timestamps.",
+        cause,
+      }),
+  });
+});
+
 export const getReservationPragueDateRange = (
   reservation: ReservationIntervalInput
 ): Effect.Effect<ReservationDateRange, ReservationIntervalError> =>
   Effect.try({
     try: () => {
-      const interval = normalizeReservationInterval(reservation);
+      const interval = unsafeNormalizeReservationInterval(reservation);
       const startMs = toInstantMs(interval.startsAt);
       const endMs = toInstantMs(interval.endsAt);
 
@@ -140,6 +160,12 @@ export const getReservationDurationMinutes = (
 
   return duration / (60 * 1000);
 };
+
+export const getReservationPragueDate = (interval: ReservationInterval) =>
+  temporalInstantToPlainDate({
+    instant: Temporal.Instant.from(interval.startsAt),
+    timeZone: pragueTimeZone,
+  }).toString();
 
 export const reservationDateRangesOverlap = (
   left: Pick<ReservationDateRange, "startMs" | "endMs">,
@@ -284,14 +310,14 @@ const plainDateTimeToPragueIso = (dateTime: {
   toZonedDateTime: (timeZone: string) => {
     toInstant: () => { toString: () => string };
   };
-}) => dateTime.toZonedDateTime("Europe/Prague").toInstant().toString();
+}) => dateTime.toZonedDateTime(pragueTimeZone).toInstant().toString();
 
 const toInstantMs = (value: string) =>
   Temporal.Instant.from(value).epochMilliseconds;
 
 const toPraguePlainDateTime = (value: string) =>
   Temporal.Instant.from(value)
-    .toZonedDateTimeISO("Europe/Prague")
+    .toZonedDateTimeISO(pragueTimeZone)
     .toPlainDateTime();
 
 const timeToMinutes = (time: string) => {

@@ -9,7 +9,6 @@ import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryTy
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
-import { buildSignedPayState, sealPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
 
@@ -32,7 +31,8 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
 
 const reservationData: ReservationOrderData = {
   entryTier: "profi",
-  date: "2026-06-20",
+  startsAt: "2026-06-19T22:00:00Z",
+  endsAt: "2026-06-20T22:00:00Z",
   coffee: false,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
@@ -40,12 +40,16 @@ const reservationData: ReservationOrderData = {
   phone: "+420 777 777 777",
 };
 
-const buildPayStateToken = (orderId: string) => {
-  const quote = buildWorkspaceCheckoutQuote(reservationData);
+const buildPayStateToken = async (
+  orderId: string,
+  data: ReservationOrderData = reservationData
+) => {
+  const { buildSignedPayState, sealPayState } = await import("./pay-state");
+  const quote = buildWorkspaceCheckoutQuote(data);
   return sealPayState(
     buildSignedPayState({
       locale: "en-US",
-      reservation: reservationData,
+      reservation: data,
       quote,
       orderId,
       ttlMilliseconds: 10 * 60 * 1000,
@@ -184,10 +188,12 @@ describe("CheckoutService", () => {
       ),
     };
 
+    const payStateToken = await buildPayStateToken(orderId);
+
     await Effect.gen(function* () {
       const service = yield* CheckoutService;
       return yield* service.createHostedPaymentCheckout(
-        { payStateToken: buildPayStateToken(orderId), legalConsent: true },
+        { payStateToken, legalConsent: true },
         "en-US"
       );
     }).pipe(

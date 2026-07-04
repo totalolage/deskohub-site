@@ -1,18 +1,22 @@
-import { Effect } from "effect";
+import "@/shared/polyfills/temporal";
+
+import { Effect, Match } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
   getWorkspaceProductByTier,
+  type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
+  workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
-  workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import {
   getReservationIntervalValidationIssue,
   getReservationPragueDateRange,
-  normalizeReservationInterval,
+  type ReservationInterval,
   reservationIntervalFieldSchemas,
+  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 
@@ -23,22 +27,8 @@ export const RESERVATION_VALIDATION = {
   message: { max: 1000 },
 } as const;
 
-const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Prague",
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
-const getCurrentPragueDate = () => {
-  const dateParts = Object.fromEntries(
-    pragueDateFormatter
-      .formatToParts(new Date())
-      .map((part) => [part.type, part.value])
-  );
-
-  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
-};
+const getCurrentPragueDate = () =>
+  Temporal.Now.zonedDateTimeISO("Europe/Prague").toPlainDate().toString();
 
 export const isTodayOrFuturePragueDate = (date: string) =>
   date >= getCurrentPragueDate();
@@ -54,65 +44,113 @@ const requiredEmailSchema = z
   })
   .pipe(z.email({ error: m.contactValidationEmailInvalid() }));
 
-const reservationOrderObjectSchema = () =>
+const reservationOrderBaseShape = {
+  ...reservationIntervalFieldSchemas,
+  name: z
+    .string()
+    .trim()
+    .min(RESERVATION_VALIDATION.name.min, {
+      error: m.contactValidationNameMinimum({
+        min: RESERVATION_VALIDATION.name.min,
+      }),
+    })
+    .max(RESERVATION_VALIDATION.name.max, {
+      error: m.contactValidationNameMaximum({
+        max: RESERVATION_VALIDATION.name.max,
+      }),
+    }),
+  email: requiredEmailSchema,
+  phone: z
+    .string()
+    .trim()
+    .min(1, { error: m.contactValidationPhoneRequired() })
+    .max(RESERVATION_VALIDATION.phone.max, {
+      error: m.contactValidationPhoneMaximum({
+        max: RESERVATION_VALIDATION.phone.max,
+      }),
+    })
+    .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
+      error: m.contactValidationPhoneInvalid(),
+    }),
+  message: z
+    .string()
+    .trim()
+    .max(RESERVATION_VALIDATION.message.max, {
+      error: m.contactValidationMessageMaximum({
+        max: RESERVATION_VALIDATION.message.max,
+      }),
+    })
+    .optional()
+    .or(z.literal("")),
+} as const;
+
+const reservationFormDateShape = {
+  date: z.iso
+    .date({ error: m.reservationValidationDateRequired() })
+    .refine(isTodayOrFuturePragueDate, {
+      error: m.reservationValidationDatePast(),
+    }),
+} as const;
+
+const coworkReservationOrderObjectSchema = () =>
   z.object({
-    entryTier: z.enum(workspaceProductTiers, {
+    ...reservationOrderBaseShape,
+    entryTier: z.enum(workspaceCoworkProductTiers, {
       error: m.reservationValidationTierRequired(),
     }),
-    date: z.iso
-      .date({ error: m.reservationValidationDateRequired() })
-      .refine(isTodayOrFuturePragueDate, {
-        error: m.reservationValidationDatePast(),
-      }),
-    ...reservationIntervalFieldSchemas,
     coffee: z.boolean(),
     monitorOption: z
       .enum(workspaceProductMonitorOptions)
       .optional()
       .or(z.literal("").transform(() => undefined)),
-    name: z
-      .string()
-      .trim()
-      .min(RESERVATION_VALIDATION.name.min, {
-        error: m.contactValidationNameMinimum({
-          min: RESERVATION_VALIDATION.name.min,
-        }),
-      })
-      .max(RESERVATION_VALIDATION.name.max, {
-        error: m.contactValidationNameMaximum({
-          max: RESERVATION_VALIDATION.name.max,
-        }),
-      }),
-    email: requiredEmailSchema,
-    phone: z
-      .string()
-      .trim()
-      .min(1, { error: m.contactValidationPhoneRequired() })
-      .max(RESERVATION_VALIDATION.phone.max, {
-        error: m.contactValidationPhoneMaximum({
-          max: RESERVATION_VALIDATION.phone.max,
-        }),
-      })
-      .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
-        error: m.contactValidationPhoneInvalid(),
-      }),
-    message: z
-      .string()
-      .trim()
-      .max(RESERVATION_VALIDATION.message.max, {
-        error: m.contactValidationMessageMaximum({
-          max: RESERVATION_VALIDATION.message.max,
-        }),
-      })
-      .optional()
-      .or(z.literal("")),
   });
 
-const validateReservationOrder = (
-  data: z.output<ReturnType<typeof reservationOrderObjectSchema>>,
-  context: z.core.$RefinementCtx<
-    z.output<ReturnType<typeof reservationOrderObjectSchema>>
-  >
+const meetingRoomReservationOrderObjectSchema = () =>
+  z.object({
+    ...reservationOrderBaseShape,
+    entryTier: z.literal("meeting-room"),
+  });
+
+const reservationOrderObjectSchema = () =>
+  z.union([
+    coworkReservationOrderObjectSchema(),
+    meetingRoomReservationOrderObjectSchema(),
+  ]);
+
+type ReservationOrderObject = z.output<
+  ReturnType<typeof reservationOrderObjectSchema>
+>;
+type CoworkReservationOrderObject = z.output<
+  ReturnType<typeof coworkReservationOrderObjectSchema>
+>;
+type MeetingRoomReservationOrderObject = z.output<
+  ReturnType<typeof meetingRoomReservationOrderObjectSchema>
+>;
+type NormalizedCoworkReservationOrder = Omit<
+  CoworkReservationOrderObject,
+  "durationMinutes"
+> &
+  ReservationInterval;
+type NormalizedMeetingRoomReservationOrder = Omit<
+  MeetingRoomReservationOrderObject,
+  "durationMinutes"
+> &
+  ReservationInterval;
+type NormalizedReservationOrder =
+  | NormalizedCoworkReservationOrder
+  | NormalizedMeetingRoomReservationOrder;
+type CoworkReservationFormObject = CoworkReservationOrderObject & {
+  readonly date: string;
+  readonly legalConsent: boolean;
+};
+type NormalizedCoworkReservationForm = NormalizedCoworkReservationOrder & {
+  readonly date: string;
+  readonly legalConsent: boolean;
+};
+
+const validateReservationOrder = <T extends ReservationOrderObject>(
+  data: T,
+  context: z.core.$RefinementCtx<T>
 ) => {
   const intervalIssue = getReservationIntervalValidationIssue(data);
   if (intervalIssue) {
@@ -148,7 +186,9 @@ const validateReservationOrder = (
 
   const product = getWorkspaceProductByTier(data.entryTier);
 
-  if (product.requiresMonitorOption && !data.monitorOption) {
+  const monitorOption = getReservationProductMonitorOption(data);
+
+  if (product.requiresMonitorOption && !monitorOption) {
     context.addIssue({
       code: "custom",
       path: ["monitorOption"],
@@ -158,8 +198,8 @@ const validateReservationOrder = (
 
   if (
     product.requiresMonitorOption &&
-    data.monitorOption &&
-    !product.allowedMonitorOptions.includes(data.monitorOption)
+    monitorOption &&
+    !product.allowedMonitorOptions.includes(monitorOption)
   ) {
     context.addIssue({
       code: "custom",
@@ -168,7 +208,7 @@ const validateReservationOrder = (
     });
   }
 
-  if (!product.requiresMonitorOption && data.monitorOption) {
+  if (!product.requiresMonitorOption && monitorOption) {
     context.addIssue({
       code: "custom",
       path: ["monitorOption"],
@@ -177,18 +217,40 @@ const validateReservationOrder = (
   }
 };
 
-const normalizeReservationOrder = <
-  T extends { entryTier: WorkspaceProductTier; coffee: boolean },
->(
-  data: T
-) => {
+const normalizeCoworkReservationOrder = (
+  data: CoworkReservationOrderObject
+): NormalizedCoworkReservationOrder => {
   const product = getWorkspaceProductByTier(data.entryTier);
-  const reservation = normalizeReservationInterval(data);
+  const reservation = unsafeNormalizeReservationInterval(data);
 
   return product.requiresCoffee
     ? { ...reservation, coffee: true }
     : reservation;
 };
+
+const normalizeMeetingRoomReservationOrder = (
+  data: MeetingRoomReservationOrderObject
+): NormalizedMeetingRoomReservationOrder =>
+  unsafeNormalizeReservationInterval(data);
+
+const normalizeReservationOrder = (
+  data: ReservationOrderObject
+): NormalizedReservationOrder =>
+  Match.value(data).pipe(
+    Match.when(
+      { entryTier: "meeting-room" },
+      normalizeMeetingRoomReservationOrder
+    ),
+    Match.orElse(normalizeCoworkReservationOrder)
+  );
+
+const normalizeCoworkReservationForm = (
+  data: CoworkReservationFormObject
+): NormalizedCoworkReservationForm => ({
+  ...normalizeCoworkReservationOrder(data),
+  date: data.date,
+  legalConsent: data.legalConsent,
+});
 
 export const getReservationOrderSchema = () =>
   reservationOrderObjectSchema()
@@ -196,14 +258,15 @@ export const getReservationOrderSchema = () =>
     .transform(normalizeReservationOrder);
 
 export const getReservationSchema = () =>
-  reservationOrderObjectSchema()
+  coworkReservationOrderObjectSchema()
     .extend({
+      ...reservationFormDateShape,
       legalConsent: z.boolean().refine(Boolean, {
         error: m.reservationValidationLegalConsentRequired(),
       }),
     })
     .superRefine(validateReservationOrder)
-    .transform(normalizeReservationOrder);
+    .transform(normalizeCoworkReservationForm);
 
 export type ReservationInput = z.input<ReturnType<typeof getReservationSchema>>;
 export type ReservationData = z.output<ReturnType<typeof getReservationSchema>>;
@@ -213,6 +276,28 @@ export type ReservationOrderInput = z.input<
 export type ReservationOrderData = z.output<
   ReturnType<typeof getReservationOrderSchema>
 >;
+
+type ReservationProductProjectionInput = {
+  readonly entryTier: WorkspaceProductTier;
+  readonly coffee?: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+};
+
+export const getReservationProductCoffee = (
+  reservation: ReservationProductProjectionInput
+) =>
+  Match.value(reservation.entryTier).pipe(
+    Match.when("meeting-room", () => false),
+    Match.orElse(() => Boolean(reservation.coffee))
+  );
+
+export const getReservationProductMonitorOption = (
+  reservation: ReservationProductProjectionInput
+) =>
+  Match.value(reservation.entryTier).pipe(
+    Match.when("meeting-room", () => undefined),
+    Match.orElse(() => reservation.monitorOption)
+  );
 
 export const reservationDefaultValues: ReservationInput = {
   entryTier: "basic",

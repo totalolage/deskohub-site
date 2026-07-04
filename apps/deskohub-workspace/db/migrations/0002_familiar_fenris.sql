@@ -1,0 +1,2 @@
+ALTER TABLE "workspace_reservations" DROP CONSTRAINT "workspace_reservations_product_tier_check";--> statement-breakpoint
+ALTER TABLE "workspace_reservations" ADD CONSTRAINT "workspace_reservations_product_tier_check" CHECK ("workspace_reservations"."product_tier" in ('basic', 'plus', 'profi', 'meeting-room'));

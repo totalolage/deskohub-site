@@ -4,7 +4,13 @@ import {
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 
-export const workspaceProductTiers = ["basic", "plus", "profi"] as const;
+export const workspaceCoworkProductTiers = ["basic", "plus", "profi"] as const;
+export const workspaceProductTiers = [
+  ...workspaceCoworkProductTiers,
+  "meeting-room",
+] as const;
+
+export const workspaceMeetingRoomDurationOptions = [60, 240, 24 * 60] as const;
 
 export const workspaceProductMonitorOptions = [
   "2x27-qhd",
@@ -14,8 +20,12 @@ export const workspaceProductMonitorOptions = [
 ] as const;
 
 export type WorkspaceProductTier = (typeof workspaceProductTiers)[number];
+export type WorkspaceCoworkProductTier =
+  (typeof workspaceCoworkProductTiers)[number];
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
+export type WorkspaceMeetingRoomDurationMinutes =
+  (typeof workspaceMeetingRoomDurationOptions)[number];
 
 export const workspaceProductMonitorOptionTableTags: Record<
   WorkspaceProductMonitorOption,
@@ -65,7 +75,33 @@ export const workspaceProductCatalog: readonly WorkspaceProductCatalogItem[] = [
     requiresMonitorOption: true,
     allowedMonitorOptions: workspaceProductMonitorOptions,
   },
+  {
+    tier: "meeting-room",
+    label: "Meeting Room",
+    price: { value: 30_000, exponent: 2, currency: "CZK" },
+    includesCourtesyCoffee: false,
+    requiresCoffee: false,
+    requiresMonitorOption: false,
+    allowedMonitorOptions: [],
+  },
 ];
+
+export const workspaceCoworkProductCatalog = workspaceProductCatalog.filter(
+  (
+    product
+  ): product is WorkspaceProductCatalogItem & {
+    readonly tier: WorkspaceCoworkProductTier;
+  } => isWorkspaceCoworkProductTier(product.tier)
+);
+
+export const workspaceMeetingRoomDurationPrices: Record<
+  WorkspaceMeetingRoomDurationMinutes,
+  WorkspaceMoney
+> = {
+  60: { value: 30_000, exponent: 2, currency: "CZK" },
+  240: { value: 60_000, exponent: 2, currency: "CZK" },
+  1440: { value: 100_000, exponent: 2, currency: "CZK" },
+};
 
 export const workspaceProductCoffeePrice: WorkspaceMoney = {
   value: 5000,
@@ -102,6 +138,23 @@ export function isWorkspaceProductTier(
   );
 }
 
+export function isWorkspaceCoworkProductTier(
+  value: string | undefined
+): value is WorkspaceCoworkProductTier {
+  return (
+    value !== undefined &&
+    workspaceCoworkProductTiers.includes(value as WorkspaceCoworkProductTier)
+  );
+}
+
+export function isWorkspaceMeetingRoomDuration(
+  durationMinutes: number
+): durationMinutes is WorkspaceMeetingRoomDurationMinutes {
+  return workspaceMeetingRoomDurationOptions.includes(
+    durationMinutes as WorkspaceMeetingRoomDurationMinutes
+  );
+}
+
 export function isWorkspaceProductMonitorOption(
   value: string | undefined
 ): value is WorkspaceProductMonitorOption {
@@ -129,4 +182,15 @@ export function getWorkspaceProductCoffeeLinePriceForTier(
       value: 0,
     };
   return workspaceProductCoffeePrice;
+}
+
+export function getWorkspaceMeetingRoomPriceForDuration(
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes
+) {
+  const price = workspaceMeetingRoomDurationPrices[durationMinutes];
+  if (!price) {
+    throw new Error(`Unknown meeting room duration: ${durationMinutes}`);
+  }
+
+  return price;
 }

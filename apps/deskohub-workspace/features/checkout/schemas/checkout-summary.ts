@@ -7,6 +7,9 @@ import {
 export const checkoutSummaryItemSchema = z.object({
   key: z.string().min(1),
   amount: workspaceMoneySchema,
+  meetingRoomDurationMinutes: z
+    .union([z.literal(60), z.literal(240), z.literal(1440)])
+    .optional(),
 });
 
 export const checkoutSummarySectionSchema = z.discriminatedUnion("key", [

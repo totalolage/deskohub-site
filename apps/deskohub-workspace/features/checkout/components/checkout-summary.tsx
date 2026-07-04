@@ -2,9 +2,11 @@ import type { ReactNode } from "react";
 import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
+  CheckoutSummaryItem,
 } from "@/features/checkout/checkout-quote";
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
+  getWorkspaceMeetingRoomDurationTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
@@ -35,27 +37,36 @@ const summarySectionLabels = {
   total: m.checkoutSummarySectionTotal,
 } as const;
 
-const getSummaryItemLabel = (key: string, locale: Locale) => {
-  const productTier = productItemTiers[key as keyof typeof productItemTiers];
+const getSummaryItemLabel = (item: CheckoutSummaryItem, locale: Locale) => {
+  if (item.meetingRoomDurationMinutes) {
+    return getWorkspaceMeetingRoomDurationTitle(
+      item.meetingRoomDurationMinutes,
+      locale
+    );
+  }
+
+  const productTier =
+    productItemTiers[item.key as keyof typeof productItemTiers];
   if (productTier) return getWorkspaceProductTierTitle(productTier, locale);
 
-  if (key === "addon:coffee")
+  if (item.key === "addon:coffee")
     return m.checkoutSummaryItemCoffee({}, { locale });
 
-  if (key.startsWith("monitor:")) {
-    const monitorOption = key.slice("monitor:".length);
+  if (item.key.startsWith("monitor:")) {
+    const monitorOption = item.key.slice("monitor:".length);
     if (isWorkspaceProductMonitorOption(monitorOption)) {
       return getWorkspaceProductMonitorTitle(monitorOption, locale);
     }
   }
 
-  if (key.startsWith("customer-discount:")) {
+  if (item.key.startsWith("customer-discount:")) {
     return m.checkoutSummaryItemCustomerDiscount({}, { locale });
   }
 
-  if (key === "total:final") return m.checkoutSummaryItemTotal({}, { locale });
+  if (item.key === "total:final")
+    return m.checkoutSummaryItemTotal({}, { locale });
 
-  return key;
+  return item.key;
 };
 
 export function CheckoutSummary({
@@ -87,7 +98,7 @@ export function CheckoutSummary({
                     itemChanged && "font-semibold text-burned-orange"
                   )}
                 >
-                  <span>{getSummaryItemLabel(item.key, locale)}</span>
+                  <span>{getSummaryItemLabel(item, locale)}</span>
                   <span className="shrink-0 font-semibold">
                     {formatWorkspaceMoney(item.amount, locale)}
                   </span>

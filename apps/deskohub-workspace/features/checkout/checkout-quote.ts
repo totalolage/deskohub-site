@@ -1,11 +1,14 @@
 import type { DotyposCustomerDiscount } from "@deskohub/dotypos";
-import { Data, Effect } from "effect";
-import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout";
+import { Data, Effect, Match } from "effect";
+import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout/checkout-pricing";
 import {
+  getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  isWorkspaceMeetingRoomDuration,
+  type WorkspaceCoworkProductTier,
+  type WorkspaceMeetingRoomDurationMinutes,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import {
   addWorkspaceMoneyEffect,
@@ -15,22 +18,34 @@ import {
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
 import {
+  getReservationDurationMinutes,
   isDefaultReservationInterval,
   normalizeReservationInterval,
   type ReservationInterval,
+  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
+import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 
 export const workspaceCheckoutQuoteSchemaVersion = 1 as const;
 
-export type WorkspaceCheckoutOrder = {
-  readonly entryTier: WorkspaceProductTier;
+export type WorkspaceCoworkCheckoutOrder = {
+  readonly entryTier: WorkspaceCoworkProductTier;
   readonly coffee: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 } & Partial<ReservationInterval>;
 
+export type WorkspaceMeetingRoomCheckoutOrder = {
+  readonly entryTier: "meeting-room";
+} & ReservationInterval;
+
+export type WorkspaceCheckoutOrder =
+  | WorkspaceCoworkCheckoutOrder
+  | WorkspaceMeetingRoomCheckoutOrder;
+
 export type CheckoutSummaryItem = {
   readonly key: string;
   readonly amount: WorkspaceMoney;
+  readonly meetingRoomDurationMinutes?: WorkspaceMeetingRoomDurationMinutes;
 };
 
 export type CheckoutSummarySection = {
@@ -74,18 +89,21 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (order: WorkspaceCheckoutOrder) {
   const product = getWorkspaceProductByTier(order.entryTier);
-  const interval = yield* Effect.try({
-    try: () => normalizeReservationInterval(order),
-    catch: (cause) =>
-      new CheckoutQuoteError({
-        message:
-          cause instanceof Error
-            ? cause.message
-            : "Invalid reservation interval.",
-      }),
-  });
+  const interval = yield* normalizeReservationInterval(order).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CheckoutQuoteError({
+          message: cause.message,
+        })
+    )
+  );
 
-  if (product.requiresMonitorOption && !order.monitorOption) {
+  const monitorOption = Match.value(order).pipe(
+    Match.when({ entryTier: "meeting-room" }, () => undefined),
+    Match.orElse((coworkOrder) => coworkOrder.monitorOption)
+  );
+
+  if (product.requiresMonitorOption && !monitorOption) {
     return yield* Effect.fail(
       new CheckoutQuoteError({
         message: "Monitor option is required for this entry tier.",
@@ -95,8 +113,8 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
 
   if (
     product.requiresMonitorOption &&
-    order.monitorOption &&
-    !product.allowedMonitorOptions.includes(order.monitorOption)
+    monitorOption &&
+    !product.allowedMonitorOptions.includes(monitorOption)
   ) {
     return yield* Effect.fail(
       new CheckoutQuoteError({
@@ -105,7 +123,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
     );
   }
 
-  if (!product.requiresMonitorOption && order.monitorOption) {
+  if (!product.requiresMonitorOption && monitorOption) {
     return yield* Effect.fail(
       new CheckoutQuoteError({
         message: "Monitor option is unavailable for this entry tier.",
@@ -113,16 +131,35 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
     );
   }
 
-  const normalizedOrder: WorkspaceCheckoutOrder = {
-    entryTier: order.entryTier,
-    coffee: product.requiresCoffee ? true : order.coffee,
-    ...(!isDefaultReservationInterval(interval) && {
+  const productRuleIssue = getReservationProductRuleIssue({
+    ...order,
+    startsAt: interval.startsAt,
+    endsAt: interval.endsAt,
+  });
+  if (productRuleIssue) {
+    return yield* Effect.fail(
+      new CheckoutQuoteError({
+        message: productRuleIssue.message,
+      })
+    );
+  }
+
+  const normalizedOrder: WorkspaceCheckoutOrder = Match.value(order).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomOrder) => ({
+      entryTier: meetingRoomOrder.entryTier,
       startsAt: interval.startsAt,
       endsAt: interval.endsAt,
-      durationMinutes: interval.durationMinutes,
-    }),
-    ...(order.monitorOption && { monitorOption: order.monitorOption }),
-  };
+    })),
+    Match.orElse((coworkOrder) => ({
+      entryTier: coworkOrder.entryTier,
+      coffee: product.requiresCoffee ? true : coworkOrder.coffee,
+      ...(!isDefaultReservationInterval(interval) && {
+        startsAt: interval.startsAt,
+        endsAt: interval.endsAt,
+      }),
+      ...(monitorOption && { monitorOption }),
+    }))
+  );
 
   return normalizedOrder;
 });
@@ -135,21 +172,27 @@ const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
 const getCheckoutQuoteCanonicalPayload = (
   quote: Omit<WorkspaceCheckoutQuote, "fingerprint">
 ) => {
-  const coffeePriceAmount = getWorkspaceProductCoffeeLinePriceForTier(
-    quote.order.entryTier
-  ).value;
-  const interval = normalizeReservationInterval(quote.order);
+  const interval = unsafeNormalizeReservationInterval(quote.order);
+  const order = Match.value(quote.order).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomOrder) => ({
+      tier: meetingRoomOrder.entryTier,
+      interval,
+    })),
+    Match.orElse((coworkOrder) => ({
+      tier: coworkOrder.entryTier,
+      coffee: coworkOrder.coffee,
+      coffeePriceAmount: getWorkspaceProductCoffeeLinePriceForTier(
+        coworkOrder.entryTier
+      ).value,
+      monitorOption: coworkOrder.monitorOption ?? null,
+      ...(!isDefaultReservationInterval(interval) && { interval }),
+    }))
+  );
 
   return JSON.stringify({
     schema: quote.schema,
     schemaVersion: quote.schemaVersion,
-    order: {
-      tier: quote.order.entryTier,
-      coffee: quote.order.coffee,
-      coffeePriceAmount,
-      monitorOption: quote.order.monitorOption ?? null,
-      ...(!isDefaultReservationInterval(interval) && { interval }),
-    },
+    order,
     currency: quote.summary.total.currency,
     exponent: quote.summary.total.exponent,
     payment: {
@@ -193,8 +236,17 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
 ) {
   const normalizedOrder = yield* normalizeWorkspaceCheckoutOrderEffect(order);
   const product = getWorkspaceProductByTier(normalizedOrder.entryTier);
+  const interval = unsafeNormalizeReservationInterval(normalizedOrder);
+  const durationMinutes = getReservationDurationMinutes(interval);
   const productPrice = withWorkspaceMoneyCurrency(
-    product.price,
+    Match.value(normalizedOrder).pipe(
+      Match.when({ entryTier: "meeting-room" }, () =>
+        isWorkspaceMeetingRoomDuration(durationMinutes)
+          ? getWorkspaceMeetingRoomPriceForDuration(durationMinutes)
+          : product.price
+      ),
+      Match.orElse(() => product.price)
+    ),
     options.currencyOverride
   );
   const coffeePrice = withWorkspaceMoneyCurrency(
@@ -203,19 +255,36 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
   );
   const orderItems: CheckoutSummaryItem[] = [
     {
-      key: `product:${normalizedOrder.entryTier}`,
+      key: Match.value(normalizedOrder).pipe(
+        Match.when(
+          { entryTier: "meeting-room" },
+          () => `product:meeting-room:${durationMinutes}`
+        ),
+        Match.orElse((coworkOrder) => `product:${coworkOrder.entryTier}`)
+      ),
       amount: productPrice,
+      ...Match.value(normalizedOrder).pipe(
+        Match.when({ entryTier: "meeting-room" }, () =>
+          isWorkspaceMeetingRoomDuration(durationMinutes)
+            ? { meetingRoomDurationMinutes: durationMinutes }
+            : {}
+        ),
+        Match.orElse(() => ({}))
+      ),
     },
   ];
 
-  if (normalizedOrder.coffee) {
+  if (normalizedOrder.entryTier !== "meeting-room" && normalizedOrder.coffee) {
     orderItems.push({
       key: "addon:coffee",
       amount: coffeePrice,
     });
   }
 
-  if (normalizedOrder.monitorOption) {
+  if (
+    normalizedOrder.entryTier !== "meeting-room" &&
+    normalizedOrder.monitorOption
+  ) {
     orderItems.push({
       key: `monitor:${normalizedOrder.monitorOption}`,
       amount: workspaceMoneyWithValue(0, productPrice),

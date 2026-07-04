@@ -160,7 +160,8 @@ describe("workspace checkout quotes", () => {
   test("sanitizes runtime contact and consent fields from quote output", () => {
     const orderWithRuntimeExtras = {
       entryTier: "basic",
-      date: "2026-06-01",
+      startsAt: "2026-05-31T22:00:00Z",
+      endsAt: "2026-06-01T22:00:00Z",
       coffee: false,
       legalConsent: true,
       name: "Ada Lovelace",
@@ -190,7 +191,8 @@ describe("workspace checkout quotes", () => {
     });
     const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
       entryTier: "plus",
-      date: "2026-06-01",
+      startsAt: "2026-05-31T22:00:00Z",
+      endsAt: "2026-06-01T22:00:00Z",
       coffee: false,
       legalConsent: true,
       name: "Grace Hopper",
@@ -210,26 +212,79 @@ describe("workspace checkout quotes", () => {
     const explicitAllDay = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
       coffee: false,
-      startsAt: "00:00",
-      endsAt: "24:00",
-      durationMinutes: 24 * 60,
-    });
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+    } as unknown as WorkspaceCheckoutOrder);
     const morningOnly = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
-      coffee: false,
-      startsAt: "09:00",
-      endsAt: "12:00",
-      durationMinutes: 180,
+      entryTier: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
     });
 
     expect(explicitAllDay.order).toEqual(accessOnly.order);
     expect(explicitAllDay.fingerprint).toBe(accessOnly.fingerprint);
     expect(morningOnly.order).toMatchObject({
-      startsAt: "09:00",
-      endsAt: "12:00",
-      durationMinutes: 180,
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
     });
+    expect(morningOnly.order).not.toHaveProperty("durationMinutes");
     expect(morningOnly.fingerprint).not.toBe(accessOnly.fingerprint);
+  });
+
+  test("prices meeting room reservations by approved duration", () => {
+    const oneHour = buildWorkspaceCheckoutQuote({
+      entryTier: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T08:00:00Z",
+    });
+    const fourHours = buildWorkspaceCheckoutQuote({
+      entryTier: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+    const fullDay = buildWorkspaceCheckoutQuote({
+      entryTier: "meeting-room",
+      startsAt: "2099-06-10T13:00:00Z",
+      endsAt: "2099-06-11T13:00:00Z",
+    });
+
+    expect(oneHour.summary.sections[0]?.items).toEqual([
+      {
+        key: "product:meeting-room:60",
+        meetingRoomDurationMinutes: 60,
+        amount: { value: 30_000, exponent: 2, currency: "CZK" },
+      },
+    ]);
+    expect(fourHours.payment.expectedPrice.value).toBe(60_000);
+    expect(fullDay.payment.expectedPrice.value).toBe(100_000);
+  });
+
+  test("rejects unsupported product and interval combinations", () => {
+    expect(() =>
+      buildWorkspaceCheckoutQuote({
+        entryTier: "basic",
+        coffee: false,
+        startsAt: "2099-06-10T09:00",
+        endsAt: "2099-06-10T10:00",
+      })
+    ).toThrow("Cowork reservations must use the full-day duration");
+
+    expect(() =>
+      buildWorkspaceCheckoutQuote({
+        entryTier: "meeting-room",
+        startsAt: "2099-06-10T07:30:00Z",
+        endsAt: "2099-06-10T08:30:00Z",
+      })
+    ).toThrow("Meeting room reservations must start on a whole hour");
+
+    expect(() =>
+      buildWorkspaceCheckoutQuote({
+        entryTier: "meeting-room",
+        coffee: true,
+        startsAt: "2099-06-10T07:00:00Z",
+        endsAt: "2099-06-10T08:00:00Z",
+      })
+    ).toThrow("Coffee cannot be added to meeting room reservations");
   });
 
   test("detects changed summary section and item keys", () => {

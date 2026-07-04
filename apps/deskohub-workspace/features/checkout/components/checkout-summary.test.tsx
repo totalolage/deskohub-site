@@ -56,4 +56,20 @@ describe("CheckoutSummary", () => {
     expect(view.getByText("Basic Day Pass")).toBeDefined();
     expect(view.queryByText("product:basic")).toBeNull();
   });
+
+  test("localizes meeting room duration item keys", () => {
+    const quote = buildWorkspaceCheckoutQuote({
+      entryTier: "meeting-room",
+      coffee: false,
+      startsAt: "2099-06-10T09:00",
+      endsAt: "2099-06-10T13:00",
+    });
+
+    const view = render(
+      <CheckoutSummary locale="en-US" summary={quote.summary} />
+    );
+
+    expect(view.getByText("Meeting room - 4 hours")).toBeDefined();
+    expect(view.queryByText("product:meeting-room:240")).toBeNull();
+  });
 });

@@ -10,6 +10,7 @@ import {
   Duration,
   Effect,
   Layer,
+  Match,
   Predicate,
   Schedule,
   Schema,
@@ -43,7 +44,11 @@ import {
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductByTier,
+  type WorkspaceProductMonitorOption,
+  type WorkspaceProductTier,
+} from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
@@ -60,10 +65,15 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import {
+  getReservationOrderSchema,
+  getReservationProductCoffee,
+  getReservationProductMonitorOption,
+} from "@/features/reservation/schemas/reservation";
+import {
+  getReservationPragueDate,
   isDefaultReservationInterval,
-  normalizeReservationInterval,
+  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -90,15 +100,18 @@ const deriveReservationIntentKey = (input: {
     readonly name: string;
     readonly email: string;
     readonly phone: string;
-    readonly date: string;
     readonly startsAt?: string;
     readonly endsAt?: string;
-    readonly entryTier: string;
-    readonly coffee: boolean;
-    readonly monitorOption?: string;
+    readonly entryTier: WorkspaceProductTier;
+    readonly coffee?: boolean;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
   };
 }) => {
-  const interval = normalizeReservationInterval(input.reservation);
+  const interval = unsafeNormalizeReservationInterval(input.reservation);
+  const productCoffee = getReservationProductCoffee(input.reservation);
+  const productMonitorOption = getReservationProductMonitorOption(
+    input.reservation
+  );
   const basePayload = {
     schema: "workspace-reservation-intent-key",
     schemaVersion: 2,
@@ -106,10 +119,10 @@ const deriveReservationIntentKey = (input: {
     name: normalizeIdempotencyPart(input.reservation.name),
     email: normalizeIdempotencyPart(input.reservation.email),
     phone: input.reservation.phone.replaceAll(/\s+/g, ""),
-    date: input.reservation.date,
+    date: getReservationPragueDate(interval),
     entryTier: input.reservation.entryTier,
-    coffee: input.reservation.coffee,
-    monitorOption: input.reservation.monitorOption ?? null,
+    coffee: productCoffee,
+    monitorOption: productMonitorOption ?? null,
   };
   const payload = isDefaultReservationInterval(interval)
     ? basePayload
@@ -165,24 +178,33 @@ const buildReservationCheckoutDetails = (input: {
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
   const product = getWorkspaceProductByTier(input.reservation.entryTier);
-  const reservation = normalizeReservationInterval(input.reservation);
+  const reservation = unsafeNormalizeReservationInterval(input.reservation);
+  const productCoffee = getReservationProductCoffee(reservation);
+  const productMonitorOption = getReservationProductMonitorOption(reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
+  const checkoutReservation = Match.value(reservation).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+      tier: meetingRoomReservation.entryTier,
+      startsAt: meetingRoomReservation.startsAt,
+      endsAt: meetingRoomReservation.endsAt,
+    })),
+    Match.orElse((coworkReservation) => ({
+      tier: coworkReservation.entryTier,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+      coffee: productCoffee,
+      monitorOption: product.requiresMonitorOption
+        ? productMonitorOption
+        : undefined,
+    }))
+  );
 
   return {
     schema: "workspace-checkout-details",
     schemaVersion: 1,
     locale: input.locale,
-    reservation: {
-      tier: reservation.entryTier,
-      date: reservation.date,
-      startsAt: reservation.startsAt,
-      endsAt: reservation.endsAt,
-      coffee: reservation.coffee,
-      monitorOption: product.requiresMonitorOption
-        ? reservation.monitorOption
-        : undefined,
-    },
+    reservation: checkoutReservation,
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
       summary: checkoutSummarySchema.parse(input.quote.summary),
@@ -505,8 +527,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       yield* reservations.updateProductIntent({
         id: existingReservation.id,
         productTier: input.reservation.entryTier,
-        productCoffee: input.reservation.coffee,
-        productMonitorOption: input.reservation.monitorOption,
+        productCoffee: getReservationProductCoffee(input.reservation),
+        productMonitorOption: getReservationProductMonitorOption(
+          input.reservation
+        ),
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
@@ -541,11 +565,11 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
-      date: input.reservation.date,
+      date: getReservationPragueDate(input.reservation),
       startsAt: input.reservation.startsAt,
       endsAt: input.reservation.endsAt,
       entryTier: input.reservation.entryTier,
-      monitorOption: input.reservation.monitorOption,
+      monitorOption: getReservationProductMonitorOption(input.reservation),
     });
     yield* Effect.logDebug("Workspace reservation availability confirmed");
 
@@ -572,8 +596,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       dotyposCustomerId,
       customerAccessCode,
       productTier: input.reservation.entryTier,
-      productCoffee: input.reservation.coffee,
-      productMonitorOption: input.reservation.monitorOption,
+      productCoffee: getReservationProductCoffee(input.reservation),
+      productMonitorOption: getReservationProductMonitorOption(
+        input.reservation
+      ),
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
@@ -599,8 +625,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         yield* reservations.updateProductIntent({
           id: claimConflictReservation.id,
           productTier: input.reservation.entryTier,
-          productCoffee: input.reservation.coffee,
-          productMonitorOption: input.reservation.monitorOption,
+          productCoffee: getReservationProductCoffee(input.reservation),
+          productMonitorOption: getReservationProductMonitorOption(
+            input.reservation
+          ),
           locale: input.locale,
         });
         yield* legalEvents.recordMany(

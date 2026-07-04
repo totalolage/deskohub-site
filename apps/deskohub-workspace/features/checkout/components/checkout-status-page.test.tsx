@@ -74,6 +74,29 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("links meeting room statuses back to meeting room reservation", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          summary: {
+            tier: "meeting-room",
+            date: "2026-06-20",
+            coffee: false,
+            price: { value: 60_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(
+      view
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/checkout/reservation/meeting-room");
+  });
+
   test("renders not found without reservation summary copy", () => {
     const view = render(
       <CheckoutStatusPage
