@@ -1,6 +1,6 @@
 import type { Table } from "@deskohub/dotypos/generated";
-import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
 import { workspaceProductTiers } from "@/features/checkout/product-catalog";
+import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
 const fallbackRoomKey = "__workspace-table-selection:fallback-room__";

@@ -8,11 +8,11 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
-import { workspaceBookingGuestCount } from "@/features/checkout/backend/workspace-table-occupancy";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
+import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: string;

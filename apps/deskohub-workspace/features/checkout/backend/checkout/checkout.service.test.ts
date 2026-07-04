@@ -4,11 +4,11 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
-import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
+import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import { buildSignedPayState, sealPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
@@ -59,16 +59,16 @@ describe("CheckoutService", () => {
       "./checkout.service"
     );
     const { LegalEvidenceEventRepository } = await import(
-      "./legal-evidence-event.repository"
+      "../repositories/legal-evidence-event.repository"
     );
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ReservationHoldCleanupService } = await import(
-      "./reservation-hold-cleanup.service"
+      "../holds/reservation-hold-cleanup.service"
     );
     const { ReservationHoldCleanupScheduleService } = await import(
-      "./reservation-hold-cleanup-queue.service"
+      "../holds/reservation-hold-cleanup-queue.service"
     );
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"

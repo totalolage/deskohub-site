@@ -3,8 +3,8 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
-import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
 const now = new Date("2026-06-01T10:00:00.000Z");
 const expiresAt = new Date("2026-06-01T10:10:00.000Z");
@@ -52,7 +52,7 @@ const runProcessMessage = async (
   } = {}
 ) => {
   const { ReservationHoldCleanupService } = await import(
-    "@/features/checkout/backend/reservation-hold-cleanup.service"
+    "./reservation-hold-cleanup.service"
   );
   const { processReservationHoldCleanupScheduleMessage } = await import(
     "./reservation-hold-cleanup-queue.service"
@@ -231,7 +231,7 @@ describe("ReservationHoldCleanupScheduleService", () => {
       "./reservation-hold-cleanup-queue.service"
     );
     const config = await Bun.file(
-      new URL("../../../vercel.json", import.meta.url)
+      new URL("../../../../vercel.json", import.meta.url)
     ).json();
 
     expect(config.crons).toContainEqual({

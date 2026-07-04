@@ -7,19 +7,6 @@ import {
 import { Context, Effect, Layer, Match, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
-  WorkspacePaidFulfillmentService,
-  WorkspacePaidFulfillmentServiceLiveWithDependencies,
-} from "@/features/checkout/backend/paid-fulfillment.service";
-import {
-  PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
-} from "@/features/checkout/backend/payment-attempt.repository";
-import {
-  capturePaymentAbandoned,
-  capturePaymentCompleted,
-  capturePaymentFailed,
-} from "@/features/checkout/backend/posthog-lifecycle-events";
-import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -28,6 +15,19 @@ import {
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
+import {
+  capturePaymentAbandoned,
+  capturePaymentCompleted,
+  capturePaymentFailed,
+} from "../analytics/posthog-lifecycle-events";
+import {
+  WorkspacePaidFulfillmentService,
+  WorkspacePaidFulfillmentServiceLiveWithDependencies,
+} from "../fulfillment/paid-fulfillment.service";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "../repositories/payment-attempt.repository";
 
 export type ProviderPaymentFinalizationResult =
   | "not_found"

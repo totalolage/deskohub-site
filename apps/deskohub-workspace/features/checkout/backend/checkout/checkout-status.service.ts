@@ -12,18 +12,6 @@ import type {
   WorkspaceReservation,
 } from "@/db/schema";
 import {
-  PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
-} from "@/features/checkout/backend/payment-attempt.repository";
-import {
-  ProviderPaymentFinalizationService,
-  ProviderPaymentFinalizationServiceLiveWithDependencies,
-} from "@/features/checkout/backend/provider-payment-finalization.service";
-import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import {
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
   type WorkspaceProductMonitorOption,
@@ -39,6 +27,18 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLiveWithDependencies,
+} from "../holds/reservation-hold-cleanup.service";
+import {
+  ProviderPaymentFinalizationService,
+  ProviderPaymentFinalizationServiceLiveWithDependencies,
+} from "../payment/provider-payment-finalization.service";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "../repositories/payment-attempt.repository";
 
 export type CheckoutStatusReturnOutcome = "success" | "cancelled" | "unknown";
 

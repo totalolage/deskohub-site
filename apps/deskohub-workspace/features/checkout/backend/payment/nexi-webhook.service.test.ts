@@ -6,11 +6,11 @@ import type {
   PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
-import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "@/features/checkout/backend/paid-fulfillment.service";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
-import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import type { WebhookEventRepository as WebhookEventRepositoryType } from "@/features/checkout/backend/webhook-event.repository";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "../fulfillment/paid-fulfillment.service";
+import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
+import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import type { WebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
 
 const payload = {
   eventId: "event-id",
@@ -96,15 +96,17 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
     "./nexi-webhook.service"
   );
   const { PaymentAttemptRepository } = await import(
-    "./payment-attempt.repository"
+    "../repositories/payment-attempt.repository"
   );
   const { WorkspacePaidFulfillmentService } = await import(
-    "./paid-fulfillment.service"
+    "../fulfillment/paid-fulfillment.service"
   );
   const { ReservationHoldCleanupService } = await import(
-    "./reservation-hold-cleanup.service"
+    "../holds/reservation-hold-cleanup.service"
   );
-  const { WebhookEventRepository } = await import("./webhook-event.repository");
+  const { WebhookEventRepository } = await import(
+    "../repositories/webhook-event.repository"
+  );
 
   return Effect.gen(function* () {
     const service = yield* NexiWebhookService;

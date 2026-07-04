@@ -11,28 +11,6 @@ import {
 import { Context, Data, Effect, Layer, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
-  WorkspacePaidFulfillmentService,
-  WorkspacePaidFulfillmentServiceLiveWithDependencies,
-} from "@/features/checkout/backend/paid-fulfillment.service";
-import {
-  PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
-} from "@/features/checkout/backend/payment-attempt.repository";
-import {
-  capturePaymentAbandoned,
-  capturePaymentCompleted,
-  capturePaymentFailed,
-} from "@/features/checkout/backend/posthog-lifecycle-events";
-import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import {
-  type WebhookEventIdentity,
-  WebhookEventRepository,
-  WebhookEventRepositoryLive,
-} from "@/features/checkout/backend/webhook-event.repository";
-import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -40,6 +18,28 @@ import {
   PostHogEventService,
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
+import {
+  capturePaymentAbandoned,
+  capturePaymentCompleted,
+  capturePaymentFailed,
+} from "../analytics/posthog-lifecycle-events";
+import {
+  WorkspacePaidFulfillmentService,
+  WorkspacePaidFulfillmentServiceLiveWithDependencies,
+} from "../fulfillment/paid-fulfillment.service";
+import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLiveWithDependencies,
+} from "../holds/reservation-hold-cleanup.service";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "../repositories/payment-attempt.repository";
+import {
+  type WebhookEventIdentity,
+  WebhookEventRepository,
+  WebhookEventRepositoryLive,
+} from "../repositories/webhook-event.repository";
 
 type NexiWebhookFailureCode =
   | "nexi_webhook_parse_failed"

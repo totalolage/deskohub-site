@@ -4,7 +4,7 @@ import {
   NexiWebhookProcessingError,
   NexiWebhookService,
   NexiWebhookServiceLiveWithDependencies,
-} from "@/features/checkout/backend/nexi-webhook.service";
+} from "@/features/checkout/backend/payment";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 

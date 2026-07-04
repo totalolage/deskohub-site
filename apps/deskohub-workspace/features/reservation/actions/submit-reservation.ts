@@ -4,8 +4,8 @@ import { Effect } from "effect";
 import {
   CheckoutService,
   CheckoutServiceLiveWithDependencies,
-} from "@/features/checkout/backend/checkout.service";
-import { openPayState } from "@/features/checkout/backend/pay-state.server";
+  openPayState,
+} from "@/features/checkout/backend/checkout";
 import { m } from "@/features/i18n";
 import {
   getSubmitReservationCheckoutLocale,

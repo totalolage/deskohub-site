@@ -3,9 +3,9 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservationEmailService as WorkspaceReservationEmailServiceType } from "@/features/checkout/backend/workspace-reservation-email.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { IWorkspaceReservationService } from "@/features/reservation/backend/workspace-reservation.service";
+import type { WorkspaceReservationEmailService as WorkspaceReservationEmailServiceType } from "./workspace-reservation-email.service";
 
 describe("WorkspacePaidFulfillmentService", () => {
   test("retries stale processing paid orders and waits for delivery before fulfillment", async () => {

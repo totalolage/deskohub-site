@@ -7,7 +7,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout-status.service";
+import type { CheckoutStatusViewModel } from "@/features/checkout/backend/checkout";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,

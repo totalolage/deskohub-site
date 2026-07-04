@@ -7,7 +7,7 @@ import { Suspense } from "react";
 import {
   openPayState,
   payStateTokenQueryParam,
-} from "@/features/checkout/backend/pay-state.server";
+} from "@/features/checkout/backend/checkout";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";

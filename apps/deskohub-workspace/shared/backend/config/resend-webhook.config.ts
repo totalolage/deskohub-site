@@ -3,7 +3,7 @@ import { env } from "@/env";
 import {
   ResendWebhookRuntimeConfig,
   type ResendWebhookRuntimeConfigObj,
-} from "@/features/checkout/backend/resend-webhook.config";
+} from "@/features/checkout/backend/fulfillment";
 
 export const ResendWebhookRuntimeConfigLive = Layer.succeed(
   ResendWebhookRuntimeConfig,

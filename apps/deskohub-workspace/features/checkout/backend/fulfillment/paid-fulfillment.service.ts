@@ -2,12 +2,6 @@ import { DotyposService } from "@deskohub/dotypos";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { WorkspaceCheckoutNetworkDetailsService } from "@/features/checkout/backend/network-details.service";
-import { captureReservationCompleted } from "@/features/checkout/backend/posthog-lifecycle-events";
-import {
-  WorkspaceReservationEmailService,
-  WorkspaceReservationEmailServiceLive,
-} from "@/features/checkout/backend/workspace-reservation-email.service";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -20,6 +14,12 @@ import {
 } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
+import { captureReservationCompleted } from "../analytics/posthog-lifecycle-events";
+import { WorkspaceCheckoutNetworkDetailsService } from "./network-details.service";
+import {
+  WorkspaceReservationEmailService,
+  WorkspaceReservationEmailServiceLive,
+} from "./workspace-reservation-email.service";
 
 export type WorkspacePaidFulfillmentFailureCode =
   | "dotypos_reservation_failed"

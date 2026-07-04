@@ -63,7 +63,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/reservation/backend/workspace-reservation.repository.ts"
     );
     const paymentAttemptRepository = await readAppFile(
-      "features/checkout/backend/payment-attempt.repository.ts"
+      "features/checkout/backend/repositories/payment-attempt.repository.ts"
     );
 
     expect(reservationRepository).toContain(
@@ -88,10 +88,10 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("webhook duplicate handling is retry-safe", async () => {
     const source = await readAppFile(
-      "features/checkout/backend/nexi-webhook.service.ts"
+      "features/checkout/backend/payment/nexi-webhook.service.ts"
     );
     const repository = await readAppFile(
-      "features/checkout/backend/webhook-event.repository.ts"
+      "features/checkout/backend/repositories/webhook-event.repository.ts"
     );
 
     expect(repository).toContain(
@@ -105,10 +105,10 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("webhook terminal payment transitions use one transaction", async () => {
     const source = await readAppFile(
-      "features/checkout/backend/nexi-webhook.service.ts"
+      "features/checkout/backend/payment/nexi-webhook.service.ts"
     );
     const repository = await readAppFile(
-      "features/checkout/backend/payment-attempt.repository.ts"
+      "features/checkout/backend/repositories/payment-attempt.repository.ts"
     );
 
     expect(source).toContain("paymentAttempts.markPaidForReservation");

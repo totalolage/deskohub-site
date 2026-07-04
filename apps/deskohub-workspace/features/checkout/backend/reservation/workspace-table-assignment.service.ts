@@ -5,16 +5,6 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Context, Effect, Layer } from "effect";
-import { getAssignableDotyposTableId } from "@/features/checkout/backend/dotypos-table-id";
-import {
-  excludeExpiredLocalHolds,
-  getWorkspaceTableOccupancyById,
-  workspaceBookingGuestCount,
-} from "@/features/checkout/backend/workspace-table-occupancy";
-import {
-  getWorkspaceTableCandidates,
-  selectWorkspaceTableFromCandidates,
-} from "@/features/checkout/backend/workspace-table-selection";
 import {
   getWorkspaceProductByTier,
   isWorkspaceProductMonitorOption,
@@ -22,6 +12,16 @@ import {
 } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { getAssignableDotyposTableId } from "./dotypos-table-id";
+import {
+  excludeExpiredLocalHolds,
+  getWorkspaceTableOccupancyById,
+  workspaceBookingGuestCount,
+} from "./workspace-table-occupancy";
+import {
+  getWorkspaceTableCandidates,
+  selectWorkspaceTableFromCandidates,
+} from "./workspace-table-selection";
 
 export interface WorkspaceTableAssignmentService {
   readonly assignTableId: (

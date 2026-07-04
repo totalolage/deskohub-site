@@ -1,8 +1,10 @@
 import { handleCallback } from "@vercel/queue";
 import { Effect, Layer } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { ReservationHoldCleanupServiceLiveWithDependencies } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { processReservationHoldCleanupScheduleMessage } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
+import {
+  processReservationHoldCleanupScheduleMessage,
+  ReservationHoldCleanupServiceLiveWithDependencies,
+} from "@/features/checkout/backend/holds";
 import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 

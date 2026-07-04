@@ -5,10 +5,12 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
-import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/access-code.service";
-import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/legal-evidence-event.repository";
-import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import type { WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType } from "@/features/checkout/backend/workspace-table-assignment.service";
+import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/holds";
+import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
+import type {
+  WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
+  WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType,
+} from "@/features/checkout/backend/reservation";
 import type { WorkspaceAvailabilityService as WorkspaceAvailabilityServiceType } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
@@ -83,16 +85,16 @@ const runReusableReservationScenario = async (input: {
     "./prepare-pay-state"
   );
   const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/access-code.service"
+    "@/features/checkout/backend/reservation"
   );
   const { LegalEvidenceEventRepository } = await import(
-    "@/features/checkout/backend/legal-evidence-event.repository"
+    "@/features/checkout/backend/repositories"
   );
   const { ReservationHoldCleanupService } = await import(
-    "@/features/checkout/backend/reservation-hold-cleanup.service"
+    "@/features/checkout/backend/holds"
   );
   const { ReservationHoldCleanupScheduleService } = await import(
-    "@/features/checkout/backend/reservation-hold-cleanup-queue.service"
+    "@/features/checkout/backend/holds"
   );
   const { WorkspaceAvailabilityService } = await import(
     "@/features/reservation/backend/workspace-availability.service"
@@ -186,22 +188,22 @@ describe("prepareWorkspacePayStateEffect", () => {
       "./prepare-pay-state"
     );
     const { openPayState, payStateTokenQueryParam } = await import(
-      "@/features/checkout/backend/pay-state"
+      "@/features/checkout/backend/checkout"
     );
     const { WorkspaceCheckoutAccessCodeService } = await import(
-      "@/features/checkout/backend/access-code.service"
+      "@/features/checkout/backend/reservation"
     );
     const { LegalEvidenceEventRepository } = await import(
-      "@/features/checkout/backend/legal-evidence-event.repository"
+      "@/features/checkout/backend/repositories"
     );
     const { ReservationHoldCleanupService } = await import(
-      "@/features/checkout/backend/reservation-hold-cleanup.service"
+      "@/features/checkout/backend/holds"
     );
     const { ReservationHoldCleanupScheduleService } = await import(
-      "@/features/checkout/backend/reservation-hold-cleanup-queue.service"
+      "@/features/checkout/backend/holds"
     );
     const { WorkspaceTableAssignmentService } = await import(
-      "@/features/checkout/backend/workspace-table-assignment.service"
+      "@/features/checkout/backend/reservation"
     );
     const { WorkspaceAvailabilityService } = await import(
       "@/features/reservation/backend/workspace-availability.service"

@@ -14,9 +14,9 @@ import {
 import {
   excludeExpiredLocalHolds,
   getWorkspaceTableOccupancyById,
+  hasAvailableWorkspaceTableCandidate,
   workspaceBookingGuestCount,
-} from "@/features/checkout/backend/workspace-table-occupancy";
-import { hasAvailableWorkspaceTableCandidate } from "@/features/checkout/backend/workspace-table-selection";
+} from "@/features/checkout/backend/reservation";
 import {
   getWorkspaceProductByTier,
   type WorkspaceProductMonitorOption,
