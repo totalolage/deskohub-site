@@ -270,8 +270,8 @@ describe("CheckoutStatusService", () => {
                   id: "dotypos-reservation-id",
                   _customerId: "customer-id",
                   _tableId: "assigned-table",
-                  startDate: "2026-06-19T22:00:00.000Z",
-                  endDate: "2026-06-20T22:00:00.000Z",
+                  startDate: String(Date.parse("2026-06-19T22:00:00.000Z")),
+                  endDate: String(Date.parse("2026-06-20T22:00:00.000Z")),
                   seats: "1",
                   status: "OPEN",
                 },
@@ -342,6 +342,12 @@ describe("CheckoutStatusService", () => {
       activePaymentAttemptId: "attempt-provider-return",
       paymentState: "paid",
     });
+    expect(status.summary?.reservedFrom?.toISOString()).toBe(
+      "2026-06-19T22:00:00.000Z"
+    );
+    expect(status.summary?.reservedUntil?.toISOString()).toBe(
+      "2026-06-20T22:00:00.000Z"
+    );
   });
 
   test("includes support contact prefill only after fulfillment fails", async () => {

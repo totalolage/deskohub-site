@@ -83,6 +83,8 @@ describe("CheckoutStatusPage", () => {
           summary: {
             tier: "meeting-room",
             date: "2026-06-20",
+            reservedFrom: new Date("2026-06-20T07:00:00.000Z"),
+            reservedUntil: new Date("2026-06-20T11:00:00.000Z"),
             coffee: false,
             price: { value: 60_000, exponent: 2, currency: "CZK" },
           },
@@ -90,6 +92,7 @@ describe("CheckoutStatusPage", () => {
       />
     );
 
+    expect(view.getByText("9:00 AM - 1:00 PM")).toBeDefined();
     expect(
       view
         .getByRole("link", { name: "Start a new reservation" })

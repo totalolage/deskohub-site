@@ -22,7 +22,10 @@ import {
 } from "@/features/checkout/routes";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -150,6 +153,18 @@ const getSummaryRows = (
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
       value: formatReservationDisplayDate(summary.date, locale),
     },
+    summary.tier === "meeting-room" &&
+    summary.reservedFrom &&
+    summary.reservedUntil
+      ? {
+          label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
+          value: formatReservationDisplayTimeRange(
+            summary.reservedFrom,
+            summary.reservedUntil,
+            locale
+          ),
+        }
+      : undefined,
     summary.coffee
       ? {
           label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),

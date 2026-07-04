@@ -32,7 +32,10 @@ import {
 import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map";
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
@@ -302,6 +305,18 @@ const createReservationDetailRows = (
       m.reservationEmailDateLabel({}, { locale }),
       formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
+    ...(reservation.productTier === "meeting-room"
+      ? [
+          [
+            m.reservationEmailTimeLabel({}, { locale }),
+            formatReservationDisplayTimeRange(
+              reservation.reservedFrom,
+              reservation.reservedUntil,
+              locale
+            ),
+          ] satisfies EmailDetailRow,
+        ]
+      : []),
     [
       m.reservationEmailTierLabel({}, { locale }),
       isWorkspaceProductTier(reservation.productTier)

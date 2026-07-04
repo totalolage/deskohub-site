@@ -56,6 +56,8 @@ export type CheckoutStatusKind =
 export type WorkspaceCheckoutStatusSummary = {
   readonly tier: WorkspaceProductTier;
   readonly date: string;
+  readonly reservedFrom?: Date;
+  readonly reservedUntil?: Date;
   readonly coffee: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
   readonly price: WorkspaceMoney;
@@ -131,13 +133,19 @@ const toCheckoutStatusKind = (
   }
 };
 
-const toPragueReservationDate = (startDate: string | number) => {
+const parseDotyposReservationDate = (value: string | number) => {
   const date =
-    typeof startDate === "number" || /^\d+$/.test(startDate)
-      ? new Date(Number(startDate))
-      : new Date(startDate);
+    typeof value === "number" || /^\d+$/.test(value)
+      ? new Date(Number(value))
+      : new Date(value);
 
-  if (Number.isNaN(date.getTime())) return undefined;
+  return Number.isNaN(date.getTime()) ? undefined : date;
+};
+
+const toPragueReservationDate = (startDate: string | number) => {
+  const date = parseDotyposReservationDate(startDate);
+
+  if (!date) return undefined;
 
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Europe/Prague",
@@ -315,11 +323,19 @@ export const CheckoutStatusServiceLive = Layer.effect(
           Match.exhaustive
         );
 
-        const date = toPragueReservationDate(
+        const reservedFrom = parseDotyposReservationDate(
           dotyposReservationValue.reservation.startDate
         );
+        const reservedUntil = parseDotyposReservationDate(
+          dotyposReservationValue.reservation.endDate
+        );
+        const date = reservedFrom
+          ? toPragueReservationDate(
+              dotyposReservationValue.reservation.startDate
+            )
+          : undefined;
 
-        if (!date) {
+        if (!(date && reservedFrom && reservedUntil)) {
           yield* Effect.logWarning(
             "Checkout status summary invalid reservation date"
           );
@@ -334,6 +350,8 @@ export const CheckoutStatusServiceLive = Layer.effect(
         const summary = {
           tier: reservation.productTier,
           date,
+          reservedFrom,
+          reservedUntil,
           coffee: reservation.productCoffee,
           monitorOption,
           price: {
