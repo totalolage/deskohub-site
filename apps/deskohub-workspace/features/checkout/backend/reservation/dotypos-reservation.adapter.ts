@@ -105,13 +105,16 @@ const formatWorkspaceReservationNote = (
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
   const product = getWorkspaceProductByTier(reservation.tier);
-  const coworkRows = Match.value(reservation).pipe(
+  const productRows = Match.value(reservation).pipe(
     Match.when({ tier: "meeting-room" }, () => []),
+    Match.when({ tier: "profi" }, (profiReservation) => [
+      `Coffee: ${profiReservation.coffee ? "yes" : "no"}`,
+      ...(profiReservation.monitorOption
+        ? [`Monitor: ${profiReservation.monitorOption}`]
+        : []),
+    ]),
     Match.orElse((coworkReservation) => [
       `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
-      ...(coworkReservation.monitorOption
-        ? [`Monitor: ${coworkReservation.monitorOption}`]
-        : []),
     ])
   );
   const lines = [
@@ -121,7 +124,7 @@ const formatWorkspaceReservationNote = (
     `Date: ${getReservationPragueDate(reservation)}`,
     `Time: ${reservation.startsAt}-${reservation.endsAt}`,
     `Duration: ${getReservationDurationMinutes(reservation)} minutes`,
-    ...coworkRows,
+    ...productRows,
     `Price: ${formatWorkspaceMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale

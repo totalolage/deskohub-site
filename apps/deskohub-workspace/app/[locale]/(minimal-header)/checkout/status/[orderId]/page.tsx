@@ -20,7 +20,10 @@ import {
 } from "@/features/checkout/schemas/checkout-return-state-token";
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { getParamsDecoder } from "@/features/i18n/server/route-params";
+import {
+  getParamsDecoder,
+  type LocalizedRoutePageWithSearchParamsProps,
+} from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { Container } from "@/shared/components/container";
 import {
@@ -33,10 +36,10 @@ import {
 
 export const maxDuration = 15;
 
-type LocalizedCheckoutStatusPageProps = {
-  params: Promise<{ locale: string; orderId: string }>;
-  searchParams: Promise<SearchParamsRecord>;
-};
+type LocalizedCheckoutStatusPageProps = LocalizedRoutePageWithSearchParamsProps<
+  { readonly orderId: string },
+  SearchParamsRecord
+>;
 
 const decodeCheckoutStatusParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
@@ -141,10 +144,11 @@ async function CheckoutStatusContent({
   params,
   searchParams,
 }: LocalizedCheckoutStatusPageProps) {
+  await connection();
+
   const decodedParams = decodeCheckoutStatusParams(await params);
   const { locale, orderId } = Option.getOrElse(decodedParams, () => notFound());
 
-  await connection();
   const rawSearchParams = await searchParams;
   const { outcome: returnOutcome } = Option.getOrElse(
     decodeCheckoutStatusSearchParams(rawSearchParams),

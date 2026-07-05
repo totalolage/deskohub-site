@@ -1,4 +1,5 @@
 import { cva } from "class-variance-authority";
+import { Match } from "effect";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,6 +10,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type {
+  CheckoutCoworkStatusViewModel,
+  CheckoutMeetingRoomStatusViewModel,
   CheckoutStatusKind,
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
@@ -36,9 +39,26 @@ type CheckoutStatusPageProps = {
   readonly status: CheckoutStatusViewModel;
 };
 
+type CoworkStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutCoworkStatusViewModel;
+};
+
+type MeetingRoomStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutMeetingRoomStatusViewModel;
+};
+
+type CheckoutStatusSummary = NonNullable<CheckoutStatusViewModel["summary"]>;
+
 type SummaryRow = {
   readonly label: string;
   readonly value: string;
+};
+
+type ReservationStatusProps = CheckoutStatusPageProps & {
+  readonly reservationPath: string;
+  readonly summaryRows: readonly SummaryRow[];
 };
 
 type StatusCopy = {
@@ -135,15 +155,11 @@ const getStatusCopy = (
   }
 };
 
-const getSummaryRows = (
-  status: CheckoutStatusViewModel,
-  locale: Locale
+const getReservationSummaryRows = (
+  summary: CheckoutStatusSummary,
+  locale: Locale,
+  extraRows: readonly (SummaryRow | undefined)[] = []
 ): SummaryRow[] => {
-  const { summary } = status;
-  if (!summary) {
-    return [];
-  }
-
   const rows: Array<SummaryRow | undefined> = [
     {
       label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
@@ -151,34 +167,9 @@ const getSummaryRows = (
     },
     {
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
-      value: formatReservationDisplayDate(summary.date, locale),
+      value: formatReservationDisplayDate(summary.reservedFrom, locale),
     },
-    summary.tier === "meeting-room" &&
-    summary.reservedFrom &&
-    summary.reservedUntil
-      ? {
-          label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
-          value: formatReservationDisplayTimeRange(
-            summary.reservedFrom,
-            summary.reservedUntil,
-            locale
-          ),
-        }
-      : undefined,
-    summary.coffee
-      ? {
-          label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-          value: summary.coffee
-            ? m.checkoutStatusYes({}, { locale })
-            : m.checkoutStatusNo({}, { locale }),
-        }
-      : undefined,
-    summary.monitorOption
-      ? {
-          label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
-          value: getWorkspaceProductMonitorTitle(summary.monitorOption, locale),
-        }
-      : undefined,
+    ...extraRows,
     {
       label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
       value: formatWorkspaceMoney(summary.price, locale),
@@ -186,6 +177,57 @@ const getSummaryRows = (
   ];
 
   return rows.filter(Boolean);
+};
+
+const getCoworkSummaryRows = (
+  status: CheckoutCoworkStatusViewModel,
+  locale: Locale
+) => {
+  const { summary } = status;
+  if (!summary) return [];
+
+  return getReservationSummaryRows(summary, locale, [
+    summary.coffee
+      ? {
+          label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+          value: m.checkoutStatusYes({}, { locale }),
+        }
+      : undefined,
+    Match.value(summary).pipe(
+      Match.when({ tier: "profi" }, (profiSummary) =>
+        profiSummary.monitorOption
+          ? {
+              label: String(
+                m.checkoutStatusSummaryMonitorLabel({}, { locale })
+              ),
+              value: getWorkspaceProductMonitorTitle(
+                profiSummary.monitorOption,
+                locale
+              ),
+            }
+          : undefined
+      ),
+      Match.orElse(() => undefined)
+    ),
+  ]);
+};
+
+const getMeetingRoomSummaryRows = (
+  status: CheckoutMeetingRoomStatusViewModel,
+  locale: Locale
+) => {
+  const { summary } = status;
+
+  return getReservationSummaryRows(summary, locale, [
+    {
+      label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
+      value: formatReservationDisplayTimeRange(
+        summary.reservedFrom,
+        summary.reservedUntil,
+        locale
+      ),
+    },
+  ]);
 };
 
 const getFulfillmentFailedContactMessage = (
@@ -196,7 +238,7 @@ const getFulfillmentFailedContactMessage = (
     ? getWorkspaceProductTierTitle(status.summary.tier, locale)
     : m.checkoutStatusMissingSummary({}, { locale });
   const date = status.summary
-    ? formatReservationDisplayDate(status.summary.date, locale)
+    ? formatReservationDisplayDate(status.summary.reservedFrom, locale)
     : m.checkoutStatusMissingSummary({}, { locale });
 
   return m.checkoutStatusFulfillmentFailedContactMessage(
@@ -228,16 +270,59 @@ export function CheckoutStatusPage({
   locale,
   status,
 }: CheckoutStatusPageProps) {
+  return Match.value(status).pipe(
+    Match.tag("meeting-room", (meetingRoomStatus) => (
+      <MeetingRoomReservationStatus
+        locale={locale}
+        status={meetingRoomStatus}
+      />
+    )),
+    Match.tag("cowork", (coworkStatus) => (
+      <CoworkReservationStatus locale={locale} status={coworkStatus} />
+    )),
+    Match.exhaustive
+  );
+}
+
+export function CoworkReservationStatus({
+  locale,
+  status,
+}: CoworkStatusPageProps) {
+  return (
+    <ReservationStatusCard
+      locale={locale}
+      reservationPath={getCoworkReservationPath(locale)}
+      status={status}
+      summaryRows={getCoworkSummaryRows(status, locale)}
+    />
+  );
+}
+
+export function MeetingRoomReservationStatus({
+  locale,
+  status,
+}: MeetingRoomStatusPageProps) {
+  return (
+    <ReservationStatusCard
+      locale={locale}
+      reservationPath={getMeetingRoomReservationPath(locale)}
+      status={status}
+      summaryRows={getMeetingRoomSummaryRows(status, locale)}
+    />
+  );
+}
+
+function ReservationStatusCard({
+  locale,
+  reservationPath,
+  status,
+  summaryRows,
+}: ReservationStatusProps) {
   const copy = getStatusCopy(status.status, locale);
   const showReservationDetails = status.status !== "not_found";
-  const summaryRows = getSummaryRows(status, locale);
   const supportContactHref = getFulfillmentFailedContactHref(status, locale);
   const showSupportButton = !!supportContactHref;
   const Icon = copy.Icon;
-  const reservationPath =
-    status.summary?.tier === "meeting-room"
-      ? getMeetingRoomReservationPath(locale)
-      : getCoworkReservationPath(locale);
 
   return (
     <CheckoutFlowLayout activeStepKey="access" locale={locale}>

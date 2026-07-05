@@ -64,8 +64,8 @@ const makeDotypos = (overrides: Record<string, unknown> = {}) =>
         reservation: {
           id: "dotypos-reservation-id",
           _customerId: "customer-id",
-          startDate: "2026-06-20T00:00:00.000+02:00",
-          endDate: "2026-06-21T00:00:00.000+02:00",
+          startDate: "2026-06-19T22:00:00Z",
+          endDate: "2026-06-20T22:00:00Z",
           seats: "1",
           status: "OPEN",
         },
@@ -102,6 +102,8 @@ describe("CheckoutStatusService", () => {
           makeReservation({
             paymentState: "paid",
             fulfillmentState: "fulfilled",
+            productTier: "meeting-room",
+            productMonitorOption: null,
           })
         )
       ),
@@ -228,6 +230,8 @@ describe("CheckoutStatusService", () => {
           makeReservation({
             paymentState: "paid",
             fulfillmentState: "fulfilled",
+            productTier: "meeting-room",
+            productMonitorOption: null,
           })
         )
       ),
@@ -270,8 +274,8 @@ describe("CheckoutStatusService", () => {
                   id: "dotypos-reservation-id",
                   _customerId: "customer-id",
                   _tableId: "assigned-table",
-                  startDate: String(Date.parse("2026-06-19T22:00:00.000Z")),
-                  endDate: String(Date.parse("2026-06-20T22:00:00.000Z")),
+                  startDate: "2026-06-20T07:00:00Z",
+                  endDate: "2026-06-20T11:00:00Z",
                   seats: "1",
                   status: "OPEN",
                 },
@@ -287,7 +291,7 @@ describe("CheckoutStatusService", () => {
                   id: "assigned-table",
                   name: "Desk 1",
                   locationName: "Main room",
-                  tags: ["tier:profi"],
+                  tags: ["tier:meeting-room"],
                 },
                 {
                   _cloudId: "cloud-id",
@@ -296,7 +300,7 @@ describe("CheckoutStatusService", () => {
                   id: "neighbor-table",
                   name: "Desk 2",
                   locationName: "Main room",
-                  tags: ["tier:profi"],
+                  tags: ["tier:meeting-room"],
                 },
                 {
                   _cloudId: "cloud-id",
@@ -305,7 +309,7 @@ describe("CheckoutStatusService", () => {
                   id: "other-room-table",
                   name: "Desk 3",
                   locationName: "Quiet room",
-                  tags: ["tier:profi"],
+                  tags: ["tier:meeting-room"],
                 },
               ])
             ),
@@ -319,10 +323,7 @@ describe("CheckoutStatusService", () => {
     expect(status).toMatchObject({
       status: "fulfilled",
       summary: {
-        tier: "profi",
-        date: "2026-06-20",
-        coffee: false,
-        monitorOption: "2x27-qhd",
+        tier: "meeting-room",
         price: { value: 55_000, exponent: 2, currency: "CZK" },
       },
       tableMap: {
@@ -343,10 +344,10 @@ describe("CheckoutStatusService", () => {
       paymentState: "paid",
     });
     expect(status.summary?.reservedFrom?.toISOString()).toBe(
-      "2026-06-19T22:00:00.000Z"
+      "2026-06-20T07:00:00.000Z"
     );
     expect(status.summary?.reservedUntil?.toISOString()).toBe(
-      "2026-06-20T22:00:00.000Z"
+      "2026-06-20T11:00:00.000Z"
     );
   });
 
@@ -416,8 +417,8 @@ describe("CheckoutStatusService", () => {
                 reservation: {
                   id: "dotypos-reservation-id",
                   _customerId: "customer-id",
-                  startDate: "2026-06-19T22:00:00.000Z",
-                  endDate: "2026-06-20T22:00:00.000Z",
+                  startDate: String(Date.parse("2026-06-19T22:00:00.000Z")),
+                  endDate: String(Date.parse("2026-06-20T22:00:00.000Z")),
                   seats: "1",
                   status: "OPEN",
                 },

@@ -12,10 +12,11 @@ import type {
   WorkspaceReservation,
 } from "@/db/schema";
 import {
+  isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
@@ -53,15 +54,34 @@ export type CheckoutStatusKind =
   | "cancelled"
   | "expired";
 
-export type WorkspaceCheckoutStatusSummary = {
-  readonly tier: WorkspaceProductTier;
-  readonly date: string;
-  readonly reservedFrom?: Date;
-  readonly reservedUntil?: Date;
+type WorkspaceCheckoutStatusSummaryBase = {
+  readonly price: WorkspaceMoney;
+  readonly reservedFrom: Date;
+  readonly reservedUntil: Date;
+};
+
+type BasicCoworkCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
+  readonly tier: Exclude<WorkspaceCoworkProductTier, "profi">;
+  readonly coffee: boolean;
+};
+
+type ProfiCoworkCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
+  readonly tier: "profi";
   readonly coffee: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
-  readonly price: WorkspaceMoney;
 };
+
+type CoworkCheckoutStatusSummary =
+  | BasicCoworkCheckoutStatusSummary
+  | ProfiCoworkCheckoutStatusSummary;
+
+type MeetingRoomCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
+  readonly tier: "meeting-room";
+};
+
+export type WorkspaceCheckoutStatusSummary =
+  | CoworkCheckoutStatusSummary
+  | MeetingRoomCheckoutStatusSummary;
 
 export type WorkspaceCheckoutStatusContactPrefill = {
   readonly name?: string;
@@ -71,16 +91,29 @@ export type WorkspaceCheckoutStatusContactPrefill = {
 
 export type WorkspaceCheckoutTableMap = WorkspaceTableMap;
 
-export type CheckoutStatusViewModel = {
+type CheckoutStatusViewModelBase = {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
   readonly status: CheckoutStatusKind;
   readonly paymentStatus?: PaymentState;
   readonly fulfillmentStatus?: FulfillmentState;
-  readonly summary?: WorkspaceCheckoutStatusSummary;
   readonly tableMap?: WorkspaceCheckoutTableMap;
   readonly supportContactPrefill?: WorkspaceCheckoutStatusContactPrefill;
 };
+
+export type CheckoutCoworkStatusViewModel = CheckoutStatusViewModelBase & {
+  readonly _tag: "cowork";
+  readonly summary?: CoworkCheckoutStatusSummary;
+};
+
+export type CheckoutMeetingRoomStatusViewModel = CheckoutStatusViewModelBase & {
+  readonly _tag: "meeting-room";
+  readonly summary: MeetingRoomCheckoutStatusSummary;
+};
+
+export type CheckoutStatusViewModel =
+  | CheckoutCoworkStatusViewModel
+  | CheckoutMeetingRoomStatusViewModel;
 
 type CheckoutStatusReconstruction = {
   readonly summary?: WorkspaceCheckoutStatusSummary;
@@ -131,35 +164,6 @@ const toCheckoutStatusKind = (
     case "expired":
       return "expired";
   }
-};
-
-const parseDotyposReservationDate = (value: string | number) => {
-  const date =
-    typeof value === "number" || /^\d+$/.test(value)
-      ? new Date(Number(value))
-      : new Date(value);
-
-  return Number.isNaN(date.getTime()) ? undefined : date;
-};
-
-const toPragueReservationDate = (startDate: string | number) => {
-  const date = parseDotyposReservationDate(startDate);
-
-  if (!date) return undefined;
-
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Prague",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value;
-  const year = getPart("year");
-  const month = getPart("month");
-  const day = getPart("day");
-
-  return year && month && day ? `${year}-${month}-${day}` : undefined;
 };
 
 const canUseAttemptForSummary = (
@@ -215,7 +219,13 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary reconstruction started"
         );
 
-        const monitorOption = reservation.productMonitorOption ?? undefined;
+        const productMonitorOption =
+          reservation.productMonitorOption ?? undefined;
+        const monitorOption = isWorkspaceProductMonitorOption(
+          productMonitorOption
+        )
+          ? productMonitorOption
+          : undefined;
 
         if (!reservation.dotyposReservationId) {
           yield* Effect.logWarning(
@@ -232,8 +242,9 @@ export const CheckoutStatusServiceLive = Layer.effect(
         }
 
         if (
-          monitorOption !== undefined &&
-          !isWorkspaceProductMonitorOption(monitorOption)
+          isWorkspaceCoworkProductTier(reservation.productTier) &&
+          productMonitorOption !== undefined &&
+          monitorOption === undefined
         ) {
           yield* Effect.logWarning(
             "Checkout status summary invalid monitor option"
@@ -323,43 +334,43 @@ export const CheckoutStatusServiceLive = Layer.effect(
           Match.exhaustive
         );
 
-        const reservedFrom = parseDotyposReservationDate(
+        const reservedFrom = new Date(
           dotyposReservationValue.reservation.startDate
         );
-        const reservedUntil = parseDotyposReservationDate(
+        const reservedUntil = new Date(
           dotyposReservationValue.reservation.endDate
         );
-        const date = reservedFrom
-          ? toPragueReservationDate(
-              dotyposReservationValue.reservation.startDate
-            )
-          : undefined;
+        const price: WorkspaceMoney = {
+          value: attempt.amountValue,
+          exponent: attempt.amountExponent,
+          currency: attempt.currency,
+        };
 
-        if (!(date && reservedFrom && reservedUntil)) {
-          yield* Effect.logWarning(
-            "Checkout status summary invalid reservation date"
-          );
-          return {
-            ...(tableMap ? { tableMap } : {}),
-            supportContactPrefill: getSupportContactPrefill(
-              dotyposReservationValue.customer
-            ),
-          } satisfies CheckoutStatusReconstruction;
-        }
-
-        const summary = {
-          tier: reservation.productTier,
-          date,
-          reservedFrom,
-          reservedUntil,
-          coffee: reservation.productCoffee,
-          monitorOption,
-          price: {
-            value: attempt.amountValue,
-            exponent: attempt.amountExponent,
-            currency: attempt.currency,
-          },
-        } satisfies WorkspaceCheckoutStatusSummary;
+        const summary: WorkspaceCheckoutStatusSummary = Match.value(
+          reservation.productTier
+        ).pipe(
+          Match.when("meeting-room", () => ({
+            tier: "meeting-room" as const,
+            reservedFrom,
+            reservedUntil,
+            price,
+          })),
+          Match.when("profi", () => ({
+            tier: "profi" as const,
+            coffee: reservation.productCoffee,
+            ...(monitorOption ? { monitorOption } : {}),
+            reservedFrom,
+            reservedUntil,
+            price,
+          })),
+          Match.orElse((tier) => ({
+            tier,
+            coffee: reservation.productCoffee,
+            reservedFrom,
+            reservedUntil,
+            price,
+          }))
+        );
 
         yield* Effect.annotateLogsScoped({ summary });
         yield* Effect.logDebug("Checkout status summary reconstructed");
@@ -393,6 +404,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
         if (!reservation) {
           const result = {
+            _tag: "cowork",
             orderId: input.orderId,
             returnOutcome: input.returnOutcome,
             status: "not_found",
@@ -426,23 +438,41 @@ export const CheckoutStatusServiceLive = Layer.effect(
           reservation.fulfillmentState
         );
 
-        const result = {
-          orderId: reservation.id,
-          returnOutcome: input.returnOutcome,
-          status: statusKind,
-          paymentStatus: reservation.paymentState,
-          fulfillmentStatus: reservation.fulfillmentState,
-          ...(reconstruction.summary
-            ? { summary: reconstruction.summary }
-            : {}),
-          ...(reconstruction.tableMap
-            ? { tableMap: reconstruction.tableMap }
-            : {}),
-          ...(statusKind === "fulfillment_failed" &&
-          reconstruction.supportContactPrefill
-            ? { supportContactPrefill: reconstruction.supportContactPrefill }
-            : {}),
-        } satisfies CheckoutStatusViewModel;
+        const result = Match.value(reconstruction.summary).pipe(
+          Match.when({ tier: "meeting-room" }, (summary) => ({
+            _tag: "meeting-room" as const,
+            orderId: reservation.id,
+            returnOutcome: input.returnOutcome,
+            status: statusKind,
+            paymentStatus: reservation.paymentState,
+            fulfillmentStatus: reservation.fulfillmentState,
+            summary,
+            ...(reconstruction.tableMap
+              ? { tableMap: reconstruction.tableMap }
+              : {}),
+            ...(statusKind === "fulfillment_failed" &&
+            reconstruction.supportContactPrefill
+              ? { supportContactPrefill: reconstruction.supportContactPrefill }
+              : {}),
+          })),
+          Match.orElse((summary) => ({
+            _tag: "cowork" as const,
+            orderId: reservation.id,
+            returnOutcome: input.returnOutcome,
+            status: statusKind,
+            paymentStatus: reservation.paymentState,
+            fulfillmentStatus: reservation.fulfillmentState,
+            ...(summary ? { summary } : {}),
+            ...(reconstruction.tableMap
+              ? { tableMap: reconstruction.tableMap }
+              : {}),
+            ...(statusKind === "fulfillment_failed" &&
+            reconstruction.supportContactPrefill
+              ? { supportContactPrefill: reconstruction.supportContactPrefill }
+              : {}),
+          })),
+          (value) => value satisfies CheckoutStatusViewModel
+        );
 
         yield* Effect.annotateLogsScoped({ result });
         yield* Effect.logInfo("Checkout status lookup completed");

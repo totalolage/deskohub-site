@@ -4,6 +4,7 @@ import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order
 import { meetingRoomReservationPath } from "@/features/checkout/routes";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import type { LocalizedRoutePageProps } from "@/features/i18n/server/route-params";
 import {
   MeetingRoomReservationForm,
   MeetingRoomReservationFormFallback,
@@ -13,13 +14,9 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-type LocalizedMeetingRoomReservationPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
 export async function generateMetadata({
   params,
-}: LocalizedMeetingRoomReservationPageProps): Promise<Metadata> {
+}: LocalizedRoutePageProps): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
@@ -63,7 +60,7 @@ export async function generateMetadata({
 
 export default async function LocalizedMeetingRoomReservationPage({
   params,
-}: LocalizedMeetingRoomReservationPageProps) {
+}: LocalizedRoutePageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 

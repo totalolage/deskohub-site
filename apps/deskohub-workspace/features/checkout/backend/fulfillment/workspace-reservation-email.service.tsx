@@ -300,23 +300,23 @@ const createReservationDetailRows = (
   locale: Locale
 ): EmailDetailRow[] => {
   const monitorOption = reservation.productMonitorOption ?? undefined;
-  const rows: EmailDetailRow[] = [
+  const rows: readonly (EmailDetailRow | false)[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
       formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
-    ...(reservation.productTier === "meeting-room"
-      ? [
-          [
-            m.reservationEmailTimeLabel({}, { locale }),
-            formatReservationDisplayTimeRange(
-              reservation.reservedFrom,
-              reservation.reservedUntil,
-              locale
-            ),
-          ] satisfies EmailDetailRow,
-        ]
-      : []),
+    reservation.productTier === "meeting-room" && [
+      m.reservationEmailTimeLabel({}, { locale }),
+      formatReservationDisplayTimeRange(
+        reservation.reservedFrom,
+        reservation.reservedUntil,
+        locale
+      ),
+    ],
+    isWorkspaceProductMonitorOption(monitorOption) && [
+      m.reservationEmailMonitorsLabel({}, { locale }),
+      getWorkspaceProductMonitorTitle(monitorOption, locale),
+    ],
     [
       m.reservationEmailTierLabel({}, { locale }),
       isWorkspaceProductTier(reservation.productTier)
@@ -331,14 +331,7 @@ const createReservationDetailRows = (
     ],
   ];
 
-  if (isWorkspaceProductMonitorOption(monitorOption)) {
-    rows.splice(2, 0, [
-      m.reservationEmailMonitorsLabel({}, { locale }),
-      getWorkspaceProductMonitorTitle(monitorOption, locale),
-    ]);
-  }
-
-  return rows;
+  return rows.filter(Boolean);
 };
 
 const appendReservationReferenceRows = (

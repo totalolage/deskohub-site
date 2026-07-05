@@ -4,6 +4,7 @@ import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order
 import { coworkReservationPath } from "@/features/checkout/routes";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import type { LocalizedRoutePageProps } from "@/features/i18n/server/route-params";
 import {
   ReservationForm,
   ReservationFormFallback,
@@ -17,13 +18,9 @@ import {
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-type LocalizedCoworkReservationPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
 export async function generateMetadata({
   params,
-}: LocalizedCoworkReservationPageProps): Promise<Metadata> {
+}: LocalizedRoutePageProps): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
@@ -64,7 +61,7 @@ export async function generateMetadata({
 
 export default async function LocalizedCoworkReservationPage({
   params,
-}: LocalizedCoworkReservationPageProps) {
+}: LocalizedRoutePageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 

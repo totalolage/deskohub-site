@@ -15,6 +15,7 @@ import {
 import { CheckoutStatusPage } from "./checkout-status-page";
 
 const baseStatus = {
+  _tag: "cowork",
   orderId: "reservation-status-page",
   returnOutcome: "success",
   status: "fulfilled",
@@ -43,9 +44,10 @@ describe("CheckoutStatusPage", () => {
           ...baseStatus,
           summary: {
             tier: "profi",
-            date: "2026-06-20",
             coffee: false,
             monitorOption: "2x27-qhd",
+            reservedFrom: new Date("2026-06-19T22:00:00.000Z"),
+            reservedUntil: new Date("2026-06-20T22:00:00.000Z"),
             price: { value: 55_000, exponent: 2, currency: "CZK" },
           },
         }}
@@ -80,12 +82,11 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          _tag: "meeting-room",
           summary: {
             tier: "meeting-room",
-            date: "2026-06-20",
             reservedFrom: new Date("2026-06-20T07:00:00.000Z"),
             reservedUntil: new Date("2026-06-20T11:00:00.000Z"),
-            coffee: false,
             price: { value: 60_000, exponent: 2, currency: "CZK" },
           },
         }}
@@ -105,6 +106,7 @@ describe("CheckoutStatusPage", () => {
       <CheckoutStatusPage
         locale="en-US"
         status={{
+          _tag: "cowork",
           orderId: "test-order",
           returnOutcome: "unknown",
           status: "not_found",
@@ -164,8 +166,9 @@ describe("CheckoutStatusPage", () => {
           },
           summary: {
             tier: "basic",
-            date: "2026-06-20",
             coffee: false,
+            reservedFrom: new Date("2026-06-19T22:00:00.000Z"),
+            reservedUntil: new Date("2026-06-20T22:00:00.000Z"),
             price: { value: 35_000, exponent: 2, currency: "CZK" },
           },
         }}

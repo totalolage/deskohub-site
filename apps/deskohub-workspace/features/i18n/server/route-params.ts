@@ -1,6 +1,19 @@
 import { Schema } from "effect";
 import { locales } from "../routing";
 
+export type LocalizedRoutePageProps<
+  Params extends Record<string, string> = Record<never, never>,
+> = {
+  readonly params: Promise<{ readonly locale: string } & Params>;
+};
+
+export type LocalizedRoutePageWithSearchParamsProps<
+  Params extends Record<string, string>,
+  SearchParams,
+> = LocalizedRoutePageProps<Params> & {
+  readonly searchParams: Promise<SearchParams>;
+};
+
 const LocaleRouteParamSchema = Schema.Literals(locales);
 
 type ParamsDecoderFields<Fields extends Schema.Struct.Fields> = {
