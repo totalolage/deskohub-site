@@ -18,30 +18,30 @@ import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
+import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
-  WorkspaceCheckoutAccessCodeService,
-  WorkspaceCheckoutAccessCodeServiceLive,
-} from "@/features/checkout/backend/access-code.service";
-import { buildCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
-import { splitCustomerName } from "@/features/checkout/backend/dotypos-customer-policy";
-import { createWorkspaceDotyposReservation } from "@/features/checkout/backend/dotypos-reservation.adapter";
+  buildAuthoritativeWorkspaceCheckoutQuoteEffect,
+  buildCheckoutPayPath,
+  buildSignedPayState,
+  payStateDefaultTtlMilliseconds,
+  sealPayStateForUrl,
+} from "@/features/checkout/backend/checkout";
+import {
+  ReservationHoldCleanupScheduleService,
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLiveWithDependencies,
+} from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
-} from "@/features/checkout/backend/legal-evidence-event.repository";
-import { payStateDefaultTtlMilliseconds } from "@/features/checkout/backend/pay-state";
+} from "@/features/checkout/backend/repositories";
 import {
-  buildSignedPayState,
-  sealPayStateForUrl,
-} from "@/features/checkout/backend/pay-state.server";
-import { captureReservationStarted } from "@/features/checkout/backend/posthog-lifecycle-events";
-import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
-import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/workspace-checkout-quote.server";
-import { WorkspaceTableAssignmentServiceLive } from "@/features/checkout/backend/workspace-table-assignment.service";
+  createWorkspaceDotyposReservation,
+  splitCustomerName,
+  WorkspaceCheckoutAccessCodeService,
+  WorkspaceCheckoutAccessCodeServiceLive,
+  WorkspaceTableAssignmentServiceLive,
+} from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {

@@ -13,34 +13,6 @@ import {
 } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
-import { buildFreshCheckoutPayPath } from "@/features/checkout/backend/checkout-pay-url";
-import {
-  type AmbiguousDotyposCustomerError,
-  getConfirmedDotyposCustomerDiscount,
-} from "@/features/checkout/backend/dotypos-customer-policy";
-import {
-  LegalEvidenceEventRepository,
-  LegalEvidenceEventRepositoryLive,
-} from "@/features/checkout/backend/legal-evidence-event.repository";
-import { NexiAmountFromWorkspaceMoney } from "@/features/checkout/backend/nexi-amount.codec";
-import {
-  openPayState,
-  type SignedPayState,
-} from "@/features/checkout/backend/pay-state.server";
-import {
-  PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
-} from "@/features/checkout/backend/payment-attempt.repository";
-import {
-  capturePaymentFailed,
-  capturePaymentStarted,
-} from "@/features/checkout/backend/posthog-lifecycle-events";
-import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/reservation-hold-cleanup-queue.service";
-import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
 import {
   buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
@@ -75,6 +47,31 @@ import {
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
 import { PostResponseTaskService } from "@/shared/backend/post-response-task.service";
+import {
+  capturePaymentFailed,
+  capturePaymentStarted,
+} from "../analytics/posthog-lifecycle-events";
+import {
+  ReservationHoldCleanupService,
+  ReservationHoldCleanupServiceLiveWithDependencies,
+} from "../holds/reservation-hold-cleanup.service";
+import { ReservationHoldCleanupScheduleService } from "../holds/reservation-hold-cleanup-queue.service";
+import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
+import {
+  LegalEvidenceEventRepository,
+  LegalEvidenceEventRepositoryLive,
+} from "../repositories/legal-evidence-event.repository";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "../repositories/payment-attempt.repository";
+import {
+  type AmbiguousDotyposCustomerError,
+  getConfirmedDotyposCustomerDiscount,
+} from "../reservation/dotypos-customer-policy";
+import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
+import { openPayState, type SignedPayState } from "./pay-state.server";
+import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly message: string;

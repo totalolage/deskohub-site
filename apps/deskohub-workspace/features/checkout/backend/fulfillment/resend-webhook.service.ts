@@ -1,8 +1,6 @@
 import { Context, Data, Effect, Layer, Schema } from "effect";
 import { Resend } from "resend";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import { captureReservationFulfilled } from "@/features/checkout/backend/posthog-lifecycle-events";
-import { ResendWebhookRuntimeConfig } from "@/features/checkout/backend/resend-webhook.config";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -12,6 +10,8 @@ import {
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
 import { ResendWebhookRuntimeConfigLive } from "@/shared/backend/config/resend-webhook.config";
+import { captureReservationFulfilled } from "../analytics/posthog-lifecycle-events";
+import { ResendWebhookRuntimeConfig } from "./resend-webhook.config";
 
 const workspaceFulfillmentSource = "workspace-paid-fulfillment";
 const customerAccessCategory = "workspace-paid-reservation-access";

@@ -1,12 +1,12 @@
 import { DuplicateMessageError, send } from "@vercel/queue";
 import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
+import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import { clamp } from "@/shared/utils";
 import {
   type ReservationHoldCleanupOutcome,
   ReservationHoldCleanupService,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import { clamp } from "@/shared/utils";
+} from "./reservation-hold-cleanup.service";
 
 export const reservationHoldCleanupQueueTopic =
   "workspace-reservation-hold-cleanup";

@@ -4,7 +4,7 @@ import {
   ResendWebhookProcessingError,
   ResendWebhookService,
   ResendWebhookServiceLiveWithDependencies,
-} from "@/features/checkout/backend/resend-webhook.service";
+} from "@/features/checkout/backend/fulfillment";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const processWebhookRequest = Effect.fn("processResendWebhookRequest")(

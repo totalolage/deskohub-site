@@ -4,17 +4,17 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import { DatabaseError } from "@/db/database.service";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
-import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "@/features/checkout/backend/provider-payment-finalization.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
+import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 
 describe("ReservationHoldCleanupService", () => {
   test("fails the expired hold sweep when expired hold selection fails", async () => {
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
+      "../payment/provider-payment-finalization.service"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -77,10 +77,10 @@ describe("ReservationHoldCleanupService", () => {
 
   test("does not cancel an expired hold when the pending provider payment finalizes paid", async () => {
     const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
+      "../payment/provider-payment-finalization.service"
     );
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -150,10 +150,10 @@ describe("ReservationHoldCleanupService", () => {
 
   test("counts unconfirmed pending payment cleanup as skipped without cancelling", async () => {
     const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
+      "../payment/provider-payment-finalization.service"
     );
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -242,10 +242,10 @@ describe("ReservationHoldCleanupService", () => {
 
   test("expires a durable not-verifiable payment attempt before cancelling the hold", async () => {
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
+      "../payment/provider-payment-finalization.service"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -335,10 +335,10 @@ describe("ReservationHoldCleanupService", () => {
 
   test("does not cancel when expiring the not-verifiable attempt loses the active-attempt guard", async () => {
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
+      "../payment/provider-payment-finalization.service"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");
@@ -403,10 +403,10 @@ describe("ReservationHoldCleanupService", () => {
 
   test("does not cancel an expired hold when provider verification fails transiently", async () => {
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { ProviderPaymentFinalizationService } = await import(
-      "./provider-payment-finalization.service"
+      "../payment/provider-payment-finalization.service"
     );
     const { ReservationHoldCleanupService, ReservationHoldCleanupServiceLive } =
       await import("./reservation-hold-cleanup.service");

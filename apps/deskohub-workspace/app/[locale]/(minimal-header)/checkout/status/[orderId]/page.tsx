@@ -3,12 +3,12 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
-import type {
-  CheckoutStatusReturnOutcome,
-  CheckoutStatusViewModel,
-} from "@/features/checkout/backend/checkout-status.service";
-import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
+import {
+  appendVercelPreviewProtectionBypass,
+  type CheckoutStatusReturnOutcome,
+  type CheckoutStatusViewModel,
+  refreshCheckoutStatus,
+} from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
 import { CheckoutStatusPage } from "@/features/checkout/components/checkout-status-page";

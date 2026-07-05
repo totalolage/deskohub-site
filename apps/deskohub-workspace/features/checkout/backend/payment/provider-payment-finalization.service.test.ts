@@ -6,9 +6,9 @@ import type {
   PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
-import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "@/features/checkout/backend/paid-fulfillment.service";
-import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "@/features/checkout/backend/payment-attempt.repository";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "../fulfillment/paid-fulfillment.service";
+import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 
 const paidNotStartedReservation = {
   id: "reservation-id",
@@ -65,10 +65,10 @@ describe("ProviderPaymentFinalizationService", () => {
         ProviderPaymentFinalizationServiceLive,
       } = await import("./provider-payment-finalization.service");
       const { PaymentAttemptRepository } = await import(
-        "./payment-attempt.repository"
+        "../repositories/payment-attempt.repository"
       );
       const { WorkspacePaidFulfillmentService } = await import(
-        "./paid-fulfillment.service"
+        "../fulfillment/paid-fulfillment.service"
       );
       const { WorkspaceReservationRepository } = await import(
         "@/features/reservation/backend/workspace-reservation.repository"
@@ -128,10 +128,10 @@ describe("ProviderPaymentFinalizationService", () => {
       ProviderPaymentFinalizationServiceLive,
     } = await import("./provider-payment-finalization.service");
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { WorkspacePaidFulfillmentService } = await import(
-      "./paid-fulfillment.service"
+      "../fulfillment/paid-fulfillment.service"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
@@ -195,10 +195,10 @@ describe("ProviderPaymentFinalizationService", () => {
         ProviderPaymentFinalizationServiceLive,
       } = await import("./provider-payment-finalization.service");
       const { PaymentAttemptRepository } = await import(
-        "./payment-attempt.repository"
+        "../repositories/payment-attempt.repository"
       );
       const { WorkspacePaidFulfillmentService } = await import(
-        "./paid-fulfillment.service"
+        "../fulfillment/paid-fulfillment.service"
       );
       const { WorkspaceReservationRepository } = await import(
         "@/features/reservation/backend/workspace-reservation.repository"
@@ -312,10 +312,10 @@ describe("ProviderPaymentFinalizationService", () => {
       ProviderPaymentFinalizationServiceLive,
     } = await import("./provider-payment-finalization.service");
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { WorkspacePaidFulfillmentService } = await import(
-      "./paid-fulfillment.service"
+      "../fulfillment/paid-fulfillment.service"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"
@@ -372,10 +372,10 @@ describe("ProviderPaymentFinalizationService", () => {
       ProviderPaymentFinalizationServiceLive,
     } = await import("./provider-payment-finalization.service");
     const { PaymentAttemptRepository } = await import(
-      "./payment-attempt.repository"
+      "../repositories/payment-attempt.repository"
     );
     const { WorkspacePaidFulfillmentService } = await import(
-      "./paid-fulfillment.service"
+      "../fulfillment/paid-fulfillment.service"
     );
     const { WorkspaceReservationRepository } = await import(
       "@/features/reservation/backend/workspace-reservation.repository"

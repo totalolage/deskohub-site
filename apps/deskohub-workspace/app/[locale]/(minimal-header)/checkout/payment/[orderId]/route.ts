@@ -1,8 +1,10 @@
 import { Effect, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
-import { refreshCheckoutStatus } from "@/features/checkout/backend/checkout-status.server";
-import type { CheckoutStatusReturnOutcome } from "@/features/checkout/backend/checkout-status.service";
-import { appendVercelPreviewProtectionBypass } from "@/features/checkout/backend/vercel-preview-protection-bypass";
+import {
+  appendVercelPreviewProtectionBypass,
+  type CheckoutStatusReturnOutcome,
+  refreshCheckoutStatus,
+} from "@/features/checkout/backend/checkout";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {

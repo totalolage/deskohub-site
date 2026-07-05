@@ -4,7 +4,7 @@ import { env } from "@/env";
 import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/reservation-hold-cleanup.service";
+} from "@/features/checkout/backend/holds";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const cronBatchLimit = 25;

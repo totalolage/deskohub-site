@@ -16,12 +16,6 @@ import { Context, Effect, Layer } from "effect";
 import { generateSvgPngBuffer, type SvgPngTextOverlay } from "osm";
 import { env } from "@/env";
 import {
-  createWorkspaceCheckoutWifiQrPayload,
-  type WorkspaceCheckoutNetworkDetails,
-  WorkspaceCheckoutNetworkDetailsService,
-  workspaceCheckoutPlaceholderNetworkDetails,
-} from "@/features/checkout/backend/network-details.service";
-import {
   WorkspaceTableMapView,
   workspaceTableMapImageHeight,
   workspaceTableMapImageWidth,
@@ -52,6 +46,12 @@ import {
   workspaceLocationMapImagePath,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import {
+  createWorkspaceCheckoutWifiQrPayload,
+  type WorkspaceCheckoutNetworkDetails,
+  WorkspaceCheckoutNetworkDetailsService,
+  workspaceCheckoutPlaceholderNetworkDetails,
+} from "./network-details.service";
 
 export interface WorkspaceReservationEmailService {
   readonly sendPaidReservationEmails: (input: {

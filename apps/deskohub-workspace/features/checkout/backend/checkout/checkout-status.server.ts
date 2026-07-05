@@ -1,12 +1,12 @@
 import "server-only";
 
 import { Effect } from "effect";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
-} from "@/features/checkout/backend/checkout-status.service";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+} from "./checkout-status.service";
 
 const runCheckoutStatusService = <A, E>(
   useService: (service: CheckoutStatusService) => Effect.Effect<A, E>

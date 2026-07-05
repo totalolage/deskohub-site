@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { createWorkspaceReservationNotificationEmailPreviewHtml } from "@/features/checkout/backend/workspace-reservation-email.service";
+import { createWorkspaceReservationNotificationEmailPreviewHtml } from "@/features/checkout/backend/fulfillment";
 import { isLocale, type Locale } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { EmailPreviewFrame } from "../_components/email-preview-frame";

@@ -1,5 +1,5 @@
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
-import { isDisplayableWorkspaceTable } from "./backend/workspace-table-selection";
+import { isDisplayableWorkspaceTable } from "./backend/reservation";
 
 export type WorkspaceTableMap = {
   readonly assignedTableId: string;

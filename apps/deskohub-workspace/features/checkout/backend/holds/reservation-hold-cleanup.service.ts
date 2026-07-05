@@ -2,15 +2,6 @@ import { DotyposService } from "@deskohub/dotypos";
 import { Context, Data, Effect, Layer, Match } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
-  PaymentAttemptRepository,
-  PaymentAttemptRepositoryLive,
-} from "@/features/checkout/backend/payment-attempt.repository";
-import { captureReservationAbandoned } from "@/features/checkout/backend/posthog-lifecycle-events";
-import {
-  ProviderPaymentFinalizationService,
-  ProviderPaymentFinalizationServiceLiveWithDependencies,
-} from "@/features/checkout/backend/provider-payment-finalization.service";
-import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -19,6 +10,15 @@ import {
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { captureReservationAbandoned } from "../analytics/posthog-lifecycle-events";
+import {
+  ProviderPaymentFinalizationService,
+  ProviderPaymentFinalizationServiceLiveWithDependencies,
+} from "../payment/provider-payment-finalization.service";
+import {
+  PaymentAttemptRepository,
+  PaymentAttemptRepositoryLive,
+} from "../repositories/payment-attempt.repository";
 
 export class ReservationHoldCleanupError extends Data.TaggedError(
   "ReservationHoldCleanupError"

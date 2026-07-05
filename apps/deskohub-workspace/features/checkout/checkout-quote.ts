@@ -1,6 +1,6 @@
 import type { DotyposCustomerDiscount } from "@deskohub/dotypos";
 import { Data, Effect } from "effect";
-import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout-pricing";
+import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout";
 import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,

@@ -11,7 +11,7 @@ import Link from "next/link";
 import type {
   CheckoutStatusKind,
   CheckoutStatusViewModel,
-} from "@/features/checkout/backend/checkout-status.service";
+} from "@/features/checkout/backend/checkout";
 import {
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
