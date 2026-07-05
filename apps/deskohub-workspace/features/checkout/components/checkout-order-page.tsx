@@ -26,12 +26,11 @@ export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
         fallback={
           <ReservationFormFallback
             locale={locale}
-            showIntro={false}
             showMonitorOption={showMonitorOptionFallback}
           />
         }
       >
-        <ReservationForm locale={locale} showIntro={false} />
+        <ReservationForm locale={locale} />
       </Suspense>
     </CheckoutFlowLayout>
   );

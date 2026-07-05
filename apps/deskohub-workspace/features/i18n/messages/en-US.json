@@ -250,7 +250,6 @@
   "reservationHeroPointThreeTitle": "Human confirmation",
   "reservationHeroPointThreeText": "The request lands with the workspace team for final confirmation.",
   "reservationFormTitle": "Shape the day in one form.",
-  "reservationFormDescription": "Choose the entry tier, date, coffee preference, and workstation setup. Required details stay minimal so the booking can move fast.",
   "reservationTierLabel": "Entry tier",
   "reservationTierBasicTitle": "Basic Day Pass",
   "reservationTierBasicPrice": "CZK 350 / day",
