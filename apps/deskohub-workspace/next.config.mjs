@@ -40,6 +40,11 @@ const nextConfig = {
         permanent: true,
       },
       {
+        source: "/:locale/checkout/order",
+        destination: "/:locale/checkout/reservation/cowork",
+        permanent: true,
+      },
+      {
         source: "/bar",
         destination: "https://www.deskohub.cz",
         permanent: true,
