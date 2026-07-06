@@ -40,6 +40,7 @@ import {
   reservationSchema,
   workspaceConstants,
 } from "../schemas/reservation";
+import { useState } from "react";
 
 export function ReservationForm() {
   const router = useRouter();
@@ -313,55 +314,61 @@ export function ReservationForm() {
               <FormField
                 control={form.control}
                 name="date"
-                render={({ field }) => (
-                  <FormItem className="flex flex-col">
-                    <FormLabel htmlFor="date-button">
-                      {m["trainingReservation.form.date"]()}
-                    </FormLabel>
-                    <Popover>
-                      <PopoverTrigger asChild>
-                        <FormControl>
-                          <Button
-                            id="date-button"
-                            variant="outline"
-                            className={cn(
-                              "w-full pl-3 text-left font-normal",
-                              !field.value && "text-muted-foreground"
-                            )}
-                            aria-label="Select date"
-                            aria-describedby="date-error"
-                            aria-required="true"
-                            aria-haspopup="dialog"
-                            aria-expanded={false}
-                          >
-                            {field.value ? (
-                              format(field.value, "PPP")
-                            ) : (
-                              <span>
-                                {m["trainingReservation.form.pickDate"]()}
-                              </span>
-                            )}
-                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                          </Button>
-                        </FormControl>
-                      </PopoverTrigger>
-                      <PopoverContent className="w-auto p-0" align="start">
-                        <Calendar
-                          mode="single"
-                          selected={field.value}
-                          onSelect={field.onChange}
-                          disabled={(date) => {
-                            const today = new Date();
-                            today.setHours(0, 0, 0, 0);
-                            return date < today;
-                          }}
-                          initialFocus
-                        />
-                      </PopoverContent>
-                    </Popover>
-                    <FormMessage id="date-error" />
-                  </FormItem>
-                )}
+                render={({ field }) => {
+                  const [open, setOpen] = useState(false);
+                  return (
+                    <FormItem className="flex flex-col">
+                      <FormLabel htmlFor="date-button">
+                        {m["trainingReservation.form.date"]()}
+                      </FormLabel>
+                      <Popover open={open} onOpenChange={setOpen}>
+                        <PopoverTrigger asChild>
+                          <FormControl>
+                            <Button
+                              id="date-button"
+                              variant="outline"
+                              className={cn(
+                                "w-full pl-3 text-left font-normal",
+                                !field.value && "text-muted-foreground"
+                              )}
+                              aria-label="Select date"
+                              aria-describedby="date-error"
+                              aria-required="true"
+                              aria-haspopup="dialog"
+                              aria-expanded={false}
+                            >
+                              {field.value ? (
+                                format(field.value, "PPP")
+                              ) : (
+                                <span>
+                                  {m["trainingReservation.form.pickDate"]()}
+                                </span>
+                              )}
+                              <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                            </Button>
+                          </FormControl>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={field.value}
+                            onSelect={(date) => {
+                              field.onChange(date);
+                              setOpen(false);
+                            }}
+                            disabled={(date) => {
+                              const today = new Date();
+                              today.setHours(0, 0, 0, 0);
+                              return date < today;
+                            }}
+                            initialFocus
+                          />
+                        </PopoverContent>
+                      </Popover>
+                      <FormMessage id="date-error" />
+                    </FormItem>
+                  );
+                }}
               />
 
               <FormField

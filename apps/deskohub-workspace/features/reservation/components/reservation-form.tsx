@@ -566,52 +566,59 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                 <FormField
                   control={form.control}
                   name="date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel
-                        className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
-                        required
-                      >
-                        {m.reservationDateLabel({}, { locale })}
-                      </FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              className={cn(
-                                "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-                                !field.value && "text-navy-blue/44"
-                              )}
-                            >
-                              <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                              {formatDisplayDate(field.value, locale)}
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-auto p-3">
-                          <Calendar
-                            mode="single"
-                            selected={parseReservationInputDate(field.value)}
-                            onSelect={(date) => {
-                              if (!date) {
-                                return;
-                              }
+                  render={({ field }) => {
+                    // biome-ignore lint/correctness/useHookAtTopLevel: this ends up being a self contained component
+                    const [open, setOpen] = useState(false);
+                    return (
+                      <FormItem>
+                        <FormLabel
+                          className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                          required
+                        >
+                          {m.reservationDateLabel({}, { locale })}
+                        </FormLabel>
+                        <Popover open={open} onOpenChange={setOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className={cn(
+                                  "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                                  !field.value && "text-navy-blue/44"
+                                )}
+                              >
+                                <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                                {formatDisplayDate(field.value, locale)}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent align="start" className="w-auto p-3">
+                            <Calendar
+                              mode="single"
+                              selected={parseReservationInputDate(field.value)}
+                              onSelect={(date) => {
+                                if (!date) {
+                                  return;
+                                }
 
-                              field.onChange(formatDateForInput(date));
-                            }}
-                            disabled={[
-                              { before: new Date() },
-                              (date) =>
-                                unavailableDates.has(formatDateForInput(date)),
-                            ]}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                                field.onChange(formatDateForInput(date));
+                                setOpen(false);
+                              }}
+                              disabled={[
+                                { before: new Date() },
+                                (date) =>
+                                  unavailableDates.has(
+                                    formatDateForInput(date)
+                                  ),
+                              ]}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
               </div>
 
