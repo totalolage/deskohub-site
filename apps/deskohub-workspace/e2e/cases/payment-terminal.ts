@@ -113,7 +113,7 @@ const assertTerminalStatusPage = async ({
   scenario: PaymentTerminalScenario;
   session: string;
 }) => {
-  const url = `${config.aliasUrl}/en-US/checkout/status/${orderId}`;
+  const url = `${config.browserUrl}/en-US/checkout/status/${orderId}`;
 
   await poll(
     async () => {

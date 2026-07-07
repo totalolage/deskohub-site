@@ -28,7 +28,7 @@ export const assertContactForm = async ({
     config,
     run,
     session,
-    `${config.aliasUrl}/en-US/contact`,
+    `${config.browserUrl}/en-US/contact`,
     {
       timeoutMs: getCheckoutTimeoutMs(),
     }

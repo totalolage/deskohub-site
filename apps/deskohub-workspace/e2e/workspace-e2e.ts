@@ -81,6 +81,7 @@ export const runWorkspaceE2E = async () => {
     );
     const previewUrl = extractDeploymentUrl(deploy.stdout);
     const deployment = await getDeployment(config, previewUrl);
+    const testConfig = { ...config, browserUrl: previewUrl };
 
     if (await recordAliasPreflight(config, deployment.id))
       await assignAlias(config, deployment.id);
@@ -89,7 +90,7 @@ export const runWorkspaceE2E = async () => {
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
 
     const cases = await makeWorkspaceE2ECases({
-      config,
+      config: testConfig,
       datasourceConfig,
       deploymentId: deployment.id,
       flowStates,

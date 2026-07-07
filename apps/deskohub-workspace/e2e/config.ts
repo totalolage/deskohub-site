@@ -18,6 +18,7 @@ export const getConfig = () => {
   return {
     alias,
     aliasUrl: `https://${alias}`,
+    browserUrl: `https://${alias}`,
     bypassSecret,
     vercelProjectId,
     vercelTeamId,

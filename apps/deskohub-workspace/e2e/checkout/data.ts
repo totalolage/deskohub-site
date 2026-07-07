@@ -9,7 +9,7 @@ export const checkoutFlows: readonly CheckoutFlow[] = [
   {
     id: "cowork-basic",
     makeData: async (config, _datasourceConfig, date) =>
-      makeCoworkCheckoutData(config.aliasUrl, date),
+      makeCoworkCheckoutData(config.browserUrl, date),
     submitReservationScript: () => submitCoworkReservationScript,
   },
 ];
@@ -30,7 +30,7 @@ const makeCheckoutContact = (flowId: string) => {
 };
 
 export const makeCoworkCheckoutData = (
-  aliasUrl: string,
+  checkoutBaseUrl: string,
   date: string,
   flowId = "cowork-basic"
 ): CheckoutData => {
@@ -47,7 +47,7 @@ export const makeCoworkCheckoutData = (
   });
 
   return {
-    checkoutUrl: `${aliasUrl}/${locale}/checkout/order?${params}`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/checkout/order?${params}`,
     date,
     email: contact.email,
     expectedCoffee: false,
@@ -78,7 +78,7 @@ export const selectAvailableCoworkDates = async (
   const to = futureIsoDate(90);
   const params = new URLSearchParams({ entryTier: "basic", from, to });
   const response = await fetch(
-    `${config.aliasUrl}/api/workspace/availability?${params}`,
+    `${config.browserUrl}/api/workspace/availability?${params}`,
     {
       headers: config.bypassSecret
         ? { "x-vercel-protection-bypass": config.bypassSecret }

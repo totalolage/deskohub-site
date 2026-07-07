@@ -15,7 +15,7 @@ export const assertLocaleSwitcher = async ({
   run: Runner;
   session: string;
 }) => {
-  await openBrowserPage(config, run, session, `${config.aliasUrl}/en-US`, {
+  await openBrowserPage(config, run, session, `${config.browserUrl}/en-US`, {
     timeoutMs: getCheckoutTimeoutMs(),
   });
 

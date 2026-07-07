@@ -125,7 +125,7 @@ const assertFulfilledStatusPage = async ({
       session,
       ...headers,
       "open",
-      `${config.aliasUrl}/${locale}/checkout/status/${orderId}`,
+      `${config.browserUrl}/${locale}/checkout/status/${orderId}`,
     ],
     { timeoutMs: getCheckoutTimeoutMs() }
   );
@@ -152,8 +152,12 @@ const assertFulfillmentFailedSupportPath = async ({
   session: string;
 }) => {
   await markFulfillmentFailedForE2E(datasourceConfig, orderId);
-  const statusUrl = `${config.aliasUrl}/${data.locale}/checkout/status/${orderId}`;
-  await openBrowserPage(config, run, session, statusUrl, {
+  const statusUrl = new URL(
+    `${config.browserUrl}/${data.locale}/checkout/status/${orderId}`
+  );
+  statusUrl.searchParams.set("e2eState", "fulfillmentFailed");
+  statusUrl.searchParams.set("e2eAt", String(Date.now()));
+  await openBrowserPage(config, run, session, statusUrl.toString(), {
     timeoutMs: getCheckoutTimeoutMs(),
   });
   await waitForInteractiveSnapshot({

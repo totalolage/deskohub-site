@@ -64,7 +64,7 @@ export const makeWorkspaceE2ECases = async ({
 
   for (const scenario of terminalScenarios) {
     const data = makeCoworkCheckoutData(
-      config.aliasUrl,
+      config.browserUrl,
       requireCheckoutDate(checkoutDates, nextDateIndex),
       `cowork-${scenario.state}`
     );
