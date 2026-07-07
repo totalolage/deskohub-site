@@ -9,6 +9,7 @@ import {
   getConfig,
   getDatasourceConfig,
   getVercelDeployEnvArgs,
+  getVercelDeployTimeoutMs,
 } from "./config";
 import {
   assertSafeDatabaseUrl,
@@ -76,7 +77,7 @@ export const runWorkspaceE2E = async () => {
         "--token",
         config.vercelToken,
       ],
-      { timeoutMs: 20 * 60 * 1000 }
+      { timeoutMs: getVercelDeployTimeoutMs() }
     );
     const previewUrl = extractDeploymentUrl(deploy.stdout);
     const deployment = await getDeployment(config, previewUrl);
