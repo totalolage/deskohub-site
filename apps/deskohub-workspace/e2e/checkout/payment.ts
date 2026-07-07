@@ -9,7 +9,11 @@ import {
   switchToMainFrame,
   waitForBrowserUrl,
 } from "../browser";
-import { payPageOrderIdScript, submitPaymentScript } from "../browser-scripts";
+import {
+  browserDiagnosticsScript,
+  payPageOrderIdScript,
+  submitPaymentScript,
+} from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
 import type { Runner } from "../runtime";
@@ -59,25 +63,12 @@ export const completeCheckout = async ({
       timeoutMs: getCheckoutTimeoutMs(),
     }
   );
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: submitReservationScript,
-    logOutput: false,
+  const payPageUrl = await submitReservationAndWaitForPayPage({
+    onOrderId,
+    run,
+    session,
+    submitReservationScript,
   });
-  let payPageUrl: string;
-  try {
-    payPageUrl = await waitForBrowserUrl({
-      description: "checkout pay page",
-      matches: (url) => url.includes("/checkout/pay"),
-      run,
-      session,
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-  } catch (cause) {
-    const currentUrl = await readBrowserUrl(run, session);
-    const orderId = getSearchOrderId(currentUrl);
-    if (orderId) onOrderId?.(orderId);
-    throw cause;
-  }
   const payPageOrderId =
     getSearchOrderId(payPageUrl) ?? (await readPayPageOrderId(run, session));
   onOrderId?.(payPageOrderId);
@@ -121,16 +112,11 @@ export const startCheckoutPaymentAttempt = async ({
   await openBrowserPage(config, run, session, data.checkoutUrl, {
     timeoutMs: getCheckoutTimeoutMs(),
   });
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: submitReservationScript,
-    logOutput: false,
-  });
-  const payPageUrl = await waitForBrowserUrl({
-    description: "checkout pay page",
-    matches: (url) => url.includes("/checkout/pay"),
+  const payPageUrl = await submitReservationAndWaitForPayPage({
+    onOrderId,
     run,
     session,
-    timeoutMs: getCheckoutTimeoutMs(),
+    submitReservationScript,
   });
   const orderId =
     getSearchOrderId(payPageUrl) ?? (await readPayPageOrderId(run, session));
@@ -153,6 +139,177 @@ const readPayPageOrderId = async (run: Runner, session: string) => {
   const orderId = result.stdout.trim();
   assert(orderId, "checkout pay page order id missing");
   return orderId;
+};
+
+const submitReservationAndWaitForPayPage = async ({
+  onOrderId,
+  run,
+  session,
+  submitReservationScript,
+}: {
+  onOrderId?: (orderId: string) => void;
+  run: Runner;
+  session: string;
+  submitReservationScript: string;
+}) => {
+  const timeoutMs = Math.min(getCheckoutTimeoutMs(), 90_000);
+
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+      input: submitReservationScript,
+      logOutput: false,
+    });
+
+    const result = await waitForReservationStartAttempt(
+      run,
+      session,
+      timeoutMs
+    );
+    if (result.status === "ready") return result.url;
+
+    const orderId = getSearchOrderId(result.url);
+    if (orderId) onOrderId?.(orderId);
+
+    if (attempt === 3 || !result.retryable) {
+      throw new Error(
+        [
+          "Timed out waiting for checkout pay page",
+          result.diagnostics
+            ? `Browser diagnostics:\n${result.diagnostics}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    }
+
+    log(
+      `Retrying reservation start after checkout form failure (${attempt}/3)`
+    );
+  }
+
+  throw new Error("Timed out waiting for checkout pay page");
+};
+
+type ReservationStartAttemptResult =
+  | {
+      readonly status: "ready";
+      readonly url: string;
+    }
+  | {
+      readonly diagnostics: string | undefined;
+      readonly retryable: boolean;
+      readonly status: "not_ready";
+      readonly url: string | undefined;
+    };
+
+const waitForReservationStartAttempt = async (
+  run: Runner,
+  session: string,
+  timeoutMs: number
+): Promise<ReservationStartAttemptResult> => {
+  let latest: ReservationStartDiagnostics | undefined;
+
+  const readyUrl = await poll(
+    async () => {
+      const url = await readBrowserUrl(run, session);
+      if (url?.includes("/checkout/pay")) return url;
+
+      latest = await readReservationStartDiagnostics(run, session);
+      if (isRetryableReservationStartFailure(latest)) return "retryable";
+    },
+    timeoutMs,
+    "checkout pay page"
+  ).catch((error) => {
+    latest = addReservationStartTimeout(latest, error);
+    return undefined;
+  });
+
+  if (readyUrl && readyUrl !== "retryable")
+    return { status: "ready", url: readyUrl };
+
+  latest ??= await readReservationStartDiagnostics(run, session);
+  return {
+    diagnostics: formatReservationStartDiagnostics(latest),
+    retryable:
+      readyUrl === "retryable" || isRetryableReservationStartFailure(latest),
+    status: "not_ready",
+    url: latest?.url,
+  };
+};
+
+type ReservationStartDiagnostics = {
+  readonly body?: string;
+  readonly submitDisabled?: boolean | null;
+  readonly submitText?: string | null;
+  readonly timeoutError?: string;
+  readonly title?: string;
+  readonly url?: string;
+};
+
+const readReservationStartDiagnostics = async (
+  run: Runner,
+  session: string
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "eval", "--stdin"],
+    {
+      allowFailure: true,
+      input: browserDiagnosticsScript,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  );
+
+  if (result.exitCode !== 0) return undefined;
+
+  try {
+    const parsed = JSON.parse(result.stdout.trim()) as unknown;
+    return parsed && typeof parsed === "object"
+      ? (parsed as ReservationStartDiagnostics)
+      : undefined;
+  } catch {
+    return {
+      body: result.stdout,
+    };
+  }
+};
+
+const isRetryableReservationStartFailure = (
+  diagnostics: ReservationStartDiagnostics | undefined
+) =>
+  Boolean(
+    diagnostics?.url?.includes("/checkout/order") &&
+      diagnostics.submitDisabled === false &&
+      /Checkout could not be started/i.test(diagnostics.body ?? "")
+  );
+
+const addReservationStartTimeout = (
+  diagnostics: ReservationStartDiagnostics | undefined,
+  error: unknown
+): ReservationStartDiagnostics => ({
+  ...diagnostics,
+  timeoutError: error instanceof Error ? error.message : String(error),
+});
+
+const formatReservationStartDiagnostics = (
+  diagnostics: ReservationStartDiagnostics | undefined
+) => {
+  if (!diagnostics) return undefined;
+
+  return JSON.stringify(
+    {
+      body: diagnostics.body?.slice(0, 1200),
+      submitDisabled: diagnostics.submitDisabled,
+      submitText: diagnostics.submitText,
+      timeoutError: diagnostics.timeoutError,
+      title: diagnostics.title,
+      url: diagnostics.url,
+    },
+    null,
+    2
+  );
 };
 
 const isCheckoutStatusUrl = (url: string | undefined) =>
