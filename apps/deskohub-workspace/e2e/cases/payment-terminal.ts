@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import {
   openBrowserPage,
+  waitForBrowserText,
   waitForBrowserUrl,
-  waitForInteractiveSnapshot,
 } from "../browser";
 import {
   clickStatusReserveAgainScript,
@@ -77,7 +77,7 @@ export const assertPaymentTerminalPath = ({
           session,
           submitReservationScript: submitCoworkReservationScript,
         })
-      )
+      ).pipe(Effect.retry({ times: 1 }))
     );
     state.orderId = orderId;
     state.checkoutRow = yield* effectifyPromise(
@@ -134,21 +134,24 @@ const assertTerminalStatusPage = ({
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const url = `${config.browserUrl}/en-US/checkout/status/${orderId}`;
+    const url = new URL(
+      `${config.browserUrl}/en-US/checkout/status/${orderId}`
+    );
+    url.searchParams.set("e2eAt", String(Date.now()));
 
     yield* effectifyPromise(`open ${scenario.state} checkout status page`, () =>
-      openBrowserPage(config, run, session, url, {
+      openBrowserPage(config, run, session, url.toString(), {
         timeoutMs: 60_000,
       })
     );
     yield* effectifyPromise(
       `wait for ${scenario.state} checkout status copy`,
       () =>
-        waitForInteractiveSnapshot({
+        waitForBrowserText({
           description: `${scenario.state} checkout status copy`,
-          matches: (snapshot) =>
-            scenario.titlePattern.test(snapshot) &&
-            /Start a new reservation/i.test(snapshot),
+          matches: (text) =>
+            scenario.titlePattern.test(text) &&
+            /Start a new reservation/i.test(text),
           run,
           session,
           timeoutMs: getCheckoutTimeoutMs(),

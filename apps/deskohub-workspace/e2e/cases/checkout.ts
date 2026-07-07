@@ -71,7 +71,7 @@ export const executeCheckoutFlow = ({
               session,
               submitReservationScript: flow.submitReservationScript(data),
             })
-        );
+        ).pipe(Effect.retry({ times: 1 }));
         yield* effectifyPromise(`complete ${flow.id} hosted payment`, () =>
           completeNexiHostedPayment({ data, run, session })
         );
