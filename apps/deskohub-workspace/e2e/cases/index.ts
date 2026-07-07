@@ -1,5 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
+import { Cause, Effect, Exit } from "effect";
 import {
   captureBrowserFailureArtifacts,
   startBrowserDiagnostics,
@@ -12,6 +13,14 @@ import {
   selectAvailableCoworkDates,
 } from "../checkout/data";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import {
+  effectifyPromise,
+  effectifySync,
+  failWorkspaceE2E,
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import {
   readCleanupCheckoutRow,
   readLatestCleanupCheckoutRow,
@@ -32,7 +41,7 @@ import {
   getPaymentTerminalScenarios,
 } from "./payment-terminal";
 
-export const makeWorkspaceE2ECases = async ({
+export const makeWorkspaceE2ECases = ({
   config,
   datasourceConfig,
   deploymentId,
@@ -44,78 +53,101 @@ export const makeWorkspaceE2ECases = async ({
   deploymentId: string;
   flowStates: CheckoutFlowState[];
   run: Runner;
-}): Promise<readonly WorkspaceE2ECase[]> => {
-  const terminalScenarios = getPaymentTerminalScenarios();
-  const checkoutDates = await selectAvailableCoworkDates(
-    config,
-    checkoutFlows.length + terminalScenarios.length
-  );
-  const cases: WorkspaceE2ECase[] = [
-    {
-      execute: ({ session }) => assertLocaleSwitcher({ config, run, session }),
-      id: "locale-switch",
-    },
-    {
-      execute: ({ session }) => assertContactForm({ config, run, session }),
-      id: "contact-form",
-    },
-  ];
-  let nextDateIndex = 0;
-
-  for (const scenario of terminalScenarios) {
-    const data = makeCoworkCheckoutData(
-      config.browserUrl,
-      requireCheckoutDate(checkoutDates, nextDateIndex),
-      `cowork-${scenario.state}`
-    );
-    nextDateIndex += 1;
-    const state = trackCheckoutState(flowStates, data);
-    cases.push({
-      execute: ({ session }) =>
-        assertPaymentTerminalPath({
+}): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const terminalScenarios = getPaymentTerminalScenarios();
+    const checkoutDates = yield* effectifyPromise(
+      "select available cowork checkout dates",
+      () =>
+        selectAvailableCoworkDates(
           config,
-          data,
-          datasourceConfig,
-          run,
-          scenario,
-          session,
-          state,
-        }),
-      id: `payment-${scenario.state}`,
-    });
-  }
-
-  for (const flow of checkoutFlows) {
-    const data = await flow.makeData(
-      config,
-      datasourceConfig,
-      requireCheckoutDate(checkoutDates, nextDateIndex)
+          checkoutFlows.length + terminalScenarios.length
+        )
     );
-    nextDateIndex += 1;
-    if (!data) {
-      log(`${flow.id} checkout e2e skipped`);
-      continue;
+    const cases: WorkspaceE2ECase[] = [
+      {
+        execute: ({ session }) =>
+          effectifyPromise("run locale switch e2e case", () =>
+            assertLocaleSwitcher({ config, run, session })
+          ),
+        id: "locale-switch",
+      },
+      {
+        execute: ({ session }) =>
+          effectifyPromise("run contact form e2e case", () =>
+            assertContactForm({ config, run, session })
+          ),
+        id: "contact-form",
+      },
+    ];
+    let nextDateIndex = 0;
+
+    for (const scenario of terminalScenarios) {
+      const data = yield* effectifySync(
+        `prepare ${scenario.state} payment e2e data`,
+        () =>
+          makeCoworkCheckoutData(
+            config.browserUrl,
+            requireCheckoutDate(checkoutDates, nextDateIndex),
+            `cowork-${scenario.state}`
+          )
+      );
+      nextDateIndex += 1;
+      const state = trackCheckoutState(flowStates, data);
+      cases.push({
+        execute: ({ session }) =>
+          effectifyPromise(`run ${scenario.state} payment e2e case`, () =>
+            assertPaymentTerminalPath({
+              config,
+              data,
+              datasourceConfig,
+              run,
+              scenario,
+              session,
+              state,
+            })
+          ),
+        id: `payment-${scenario.state}`,
+      });
     }
 
-    const state = trackCheckoutState(flowStates, data);
-    cases.push({
-      execute: ({ session }) =>
-        executeCheckoutFlow({
-          config,
-          data,
-          datasourceConfig,
-          deploymentId,
-          flow,
-          run,
-          session,
-          state,
-        }),
-      id: `checkout-${flow.id}`,
-    });
-  }
+    for (const flow of checkoutFlows) {
+      const data = yield* effectifyPromise(
+        `prepare ${flow.id} checkout e2e data`,
+        async () =>
+          flow.makeData(
+            config,
+            datasourceConfig,
+            requireCheckoutDate(checkoutDates, nextDateIndex)
+          )
+      );
+      nextDateIndex += 1;
+      if (!data) {
+        log(`${flow.id} checkout e2e skipped`);
+        continue;
+      }
 
-  return cases;
-};
+      const state = trackCheckoutState(flowStates, data);
+      cases.push({
+        execute: ({ session }) =>
+          effectifyPromise(`run ${flow.id} checkout e2e case`, () =>
+            executeCheckoutFlow({
+              config,
+              data,
+              datasourceConfig,
+              deploymentId,
+              flow,
+              run,
+              session,
+              state,
+            })
+          ),
+        id: `checkout-${flow.id}`,
+      });
+    }
+
+    return cases;
+  });
 
 const trackCheckoutState = (
   flowStates: CheckoutFlowState[],
@@ -134,7 +166,7 @@ const trackCheckoutState = (
   return state;
 };
 
-export const runWorkspaceE2ECases = async ({
+export const runWorkspaceE2ECases = ({
   artifactRoot,
   cases,
   run,
@@ -144,35 +176,47 @@ export const runWorkspaceE2ECases = async ({
   cases: readonly WorkspaceE2ECase[];
   run: Runner;
   sessionPrefix: string;
-}) => {
-  log(
-    `Running ${cases.length} workspace e2e cases in parallel: ${cases
-      .map((testCase) => testCase.id)
-      .join(", ")}`
-  );
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    log(
+      `Running ${cases.length} workspace e2e cases in parallel: ${cases
+        .map((testCase) => testCase.id)
+        .join(", ")}`
+    );
 
-  const results = await Promise.allSettled(
-    cases.map((testCase) =>
-      runWorkspaceE2ECase({ artifactRoot, run, sessionPrefix, testCase })
-    )
-  );
-  const failures = results.flatMap((result, index) =>
-    result.status === "rejected"
-      ? [{ cause: result.reason, id: cases[index]?.id ?? `case-${index}` }]
-      : []
-  );
+    const results = yield* Effect.all(
+      cases.map((testCase) =>
+        Effect.exit(
+          runWorkspaceE2ECase({ artifactRoot, run, sessionPrefix, testCase })
+        )
+      ),
+      { concurrency: "unbounded" }
+    );
+    const failures = results.flatMap((result, index) =>
+      Exit.isFailure(result)
+        ? [
+            {
+              cause: Cause.squash(result.cause),
+              id: cases[index]?.id ?? `case-${index}`,
+            },
+          ]
+        : []
+    );
 
-  if (failures.length === 0) return;
+    if (failures.length === 0) return;
 
-  throw new AggregateError(
-    failures.map((failure) => failure.cause),
-    `Workspace e2e cases failed: ${failures
-      .map((failure) => failure.id)
-      .join(", ")}`
-  );
-};
+    return yield* failWorkspaceE2E(
+      `Workspace e2e cases failed: ${failures
+        .map((failure) => failure.id)
+        .join(", ")}`,
+      {
+        causes: failures.map((failure) => failure.cause),
+        operation: "run workspace e2e cases",
+      }
+    );
+  });
 
-const runWorkspaceE2ECase = async ({
+const runWorkspaceE2ECase = ({
   artifactRoot,
   run,
   sessionPrefix,
@@ -182,37 +226,117 @@ const runWorkspaceE2ECase = async ({
   run: Runner;
   sessionPrefix: string;
   testCase: WorkspaceE2ECase;
-}) => {
-  const session = `${sessionPrefix}-${testCase.id}`;
-  const artifactDir = resolve(artifactRoot, testCase.id);
-  let browserHarStarted = false;
-  let browserHarStopped = false;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const session = `${sessionPrefix}-${testCase.id}`;
+    const artifactDir = resolve(artifactRoot, testCase.id);
+    let artifactCaptureError: WorkspaceE2EError | undefined;
+    let browserHarStarted = false;
+    let browserHarStopped = false;
 
-  log(`Starting ${testCase.id} e2e case`);
-  try {
-    browserHarStarted = await startBrowserDiagnostics(run, session);
-    await testCase.execute({ session });
-    log(`${testCase.id} e2e case passed`);
-  } catch (cause) {
-    browserHarStopped = await captureBrowserFailureArtifacts({
-      artifactDir,
-      cause,
-      harStarted: browserHarStarted,
-      run,
-      session,
-    });
-    throw cause;
-  } finally {
-    if (browserHarStarted && !browserHarStopped)
-      await stopBrowserHar(run, session, devNull);
-    await run("agent-browser", ["--session", session, "close"], {
-      allowFailure: true,
-      logOutput: false,
-    });
-  }
-};
+    log(`Starting ${testCase.id} e2e case`);
+    const executionExit = yield* Effect.exit(
+      Effect.gen(function* () {
+        browserHarStarted = yield* effectifyPromise(
+          `start ${testCase.id} browser diagnostics`,
+          () => startBrowserDiagnostics(run, session)
+        );
+        yield* testCase.execute({ session });
+        log(`${testCase.id} e2e case passed`);
+      })
+    );
 
-export const cleanupCheckoutFlowStates = async ({
+    if (Exit.isFailure(executionExit)) {
+      const cause = Cause.squash(executionExit.cause);
+      const artifactCaptureExit = yield* Effect.exit(
+        effectifyPromise(
+          `capture ${testCase.id} browser failure artifacts`,
+          () =>
+            captureBrowserFailureArtifacts({
+              artifactDir,
+              cause,
+              harStarted: browserHarStarted,
+              run,
+              session,
+            })
+        )
+      );
+      if (Exit.isSuccess(artifactCaptureExit)) {
+        browserHarStopped = artifactCaptureExit.value;
+      } else {
+        artifactCaptureError = toWorkspaceE2EError(
+          `${testCase.id} browser failure artifact capture`,
+          Cause.squash(artifactCaptureExit.cause)
+        );
+      }
+    }
+
+    const finalizerErrors: WorkspaceE2EError[] = [];
+    if (browserHarStarted && !browserHarStopped) {
+      const stopHarExit = yield* Effect.exit(
+        effectifyPromise(`stop ${testCase.id} browser HAR`, () =>
+          stopBrowserHar(run, session, devNull)
+        )
+      );
+      if (Exit.isFailure(stopHarExit))
+        finalizerErrors.push(
+          toWorkspaceE2EError(
+            `${testCase.id} e2e HAR finalizer`,
+            Cause.squash(stopHarExit.cause)
+          )
+        );
+    }
+    const closeBrowserExit = yield* Effect.exit(
+      effectifyPromise(`close ${testCase.id} browser session`, () =>
+        run("agent-browser", ["--session", session, "close"], {
+          allowFailure: true,
+          logOutput: false,
+        })
+      )
+    );
+    if (Exit.isFailure(closeBrowserExit))
+      finalizerErrors.push(
+        toWorkspaceE2EError(
+          `${testCase.id} e2e browser close finalizer`,
+          Cause.squash(closeBrowserExit.cause)
+        )
+      );
+
+    const finalizerError =
+      finalizerErrors.length === 0
+        ? undefined
+        : workspaceE2EError(`${testCase.id} e2e finalizer failed`, {
+            causes: finalizerErrors,
+            operation: `${testCase.id} e2e finalizer`,
+          });
+
+    if (Exit.isFailure(executionExit)) {
+      const executionError = toWorkspaceE2EError(
+        `${testCase.id} e2e case`,
+        Cause.squash(executionExit.cause)
+      );
+      const causes = [
+        executionError,
+        artifactCaptureError,
+        finalizerError,
+      ].filter((cause): cause is WorkspaceE2EError => cause !== undefined);
+
+      if (causes.length > 1)
+        return yield* failWorkspaceE2E(
+          `${testCase.id} e2e case failed with auxiliary errors`,
+          {
+            causes,
+            operation: `${testCase.id} e2e case`,
+          }
+        );
+
+      return yield* Effect.fail(executionError);
+    }
+
+    if (finalizerError) return yield* Effect.fail(finalizerError);
+  });
+
+export const cleanupCheckoutFlowStates = ({
   datasourceConfig,
   flowStates,
   workflowError,
@@ -220,58 +344,81 @@ export const cleanupCheckoutFlowStates = async ({
   datasourceConfig: DatasourceConfig | undefined;
   flowStates: readonly CheckoutFlowState[];
   workflowError: unknown;
-}) => {
-  let cleanupError: unknown;
+}): Effect.Effect<WorkspaceE2EError | undefined, never> =>
+  Effect.gen(function* () {
+    let cleanupError: WorkspaceE2EError | undefined;
 
-  for (const state of flowStates) {
-    if (
-      datasourceConfig &&
-      !state.checkoutRow?.dotypos_reservation_id &&
-      state.orderId
-    ) {
-      try {
-        state.checkoutRow = await readCleanupCheckoutRow(
-          datasourceConfig,
-          state.orderId
+    for (const state of flowStates) {
+      if (
+        datasourceConfig &&
+        !state.checkoutRow?.dotypos_reservation_id &&
+        state.orderId
+      ) {
+        const orderId = state.orderId;
+        const rowExit = yield* Effect.exit(
+          effectifyPromise("read checkout cleanup row", () =>
+            readCleanupCheckoutRow(datasourceConfig, orderId)
+          )
         );
-      } catch (cause) {
-        cleanupError = cause;
-        if (workflowError)
-          log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
-      }
-    }
-    if (
-      datasourceConfig &&
-      !state.checkoutRow?.dotypos_reservation_id &&
-      state.startedAt
-    ) {
-      try {
-        state.checkoutRow = await readLatestCleanupCheckoutRow(
-          datasourceConfig,
-          state.startedAt,
-          state.data
-        );
-      } catch (cause) {
-        cleanupError = cause;
-        if (workflowError)
-          log(
-            `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
+        if (Exit.isSuccess(rowExit)) {
+          state.checkoutRow = rowExit.value;
+        } else {
+          const cause = Cause.squash(rowExit.cause);
+          cleanupError = toWorkspaceE2EError(
+            "read checkout cleanup row",
+            cause
           );
+          if (workflowError)
+            log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
+        }
       }
-    }
-    if (datasourceConfig && state.checkoutRow?.dotypos_reservation_id) {
-      try {
-        await cancelDotyposReservation(
-          datasourceConfig,
-          state.checkoutRow.dotypos_reservation_id
+      if (
+        datasourceConfig &&
+        !state.checkoutRow?.dotypos_reservation_id &&
+        state.startedAt
+      ) {
+        const startedAt = state.startedAt;
+        const rowExit = yield* Effect.exit(
+          effectifyPromise("read latest checkout cleanup row", () =>
+            readLatestCleanupCheckoutRow(
+              datasourceConfig,
+              startedAt,
+              state.data
+            )
+          )
         );
-      } catch (cause) {
-        cleanupError = cause;
-        if (workflowError)
-          log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+        if (Exit.isSuccess(rowExit)) {
+          state.checkoutRow = rowExit.value;
+        } else {
+          const cause = Cause.squash(rowExit.cause);
+          cleanupError = toWorkspaceE2EError(
+            "read latest checkout cleanup row",
+            cause
+          );
+          if (workflowError)
+            log(
+              `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
+            );
+        }
+      }
+      if (datasourceConfig && state.checkoutRow?.dotypos_reservation_id) {
+        const dotyposReservationId = state.checkoutRow.dotypos_reservation_id;
+        const cleanupExit = yield* Effect.exit(
+          effectifyPromise("cancel Dotypos checkout reservation", () =>
+            cancelDotyposReservation(datasourceConfig, dotyposReservationId)
+          )
+        );
+        if (Exit.isFailure(cleanupExit)) {
+          const cause = Cause.squash(cleanupExit.cause);
+          cleanupError = toWorkspaceE2EError(
+            "cancel Dotypos checkout reservation",
+            cause
+          );
+          if (workflowError)
+            log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+        }
       }
     }
-  }
 
-  return cleanupError;
-};
+    return cleanupError;
+  });

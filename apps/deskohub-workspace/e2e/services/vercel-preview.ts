@@ -1,5 +1,10 @@
 import { Context, Effect, Layer } from "effect";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
+import {
+  effectifyPromise,
+  effectifySync,
+  type WorkspaceE2EError,
+} from "../errors";
 import { extractDeploymentUrl } from "../runtime";
 import {
   assertWebhookEndpoint,
@@ -10,8 +15,6 @@ import {
   writeVercelProjectLink,
 } from "../vercel";
 import {
-  effectifyPromise,
-  effectifySync,
   WorkspaceE2ECommandRunnerService,
   WorkspaceE2EConfigService,
   WorkspaceE2EEnvFileService,
@@ -27,18 +30,18 @@ export type WorkspaceE2EPreviewDeployment = {
 interface IWorkspaceE2EVercelPreviewService {
   readonly assertWebhookEndpoints: (
     config: WorkspaceE2EConfig
-  ) => Effect.Effect<void, unknown>;
+  ) => Effect.Effect<void, WorkspaceE2EError>;
   readonly deployFreshPreview: (
     config: WorkspaceE2EConfig,
     datasourceConfig: DatasourceConfig
-  ) => Effect.Effect<WorkspaceE2EPreviewDeployment, unknown>;
+  ) => Effect.Effect<WorkspaceE2EPreviewDeployment, WorkspaceE2EError>;
   readonly prepareAlias: (
     config: WorkspaceE2EConfig,
     deploymentId: string
-  ) => Effect.Effect<void, unknown>;
+  ) => Effect.Effect<void, WorkspaceE2EError>;
   readonly pullPreviewEnv: (
     config: WorkspaceE2EConfig
-  ) => Effect.Effect<void, unknown>;
+  ) => Effect.Effect<void, WorkspaceE2EError>;
 }
 
 export class WorkspaceE2EVercelPreviewService extends Context.Service<
@@ -56,10 +59,10 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
       return {
         assertWebhookEndpoints: (config) =>
           Effect.gen(function* () {
-            yield* effectifyPromise(() =>
+            yield* effectifyPromise("check Nexi webhook endpoint", () =>
               assertWebhookEndpoint(config, "/api/webhooks/nexi")
             );
-            yield* effectifyPromise(() =>
+            yield* effectifyPromise("check Resend webhook endpoint", () =>
               assertWebhookEndpoint(config, "/api/webhooks/resend")
             );
           }),
@@ -84,11 +87,13 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
               ],
               { timeoutMs: configService.getVercelDeployTimeoutMs() }
             );
-            const previewUrl = yield* effectifySync(() =>
-              extractDeploymentUrl(deploy.stdout)
+            const previewUrl = yield* effectifySync(
+              "extract Vercel deployment URL",
+              () => extractDeploymentUrl(deploy.stdout)
             );
-            const deployment = yield* effectifyPromise(() =>
-              getDeployment(config, previewUrl)
+            const deployment = yield* effectifyPromise(
+              "read Vercel deployment",
+              () => getDeployment(config, previewUrl)
             );
 
             return {
@@ -99,16 +104,23 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
           }),
         prepareAlias: (config, deploymentId) =>
           Effect.gen(function* () {
-            const shouldAssign = yield* effectifyPromise(() =>
-              recordAliasPreflight(config, deploymentId)
+            const shouldAssign = yield* effectifyPromise(
+              "record Vercel alias preflight",
+              () => recordAliasPreflight(config, deploymentId)
             );
             if (shouldAssign)
-              yield* effectifyPromise(() => assignAlias(config, deploymentId));
-            yield* effectifyPromise(() => verifyAlias(config, deploymentId));
+              yield* effectifyPromise("assign Vercel alias", () =>
+                assignAlias(config, deploymentId)
+              );
+            yield* effectifyPromise("verify Vercel alias", () =>
+              verifyAlias(config, deploymentId)
+            );
           }),
         pullPreviewEnv: (config) =>
           Effect.gen(function* () {
-            yield* effectifyPromise(() => writeVercelProjectLink(config));
+            yield* effectifyPromise("write Vercel project link", () =>
+              writeVercelProjectLink(config)
+            );
             yield* commandRunner.run("git", ["status", "--short"], {
               cwd: paths.repoRoot,
             });

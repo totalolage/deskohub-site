@@ -1,4 +1,6 @@
+import type { Effect } from "effect";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
+import type { WorkspaceE2EError } from "./errors";
 
 export type CheckoutRow = {
   reservation_id: string;
@@ -83,5 +85,7 @@ export type PaymentTerminalScenario = {
 
 export type WorkspaceE2ECase = {
   readonly id: string;
-  readonly execute: (context: { readonly session: string }) => Promise<void>;
+  readonly execute: (context: {
+    readonly session: string;
+  }) => Effect.Effect<void, WorkspaceE2EError>;
 };

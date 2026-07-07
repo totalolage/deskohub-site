@@ -12,6 +12,11 @@ import {
   type WorkspaceE2EConfig,
 } from "../config";
 import {
+  effectifyPromise,
+  effectifySync,
+  type WorkspaceE2EError,
+} from "../errors";
+import {
   addRedaction,
   assertSafeDatabaseUrl,
   loadEnvFile,
@@ -23,12 +28,6 @@ import {
   scriptDir,
   workspaceDir,
 } from "../runtime";
-
-export const effectifyPromise = <A>(try_: () => Promise<A>) =>
-  Effect.tryPromise({ try: try_, catch: (cause) => cause });
-
-export const effectifySync = <A>(try_: () => A) =>
-  Effect.try({ try: try_, catch: (cause) => cause });
 
 export type CommandResult = Awaited<ReturnType<Runner>>;
 export type RunCommandOptions = Parameters<Runner>[2];
@@ -64,9 +63,14 @@ export class WorkspaceE2ERedactionService extends Context.Service<
 }
 
 interface IWorkspaceE2EEnvFileService {
-  readonly load: (path: string) => Effect.Effect<Map<string, string>, unknown>;
-  readonly loadLocalEnv: Effect.Effect<Map<string, string>, unknown>;
-  readonly loadPreviewEnv: Effect.Effect<Map<string, string>, unknown>;
+  readonly load: (
+    path: string
+  ) => Effect.Effect<Map<string, string>, WorkspaceE2EError>;
+  readonly loadLocalEnv: Effect.Effect<Map<string, string>, WorkspaceE2EError>;
+  readonly loadPreviewEnv: Effect.Effect<
+    Map<string, string>,
+    WorkspaceE2EError
+  >;
 }
 
 export class WorkspaceE2EEnvFileService extends Context.Service<
@@ -77,7 +81,8 @@ export class WorkspaceE2EEnvFileService extends Context.Service<
     this,
     Effect.gen(function* () {
       const paths = yield* WorkspaceE2EPathService;
-      const load = (path: string) => effectifyPromise(() => loadEnvFile(path));
+      const load = (path: string) =>
+        effectifyPromise(`load env file ${path}`, () => loadEnvFile(path));
 
       return {
         load,
@@ -93,11 +98,16 @@ export class WorkspaceE2EEnvFileService extends Context.Service<
 interface IWorkspaceE2EConfigService {
   readonly assertDatasourceSafety: (
     config: DatasourceConfig
-  ) => Effect.Effect<void, unknown>;
-  readonly assertNexiSandbox: (origin: string) => Effect.Effect<void, unknown>;
+  ) => Effect.Effect<void, WorkspaceE2EError>;
+  readonly assertNexiSandbox: (
+    origin: string
+  ) => Effect.Effect<void, WorkspaceE2EError>;
   readonly getCheckoutTimeoutMs: () => number;
-  readonly getConfig: Effect.Effect<WorkspaceE2EConfig, unknown>;
-  readonly getDatasourceConfig: Effect.Effect<DatasourceConfig, unknown>;
+  readonly getConfig: Effect.Effect<WorkspaceE2EConfig, WorkspaceE2EError>;
+  readonly getDatasourceConfig: Effect.Effect<
+    DatasourceConfig,
+    WorkspaceE2EError
+  >;
   readonly getDatasourceTimeoutMs: () => number;
   readonly getVercelDeployEnvArgs: (
     config: WorkspaceE2EConfig,
@@ -112,7 +122,7 @@ export class WorkspaceE2EConfigService extends Context.Service<
 >()("WorkspaceE2EConfigService") {
   static Live = Layer.succeed(this, {
     assertDatasourceSafety: (config) =>
-      effectifySync(() => {
+      effectifySync("assert datasource safety", () => {
         assertSafeDatabaseUrl(config.databaseUrl, "DATABASE_URL");
         assertSafeDatabaseUrl(
           config.databaseUrlUnpooled,
@@ -120,10 +130,15 @@ export class WorkspaceE2EConfigService extends Context.Service<
         );
       }),
     assertNexiSandbox: (origin) =>
-      effectifySync(() => assertNexiSandboxConfig(origin)),
+      effectifySync("assert Nexi sandbox configuration", () =>
+        assertNexiSandboxConfig(origin)
+      ),
     getCheckoutTimeoutMs,
-    getConfig: effectifySync(getConfig),
-    getDatasourceConfig: effectifySync(getDatasourceConfig),
+    getConfig: effectifySync("read workspace e2e config", getConfig),
+    getDatasourceConfig: effectifySync(
+      "read workspace e2e datasource config",
+      getDatasourceConfig
+    ),
     getDatasourceTimeoutMs,
     getVercelDeployEnvArgs,
     getVercelDeployTimeoutMs,
@@ -131,12 +146,12 @@ export class WorkspaceE2EConfigService extends Context.Service<
 }
 
 interface IWorkspaceE2ECommandRunnerService {
-  readonly getRunner: Effect.Effect<Runner, unknown>;
+  readonly getRunner: Effect.Effect<Runner, WorkspaceE2EError>;
   readonly run: (
     command: string,
     args: string[],
     options?: RunCommandOptions
-  ) => Effect.Effect<CommandResult, unknown>;
+  ) => Effect.Effect<CommandResult, WorkspaceE2EError>;
 }
 
 export class WorkspaceE2ECommandRunnerService extends Context.Service<
@@ -154,7 +169,7 @@ export class WorkspaceE2ECommandRunnerService extends Context.Service<
         run: (command, args, options) =>
           Effect.gen(function* () {
             const runner = yield* getRunner;
-            return yield* effectifyPromise(() =>
+            return yield* effectifyPromise(`run command ${command}`, () =>
               runner(command, args, options)
             );
           }),

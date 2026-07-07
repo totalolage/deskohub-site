@@ -1,6 +1,7 @@
 import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 import type { DatasourceConfig } from "../config";
+import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
 import type { CheckoutFlowState } from "../types";
 import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
@@ -14,7 +15,7 @@ import {
 import { WorkspaceE2EVercelPreviewService } from "./vercel-preview";
 
 interface IWorkspaceE2ERunnerService {
-  readonly run: Effect.Effect<void, unknown>;
+  readonly run: Effect.Effect<void, WorkspaceE2EError>;
 }
 
 export class WorkspaceE2ERunnerService extends Context.Service<
@@ -83,19 +84,20 @@ export class WorkspaceE2ERunnerService extends Context.Service<
           const workflowError = Exit.isFailure(workflowExit)
             ? Cause.squash(workflowExit.cause)
             : undefined;
-          const cleanupExit = yield* Effect.exit(
-            cleanup.cleanupCheckoutStates({
-              datasourceConfig,
-              flowStates,
-              workflowError,
-            })
-          );
+          const cleanupError = yield* cleanup.cleanupCheckoutStates({
+            datasourceConfig,
+            flowStates,
+            workflowError,
+          });
 
           if (Exit.isFailure(workflowExit))
-            return yield* Effect.fail(Cause.squash(workflowExit.cause));
-          if (Exit.isFailure(cleanupExit))
-            return yield* Effect.fail(Cause.squash(cleanupExit.cause));
-          if (cleanupExit.value) return yield* Effect.fail(cleanupExit.value);
+            return yield* Effect.fail(
+              toWorkspaceE2EError(
+                "run workspace e2e workflow",
+                Cause.squash(workflowExit.cause)
+              )
+            );
+          if (cleanupError) return yield* Effect.fail(cleanupError);
         }),
       };
     })
