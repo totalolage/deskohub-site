@@ -18,14 +18,7 @@ import {
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
 import type { Runner } from "../runtime";
-import {
-  addRedaction,
-  assert,
-  log,
-  POLL_INTERVAL_MS,
-  parseUrl,
-  poll,
-} from "../runtime";
+import { addRedaction, assert, log, parseUrl, poll } from "../runtime";
 import type { CheckoutData } from "../types";
 
 const NEXI_TEST_CARD_NUMBER = "4509034543615006";
@@ -453,12 +446,13 @@ const requireHostedPaymentRef = async (
   run: Runner,
   session: string,
   labels: readonly string[],
-  frameLabels: readonly string[]
+  frameLabels: readonly string[],
+  timeoutMs = 60_000
 ) => {
   try {
     return await poll(
       async () => findHostedPaymentRef(run, session, labels, frameLabels),
-      60_000,
+      timeoutMs,
       `Nexi target ${labels.join(" / ")}`
     );
   } catch (error) {
@@ -570,34 +564,33 @@ const clickHostedPaymentTarget = async (
   const labels = targets.map((target) => target.value);
 
   try {
-    await poll(
-      async () => {
-        const target = await findHostedPaymentRef(run, session, labels, []);
-        if (!target) return;
+    const timeoutMs = options.timeoutMs ?? getCheckoutTimeoutMs();
+    const target = options.optional
+      ? await waitForHostedPaymentClickTarget(
+          run,
+          session,
+          labels,
+          timeoutMs
+        ).catch(() => undefined)
+      : await waitForHostedPaymentClickTarget(run, session, labels, timeoutMs);
 
-        try {
-          const result = await run(
-            "agent-browser",
-            ["--session", session, "click", target.ref],
-            { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
-          );
-          if (result.exitCode !== 0) return;
+    if (!target) return;
 
-          await Bun.sleep(POLL_INTERVAL_MS);
-          const stillPresent = await findHostedPaymentRef(
-            run,
-            session,
-            labels,
-            []
-          );
-          if (stillPresent?.framed) await switchToMainFrame(run, session);
-          return stillPresent ? undefined : true;
-        } finally {
-          if (target.framed) await switchToMainFrame(run, session);
-        }
-      },
-      options.timeoutMs ?? getCheckoutTimeoutMs(),
-      `Nexi ${label} action`
+    try {
+      await run("agent-browser", ["--session", session, "click", target.ref], {
+        logOutput: false,
+        timeoutMs: 30_000,
+      });
+    } finally {
+      if (target.framed) await switchToMainFrame(run, session);
+    }
+
+    await waitForHostedPaymentTargetToChange(
+      run,
+      session,
+      label,
+      labels,
+      timeoutMs
     );
   } catch (error) {
     if (options.optional) return;
@@ -607,6 +600,35 @@ const clickHostedPaymentTarget = async (
     throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
   }
 };
+
+const waitForHostedPaymentClickTarget = async (
+  run: Runner,
+  session: string,
+  labels: readonly string[],
+  timeoutMs: number
+) =>
+  poll(
+    async () => findHostedPaymentRef(run, session, labels, []),
+    timeoutMs,
+    `Nexi target ${labels.join(" / ")}`
+  );
+
+const waitForHostedPaymentTargetToChange = async (
+  run: Runner,
+  session: string,
+  label: string,
+  labels: readonly string[],
+  timeoutMs: number
+) =>
+  poll(
+    async () => {
+      const stillPresent = await findHostedPaymentRef(run, session, labels, []);
+      if (stillPresent?.framed) await switchToMainFrame(run, session);
+      return stillPresent ? undefined : true;
+    },
+    timeoutMs,
+    `Nexi ${label} completion`
+  );
 
 const extractOrderId = (stdout: string) => {
   const match = stdout.match(/\/checkout\/status\/([^\s/?#]+)/);

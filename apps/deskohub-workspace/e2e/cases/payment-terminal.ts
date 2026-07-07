@@ -1,7 +1,7 @@
 import {
   openBrowserPage,
-  readInteractiveSnapshot,
   waitForBrowserUrl,
+  waitForInteractiveSnapshot,
 } from "../browser";
 import {
   clickStatusReserveAgainScript,
@@ -16,7 +16,7 @@ import {
   waitForWebhookReplayRow,
 } from "../integrations/database";
 import type { Runner } from "../runtime";
-import { log, parseUrl, poll } from "../runtime";
+import { log, parseUrl } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -115,36 +115,21 @@ const assertTerminalStatusPage = async ({
 }) => {
   const url = `${config.browserUrl}/en-US/checkout/status/${orderId}`;
 
-  await poll(
-    async () => {
-      await openBrowserPage(config, run, session, url, {
-        timeoutMs: 60_000,
-      });
-      return await waitForTerminalStatusCopy(run, session, scenario);
-    },
-    getCheckoutTimeoutMs(),
-    `${scenario.state} checkout status page`
-  );
+  await openBrowserPage(config, run, session, url, {
+    timeoutMs: 60_000,
+  });
+  await waitForInteractiveSnapshot({
+    description: `${scenario.state} checkout status copy`,
+    matches: (snapshot) =>
+      scenario.titlePattern.test(snapshot) &&
+      /Start a new reservation/i.test(snapshot),
+    run,
+    session,
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
 
   log(`Checkout ${scenario.state} status page validated`);
 };
-
-const waitForTerminalStatusCopy = async (
-  run: Runner,
-  session: string,
-  scenario: PaymentTerminalScenario
-) =>
-  poll(
-    async () => {
-      const snapshot = await readInteractiveSnapshot(run, session, true);
-      return scenario.titlePattern.test(snapshot) &&
-        /Start a new reservation/i.test(snapshot)
-        ? true
-        : undefined;
-    },
-    25_000,
-    `${scenario.state} checkout status copy`
-  ).catch(() => undefined);
 
 const clickStatusReserveAgain = async (run: Runner, session: string) => {
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
