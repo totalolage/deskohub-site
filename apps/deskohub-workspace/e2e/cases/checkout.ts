@@ -1,4 +1,8 @@
-import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import {
+  openBrowserPage,
+  waitForBrowserUrl,
+  waitForInteractiveSnapshot,
+} from "../browser";
 import {
   assertFulfilledStatusScript,
   getAssertFulfillmentFailedSupportScript,
@@ -16,7 +20,7 @@ import {
 } from "../integrations/database";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { log, parseUrl, poll } from "../runtime";
+import { log, parseUrl } from "../runtime";
 import type { CheckoutData, CheckoutFlow, CheckoutFlowState } from "../types";
 import { verifyAlias } from "../vercel";
 
@@ -149,26 +153,23 @@ const assertFulfillmentFailedSupportPath = async ({
 }) => {
   await markFulfillmentFailedForE2E(datasourceConfig, orderId);
   const statusUrl = `${config.aliasUrl}/${data.locale}/checkout/status/${orderId}`;
-  await poll(
-    async () => {
-      await openBrowserPage(config, run, session, statusUrl, {
-        timeoutMs: 60_000,
-      });
-      const result = await run(
-        "agent-browser",
-        ["--session", session, "eval", "--stdin"],
-        {
-          allowFailure: true,
-          input: getAssertFulfillmentFailedSupportScript(data, orderId),
-          logOutput: false,
-          timeoutMs: 45_000,
-        }
-      );
-      return result.exitCode === 0 ? true : undefined;
-    },
-    Math.min(getCheckoutTimeoutMs(), 120_000),
-    "fulfillment failed support link"
-  );
+  await openBrowserPage(config, run, session, statusUrl, {
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+  await waitForInteractiveSnapshot({
+    description: "fulfillment failed support link",
+    matches: (snapshot) =>
+      /couldn't deliver your access codes/i.test(snapshot) &&
+      /Send support request/i.test(snapshot),
+    run,
+    session,
+    timeoutMs: 45_000,
+  });
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: getAssertFulfillmentFailedSupportScript(data, orderId),
+    logOutput: false,
+    timeoutMs: 45_000,
+  });
   await waitForBrowserUrl({
     description: "fulfillment failed support contact page",
     matches: (url) => parseUrl(url)?.pathname === `/${data.locale}/contact`,

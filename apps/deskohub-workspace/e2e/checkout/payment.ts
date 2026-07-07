@@ -5,6 +5,8 @@ import {
   openBrowserPage,
   readBrowserUrl,
   readInteractiveSnapshot,
+  requireEnabledSnapshotRef,
+  requireSnapshotRef,
   summarizeHostedPaymentSnapshot,
   switchToMainFrame,
   waitForBrowserUrl,
@@ -12,7 +14,6 @@ import {
 import {
   browserDiagnosticsScript,
   payPageOrderIdScript,
-  submitPaymentScript,
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
@@ -154,60 +155,45 @@ const submitReservationAndWaitForPayPage = async ({
 }) => {
   const timeoutMs = Math.min(getCheckoutTimeoutMs(), 90_000);
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-      input: submitReservationScript,
-      logOutput: false,
-    });
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: submitReservationScript,
+    logOutput: false,
+  });
 
-    const result = await waitForReservationStartAttempt(
-      run,
-      session,
-      timeoutMs
-    );
-    if (result.status === "ready") return result.url;
+  const result = await waitForReservationStart(run, session, timeoutMs);
+  if (result.status === "ready") return result.url;
 
-    const orderId = getSearchOrderId(result.url);
-    if (orderId) onOrderId?.(orderId);
+  const orderId = getSearchOrderId(result.url);
+  if (orderId) onOrderId?.(orderId);
 
-    if (attempt === 3 || !result.retryable) {
-      throw new Error(
-        [
-          "Timed out waiting for checkout pay page",
-          result.diagnostics
-            ? `Browser diagnostics:\n${result.diagnostics}`
-            : undefined,
-        ]
-          .filter(Boolean)
-          .join("\n")
-      );
-    }
-
-    log(
-      `Retrying reservation start after checkout form failure (${attempt}/3)`
-    );
-  }
-
-  throw new Error("Timed out waiting for checkout pay page");
+  throw new Error(
+    [
+      "Timed out waiting for checkout pay page",
+      result.diagnostics
+        ? `Browser diagnostics:\n${result.diagnostics}`
+        : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n")
+  );
 };
 
-type ReservationStartAttemptResult =
+type ReservationStartResult =
   | {
       readonly status: "ready";
       readonly url: string;
     }
   | {
       readonly diagnostics: string | undefined;
-      readonly retryable: boolean;
       readonly status: "not_ready";
       readonly url: string | undefined;
     };
 
-const waitForReservationStartAttempt = async (
+const waitForReservationStart = async (
   run: Runner,
   session: string,
   timeoutMs: number
-): Promise<ReservationStartAttemptResult> => {
+): Promise<ReservationStartResult> => {
   let latest: ReservationStartDiagnostics | undefined;
 
   const readyUrl = await poll(
@@ -216,7 +202,6 @@ const waitForReservationStartAttempt = async (
       if (url?.includes("/checkout/pay")) return url;
 
       latest = await readReservationStartDiagnostics(run, session);
-      if (isRetryableReservationStartFailure(latest)) return "retryable";
     },
     timeoutMs,
     "checkout pay page"
@@ -225,14 +210,11 @@ const waitForReservationStartAttempt = async (
     return undefined;
   });
 
-  if (readyUrl && readyUrl !== "retryable")
-    return { status: "ready", url: readyUrl };
+  if (readyUrl) return { status: "ready", url: readyUrl };
 
   latest ??= await readReservationStartDiagnostics(run, session);
   return {
     diagnostics: formatReservationStartDiagnostics(latest),
-    retryable:
-      readyUrl === "retryable" || isRetryableReservationStartFailure(latest),
     status: "not_ready",
     url: latest?.url,
   };
@@ -276,15 +258,6 @@ const readReservationStartDiagnostics = async (
   }
 };
 
-const isRetryableReservationStartFailure = (
-  diagnostics: ReservationStartDiagnostics | undefined
-) =>
-  Boolean(
-    diagnostics?.url?.includes("/checkout/order") &&
-      diagnostics.submitDisabled === false &&
-      /Checkout could not be started/i.test(diagnostics.body ?? "")
-  );
-
 const addReservationStartTimeout = (
   diagnostics: ReservationStartDiagnostics | undefined,
   error: unknown
@@ -322,38 +295,44 @@ const submitPaymentAndWaitForHostedPage = async ({
   run: Runner;
   session: string;
 }) => {
-  const timeoutMs = Math.min(getCheckoutTimeoutMs(), 2 * 60 * 1000);
+  await clickCheckoutPayConsent(run, session);
+  await clickCheckoutPayButton(run, session);
 
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-      input: submitPaymentScript,
-      logOutput: false,
-    });
-
-    try {
-      return await waitForBrowserUrl({
-        description: "Nexi hosted payment page",
-        matches: (url) =>
-          url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
-        run,
-        session,
-        timeoutMs,
-      });
-    } catch (error) {
-      const diagnostics = String(
-        error instanceof Error ? error.message : error
-      );
-      if (attempt === 3 || !isRetryablePaymentStartFailure(diagnostics))
-        throw error;
-
-      log(`Retrying payment start after client-side failure (${attempt}/3)`);
-    }
-  }
+  return await waitForBrowserUrl({
+    description: "Nexi hosted payment page",
+    matches: (url) =>
+      url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
+    run,
+    session,
+    timeoutMs: Math.min(getCheckoutTimeoutMs(), 2 * 60 * 1000),
+  });
 };
 
-const isRetryablePaymentStartFailure = (diagnostics: string) =>
-  diagnostics.includes("/checkout/pay") &&
-  /Payment could not be started/i.test(diagnostics);
+const clickCheckoutPayConsent = async (run: Runner, session: string) => {
+  const ref = await requireSnapshotRef({
+    description: "payment legal consent",
+    labels: ["I agree to the", "Souhlasím"],
+    run,
+    session,
+  });
+  await run("agent-browser", ["--session", session, "click", ref], {
+    logOutput: false,
+    timeoutMs: 30_000,
+  });
+};
+
+const clickCheckoutPayButton = async (run: Runner, session: string) => {
+  const ref = await requireEnabledSnapshotRef({
+    description: "enabled payment submit button",
+    labels: ["ORDER AND PAY", "Order and pay"],
+    run,
+    session,
+  });
+  await run("agent-browser", ["--session", session, "click", ref], {
+    logOutput: false,
+    timeoutMs: 30_000,
+  });
+};
 
 const completeNexiHostedPayment = async ({
   data,

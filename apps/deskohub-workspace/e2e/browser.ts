@@ -53,6 +53,28 @@ export const readInteractiveSnapshot = async (
   return result.stdout;
 };
 
+export const waitForInteractiveSnapshot = async ({
+  description,
+  matches,
+  run,
+  session,
+  timeoutMs,
+}: {
+  description: string;
+  matches: (snapshot: string) => boolean;
+  run: Runner;
+  session: string;
+  timeoutMs: number;
+}) =>
+  poll(
+    async () => {
+      const snapshot = await readInteractiveSnapshot(run, session, true);
+      return matches(snapshot) ? snapshot : undefined;
+    },
+    timeoutMs,
+    description
+  );
+
 export const startBrowserDiagnostics = async (run: Runner, session: string) => {
   const commands = [
     ["console", "--clear"],
@@ -343,6 +365,91 @@ export const findSnapshotRef = (
     const lowerLine = line.toLowerCase();
     if (labels.some((label) => lowerLine.includes(label.toLowerCase())))
       return ref;
+  }
+};
+
+export const findEnabledSnapshotRef = (
+  snapshot: string,
+  labels: readonly string[]
+) => {
+  for (const line of snapshot.split("\n")) {
+    if (/\[disabled\]/i.test(line)) continue;
+    const ref = getSnapshotRef(line);
+    if (!ref) continue;
+
+    const name = line
+      .match(/"([^"]+)"/)?.[1]
+      ?.trim()
+      .toLowerCase();
+    if (name && labels.some((label) => name === label.toLowerCase()))
+      return ref;
+  }
+
+  for (const line of snapshot.split("\n")) {
+    if (/\[disabled\]/i.test(line)) continue;
+    const ref = getSnapshotRef(line);
+    if (!ref) continue;
+
+    const lowerLine = line.toLowerCase();
+    if (labels.some((label) => lowerLine.includes(label.toLowerCase())))
+      return ref;
+  }
+};
+
+export const requireSnapshotRef = async ({
+  description,
+  labels,
+  run,
+  session,
+  timeoutMs = 60_000,
+}: {
+  description: string;
+  labels: readonly string[];
+  run: Runner;
+  session: string;
+  timeoutMs?: number;
+}) => {
+  try {
+    return await poll(
+      async () =>
+        findSnapshotRef(await readInteractiveSnapshot(run, session), labels),
+      timeoutMs,
+      description
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const snapshot = await readInteractiveSnapshot(run, session, true);
+    throw new Error(`${message}\n${snapshot}`);
+  }
+};
+
+export const requireEnabledSnapshotRef = async ({
+  description,
+  labels,
+  run,
+  session,
+  timeoutMs = 60_000,
+}: {
+  description: string;
+  labels: readonly string[];
+  run: Runner;
+  session: string;
+  timeoutMs?: number;
+}) => {
+  try {
+    return await poll(
+      async () =>
+        findEnabledSnapshotRef(
+          await readInteractiveSnapshot(run, session),
+          labels
+        ),
+      timeoutMs,
+      description
+    );
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    const snapshot = await readInteractiveSnapshot(run, session, true);
+    throw new Error(`${message}\n${snapshot}`);
   }
 };
 

@@ -32,44 +32,6 @@ export const submitCoworkReservationScript = `
 })()
 `;
 
-export const submitPaymentScript = String.raw`
-(async () => {
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const waitUntil = async (predicate, label) => {
-    const deadline = Date.now() + 25000;
-    while (Date.now() < deadline) {
-      if (predicate()) return;
-      await wait(250);
-    }
-    throw new Error(label);
-  };
-  const isChecked = (element) =>
-    element instanceof HTMLInputElement
-      ? element.checked
-      : element.getAttribute('aria-checked') === 'true' || element.getAttribute('data-state') === 'checked';
-  let checkbox;
-  await waitUntil(() => {
-    const candidate = document.querySelector('#checkout-pay-legal-consent');
-    if (candidate instanceof HTMLElement) {
-      checkbox = candidate;
-      return true;
-    }
-    return false;
-  }, 'payment consent checkbox not found');
-  const consentTarget = checkbox.closest('label') ?? checkbox;
-  await waitUntil(() => {
-    if (isChecked(checkbox)) return true;
-    consentTarget.click();
-    return false;
-  }, 'payment consent checkbox did not check');
-  const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
-  if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
-  await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
-  setTimeout(() => button.click(), 0);
-  return location.href;
-})()
-`;
-
 export const getClickLocaleSwitchScript = (
   locale: CheckoutData["locale"] | "cs-CZ"
 ) =>
@@ -152,22 +114,13 @@ export const getAssertFulfillmentFailedSupportScript = (
   data: CheckoutData,
   orderId: string
 ) => `
-(async () => {
+(() => {
   const expected = ${JSON.stringify({ email: data.email, locale: data.locale, orderId })};
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const findSupportLink = () => [...document.querySelectorAll('a')].find((candidate) => /Send support request/i.test(candidate.textContent ?? ''));
-  const deadline = Date.now() + 30000;
-  let link;
-  let text = '';
-
-  while (Date.now() < deadline) {
-    text = document.body?.textContent ?? '';
-    link = findSupportLink();
-    if (/couldn't deliver your access codes/i.test(text) && link instanceof HTMLAnchorElement) break;
-    await wait(250);
+  const text = document.body?.textContent ?? '';
+  if (!/couldn't deliver your access codes/i.test(text)) {
+    throw new Error('fulfillment failed status copy not visible');
   }
-
-  if (!/couldn't deliver your access codes/i.test(text)) throw new Error('fulfillment failed status copy not visible');
+  const link = [...document.querySelectorAll('a')].find((candidate) => /Send support request/i.test(candidate.textContent ?? ''));
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error('support contact link not found');
   }
