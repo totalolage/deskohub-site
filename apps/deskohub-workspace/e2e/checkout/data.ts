@@ -21,9 +21,12 @@ const makeCheckoutContact = (flowId: string) => {
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
   const sequence = String(checkoutContactSequence % 100).padStart(2, "0");
+  const emailKey = `${flowId}-${runId}-${sequence}`
+    .toLowerCase()
+    .replaceAll(/[^a-z0-9]+/g, "-");
   const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
   const phone = `+420735${runId.slice(6, 10)}${sequence}`;
-  const email = "delivered@resend.dev";
+  const email = `delivered+${emailKey}@resend.dev`;
   const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
 
   return { email, message, name, phone };
