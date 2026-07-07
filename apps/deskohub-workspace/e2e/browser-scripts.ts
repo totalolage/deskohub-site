@@ -1,4 +1,4 @@
-import type { CheckoutData, PaymentTerminalScenario } from "./types";
+import type { CheckoutData } from "./types";
 
 export const submitCoworkReservationScript = `
 (async () => {
@@ -130,25 +130,6 @@ export const getSubmitContactFormScript = (data: {
   button.click();
   await waitUntil(() => /Your message has been sent\./i.test(document.body?.textContent ?? ''), 'contact success message not visible');
   return location.href;
-})()
-`;
-
-export const getAssertTerminalStatusScript = (
-  scenario: PaymentTerminalScenario
-) =>
-  `
-(async () => {
-  const titlePattern = new RegExp(${JSON.stringify(scenario.titlePattern.source)}, ${JSON.stringify(scenario.titlePattern.flags)});
-  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-  const deadline = Date.now() + 60000;
-  while (Date.now() < deadline) {
-    const text = document.body?.textContent ?? '';
-    if (titlePattern.test(text) && /Start a new reservation/i.test(text)) {
-      return location.href;
-    }
-    await wait(250);
-  }
-  throw new Error('terminal payment status copy not visible');
 })()
 `;
 

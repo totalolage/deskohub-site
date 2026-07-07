@@ -1,7 +1,10 @@
-import { openBrowserPage, waitForBrowserUrl } from "../browser";
+import {
+  openBrowserPage,
+  readInteractiveSnapshot,
+  waitForBrowserUrl,
+} from "../browser";
 import {
   clickStatusReserveAgainScript,
-  getAssertTerminalStatusScript,
   submitCoworkReservationScript,
 } from "../browser-scripts";
 import { startCheckoutPaymentAttempt } from "../checkout/payment";
@@ -13,7 +16,7 @@ import {
   waitForWebhookReplayRow,
 } from "../integrations/database";
 import type { Runner } from "../runtime";
-import { log, parseUrl } from "../runtime";
+import { log, parseUrl, poll } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -110,19 +113,38 @@ const assertTerminalStatusPage = async ({
   scenario: PaymentTerminalScenario;
   session: string;
 }) => {
-  await openBrowserPage(
-    config,
-    run,
-    session,
-    `${config.aliasUrl}/en-US/checkout/status/${orderId}`,
-    { timeoutMs: getCheckoutTimeoutMs() }
+  const url = `${config.aliasUrl}/en-US/checkout/status/${orderId}`;
+
+  await poll(
+    async () => {
+      await openBrowserPage(config, run, session, url, {
+        timeoutMs: 60_000,
+      });
+      return await waitForTerminalStatusCopy(run, session, scenario);
+    },
+    getCheckoutTimeoutMs(),
+    `${scenario.state} checkout status page`
   );
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: getAssertTerminalStatusScript(scenario),
-    timeoutMs: getCheckoutTimeoutMs(),
-  });
+
   log(`Checkout ${scenario.state} status page validated`);
 };
+
+const waitForTerminalStatusCopy = async (
+  run: Runner,
+  session: string,
+  scenario: PaymentTerminalScenario
+) =>
+  poll(
+    async () => {
+      const snapshot = await readInteractiveSnapshot(run, session, true);
+      return scenario.titlePattern.test(snapshot) &&
+        /Start a new reservation/i.test(snapshot)
+        ? true
+        : undefined;
+    },
+    25_000,
+    `${scenario.state} checkout status copy`
+  ).catch(() => undefined);
 
 const clickStatusReserveAgain = async (run: Runner, session: string) => {
   await run("agent-browser", ["--session", session, "eval", "--stdin"], {
