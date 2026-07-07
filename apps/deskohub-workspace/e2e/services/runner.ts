@@ -95,6 +95,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
             return yield* Effect.fail(Cause.squash(workflowExit.cause));
           if (Exit.isFailure(cleanupExit))
             return yield* Effect.fail(Cause.squash(cleanupExit.cause));
+          if (cleanupExit.value) return yield* Effect.fail(cleanupExit.value);
         }),
       };
     })
