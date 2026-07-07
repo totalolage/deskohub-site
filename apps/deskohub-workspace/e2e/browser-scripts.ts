@@ -148,13 +148,22 @@ export const getAssertFulfillmentFailedSupportScript = (
   data: CheckoutData,
   orderId: string
 ) => `
-(() => {
+(async () => {
   const expected = ${JSON.stringify({ email: data.email, locale: data.locale, orderId })};
-  const text = document.body?.textContent ?? '';
-  if (!/couldn't deliver your access codes/i.test(text)) {
-    throw new Error('fulfillment failed status copy not visible');
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const findSupportLink = () => [...document.querySelectorAll('a')].find((candidate) => /Send support request/i.test(candidate.textContent ?? ''));
+  const deadline = Date.now() + 30000;
+  let link;
+  let text = '';
+
+  while (Date.now() < deadline) {
+    text = document.body?.textContent ?? '';
+    link = findSupportLink();
+    if (/couldn't deliver your access codes/i.test(text) && link instanceof HTMLAnchorElement) break;
+    await wait(250);
   }
-  const link = [...document.querySelectorAll('a')].find((candidate) => /Send support request/i.test(candidate.textContent ?? ''));
+
+  if (!/couldn't deliver your access codes/i.test(text)) throw new Error('fulfillment failed status copy not visible');
   if (!(link instanceof HTMLAnchorElement)) {
     throw new Error('support contact link not found');
   }

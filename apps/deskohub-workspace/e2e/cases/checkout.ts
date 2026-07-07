@@ -16,7 +16,7 @@ import {
 } from "../integrations/database";
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { log, parseUrl } from "../runtime";
+import { log, parseUrl, poll } from "../runtime";
 import type { CheckoutData, CheckoutFlow, CheckoutFlowState } from "../types";
 import { verifyAlias } from "../vercel";
 
@@ -148,18 +148,27 @@ const assertFulfillmentFailedSupportPath = async ({
   session: string;
 }) => {
   await markFulfillmentFailedForE2E(datasourceConfig, orderId);
-  await openBrowserPage(
-    config,
-    run,
-    session,
-    `${config.aliasUrl}/${data.locale}/checkout/status/${orderId}`,
-    { timeoutMs: getCheckoutTimeoutMs() }
+  const statusUrl = `${config.aliasUrl}/${data.locale}/checkout/status/${orderId}`;
+  await poll(
+    async () => {
+      await openBrowserPage(config, run, session, statusUrl, {
+        timeoutMs: 60_000,
+      });
+      const result = await run(
+        "agent-browser",
+        ["--session", session, "eval", "--stdin"],
+        {
+          allowFailure: true,
+          input: getAssertFulfillmentFailedSupportScript(data, orderId),
+          logOutput: false,
+          timeoutMs: 45_000,
+        }
+      );
+      return result.exitCode === 0 ? true : undefined;
+    },
+    Math.min(getCheckoutTimeoutMs(), 120_000),
+    "fulfillment failed support link"
   );
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: getAssertFulfillmentFailedSupportScript(data, orderId),
-    logOutput: false,
-    timeoutMs: getCheckoutTimeoutMs(),
-  });
   await waitForBrowserUrl({
     description: "fulfillment failed support contact page",
     matches: (url) => parseUrl(url)?.pathname === `/${data.locale}/contact`,
