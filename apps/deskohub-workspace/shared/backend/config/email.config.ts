@@ -11,7 +11,6 @@ const emailConfig = Config.all({
     "console" as const
   ),
   apiKey: Config.option(Config.string("EMAIL_API_KEY")),
-  testMode: Config.withDefault(Config.boolean("EMAIL_TEST_MODE"), false),
 });
 
 export const EmailConfigLayer = Layer.effect(
@@ -25,7 +24,6 @@ export const EmailConfigLayer = Layer.effect(
           name: workspaceSiteConstants.brand.name,
         },
         apiKey: Option.getOrUndefined(config.apiKey),
-        testMode: config.testMode,
       };
 
       return providerConfig;

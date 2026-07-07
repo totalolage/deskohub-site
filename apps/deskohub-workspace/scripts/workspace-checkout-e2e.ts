@@ -89,10 +89,17 @@ type CheckoutFlowState = {
   startedAt?: Date;
 };
 
+type PaymentTerminalScenario = {
+  readonly providerStatus: string;
+  readonly state: "cancelled" | "failed";
+  readonly titlePattern: RegExp;
+};
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const repoRoot = resolve(workspaceDir, "../..");
 const redactions = new Set<string>();
+let checkoutContactSequence = 0;
 
 const main = async () => {
   await loadEnvFile(resolve(workspaceDir, ".env.local"));
@@ -156,6 +163,16 @@ const main = async () => {
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
 
     browserHarStarted = await startBrowserDiagnostics(run, session);
+    await assertLocaleSwitcher({ config, run, session });
+    await assertContactForm({ config, run, session });
+    await assertPaymentTerminalPaths({
+      config,
+      datasourceConfig,
+      onState: (state) => flowStates.push(state),
+      run,
+      session,
+    });
+
     for (const flow of checkoutFlows) {
       const data = await flow.makeData(config, datasourceConfig);
       if (!data) {
@@ -213,6 +230,14 @@ const main = async () => {
         session,
       });
       await validateDotypos(datasourceConfig, state.data, state.checkoutRow);
+      await assertFulfillmentFailedSupportPath({
+        config,
+        data: state.data,
+        datasourceConfig,
+        orderId,
+        run,
+        session,
+      });
 
       log(`${flow.id} checkout e2e passed for order ${orderId}`);
     }
@@ -368,6 +393,7 @@ const getVercelDeployEnvArgs = (
     DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
     DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
     DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
+    EMAIL_PROVIDER: "console",
     NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
     WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
@@ -544,6 +570,218 @@ const completeCheckout = async ({
   return orderId;
 };
 
+const startCheckoutPaymentAttempt = async ({
+  config,
+  data,
+  onOrderId,
+  run,
+  session,
+  submitReservationScript,
+}: {
+  config: ReturnType<typeof getConfig>;
+  data: CheckoutData;
+  onOrderId?: (orderId: string) => void;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+  submitReservationScript: string;
+}) => {
+  await openBrowserPage(config, run, session, data.checkoutUrl, {
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: submitReservationScript,
+    logOutput: false,
+  });
+  const payPageUrl = await waitForBrowserUrl({
+    description: "checkout pay page",
+    matches: (url) => url.includes("/checkout/pay"),
+    run,
+    session,
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+  const orderId =
+    getSearchOrderId(payPageUrl) ?? (await readPayPageOrderId(run, session));
+  onOrderId?.(orderId);
+  await submitPaymentAndWaitForHostedPage({ run, session });
+  log(`Started hosted payment attempt for order ${orderId}`);
+  return orderId;
+};
+
+const assertLocaleSwitcher = async ({
+  config,
+  run,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  await openBrowserPage(config, run, session, `${config.aliasUrl}/en-US`, {
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+
+  for (let cycle = 1; cycle <= 3; cycle += 1) {
+    await clickLocaleSwitchLink(run, session, "cs-CZ");
+    await waitForBrowserUrl({
+      description: `Czech locale switch ${cycle}`,
+      matches: (url) => parseUrl(url)?.pathname.startsWith("/cs-CZ") ?? false,
+      run,
+      session,
+      timeoutMs: 60_000,
+    });
+
+    await clickLocaleSwitchLink(run, session, "en-US");
+    await waitForBrowserUrl({
+      description: `English locale switch ${cycle}`,
+      matches: (url) => parseUrl(url)?.pathname.startsWith("/en-US") ?? false,
+      run,
+      session,
+      timeoutMs: 60_000,
+    });
+  }
+
+  log("Locale switch e2e passed");
+};
+
+const clickLocaleSwitchLink = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  locale: CheckoutData["locale"] | "cs-CZ"
+) => {
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: getClickLocaleSwitchScript(locale),
+    logOutput: false,
+    timeoutMs: 30_000,
+  });
+};
+
+const assertContactForm = async ({
+  config,
+  run,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  const runId = new Date().toISOString().replace(/[-:.TZ]/g, "");
+  const data = {
+    email: `workspace-e2e-contact-${runId}@example.com`,
+    message: `Automated workspace contact e2e ${runId}`,
+    name: `Workspace Contact E2E ${runId}`,
+    phone: `+420736${runId.slice(8, 14)}`,
+  };
+
+  for (const value of Object.values(data)) addRedaction(value);
+
+  await openBrowserPage(
+    config,
+    run,
+    session,
+    `${config.aliasUrl}/en-US/contact`,
+    {
+      timeoutMs: getCheckoutTimeoutMs(),
+    }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: getSubmitContactFormScript(data),
+    logOutput: false,
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+  log("Contact form e2e passed");
+};
+
+const assertPaymentTerminalPaths = async ({
+  config,
+  datasourceConfig,
+  onState,
+  run,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  datasourceConfig: ReturnType<typeof getDatasourceConfig>;
+  onState: (state: CheckoutFlowState) => void;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  const scenarios: readonly PaymentTerminalScenario[] = [
+    {
+      providerStatus: "DECLINED",
+      state: "failed",
+      titlePattern: /Payment was not completed\./i,
+    },
+    {
+      providerStatus: "CANCELLED",
+      state: "cancelled",
+      titlePattern: /Payment was cancelled\./i,
+    },
+  ];
+
+  for (const scenario of scenarios) {
+    const data = makeCoworkCheckoutData(
+      config.aliasUrl,
+      await selectAvailableCoworkDate(config),
+      `cowork-${scenario.state}`
+    );
+    const state: CheckoutFlowState = { data };
+    onState(state);
+
+    for (const value of [
+      data.checkoutUrl,
+      data.email,
+      data.message,
+      data.name,
+      data.phone,
+    ])
+      addRedaction(value);
+
+    state.startedAt = new Date();
+    const orderId = await startCheckoutPaymentAttempt({
+      config,
+      data,
+      onOrderId: (orderId) => {
+        state.orderId = orderId;
+      },
+      run,
+      session,
+      submitReservationScript: submitCoworkReservationScript,
+    });
+    state.orderId = orderId;
+    state.checkoutRow = await waitForWebhookReplayRow(
+      datasourceConfig,
+      orderId,
+      (row) => {
+        state.checkoutRow = row;
+      }
+    );
+    state.checkoutRow = await markPaymentTerminalForE2E(
+      datasourceConfig,
+      orderId,
+      scenario
+    );
+    assertPaymentTerminalRow(state.checkoutRow, scenario);
+    await assertTerminalStatusPage({
+      config,
+      orderId,
+      run,
+      scenario,
+      session,
+    });
+
+    await clickStatusReserveAgain(run, session);
+    await waitForBrowserUrl({
+      description: `${scenario.state} payment restart page`,
+      matches: (url) =>
+        (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
+      run,
+      session,
+      timeoutMs: 60_000,
+    });
+
+    log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
+  }
+};
+
 const readPayPageOrderId = async (
   run: ReturnType<typeof makeRunner>,
   session: string
@@ -573,6 +811,30 @@ const readBrowserUrl = async (
   );
   return result.exitCode === 0 ? result.stdout.trim() : undefined;
 };
+
+const getBrowserHeaderArgs = (config: ReturnType<typeof getConfig>) =>
+  config.bypassSecret
+    ? [
+        "--headers",
+        JSON.stringify({
+          "x-vercel-protection-bypass": config.bypassSecret,
+          "x-vercel-set-bypass-cookie": "true",
+        }),
+      ]
+    : [];
+
+const openBrowserPage = async (
+  config: ReturnType<typeof getConfig>,
+  run: ReturnType<typeof makeRunner>,
+  session: string,
+  url: string,
+  options: { readonly timeoutMs?: number } = {}
+) =>
+  run(
+    "agent-browser",
+    ["--session", session, ...getBrowserHeaderArgs(config), "open", url],
+    { timeoutMs: options.timeoutMs ?? 60_000 }
+  );
 
 const isCheckoutStatusUrl = (url: string | undefined) =>
   parseUrl(url ?? "")?.pathname.includes("/checkout/status/") ?? false;
@@ -1300,6 +1562,87 @@ const assertFulfilledStatusPage = async ({
   log("Checkout status page validated");
 };
 
+const assertTerminalStatusPage = async ({
+  config,
+  orderId,
+  run,
+  scenario,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  orderId: string;
+  run: ReturnType<typeof makeRunner>;
+  scenario: PaymentTerminalScenario;
+  session: string;
+}) => {
+  await openBrowserPage(
+    config,
+    run,
+    session,
+    `${config.aliasUrl}/en-US/checkout/status/${orderId}`,
+    { timeoutMs: getCheckoutTimeoutMs() }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: getAssertTerminalStatusScript(scenario),
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+  log(`Checkout ${scenario.state} status page validated`);
+};
+
+const clickStatusReserveAgain = async (
+  run: ReturnType<typeof makeRunner>,
+  session: string
+) => {
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: clickStatusReserveAgainScript,
+    logOutput: false,
+    timeoutMs: 30_000,
+  });
+};
+
+const assertFulfillmentFailedSupportPath = async ({
+  config,
+  data,
+  datasourceConfig,
+  orderId,
+  run,
+  session,
+}: {
+  config: ReturnType<typeof getConfig>;
+  data: CheckoutData;
+  datasourceConfig: ReturnType<typeof getDatasourceConfig>;
+  orderId: string;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+}) => {
+  await markFulfillmentFailedForE2E(datasourceConfig, orderId);
+  await openBrowserPage(
+    config,
+    run,
+    session,
+    `${config.aliasUrl}/${data.locale}/checkout/status/${orderId}`,
+    { timeoutMs: getCheckoutTimeoutMs() }
+  );
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: getAssertFulfillmentFailedSupportScript(data, orderId),
+    logOutput: false,
+    timeoutMs: getCheckoutTimeoutMs(),
+  });
+  await waitForBrowserUrl({
+    description: "fulfillment failed support contact page",
+    matches: (url) => parseUrl(url)?.pathname === `/${data.locale}/contact`,
+    run,
+    session,
+    timeoutMs: 60_000,
+  });
+  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
+    input: getAssertSupportContactPrefillScript(data, orderId),
+    logOutput: false,
+    timeoutMs: 30_000,
+  });
+  log("Fulfillment failed support path e2e passed");
+};
+
 const waitForWebhookReplayRow = async (
   config: ReturnType<typeof getDatasourceConfig>,
   orderId: string,
@@ -1519,6 +1862,100 @@ const readLatestCleanupCheckoutRow = async (
   }
 };
 
+const markPaymentTerminalForE2E = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  orderId: string,
+  scenario: PaymentTerminalScenario
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
+  });
+
+  try {
+    const current = await readCheckoutRow(pool, orderId);
+    assert(current?.payment_attempt_id, "payment attempt missing");
+
+    const failureCode = `workspace_e2e_nexi_${scenario.state}`;
+    const providerOperationId = `workspace-e2e-${scenario.state}-${orderId}`;
+
+    await pool.query(
+      `update payment_attempts
+      set state = $3,
+        failure_code = $4,
+        last_provider_operation_id = $5,
+        last_provider_status = $6,
+        updated_at = now()
+      where id = $1
+        and workspace_reservation_id = $2
+        and state in ('created', 'pending', $3)`,
+      [
+        current.payment_attempt_id,
+        orderId,
+        scenario.state,
+        failureCode,
+        providerOperationId,
+        scenario.providerStatus,
+      ]
+    );
+
+    await pool.query(
+      `update workspace_reservations
+      set payment_state = $3,
+        failure_code = $4,
+        updated_at = now()
+      where id = $1
+        and active_payment_attempt_id = $2
+        and reservation_state = 'held'
+        and payment_state in ('pending', $3)`,
+      [orderId, current.payment_attempt_id, scenario.state, failureCode]
+    );
+
+    const row = await readCheckoutRow(pool, orderId);
+    assert(row, "terminal checkout row missing");
+    return row;
+  } finally {
+    await pool.end();
+  }
+};
+
+const markFulfillmentFailedForE2E = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  orderId: string
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
+  });
+
+  try {
+    const result = await pool.query<{ id: string }>(
+      `update workspace_reservations
+      set fulfillment_state = 'failed',
+        fulfilled_at = null,
+        fulfillment_failed_at = now(),
+        fulfillment_failure_code = 'workspace_e2e_delivery_failed',
+        updated_at = now()
+      where id = $1
+        and payment_state = 'paid'
+        and fulfillment_state = 'fulfilled'
+      returning id`,
+      [orderId]
+    );
+
+    assert(
+      result.rows[0]?.id === orderId,
+      "fulfilled checkout row could not be marked fulfillment_failed"
+    );
+  } finally {
+    await pool.end();
+  }
+};
+
 const isPostgresComplete = (
   row: CheckoutRow,
   config: ReturnType<typeof getDatasourceConfig>
@@ -1529,6 +1966,32 @@ const isPostgresComplete = (
   row.payment_attempt_state === "paid" &&
   row.currency === config.expectedCurrency &&
   row.webhook_state === "processed";
+
+const assertPaymentTerminalRow = (
+  row: CheckoutRow,
+  scenario: PaymentTerminalScenario
+) => {
+  assert(
+    row.payment_state === scenario.state,
+    `reservation payment state was not ${scenario.state}`
+  );
+  assert(
+    row.payment_attempt_state === scenario.state,
+    `payment attempt state was not ${scenario.state}`
+  );
+  assert(
+    row.payment_failure_code === `workspace_e2e_nexi_${scenario.state}`,
+    "terminal payment failure code mismatch"
+  );
+  assert(
+    row.last_provider_status === scenario.providerStatus,
+    "terminal payment provider status mismatch"
+  );
+  assert(
+    row.fulfillment_state === "not_started",
+    "terminal payment should not start fulfillment"
+  );
+};
 
 const assertPostgresRow = (
   row: CheckoutRow,
@@ -1961,24 +2424,27 @@ const checkoutFlows: readonly CheckoutFlow[] = [
 ];
 
 const makeCheckoutContact = (flowId: string) => {
+  checkoutContactSequence += 1;
   const runId = new Date()
     .toISOString()
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
-  const name = `Workspace E2E ${flowId} ${runId}`;
-  const phone = `+420735${runId.slice(6, 12)}`;
+  const sequence = String(checkoutContactSequence % 100).padStart(2, "0");
+  const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
+  const phone = `+420735${runId.slice(6, 10)}${sequence}`;
   const email = "delivered@resend.dev";
-  const message = `Automated checkout e2e ${flowId} ${runId}`;
+  const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
 
   return { email, message, name, phone };
 };
 
 const makeCoworkCheckoutData = (
   aliasUrl: string,
-  date: string
+  date: string,
+  flowId = "cowork-basic"
 ): CheckoutData => {
   const locale: CheckoutData["locale"] = "en-US";
-  const contact = makeCheckoutContact("cowork-basic");
+  const contact = makeCheckoutContact(flowId);
   const params = new URLSearchParams({
     coffee: "false",
     date,
@@ -2239,6 +2705,150 @@ const submitPaymentScript = String.raw`
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
   await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
   setTimeout(() => button.click(), 0);
+  return location.href;
+})()
+`;
+
+const getClickLocaleSwitchScript = (locale: CheckoutData["locale"] | "cs-CZ") =>
+  `
+(() => {
+  const targetLocale = ${JSON.stringify(locale)};
+  const links = [...document.querySelectorAll('nav[aria-label="Language switcher"] a')];
+  const link = links.find((candidate) => {
+    try {
+      return new URL(candidate.href).pathname.startsWith('/' + targetLocale);
+    } catch {
+      return false;
+    }
+  });
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error('language switch link not found for ' + targetLocale);
+  }
+  link.click();
+  return link.href;
+})()
+`;
+
+const getSubmitContactFormScript = (data: {
+  readonly email: string;
+  readonly message: string;
+  readonly name: string;
+  readonly phone: string;
+}) => String.raw`
+(async () => {
+  const data = ${JSON.stringify(data)};
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + 60000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    throw new Error(label);
+  };
+  const setField = (selector, value) => {
+    const field = document.querySelector(selector);
+    if (!(field instanceof HTMLInputElement || field instanceof HTMLTextAreaElement)) {
+      throw new Error(selector + ' not found');
+    }
+    field.focus();
+    field.value = value;
+    field.dispatchEvent(new Event('input', { bubbles: true }));
+    field.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+
+  await waitUntil(() => document.querySelector('#contact-form form'), 'contact form not found');
+  setField('#contact-name', data.name);
+  setField('#contact-phone', data.phone);
+  setField('#contact-email', data.email);
+  setField('#contact-message', data.message);
+
+  const form = document.querySelector('#contact-form form');
+  if (!(form instanceof HTMLFormElement)) throw new Error('contact form element missing');
+  const button = form.querySelector('button[type="submit"]');
+  if (!(button instanceof HTMLButtonElement)) throw new Error('contact submit button missing');
+  await waitUntil(() => !button.disabled, 'contact submit button stayed disabled');
+  button.click();
+  await waitUntil(() => /Your message has been sent\./i.test(document.body?.textContent ?? ''), 'contact success message not visible');
+  return location.href;
+})()
+`;
+
+const getAssertTerminalStatusScript = (scenario: PaymentTerminalScenario) =>
+  `
+(() => {
+  const titlePattern = new RegExp(${JSON.stringify(scenario.titlePattern.source)}, ${JSON.stringify(scenario.titlePattern.flags)});
+  const text = document.body?.textContent ?? '';
+  if (!titlePattern.test(text)) {
+    throw new Error('terminal payment status copy not visible');
+  }
+  if (!/Start a new reservation/i.test(text)) {
+    throw new Error('terminal payment restart action not visible');
+  }
+  return location.href;
+})()
+`;
+
+const clickStatusReserveAgainScript = `
+(() => {
+  const link = [...document.querySelectorAll('a')].find((candidate) => /Start a new reservation/i.test(candidate.textContent ?? ''));
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error('start a new reservation link not found');
+  }
+  link.click();
+  return link.href;
+})()
+`;
+
+const getAssertFulfillmentFailedSupportScript = (
+  data: CheckoutData,
+  orderId: string
+) => `
+(() => {
+  const expected = ${JSON.stringify({ email: data.email, locale: data.locale, orderId })};
+  const text = document.body?.textContent ?? '';
+  if (!/couldn't deliver your access codes/i.test(text)) {
+    throw new Error('fulfillment failed status copy not visible');
+  }
+  const link = [...document.querySelectorAll('a')].find((candidate) => /Send support request/i.test(candidate.textContent ?? ''));
+  if (!(link instanceof HTMLAnchorElement)) {
+    throw new Error('support contact link not found');
+  }
+  const url = new URL(link.href);
+  if (url.pathname !== '/' + expected.locale + '/contact') {
+    throw new Error('support contact link points at unexpected path');
+  }
+  if (url.searchParams.get('email') !== expected.email) {
+    throw new Error('support contact email prefill missing');
+  }
+  if (!(url.searchParams.get('message') ?? '').includes(expected.orderId)) {
+    throw new Error('support contact message missing order id');
+  }
+  link.click();
+  return link.href;
+})()
+`;
+
+const getAssertSupportContactPrefillScript = (
+  data: CheckoutData,
+  orderId: string
+) => `
+(() => {
+  const expected = ${JSON.stringify({ email: data.email, orderId })};
+  const email = document.querySelector('#contact-email');
+  const message = document.querySelector('#contact-message');
+  if (!(email instanceof HTMLInputElement)) {
+    throw new Error('support contact email field not found');
+  }
+  if (!(message instanceof HTMLTextAreaElement)) {
+    throw new Error('support contact message field not found');
+  }
+  if (email.value !== expected.email) {
+    throw new Error('support contact email field was not prefilled');
+  }
+  if (!message.value.includes(expected.orderId)) {
+    throw new Error('support contact message field missing order id');
+  }
   return location.href;
 })()
 `;

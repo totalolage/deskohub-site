@@ -1,5 +1,5 @@
-export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
 export { EmailProviderLive } from "./backend/provider-factory";
+export { ConsoleEmailProviderLive } from "./backend/providers/console-provider";
 export { ResendEmailProviderLive } from "./backend/providers/resend-provider";
 export {
   EmailConfigTag,

@@ -22,7 +22,12 @@ export const EmailProviderLive = Layer.unwrap(
       );
     }
 
-    if (process.env.NODE_ENV === "production" && !config.testMode) {
+    const consoleProviderAllowed =
+      process.env.NODE_ENV !== "production" ||
+      process.env.VERCEL_ENV === "preview" ||
+      config.testMode === true;
+
+    if (!consoleProviderAllowed) {
       if (config.apiKey) {
         yield* Effect.logInfo("Using Resend email provider");
         return ResendEmailProviderLive;
