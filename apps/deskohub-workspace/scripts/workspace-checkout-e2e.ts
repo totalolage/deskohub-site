@@ -2825,16 +2825,18 @@ const getSubmitContactFormScript = (data: {
 
 const getAssertTerminalStatusScript = (scenario: PaymentTerminalScenario) =>
   `
-(() => {
+(async () => {
   const titlePattern = new RegExp(${JSON.stringify(scenario.titlePattern.source)}, ${JSON.stringify(scenario.titlePattern.flags)});
-  const text = document.body?.textContent ?? '';
-  if (!titlePattern.test(text)) {
-    throw new Error('terminal payment status copy not visible');
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const deadline = Date.now() + 60000;
+  while (Date.now() < deadline) {
+    const text = document.body?.textContent ?? '';
+    if (titlePattern.test(text) && /Start a new reservation/i.test(text)) {
+      return location.href;
+    }
+    await wait(250);
   }
-  if (!/Start a new reservation/i.test(text)) {
-    throw new Error('terminal payment restart action not visible');
-  }
-  return location.href;
+  throw new Error('terminal payment status copy not visible');
 })()
 `;
 
