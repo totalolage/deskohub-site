@@ -88,6 +88,7 @@ export const makeWorkspaceE2ECases = ({
       },
     ];
     let nextDateIndex = 0;
+    let checkoutFlowProviderSessionCount = 0;
 
     for (const scenario of terminalScenarios) {
       const data = yield* effectifySync(
@@ -141,6 +142,7 @@ export const makeWorkspaceE2ECases = ({
       }
 
       const state = trackCheckoutState(flowStates, data);
+      checkoutFlowProviderSessionCount += 1;
       cases.push({
         execute: ({ session }) =>
           executeCheckoutFlow({
@@ -161,6 +163,10 @@ export const makeWorkspaceE2ECases = ({
         id: `checkout-${flow.id}`,
       });
     }
+
+    yield* resources.expectCheckoutFlowProviderSessions(
+      checkoutFlowProviderSessionCount
+    );
 
     return cases;
   });

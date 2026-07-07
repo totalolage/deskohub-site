@@ -56,7 +56,7 @@ export const executeCheckoutFlow = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    const orderId = yield* resources.withCheckoutProviderSession(
+    const orderId = yield* resources.withCheckoutFlowProviderSession(
       Effect.gen(function* () {
         const orderId = yield* effectifyPromise(
           `start ${flow.id} checkout provider session`,

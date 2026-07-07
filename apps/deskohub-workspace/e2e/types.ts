@@ -78,7 +78,13 @@ export type CheckoutFlowState = {
 };
 
 export type WorkspaceE2EResourceScope = {
-  readonly withCheckoutProviderSession: <A, E, R>(
+  readonly expectCheckoutFlowProviderSessions: (
+    count: number
+  ) => Effect.Effect<void>;
+  readonly withCheckoutFlowProviderSession: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
+  readonly withPaymentTerminalProviderSession: <A, E, R>(
     effect: Effect.Effect<A, E, R>
   ) => Effect.Effect<A, E, R>;
 };

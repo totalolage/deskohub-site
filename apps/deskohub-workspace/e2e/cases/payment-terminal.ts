@@ -65,7 +65,7 @@ export const assertPaymentTerminalPath = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    const orderId = yield* resources.withCheckoutProviderSession(
+    const orderId = yield* resources.withPaymentTerminalProviderSession(
       effectifyPromise(`start ${scenario.state} payment provider session`, () =>
         startCheckoutPaymentAttempt({
           config,
