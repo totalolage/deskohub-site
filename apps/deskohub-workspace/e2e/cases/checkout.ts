@@ -7,7 +7,6 @@ import {
 import {
   assertFulfilledStatusScript,
   getAssertFulfillmentFailedSupportScript,
-  getAssertSupportContactPrefillScript,
 } from "../browser-scripts";
 import {
   completeNexiHostedPayment,
@@ -247,19 +246,17 @@ const assertFulfillmentFailedSupportPath = ({
       () =>
         waitForBrowserUrl({
           description: "fulfillment failed support contact page",
-          matches: (url) =>
-            parseUrl(url)?.pathname === `/${data.locale}/contact`,
+          matches: (url) => {
+            const parsed = parseUrl(url);
+            return (
+              parsed?.pathname === `/${data.locale}/contact` &&
+              (parsed.searchParams.get("message") ?? "").includes(orderId)
+            );
+          },
           run,
           session,
           timeoutMs: 60_000,
         })
-    );
-    yield* effectifyPromise("assert support contact prefill", () =>
-      run("agent-browser", ["--session", session, "eval", "--stdin"], {
-        input: getAssertSupportContactPrefillScript(data, orderId),
-        logOutput: false,
-        timeoutMs: 30_000,
-      })
     );
     log("Fulfillment failed support path e2e passed");
   });

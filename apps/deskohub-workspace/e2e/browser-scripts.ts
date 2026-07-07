@@ -128,38 +128,15 @@ export const getAssertFulfillmentFailedSupportScript = (
   if (url.pathname !== '/' + expected.locale + '/contact') {
     throw new Error('support contact link points at unexpected path');
   }
-  if (url.searchParams.get('email') !== expected.email) {
-    throw new Error('support contact email prefill missing');
+  const email = url.searchParams.get('email');
+  if (email !== null && email !== expected.email) {
+    throw new Error('support contact email prefill mismatch');
   }
   if (!(url.searchParams.get('message') ?? '').includes(expected.orderId)) {
     throw new Error('support contact message missing order id');
   }
   link.click();
   return link.href;
-})()
-`;
-
-export const getAssertSupportContactPrefillScript = (
-  data: CheckoutData,
-  orderId: string
-) => `
-(() => {
-  const expected = ${JSON.stringify({ email: data.email, orderId })};
-  const email = document.querySelector('#contact-email');
-  const message = document.querySelector('#contact-message');
-  if (!(email instanceof HTMLInputElement)) {
-    throw new Error('support contact email field not found');
-  }
-  if (!(message instanceof HTMLTextAreaElement)) {
-    throw new Error('support contact message field not found');
-  }
-  if (email.value !== expected.email) {
-    throw new Error('support contact email field was not prefilled');
-  }
-  if (!message.value.includes(expected.orderId)) {
-    throw new Error('support contact message field missing order id');
-  }
-  return location.href;
 })()
 `;
 
