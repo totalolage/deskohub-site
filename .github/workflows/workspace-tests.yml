@@ -32,7 +32,13 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            bun install --frozen-lockfile && exit 0
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
 
       - run: bun turbo test --filter=./apps/deskohub-workspace
 
@@ -63,7 +69,13 @@ jobs:
         with:
           bun-version: 1.3.14
 
-      - run: bun install --frozen-lockfile
+      - name: Install dependencies
+        run: |
+          for attempt in 1 2 3; do
+            bun install --frozen-lockfile && exit 0
+            if [ "$attempt" -eq 3 ]; then exit 1; fi
+            sleep $((attempt * 10))
+          done
 
       - run: bun add -g agent-browser
 
