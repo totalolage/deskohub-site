@@ -32,6 +32,7 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   WorkspaceE2ECase,
+  WorkspaceE2EResourceScope,
 } from "../types";
 import { executeCheckoutFlow } from "./checkout";
 import { assertContactForm } from "./contact";
@@ -46,12 +47,14 @@ export const makeWorkspaceE2ECases = ({
   datasourceConfig,
   deploymentId,
   flowStates,
+  resources,
   run,
 }: {
   config: WorkspaceE2EConfig;
   datasourceConfig: DatasourceConfig;
   deploymentId: string;
   flowStates: CheckoutFlowState[];
+  resources: WorkspaceE2EResourceScope;
   run: Runner;
 }): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -67,15 +70,19 @@ export const makeWorkspaceE2ECases = ({
     const cases: WorkspaceE2ECase[] = [
       {
         execute: ({ session }) =>
-          effectifyPromise("run locale switch e2e case", () =>
-            assertLocaleSwitcher({ config, run, session })
+          assertLocaleSwitcher({ config, run, session }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run locale switch e2e case", cause)
+            )
           ),
         id: "locale-switch",
       },
       {
         execute: ({ session }) =>
-          effectifyPromise("run contact form e2e case", () =>
-            assertContactForm({ config, run, session })
+          assertContactForm({ config, run, session }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError("run contact form e2e case", cause)
+            )
           ),
         id: "contact-form",
       },
@@ -96,16 +103,22 @@ export const makeWorkspaceE2ECases = ({
       const state = trackCheckoutState(flowStates, data);
       cases.push({
         execute: ({ session }) =>
-          effectifyPromise(`run ${scenario.state} payment e2e case`, () =>
-            assertPaymentTerminalPath({
-              config,
-              data,
-              datasourceConfig,
-              run,
-              scenario,
-              session,
-              state,
-            })
+          assertPaymentTerminalPath({
+            config,
+            data,
+            datasourceConfig,
+            resources,
+            run,
+            scenario,
+            session,
+            state,
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError(
+                `run ${scenario.state} payment e2e case`,
+                cause
+              )
+            )
           ),
         id: `payment-${scenario.state}`,
       });
@@ -130,17 +143,20 @@ export const makeWorkspaceE2ECases = ({
       const state = trackCheckoutState(flowStates, data);
       cases.push({
         execute: ({ session }) =>
-          effectifyPromise(`run ${flow.id} checkout e2e case`, () =>
-            executeCheckoutFlow({
-              config,
-              data,
-              datasourceConfig,
-              deploymentId,
-              flow,
-              run,
-              session,
-              state,
-            })
+          executeCheckoutFlow({
+            config,
+            data,
+            datasourceConfig,
+            deploymentId,
+            flow,
+            resources,
+            run,
+            session,
+            state,
+          }).pipe(
+            Effect.mapError((cause) =>
+              toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
+            )
           ),
         id: `checkout-${flow.id}`,
       });

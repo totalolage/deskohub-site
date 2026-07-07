@@ -1,3 +1,4 @@
+import { Effect } from "effect";
 import {
   openBrowserPage,
   waitForBrowserUrl,
@@ -11,6 +12,11 @@ import { startCheckoutPaymentAttempt } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
 import {
+  effectifyPromise,
+  effectifySync,
+  type WorkspaceE2EError,
+} from "../errors";
+import {
   assertPaymentTerminalRow,
   markPaymentTerminalForE2E,
   waitForWebhookReplayRow,
@@ -21,6 +27,7 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   PaymentTerminalScenario,
+  WorkspaceE2EResourceScope,
 } from "../types";
 
 export const getPaymentTerminalScenarios =
@@ -37,10 +44,11 @@ export const getPaymentTerminalScenarios =
     },
   ];
 
-export const assertPaymentTerminalPath = async ({
+export const assertPaymentTerminalPath = ({
   config,
   data,
   datasourceConfig,
+  resources,
   run,
   scenario,
   session,
@@ -49,58 +57,70 @@ export const assertPaymentTerminalPath = async ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
+  resources: WorkspaceE2EResourceScope;
   run: Runner;
   scenario: PaymentTerminalScenario;
   session: string;
   state: CheckoutFlowState;
-}) => {
-  state.startedAt = new Date();
-  const orderId = await startCheckoutPaymentAttempt({
-    config,
-    data,
-    onOrderId: (orderId) => {
-      state.orderId = orderId;
-    },
-    run,
-    session,
-    submitReservationScript: submitCoworkReservationScript,
-  });
-  state.orderId = orderId;
-  state.checkoutRow = await waitForWebhookReplayRow(
-    datasourceConfig,
-    orderId,
-    (row) => {
-      state.checkoutRow = row;
-    }
-  );
-  state.checkoutRow = await markPaymentTerminalForE2E(
-    datasourceConfig,
-    orderId,
-    scenario
-  );
-  assertPaymentTerminalRow(state.checkoutRow, scenario);
-  await assertTerminalStatusPage({
-    config,
-    orderId,
-    run,
-    scenario,
-    session,
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    state.startedAt = new Date();
+    const orderId = yield* resources.withCheckoutProviderSession(
+      effectifyPromise(`start ${scenario.state} payment provider session`, () =>
+        startCheckoutPaymentAttempt({
+          config,
+          data,
+          onOrderId: (orderId) => {
+            state.orderId = orderId;
+          },
+          run,
+          session,
+          submitReservationScript: submitCoworkReservationScript,
+        })
+      )
+    );
+    state.orderId = orderId;
+    state.checkoutRow = yield* effectifyPromise(
+      `wait for ${scenario.state} payment webhook row`,
+      () =>
+        waitForWebhookReplayRow(datasourceConfig, orderId, (row) => {
+          state.checkoutRow = row;
+        })
+    );
+    const checkoutRow = yield* effectifyPromise(
+      `mark ${scenario.state} payment terminal state`,
+      () => markPaymentTerminalForE2E(datasourceConfig, orderId, scenario)
+    );
+    state.checkoutRow = checkoutRow;
+    yield* effectifySync(`assert ${scenario.state} payment terminal row`, () =>
+      assertPaymentTerminalRow(checkoutRow, scenario)
+    );
+    yield* assertTerminalStatusPage({
+      config,
+      orderId,
+      run,
+      scenario,
+      session,
+    });
+
+    yield* clickStatusReserveAgain(run, session);
+    yield* effectifyPromise(
+      `wait for ${scenario.state} payment restart page`,
+      () =>
+        waitForBrowserUrl({
+          description: `${scenario.state} payment restart page`,
+          matches: (url) =>
+            (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
+          run,
+          session,
+          timeoutMs: 60_000,
+        })
+    );
+
+    log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
   });
 
-  await clickStatusReserveAgain(run, session);
-  await waitForBrowserUrl({
-    description: `${scenario.state} payment restart page`,
-    matches: (url) =>
-      (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
-    run,
-    session,
-    timeoutMs: 60_000,
-  });
-
-  log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
-};
-
-const assertTerminalStatusPage = async ({
+const assertTerminalStatusPage = ({
   config,
   orderId,
   run,
@@ -112,29 +132,37 @@ const assertTerminalStatusPage = async ({
   run: Runner;
   scenario: PaymentTerminalScenario;
   session: string;
-}) => {
-  const url = `${config.browserUrl}/en-US/checkout/status/${orderId}`;
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const url = `${config.browserUrl}/en-US/checkout/status/${orderId}`;
 
-  await openBrowserPage(config, run, session, url, {
-    timeoutMs: 60_000,
-  });
-  await waitForInteractiveSnapshot({
-    description: `${scenario.state} checkout status copy`,
-    matches: (snapshot) =>
-      scenario.titlePattern.test(snapshot) &&
-      /Start a new reservation/i.test(snapshot),
-    run,
-    session,
-    timeoutMs: getCheckoutTimeoutMs(),
+    yield* effectifyPromise(`open ${scenario.state} checkout status page`, () =>
+      openBrowserPage(config, run, session, url, {
+        timeoutMs: 60_000,
+      })
+    );
+    yield* effectifyPromise(
+      `wait for ${scenario.state} checkout status copy`,
+      () =>
+        waitForInteractiveSnapshot({
+          description: `${scenario.state} checkout status copy`,
+          matches: (snapshot) =>
+            scenario.titlePattern.test(snapshot) &&
+            /Start a new reservation/i.test(snapshot),
+          run,
+          session,
+          timeoutMs: getCheckoutTimeoutMs(),
+        })
+    );
+
+    log(`Checkout ${scenario.state} status page validated`);
   });
 
-  log(`Checkout ${scenario.state} status page validated`);
-};
-
-const clickStatusReserveAgain = async (run: Runner, session: string) => {
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: clickStatusReserveAgainScript,
-    logOutput: false,
-    timeoutMs: 30_000,
-  });
-};
+const clickStatusReserveAgain = (run: Runner, session: string) =>
+  effectifyPromise("click status reserve again", () =>
+    run("agent-browser", ["--session", session, "eval", "--stdin"], {
+      input: clickStatusReserveAgainScript,
+      logOutput: false,
+      timeoutMs: 30_000,
+    })
+  );

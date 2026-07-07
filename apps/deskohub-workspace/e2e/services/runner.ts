@@ -12,6 +12,7 @@ import {
   WorkspaceE2EPathService,
   WorkspaceE2ERedactionService,
 } from "./core";
+import { WorkspaceE2EResourceService } from "./resources";
 import { WorkspaceE2EVercelPreviewService } from "./vercel-preview";
 
 interface IWorkspaceE2ERunnerService {
@@ -108,12 +109,16 @@ const WorkspaceE2ECoreLive = Layer.mergeAll(
   WorkspaceE2EPathService.Live,
   WorkspaceE2ERedactionService.Live,
   WorkspaceE2EConfigService.Live,
-  WorkspaceE2ECaseService.Live,
+  WorkspaceE2EResourceService.Live,
   WorkspaceE2ECleanupService.Live
 );
 
-const WorkspaceE2EEnvFileLive = WorkspaceE2EEnvFileService.Live.pipe(
+const WorkspaceE2ECaseLive = WorkspaceE2ECaseService.Live.pipe(
   Layer.provideMerge(WorkspaceE2ECoreLive)
+);
+
+const WorkspaceE2EEnvFileLive = WorkspaceE2EEnvFileService.Live.pipe(
+  Layer.provideMerge(WorkspaceE2ECaseLive)
 );
 
 const WorkspaceE2ECommandRunnerLive =

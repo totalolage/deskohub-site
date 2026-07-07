@@ -77,6 +77,12 @@ export type CheckoutFlowState = {
   startedAt?: Date;
 };
 
+export type WorkspaceE2EResourceScope = {
+  readonly withCheckoutProviderSession: <A, E, R>(
+    effect: Effect.Effect<A, E, R>
+  ) => Effect.Effect<A, E, R>;
+};
+
 export type PaymentTerminalScenario = {
   readonly providerStatus: string;
   readonly state: "cancelled" | "failed";

@@ -327,7 +327,7 @@ const clickCheckoutPayButton = async (run: Runner, session: string) => {
   });
 };
 
-const completeNexiHostedPayment = async ({
+export const completeNexiHostedPayment = async ({
   data,
   run,
   session,
