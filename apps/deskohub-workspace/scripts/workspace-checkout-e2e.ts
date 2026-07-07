@@ -213,6 +213,7 @@ const main = async () => {
         }
       );
       await replayNexiWebhook(config, replayRow);
+      await markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId);
       state.checkoutRow = await validatePostgres(
         datasourceConfig,
         state.data,
@@ -1951,6 +1952,54 @@ const markFulfillmentFailedForE2E = async (
       result.rows[0]?.id === orderId,
       "fulfilled checkout row could not be marked fulfillment_failed"
     );
+  } finally {
+    await pool.end();
+  }
+};
+
+const markConsoleFulfillmentDeliveredForE2E = async (
+  config: ReturnType<typeof getDatasourceConfig>,
+  orderId: string
+) => {
+  const pool = new Pool({
+    connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
+    connectionTimeoutMillis: getDatasourceTimeoutMs(),
+    query_timeout: getDatasourceTimeoutMs(),
+    statement_timeout: getDatasourceTimeoutMs(),
+  });
+
+  try {
+    const row = await poll(
+      async () => {
+        const result = await pool.query<{ id: string }>(
+          `update workspace_reservations
+          set fulfillment_state = 'fulfilled',
+            fulfilled_at = coalesce(fulfilled_at, now()),
+            updated_at = now()
+          where id = $1
+            and payment_state = 'paid'
+            and fulfillment_state = 'processing'
+            and reservation_confirmed_at is not null
+            and dotypos_reservation_id is not null
+          returning id`,
+          [orderId]
+        );
+
+        if (result.rows[0]?.id !== orderId) {
+          const current = await readCheckoutRow(pool, orderId);
+          return current?.fulfillment_state === "fulfilled"
+            ? current
+            : undefined;
+        }
+
+        return await readCheckoutRow(pool, orderId);
+      },
+      getDatasourceTimeoutMs(),
+      `console fulfillment marker for ${orderId}`
+    );
+
+    assert(row, "console fulfillment marker row missing");
+    log("Console fulfillment delivery marker applied");
   } finally {
     await pool.end();
   }
