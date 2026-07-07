@@ -1,8 +1,8 @@
 import { Effect } from "effect";
 import {
   openBrowserPage,
+  waitForBrowserText,
   waitForBrowserUrl,
-  waitForInteractiveSnapshot,
 } from "../browser";
 import {
   assertFulfilledStatusScript,
@@ -183,6 +183,17 @@ const assertFulfilledStatusPage = ({
         { timeoutMs: getCheckoutTimeoutMs() }
       )
     );
+    yield* effectifyPromise("wait for fulfilled checkout status copy", () =>
+      waitForBrowserText({
+        description: "fulfilled checkout status copy",
+        matches: (text) =>
+          /Your workspace access is ready\./i.test(text) &&
+          /sent by email/i.test(text),
+        run,
+        session,
+        timeoutMs: getCheckoutTimeoutMs(),
+      })
+    );
     yield* effectifyPromise("assert fulfilled checkout status page", () =>
       run("agent-browser", ["--session", session, "eval", "--stdin"], {
         input: assertFulfilledStatusScript,
@@ -224,11 +235,11 @@ const assertFulfillmentFailedSupportPath = ({
         })
     );
     yield* effectifyPromise("wait for fulfillment failed support link", () =>
-      waitForInteractiveSnapshot({
+      waitForBrowserText({
         description: "fulfillment failed support link",
-        matches: (snapshot) =>
-          /couldn't deliver your access codes/i.test(snapshot) &&
-          /Send support request/i.test(snapshot),
+        matches: (text) =>
+          /couldn't deliver your access codes/i.test(text) &&
+          /Send support request/i.test(text),
         run,
         session,
         timeoutMs: getCheckoutTimeoutMs(),

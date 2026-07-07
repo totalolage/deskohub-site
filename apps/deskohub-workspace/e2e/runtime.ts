@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { Effect, Schedule } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 
 export const POLL_INTERVAL_MS = 5_000;
@@ -145,15 +146,24 @@ export const poll = async <T>(
   fn: () => Promise<T | undefined>,
   timeoutMs: number,
   label: string
-) => {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    const result = await fn();
-    if (result) return result;
-    await Bun.sleep(POLL_INTERVAL_MS);
-  }
-  throw new Error(`Timed out waiting for ${label}`);
-};
+) =>
+  Effect.runPromise(
+    Effect.tryPromise({ try: fn, catch: (cause) => cause }).pipe(
+      Effect.repeat({
+        schedule: Schedule.spaced(`${POLL_INTERVAL_MS} millis`),
+        while: (result) => result === undefined,
+      }),
+      Effect.timeoutOrElse({
+        duration: `${timeoutMs} millis`,
+        orElse: () => Effect.fail(new Error(`Timed out waiting for ${label}`)),
+      }),
+      Effect.flatMap((result) =>
+        result === undefined
+          ? Effect.fail(new Error(`Timed out waiting for ${label}`))
+          : Effect.succeed(result)
+      )
+    )
+  );
 
 export const loadEnvFile = async (path: string) => {
   const values = new Map<string, string>();

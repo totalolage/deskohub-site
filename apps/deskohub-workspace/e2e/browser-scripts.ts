@@ -176,14 +176,10 @@ export const browserTextScript = `
 `;
 
 export const assertFulfilledStatusScript = String.raw`
-(async () => {
-  const deadline = Date.now() + 30_000;
-  while (Date.now() < deadline) {
-    const text = document.body?.textContent ?? '';
-    if (/Your workspace access is ready\./i.test(text) && /sent by email/i.test(text)) {
-      return location.href;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
+(() => {
+  const text = document.body?.textContent ?? '';
+  if (/Your workspace access is ready\./i.test(text) && /sent by email/i.test(text)) {
+    return location.href;
   }
   throw new Error('fulfilled checkout status copy not visible');
 })()
