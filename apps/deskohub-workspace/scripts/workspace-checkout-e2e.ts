@@ -59,6 +59,36 @@ type CheckoutRow = {
   webhook_error_code: string | null;
 };
 
+type CheckoutData = {
+  readonly checkoutUrl: string;
+  readonly date: string;
+  readonly email: string;
+  readonly expectedCoffee: boolean;
+  readonly expectedMonitorOption: string | null;
+  readonly expectedProductTier: string;
+  readonly locale: "en-US";
+  readonly message: string;
+  readonly name: string;
+  readonly orderIdHint: string;
+  readonly phone: string;
+};
+
+type CheckoutFlow = {
+  readonly id: string;
+  readonly makeData: (
+    config: ReturnType<typeof getConfig>,
+    datasourceConfig: ReturnType<typeof getDatasourceConfig>
+  ) => Promise<CheckoutData | undefined>;
+  readonly submitReservationScript: (data: CheckoutData) => string;
+};
+
+type CheckoutFlowState = {
+  checkoutRow?: CheckoutRow;
+  data: CheckoutData;
+  orderId?: string;
+  startedAt?: Date;
+};
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const repoRoot = resolve(workspaceDir, "../..");
@@ -72,9 +102,7 @@ const main = async () => {
   const session = `workspace-checkout-e2e-${Date.now()}`;
   const artifactDir = resolve(workspaceDir, "e2e-artifacts", session);
   let datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
-  let checkoutRow: CheckoutRow | undefined;
-  let checkoutOrderId: string | undefined;
-  let checkoutStartedAt: Date | undefined;
+  const flowStates: CheckoutFlowState[] = [];
   let browserHarStarted = false;
   let browserHarStopped = false;
   let cleanupError: unknown;
@@ -127,101 +155,117 @@ const main = async () => {
     await assertWebhookEndpoint(config, "/api/webhooks/nexi");
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
 
-    const data = makeCheckoutData(
-      config.aliasUrl,
-      await selectAvailableCheckoutDate(config)
-    );
-    for (const value of [
-      data.checkoutUrl,
-      data.email,
-      data.message,
-      data.name,
-      data.phone,
-    ])
-      addRedaction(value);
-
     browserHarStarted = await startBrowserDiagnostics(run, session);
-    checkoutStartedAt = new Date();
-    const orderId = await completeCheckout({
-      config,
-      data,
-      onOrderId: (orderId) => {
-        checkoutOrderId = orderId;
-      },
-      run,
-      session,
-    });
-    checkoutOrderId = orderId;
-    // Nexi verification happens inside the deployed webhook handler. The runner
-    // validates the resulting payment/webhook state without holding Nexi secrets.
-    const replayRow = await waitForWebhookReplayRow(
-      datasourceConfig,
-      orderId,
-      (row) => {
-        checkoutRow = row;
+    for (const flow of checkoutFlows) {
+      const data = await flow.makeData(config, datasourceConfig);
+      if (!data) {
+        log(`${flow.id} checkout e2e skipped`);
+        continue;
       }
-    );
-    await replayNexiWebhook(config, replayRow);
-    checkoutRow = await validatePostgres(
-      datasourceConfig,
-      data,
-      orderId,
-      (row) => {
-        checkoutRow = row;
-      }
-    );
-    await verifyAlias(config, deployment.id);
-    await assertFulfilledStatusPage({ config, orderId, run, session });
-    await validateDotypos(datasourceConfig, data, checkoutRow);
 
-    log(`Checkout e2e passed for order ${orderId}`);
+      const state: CheckoutFlowState = { data };
+      flowStates.push(state);
+      for (const value of [
+        state.data.checkoutUrl,
+        state.data.email,
+        state.data.message,
+        state.data.name,
+        state.data.phone,
+      ])
+        addRedaction(value);
+
+      state.startedAt = new Date();
+      const orderId = await completeCheckout({
+        config,
+        data: state.data,
+        onOrderId: (orderId) => {
+          state.orderId = orderId;
+        },
+        run,
+        session,
+        submitReservationScript: flow.submitReservationScript(state.data),
+      });
+      state.orderId = orderId;
+      // Nexi verification happens inside the deployed webhook handler. The runner
+      // validates the resulting payment/webhook state without holding Nexi secrets.
+      const replayRow = await waitForWebhookReplayRow(
+        datasourceConfig,
+        orderId,
+        (row) => {
+          state.checkoutRow = row;
+        }
+      );
+      await replayNexiWebhook(config, replayRow);
+      state.checkoutRow = await validatePostgres(
+        datasourceConfig,
+        state.data,
+        orderId,
+        (row) => {
+          state.checkoutRow = row;
+        }
+      );
+      await verifyAlias(config, deployment.id);
+      await assertFulfilledStatusPage({
+        config,
+        locale: state.data.locale,
+        orderId,
+        run,
+        session,
+      });
+      await validateDotypos(datasourceConfig, state.data, state.checkoutRow);
+
+      log(`${flow.id} checkout e2e passed for order ${orderId}`);
+    }
   } catch (cause) {
     workflowError = cause;
   } finally {
-    if (
-      datasourceConfig &&
-      !checkoutRow?.dotypos_reservation_id &&
-      checkoutOrderId
-    ) {
-      try {
-        checkoutRow = await readCleanupCheckoutRow(
-          datasourceConfig,
-          checkoutOrderId
-        );
-      } catch (cause) {
-        cleanupError = cause;
-        if (workflowError)
-          log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
-      }
-    }
-    if (
-      datasourceConfig &&
-      !checkoutRow?.dotypos_reservation_id &&
-      checkoutStartedAt
-    ) {
-      try {
-        checkoutRow = await readLatestCleanupCheckoutRow(
-          datasourceConfig,
-          checkoutStartedAt
-        );
-      } catch (cause) {
-        cleanupError = cause;
-        if (workflowError)
-          log(
-            `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
+    for (const state of flowStates) {
+      if (
+        datasourceConfig &&
+        !state.checkoutRow?.dotypos_reservation_id &&
+        state.orderId
+      ) {
+        try {
+          state.checkoutRow = await readCleanupCheckoutRow(
+            datasourceConfig,
+            state.orderId
           );
+        } catch (cause) {
+          cleanupError = cause;
+          if (workflowError)
+            log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
+        }
       }
-    }
-    if (datasourceConfig && checkoutRow?.dotypos_reservation_id) {
-      try {
-        await cancelDotyposReservation(
-          datasourceConfig,
-          checkoutRow.dotypos_reservation_id
-        );
-      } catch (cause) {
-        cleanupError = cause;
-        if (workflowError)
-          log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+      if (
+        datasourceConfig &&
+        !state.checkoutRow?.dotypos_reservation_id &&
+        state.startedAt
+      ) {
+        try {
+          state.checkoutRow = await readLatestCleanupCheckoutRow(
+            datasourceConfig,
+            state.startedAt,
+            state.data
+          );
+        } catch (cause) {
+          cleanupError = cause;
+          if (workflowError)
+            log(
+              `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
+            );
+        }
+      }
+      if (datasourceConfig && state.checkoutRow?.dotypos_reservation_id) {
+        try {
+          await cancelDotyposReservation(
+            datasourceConfig,
+            state.checkoutRow.dotypos_reservation_id
+          );
+        } catch (cause) {
+          cleanupError = cause;
+          if (workflowError)
+            log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+        }
       }
     }
   }
@@ -430,12 +474,14 @@ const completeCheckout = async ({
   onOrderId,
   run,
   session,
+  submitReservationScript,
 }: {
   config: ReturnType<typeof getConfig>;
-  data: ReturnType<typeof makeCheckoutData>;
+  data: CheckoutData;
   onOrderId?: (orderId: string) => void;
   run: ReturnType<typeof makeRunner>;
   session: string;
+  submitReservationScript: string;
 }) => {
   const headers = config.bypassSecret
     ? [
@@ -576,7 +622,7 @@ const completeNexiHostedPayment = async ({
   run,
   session,
 }: {
-  data: ReturnType<typeof makeCheckoutData>;
+  data: CheckoutData;
   run: ReturnType<typeof makeRunner>;
   session: string;
 }) => {
@@ -1215,11 +1261,13 @@ const readBrowserDiagnostics = async (
 
 const assertFulfilledStatusPage = async ({
   config,
+  locale,
   orderId,
   run,
   session,
 }: {
   config: ReturnType<typeof getConfig>;
+  locale: CheckoutData["locale"];
   orderId: string;
   run: ReturnType<typeof makeRunner>;
   session: string;
@@ -1241,7 +1289,7 @@ const assertFulfilledStatusPage = async ({
       session,
       ...headers,
       "open",
-      `${config.aliasUrl}/en-US/checkout/status/${orderId}`,
+      `${config.aliasUrl}/${locale}/checkout/status/${orderId}`,
     ],
     { timeoutMs: getCheckoutTimeoutMs() }
   );
@@ -1328,7 +1376,7 @@ const previewWebhookHeaders = (config: ReturnType<typeof getConfig>) => ({
 
 const validatePostgres = async (
   config: ReturnType<typeof getDatasourceConfig>,
-  data: ReturnType<typeof makeCheckoutData>,
+  data: CheckoutData,
   orderId: string,
   onRow?: (row: CheckoutRow) => void
 ) => {
@@ -1351,7 +1399,7 @@ const validatePostgres = async (
     );
 
     assertPostgresRow(row, data, config);
-    await assertLegalEvidence(pool, orderId);
+    await assertLegalEvidence(pool, orderId, data.locale);
     await assertNoLocalPii(
       pool,
       orderId,
@@ -1439,7 +1487,8 @@ const readCleanupCheckoutRow = async (
 
 const readLatestCleanupCheckoutRow = async (
   config: ReturnType<typeof getDatasourceConfig>,
-  createdAfter: Date
+  createdAfter: Date,
+  data: CheckoutData
 ) => {
   const pool = new Pool({
     connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
@@ -1455,12 +1504,12 @@ const readLatestCleanupCheckoutRow = async (
       where wr.reservation_created_at >= $1
         and wr.dotypos_reservation_id is not null
         and wr.payment_state <> 'paid'
-        and wr.product_tier = 'basic'
-        and wr.product_coffee = false
-        and wr.locale = 'en-US'
+        and wr.product_tier = $2
+        and wr.product_coffee = $3
+        and wr.locale = $4
       order by wr.reservation_created_at desc
       limit 1`,
-      [createdAfter]
+      [createdAfter, data.expectedProductTier, data.expectedCoffee, data.locale]
     );
 
     const orderId = result.rows[0]?.id;
@@ -1483,7 +1532,7 @@ const isPostgresComplete = (
 
 const assertPostgresRow = (
   row: CheckoutRow,
-  data: ReturnType<typeof makeCheckoutData>,
+  data: CheckoutData,
   config: ReturnType<typeof getDatasourceConfig>
 ) => {
   assert(
@@ -1523,16 +1572,19 @@ const assertPostgresRow = (
     row.fulfillment_failure_code === null,
     "fulfillment_failure_code should be null"
   );
-  assert(row.product_tier === "basic", "unexpected product tier");
   assert(
-    row.product_coffee === false,
-    "coffee should be off for this happy path"
+    row.product_tier === data.expectedProductTier,
+    "unexpected product tier"
   );
   assert(
-    row.product_monitor_option === null,
-    "monitor option should be null for basic tier"
+    row.product_coffee === data.expectedCoffee,
+    "unexpected product coffee flag"
   );
-  assert(row.locale === "en-US", "unexpected locale");
+  assert(
+    row.product_monitor_option === data.expectedMonitorOption,
+    "unexpected monitor option"
+  );
+  assert(row.locale === data.locale, "unexpected locale");
   assert(
     row.payment_attempt_id === row.active_payment_attempt_id,
     "active attempt mismatch"
@@ -1573,7 +1625,11 @@ const assertPostgresRow = (
   assert(row.webhook_error_code === null, "webhook error code should be null");
 };
 
-const assertLegalEvidence = async (pool: Pool, orderId: string) => {
+const assertLegalEvidence = async (
+  pool: Pool,
+  orderId: string,
+  locale: CheckoutData["locale"]
+) => {
   const result = await pool.query<{
     accepted: boolean;
     document_key: string;
@@ -1599,7 +1655,7 @@ const assertLegalEvidence = async (pool: Pool, orderId: string) => {
       row.hash_algorithm === "sha256",
       "legal evidence hash algorithm mismatch"
     );
-    assert(row.locale === "en-US", "legal evidence locale mismatch");
+    assert(row.locale === locale, "legal evidence locale mismatch");
     expected.delete(`${row.document_key}:${row.source}`);
   }
 
@@ -1614,7 +1670,7 @@ const assertNoLocalPii = async (
   orderId: string,
   paymentAttemptId: string | null,
   webhookEventId: string | null,
-  data: ReturnType<typeof makeCheckoutData>
+  data: CheckoutData
 ) => {
   const result = await pool.query<{ count: string }>(
     `with payloads as (
@@ -1656,7 +1712,7 @@ const assertNoLocalPii = async (
 
 const validateDotypos = async (
   config: ReturnType<typeof getDatasourceConfig>,
-  data: ReturnType<typeof makeCheckoutData>,
+  data: CheckoutData,
   row: CheckoutRow
 ) => {
   assert(
@@ -1669,27 +1725,11 @@ const validateDotypos = async (
   );
   const dotyposReservationId = row.dotypos_reservation_id;
 
-  const layer = DotyposService.Default.pipe(
-    Layer.provide(
-      Layer.succeed(DotyposRuntimeConfig, {
-        apiTimeout: config.dotypos.apiTimeout,
-        apiUrl: config.dotypos.apiUrl,
-        branchId: config.dotypos.branchId,
-        clientId: config.dotypos.clientId,
-        clientSecret: config.dotypos.clientSecret,
-        cloudId: config.dotypos.cloudId,
-        employeeId: config.dotypos.employeeId,
-        refreshToken: config.dotypos.refreshToken,
-        reservationTableIds: [],
-      })
-    )
-  );
-
   const result = await Effect.runPromise(
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
       return yield* dotypos.getReservation(dotyposReservationId);
-    }).pipe(Effect.provide(layer))
+    }).pipe(Effect.provide(getDotyposLayer(config)))
   );
 
   assert(
@@ -1724,7 +1764,17 @@ const cancelDotyposReservation = async (
   config: ReturnType<typeof getDatasourceConfig>,
   dotyposReservationId: string
 ) => {
-  const layer = DotyposService.Default.pipe(
+  await Effect.runPromise(
+    Effect.gen(function* () {
+      const dotypos = yield* DotyposService;
+      yield* dotypos.cancelReservation(dotyposReservationId);
+    }).pipe(Effect.provide(getDotyposLayer(config)))
+  );
+  log("Dotypos reservation cancelled after validation");
+};
+
+const getDotyposLayer = (config: ReturnType<typeof getDatasourceConfig>) =>
+  DotyposService.Default.pipe(
     Layer.provide(
       Layer.succeed(DotyposRuntimeConfig, {
         apiTimeout: config.dotypos.apiTimeout,
@@ -1739,15 +1789,6 @@ const cancelDotyposReservation = async (
       })
     )
   );
-
-  await Effect.runPromise(
-    Effect.gen(function* () {
-      const dotypos = yield* DotyposService;
-      yield* dotypos.cancelReservation(dotyposReservationId);
-    }).pipe(Effect.provide(layer))
-  );
-  log("Dotypos reservation cancelled after validation");
-};
 
 const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
   const allowlist = requireEnv("WORKSPACE_E2E_DATABASE_ALLOWLIST")
@@ -1907,37 +1948,63 @@ const vercelFetch = async (
   return response;
 };
 
-const makeCheckoutData = (aliasUrl: string, date: string) => {
+const checkoutFlows: readonly CheckoutFlow[] = [
+  {
+    id: "cowork-basic",
+    makeData: async (config) =>
+      makeCoworkCheckoutData(
+        config.aliasUrl,
+        await selectAvailableCoworkDate(config)
+      ),
+    submitReservationScript: () => submitCoworkReservationScript,
+  },
+];
+
+const makeCheckoutContact = (flowId: string) => {
   const runId = new Date()
     .toISOString()
     .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
-  const name = `Workspace E2E ${runId}`;
+  const name = `Workspace E2E ${flowId} ${runId}`;
   const phone = `+420735${runId.slice(6, 12)}`;
   const email = "delivered@resend.dev";
-  const message = `Automated checkout e2e ${runId}`;
+  const message = `Automated checkout e2e ${flowId} ${runId}`;
+
+  return { email, message, name, phone };
+};
+
+const makeCoworkCheckoutData = (
+  aliasUrl: string,
+  date: string
+): CheckoutData => {
+  const locale: CheckoutData["locale"] = "en-US";
+  const contact = makeCheckoutContact("cowork-basic");
   const params = new URLSearchParams({
     coffee: "false",
     date,
-    email,
+    email: contact.email,
     entryTier: "basic",
-    message,
-    name,
-    phone,
+    message: contact.message,
+    name: contact.name,
+    phone: contact.phone,
   });
 
   return {
-    checkoutUrl: `${aliasUrl}/en-US/checkout/order?${params}`,
+    checkoutUrl: `${aliasUrl}/${locale}/checkout/order?${params}`,
     date,
-    email,
-    message,
-    name,
+    email: contact.email,
+    expectedCoffee: false,
+    expectedMonitorOption: null,
+    expectedProductTier: "basic",
+    locale,
+    message: contact.message,
+    name: contact.name,
     orderIdHint: "",
-    phone,
+    phone: contact.phone,
   };
 };
 
-const selectAvailableCheckoutDate = async (
+const selectAvailableCoworkDate = async (
   config: ReturnType<typeof getConfig>
 ) => {
   const from = futureIsoDate(14);
@@ -2110,7 +2177,7 @@ function assert(condition: unknown, message: string): asserts condition {
 
 const log = (message: string) => process.stdout.write(`${redact(message)}\n`);
 
-const submitReservationScript = `
+const submitCoworkReservationScript = `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
   const waitUntil = async (predicate, label) => {
@@ -2157,8 +2224,15 @@ const submitPaymentScript = String.raw`
     element instanceof HTMLInputElement
       ? element.checked
       : element.getAttribute('aria-checked') === 'true' || element.getAttribute('data-state') === 'checked';
-  const checkbox = document.querySelector('#checkout-pay-legal-consent');
-  if (!(checkbox instanceof HTMLElement)) throw new Error('payment consent checkbox not found');
+  let checkbox;
+  await waitUntil(() => {
+    const candidate = document.querySelector('#checkout-pay-legal-consent');
+    if (candidate instanceof HTMLElement) {
+      checkbox = candidate;
+      return true;
+    }
+    return false;
+  }, 'payment consent checkbox not found');
   if (!isChecked(checkbox)) checkbox.click();
   await waitUntil(() => isChecked(checkbox), 'payment consent checkbox did not check');
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
@@ -2206,12 +2280,16 @@ const browserDiagnosticsScript = String.raw`
 `;
 
 const assertFulfilledStatusScript = String.raw`
-(() => {
-  const text = document.body?.textContent ?? '';
-  if (!/Your workspace access is ready\./i.test(text) || !/sent by email/i.test(text)) {
-    throw new Error('fulfilled checkout status copy not visible');
+(async () => {
+  const deadline = Date.now() + 30_000;
+  while (Date.now() < deadline) {
+    const text = document.body?.textContent ?? '';
+    if (/Your workspace access is ready\./i.test(text) && /sent by email/i.test(text)) {
+      return location.href;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  return location.href;
+  throw new Error('fulfilled checkout status copy not visible');
 })()
 `;
 
