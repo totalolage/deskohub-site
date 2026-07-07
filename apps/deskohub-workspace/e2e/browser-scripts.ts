@@ -56,8 +56,12 @@ export const submitPaymentScript = String.raw`
     }
     return false;
   }, 'payment consent checkbox not found');
-  if (!isChecked(checkbox)) checkbox.click();
-  await waitUntil(() => isChecked(checkbox), 'payment consent checkbox did not check');
+  const consentTarget = checkbox.closest('label') ?? checkbox;
+  await waitUntil(() => {
+    if (isChecked(checkbox)) return true;
+    consentTarget.click();
+    return false;
+  }, 'payment consent checkbox did not check');
   const button = [...document.querySelectorAll('button')].find((candidate) => /order\s+and\s+pay/i.test(candidate.textContent ?? ''));
   if (!(button instanceof HTMLButtonElement)) throw new Error('order and pay button not found');
   await waitUntil(() => !button.disabled, 'order and pay button stayed disabled');
