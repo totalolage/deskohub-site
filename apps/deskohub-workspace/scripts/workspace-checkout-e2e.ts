@@ -77,7 +77,8 @@ type CheckoutFlow = {
   readonly id: string;
   readonly makeData: (
     config: ReturnType<typeof getConfig>,
-    datasourceConfig: ReturnType<typeof getDatasourceConfig>
+    datasourceConfig: ReturnType<typeof getDatasourceConfig>,
+    date: string
   ) => Promise<CheckoutData | undefined>;
   readonly submitReservationScript: (data: CheckoutData) => string;
 };
@@ -95,6 +96,11 @@ type PaymentTerminalScenario = {
   readonly titlePattern: RegExp;
 };
 
+type WorkspaceE2ECase = {
+  readonly id: string;
+  readonly execute: (context: { readonly session: string }) => Promise<void>;
+};
+
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const workspaceDir = resolve(scriptDir, "..");
 const repoRoot = resolve(workspaceDir, "../..");
@@ -106,12 +112,10 @@ const main = async () => {
 
   const config = getConfig();
   const run = makeRunner(config);
-  const session = `workspace-checkout-e2e-${Date.now()}`;
-  const artifactDir = resolve(workspaceDir, "e2e-artifacts", session);
+  const sessionPrefix = `workspace-checkout-e2e-${Date.now()}`;
+  const artifactRoot = resolve(workspaceDir, "e2e-artifacts", sessionPrefix);
   let datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
   const flowStates: CheckoutFlowState[] = [];
-  let browserHarStarted = false;
-  let browserHarStopped = false;
   let cleanupError: unknown;
   let workflowError: unknown;
 
@@ -162,157 +166,271 @@ const main = async () => {
     await assertWebhookEndpoint(config, "/api/webhooks/nexi");
     await assertWebhookEndpoint(config, "/api/webhooks/resend");
 
-    browserHarStarted = await startBrowserDiagnostics(run, session);
-    await assertLocaleSwitcher({ config, run, session });
-    await assertContactForm({ config, run, session });
-    await assertPaymentTerminalPaths({
+    const cases = await makeWorkspaceE2ECases({
       config,
       datasourceConfig,
-      onState: (state) => flowStates.push(state),
+      deploymentId: deployment.id,
+      flowStates,
       run,
-      session,
     });
 
-    for (const flow of checkoutFlows) {
-      const data = await flow.makeData(config, datasourceConfig);
-      if (!data) {
-        log(`${flow.id} checkout e2e skipped`);
-        continue;
-      }
-
-      const state: CheckoutFlowState = { data };
-      flowStates.push(state);
-      for (const value of [
-        state.data.checkoutUrl,
-        state.data.email,
-        state.data.message,
-        state.data.name,
-        state.data.phone,
-      ])
-        addRedaction(value);
-
-      state.startedAt = new Date();
-      const orderId = await completeCheckout({
-        config,
-        data: state.data,
-        onOrderId: (orderId) => {
-          state.orderId = orderId;
-        },
-        run,
-        session,
-        submitReservationScript: flow.submitReservationScript(state.data),
-      });
-      state.orderId = orderId;
-      // Nexi verification happens inside the deployed webhook handler. The runner
-      // validates the resulting payment/webhook state without holding Nexi secrets.
-      const replayRow = await waitForWebhookReplayRow(
-        datasourceConfig,
-        orderId,
-        (row) => {
-          state.checkoutRow = row;
-        }
-      );
-      await replayNexiWebhook(config, replayRow);
-      await markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId);
-      state.checkoutRow = await validatePostgres(
-        datasourceConfig,
-        state.data,
-        orderId,
-        (row) => {
-          state.checkoutRow = row;
-        }
-      );
-      await verifyAlias(config, deployment.id);
-      await assertFulfilledStatusPage({
-        config,
-        locale: state.data.locale,
-        orderId,
-        run,
-        session,
-      });
-      await validateDotypos(datasourceConfig, state.data, state.checkoutRow);
-      await assertFulfillmentFailedSupportPath({
-        config,
-        data: state.data,
-        datasourceConfig,
-        orderId,
-        run,
-        session,
-      });
-
-      log(`${flow.id} checkout e2e passed for order ${orderId}`);
-    }
+    await runWorkspaceE2ECases({ artifactRoot, cases, run, sessionPrefix });
   } catch (cause) {
     workflowError = cause;
   } finally {
-    for (const state of flowStates) {
-      if (
-        datasourceConfig &&
-        !state.checkoutRow?.dotypos_reservation_id &&
-        state.orderId
-      ) {
-        try {
-          state.checkoutRow = await readCleanupCheckoutRow(
-            datasourceConfig,
-            state.orderId
-          );
-        } catch (cause) {
-          cleanupError = cause;
-          if (workflowError)
-            log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
-        }
-      }
-      if (
-        datasourceConfig &&
-        !state.checkoutRow?.dotypos_reservation_id &&
-        state.startedAt
-      ) {
-        try {
-          state.checkoutRow = await readLatestCleanupCheckoutRow(
-            datasourceConfig,
-            state.startedAt,
-            state.data
-          );
-        } catch (cause) {
-          cleanupError = cause;
-          if (workflowError)
-            log(
-              `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
-            );
-        }
-      }
-      if (datasourceConfig && state.checkoutRow?.dotypos_reservation_id) {
-        try {
-          await cancelDotyposReservation(
-            datasourceConfig,
-            state.checkoutRow.dotypos_reservation_id
-          );
-        } catch (cause) {
-          cleanupError = cause;
-          if (workflowError)
-            log(`Dotypos cleanup failed: ${redact(String(cause))}`);
-        }
-      }
-    }
+    cleanupError = await cleanupCheckoutFlowStates({
+      datasourceConfig,
+      flowStates,
+      workflowError,
+    });
   }
 
-  if (workflowError)
+  if (workflowError) throw workflowError;
+  if (cleanupError) throw cleanupError;
+};
+
+const makeWorkspaceE2ECases = async ({
+  config,
+  datasourceConfig,
+  deploymentId,
+  flowStates,
+  run,
+}: {
+  config: ReturnType<typeof getConfig>;
+  datasourceConfig: ReturnType<typeof getDatasourceConfig>;
+  deploymentId: string;
+  flowStates: CheckoutFlowState[];
+  run: ReturnType<typeof makeRunner>;
+}): Promise<readonly WorkspaceE2ECase[]> => {
+  const terminalScenarios = getPaymentTerminalScenarios();
+  const checkoutDates = await selectAvailableCoworkDates(
+    config,
+    checkoutFlows.length + terminalScenarios.length
+  );
+  const cases: WorkspaceE2ECase[] = [
+    {
+      execute: ({ session }) => assertLocaleSwitcher({ config, run, session }),
+      id: "locale-switch",
+    },
+    {
+      execute: ({ session }) => assertContactForm({ config, run, session }),
+      id: "contact-form",
+    },
+  ];
+  let nextDateIndex = 0;
+
+  for (const scenario of terminalScenarios) {
+    const data = makeCoworkCheckoutData(
+      config.aliasUrl,
+      requireCheckoutDate(checkoutDates, nextDateIndex),
+      `cowork-${scenario.state}`
+    );
+    nextDateIndex += 1;
+    const state = trackCheckoutState(flowStates, data);
+    cases.push({
+      execute: ({ session }) =>
+        assertPaymentTerminalPath({
+          config,
+          data,
+          datasourceConfig,
+          run,
+          scenario,
+          session,
+          state,
+        }),
+      id: `payment-${scenario.state}`,
+    });
+  }
+
+  for (const flow of checkoutFlows) {
+    const data = await flow.makeData(
+      config,
+      datasourceConfig,
+      requireCheckoutDate(checkoutDates, nextDateIndex)
+    );
+    nextDateIndex += 1;
+    if (!data) {
+      log(`${flow.id} checkout e2e skipped`);
+      continue;
+    }
+
+    const state = trackCheckoutState(flowStates, data);
+    cases.push({
+      execute: ({ session }) =>
+        executeCheckoutFlow({
+          config,
+          data,
+          datasourceConfig,
+          deploymentId,
+          flow,
+          run,
+          session,
+          state,
+        }),
+      id: `checkout-${flow.id}`,
+    });
+  }
+
+  return cases;
+};
+
+const trackCheckoutState = (
+  flowStates: CheckoutFlowState[],
+  data: CheckoutData
+) => {
+  const state: CheckoutFlowState = { data };
+  flowStates.push(state);
+  for (const value of [
+    data.checkoutUrl,
+    data.email,
+    data.message,
+    data.name,
+    data.phone,
+  ])
+    addRedaction(value);
+  return state;
+};
+
+const runWorkspaceE2ECases = async ({
+  artifactRoot,
+  cases,
+  run,
+  sessionPrefix,
+}: {
+  artifactRoot: string;
+  cases: readonly WorkspaceE2ECase[];
+  run: ReturnType<typeof makeRunner>;
+  sessionPrefix: string;
+}) => {
+  log(
+    `Running ${cases.length} workspace e2e cases in parallel: ${cases
+      .map((testCase) => testCase.id)
+      .join(", ")}`
+  );
+
+  const results = await Promise.allSettled(
+    cases.map((testCase) =>
+      runWorkspaceE2ECase({ artifactRoot, run, sessionPrefix, testCase })
+    )
+  );
+  const failures = results.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [{ cause: result.reason, id: cases[index]?.id ?? `case-${index}` }]
+      : []
+  );
+
+  if (failures.length === 0) return;
+
+  throw new AggregateError(
+    failures.map((failure) => failure.cause),
+    `Workspace e2e cases failed: ${failures
+      .map((failure) => failure.id)
+      .join(", ")}`
+  );
+};
+
+const runWorkspaceE2ECase = async ({
+  artifactRoot,
+  run,
+  sessionPrefix,
+  testCase,
+}: {
+  artifactRoot: string;
+  run: ReturnType<typeof makeRunner>;
+  sessionPrefix: string;
+  testCase: WorkspaceE2ECase;
+}) => {
+  const session = `${sessionPrefix}-${testCase.id}`;
+  const artifactDir = resolve(artifactRoot, testCase.id);
+  let browserHarStarted = false;
+  let browserHarStopped = false;
+
+  log(`Starting ${testCase.id} e2e case`);
+  try {
+    browserHarStarted = await startBrowserDiagnostics(run, session);
+    await testCase.execute({ session });
+    log(`${testCase.id} e2e case passed`);
+  } catch (cause) {
     browserHarStopped = await captureBrowserFailureArtifacts({
       artifactDir,
-      cause: workflowError,
+      cause,
       harStarted: browserHarStarted,
       run,
       session,
     });
+    throw cause;
+  } finally {
+    if (browserHarStarted && !browserHarStopped)
+      await stopBrowserHar(run, session, devNull);
+    await run("agent-browser", ["--session", session, "close"], {
+      allowFailure: true,
+      logOutput: false,
+    });
+  }
+};
 
-  if (browserHarStarted && !browserHarStopped)
-    await stopBrowserHar(run, session, devNull);
-  await run("agent-browser", ["--session", session, "close"], {
-    allowFailure: true,
-  });
+const cleanupCheckoutFlowStates = async ({
+  datasourceConfig,
+  flowStates,
+  workflowError,
+}: {
+  datasourceConfig: ReturnType<typeof getDatasourceConfig> | undefined;
+  flowStates: readonly CheckoutFlowState[];
+  workflowError: unknown;
+}) => {
+  let cleanupError: unknown;
 
-  if (workflowError) throw workflowError;
-  if (cleanupError) throw cleanupError;
+  for (const state of flowStates) {
+    if (
+      datasourceConfig &&
+      !state.checkoutRow?.dotypos_reservation_id &&
+      state.orderId
+    ) {
+      try {
+        state.checkoutRow = await readCleanupCheckoutRow(
+          datasourceConfig,
+          state.orderId
+        );
+      } catch (cause) {
+        cleanupError = cause;
+        if (workflowError)
+          log(`Dotypos cleanup row lookup failed: ${redact(String(cause))}`);
+      }
+    }
+    if (
+      datasourceConfig &&
+      !state.checkoutRow?.dotypos_reservation_id &&
+      state.startedAt
+    ) {
+      try {
+        state.checkoutRow = await readLatestCleanupCheckoutRow(
+          datasourceConfig,
+          state.startedAt,
+          state.data
+        );
+      } catch (cause) {
+        cleanupError = cause;
+        if (workflowError)
+          log(
+            `Dotypos fallback cleanup row lookup failed: ${redact(String(cause))}`
+          );
+      }
+    }
+    if (datasourceConfig && state.checkoutRow?.dotypos_reservation_id) {
+      try {
+        await cancelDotyposReservation(
+          datasourceConfig,
+          state.checkoutRow.dotypos_reservation_id
+        );
+      } catch (cause) {
+        cleanupError = cause;
+        if (workflowError)
+          log(`Dotypos cleanup failed: ${redact(String(cause))}`);
+      }
+    }
+  }
+
+  return cleanupError;
 };
 
 const getConfig = () => {
@@ -608,6 +726,77 @@ const startCheckoutPaymentAttempt = async ({
   return orderId;
 };
 
+const executeCheckoutFlow = async ({
+  config,
+  data,
+  datasourceConfig,
+  deploymentId,
+  flow,
+  run,
+  session,
+  state,
+}: {
+  config: ReturnType<typeof getConfig>;
+  data: CheckoutData;
+  datasourceConfig: ReturnType<typeof getDatasourceConfig>;
+  deploymentId: string;
+  flow: CheckoutFlow;
+  run: ReturnType<typeof makeRunner>;
+  session: string;
+  state: CheckoutFlowState;
+}) => {
+  state.startedAt = new Date();
+  const orderId = await completeCheckout({
+    config,
+    data,
+    onOrderId: (orderId) => {
+      state.orderId = orderId;
+    },
+    run,
+    session,
+    submitReservationScript: flow.submitReservationScript(data),
+  });
+  state.orderId = orderId;
+  // Nexi verification happens inside the deployed webhook handler. The runner
+  // validates the resulting payment/webhook state without holding Nexi secrets.
+  const replayRow = await waitForWebhookReplayRow(
+    datasourceConfig,
+    orderId,
+    (row) => {
+      state.checkoutRow = row;
+    }
+  );
+  await replayNexiWebhook(config, replayRow);
+  await markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId);
+  state.checkoutRow = await validatePostgres(
+    datasourceConfig,
+    data,
+    orderId,
+    (row) => {
+      state.checkoutRow = row;
+    }
+  );
+  await verifyAlias(config, deploymentId);
+  await assertFulfilledStatusPage({
+    config,
+    locale: data.locale,
+    orderId,
+    run,
+    session,
+  });
+  await validateDotypos(datasourceConfig, data, state.checkoutRow);
+  await assertFulfillmentFailedSupportPath({
+    config,
+    data,
+    datasourceConfig,
+    orderId,
+    run,
+    session,
+  });
+
+  log(`${flow.id} checkout e2e passed for order ${orderId}`);
+};
+
 const assertLocaleSwitcher = async ({
   config,
   run,
@@ -692,95 +881,80 @@ const assertContactForm = async ({
   log("Contact form e2e passed");
 };
 
-const assertPaymentTerminalPaths = async ({
+const getPaymentTerminalScenarios = (): readonly PaymentTerminalScenario[] => [
+  {
+    providerStatus: "DECLINED",
+    state: "failed",
+    titlePattern: /Payment was not completed\./i,
+  },
+  {
+    providerStatus: "CANCELLED",
+    state: "cancelled",
+    titlePattern: /Payment was cancelled\./i,
+  },
+];
+
+const assertPaymentTerminalPath = async ({
   config,
+  data,
   datasourceConfig,
-  onState,
   run,
+  scenario,
   session,
+  state,
 }: {
   config: ReturnType<typeof getConfig>;
+  data: CheckoutData;
   datasourceConfig: ReturnType<typeof getDatasourceConfig>;
-  onState: (state: CheckoutFlowState) => void;
   run: ReturnType<typeof makeRunner>;
+  scenario: PaymentTerminalScenario;
   session: string;
+  state: CheckoutFlowState;
 }) => {
-  const scenarios: readonly PaymentTerminalScenario[] = [
-    {
-      providerStatus: "DECLINED",
-      state: "failed",
-      titlePattern: /Payment was not completed\./i,
+  state.startedAt = new Date();
+  const orderId = await startCheckoutPaymentAttempt({
+    config,
+    data,
+    onOrderId: (orderId) => {
+      state.orderId = orderId;
     },
-    {
-      providerStatus: "CANCELLED",
-      state: "cancelled",
-      titlePattern: /Payment was cancelled\./i,
-    },
-  ];
+    run,
+    session,
+    submitReservationScript: submitCoworkReservationScript,
+  });
+  state.orderId = orderId;
+  state.checkoutRow = await waitForWebhookReplayRow(
+    datasourceConfig,
+    orderId,
+    (row) => {
+      state.checkoutRow = row;
+    }
+  );
+  state.checkoutRow = await markPaymentTerminalForE2E(
+    datasourceConfig,
+    orderId,
+    scenario
+  );
+  assertPaymentTerminalRow(state.checkoutRow, scenario);
+  await assertTerminalStatusPage({
+    config,
+    orderId,
+    run,
+    scenario,
+    session,
+  });
 
-  for (const scenario of scenarios) {
-    const data = makeCoworkCheckoutData(
-      config.aliasUrl,
-      await selectAvailableCoworkDate(config),
-      `cowork-${scenario.state}`
-    );
-    const state: CheckoutFlowState = { data };
-    onState(state);
+  await clickStatusReserveAgain(run, session);
+  await waitForBrowserUrl({
+    description: `${scenario.state} payment restart page`,
+    matches: (url) =>
+      (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
+    run,
+    session,
+    timeoutMs: 60_000,
+  });
 
-    for (const value of [
-      data.checkoutUrl,
-      data.email,
-      data.message,
-      data.name,
-      data.phone,
-    ])
-      addRedaction(value);
-
-    state.startedAt = new Date();
-    const orderId = await startCheckoutPaymentAttempt({
-      config,
-      data,
-      onOrderId: (orderId) => {
-        state.orderId = orderId;
-      },
-      run,
-      session,
-      submitReservationScript: submitCoworkReservationScript,
-    });
-    state.orderId = orderId;
-    state.checkoutRow = await waitForWebhookReplayRow(
-      datasourceConfig,
-      orderId,
-      (row) => {
-        state.checkoutRow = row;
-      }
-    );
-    state.checkoutRow = await markPaymentTerminalForE2E(
-      datasourceConfig,
-      orderId,
-      scenario
-    );
-    assertPaymentTerminalRow(state.checkoutRow, scenario);
-    await assertTerminalStatusPage({
-      config,
-      orderId,
-      run,
-      scenario,
-      session,
-    });
-
-    await clickStatusReserveAgain(run, session);
-    await waitForBrowserUrl({
-      description: `${scenario.state} payment restart page`,
-      matches: (url) =>
-        (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
-      run,
-      session,
-      timeoutMs: 60_000,
-    });
-
-    log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
-  }
+  log(`Payment ${scenario.state} status e2e passed for order ${orderId}`);
 };
 
 const readPayPageOrderId = async (
@@ -2463,11 +2637,8 @@ const vercelFetch = async (
 const checkoutFlows: readonly CheckoutFlow[] = [
   {
     id: "cowork-basic",
-    makeData: async (config) =>
-      makeCoworkCheckoutData(
-        config.aliasUrl,
-        await selectAvailableCoworkDate(config)
-      ),
+    makeData: async (config, _datasourceConfig, date) =>
+      makeCoworkCheckoutData(config.aliasUrl, date),
     submitReservationScript: () => submitCoworkReservationScript,
   },
 ];
@@ -2519,8 +2690,15 @@ const makeCoworkCheckoutData = (
   };
 };
 
-const selectAvailableCoworkDate = async (
-  config: ReturnType<typeof getConfig>
+const requireCheckoutDate = (dates: readonly string[], index: number) => {
+  const date = dates[index];
+  assert(date, `missing checkout date ${index + 1}`);
+  return date;
+};
+
+const selectAvailableCoworkDates = async (
+  config: ReturnType<typeof getConfig>,
+  count: number
 ) => {
   const from = futureIsoDate(14);
   const to = futureIsoDate(90);
@@ -2548,14 +2726,20 @@ const selectAvailableCoworkDate = async (
     )
   );
 
+  const dates: string[] = [];
   for (let offset = 14; offset <= 90; offset += 1) {
     const date = futureIsoDate(offset);
     if (!isWeekday(date) || unavailable.has(date)) continue;
-    log(`Selected available checkout date ${date}`);
-    return date;
+    dates.push(date);
+    if (dates.length === count) {
+      log(`Selected available checkout dates ${dates.join(", ")}`);
+      return dates;
+    }
   }
 
-  throw new Error("No available checkout date found");
+  throw new Error(
+    `Only found ${dates.length} available checkout dates, need ${count}`
+  );
 };
 
 const futureIsoDate = (offsetDays: number) => {
