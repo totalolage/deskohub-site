@@ -2,13 +2,14 @@
 
 ## Overview
 
-Email delivery is selected by provider factory logic in `features/email/backend/provider-factory.ts`.
+Email delivery is selected by provider factory logic in `@deskohub/email`.
 
 Default behavior:
 
 - `EMAIL_PROVIDER=resend` forces Resend.
 - `EMAIL_PROVIDER=console` forces console logging provider.
-- `EMAIL_PROVIDER=auto` (default) uses Resend when `EMAIL_API_KEY` is present and `NODE_ENV !== test`; otherwise console provider.
+- If `EMAIL_PROVIDER` is omitted, the app defaults to `console`.
+- In production, `console` is disabled unless `EMAIL_TEST_MODE=true`; with an `EMAIL_API_KEY`, production falls back to Resend.
 
 ## Required Configuration
 
@@ -16,10 +17,10 @@ Add to `.env.local` for the Boardgame Bar app, or to the app's deployment env:
 
 ```bash
 EMAIL_API_KEY=re_...
-EMAIL_PROVIDER=auto
+EMAIL_PROVIDER=resend
 ```
 
-`EMAIL_PROVIDER` can be omitted; it defaults to `auto`.
+`EMAIL_PROVIDER` can be omitted for local development; it defaults to `console`.
 
 ## Sender Addresses
 

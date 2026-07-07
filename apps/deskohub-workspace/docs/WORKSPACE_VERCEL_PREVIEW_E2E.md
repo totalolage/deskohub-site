@@ -84,9 +84,8 @@ Provider-owned HPP notes:
 
 Email notes:
 
-- Workspace `email.config.ts` supports `resend`, `smtp`, `sendgrid`, `mailgun`, and `console`.
-- Preview should use a real provider, not `console`, when validating notification delivery.
-- SMTP-specific variables are only required when `EMAIL_PROVIDER=smtp`: `EMAIL_SMTP_HOST`, `EMAIL_SMTP_PORT`, `EMAIL_SMTP_USER`, `EMAIL_SMTP_PASSWORD`, and optionally `EMAIL_SMTP_SECURE`.
+- Workspace `email.config.ts` supports `resend` for delivered email and `console` for local/dev output.
+- Preview should use `resend`, not `console`, when validating notification delivery.
 
 ## Database Bootstrap
 
