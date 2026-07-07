@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { openBrowserPage, waitForInteractiveSnapshot } from "../browser";
+import { openBrowserPage, waitForBrowserText } from "../browser";
 import { getSubmitContactFormScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
@@ -46,9 +46,9 @@ export const assertContactForm = ({
       })
     );
     yield* effectifyPromise("wait for contact form success", () =>
-      waitForInteractiveSnapshot({
+      waitForBrowserText({
         description: "contact form success",
-        matches: (snapshot) => /Your message has been sent\./i.test(snapshot),
+        matches: (text) => /Your message has been sent\./i.test(text),
         run,
         session,
         timeoutMs: getCheckoutTimeoutMs(),

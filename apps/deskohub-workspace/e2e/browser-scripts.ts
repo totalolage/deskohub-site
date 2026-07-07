@@ -171,6 +171,10 @@ export const browserDiagnosticsScript = String.raw`
 })()
 `;
 
+export const browserTextScript = `
+(() => document.body?.innerText ?? '')()
+`;
+
 export const assertFulfilledStatusScript = String.raw`
 (async () => {
   const deadline = Date.now() + 30_000;

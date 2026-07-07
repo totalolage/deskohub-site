@@ -1,7 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { browserDiagnosticsScript } from "./browser-scripts";
+import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
 import type { WorkspaceE2EConfig } from "./config";
 import type { Runner } from "./runtime";
 import { log, poll, redact } from "./runtime";
@@ -70,6 +70,47 @@ export const waitForInteractiveSnapshot = async ({
     async () => {
       const snapshot = await readInteractiveSnapshot(run, session, true);
       return matches(snapshot) ? snapshot : undefined;
+    },
+    timeoutMs,
+    description
+  );
+
+export const readBrowserText = async (
+  run: Runner,
+  session: string,
+  allowFailure = false
+) => {
+  const result = await run(
+    "agent-browser",
+    ["--session", session, "eval", "--stdin"],
+    {
+      allowFailure,
+      input: browserTextScript,
+      logOutput: false,
+      timeoutMs: 30_000,
+    }
+  );
+  if (result.exitCode !== 0) return "";
+  return result.stdout;
+};
+
+export const waitForBrowserText = async ({
+  description,
+  matches,
+  run,
+  session,
+  timeoutMs,
+}: {
+  description: string;
+  matches: (text: string) => boolean;
+  run: Runner;
+  session: string;
+  timeoutMs: number;
+}) =>
+  poll(
+    async () => {
+      const text = await readBrowserText(run, session, true);
+      return matches(text) ? text : undefined;
     },
     timeoutMs,
     description
