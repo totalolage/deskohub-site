@@ -1,4 +1,9 @@
+import inlangSettings from "./project.inlang/settings.json" with {
+  type: "json",
+};
 import { withBotId } from "botid/next/config";
+
+const localeRedirectPattern = inlangSettings.locales.join("|");
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -6,6 +11,11 @@ const nextConfig = {
   transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
   async redirects() {
     return [
+      {
+        source: `/:locale(${localeRedirectPattern})/reservation`,
+        destination: "/:locale/checkout/order",
+        permanent: true,
+      },
       {
         source: "/bar",
         destination: "https://www.deskohub.cz",
