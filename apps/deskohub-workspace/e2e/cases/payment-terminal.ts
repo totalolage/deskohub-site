@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import {
   evalBrowserScript,
   openBrowserPage,
+  switchToMainFrame,
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
@@ -131,6 +132,7 @@ const assertTerminalStatusPage = ({
     );
     yield* setSearchParams(url, { e2eAt: String(Date.now()) });
 
+    yield* switchToMainFrame(run, session);
     yield* openBrowserPage(config, run, session, url.toString(), {
       timeoutMs: 60_000,
     });

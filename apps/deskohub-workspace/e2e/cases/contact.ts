@@ -10,6 +10,7 @@ import { getCheckoutTimeoutMs } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { addRedaction, log } from "../runtime";
+import { makeUrl, setSearchParams } from "../urls";
 
 export const assertContactForm = ({
   config,
@@ -31,15 +32,15 @@ export const assertContactForm = ({
 
     for (const value of Object.values(data)) addRedaction(value);
 
-    yield* openBrowserPage(
-      config,
-      run,
-      session,
-      `${config.browserUrl}/en-US/contact`,
-      {
-        timeoutMs: getCheckoutTimeoutMs(),
-      }
+    const url = yield* makeUrl(
+      "build contact form URL",
+      `${config.browserUrl}/en-US/contact`
     );
+    yield* setSearchParams(url, { e2eAt: runId });
+
+    yield* openBrowserPage(config, run, session, url.toString(), {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
     yield* evalBrowserScript(
       "submit contact form",
       run,
