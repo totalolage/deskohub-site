@@ -29,6 +29,7 @@ export class FooService extends Context.Service<
 - For schema-backed values passed around as types, prefer Standard Schema V1 types over library-specific schema types. Do not expose Zod or Effect Schema details in names or public type shapes unless callers genuinely need that specific library API.
 - Dotypos request/response debug logging can include Authorization headers, refresh tokens, bearer tokens, and token response bodies; do not enable, fetch, or quote those logs for production diagnostics without explicit redaction.
 - Workspace/Dotypos application logging is globally censored/redacted, so local code should not strip useful log annotations purely for privacy unless a new uncensored sink is introduced.
+- Workspace Cloudinary search logs can include large raw provider response annotations such as asset/provider metadata; avoid fetching or quoting full raw Cloudinary log payloads for production diagnostics, and prefer summarized fields like result count, public IDs, status, and error code.
 - Do not use `console.*` for Workspace diagnostics; use `Effect.log*` inside the censored logging pipeline so logs reach analytics and redaction consistently.
 - Workspace customer access codes have appeared in PostHog log annotations before; keep access-code-like keys globally censored and never quote observed values back to the user.
 - Ad-hoc Workspace status/service scripts can still print raw reservation annotations such as customer access codes; avoid running them unless needed, and never quote those log lines back to the user.
