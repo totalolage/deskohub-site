@@ -8,7 +8,6 @@ import {
 } from "@deskohub/cloudinary";
 import {
   CloudinaryService,
-  getGalleryImages,
   makeCloudinaryRuntimeConfigLayer,
 } from "@deskohub/cloudinary/server";
 import { Layer } from "effect";
@@ -18,9 +17,7 @@ export {
   CloudinaryAssetSchema,
   CloudinarySearchError,
   CloudinarySearchResponseSchema,
-  CloudinaryService,
   SearchOptionsSchema,
-  getGalleryImages,
   type CloudinaryAsset,
   type SearchOptions,
 };
