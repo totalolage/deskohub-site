@@ -12,7 +12,6 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useAction } from "next-safe-action/hooks";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
@@ -81,6 +80,7 @@ import {
 import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
+import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type ReservationFormProps = {
   locale: Locale;
@@ -325,10 +325,11 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     });
 
   const {
-    executeAsync: sendReservation,
+    execute: sendReservation,
     isExecuting: isSendingReservation,
     result: preparePayStateResult,
-  } = useAction(preparePayState, {
+  } = useWorkspaceAction(preparePayState, {
+    actionName: "preparePayState",
     onSuccess: ({ data }) => {
       if (data?.status === "error") {
         setSubmissionMessage({
@@ -361,6 +362,12 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         text: error.serverError || m.reservationErrorMessage({}, { locale }),
       });
     },
+    onTransportError: () => {
+      setSubmissionMessage({
+        status: "error",
+        text: m.reservationErrorMessage({}, { locale }),
+      });
+    },
   });
 
   useEffect(() => {
@@ -376,7 +383,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     Boolean(preparePayStateResult.data.redirectUrl);
   const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
-  const handleSubmit = form.handleSubmit(async (data) => {
+  const handleSubmit = form.handleSubmit((data) => {
     if (hasPreparedPayRedirect) return;
 
     setSubmissionMessage(null);
@@ -388,7 +395,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       return;
     }
     hasTrackedSuccessfulSubmission.current = false;
-    await sendReservation({
+    sendReservation({
       locale,
       reservationIntentId,
       legalConsent: data.legalConsent,
