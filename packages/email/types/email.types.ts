@@ -85,13 +85,8 @@ export type EmailTemplateData = {
  * Email provider configuration
  */
 export interface EmailProviderConfig {
-  provider: "resend" | "smtp" | "sendgrid" | "mailgun" | "console";
+  provider: "resend" | "console";
   apiKey?: string;
-  smtpHost?: string;
-  smtpPort?: number;
-  smtpUser?: string;
-  smtpPassword?: string;
-  smtpSecure?: boolean;
   defaultFrom: EmailRecipient;
   testMode?: boolean;
 }
