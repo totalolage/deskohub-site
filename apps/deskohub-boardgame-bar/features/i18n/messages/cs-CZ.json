@@ -178,7 +178,7 @@
     "entryFeeShort": "50 Kč s konzumací / 100 Kč bez",
     "complexGamesEyebrow": "Komplexní hry",
     "complexGamesTitle": "Nauč se hry",
-    "complexGamesDescription": "Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel doplníme brzy.",
+    "complexGamesDescription": "Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel najdeš na Deskoherní socce.",
     "complexGamesCta": "Deskoherní socka",
     "scheduleEyebrow": "Program akce",
     "scheduleTitle": "Co se bude hrát",
@@ -193,6 +193,12 @@
         "title": "Otevřené hraní Zaklínače",
         "time": "Čtvrtek 16. 7. v 17:00",
         "description": "Legendární fantasy svět na tvém stole. Kapacita je omezená a registrace je nutná předem."
+      },
+      "saltyFrogs": {
+        "title": "Gobliní kmen Slaných Žab",
+        "time": "Pátek 17. 7. v 17:00",
+        "description": "Gobliní kmen Slaných Žab má problém: našel něco, co by žádný rozumný tvor nikdy neměl dát goblinům do ruky: ohňostroje. Aby se z obyčejných goblinů staly legendy kmene, musí projít zkouškami odvahy, vydat se do nebezpečných mokřadů a přežít hlavně jeden druhého. Čeká vás krátká, zběsilá a naprosto nehrdinská výprava plná chaosu, ohně, špatných nápadů a gobliní logiky.",
+        "note": "Na 4 hodiny včetně vysvětlení pravidel."
       },
       "bloodOnTheClocktower": {
         "title": "Krvavá hodinka (Blood on the Clocktower)",

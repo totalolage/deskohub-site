@@ -174,7 +174,7 @@
     "entryFeeShort": "CZK 50 with bar purchase / CZK 100 without",
     "complexGamesEyebrow": "Complex games",
     "complexGamesTitle": "Learn the games",
-    "complexGamesDescription": "Want to play something heavier? The rules explanation signup will be added soon.",
+    "complexGamesDescription": "Want to play something heavier? Rules explanation signups are on Boardgame Social.",
     "complexGamesCta": "Boardgame social",
     "scheduleEyebrow": "Event program",
     "scheduleTitle": "What will be played",
@@ -189,6 +189,12 @@
         "title": "Open Witcher play session",
         "time": "Thursday, 16 Jul at 17:00",
         "description": "A legendary fantasy world on your table. Capacity is limited and advance registration is required."
+      },
+      "saltyFrogs": {
+        "title": "Goblin Tribe of the Salty Frogs",
+        "time": "Friday, 17 Jul at 17:00",
+        "description": "The Goblin Tribe of the Salty Frogs has a problem: they found something no reasonable creature should ever put in goblin hands: fireworks. To become legends of the tribe, ordinary goblins must pass trials of courage, venture into dangerous wetlands, and above all survive each other. Expect a short, frantic, and completely unheroic expedition full of chaos, fire, bad ideas, and goblin logic.",
+        "note": "4 hours including rules explanation."
       },
       "bloodOnTheClocktower": {
         "title": "Blood on the Clocktower",
