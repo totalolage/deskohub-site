@@ -1,9 +1,27 @@
+import { withPostHogConfig } from "@posthog/nextjs-config";
 import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
 import { withBotId } from "botid/next/config";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
+
+const postHogSourceMapConfig =
+  process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID
+    ? {
+        personalApiKey: process.env.POSTHOG_API_KEY,
+        projectId: process.env.POSTHOG_PROJECT_ID,
+        host: process.env.POSTHOG_HOST ?? "https://us.posthog.com",
+        sourcemaps: {
+          enabled: process.env.VERCEL_ENV === "production",
+          releaseName: "deskohub-workspace",
+          ...(process.env.VERCEL_GIT_COMMIT_SHA
+            ? { releaseVersion: process.env.VERCEL_GIT_COMMIT_SHA }
+            : {}),
+          deleteAfterUpload: true,
+        },
+      }
+    : undefined;
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
@@ -60,4 +78,8 @@ const nextConfig = {
   },
 };
 
-export default withBotId(nextConfig);
+const botIdConfig = withBotId(nextConfig);
+
+export default postHogSourceMapConfig
+  ? withPostHogConfig(botIdConfig, postHogSourceMapConfig)
+  : botIdConfig;
