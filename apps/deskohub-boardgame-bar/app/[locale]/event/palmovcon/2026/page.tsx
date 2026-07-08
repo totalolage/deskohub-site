@@ -42,6 +42,17 @@ const getSchedule = (): ScheduleItem[] => [
     },
   },
   {
+    title: m["palmovcon2026.schedule.saltyFrogs.title"](),
+    time: m["palmovcon2026.schedule.saltyFrogs.time"](),
+    description: m["palmovcon2026.schedule.saltyFrogs.description"](),
+    note: m["palmovcon2026.schedule.saltyFrogs.note"](),
+    imagePublicId: "palmovcon-event-salty-frogs-goblins",
+    cta: {
+      href: "https://forms.gle/yek7zh4nrE8NWJRd7",
+      label: m["palmovcon2026.registrationCta"](),
+    },
+  },
+  {
     title: m["palmovcon2026.schedule.bloodOnTheClocktower.title"](),
     time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
     description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
@@ -232,7 +243,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
             size="lg"
           >
             <a
-              href="https://www.deskoherni-socka.cz"
+              href="https://www.deskoherni-socka.cz/events/ooddg9lqm5kqxf0"
               rel="noreferrer"
               target="_blank"
             >
