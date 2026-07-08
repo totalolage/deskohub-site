@@ -75,6 +75,36 @@ export const evalBrowserScript = (
     ...options,
   });
 
+export const fillBrowserField = (
+  run: Runner,
+  session: string,
+  selector: string,
+  value: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("fill browser field", run, session, [
+    "fill",
+    selector,
+    value,
+  ], {
+    logOutput: false,
+    timeoutMs: options.timeoutMs ?? 60_000,
+  }).pipe(Effect.asVoid);
+
+export const clickBrowserElement = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("click browser element", run, session, [
+    "click",
+    selector,
+  ], {
+    logOutput: false,
+    timeoutMs: options.timeoutMs ?? 60_000,
+  }).pipe(Effect.asVoid);
+
 export const readInteractiveSnapshot = (
   run: Runner,
   session: string,

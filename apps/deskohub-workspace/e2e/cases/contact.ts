@@ -1,10 +1,10 @@
 import { Effect } from "effect";
 import {
-  evalBrowserScript,
+  clickBrowserElement,
+  fillBrowserField,
   openBrowserPage,
   waitForBrowserText,
 } from "../browser";
-import { getSubmitContactFormScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -41,15 +41,39 @@ export const assertContactForm = ({
     yield* openBrowserPage(config, run, session, url.toString(), {
       timeoutMs: getCheckoutTimeoutMs(),
     });
-    yield* evalBrowserScript(
-      "submit contact form",
+    yield* fillBrowserField(
       run,
       session,
-      getSubmitContactFormScript(data),
-      {
-        logOutput: false,
-        timeoutMs: getCheckoutTimeoutMs(),
-      }
+      "#contact-name",
+      data.name,
+      { timeoutMs: getCheckoutTimeoutMs() }
+    );
+    yield* fillBrowserField(
+      run,
+      session,
+      "#contact-phone",
+      data.phone,
+      { timeoutMs: getCheckoutTimeoutMs() }
+    );
+    yield* fillBrowserField(
+      run,
+      session,
+      "#contact-email",
+      data.email,
+      { timeoutMs: getCheckoutTimeoutMs() }
+    );
+    yield* fillBrowserField(
+      run,
+      session,
+      "#contact-message",
+      data.message,
+      { timeoutMs: getCheckoutTimeoutMs() }
+    );
+    yield* clickBrowserElement(
+      run,
+      session,
+      '#contact-form button[type="submit"]',
+      { timeoutMs: getCheckoutTimeoutMs() }
     );
     yield* waitForBrowserText({
       description: "contact form success",
