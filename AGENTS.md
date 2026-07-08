@@ -1,6 +1,7 @@
 # AGENTS
 
-The role of this file is to describe common mistakes and confusion points that agents might encounter as they work in this project. If you ever encounter something in the project that surprises you, please alert the developer working with you and indicate that this is the case in the Agent.md file to help prevent future agents from having the same issue. When a developer corrects your architectural approach or asks you to follow a different pattern, add a concise note here so future agents do not need the same reminder.
+## **IMPORTANT INSTRUCTIONS:**
+The role of this file is to describe common mistakes and confusion points that agents might encounter as they work in this project. If you ever encounter something in the project that surprises you, or you are unsure how to deal with, alert the developer and indicate the sticking point. When developer clarifies, corrects, or steers you, **add a concise note here so future agents do not need the same reminder**.
 
 ## Points
 
@@ -31,7 +32,7 @@ export class FooService extends Context.Service<
 - Do not use `console.*` for Workspace diagnostics; use `Effect.log*` inside the censored logging pipeline so logs reach analytics and redaction consistently.
 - Workspace customer access codes have appeared in PostHog log annotations before; keep access-code-like keys globally censored and never quote observed values back to the user.
 - Ad-hoc Workspace status/service scripts can still print raw reservation annotations such as customer access codes; avoid running them unless needed, and never quote those log lines back to the user.
-- Workspace Paraglide output can be stale relative to `features/i18n/messages/*.json`; run `bun run i18n:compile` before trusting generated copy or updating assertions that depend on message text.
+- Workspace Paraglide output can be stale relative to `features/i18n/messages/*.json`; run `bun turbo i18n:compile --filter=deskohub-workspace` from the repository root before trusting generated copy or updating assertions that depend on message text.
 - Workspace E2E secrets that are only available in Vercel, such as email provider API keys, are not pullable into local env by design; validate email delivery through Vercel/runtime/webhook evidence and validate body content with a fake email transport renderer.
 - Workspace checkout E2E for current-code webhook validation must deploy a fresh manual Vercel CLI preview from the current working tree, assign `new.workspace.deskohub.cz` to that deployment, and then run through that alias; do not use whatever the alias already points to unless the user explicitly asks to test the already-live alias.
 - Keep `--force --archive=tgz` on that manual Vercel deploy; stale Vercel build/file caches have produced impossible TypeScript errors from older source during checkout E2E.

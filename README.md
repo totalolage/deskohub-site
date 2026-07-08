@@ -48,26 +48,24 @@ Install dependencies from the repository root:
 bun install
 ```
 
-Run app commands from the app directory. The root `package.json` intentionally
-does not define blanket `dev`, `build`, `lint`, or `typecheck` aliases.
+Run project commands from the repository root through Turbo. This lets Turbo run
+task dependencies such as generated clients and Paraglide output before the
+target task.
 
 ```bash
 # Boardgame Bar
-cd apps/deskohub-boardgame-bar
-cp .env.example .env.local
-bun run i18n:compile
-bun run dev
+cp apps/deskohub-boardgame-bar/.env.example apps/deskohub-boardgame-bar/.env.local
+bun turbo i18n:compile --filter=deskohub-boardgame-bar
+bun turbo dev --filter=deskohub-boardgame-bar
 
 # Workspace
-cd apps/deskohub-workspace
-cp .env.example .env.local
-bun run i18n:compile
-bun run dev
+cp apps/deskohub-workspace/.env.example apps/deskohub-workspace/.env.local
+bun turbo i18n:compile --filter=deskohub-workspace
+bun turbo dev --filter=deskohub-workspace
 
 # Portal
-cd apps/deskohub-portal
-bun run i18n:compile
-bun run dev
+bun turbo i18n:compile --filter=deskohub-portal
+bun turbo dev --filter=deskohub-portal
 ```
 
 The two Next.js apps both use the default Next development port unless `PORT` is
@@ -76,39 +74,31 @@ apps at the same time. The portal dev server uses `127.0.0.1:4321`.
 
 ## Common Commands
 
-From an app directory:
+From the repository root:
 
 ```bash
-bun run dev
-bun run build
-bun run lint
-bun run typecheck
+bun turbo dev --filter=<package-name>
+bun turbo build --filter=<package-name>
+bun turbo lint --filter=<package-name>
+bun turbo typecheck --filter=<package-name>
 ```
 
 Workspace also provides:
 
 ```bash
-bun run test
-bun run db:generate
-bun run db:migrate
-bun run db:studio
-bun run e2e:checkout
-```
-
-From the repository root, use Turbo when you want a filtered task:
-
-```bash
-bun turbo build --filter=./apps/deskohub-boardgame-bar
-bun turbo typecheck --filter=./apps/deskohub-workspace
-bun turbo test --filter=./apps/deskohub-workspace
+bun turbo test --filter=deskohub-workspace
+bun turbo db:generate --filter=deskohub-workspace
+bun turbo db:migrate --filter=deskohub-workspace
+bun turbo db:studio --filter=deskohub-workspace
+bun turbo e2e:checkout --filter=deskohub-workspace
 ```
 
 Packages with generated clients or package-level checks expose their own scripts.
 For example:
 
 ```bash
-cd packages/dotypos && bun run generate
-cd packages/nexi && bun run typecheck
+bun turbo run generate --filter=@deskohub/dotypos
+bun turbo typecheck --filter=@deskohub/nexi
 ```
 
 ## Environment
@@ -136,8 +126,8 @@ Do not commit real env files or quote secret values in logs, issues, or PRs.
 ## Generated Assets And Migrations
 
 - Paraglide output can be stale after editing `features/i18n/messages/*.json`.
-  Run `bun run i18n:compile` in the app before trusting generated message code
-  or updating tests that depend on copy.
+  Run `bun turbo i18n:compile --filter=<app-package>` from the repository root
+  before trusting generated message code or updating tests that depend on copy.
 - Dotypos and Nexi OpenAPI clients are generated from
   `packages/dotypos/openapi/dotypos-api.yaml` and
   `packages/nexi/openapi/nexi-api.yaml`.

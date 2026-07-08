@@ -62,13 +62,7 @@ import {
 } from "@/features/reservation/schemas/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
+import { Card, CardContent } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import {
   Form,
@@ -90,13 +84,9 @@ import { cn } from "@/shared/utils";
 
 type ReservationFormProps = {
   locale: Locale;
-  showIntro?: boolean;
 };
 
-type ReservationFormFallbackProps = Pick<
-  ReservationFormProps,
-  "locale" | "showIntro"
-> & {
+type ReservationFormFallbackProps = Pick<ReservationFormProps, "locale"> & {
   showMonitorOption?: boolean;
 };
 
@@ -230,10 +220,7 @@ const createReservationIntentId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export function ReservationForm({
-  locale,
-  showIntro = true,
-}: ReservationFormProps) {
+export function ReservationForm({ locale }: ReservationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
@@ -422,18 +409,7 @@ export function ReservationForm({
   return (
     <Card className={reservationFormCardClassName}>
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      {showIntro && (
-        <CardHeader className="space-y-3 pb-6">
-          <CardTitle className="text-3xl sm:text-[2.35rem]">
-            {m.reservationFormTitle({}, { locale })}
-          </CardTitle>
-          <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
-            {m.reservationFormDescription({}, { locale })}
-          </CardDescription>
-        </CardHeader>
-      )}
-
-      <CardContent className={cn(!showIntro && "pt-6")}>
+      <CardContent className="pt-6">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="space-y-7">
             <FormField
@@ -590,52 +566,59 @@ export function ReservationForm({
                 <FormField
                   control={form.control}
                   name="date"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel
-                        className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
-                        required
-                      >
-                        {m.reservationDateLabel({}, { locale })}
-                      </FormLabel>
-                      <Popover>
-                        <PopoverTrigger asChild>
-                          <FormControl>
-                            <Button
-                              type="button"
-                              variant="secondary"
-                              className={cn(
-                                "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-                                !field.value && "text-navy-blue/44"
-                              )}
-                            >
-                              <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                              {formatDisplayDate(field.value, locale)}
-                            </Button>
-                          </FormControl>
-                        </PopoverTrigger>
-                        <PopoverContent align="start" className="w-auto p-3">
-                          <Calendar
-                            mode="single"
-                            selected={parseReservationInputDate(field.value)}
-                            onSelect={(date) => {
-                              if (!date) {
-                                return;
-                              }
+                  render={({ field }) => {
+                    // biome-ignore lint/correctness/useHookAtTopLevel: this ends up being a self contained component
+                    const [open, setOpen] = useState(false);
+                    return (
+                      <FormItem>
+                        <FormLabel
+                          className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                          required
+                        >
+                          {m.reservationDateLabel({}, { locale })}
+                        </FormLabel>
+                        <Popover open={open} onOpenChange={setOpen}>
+                          <PopoverTrigger asChild>
+                            <FormControl>
+                              <Button
+                                type="button"
+                                variant="secondary"
+                                className={cn(
+                                  "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                                  !field.value && "text-navy-blue/44"
+                                )}
+                              >
+                                <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                                {formatDisplayDate(field.value, locale)}
+                              </Button>
+                            </FormControl>
+                          </PopoverTrigger>
+                          <PopoverContent align="start" className="w-auto p-3">
+                            <Calendar
+                              mode="single"
+                              selected={parseReservationInputDate(field.value)}
+                              onSelect={(date) => {
+                                if (!date) {
+                                  return;
+                                }
 
-                              field.onChange(formatDateForInput(date));
-                            }}
-                            disabled={[
-                              { before: new Date() },
-                              (date) =>
-                                unavailableDates.has(formatDateForInput(date)),
-                            ]}
-                          />
-                        </PopoverContent>
-                      </Popover>
-                      <FormMessage />
-                    </FormItem>
-                  )}
+                                field.onChange(formatDateForInput(date));
+                                setOpen(false);
+                              }}
+                              disabled={[
+                                { before: new Date() },
+                                (date) =>
+                                  unavailableDates.has(
+                                    formatDateForInput(date)
+                                  ),
+                              ]}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                      </FormItem>
+                    );
+                  }}
                 />
               </div>
 
@@ -922,7 +905,6 @@ export function ReservationForm({
 
 export function ReservationFormFallback({
   locale,
-  showIntro = true,
   showMonitorOption = false,
 }: ReservationFormFallbackProps) {
   return (
@@ -933,17 +915,7 @@ export function ReservationFormFallback({
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
 
-      {showIntro && (
-        <CardHeader className="space-y-3 pb-6">
-          <SkeletonBlock className="h-10 w-4/5 max-w-xl sm:h-11" />
-          <div className="max-w-2xl space-y-2">
-            <SkeletonBlock className="h-4 w-full" />
-            <SkeletonBlock className="h-4 w-5/6" />
-          </div>
-        </CardHeader>
-      )}
-
-      <CardContent className={cn(!showIntro && "pt-6")}>
+      <CardContent className="pt-6">
         <div aria-hidden="true" className="space-y-7">
           <div className="space-y-2">
             <SkeletonBlock className="h-4 w-28" />

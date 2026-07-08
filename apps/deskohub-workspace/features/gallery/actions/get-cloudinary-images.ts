@@ -4,6 +4,7 @@ import {
   normalizeExpression,
   type UnnormalizedLogicalExpression,
 } from "@deskohub/cloudinary";
+import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
@@ -11,7 +12,6 @@ import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   type CloudinaryAsset,
   CloudinaryServiceLive,
-  getGalleryImages,
 } from "../backend/cloudinary.service";
 import type { CloudinaryTag } from "../types/cloudinary-tag";
 
