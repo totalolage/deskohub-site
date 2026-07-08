@@ -8,7 +8,6 @@ import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
-import { applyCacheTags, cloudinaryTags } from "@/shared/utils/cache-tags";
 import {
   type CloudinaryAsset,
   CloudinaryServiceLive,
@@ -24,10 +23,6 @@ export async function getCloudinaryImages({
   tags,
   maxResults = 60,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
-  "use cache";
-
-  applyCacheTags(cloudinaryTags.all(), cloudinaryTags.search(tags, maxResults));
-
   return Effect.provide(
     getGalleryImages(normalizeExpression(tags), { maxResults }),
     CloudinaryServiceLive
