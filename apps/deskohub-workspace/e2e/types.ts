@@ -66,7 +66,7 @@ export type CheckoutFlow = {
     config: WorkspaceE2EConfig,
     datasourceConfig: DatasourceConfig,
     date: string
-  ) => Promise<CheckoutData | undefined>;
+  ) => Effect.Effect<CheckoutData | undefined, WorkspaceE2EError>;
   readonly submitReservationScript: (data: CheckoutData) => string;
 };
 

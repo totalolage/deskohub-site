@@ -1,9 +1,13 @@
 import { Effect } from "effect";
-import { openBrowserPage, waitForBrowserText } from "../browser";
+import {
+  evalBrowserScript,
+  openBrowserPage,
+  waitForBrowserText,
+} from "../browser";
 import { getSubmitContactFormScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
-import { effectifyPromise, type WorkspaceE2EError } from "../errors";
+import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { addRedaction, log } from "../runtime";
 
@@ -27,32 +31,31 @@ export const assertContactForm = ({
 
     for (const value of Object.values(data)) addRedaction(value);
 
-    yield* effectifyPromise("open contact form page", () =>
-      openBrowserPage(
-        config,
-        run,
-        session,
-        `${config.browserUrl}/en-US/contact`,
-        {
-          timeoutMs: getCheckoutTimeoutMs(),
-        }
-      )
+    yield* openBrowserPage(
+      config,
+      run,
+      session,
+      `${config.browserUrl}/en-US/contact`,
+      {
+        timeoutMs: getCheckoutTimeoutMs(),
+      }
     );
-    yield* effectifyPromise("submit contact form", () =>
-      run("agent-browser", ["--session", session, "eval", "--stdin"], {
-        input: getSubmitContactFormScript(data),
+    yield* evalBrowserScript(
+      "submit contact form",
+      run,
+      session,
+      getSubmitContactFormScript(data),
+      {
         logOutput: false,
         timeoutMs: getCheckoutTimeoutMs(),
-      })
+      }
     );
-    yield* effectifyPromise("wait for contact form success", () =>
-      waitForBrowserText({
-        description: "contact form success",
-        matches: (text) => /Your message has been sent\./i.test(text),
-        run,
-        session,
-        timeoutMs: getCheckoutTimeoutMs(),
-      })
-    );
+    yield* waitForBrowserText({
+      description: "contact form success",
+      matches: (text) => /Your message has been sent\./i.test(text),
+      run,
+      session,
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
     log("Contact form e2e passed");
   });

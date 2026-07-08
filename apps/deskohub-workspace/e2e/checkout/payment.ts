@@ -1,3 +1,4 @@
+import { Cause, Effect, Exit } from "effect";
 import {
   findFirstTextFieldRef,
   findSnapshotRef,
@@ -17,15 +18,33 @@ import {
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
+import { pollEffect } from "../effects";
+import {
+  effectifyPromise,
+  effectifySync,
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+} from "../errors";
 import type { Runner } from "../runtime";
-import { addRedaction, assert, log, parseUrl, poll } from "../runtime";
+import { addRedaction, assert, log, parseUrl } from "../runtime";
 import type { CheckoutData } from "../types";
 
 const NEXI_TEST_CARD_NUMBER = "4509034543615006";
 const NEXI_TEST_CVV = "298";
 const NEXI_TEST_EXPIRY = "1028";
 
-export const completeCheckout = async ({
+const runBrowserCommand = (
+  operation: string,
+  run: Runner,
+  session: string,
+  args: string[],
+  options?: Parameters<Runner>[2]
+) =>
+  effectifyPromise(operation, () =>
+    run("agent-browser", ["--session", session, ...args], options)
+  );
+
+export const completeCheckout = ({
   config,
   data,
   onOrderId,
@@ -39,56 +58,51 @@ export const completeCheckout = async ({
   run: Runner;
   session: string;
   submitReservationScript: string;
-}) => {
-  const headers = config.bypassSecret
-    ? [
-        "--headers",
-        JSON.stringify({
-          "x-vercel-protection-bypass": config.bypassSecret,
-          "x-vercel-set-bypass-cookie": "true",
-        }),
-      ]
-    : [];
-
-  await run(
-    "agent-browser",
-    ["--session", session, ...headers, "open", data.checkoutUrl],
-    {
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
       timeoutMs: getCheckoutTimeoutMs(),
-    }
-  );
-  const payPageUrl = await submitReservationAndWaitForPayPage({
-    onOrderId,
-    run,
-    session,
-    submitReservationScript,
-  });
-  const payPageOrderId =
-    getSearchOrderId(payPageUrl) ?? (await readPayPageOrderId(run, session));
-  onOrderId?.(payPageOrderId);
-  await submitPaymentAndWaitForHostedPage({ run, session });
-  await completeNexiHostedPayment({ data, run, session });
-  await waitForBrowserUrl({
-    description: "checkout status page",
-    matches: (url) => {
-      const parsed = parseUrl(url);
-      return (
-        parsed?.host === config.alias &&
-        parsed.pathname.includes("/checkout/status/")
-      );
-    },
-    run,
-    session,
-    timeoutMs: getCheckoutTimeoutMs(),
+    });
+    const payPageUrl = yield* submitReservationAndWaitForPayPage({
+      onOrderId,
+      run,
+      session,
+      submitReservationScript,
+    });
+    const payPageOrderId =
+      getSearchOrderId(payPageUrl) ?? (yield* readPayPageOrderId(run, session));
+    yield* Effect.sync(() => onOrderId?.(payPageOrderId));
+    yield* submitPaymentAndWaitForHostedPage({ run, session });
+    yield* completeNexiHostedPayment({ data, run, session });
+    yield* waitForBrowserUrl({
+      description: "checkout status page",
+      matches: (url) => {
+        const parsed = parseUrl(url);
+        return (
+          parsed?.host === config.alias &&
+          parsed.pathname.includes("/checkout/status/")
+        );
+      },
+      run,
+      session,
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+
+    const url = yield* runBrowserCommand(
+      "read checkout status URL",
+      run,
+      session,
+      ["get", "url"]
+    );
+    const orderId = yield* effectifySync(
+      "extract checkout status order id",
+      () => extractOrderId(url.stdout)
+    );
+    log(`Reached checkout status for order ${orderId}`);
+    return orderId;
   });
 
-  const url = await run("agent-browser", ["--session", session, "get", "url"]);
-  const orderId = extractOrderId(url.stdout);
-  log(`Reached checkout status for order ${orderId}`);
-  return orderId;
-};
-
-export const startCheckoutPaymentAttempt = async ({
+export const startCheckoutPaymentAttempt = ({
   config,
   data,
   onOrderId,
@@ -102,40 +116,49 @@ export const startCheckoutPaymentAttempt = async ({
   run: Runner;
   session: string;
   submitReservationScript: string;
-}) => {
-  await openBrowserPage(config, run, session, data.checkoutUrl, {
-    timeoutMs: getCheckoutTimeoutMs(),
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* openBrowserPage(config, run, session, data.checkoutUrl, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+    const payPageUrl = yield* submitReservationAndWaitForPayPage({
+      onOrderId,
+      run,
+      session,
+      submitReservationScript,
+    });
+    const orderId =
+      getSearchOrderId(payPageUrl) ?? (yield* readPayPageOrderId(run, session));
+    yield* Effect.sync(() => onOrderId?.(orderId));
+    yield* submitPaymentAndWaitForHostedPage({ run, session });
+    log(`Started hosted payment attempt for order ${orderId}`);
+    return orderId;
   });
-  const payPageUrl = await submitReservationAndWaitForPayPage({
-    onOrderId,
-    run,
-    session,
-    submitReservationScript,
+
+const readPayPageOrderId = (
+  run: Runner,
+  session: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const result = yield* runBrowserCommand(
+      "read pay page order id",
+      run,
+      session,
+      ["eval", "--stdin"],
+      {
+        input: payPageOrderIdScript,
+        logOutput: false,
+        timeoutMs: 30_000,
+      }
+    );
+    return yield* effectifySync("assert pay page order id", () => {
+      const orderId = result.stdout.trim();
+      assert(orderId, "checkout pay page order id missing");
+      return orderId;
+    });
   });
-  const orderId =
-    getSearchOrderId(payPageUrl) ?? (await readPayPageOrderId(run, session));
-  onOrderId?.(orderId);
-  await submitPaymentAndWaitForHostedPage({ run, session });
-  log(`Started hosted payment attempt for order ${orderId}`);
-  return orderId;
-};
 
-const readPayPageOrderId = async (run: Runner, session: string) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "eval", "--stdin"],
-    {
-      input: payPageOrderIdScript,
-      logOutput: false,
-      timeoutMs: 30_000,
-    }
-  );
-  const orderId = result.stdout.trim();
-  assert(orderId, "checkout pay page order id missing");
-  return orderId;
-};
-
-const submitReservationAndWaitForPayPage = async ({
+const submitReservationAndWaitForPayPage = ({
   onOrderId,
   run,
   session,
@@ -145,31 +168,40 @@ const submitReservationAndWaitForPayPage = async ({
   run: Runner;
   session: string;
   submitReservationScript: string;
-}) => {
-  const timeoutMs = Math.min(getCheckoutTimeoutMs(), 90_000);
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const timeoutMs = Math.min(getCheckoutTimeoutMs(), 90_000);
 
-  await run("agent-browser", ["--session", session, "eval", "--stdin"], {
-    input: submitReservationScript,
-    logOutput: false,
+    yield* runBrowserCommand(
+      "submit checkout reservation",
+      run,
+      session,
+      ["eval", "--stdin"],
+      {
+        input: submitReservationScript,
+        logOutput: false,
+      }
+    );
+
+    const result = yield* waitForReservationStart(run, session, timeoutMs);
+    if (result.status === "ready") return result.url;
+
+    const orderId = getSearchOrderId(result.url);
+    if (orderId) yield* Effect.sync(() => onOrderId?.(orderId));
+
+    return yield* effectifySync("assert checkout pay page reached", () => {
+      throw new Error(
+        [
+          "Timed out waiting for checkout pay page",
+          result.diagnostics
+            ? `Browser diagnostics:\n${result.diagnostics}`
+            : undefined,
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    });
   });
-
-  const result = await waitForReservationStart(run, session, timeoutMs);
-  if (result.status === "ready") return result.url;
-
-  const orderId = getSearchOrderId(result.url);
-  if (orderId) onOrderId?.(orderId);
-
-  throw new Error(
-    [
-      "Timed out waiting for checkout pay page",
-      result.diagnostics
-        ? `Browser diagnostics:\n${result.diagnostics}`
-        : undefined,
-    ]
-      .filter(Boolean)
-      .join("\n")
-  );
-};
 
 type ReservationStartResult =
   | {
@@ -182,36 +214,42 @@ type ReservationStartResult =
       readonly url: string | undefined;
     };
 
-const waitForReservationStart = async (
+const waitForReservationStart = (
   run: Runner,
   session: string,
   timeoutMs: number
-): Promise<ReservationStartResult> => {
-  let latest: ReservationStartDiagnostics | undefined;
+): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    let latest: ReservationStartDiagnostics | undefined;
 
-  const readyUrl = await poll(
-    async () => {
-      const url = await readBrowserUrl(run, session);
-      if (url?.includes("/checkout/pay")) return url;
+    const readyUrlExit = yield* Effect.exit(
+      pollEffect(
+        Effect.gen(function* () {
+          const url = yield* readBrowserUrl(run, session);
+          if (url?.includes("/checkout/pay")) return url;
 
-      latest = await readReservationStartDiagnostics(run, session);
-    },
-    timeoutMs,
-    "checkout pay page"
-  ).catch((error) => {
-    latest = addReservationStartTimeout(latest, error);
-    return undefined;
+          latest = yield* readReservationStartDiagnostics(run, session);
+          return undefined;
+        }),
+        timeoutMs,
+        "checkout pay page"
+      )
+    );
+
+    if (Exit.isSuccess(readyUrlExit))
+      return { status: "ready", url: readyUrlExit.value };
+
+    latest = addReservationStartTimeout(
+      latest,
+      Cause.squash(readyUrlExit.cause)
+    );
+    latest ??= yield* readReservationStartDiagnostics(run, session);
+    return {
+      diagnostics: formatReservationStartDiagnostics(latest),
+      status: "not_ready",
+      url: latest?.url,
+    };
   });
-
-  if (readyUrl) return { status: "ready", url: readyUrl };
-
-  latest ??= await readReservationStartDiagnostics(run, session);
-  return {
-    diagnostics: formatReservationStartDiagnostics(latest),
-    status: "not_ready",
-    url: latest?.url,
-  };
-};
 
 type ReservationStartDiagnostics = {
   readonly body?: string;
@@ -222,34 +260,37 @@ type ReservationStartDiagnostics = {
   readonly url?: string;
 };
 
-const readReservationStartDiagnostics = async (
+const readReservationStartDiagnostics = (
   run: Runner,
   session: string
-) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "eval", "--stdin"],
+): Effect.Effect<ReservationStartDiagnostics | undefined, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read reservation start diagnostics",
+    run,
+    session,
+    ["eval", "--stdin"],
     {
       allowFailure: true,
       input: browserDiagnosticsScript,
       logOutput: false,
       timeoutMs: 30_000,
     }
+  ).pipe(
+    Effect.map((result) => {
+      if (result.exitCode !== 0) return undefined;
+
+      try {
+        const parsed = JSON.parse(result.stdout.trim()) as unknown;
+        return parsed && typeof parsed === "object"
+          ? (parsed as ReservationStartDiagnostics)
+          : undefined;
+      } catch {
+        return {
+          body: result.stdout,
+        };
+      }
+    })
   );
-
-  if (result.exitCode !== 0) return undefined;
-
-  try {
-    const parsed = JSON.parse(result.stdout.trim()) as unknown;
-    return parsed && typeof parsed === "object"
-      ? (parsed as ReservationStartDiagnostics)
-      : undefined;
-  } catch {
-    return {
-      body: result.stdout,
-    };
-  }
-};
 
 const addReservationStartTimeout = (
   diagnostics: ReservationStartDiagnostics | undefined,
@@ -281,53 +322,68 @@ const formatReservationStartDiagnostics = (
 const isCheckoutStatusUrl = (url: string | undefined) =>
   parseUrl(url ?? "")?.pathname.includes("/checkout/status/") ?? false;
 
-const submitPaymentAndWaitForHostedPage = async ({
+const submitPaymentAndWaitForHostedPage = ({
   run,
   session,
 }: {
   run: Runner;
   session: string;
-}) => {
-  await clickCheckoutPayConsent(run, session);
-  await clickCheckoutPayButton(run, session);
+}) =>
+  Effect.gen(function* () {
+    yield* clickCheckoutPayConsent(run, session);
+    yield* clickCheckoutPayButton(run, session);
 
-  return await waitForBrowserUrl({
-    description: "Nexi hosted payment page",
-    matches: (url) =>
-      url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
-    run,
-    session,
-    timeoutMs: Math.min(getCheckoutTimeoutMs(), 2 * 60 * 1000),
+    return yield* waitForBrowserUrl({
+      description: "Nexi hosted payment page",
+      matches: (url) =>
+        url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
+      run,
+      session,
+      timeoutMs: Math.min(getCheckoutTimeoutMs(), 2 * 60 * 1000),
+    });
   });
-};
 
-const clickCheckoutPayConsent = async (run: Runner, session: string) => {
-  const ref = await requireSnapshotRef({
-    description: "payment legal consent",
-    labels: ["I agree to the", "Souhlasím"],
-    run,
-    session,
+const clickCheckoutPayConsent = (run: Runner, session: string) =>
+  Effect.gen(function* () {
+    const ref = yield* requireSnapshotRef({
+      description: "payment legal consent",
+      labels: ["I agree to the", "Souhlasím"],
+      run,
+      session,
+    });
+    yield* runBrowserCommand(
+      "click payment legal consent",
+      run,
+      session,
+      ["click", ref],
+      {
+        logOutput: false,
+        timeoutMs: 30_000,
+      }
+    );
   });
-  await run("agent-browser", ["--session", session, "click", ref], {
-    logOutput: false,
-    timeoutMs: 30_000,
-  });
-};
 
-const clickCheckoutPayButton = async (run: Runner, session: string) => {
-  const ref = await requireEnabledSnapshotRef({
-    description: "enabled payment submit button",
-    labels: ["ORDER AND PAY", "Order and pay"],
-    run,
-    session,
+const clickCheckoutPayButton = (run: Runner, session: string) =>
+  Effect.gen(function* () {
+    const ref = yield* requireEnabledSnapshotRef({
+      description: "enabled payment submit button",
+      labels: ["ORDER AND PAY", "Order and pay"],
+      run,
+      session,
+    });
+    yield* runBrowserCommand(
+      "click checkout pay button",
+      run,
+      session,
+      ["click", ref],
+      {
+        logOutput: false,
+        timeoutMs: 30_000,
+      }
+    );
   });
-  await run("agent-browser", ["--session", session, "click", ref], {
-    logOutput: false,
-    timeoutMs: 30_000,
-  });
-};
 
-export const completeNexiHostedPayment = async ({
+export const completeNexiHostedPayment = ({
   data,
   run,
   session,
@@ -335,195 +391,239 @@ export const completeNexiHostedPayment = async ({
   data: CheckoutData;
   run: Runner;
   session: string;
-}) => {
-  addRedaction(NEXI_TEST_CARD_NUMBER);
-  addRedaction(NEXI_TEST_CVV, true);
-  addRedaction(NEXI_TEST_EXPIRY, true);
+}): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    addRedaction(NEXI_TEST_CARD_NUMBER);
+    addRedaction(NEXI_TEST_CVV, true);
+    addRedaction(NEXI_TEST_EXPIRY, true);
 
-  await fillHostedPaymentField(
-    run,
-    session,
-    ["Card number", "Numero carta", "Numero della carta"],
-    ["CARD_NUMBER"],
-    NEXI_TEST_CARD_NUMBER
-  );
-  await fillHostedPaymentField(
-    run,
-    session,
-    ["Expiration date", "Scadenza", "Data scadenza"],
-    ["EXPIRATION_DATE"],
-    NEXI_TEST_EXPIRY
-  );
-  await fillHostedPaymentField(
-    run,
-    session,
-    ["CVV", "CVC", "Codice sicurezza"],
-    ["SECURITY_CODE"],
-    NEXI_TEST_CVV
-  );
-  await tryFillHostedPaymentField(
-    run,
-    session,
-    ["First Name", "Nome", "Titolare"],
-    ["CARDHOLDER_NAME"],
-    data.name
-  );
-  await tryFillHostedPaymentField(
-    run,
-    session,
-    ["Email", "E-mail"],
-    ["CARDHOLDER_EMAIL"],
-    data.email
-  );
-
-  await clickHostedPaymentTarget(
-    run,
-    session,
-    "continue",
-    [{ value: "CONTINUE" }, { value: "Continue" }, { value: "CONTINUA" }],
-    { optional: true, timeoutMs: Math.min(getCheckoutTimeoutMs(), 15_000) }
-  );
-  await clickHostedPaymentTarget(run, session, "pay", [
-    { value: "PAY" },
-    { value: "Pay" },
-    { value: "PAGA" },
-  ]);
-  await clickHostedPaymentTarget(run, session, "3DS success", [
-    { value: "AUTENTICAZIONE RIUSCITA" },
-    { value: "Authentication successful" },
-  ]);
-  if (isCheckoutStatusUrl(await readBrowserUrl(run, session))) {
-    log(
-      "Nexi back-to-shop action skipped; checkout status page already loaded"
+    yield* fillHostedPaymentField(
+      run,
+      session,
+      ["Card number", "Numero carta", "Numero della carta"],
+      ["CARD_NUMBER"],
+      NEXI_TEST_CARD_NUMBER
     );
-    return;
-  }
-  try {
-    await clickHostedPaymentTarget(run, session, "back to shop", [
-      { value: "BACK TO THE SHOP" },
-      { value: "Back to the shop" },
-      { value: "TORNA AL NEGOZIO" },
+    yield* fillHostedPaymentField(
+      run,
+      session,
+      ["Expiration date", "Scadenza", "Data scadenza"],
+      ["EXPIRATION_DATE"],
+      NEXI_TEST_EXPIRY
+    );
+    yield* fillHostedPaymentField(
+      run,
+      session,
+      ["CVV", "CVC", "Codice sicurezza"],
+      ["SECURITY_CODE"],
+      NEXI_TEST_CVV
+    );
+    yield* tryFillHostedPaymentField(
+      run,
+      session,
+      ["First Name", "Nome", "Titolare"],
+      ["CARDHOLDER_NAME"],
+      data.name
+    );
+    yield* tryFillHostedPaymentField(
+      run,
+      session,
+      ["Email", "E-mail"],
+      ["CARDHOLDER_EMAIL"],
+      data.email
+    );
+
+    yield* clickHostedPaymentTarget(
+      run,
+      session,
+      "continue",
+      [{ value: "CONTINUE" }, { value: "Continue" }, { value: "CONTINUA" }],
+      { optional: true, timeoutMs: Math.min(getCheckoutTimeoutMs(), 15_000) }
+    );
+    yield* clickHostedPaymentTarget(run, session, "pay", [
+      { value: "PAY" },
+      { value: "Pay" },
+      { value: "PAGA" },
     ]);
-  } catch (cause) {
-    if (isCheckoutStatusUrl(await readBrowserUrl(run, session))) {
+    yield* clickHostedPaymentTarget(run, session, "3DS success", [
+      { value: "AUTENTICAZIONE RIUSCITA" },
+      { value: "Authentication successful" },
+    ]);
+    if (isCheckoutStatusUrl(yield* readBrowserUrl(run, session))) {
       log(
         "Nexi back-to-shop action skipped; checkout status page already loaded"
       );
       return;
     }
-    throw cause;
-  }
-};
 
-const fillHostedPaymentField = async (
+    const backToShopExit = yield* Effect.exit(
+      clickHostedPaymentTarget(run, session, "back to shop", [
+        { value: "BACK TO THE SHOP" },
+        { value: "Back to the shop" },
+        { value: "TORNA AL NEGOZIO" },
+      ])
+    );
+
+    if (Exit.isSuccess(backToShopExit)) return;
+    if (isCheckoutStatusUrl(yield* readBrowserUrl(run, session))) {
+      log(
+        "Nexi back-to-shop action skipped; checkout status page already loaded"
+      );
+      return;
+    }
+
+    return yield* Effect.fail(
+      toWorkspaceE2EError(
+        "click Nexi back to shop",
+        Cause.squash(backToShopExit.cause)
+      )
+    );
+  });
+
+const fillHostedPaymentField = (
   run: Runner,
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[],
   value: string
-) => {
-  const target = await requireHostedPaymentRef(
-    run,
-    session,
-    labels,
-    frameLabels
-  );
-  try {
-    await run(
-      "agent-browser",
-      ["--session", session, "fill", target.ref, value],
+) =>
+  Effect.gen(function* () {
+    const target = yield* requireHostedPaymentRef(
+      run,
+      session,
+      labels,
+      frameLabels
+    );
+    yield* runBrowserCommand(
+      "fill hosted payment field",
+      run,
+      session,
+      ["fill", target.ref, value],
       {
         logCommand: false,
         timeoutMs: 60_000,
       }
+    ).pipe(
+      Effect.ensuring(
+        target.framed
+          ? switchToMainFrame(run, session).pipe(Effect.ignore)
+          : Effect.void
+      )
     );
-  } finally {
-    if (target.framed) await switchToMainFrame(run, session);
-  }
-};
+  });
 
-const requireHostedPaymentRef = async (
+const requireHostedPaymentRef = (
   run: Runner,
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[],
   timeoutMs = 60_000
-) => {
-  try {
-    return await poll(
-      async () => findHostedPaymentRef(run, session, labels, frameLabels),
-      timeoutMs,
-      `Nexi target ${labels.join(" / ")}`
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const snapshot = await readInteractiveSnapshot(run, session);
-    throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
-  }
-};
+): Effect.Effect<HostedPaymentRef, WorkspaceE2EError> =>
+  pollEffect(
+    findHostedPaymentRef(run, session, labels, frameLabels),
+    timeoutMs,
+    `Nexi target ${labels.join(" / ")}`
+  ).pipe(
+    Effect.catch((error) =>
+      readInteractiveSnapshot(run, session).pipe(
+        Effect.flatMap((snapshot) =>
+          Effect.fail(
+            toWorkspaceE2EError(
+              `find Nexi target ${labels.join(" / ")}`,
+              new Error(
+                `${error.message}\n${summarizeHostedPaymentSnapshot(snapshot)}`
+              )
+            )
+          )
+        )
+      )
+    )
+  );
 
-const tryFillHostedPaymentField = async (
+const tryFillHostedPaymentField = (
   run: Runner,
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[],
   value: string
-) => {
-  const target = await findHostedPaymentRef(run, session, labels, frameLabels);
-  if (!target) return;
-  try {
-    await run(
-      "agent-browser",
-      ["--session", session, "fill", target.ref, value],
+) =>
+  Effect.gen(function* () {
+    const target = yield* findHostedPaymentRef(
+      run,
+      session,
+      labels,
+      frameLabels
+    );
+    if (!target) return;
+
+    yield* runBrowserCommand(
+      "try fill hosted payment field",
+      run,
+      session,
+      ["fill", target.ref, value],
       {
         allowFailure: true,
         logCommand: false,
         timeoutMs: 30_000,
       }
+    ).pipe(
+      Effect.ensuring(
+        target.framed
+          ? switchToMainFrame(run, session).pipe(Effect.ignore)
+          : Effect.void
+      )
     );
-  } finally {
-    if (target.framed) await switchToMainFrame(run, session);
-  }
-};
+  });
 
 type HostedPaymentRef = {
   readonly framed: boolean;
   readonly ref: string;
 };
 
-const findHostedPaymentRef = async (
+const findHostedPaymentRef = (
   run: Runner,
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[]
-): Promise<HostedPaymentRef | undefined> => {
-  const snapshot = await readInteractiveSnapshot(run, session);
-  const directRef = findSnapshotRef(snapshot, labels);
-  if (directRef) return { framed: false, ref: directRef };
+): Effect.Effect<HostedPaymentRef | undefined, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const snapshot = yield* readInteractiveSnapshot(run, session);
+    const directRef = findSnapshotRef(snapshot, labels);
+    if (directRef) return { framed: false, ref: directRef };
 
-  for (const frame of findHostedPaymentFrames(snapshot, frameLabels)) {
-    const switched = await run(
-      "agent-browser",
-      ["--session", session, "frame", frame.ref],
-      { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
-    );
-    if (switched.exitCode !== 0) continue;
+    for (const frame of findHostedPaymentFrames(snapshot, frameLabels)) {
+      const switched = yield* runBrowserCommand(
+        "switch hosted payment frame",
+        run,
+        session,
+        ["frame", frame.ref],
+        { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
+      );
+      if (switched.exitCode !== 0) continue;
 
-    let shouldRestoreMainFrame = true;
-    try {
-      const frameSnapshot = await readInteractiveSnapshot(run, session);
-      const frameFieldRef =
-        findSnapshotRef(frameSnapshot, labels) ??
-        (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined);
-      if (!frameFieldRef) continue;
+      let shouldRestoreMainFrame = true;
+      const frameResult = yield* Effect.gen(function* () {
+        const frameSnapshot = yield* readInteractiveSnapshot(run, session);
+        const frameFieldRef =
+          findSnapshotRef(frameSnapshot, labels) ??
+          (frame.exact ? findFirstTextFieldRef(frameSnapshot) : undefined);
+        if (!frameFieldRef) return undefined;
 
-      shouldRestoreMainFrame = false;
-      return { framed: true, ref: frameFieldRef };
-    } finally {
-      if (shouldRestoreMainFrame) await switchToMainFrame(run, session);
+        shouldRestoreMainFrame = false;
+        return { framed: true, ref: frameFieldRef };
+      }).pipe(
+        Effect.ensuring(
+          Effect.suspend(() =>
+            shouldRestoreMainFrame
+              ? switchToMainFrame(run, session).pipe(Effect.ignore)
+              : Effect.void
+          )
+        )
+      );
+
+      if (frameResult) return frameResult;
     }
-  }
-};
+  });
 
 type HostedPaymentFrame = {
   readonly exact: boolean;
@@ -554,78 +654,97 @@ type HostedPaymentClickTarget = {
   readonly value: string;
 };
 
-const clickHostedPaymentTarget = async (
+const clickHostedPaymentTarget = (
   run: Runner,
   session: string,
   label: string,
   targets: readonly HostedPaymentClickTarget[],
   options: { readonly optional?: boolean; readonly timeoutMs?: number } = {}
-) => {
-  const labels = targets.map((target) => target.value);
-
-  try {
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const labels = targets.map((target) => target.value);
     const timeoutMs = options.timeoutMs ?? getCheckoutTimeoutMs();
-    const target = options.optional
-      ? await waitForHostedPaymentClickTarget(
-          run,
-          session,
-          labels,
-          timeoutMs
-        ).catch(() => undefined)
-      : await waitForHostedPaymentClickTarget(run, session, labels, timeoutMs);
+    const target = yield* options.optional
+      ? waitForHostedPaymentClickTarget(run, session, labels, timeoutMs).pipe(
+          Effect.catch(() => Effect.succeed(undefined))
+        )
+      : waitForHostedPaymentClickTarget(run, session, labels, timeoutMs);
 
     if (!target) return;
 
-    try {
-      await run("agent-browser", ["--session", session, "click", target.ref], {
+    yield* runBrowserCommand(
+      `click Nexi ${label}`,
+      run,
+      session,
+      ["click", target.ref],
+      {
         logOutput: false,
         timeoutMs: 30_000,
-      });
-    } finally {
-      if (target.framed) await switchToMainFrame(run, session);
-    }
+      }
+    ).pipe(
+      Effect.ensuring(
+        target.framed
+          ? switchToMainFrame(run, session).pipe(Effect.ignore)
+          : Effect.void
+      )
+    );
 
-    await waitForHostedPaymentTargetToChange(
+    yield* waitForHostedPaymentTargetToChange(
       run,
       session,
       label,
       labels,
       timeoutMs
     );
-  } catch (error) {
-    if (options.optional) return;
+  }).pipe(
+    Effect.catch((error) => {
+      if (options.optional) return Effect.void;
 
-    const message = error instanceof Error ? error.message : String(error);
-    const snapshot = await readInteractiveSnapshot(run, session, true);
-    throw new Error(`${message}\n${summarizeHostedPaymentSnapshot(snapshot)}`);
-  }
-};
+      return readInteractiveSnapshot(run, session, true).pipe(
+        Effect.flatMap((snapshot) =>
+          Effect.fail(
+            toWorkspaceE2EError(
+              `click Nexi ${label}`,
+              new Error(
+                `${error.message}\n${summarizeHostedPaymentSnapshot(snapshot)}`
+              )
+            )
+          )
+        )
+      );
+    })
+  );
 
-const waitForHostedPaymentClickTarget = async (
+const waitForHostedPaymentClickTarget = (
   run: Runner,
   session: string,
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  poll(
-    async () => findHostedPaymentRef(run, session, labels, []),
+  pollEffect(
+    findHostedPaymentRef(run, session, labels, []),
     timeoutMs,
     `Nexi target ${labels.join(" / ")}`
   );
 
-const waitForHostedPaymentTargetToChange = async (
+const waitForHostedPaymentTargetToChange = (
   run: Runner,
   session: string,
   label: string,
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  poll(
-    async () => {
-      const stillPresent = await findHostedPaymentRef(run, session, labels, []);
-      if (stillPresent?.framed) await switchToMainFrame(run, session);
+  pollEffect(
+    Effect.gen(function* () {
+      const stillPresent = yield* findHostedPaymentRef(
+        run,
+        session,
+        labels,
+        []
+      );
+      if (stillPresent?.framed) yield* switchToMainFrame(run, session);
       return stillPresent ? undefined : true;
-    },
+    }),
     timeoutMs,
     `Nexi ${label} completion`
   );

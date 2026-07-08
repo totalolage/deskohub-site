@@ -1,19 +1,41 @@
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
 import type { WorkspaceE2EConfig } from "./config";
+import { pollEffect } from "./effects";
+import {
+  effectifyPromise,
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+} from "./errors";
 import type { Runner } from "./runtime";
-import { log, poll, redact } from "./runtime";
+import { log, redact } from "./runtime";
 
-export const readBrowserUrl = async (run: Runner, session: string) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "get", "url"],
-    { allowFailure: true, logOutput: false }
+const runBrowserCommand = (
+  operation: string,
+  run: Runner,
+  session: string,
+  args: string[],
+  options?: Parameters<Runner>[2]
+) =>
+  effectifyPromise(operation, () =>
+    run("agent-browser", ["--session", session, ...args], options)
   );
-  return result.exitCode === 0 ? result.stdout.trim() : undefined;
-};
+
+export const readBrowserUrl = (
+  run: Runner,
+  session: string
+): Effect.Effect<string | undefined, WorkspaceE2EError> =>
+  runBrowserCommand("read browser URL", run, session, ["get", "url"], {
+    allowFailure: true,
+    logOutput: false,
+  }).pipe(
+    Effect.map((result) =>
+      result.exitCode === 0 ? result.stdout.trim() : undefined
+    )
+  );
 
 export const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
   config.bypassSecret
@@ -26,34 +48,47 @@ export const getBrowserHeaderArgs = (config: WorkspaceE2EConfig) =>
       ]
     : [];
 
-export const openBrowserPage = async (
+export const openBrowserPage = (
   config: WorkspaceE2EConfig,
   run: Runner,
   session: string,
   url: string,
   options: { readonly timeoutMs?: number } = {}
 ) =>
-  run(
-    "agent-browser",
-    ["--session", session, ...getBrowserHeaderArgs(config), "open", url],
+  runBrowserCommand(
+    "open browser page",
+    run,
+    session,
+    [...getBrowserHeaderArgs(config), "open", url],
     { timeoutMs: options.timeoutMs ?? 60_000 }
   );
 
-export const readInteractiveSnapshot = async (
+export const evalBrowserScript = (
+  operation: string,
+  run: Runner,
+  session: string,
+  input: string,
+  options: Omit<NonNullable<Parameters<Runner>[2]>, "input"> = {}
+) =>
+  runBrowserCommand(operation, run, session, ["eval", "--stdin"], {
+    input,
+    ...options,
+  });
+
+export const readInteractiveSnapshot = (
   run: Runner,
   session: string,
   allowFailure = false
-) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "snapshot", "-i"],
+): Effect.Effect<string, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read interactive browser snapshot",
+    run,
+    session,
+    ["snapshot", "-i"],
     { allowFailure, logOutput: false, timeoutMs: 60_000 }
-  );
-  if (result.exitCode !== 0) return "";
-  return result.stdout;
-};
+  ).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
 
-export const waitForInteractiveSnapshot = async ({
+export const waitForInteractiveSnapshot = ({
   description,
   matches,
   run,
@@ -66,35 +101,27 @@ export const waitForInteractiveSnapshot = async ({
   session: string;
   timeoutMs: number;
 }) =>
-  poll(
-    async () => {
-      const snapshot = await readInteractiveSnapshot(run, session, true);
-      return matches(snapshot) ? snapshot : undefined;
-    },
+  pollEffect(
+    readInteractiveSnapshot(run, session, true).pipe(
+      Effect.map((snapshot) => (matches(snapshot) ? snapshot : undefined))
+    ),
     timeoutMs,
     description
   );
 
-export const readBrowserText = async (
+export const readBrowserText = (
   run: Runner,
   session: string,
   allowFailure = false
-) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "eval", "--stdin"],
-    {
-      allowFailure,
-      input: browserTextScript,
-      logOutput: false,
-      timeoutMs: 30_000,
-    }
-  );
-  if (result.exitCode !== 0) return "";
-  return result.stdout;
-};
+): Effect.Effect<string, WorkspaceE2EError> =>
+  runBrowserCommand("read browser text", run, session, ["eval", "--stdin"], {
+    allowFailure,
+    input: browserTextScript,
+    logOutput: false,
+    timeoutMs: 30_000,
+  }).pipe(Effect.map((result) => (result.exitCode === 0 ? result.stdout : "")));
 
-export const waitForBrowserText = async ({
+export const waitForBrowserText = ({
   description,
   matches,
   run,
@@ -107,44 +134,50 @@ export const waitForBrowserText = async ({
   session: string;
   timeoutMs: number;
 }) =>
-  poll(
-    async () => {
-      const text = await readBrowserText(run, session, true);
-      return matches(text) ? text : undefined;
-    },
+  pollEffect(
+    readBrowserText(run, session, true).pipe(
+      Effect.map((text) => (matches(text) ? text : undefined))
+    ),
     timeoutMs,
     description
   );
 
-export const startBrowserDiagnostics = async (run: Runner, session: string) => {
-  const commands = [
-    ["console", "--clear"],
-    ["errors", "--clear"],
-    ["network", "requests", "--clear"],
-  ];
+export const startBrowserDiagnostics = (
+  run: Runner,
+  session: string
+): Effect.Effect<boolean, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const commands = [
+      ["console", "--clear"],
+      ["errors", "--clear"],
+      ["network", "requests", "--clear"],
+    ];
 
-  for (const args of commands)
-    await run("agent-browser", ["--session", session, ...args], {
-      allowFailure: true,
-      logOutput: false,
-      timeoutMs: 30_000,
-    });
+    yield* Effect.forEach(commands, (args) =>
+      runBrowserCommand(`clear browser ${args.join(" ")}`, run, session, args, {
+        allowFailure: true,
+        logOutput: false,
+        timeoutMs: 30_000,
+      })
+    );
 
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "network", "har", "start"],
-    { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
-  );
+    const result = yield* runBrowserCommand(
+      "start browser HAR",
+      run,
+      session,
+      ["network", "har", "start"],
+      { allowFailure: true, logOutput: false, timeoutMs: 30_000 }
+    );
 
-  if (result.exitCode !== 0) {
-    log("Browser HAR capture unavailable; continuing checkout e2e");
-    return false;
-  }
+    if (result.exitCode !== 0) {
+      log("Browser HAR capture unavailable; continuing checkout e2e");
+      return false;
+    }
 
-  return true;
-};
+    return true;
+  });
 
-export const captureBrowserFailureArtifacts = async ({
+export const captureBrowserFailureArtifacts = ({
   artifactDir,
   cause,
   harStarted,
@@ -156,120 +189,148 @@ export const captureBrowserFailureArtifacts = async ({
   harStarted: boolean;
   run: Runner;
   session: string;
-}) => {
-  let harStopped = false;
+}): Effect.Effect<boolean, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    let harStopped = false;
 
-  try {
-    await mkdir(artifactDir, { recursive: true });
-    await writeTextArtifact(
+    yield* effectifyPromise("create browser artifact directory", () =>
+      mkdir(artifactDir, { recursive: true })
+    );
+    yield* writeTextArtifact(
       artifactDir,
       "error.txt",
       cause instanceof Error ? (cause.stack ?? cause.message) : String(cause)
     );
-    await writeTextArtifact(
+    yield* writeTextArtifact(
       artifactDir,
       "browser-diagnostics.txt",
-      await readBrowserDiagnostics(run, session)
+      yield* readBrowserDiagnostics(run, session)
     );
-    await writeCommandArtifact(artifactDir, "network-requests.txt", run, [
+    yield* writeCommandArtifact(artifactDir, "network-requests.txt", run, [
       "--session",
       session,
       "network",
       "requests",
     ]);
-    await writeCommandArtifact(artifactDir, "console.txt", run, [
+    yield* writeCommandArtifact(artifactDir, "console.txt", run, [
       "--session",
       session,
       "console",
     ]);
-    await writeCommandArtifact(artifactDir, "errors.txt", run, [
+    yield* writeCommandArtifact(artifactDir, "errors.txt", run, [
       "--session",
       session,
       "errors",
     ]);
-    await writeTextArtifact(
+    yield* writeTextArtifact(
       artifactDir,
       "snapshot-interactive.txt",
-      await readInteractiveSnapshot(run, session, true)
+      yield* readInteractiveSnapshot(run, session, true)
     );
+
     if (harStarted) {
       const rawHarPath = resolve(tmpdir(), `${session}-network.har`);
-      harStopped = await stopBrowserHar(run, session, rawHarPath);
-      try {
-        if (harStopped)
-          await writeTextArtifact(
-            artifactDir,
-            "network.har",
-            sanitizeHarArtifact(await readFile(rawHarPath, "utf8"))
-          );
-      } finally {
-        await rm(rawHarPath, { force: true });
-      }
+      harStopped = yield* stopBrowserHar(run, session, rawHarPath);
+      yield* Effect.gen(function* () {
+        if (!harStopped) return;
+        const har = yield* effectifyPromise("read browser HAR artifact", () =>
+          readFile(rawHarPath, "utf8")
+        );
+        yield* writeTextArtifact(
+          artifactDir,
+          "network.har",
+          sanitizeHarArtifact(har)
+        );
+      }).pipe(
+        Effect.ensuring(
+          effectifyPromise("remove raw browser HAR artifact", () =>
+            rm(rawHarPath, { force: true })
+          ).pipe(Effect.ignore)
+        )
+      );
     }
 
     log(`Checkout e2e failure artifacts saved to ${artifactDir}`);
-  } catch (error) {
-    log(
-      `Checkout e2e failure artifact capture failed: ${redact(String(error))}`
-    );
-  }
+    return harStopped;
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.sync(() => {
+        log(
+          `Checkout e2e failure artifact capture failed: ${redact(String(error))}`
+        );
+        return false;
+      })
+    )
+  );
 
-  return harStopped;
-};
-
-export const stopBrowserHar = async (
+export const stopBrowserHar = (
   run: Runner,
   session: string,
   path?: string
-) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "network", "har", "stop", ...(path ? [path] : [])],
+): Effect.Effect<boolean, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "stop browser HAR",
+    run,
+    session,
+    ["network", "har", "stop", ...(path ? [path] : [])],
     { allowFailure: true, logOutput: false, timeoutMs: 60_000 }
-  );
+  ).pipe(Effect.map((result) => result.exitCode === 0));
 
-  return result.exitCode === 0;
-};
-
-const writeCommandArtifact = async (
+const writeCommandArtifact = (
   artifactDir: string,
   fileName: string,
   run: Runner,
   args: string[]
-) => {
-  const result = await run("agent-browser", args, {
-    allowFailure: true,
-    logOutput: false,
-    timeoutMs: 60_000,
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    const result = yield* effectifyPromise(`write ${fileName} artifact`, () =>
+      run("agent-browser", args, {
+        allowFailure: true,
+        logOutput: false,
+        timeoutMs: 60_000,
+      })
+    );
+    const text = [
+      `exitCode: ${result.exitCode}`,
+      result.stdout ? `stdout:\n${result.stdout}` : undefined,
+      result.stderr ? `stderr:\n${result.stderr}` : undefined,
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    yield* writeTextArtifact(artifactDir, fileName, text);
   });
-  const text = [
-    `exitCode: ${result.exitCode}`,
-    result.stdout ? `stdout:\n${result.stdout}` : undefined,
-    result.stderr ? `stderr:\n${result.stderr}` : undefined,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
 
-  await writeTextArtifact(artifactDir, fileName, text);
-};
-
-const writeTextArtifact = async (
+const writeTextArtifact = (
   artifactDir: string,
   fileName: string,
   text: string
-) =>
-  writeFile(
-    resolve(artifactDir, fileName),
-    `${sanitizeArtifactText(text.trim())}\n`
+): Effect.Effect<void, WorkspaceE2EError> =>
+  effectifyPromise(`write ${fileName} artifact`, () =>
+    writeFile(
+      resolve(artifactDir, fileName),
+      `${sanitizeArtifactText(text.trim())}\n`
+    )
   );
 
-export const switchToMainFrame = async (run: Runner, session: string) => {
-  await run("agent-browser", ["--session", session, "frame", "main"], {
+export const switchToMainFrame = (
+  run: Runner,
+  session: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("switch to main frame", run, session, ["frame", "main"], {
     allowFailure: true,
     logOutput: false,
     timeoutMs: 30_000,
-  });
-};
+  }).pipe(Effect.asVoid);
+
+export const closeBrowserSession = (
+  run: Runner,
+  session: string
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("close browser session", run, session, ["close"], {
+    allowFailure: true,
+    logOutput: false,
+  }).pipe(Effect.asVoid);
 
 export const findFirstTextFieldRef = (snapshot: string) => {
   for (const line of snapshot.split("\n")) {
@@ -437,7 +498,7 @@ export const findEnabledSnapshotRef = (
   }
 };
 
-export const requireSnapshotRef = async ({
+export const requireSnapshotRef = ({
   description,
   labels,
   run,
@@ -449,22 +510,29 @@ export const requireSnapshotRef = async ({
   run: Runner;
   session: string;
   timeoutMs?: number;
-}) => {
-  try {
-    return await poll(
-      async () =>
-        findSnapshotRef(await readInteractiveSnapshot(run, session), labels),
-      timeoutMs,
-      description
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const snapshot = await readInteractiveSnapshot(run, session, true);
-    throw new Error(`${message}\n${snapshot}`);
-  }
-};
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  pollEffect(
+    readInteractiveSnapshot(run, session).pipe(
+      Effect.map((snapshot) => findSnapshotRef(snapshot, labels))
+    ),
+    timeoutMs,
+    description
+  ).pipe(
+    Effect.catch((error) =>
+      readInteractiveSnapshot(run, session, true).pipe(
+        Effect.flatMap((snapshot) =>
+          Effect.fail(
+            toWorkspaceE2EError(
+              description,
+              new Error(`${error.message}\n${snapshot}`)
+            )
+          )
+        )
+      )
+    )
+  );
 
-export const requireEnabledSnapshotRef = async ({
+export const requireEnabledSnapshotRef = ({
   description,
   labels,
   run,
@@ -476,29 +544,33 @@ export const requireEnabledSnapshotRef = async ({
   run: Runner;
   session: string;
   timeoutMs?: number;
-}) => {
-  try {
-    return await poll(
-      async () =>
-        findEnabledSnapshotRef(
-          await readInteractiveSnapshot(run, session),
-          labels
-        ),
-      timeoutMs,
-      description
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const snapshot = await readInteractiveSnapshot(run, session, true);
-    throw new Error(`${message}\n${snapshot}`);
-  }
-};
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  pollEffect(
+    readInteractiveSnapshot(run, session).pipe(
+      Effect.map((snapshot) => findEnabledSnapshotRef(snapshot, labels))
+    ),
+    timeoutMs,
+    description
+  ).pipe(
+    Effect.catch((error) =>
+      readInteractiveSnapshot(run, session, true).pipe(
+        Effect.flatMap((snapshot) =>
+          Effect.fail(
+            toWorkspaceE2EError(
+              description,
+              new Error(`${error.message}\n${snapshot}`)
+            )
+          )
+        )
+      )
+    )
+  );
 
 export const getSnapshotRef = (line: string) =>
   line.match(/\[ref=(e\d+)\]/)?.[1]?.replace(/^/, "@") ??
   line.match(/@e\d+/)?.[0];
 
-export const waitForBrowserUrl = async ({
+export const waitForBrowserUrl = ({
   description,
   matches,
   run,
@@ -510,41 +582,47 @@ export const waitForBrowserUrl = async ({
   run: Runner;
   session: string;
   timeoutMs: number;
-}) => {
-  try {
-    const url = await poll(
-      async () => {
-        const result = await run(
-          "agent-browser",
-          ["--session", session, "get", "url"],
-          { allowFailure: true, logOutput: false }
-        );
-        const url = result.stdout.trim();
-        return result.exitCode === 0 && matches(url) ? url : undefined;
-      },
-      timeoutMs,
-      description
-    );
-    log(`Reached ${description}`);
-    return url;
-  } catch (error) {
-    const diagnostics = await readBrowserDiagnostics(run, session);
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${message}\n${diagnostics}`);
-  }
-};
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  pollEffect(
+    readBrowserUrl(run, session).pipe(
+      Effect.map((url) => (url && matches(url) ? url : undefined))
+    ),
+    timeoutMs,
+    description
+  ).pipe(
+    Effect.tap(() => Effect.sync(() => log(`Reached ${description}`))),
+    Effect.catch((error) =>
+      readBrowserDiagnostics(run, session).pipe(
+        Effect.flatMap((diagnostics) =>
+          Effect.fail(
+            toWorkspaceE2EError(
+              description,
+              new Error(`${error.message}\n${diagnostics}`)
+            )
+          )
+        )
+      )
+    )
+  );
 
-const readBrowserDiagnostics = async (run: Runner, session: string) => {
-  const result = await run(
-    "agent-browser",
-    ["--session", session, "eval", "--stdin"],
+const readBrowserDiagnostics = (
+  run: Runner,
+  session: string
+): Effect.Effect<string, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "read browser diagnostics",
+    run,
+    session,
+    ["eval", "--stdin"],
     {
       allowFailure: true,
       input: browserDiagnosticsScript,
       logOutput: false,
     }
+  ).pipe(
+    Effect.map((result) =>
+      result.exitCode === 0
+        ? `Browser diagnostics:\n${result.stdout}`
+        : "Browser diagnostics unavailable"
+    )
   );
-
-  if (result.exitCode !== 0) return "Browser diagnostics unavailable";
-  return `Browser diagnostics:\n${result.stdout}`;
-};

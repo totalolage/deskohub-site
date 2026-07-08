@@ -1,10 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import {
-  effectifyPromise,
-  effectifySync,
-  type WorkspaceE2EError,
-} from "../errors";
+import { effectifySync, type WorkspaceE2EError } from "../errors";
 import { extractDeploymentUrl } from "../runtime";
 import {
   assertWebhookEndpoint,
@@ -59,12 +55,8 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
       return {
         assertWebhookEndpoints: (config) =>
           Effect.gen(function* () {
-            yield* effectifyPromise("check Nexi webhook endpoint", () =>
-              assertWebhookEndpoint(config, "/api/webhooks/nexi")
-            );
-            yield* effectifyPromise("check Resend webhook endpoint", () =>
-              assertWebhookEndpoint(config, "/api/webhooks/resend")
-            );
+            yield* assertWebhookEndpoint(config, "/api/webhooks/nexi");
+            yield* assertWebhookEndpoint(config, "/api/webhooks/resend");
           }),
         deployFreshPreview: (config, datasourceConfig) =>
           Effect.gen(function* () {
@@ -91,10 +83,7 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
               "extract Vercel deployment URL",
               () => extractDeploymentUrl(deploy.stdout)
             );
-            const deployment = yield* effectifyPromise(
-              "read Vercel deployment",
-              () => getDeployment(config, previewUrl)
-            );
+            const deployment = yield* getDeployment(config, previewUrl);
 
             return {
               id: deployment.id,
@@ -104,23 +93,16 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
           }),
         prepareAlias: (config, deploymentId) =>
           Effect.gen(function* () {
-            const shouldAssign = yield* effectifyPromise(
-              "record Vercel alias preflight",
-              () => recordAliasPreflight(config, deploymentId)
+            const shouldAssign = yield* recordAliasPreflight(
+              config,
+              deploymentId
             );
-            if (shouldAssign)
-              yield* effectifyPromise("assign Vercel alias", () =>
-                assignAlias(config, deploymentId)
-              );
-            yield* effectifyPromise("verify Vercel alias", () =>
-              verifyAlias(config, deploymentId)
-            );
+            if (shouldAssign) yield* assignAlias(config, deploymentId);
+            yield* verifyAlias(config, deploymentId);
           }),
         pullPreviewEnv: (config) =>
           Effect.gen(function* () {
-            yield* effectifyPromise("write Vercel project link", () =>
-              writeVercelProjectLink(config)
-            );
+            yield* writeVercelProjectLink(config);
             yield* commandRunner.run("git", ["status", "--short"], {
               cwd: paths.repoRoot,
             });

@@ -81,8 +81,7 @@ export class WorkspaceE2EEnvFileService extends Context.Service<
     this,
     Effect.gen(function* () {
       const paths = yield* WorkspaceE2EPathService;
-      const load = (path: string) =>
-        effectifyPromise(`load env file ${path}`, () => loadEnvFile(path));
+      const load = (path: string) => loadEnvFile(path);
 
       return {
         load,

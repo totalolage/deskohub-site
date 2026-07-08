@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Effect, Schedule } from "effect";
+import { Effect } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 
 export const POLL_INTERVAL_MS = 5_000;
@@ -142,51 +142,27 @@ export const parseUrl = (value: string) => {
   }
 };
 
-export const poll = async <T>(
-  fn: () => Promise<T | undefined>,
-  timeoutMs: number,
-  label: string
-) =>
-  Effect.runPromise(
-    Effect.tryPromise({ try: fn, catch: (cause) => cause }).pipe(
-      Effect.repeat({
-        schedule: Schedule.spaced(`${POLL_INTERVAL_MS} millis`),
-        while: (result) => result === undefined,
-      }),
-      Effect.timeoutOrElse({
-        duration: `${timeoutMs} millis`,
-        orElse: () => Effect.fail(new Error(`Timed out waiting for ${label}`)),
-      }),
-      Effect.flatMap((result) =>
-        result === undefined
-          ? Effect.fail(new Error(`Timed out waiting for ${label}`))
-          : Effect.succeed(result)
-      )
-    )
-  );
+export const loadEnvFile = (path: string) =>
+  Effect.gen(function* () {
+    const values = new Map<string, string>();
+    const text = yield* Effect.promise(() =>
+      readFile(path, "utf8").catch(() => undefined)
+    );
+    if (text === undefined) return values;
 
-export const loadEnvFile = async (path: string) => {
-  const values = new Map<string, string>();
-  let text = "";
-  try {
-    text = await readFile(path, "utf8");
-  } catch {
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const equals = trimmed.indexOf("=");
+      if (equals === -1) continue;
+      const key = trimmed.slice(0, equals).trim();
+      const value = unquoteEnv(trimmed.slice(equals + 1).trim());
+      values.set(key, value);
+      if (!env(key)) process.env[key] = value;
+    }
+
     return values;
-  }
-
-  for (const line of text.split(/\r?\n/)) {
-    const trimmed = line.trim();
-    if (!trimmed || trimmed.startsWith("#")) continue;
-    const equals = trimmed.indexOf("=");
-    if (equals === -1) continue;
-    const key = trimmed.slice(0, equals).trim();
-    const value = unquoteEnv(trimmed.slice(equals + 1).trim());
-    values.set(key, value);
-    if (!env(key)) process.env[key] = value;
-  }
-
-  return values;
-};
+  });
 
 const unquoteEnv = (value: string) => {
   if (
