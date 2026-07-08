@@ -3,6 +3,7 @@ import {
   clickBrowserElement,
   fillBrowserField,
   openBrowserPage,
+  requireEnabledSnapshotRef,
   waitForBrowserText,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -69,12 +70,16 @@ export const assertContactForm = ({
       data.message,
       { timeoutMs: getCheckoutTimeoutMs() }
     );
-    yield* clickBrowserElement(
+    const submitRef = yield* requireEnabledSnapshotRef({
+      description: "contact submit button",
+      labels: ["Send message"],
       run,
       session,
-      '#contact-form button[type="submit"]',
-      { timeoutMs: getCheckoutTimeoutMs() }
-    );
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+    yield* clickBrowserElement(run, session, submitRef, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
     yield* waitForBrowserText({
       description: "contact form success",
       matches: (text) => /Your message has been sent\./i.test(text),
