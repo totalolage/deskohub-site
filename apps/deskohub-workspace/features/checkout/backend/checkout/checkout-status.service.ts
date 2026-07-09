@@ -22,6 +22,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   type StoredCoworkReservationDetails,
+  type StoredMeetingRoomReservationDetails,
   storedWorkspaceReservationDetailsSchema,
 } from "@/features/reservation/schemas/stored-reservation-details";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -60,9 +61,8 @@ type WorkspaceCheckoutStatusSummaryBase = {
 type CoworkCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase &
   StoredCoworkReservationDetails;
 
-type MeetingRoomCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
-  readonly _tag: "meeting-room";
-};
+type MeetingRoomCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase &
+  StoredMeetingRoomReservationDetails;
 
 export type WorkspaceCheckoutStatusSummary =
   | CoworkCheckoutStatusSummary
@@ -88,7 +88,7 @@ type CheckoutStatusViewModelBase = {
 
 export type CheckoutCoworkStatusViewModel = CheckoutStatusViewModelBase & {
   readonly _tag: "cowork";
-  readonly summary?: CoworkCheckoutStatusSummary;
+  readonly summary: CoworkCheckoutStatusSummary;
 };
 
 export type CheckoutMeetingRoomStatusViewModel = CheckoutStatusViewModelBase & {
@@ -96,9 +96,14 @@ export type CheckoutMeetingRoomStatusViewModel = CheckoutStatusViewModelBase & {
   readonly summary: MeetingRoomCheckoutStatusSummary;
 };
 
+export type CheckoutUnknownStatusViewModel = CheckoutStatusViewModelBase & {
+  readonly _tag: "unknown";
+};
+
 export type CheckoutStatusViewModel =
   | CheckoutCoworkStatusViewModel
-  | CheckoutMeetingRoomStatusViewModel;
+  | CheckoutMeetingRoomStatusViewModel
+  | CheckoutUnknownStatusViewModel;
 
 type CheckoutStatusReconstruction = {
   readonly summary?: WorkspaceCheckoutStatusSummary;
@@ -367,12 +372,12 @@ export const CheckoutStatusServiceLive = Layer.effect(
         yield* Effect.logDebug("Checkout status reservation lookup completed");
 
         if (!reservation) {
-          const result = {
-            _tag: "cowork",
+          const result: CheckoutStatusViewModel = {
+            _tag: "unknown",
             orderId: input.orderId,
             returnOutcome: input.returnOutcome,
             status: "not_found",
-          } satisfies CheckoutStatusViewModel;
+          };
 
           yield* Effect.annotateLogsScoped({ result });
           yield* Effect.logInfo("Checkout status lookup completed");
@@ -399,41 +404,50 @@ export const CheckoutStatusServiceLive = Layer.effect(
             })
           );
 
-        const result = Match.value(reconstruction.summary).pipe(
-          Match.tag("meeting-room", (summary) => ({
-            _tag: "meeting-room" as const,
-            orderId: reservation.id,
-            returnOutcome: input.returnOutcome,
-            status: statusKind,
-            paymentStatus: reservation.paymentState,
-            fulfillmentStatus: reservation.fulfillmentState,
-            summary,
-            ...(reconstruction.tableMap
-              ? { tableMap: reconstruction.tableMap }
-              : {}),
-            ...(statusKind === "fulfillment_failed" &&
-            reconstruction.supportContactPrefill
-              ? { supportContactPrefill: reconstruction.supportContactPrefill }
-              : {}),
-          })),
-          Match.orElse((summary) => ({
-            _tag: "cowork" as const,
-            orderId: reservation.id,
-            returnOutcome: input.returnOutcome,
-            status: statusKind,
-            paymentStatus: reservation.paymentState,
-            fulfillmentStatus: reservation.fulfillmentState,
-            ...(summary ? { summary } : {}),
-            ...(reconstruction.tableMap
-              ? { tableMap: reconstruction.tableMap }
-              : {}),
-            ...(statusKind === "fulfillment_failed" &&
-            reconstruction.supportContactPrefill
-              ? { supportContactPrefill: reconstruction.supportContactPrefill }
-              : {}),
-          })),
-          (value) => value satisfies CheckoutStatusViewModel
-        );
+        const resultBase = {
+          orderId: reservation.id,
+          returnOutcome: input.returnOutcome,
+          status: statusKind,
+          paymentStatus: reservation.paymentState,
+          fulfillmentStatus: reservation.fulfillmentState,
+          ...(reconstruction.tableMap
+            ? { tableMap: reconstruction.tableMap }
+            : {}),
+          ...(statusKind === "fulfillment_failed" &&
+          reconstruction.supportContactPrefill
+            ? {
+                supportContactPrefill: reconstruction.supportContactPrefill,
+              }
+            : {}),
+        } satisfies CheckoutStatusViewModelBase;
+
+        const result: CheckoutStatusViewModel =
+          reconstruction.summary === undefined
+            ? {
+                _tag: "unknown",
+                ...resultBase,
+              }
+            : Match.value(reconstruction.summary).pipe(
+                Match.tag(
+                  "meeting-room",
+                  (summary) =>
+                    ({
+                      _tag: "meeting-room" as const,
+                      ...resultBase,
+                      summary,
+                    }) satisfies CheckoutMeetingRoomStatusViewModel
+                ),
+                Match.tag(
+                  "cowork",
+                  (summary) =>
+                    ({
+                      _tag: "cowork" as const,
+                      ...resultBase,
+                      summary,
+                    }) satisfies CheckoutCoworkStatusViewModel
+                ),
+                Match.exhaustive
+              );
 
         yield* Effect.annotateLogsScoped({ result });
         yield* Effect.logInfo("Checkout status lookup completed");

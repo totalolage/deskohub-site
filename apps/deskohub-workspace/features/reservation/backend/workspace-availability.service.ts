@@ -285,8 +285,11 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
 
         return yield* new WorkspaceTableUnavailableError({
           date: unavailableDate,
-          tier:
-            query._tag === "meeting-room" ? "meeting-room" : query.entryTier,
+          tier: Match.value(query).pipe(
+            Match.tag("meeting-room", () => "meeting-room" as const),
+            Match.tag("cowork", (coworkQuery) => coworkQuery.entryTier),
+            Match.exhaustive
+          ),
           ...(query._tag === "cowork" && query.monitorOption
             ? { monitorOption: query.monitorOption }
             : {}),

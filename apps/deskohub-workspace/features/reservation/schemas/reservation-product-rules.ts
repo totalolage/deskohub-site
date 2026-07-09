@@ -1,5 +1,6 @@
 import "@/shared/polyfills/temporal";
 
+import { Match } from "effect";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceMeetingRoomDuration,
@@ -13,24 +14,70 @@ import {
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 
-export type ReservationProductRuleInput = Partial<ReservationInterval> & {
-  readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
-  readonly coffee?: boolean;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
-};
+export type ReservationProductRuleInput = Partial<ReservationInterval> &
+  (
+    | {
+        readonly _tag: "cowork";
+        readonly tier: WorkspaceCoworkProductTier;
+        readonly coffee?: boolean;
+        readonly monitorOption?: WorkspaceProductMonitorOption;
+      }
+    | {
+        readonly _tag: "meeting-room";
+        readonly coffee?: boolean;
+        readonly monitorOption?: WorkspaceProductMonitorOption;
+      }
+    | {
+        readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
+        readonly coffee?: boolean;
+        readonly monitorOption?: WorkspaceProductMonitorOption;
+      }
+  );
 
 export type ReservationProductRuleIssue = {
-  readonly path: keyof ReservationProductRuleInput;
+  readonly path:
+    | "entryTier"
+    | "tier"
+    | "coffee"
+    | "monitorOption"
+    | "endsAt"
+    | "startsAt";
   readonly message: string;
 };
+
+const getProductRuleReservationKind = (input: ReservationProductRuleInput) =>
+  Match.value(input).pipe(
+    Match.tag("meeting-room", () => ({ _tag: "meeting-room" as const })),
+    Match.tag("cowork", (coworkInput) => ({
+      _tag: "cowork" as const,
+      tier: coworkInput.tier,
+    })),
+    Match.when({ entryTier: "meeting-room" }, () => ({
+      _tag: "meeting-room" as const,
+    })),
+    Match.when({ entryTier: "basic" }, (coworkInput) => ({
+      _tag: "cowork" as const,
+      tier: coworkInput.entryTier,
+    })),
+    Match.when({ entryTier: "plus" }, (coworkInput) => ({
+      _tag: "cowork" as const,
+      tier: coworkInput.entryTier,
+    })),
+    Match.when({ entryTier: "profi" }, (coworkInput) => ({
+      _tag: "cowork" as const,
+      tier: coworkInput.entryTier,
+    })),
+    Match.exhaustive
+  );
 
 export const getReservationProductRuleIssue = (
   input: ReservationProductRuleInput
 ): ReservationProductRuleIssue | null => {
   const interval = unsafeNormalizeReservationInterval(input);
   const durationMinutes = getReservationDurationMinutes(interval);
+  const reservationKind = getProductRuleReservationKind(input);
 
-  if (input.entryTier === "meeting-room") {
+  if (reservationKind._tag === "meeting-room") {
     if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
       return {
         path: "endsAt",
@@ -62,7 +109,7 @@ export const getReservationProductRuleIssue = (
     return null;
   }
 
-  if (isWorkspaceCoworkProductTier(input.entryTier)) {
+  if (isWorkspaceCoworkProductTier(reservationKind.tier)) {
     if (!isDefaultReservationInterval(interval)) {
       return {
         path: "endsAt",
@@ -74,7 +121,7 @@ export const getReservationProductRuleIssue = (
   }
 
   return {
-    path: "entryTier",
+    path: "_tag" in input ? "tier" : "entryTier",
     message: "Unknown reservation product.",
   };
 };

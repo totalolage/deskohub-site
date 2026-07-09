@@ -5,8 +5,7 @@ UPDATE "workspace_reservations"
 SET "reservation_details" = CASE
 	WHEN "product_tier" = 'basic' THEN jsonb_build_object('_tag', 'cowork', 'tier', 'basic', 'coffee', "product_coffee")
 	WHEN "product_tier" = 'plus' THEN jsonb_build_object('_tag', 'cowork', 'tier', 'plus', 'coffee', true)
-	WHEN "product_tier" = 'profi' THEN jsonb_build_object('_tag', 'cowork', 'tier', 'profi', 'coffee', true, 'monitorOption', "product_monitor_option")
-	ELSE jsonb_build_object('_tag', 'meeting-room')
+	WHEN "product_tier" = 'profi' AND "product_monitor_option" IS NOT NULL THEN jsonb_build_object('_tag', 'cowork', 'tier', 'profi', 'coffee', true, 'monitorOption', "product_monitor_option")
 END;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" ALTER COLUMN "reservation_details" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "workspace_reservations" DROP COLUMN "product_tier";--> statement-breakpoint

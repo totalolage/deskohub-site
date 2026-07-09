@@ -15,7 +15,7 @@ import {
 import { CheckoutStatusPage } from "./checkout-status-page";
 
 const baseStatus = {
-  _tag: "cowork",
+  _tag: "unknown",
   orderId: "reservation-status-page",
   returnOutcome: "success",
   status: "fulfilled",
@@ -42,6 +42,7 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          _tag: "cowork",
           summary: {
             _tag: "cowork",
             tier: "profi",
@@ -107,7 +108,7 @@ describe("CheckoutStatusPage", () => {
       <CheckoutStatusPage
         locale="en-US"
         status={{
-          _tag: "cowork",
+          _tag: "unknown",
           orderId: "test-order",
           returnOutcome: "unknown",
           status: "not_found",
@@ -158,6 +159,7 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          _tag: "cowork",
           status: "fulfillment_failed",
           fulfillmentStatus: "failed",
           supportContactPrefill: {

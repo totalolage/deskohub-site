@@ -11,17 +11,18 @@ import { z } from "zod/v4";
 import type {
   CheckoutSummaryChangedKeys,
   WorkspaceCheckoutOrder,
+  WorkspaceCheckoutOrderInput,
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
-import {
-  workspaceCoworkProductTiers,
-  workspaceProductMonitorOptions,
-} from "@/features/checkout/product-catalog";
 import { checkoutReturnStateJsonSchema } from "@/features/checkout/schemas/checkout-return-state";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
+import {
+  type CheckoutSummary,
+  checkoutSummarySchema,
+} from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
 import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
+import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 
 export const payStateSchemaVersion = 1 as const;
 export const payStateAlgorithm = "A256GCM" as const;
@@ -35,16 +36,29 @@ const keyByteLength = 32;
 
 const CheckoutOrderSchema = EffectSchema.Union([
   EffectSchema.Struct({
-    entryTier: EffectSchema.Literals(workspaceCoworkProductTiers),
+    _tag: EffectSchema.Literal("cowork"),
+    tier: EffectSchema.Literal("basic"),
     startsAt: EffectSchema.optional(EffectSchema.String),
     endsAt: EffectSchema.optional(EffectSchema.String),
     coffee: EffectSchema.Boolean,
-    monitorOption: EffectSchema.optional(
-      EffectSchema.Literals(workspaceProductMonitorOptions)
-    ),
   }),
   EffectSchema.Struct({
-    entryTier: EffectSchema.Literal("meeting-room"),
+    _tag: EffectSchema.Literal("cowork"),
+    tier: EffectSchema.Literal("plus"),
+    startsAt: EffectSchema.optional(EffectSchema.String),
+    endsAt: EffectSchema.optional(EffectSchema.String),
+    coffee: EffectSchema.Literal(true),
+  }),
+  EffectSchema.Struct({
+    _tag: EffectSchema.Literal("cowork"),
+    tier: EffectSchema.Literal("profi"),
+    startsAt: EffectSchema.optional(EffectSchema.String),
+    endsAt: EffectSchema.optional(EffectSchema.String),
+    coffee: EffectSchema.Literal(true),
+    monitorOption: workspaceProductMonitorOptionEffectSchema,
+  }),
+  EffectSchema.Struct({
+    _tag: EffectSchema.Literal("meeting-room"),
     startsAt: EffectSchema.NonEmptyString,
     endsAt: EffectSchema.NonEmptyString,
   }),
@@ -68,12 +82,16 @@ const checkoutOrderSchema = z
     });
   });
 
+const quoteSnapshotSummarySchema = z.custom<CheckoutSummary>(
+  (value) => checkoutSummarySchema.safeParse(value).success
+);
+
 const quoteSnapshotSchema = z.object({
   schema: z.literal("workspace-checkout-quote"),
   schemaVersion: z.literal(1),
   fingerprint: z.string().min(1),
   order: checkoutOrderSchema,
-  summary: checkoutSummarySchema,
+  summary: quoteSnapshotSummarySchema,
   payment: z.object({
     expectedPrice: nonNegativeWorkspaceMoneySchema,
     undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
@@ -153,7 +171,7 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
-  readonly reservation: WorkspaceCheckoutOrder & {
+  readonly reservation: WorkspaceCheckoutOrderInput & {
     readonly name: string;
     readonly email: string;
     readonly phone: string;

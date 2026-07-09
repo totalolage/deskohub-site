@@ -1,20 +1,17 @@
-import { Data, Schema as EffectSchema, Option } from "effect";
+import { Data, Schema as EffectSchema, Match, Option } from "effect";
 import { z } from "zod/v4";
 import {
-  getWorkspaceProductByTier,
-  type WorkspaceProductMonitorOption,
-  workspaceCoworkProductTiers,
-  workspaceProductMonitorOptions,
-} from "@/features/checkout/product-catalog";
-import { checkoutSummarySectionSchema } from "@/features/checkout/schemas/checkout-summary";
+  type CheckoutSummarySection,
+  isCheckoutSummarySection,
+} from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
-import { getReservationProductMonitorOption } from "@/features/reservation/schemas/reservation";
 import {
   getReservationIntervalValidationIssue,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
+import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 
 export const legalDocumentKeys = [
   "termsAndConditions",
@@ -91,45 +88,35 @@ const CheckoutDetailsReservationBaseSchema = EffectSchema.Struct({
   endsAt: EffectSchema.NonEmptyString,
 });
 
-type CheckoutDetailsReservationBase =
-  typeof CheckoutDetailsReservationBaseSchema.Type;
-
-type CheckoutDetailsReservationDraft =
-  | (CheckoutDetailsReservationBase & {
-      readonly _tag: "cowork";
-      readonly tier: (typeof workspaceCoworkProductTiers)[number];
-      readonly coffee: boolean;
-      readonly monitorOption?: WorkspaceProductMonitorOption;
-    })
-  | (CheckoutDetailsReservationBase & {
-      readonly _tag: "meeting-room";
-    });
-type CheckoutDetailsReservation =
-  | (CheckoutDetailsReservationBase & {
-      readonly _tag: "cowork";
-      readonly tier: (typeof workspaceCoworkProductTiers)[number];
-      readonly coffee: boolean;
-      readonly monitorOption?: WorkspaceProductMonitorOption;
-    })
-  | (CheckoutDetailsReservationBase & {
-      readonly _tag: "meeting-room";
-    });
-
 const CheckoutDetailsReservationSchema = EffectSchema.Union([
   EffectSchema.Struct({
     ...CheckoutDetailsReservationBaseSchema.fields,
     _tag: EffectSchema.Literal("cowork"),
-    tier: EffectSchema.Literals(workspaceCoworkProductTiers),
+    tier: EffectSchema.Literal("basic"),
     coffee: EffectSchema.Boolean,
-    monitorOption: EffectSchema.optional(
-      EffectSchema.Literals(workspaceProductMonitorOptions)
-    ),
+  }),
+  EffectSchema.Struct({
+    ...CheckoutDetailsReservationBaseSchema.fields,
+    _tag: EffectSchema.Literal("cowork"),
+    tier: EffectSchema.Literal("plus"),
+    coffee: EffectSchema.Literal(true),
+  }),
+  EffectSchema.Struct({
+    ...CheckoutDetailsReservationBaseSchema.fields,
+    _tag: EffectSchema.Literal("cowork"),
+    tier: EffectSchema.Literal("profi"),
+    coffee: EffectSchema.Literal(true),
+    monitorOption: workspaceProductMonitorOptionEffectSchema,
   }),
   EffectSchema.Struct({
     ...CheckoutDetailsReservationBaseSchema.fields,
     _tag: EffectSchema.Literal("meeting-room"),
   }),
 ]);
+
+type CheckoutDetailsReservationDraft =
+  typeof CheckoutDetailsReservationSchema.Type;
+type CheckoutDetailsReservation = CheckoutDetailsReservationDraft;
 
 const decodeCheckoutDetailsReservation = EffectSchema.decodeUnknownOption(
   CheckoutDetailsReservationSchema
@@ -154,17 +141,7 @@ const validateCheckoutDetailsReservation = (
     return;
   }
 
-  const productRuleIssue = getReservationProductRuleIssue(
-    reservation._tag === "meeting-room"
-      ? {
-          ...reservation,
-          entryTier: "meeting-room",
-        }
-      : {
-          ...reservation,
-          entryTier: reservation.tier,
-        }
-  );
+  const productRuleIssue = getReservationProductRuleIssue(reservation);
   if (productRuleIssue) {
     context.addIssue({
       code: "custom",
@@ -173,45 +150,6 @@ const validateCheckoutDetailsReservation = (
       ],
       message: productRuleIssue.message,
     });
-    return;
-  }
-
-  if (reservation._tag === "meeting-room") return;
-
-  const product = getWorkspaceProductByTier(reservation.tier);
-  const monitorOption = getReservationProductMonitorOption({
-    ...reservation,
-    entryTier: reservation.tier,
-  });
-
-  if (product.requiresMonitorOption && !monitorOption) {
-    context.addIssue({
-      code: "custom",
-      path: ["monitorOption"],
-      message: "Monitor option is required for this entry tier.",
-    });
-    return;
-  }
-
-  if (
-    product.requiresMonitorOption &&
-    monitorOption &&
-    !product.allowedMonitorOptions.includes(monitorOption)
-  ) {
-    context.addIssue({
-      code: "custom",
-      path: ["monitorOption"],
-      message: "Monitor option is unavailable for this entry tier.",
-    });
-    return;
-  }
-
-  if (!product.requiresMonitorOption && monitorOption) {
-    context.addIssue({
-      code: "custom",
-      path: ["monitorOption"],
-      message: "Monitor option is unavailable for this entry tier.",
-    });
   }
 };
 
@@ -219,26 +157,61 @@ const checkoutDetailsReservationSchema = checkoutDetailsReservationInputSchema
   .superRefine((reservation, context) => {
     validateCheckoutDetailsReservation(reservation, context);
   })
-  .transform((reservation): CheckoutDetailsReservation => {
-    if (reservation._tag === "meeting-room") {
-      const normalized = unsafeNormalizeReservationInterval(reservation);
-      return {
-        _tag: "meeting-room",
-        startsAt: normalized.startsAt,
-        endsAt: normalized.endsAt,
-      };
-    }
-
-    const normalized = unsafeNormalizeReservationInterval(reservation);
-    return {
-      _tag: "cowork",
-      tier: reservation.tier,
-      startsAt: normalized.startsAt,
-      endsAt: normalized.endsAt,
-      coffee: reservation.coffee,
-      monitorOption: reservation.monitorOption,
-    };
-  });
+  .transform(
+    (reservation): CheckoutDetailsReservation =>
+      Match.value(reservation).pipe(
+        Match.tag("meeting-room", (meetingRoomReservation) => {
+          const normalized = unsafeNormalizeReservationInterval(
+            meetingRoomReservation
+          );
+          return {
+            _tag: "meeting-room" as const,
+            startsAt: normalized.startsAt,
+            endsAt: normalized.endsAt,
+          };
+        }),
+        Match.tag("cowork", (coworkReservation) =>
+          Match.value(coworkReservation).pipe(
+            Match.when({ tier: "basic" }, (basicReservation) => {
+              const normalized =
+                unsafeNormalizeReservationInterval(basicReservation);
+              return {
+                _tag: "cowork" as const,
+                tier: "basic" as const,
+                startsAt: normalized.startsAt,
+                endsAt: normalized.endsAt,
+                coffee: basicReservation.coffee,
+              };
+            }),
+            Match.when({ tier: "plus" }, (plusReservation) => {
+              const normalized =
+                unsafeNormalizeReservationInterval(plusReservation);
+              return {
+                _tag: "cowork" as const,
+                tier: "plus" as const,
+                startsAt: normalized.startsAt,
+                endsAt: normalized.endsAt,
+                coffee: true as const,
+              };
+            }),
+            Match.when({ tier: "profi" }, (profiReservation) => {
+              const normalized =
+                unsafeNormalizeReservationInterval(profiReservation);
+              return {
+                _tag: "cowork" as const,
+                tier: "profi" as const,
+                startsAt: normalized.startsAt,
+                endsAt: normalized.endsAt,
+                coffee: true as const,
+                monitorOption: profiReservation.monitorOption,
+              };
+            }),
+            Match.exhaustive
+          )
+        ),
+        Match.exhaustive
+      )
+  );
 
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
@@ -252,7 +225,9 @@ export const checkoutDetailsJsonSchema = z.object({
     expectedPrice: nonNegativeWorkspaceMoneySchema,
     undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
     summary: z.object({
-      sections: z.array(checkoutSummarySectionSchema),
+      sections: z.array(
+        z.custom<CheckoutSummarySection>(isCheckoutSummarySection)
+      ),
       total: nonNegativeWorkspaceMoneySchema,
     }),
     providerRedirectUrl: z.url().optional(),

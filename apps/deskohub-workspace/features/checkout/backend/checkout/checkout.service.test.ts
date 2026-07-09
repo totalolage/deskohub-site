@@ -33,7 +33,7 @@ const reservationData: ReservationOrderData = {
   entryTier: "profi",
   startsAt: "2026-06-19T22:00:00Z",
   endsAt: "2026-06-20T22:00:00Z",
-  coffee: false,
+  coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
   email: "ada@example.com",

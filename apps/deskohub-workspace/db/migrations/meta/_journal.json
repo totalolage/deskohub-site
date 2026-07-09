@@ -19,15 +19,8 @@
     {
       "idx": 2,
       "version": "7",
-      "when": 1783189617021,
-      "tag": "0002_familiar_fenris",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "7",
-      "when": 1783597484941,
-      "tag": "0003_uneven_stellaris",
+      "when": 1783605515686,
+      "tag": "0002_minor_magik",
       "breakpoints": true
     }
   ]

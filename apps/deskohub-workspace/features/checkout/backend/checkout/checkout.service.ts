@@ -22,7 +22,10 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
+import {
+  checkoutSummarySchema,
+  toCheckoutDetailsPaymentSummary,
+} from "@/features/checkout/schemas/checkout-summary";
 import type {
   CheckoutDetailsJson,
   LegalEvidenceMap,
@@ -274,14 +277,38 @@ const buildCheckoutDetailsForPayment = (input: {
       startsAt: reservation.startsAt,
       endsAt: reservation.endsAt,
     })),
-    Match.orElse((reservation) => ({
+    Match.when({ entryTier: "basic" }, (reservation) => ({
       _tag: "cowork" as const,
-      tier: reservation.entryTier,
+      tier: "basic" as const,
       startsAt: reservation.startsAt,
       endsAt: reservation.endsAt,
       coffee: getReservationProductCoffee(reservation),
-      monitorOption: getReservationProductMonitorOption(reservation),
-    }))
+    })),
+    Match.when({ entryTier: "plus" }, (reservation) => ({
+      _tag: "cowork" as const,
+      tier: "plus" as const,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
+      coffee: true as const,
+    })),
+    Match.when({ entryTier: "profi" }, (reservation) => {
+      const monitorOption = getReservationProductMonitorOption(reservation);
+      if (monitorOption === undefined) {
+        throw new Error(
+          "Validated Profi reservation is missing monitor option."
+        );
+      }
+
+      return {
+        _tag: "cowork" as const,
+        tier: reservation.entryTier,
+        startsAt: reservation.startsAt,
+        endsAt: reservation.endsAt,
+        coffee: true as const,
+        monitorOption,
+      };
+    }),
+    Match.exhaustive
   );
 
   return {
@@ -291,7 +318,9 @@ const buildCheckoutDetailsForPayment = (input: {
     reservation,
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
-      summary: checkoutSummarySchema.parse(input.quote.summary),
+      summary: toCheckoutDetailsPaymentSummary(
+        checkoutSummarySchema.parse(input.quote.summary)
+      ),
       ...(input.quote.payment.customerDiscount && {
         undiscountedPrice:
           input.quote.payment.undiscountedPrice ??

@@ -32,7 +32,6 @@ jobs:
       - name: Validate Workspace migration count
         working-directory: apps/deskohub-workspace
         run: bun scripts/validate-migration-count.ts "${{ github.event.pull_request.base.sha }}"
-
   test-functional:
     runs-on: ubuntu-latest
     env:

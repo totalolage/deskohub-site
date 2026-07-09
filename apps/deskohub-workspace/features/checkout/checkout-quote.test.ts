@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import {
   buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
-  type WorkspaceCheckoutOrder,
+  type WorkspaceCheckoutOrderInput,
 } from "./checkout-quote";
 
 describe("workspace checkout quotes", () => {
@@ -168,12 +168,13 @@ describe("workspace checkout quotes", () => {
       email: "ada@example.com",
       phone: "+420 777 777 777",
       message: "Please keep this private.",
-    } as unknown as WorkspaceCheckoutOrder;
+    } as unknown as WorkspaceCheckoutOrderInput;
 
     const quote = buildWorkspaceCheckoutQuote(orderWithRuntimeExtras);
 
     expect(quote.order).toEqual({
-      entryTier: "basic",
+      _tag: "cowork",
+      tier: "basic",
       coffee: false,
     });
     expect(quote.order).not.toHaveProperty("date");
@@ -199,7 +200,7 @@ describe("workspace checkout quotes", () => {
       email: "grace@example.com",
       phone: "+420 111 111 111",
       message: "Do not fingerprint this.",
-    } as unknown as WorkspaceCheckoutOrder);
+    } as unknown as WorkspaceCheckoutOrderInput);
 
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
   });
@@ -214,7 +215,7 @@ describe("workspace checkout quotes", () => {
       coffee: false,
       startsAt: "2099-06-09T22:00:00Z",
       endsAt: "2099-06-10T22:00:00Z",
-    } as unknown as WorkspaceCheckoutOrder);
+    } as unknown as WorkspaceCheckoutOrderInput);
     const morningOnly = buildWorkspaceCheckoutQuote({
       entryTier: "meeting-room",
       startsAt: "2099-06-10T07:00:00Z",

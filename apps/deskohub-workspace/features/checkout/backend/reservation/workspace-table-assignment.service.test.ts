@@ -479,25 +479,6 @@ describe("WorkspaceTableAssignmentService", () => {
     ).resolves.toBe("basic-8");
   });
 
-  test("fails clearly when Profi is missing the required monitor option", async () => {
-    await expect(
-      assignTableId(makeReservation({ tier: "profi" }), [])
-    ).rejects.toThrow("requires a monitor option");
-  });
-
-  test("fails clearly when Profi has an unsupported monitor option", async () => {
-    const invalidReservation: CheckoutDetailsJson["reservation"] = JSON.parse(
-      JSON.stringify({
-        ...makeReservation({ tier: "profi" }),
-        monitorOption: "2x27",
-      })
-    );
-
-    await expect(assignTableId(invalidReservation, [])).rejects.toThrow(
-      "monitor option is not supported"
-    );
-  });
-
   test("fails clearly when no active visible table matches all required tags", async () => {
     await expect(
       assignTableId(

@@ -14,6 +14,8 @@ import type {
   CheckoutMeetingRoomStatusViewModel,
   CheckoutStatusKind,
   CheckoutStatusViewModel,
+  CheckoutUnknownStatusViewModel,
+  WorkspaceCheckoutStatusSummary,
 } from "@/features/checkout/backend/checkout";
 import {
   getWorkspaceMeetingRoomProductTitle,
@@ -50,7 +52,12 @@ type MeetingRoomStatusPageProps = {
   readonly status: CheckoutMeetingRoomStatusViewModel;
 };
 
-type CheckoutStatusSummary = NonNullable<CheckoutStatusViewModel["summary"]>;
+type UnknownStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutUnknownStatusViewModel;
+};
+
+type CheckoutStatusSummary = WorkspaceCheckoutStatusSummary;
 
 type SummaryRow = {
   readonly label: string;
@@ -160,9 +167,9 @@ const getReservationSummaryRows = (
   summary: CheckoutStatusSummary,
   locale: Locale,
   tierTitle: string,
-  extraRows: readonly (SummaryRow | undefined)[] = []
+  extraRows: readonly SummaryRow[] = []
 ): SummaryRow[] => {
-  const rows: Array<SummaryRow | undefined> = [
+  return [
     {
       label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
       value: tierTitle,
@@ -177,8 +184,6 @@ const getReservationSummaryRows = (
       value: formatWorkspaceMoney(summary.price, locale),
     },
   ];
-
-  return rows.filter(Boolean);
 };
 
 const getCoworkSummaryRows = (
@@ -186,34 +191,33 @@ const getCoworkSummaryRows = (
   locale: Locale
 ) => {
   const { summary } = status;
-  if (!summary) return [];
 
   return getReservationSummaryRows(
     summary,
     locale,
     getWorkspaceProductTierTitle(summary.tier, locale),
     [
-      summary.coffee
-        ? {
-            label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-            value: m.checkoutStatusYes({}, { locale }),
-          }
-        : undefined,
-      Match.value(summary).pipe(
-        Match.when({ tier: "profi" }, (profiSummary) =>
-          profiSummary.monitorOption
-            ? {
-                label: String(
-                  m.checkoutStatusSummaryMonitorLabel({}, { locale })
-                ),
-                value: getWorkspaceProductMonitorTitle(
-                  profiSummary.monitorOption,
-                  locale
-                ),
-              }
-            : undefined
-        ),
-        Match.orElse(() => undefined)
+      ...(summary.coffee
+        ? [
+            {
+              label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+              value: m.checkoutStatusYes({}, { locale }),
+            },
+          ]
+        : []),
+      ...Match.value(summary).pipe(
+        Match.when({ tier: "profi" }, (profiSummary) => [
+          {
+            label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
+            value: getWorkspaceProductMonitorTitle(
+              profiSummary.monitorOption,
+              locale
+            ),
+          },
+        ]),
+        Match.when({ tier: "basic" }, () => []),
+        Match.when({ tier: "plus" }, () => []),
+        Match.exhaustive
       ),
     ]
   );
@@ -246,20 +250,32 @@ const getFulfillmentFailedContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale
 ) => {
-  const tier = status.summary
-    ? Match.value(status.summary).pipe(
-        Match.tag("meeting-room", () =>
-          getWorkspaceMeetingRoomProductTitle(locale)
-        ),
-        Match.tag("cowork", (summary) =>
-          getWorkspaceProductTierTitle(summary.tier, locale)
-        ),
-        Match.exhaustive
+  const tier = Match.value(status).pipe(
+    Match.tag("unknown", () => m.checkoutStatusMissingSummary({}, { locale })),
+    Match.tag("meeting-room", () =>
+      getWorkspaceMeetingRoomProductTitle(locale)
+    ),
+    Match.tag("cowork", (reservationStatus) =>
+      getWorkspaceProductTierTitle(reservationStatus.summary.tier, locale)
+    ),
+    Match.exhaustive
+  );
+  const date = Match.value(status).pipe(
+    Match.tag("unknown", () => m.checkoutStatusMissingSummary({}, { locale })),
+    Match.tag("meeting-room", (reservationStatus) =>
+      formatReservationDisplayDate(
+        reservationStatus.summary.reservedFrom,
+        locale
       )
-    : m.checkoutStatusMissingSummary({}, { locale });
-  const date = status.summary
-    ? formatReservationDisplayDate(status.summary.reservedFrom, locale)
-    : m.checkoutStatusMissingSummary({}, { locale });
+    ),
+    Match.tag("cowork", (reservationStatus) =>
+      formatReservationDisplayDate(
+        reservationStatus.summary.reservedFrom,
+        locale
+      )
+    ),
+    Match.exhaustive
+  );
 
   return m.checkoutStatusFulfillmentFailedContactMessage(
     { orderId: status.orderId, tier, date },
@@ -300,6 +316,9 @@ export function CheckoutStatusPage({
     Match.tag("cowork", (coworkStatus) => (
       <CoworkReservationStatus locale={locale} status={coworkStatus} />
     )),
+    Match.tag("unknown", (unknownStatus) => (
+      <UnknownReservationStatus locale={locale} status={unknownStatus} />
+    )),
     Match.exhaustive
   );
 }
@@ -328,6 +347,20 @@ export function MeetingRoomReservationStatus({
       reservationPath={getMeetingRoomReservationPath(locale)}
       status={status}
       summaryRows={getMeetingRoomSummaryRows(status, locale)}
+    />
+  );
+}
+
+export function UnknownReservationStatus({
+  locale,
+  status,
+}: UnknownStatusPageProps) {
+  return (
+    <ReservationStatusCard
+      locale={locale}
+      reservationPath={getCoworkReservationPath(locale)}
+      status={status}
+      summaryRows={[]}
     />
   );
 }

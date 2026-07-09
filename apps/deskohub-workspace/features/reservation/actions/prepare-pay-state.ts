@@ -10,6 +10,7 @@ import {
   Duration,
   Effect,
   Layer,
+  Match,
   Predicate,
   Schedule,
   Schema,
@@ -43,16 +44,18 @@ import {
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import {
-  getWorkspaceProductByTier,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
+import type {
+  WorkspaceCoworkProductTier,
+  WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
+import {
+  checkoutSummarySchema,
+  toCheckoutDetailsPaymentSummary,
+} from "@/features/checkout/schemas/checkout-summary";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
@@ -182,27 +185,46 @@ const buildReservationCheckoutDetails = (input: {
   const productMonitorOption = getReservationProductMonitorOption(reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
-  const checkoutReservation: CheckoutDetailsJson["reservation"] =
-    reservation.entryTier === "meeting-room"
-      ? {
-          _tag: "meeting-room",
-          startsAt: reservation.startsAt,
-          endsAt: reservation.endsAt,
-        }
-      : (() => {
-          const product = getWorkspaceProductByTier(reservation.entryTier);
+  const checkoutReservation: CheckoutDetailsJson["reservation"] = Match.value(
+    reservation
+  ).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+      _tag: "meeting-room" as const,
+      startsAt: meetingRoomReservation.startsAt,
+      endsAt: meetingRoomReservation.endsAt,
+    })),
+    Match.when({ entryTier: "basic" }, (basicReservation) => ({
+      _tag: "cowork" as const,
+      tier: "basic" as const,
+      startsAt: basicReservation.startsAt,
+      endsAt: basicReservation.endsAt,
+      coffee: productCoffee,
+    })),
+    Match.when({ entryTier: "plus" }, (plusReservation) => ({
+      _tag: "cowork" as const,
+      tier: "plus" as const,
+      startsAt: plusReservation.startsAt,
+      endsAt: plusReservation.endsAt,
+      coffee: true as const,
+    })),
+    Match.when({ entryTier: "profi" }, (profiReservation) => {
+      if (productMonitorOption === undefined) {
+        throw new Error(
+          "Validated Profi reservation is missing monitor option."
+        );
+      }
 
-          return {
-            _tag: "cowork" as const,
-            tier: reservation.entryTier,
-            startsAt: reservation.startsAt,
-            endsAt: reservation.endsAt,
-            coffee: productCoffee,
-            monitorOption: product.requiresMonitorOption
-              ? productMonitorOption
-              : undefined,
-          };
-        })();
+      return {
+        _tag: "cowork" as const,
+        tier: "profi" as const,
+        startsAt: profiReservation.startsAt,
+        endsAt: profiReservation.endsAt,
+        coffee: true as const,
+        monitorOption: productMonitorOption,
+      };
+    }),
+    Match.exhaustive
+  );
 
   return {
     schema: "workspace-checkout-details",
@@ -211,7 +233,9 @@ const buildReservationCheckoutDetails = (input: {
     reservation: checkoutReservation,
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
-      summary: checkoutSummarySchema.parse(input.quote.summary),
+      summary: toCheckoutDetailsPaymentSummary(
+        checkoutSummarySchema.parse(input.quote.summary)
+      ),
       ...(input.quote.payment.customerDiscount && {
         undiscountedPrice: baseCheckoutPrice,
         customerDiscount: input.quote.payment.customerDiscount,

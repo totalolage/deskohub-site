@@ -82,9 +82,13 @@ export const createWorkspaceDotyposReservation: (
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,
         reservationKind: input.checkoutDetails.reservation._tag,
-        ...(input.checkoutDetails.reservation._tag === "cowork"
-          ? { entryTier: input.checkoutDetails.reservation.tier }
-          : {}),
+        ...Match.value(input.checkoutDetails.reservation).pipe(
+          Match.tag("meeting-room", () => ({})),
+          Match.tag("cowork", (reservation) => ({
+            entryTier: reservation.tier,
+          })),
+          Match.exhaustive
+        ),
         date: getReservationPragueDate(input.checkoutDetails.reservation),
         reservationStatus: input.status,
       })
@@ -110,18 +114,30 @@ const formatWorkspaceReservationNote = (
 ) => {
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
-  const productLabel =
-    reservation._tag === "meeting-room"
-      ? workspaceMeetingRoomProduct.label
-      : getWorkspaceProductByTier(reservation.tier).label;
+  const productLabel = Match.value(reservation).pipe(
+    Match.tag("meeting-room", () => workspaceMeetingRoomProduct.label),
+    Match.tag(
+      "cowork",
+      (coworkReservation) =>
+        getWorkspaceProductByTier(coworkReservation.tier).label
+    ),
+    Match.exhaustive
+  );
   const productRows = Match.value(reservation).pipe(
     Match.tag("meeting-room", () => []),
-    Match.tag("cowork", (coworkReservation) => [
-      `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
-      ...(coworkReservation.tier === "profi" && coworkReservation.monitorOption
-        ? [`Monitor: ${coworkReservation.monitorOption}`]
-        : []),
-    ]),
+    Match.tag("cowork", (coworkReservation) =>
+      Match.value(coworkReservation).pipe(
+        Match.when({ tier: "basic" }, (basicReservation) => [
+          `Coffee: ${basicReservation.coffee ? "yes" : "no"}`,
+        ]),
+        Match.when({ tier: "plus" }, () => ["Coffee: yes"]),
+        Match.when({ tier: "profi" }, (profiReservation) => [
+          "Coffee: yes",
+          `Monitor: ${profiReservation.monitorOption}`,
+        ]),
+        Match.exhaustive
+      )
+    ),
     Match.exhaustive
   );
   const lines = [
