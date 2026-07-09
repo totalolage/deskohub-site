@@ -208,7 +208,7 @@ const createReservationIntentId = () =>
 
 const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
   const params = new URLSearchParams({
-    _tag: query._tag,
+    kind: query._tag,
     from: query.from,
     to: query.to,
   });

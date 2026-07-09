@@ -120,9 +120,9 @@ const getTierParam = (value: string | null) => {
 };
 
 const getReservationKindParam = (searchParams: URLSearchParams) => {
-  const tag = searchParams.get("_tag")?.trim();
-  if (tag === "meeting-room") return "meeting-room";
-  if (tag === "cowork") return "cowork";
+  const kind = searchParams.get("kind")?.trim();
+  if (kind === "meeting-room") return "meeting-room";
+  if (kind === "cowork") return "cowork";
   return searchParams.get("entryTier")?.trim() === "meeting-room"
     ? "meeting-room"
     : "cowork";
