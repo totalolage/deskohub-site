@@ -104,7 +104,7 @@ export const assertPaymentTerminalPath = ({
       description: `${scenario.state} payment restart page`,
       matches: (url) =>
         (parseUrl(url)?.pathname ?? "") ===
-        "/en-US/checkout/reservation/cowork",
+        "/en-US/reservation/cowork",
       run,
       session,
       timeoutMs: 60_000,
@@ -129,7 +129,7 @@ const assertTerminalStatusPage = ({
   Effect.gen(function* () {
     const url = yield* makeUrl(
       "build payment terminal checkout status URL",
-      `${config.browserUrl}/en-US/checkout/status/${orderId}`
+      `${config.browserUrl}/en-US/reservation/status/${orderId}`
     );
     yield* setSearchParams(url, { e2eAt: String(Date.now()) });
 

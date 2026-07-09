@@ -6,7 +6,6 @@ import type { PayStateKey, SignedPayState } from "./pay-state";
 
 const {
   buildPayStateQueryParams,
-  buildRetryPayState,
   buildSignedPayState,
   openPayState,
   parsePayStateKey,
@@ -199,23 +198,5 @@ describe("Pay URL state", () => {
 
     expect(result.type).toBe("sealedPayState");
     expect(searchParams.get(payStateTokenQueryParam)).toBe(result.token);
-  });
-
-  test("models retry state as CheckoutReturnStateTokenRepository semantics", () => {
-    expect(
-      buildRetryPayState({
-        paymentOrderId: "payment-order-id",
-        checkoutToken: "A".repeat(43),
-      })
-    ).toMatchObject({
-      type: "retryPayState",
-      stateSemantics: "checkout-return-state-token",
-      repositorySemantics: {
-        repository: "CheckoutReturnStateTokenRepository",
-        opaque: true,
-        singleUse: true,
-        boundToPaymentOrderId: true,
-      },
-    });
   });
 });

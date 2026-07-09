@@ -6,15 +6,16 @@ import { join } from "node:path";
 
 const routePath = join(
   import.meta.dirname,
-  "../../../../app/[locale]/(minimal-header)/checkout/payment/[orderId]/route.ts"
+  "../../../../app/[locale]/(minimal-header)/checkout/pay/return/[orderId]/route.ts"
 );
 
-describe("checkout payment return route", () => {
-  test("processes provider return and redirects to status instead of hard 404", () => {
+describe("checkout pay return route", () => {
+  test("settles provider return and redirects to reservation status", () => {
     const source = readFileSync(routePath, "utf8");
 
     expect(source).toContain("refreshStatus");
-    expect(source).toContain("Checkout payment return refresh failed");
+    expect(source).toContain("Checkout status refresh retry failed");
+    expect(source).toContain("/reservation/status/");
     expect(source).toContain("NextResponse.redirect");
     expect(source).not.toContain("\n  notFound();\n}");
   });

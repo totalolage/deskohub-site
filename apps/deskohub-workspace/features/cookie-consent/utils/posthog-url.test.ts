@@ -13,9 +13,9 @@ describe("createPostHogPageUrl", () => {
   test("strips Vercel preview bypass params", () => {
     expect(
       createPostHogPageUrl(
-        "https://deskohub.test/checkout/status/order-id?x-vercel-protection-bypass=secret&step=done"
+        "https://deskohub.test/reservation/status/order-id?x-vercel-protection-bypass=secret&step=done"
       )
-    ).toBe("https://deskohub.test/checkout/status/order-id?step=done");
+    ).toBe("https://deskohub.test/reservation/status/order-id?step=done");
   });
 
   test("strips sensitive params from current, referrer, and initial urls", () => {
@@ -25,21 +25,22 @@ describe("createPostHogPageUrl", () => {
           $current_url:
             "https://deskohub.test/checkout/pay?payState=secret&step=pay",
           $referrer:
-            "https://deskohub.test/checkout/payment/order-id?checkoutToken=secret&outcome=success",
+            "https://deskohub.test/checkout/pay/return/order-id?checkoutToken=secret&outcome=success",
           $initial_current_url:
-            "https://deskohub.test/checkout/result/order-id?payStateRef=secret",
+            "https://deskohub.test/checkout/pay/return/order-id?payStateRef=secret",
           $initial_referrer:
-            "https://deskohub.test/checkout/reservation/cowork?token=secret&step=details",
+            "https://deskohub.test/reservation/cowork?token=secret&step=details",
         },
         "preview"
       )
     ).toEqual({
       $current_url: "https://deskohub.test/checkout/pay?step=pay",
       $referrer:
-        "https://deskohub.test/checkout/payment/order-id?outcome=success",
-      $initial_current_url: "https://deskohub.test/checkout/result/order-id",
+        "https://deskohub.test/checkout/pay/return/order-id?outcome=success",
+      $initial_current_url:
+        "https://deskohub.test/checkout/pay/return/order-id",
       $initial_referrer:
-        "https://deskohub.test/checkout/reservation/cowork?step=details",
+        "https://deskohub.test/reservation/cowork?step=details",
       "deployment.environment.name": "preview",
     });
   });

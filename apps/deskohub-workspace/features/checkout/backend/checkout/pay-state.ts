@@ -139,33 +139,6 @@ export const signedPayStateEffectSchema = EffectSchema.Struct({
   description: "Workspace checkout signed Pay state payload.",
 });
 
-export const retryPayStateEffectSchema = EffectSchema.Struct({
-  type: EffectSchema.Literal("retryPayState"),
-  schema: EffectSchema.Literal("workspace-pay-state"),
-  schemaVersion: EffectSchema.Literal(payStateSchemaVersion),
-  checkoutToken: EffectSchema.NonEmptyString,
-  paymentOrderId: EffectSchema.NonEmptyString,
-  stateSemantics: EffectSchema.Literal("checkout-return-state-token"),
-  repositorySemantics: EffectSchema.Struct({
-    repository: EffectSchema.Literal("CheckoutReturnStateTokenRepository"),
-    opaque: EffectSchema.Literal(true),
-    singleUse: EffectSchema.Literal(true),
-    ttlSeconds: EffectSchema.Literal(600),
-    boundToPaymentOrderId: EffectSchema.Literal(true),
-  }),
-}).annotate({
-  identifier: "RetryPayState",
-  description: "Workspace checkout retry Pay state payload.",
-});
-
-export const payStateEffectSchema = EffectSchema.Union([
-  signedPayStateEffectSchema,
-  retryPayStateEffectSchema,
-]).annotate({
-  identifier: "PayState",
-  description: "Workspace checkout Pay state payload.",
-});
-
 const payStateProtectedHeaderSchema = makeEffectSchemaParser(
   payStateProtectedHeaderEffectSchema
 );
@@ -173,14 +146,8 @@ const payStateProtectedHeaderSchema = makeEffectSchemaParser(
 export const signedPayStateSchema = makeEffectSchemaParser(
   signedPayStateEffectSchema
 );
-export const retryPayStateSchema = makeEffectSchemaParser(
-  retryPayStateEffectSchema
-);
-export const payStateSchema = makeEffectSchemaParser(payStateEffectSchema);
 
 export type SignedPayState = typeof signedPayStateEffectSchema.Type;
-export type RetryPayState = typeof retryPayStateEffectSchema.Type;
-export type PayState = typeof payStateEffectSchema.Type;
 
 export type PayStateKey = {
   readonly kid: string;
@@ -372,26 +339,6 @@ export const buildSignedPayState = (
 
   return signedPayStateSchema.parse(state);
 };
-
-export const buildRetryPayState = (input: {
-  readonly paymentOrderId: string;
-  readonly checkoutToken: string;
-}): RetryPayState =>
-  retryPayStateSchema.parse({
-    type: "retryPayState",
-    schema: "workspace-pay-state",
-    schemaVersion: payStateSchemaVersion,
-    paymentOrderId: input.paymentOrderId,
-    checkoutToken: input.checkoutToken,
-    stateSemantics: "checkout-return-state-token",
-    repositorySemantics: {
-      repository: "CheckoutReturnStateTokenRepository",
-      opaque: true,
-      singleUse: true,
-      ttlSeconds: 600,
-      boundToPaymentOrderId: true,
-    },
-  });
 
 const payStateSchemaIssue = (actual: unknown, message: string) =>
   new SchemaIssue.InvalidValue(Option.some(actual), { message });

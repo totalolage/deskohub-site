@@ -113,11 +113,11 @@ const generateNexiOrderId = () =>
 const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
   Effect.fail(new CheckoutError({ message: cause.message, cause }));
 
-const getCheckoutOrderReturnUrl: (
+const getCheckoutPayReturnUrl: (
   locale: Locale,
   workspaceReservationId: string
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
-  "getCheckoutOrderReturnUrl"
+  "getCheckoutPayReturnUrl"
 )((locale, workspaceReservationId) =>
   Effect.gen(function* () {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
@@ -125,7 +125,7 @@ const getCheckoutOrderReturnUrl: (
     return yield* Effect.try({
       try: () => {
         const url = new URL(
-          `/${locale}/checkout/result/${workspaceReservationId}`,
+          `/${locale}/checkout/pay/return/${workspaceReservationId}`,
           origin
         );
         appendVercelPreviewProtectionBypass(url);
@@ -140,12 +140,12 @@ const getCheckoutOrderReturnUrl: (
   }).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError))
 );
 
-const getCheckoutPaymentRetryUrl: (
+const getCheckoutPayCancelReturnUrl: (
   locale: Locale,
   workspaceReservationId: string,
   outcome: "cancelled"
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
-  "getCheckoutPaymentRetryUrl"
+  "getCheckoutPayCancelReturnUrl"
 )((locale, workspaceReservationId, outcome) =>
   Effect.gen(function* () {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
@@ -153,7 +153,7 @@ const getCheckoutPaymentRetryUrl: (
     return yield* Effect.try({
       try: () => {
         const url = new URL(
-          `/${locale}/checkout/payment/${workspaceReservationId}`,
+          `/${locale}/checkout/pay/return/${workspaceReservationId}`,
           origin
         );
         url.searchParams.set("outcome", outcome);
@@ -497,11 +497,11 @@ export const CheckoutServiceLive = Layer.effect(
             currency: nexiAmount.currency,
             locale: input.locale,
             notificationUrl: yield* getNotificationUrl,
-            resultUrl: yield* getCheckoutOrderReturnUrl(
+            resultUrl: yield* getCheckoutPayReturnUrl(
               input.locale,
               input.workspaceReservationId
             ),
-            cancelUrl: yield* getCheckoutPaymentRetryUrl(
+            cancelUrl: yield* getCheckoutPayCancelReturnUrl(
               input.locale,
               input.workspaceReservationId,
               "cancelled"

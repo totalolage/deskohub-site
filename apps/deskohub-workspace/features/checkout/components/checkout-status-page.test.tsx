@@ -100,7 +100,7 @@ describe("CheckoutStatusPage", () => {
       view
         .getByRole("link", { name: "Start a new reservation" })
         .getAttribute("href")
-    ).toBe("/en-US/checkout/reservation/meeting-room");
+    ).toBe("/en-US/reservation/meeting-room");
   });
 
   test("renders not found without reservation summary copy", () => {

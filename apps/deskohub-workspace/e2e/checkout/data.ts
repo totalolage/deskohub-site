@@ -90,7 +90,7 @@ export const makeCoworkCheckoutData = (
   });
 
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/checkout/order?${params}`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/cowork?${params}`,
     date,
     email: contact.email,
     expectedCoffee: false,
@@ -112,7 +112,7 @@ const makeMeetingRoomCheckoutData = (
   const contact = makeCheckoutContact("meeting-room-60");
 
   return {
-    checkoutUrl: `${checkoutBaseUrl}/${locale}/checkout/reservation/meeting-room`,
+    checkoutUrl: `${checkoutBaseUrl}/${locale}/reservation/meeting-room`,
     date: slot.date,
     email: contact.email,
     expectedCoffee: false,
