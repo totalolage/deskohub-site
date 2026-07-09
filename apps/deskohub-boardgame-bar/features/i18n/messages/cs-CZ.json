@@ -178,7 +178,7 @@
     "entryFeeShort": "50 Kč s konzumací / 100 Kč bez",
     "complexGamesEyebrow": "Komplexní hry",
     "complexGamesTitle": "Nauč se hry",
-    "complexGamesDescription": "Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel doplníme brzy.",
+    "complexGamesDescription": "Chceš si zahrát něco náročnějšího? Zápis na vysvětlení pravidel najdeš na Deskoherní socce.",
     "complexGamesCta": "Deskoherní socka",
     "scheduleEyebrow": "Program akce",
     "scheduleTitle": "Co se bude hrát",
@@ -194,6 +194,12 @@
         "time": "Čtvrtek 16. 7. v 17:00",
         "description": "Legendární fantasy svět na tvém stole. Kapacita je omezená a registrace je nutná předem."
       },
+      "saltyFrogs": {
+        "title": "Gobliní kmen Slaných Žab",
+        "time": "Pátek 17. 7. v 17:00",
+        "description": "Gobliní kmen Slaných Žab má problém: našel něco, co by žádný rozumný tvor nikdy neměl dát goblinům do ruky: ohňostroje. Aby se z obyčejných goblinů staly legendy kmene, musí projít zkouškami odvahy, vydat se do nebezpečných mokřadů a přežít hlavně jeden druhého. Čeká vás krátká, zběsilá a naprosto nehrdinská výprava plná chaosu, ohně, špatných nápadů a gobliní logiky.",
+        "note": "Na 4 hodiny včetně vysvětlení pravidel."
+      },
       "bloodOnTheClocktower": {
         "title": "Krvavá hodinka (Blood on the Clocktower)",
         "time": "Sobota 18. 7. ve 12:00",
@@ -204,6 +210,12 @@
         "title": "Velká deskoherní burza",
         "time": "Sobota 18. 7. celý den",
         "description": "Praskají ti doma poličky ve švech? Přines hry, které už nehraješ, nebo přijď ulovit nový kousek za super cenu."
+      },
+      "cardTournaments": {
+        "title": "Turnaje Mozkožrout & Radlands: Gangy pustiny",
+        "time": "Neděle 19. 7. ve 14:00",
+        "description": "Máte rádi napínavé karetní řezačky jeden na jednoho? Přijďte si poměřit síly na dvojici turnajů, které se uskuteční v rámci Palmovcon.",
+        "note": "Zápis na turnaje je zdarma. Účast je součástí vstupného na Palmovcon."
       }
     },
     "footerEyebrow": "Sledujte nás a buďte v obraze",

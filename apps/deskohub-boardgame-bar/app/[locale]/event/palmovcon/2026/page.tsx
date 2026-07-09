@@ -42,6 +42,17 @@ const getSchedule = (): ScheduleItem[] => [
     },
   },
   {
+    title: m["palmovcon2026.schedule.saltyFrogs.title"](),
+    time: m["palmovcon2026.schedule.saltyFrogs.time"](),
+    description: m["palmovcon2026.schedule.saltyFrogs.description"](),
+    note: m["palmovcon2026.schedule.saltyFrogs.note"](),
+    imagePublicId: "palmovcon-event-salty-frogs-goblins",
+    cta: {
+      href: "https://forms.gle/yek7zh4nrE8NWJRd7",
+      label: m["palmovcon2026.registrationCta"](),
+    },
+  },
+  {
     title: m["palmovcon2026.schedule.bloodOnTheClocktower.title"](),
     time: m["palmovcon2026.schedule.bloodOnTheClocktower.time"](),
     description: m["palmovcon2026.schedule.bloodOnTheClocktower.description"](),
@@ -57,6 +68,17 @@ const getSchedule = (): ScheduleItem[] => [
     time: m["palmovcon2026.schedule.bazaar.time"](),
     description: m["palmovcon2026.schedule.bazaar.description"](),
     imagePublicId: "palmovcon-event-boardgame-bazar",
+  },
+  {
+    title: m["palmovcon2026.schedule.cardTournaments.title"](),
+    time: m["palmovcon2026.schedule.cardTournaments.time"](),
+    description: m["palmovcon2026.schedule.cardTournaments.description"](),
+    note: m["palmovcon2026.schedule.cardTournaments.note"](),
+    imagePublicId: "palmovcon-event-card-tournaments",
+    cta: {
+      href: "https://forms.gle/q6xBYG5ZRy89wxCV9",
+      label: m["palmovcon2026.registrationCta"](),
+    },
   },
 ];
 
@@ -232,7 +254,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
             size="lg"
           >
             <a
-              href="https://www.deskoherni-socka.cz"
+              href="https://www.deskoherni-socka.cz/events/ooddg9lqm5kqxf0"
               rel="noreferrer"
               target="_blank"
             >

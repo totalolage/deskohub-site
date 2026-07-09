@@ -28,6 +28,9 @@
     "NEXI_CHECKOUT_CURRENCY_OVERRIDE",
     "NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME",
     "NEXT_PUBLIC_GTM_ID",
+    "POSTHOG_API_KEY",
+    "POSTHOG_HOST",
+    "POSTHOG_PROJECT_ID",
     "VERCEL",
     "VERCEL_*",
     "!VERCEL_ENV",
@@ -72,6 +75,19 @@
     "dev:server": {
       "cache": false,
       "persistent": true
+    },
+    "db:generate": {
+      "cache": false
+    },
+    "db:migrate": {
+      "cache": false
+    },
+    "db:studio": {
+      "cache": false,
+      "persistent": true
+    },
+    "e2e:checkout": {
+      "cache": false
     },
     "lint": {
       "dependsOn": ["^lint"],
