@@ -45,7 +45,7 @@ const getCurrentPragueDate = () =>
 export const isTodayOrFuturePragueDate = (date: string) =>
   date >= getCurrentPragueDate();
 
-const nameEffectSchema = Schema.Trim.check(
+export const reservationCustomerNameEffectSchema = Schema.Trim.check(
   Schema.isMinLength(RESERVATION_VALIDATION.name.min, {
     message: m.contactValidationNameMinimum({
       min: RESERVATION_VALIDATION.name.min,
@@ -58,7 +58,7 @@ const nameEffectSchema = Schema.Trim.check(
   })
 );
 
-const emailEffectSchema = Schema.Trim.check(
+export const reservationCustomerEmailEffectSchema = Schema.Trim.check(
   Schema.isNonEmpty({ message: m.contactValidationEmailRequired() }),
   Schema.isMaxLength(RESERVATION_VALIDATION.email.max, {
     message: m.contactValidationEmailMaximum({
@@ -68,7 +68,7 @@ const emailEffectSchema = Schema.Trim.check(
   Schema.isPattern(emailPattern, { message: m.contactValidationEmailInvalid() })
 );
 
-const phoneEffectSchema = Schema.Trim.check(
+export const reservationCustomerPhoneEffectSchema = Schema.Trim.check(
   Schema.isNonEmpty({ message: m.contactValidationPhoneRequired() }),
   Schema.isMaxLength(RESERVATION_VALIDATION.phone.max, {
     message: m.contactValidationPhoneMaximum({
@@ -80,7 +80,7 @@ const phoneEffectSchema = Schema.Trim.check(
   })
 );
 
-const messageEffectSchema = Schema.Trim.check(
+export const reservationCustomerMessageEffectSchema = Schema.Trim.check(
   Schema.isMaxLength(RESERVATION_VALIDATION.message.max, {
     message: m.contactValidationMessageMaximum({
       max: RESERVATION_VALIDATION.message.max,
@@ -113,10 +113,10 @@ const monitorOptionEffectSchema = Schema.optional(
 const reservationOrderBaseEffectShape = {
   startsAt: Schema.optional(Schema.String),
   endsAt: Schema.optional(Schema.String),
-  name: nameEffectSchema,
-  email: emailEffectSchema,
-  phone: phoneEffectSchema,
-  message: Schema.optional(messageEffectSchema),
+  name: reservationCustomerNameEffectSchema,
+  email: reservationCustomerEmailEffectSchema,
+  phone: reservationCustomerPhoneEffectSchema,
+  message: Schema.optional(reservationCustomerMessageEffectSchema),
 } as const;
 
 const coworkReservationOrderObjectEffectSchema = Schema.Struct({

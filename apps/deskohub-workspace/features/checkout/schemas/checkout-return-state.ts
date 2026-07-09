@@ -1,7 +1,11 @@
 import { Schema as EffectSchema, Match } from "effect";
-import { isValidPhoneNumber } from "libphonenumber-js";
 import type { WorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quote";
-import { RESERVATION_VALIDATION } from "@/features/reservation/schemas/reservation";
+import {
+  reservationCustomerEmailEffectSchema,
+  reservationCustomerMessageEffectSchema,
+  reservationCustomerNameEffectSchema,
+  reservationCustomerPhoneEffectSchema,
+} from "@/features/reservation/schemas/reservation";
 import {
   getReservationIntervalValidationIssue,
   unsafeNormalizeReservationInterval,
@@ -11,16 +15,14 @@ import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservat
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const CheckoutReturnStateReservationShapeSchema =
   makeWorkspaceReservationDetailsEffectSchema({
     startsAt: isoDateTimeWithOffsetStringEffectSchema,
     endsAt: isoDateTimeWithOffsetStringEffectSchema,
-    name: EffectSchema.NonEmptyString,
-    email: EffectSchema.NonEmptyString,
-    phone: EffectSchema.NonEmptyString,
-    message: EffectSchema.optional(EffectSchema.String),
+    name: reservationCustomerNameEffectSchema,
+    email: reservationCustomerEmailEffectSchema,
+    phone: reservationCustomerPhoneEffectSchema,
+    message: EffectSchema.optional(reservationCustomerMessageEffectSchema),
   });
 
 type CheckoutReturnStateReservationDraft =
@@ -68,46 +70,6 @@ export const checkoutReturnStateReservationEffectSchema =
           readonly path: readonly PropertyKey[];
           readonly issue: string;
         }> = [];
-
-        if (
-          reservation.name.trim().length < RESERVATION_VALIDATION.name.min ||
-          reservation.name.trim().length > RESERVATION_VALIDATION.name.max
-        ) {
-          issues.push({
-            path: ["name"],
-            issue: "Invalid reservation customer name.",
-          });
-        }
-
-        if (
-          reservation.email.trim().length > RESERVATION_VALIDATION.email.max ||
-          !emailPattern.test(reservation.email.trim())
-        ) {
-          issues.push({
-            path: ["email"],
-            issue: "Invalid reservation customer email.",
-          });
-        }
-
-        if (
-          reservation.phone.trim().length > RESERVATION_VALIDATION.phone.max ||
-          !isValidPhoneNumber(reservation.phone.trim(), "CZ")
-        ) {
-          issues.push({
-            path: ["phone"],
-            issue: "Invalid reservation customer phone.",
-          });
-        }
-
-        if (
-          reservation.message &&
-          reservation.message.trim().length > RESERVATION_VALIDATION.message.max
-        ) {
-          issues.push({
-            path: ["message"],
-            issue: "Invalid reservation message.",
-          });
-        }
 
         const intervalIssue =
           getReservationIntervalValidationIssue(reservation);
