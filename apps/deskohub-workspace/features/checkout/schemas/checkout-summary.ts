@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import type { WorkspaceMeetingRoomDurationMinutes } from "@/features/checkout/product-catalog";
+import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
 import {
   nonNegativeWorkspaceMoneyEffectSchema,
   workspaceMoneyEffectSchema,
@@ -10,9 +10,7 @@ export const checkoutSummaryItemEffectSchema = Schema.Struct({
   key: Schema.NonEmptyString,
   amount: workspaceMoneyEffectSchema,
   meetingRoomDurationMinutes: Schema.optional(
-    Schema.Literals([
-      60, 240, 1440,
-    ] satisfies readonly WorkspaceMeetingRoomDurationMinutes[])
+    Schema.Literals(workspaceMeetingRoomDurationOptions)
   ),
 });
 

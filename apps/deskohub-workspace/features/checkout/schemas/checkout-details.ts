@@ -8,6 +8,10 @@ import {
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import {
+  isoDateTimeWithOffsetStringEffectSchema,
+  urlStringEffectSchema,
+} from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 export const legalDocumentKeys = [
@@ -26,29 +30,6 @@ export const legalEvidenceSources = [
 export const reservationSubmitLegalEvidenceSource = legalEvidenceSources[0];
 export const paymentSubmitLegalEvidenceSource = legalEvidenceSources[1];
 
-const isoDateTimeWithOffsetPattern =
-  /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
-
-const isoDateTimeWithOffsetEffectSchema = EffectSchema.String.check(
-  EffectSchema.makeFilter((value) =>
-    isoDateTimeWithOffsetPattern.test(value) &&
-    Number.isFinite(Date.parse(value))
-      ? undefined
-      : "Expected ISO datetime string with offset."
-  )
-);
-
-const urlStringEffectSchema = EffectSchema.String.check(
-  EffectSchema.makeFilter((value) => {
-    try {
-      new URL(value);
-      return undefined;
-    } catch {
-      return "Expected URL string.";
-    }
-  })
-);
-
 export const legalDocumentHashEffectSchema = EffectSchema.Struct({
   path: EffectSchema.NonEmptyString,
   hash: EffectSchema.NonEmptyString,
@@ -65,7 +46,7 @@ export const legalEvidenceEffectSchema = EffectSchema.Struct({
   documentKey: EffectSchema.Literals(legalDocumentKeys),
   documentHash: EffectSchema.NonEmptyString,
   accepted: EffectSchema.Boolean,
-  acceptedAt: isoDateTimeWithOffsetEffectSchema,
+  acceptedAt: isoDateTimeWithOffsetStringEffectSchema,
   locale: EffectSchema.Literals(locales),
   source: EffectSchema.NonEmptyString,
   document: legalDocumentHashEffectSchema,
