@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomProductTitle,
@@ -26,10 +27,21 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
             input.dateFallback
           )
         : (input.dateFallback ?? input.date),
-      tier:
-        input.tier === "meeting-room"
-          ? getWorkspaceMeetingRoomProductTitle(input.locale)
-          : getWorkspaceProductTierTitle(input.tier, input.locale),
+      tier: Match.value(input.tier).pipe(
+        Match.when("meeting-room", () =>
+          getWorkspaceMeetingRoomProductTitle(input.locale)
+        ),
+        Match.when("basic", (tier) =>
+          getWorkspaceProductTierTitle(tier, input.locale)
+        ),
+        Match.when("plus", (tier) =>
+          getWorkspaceProductTierTitle(tier, input.locale)
+        ),
+        Match.when("profi", (tier) =>
+          getWorkspaceProductTierTitle(tier, input.locale)
+        ),
+        Match.exhaustive
+      ),
     },
     { locale: input.locale }
   );

@@ -427,27 +427,13 @@ export const CheckoutStatusServiceLive = Layer.effect(
                 _tag: "unknown",
                 ...resultBase,
               }
-            : Match.value(reconstruction.summary).pipe(
-                Match.tag(
-                  "meeting-room",
-                  (summary) =>
-                    ({
-                      _tag: "meeting-room" as const,
-                      ...resultBase,
-                      summary,
-                    }) satisfies CheckoutMeetingRoomStatusViewModel
-                ),
-                Match.tag(
-                  "cowork",
-                  (summary) =>
-                    ({
-                      _tag: "cowork" as const,
-                      ...resultBase,
-                      summary,
-                    }) satisfies CheckoutCoworkStatusViewModel
-                ),
-                Match.exhaustive
-              );
+            : ({
+                _tag: reconstruction.summary._tag,
+                ...resultBase,
+                summary: reconstruction.summary,
+              } as
+                | CheckoutCoworkStatusViewModel
+                | CheckoutMeetingRoomStatusViewModel);
 
         yield* Effect.annotateLogsScoped({ result });
         yield* Effect.logInfo("Checkout status lookup completed");

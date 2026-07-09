@@ -5,6 +5,7 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   Data,
   Duration,
@@ -15,7 +16,6 @@ import {
   Schedule,
   Schema,
 } from "effect";
-import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
@@ -71,6 +71,7 @@ import {
   getReservationOrderSchema,
   getReservationProductCoffee,
   getReservationProductMonitorOption,
+  type ReservationOrderData,
 } from "@/features/reservation/schemas/reservation";
 import {
   getReservationPragueDate,
@@ -83,13 +84,103 @@ import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
-const getPreparePayStateSchema = () =>
-  z.object({
-    locale: z.enum(locales),
-    reservationIntentId: z.string().min(1),
-    reservation: getReservationOrderSchema(),
-    legalConsent: z.boolean().optional(),
-  });
+type PreparePayStateInput = {
+  readonly locale: Locale;
+  readonly reservationIntentId: string;
+  readonly reservation: ReservationOrderData;
+  readonly legalConsent?: boolean;
+};
+
+const PreparePayStateBaseSchema = Schema.Struct({
+  locale: Schema.Literals(locales),
+  reservationIntentId: Schema.NonEmptyString,
+  reservation: Schema.Unknown,
+  legalConsent: Schema.optional(Schema.Boolean),
+});
+
+const prefixReservationIssue = (
+  issue: StandardSchemaV1.Issue
+): StandardSchemaV1.Issue => ({
+  ...issue,
+  path: ["reservation", ...(issue.path ?? [])],
+});
+
+const getPreparePayStateSchema = (): StandardSchemaV1<
+  unknown,
+  PreparePayStateInput
+> => {
+  const baseSchema = Schema.toStandardSchemaV1(PreparePayStateBaseSchema);
+  const reservationSchema = getReservationOrderSchema();
+
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "deskohub",
+      validate: (input) => {
+        const baseResult = baseSchema["~standard"].validate(input);
+        if (baseResult instanceof Promise) {
+          return baseResult.then((resolved) => {
+            if (resolved.issues) return resolved;
+
+            const reservationResult = reservationSchema["~standard"].validate(
+              resolved.value.reservation
+            );
+            if (reservationResult instanceof Promise) {
+              return reservationResult.then((nested) =>
+                nested.issues
+                  ? { issues: nested.issues.map(prefixReservationIssue) }
+                  : {
+                      value: {
+                        ...resolved.value,
+                        reservation: nested.value,
+                      },
+                    }
+              );
+            }
+
+            return reservationResult.issues
+              ? {
+                  issues: reservationResult.issues.map(prefixReservationIssue),
+                }
+              : {
+                  value: {
+                    ...resolved.value,
+                    reservation: reservationResult.value,
+                  },
+                };
+          });
+        }
+
+        if (baseResult.issues) return baseResult;
+
+        const reservationResult = reservationSchema["~standard"].validate(
+          baseResult.value.reservation
+        );
+        if (reservationResult instanceof Promise) {
+          return reservationResult.then((nested) =>
+            nested.issues
+              ? { issues: nested.issues.map(prefixReservationIssue) }
+              : {
+                  value: {
+                    ...baseResult.value,
+                    reservation: nested.value,
+                  },
+                }
+          );
+        }
+
+        return reservationResult.issues
+          ? { issues: reservationResult.issues.map(prefixReservationIssue) }
+          : {
+              value: {
+                ...baseResult.value,
+                reservation: reservationResult.value,
+              },
+            };
+      },
+    },
+  };
+};
 
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
@@ -176,53 +267,48 @@ const getDotyposCustomerId = Effect.fn(
 
 const buildReservationCheckoutDetails = (input: {
   readonly locale: Locale;
-  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly reservation: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
   const reservation = unsafeNormalizeReservationInterval(input.reservation);
-  const productCoffee = getReservationProductCoffee(reservation);
-  const productMonitorOption = getReservationProductMonitorOption(reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
   const checkoutReservation: CheckoutDetailsJson["reservation"] = Match.value(
-    reservation
+    input.quote.order
   ).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+    Match.tag("meeting-room", () => ({
       _tag: "meeting-room" as const,
-      startsAt: meetingRoomReservation.startsAt,
-      endsAt: meetingRoomReservation.endsAt,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
     })),
-    Match.when({ entryTier: "basic" }, (basicReservation) => ({
-      _tag: "cowork" as const,
-      tier: "basic" as const,
-      startsAt: basicReservation.startsAt,
-      endsAt: basicReservation.endsAt,
-      coffee: productCoffee,
-    })),
-    Match.when({ entryTier: "plus" }, (plusReservation) => ({
-      _tag: "cowork" as const,
-      tier: "plus" as const,
-      startsAt: plusReservation.startsAt,
-      endsAt: plusReservation.endsAt,
-      coffee: true as const,
-    })),
-    Match.when({ entryTier: "profi" }, (profiReservation) => {
-      if (productMonitorOption === undefined) {
-        throw new Error(
-          "Validated Profi reservation is missing monitor option."
-        );
-      }
-
-      return {
-        _tag: "cowork" as const,
-        tier: "profi" as const,
-        startsAt: profiReservation.startsAt,
-        endsAt: profiReservation.endsAt,
-        coffee: true as const,
-        monitorOption: productMonitorOption,
-      };
-    }),
+    Match.tag("cowork", (coworkOrder) =>
+      Match.value(coworkOrder).pipe(
+        Match.when({ tier: "basic" }, (basicOrder) => ({
+          _tag: "cowork" as const,
+          tier: "basic" as const,
+          startsAt: reservation.startsAt,
+          endsAt: reservation.endsAt,
+          coffee: basicOrder.coffee,
+        })),
+        Match.when({ tier: "plus" }, () => ({
+          _tag: "cowork" as const,
+          tier: "plus" as const,
+          startsAt: reservation.startsAt,
+          endsAt: reservation.endsAt,
+          coffee: true as const,
+        })),
+        Match.when({ tier: "profi" }, (profiOrder) => ({
+          _tag: "cowork" as const,
+          tier: "profi" as const,
+          startsAt: reservation.startsAt,
+          endsAt: reservation.endsAt,
+          coffee: true as const,
+          monitorOption: profiOrder.monitorOption,
+        })),
+        Match.exhaustive
+      )
+    ),
     Match.exhaustive
   );
 
@@ -276,7 +362,7 @@ const getReservationPrivacyEvidence = Effect.fn(
 
 const toReadyResult = (input: {
   readonly locale: Locale;
-  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly reservation: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
 }) => {
@@ -554,9 +640,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
       yield* reservations.updateReservationDetails({
         id: existingReservation.id,
-        reservationDetails: getStoredWorkspaceReservationDetails(
-          input.reservation
-        ),
+        reservationDetails: getStoredWorkspaceReservationDetails(quote.order),
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
@@ -590,16 +674,17 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     );
 
     const availability = yield* WorkspaceAvailabilityService;
-    const availabilitySelection =
-      input.reservation.entryTier === "meeting-room"
-        ? ({ _tag: "meeting-room" } as const)
-        : ({
-            _tag: "cowork",
-            entryTier: input.reservation.entryTier,
-            monitorOption: getReservationProductMonitorOption(
-              input.reservation
-            ),
-          } as const);
+    const availabilitySelection = Match.value(quote.order).pipe(
+      Match.tag("meeting-room", () => ({ _tag: "meeting-room" as const })),
+      Match.tag("cowork", (coworkOrder) => ({
+        _tag: "cowork" as const,
+        entryTier: coworkOrder.tier,
+        ...("monitorOption" in coworkOrder && {
+          monitorOption: coworkOrder.monitorOption,
+        }),
+      })),
+      Match.exhaustive
+    );
     yield* availability.ensureAvailable({
       date: getReservationPragueDate(input.reservation),
       startsAt: input.reservation.startsAt,
@@ -630,9 +715,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       reservationIntentKey,
       dotyposCustomerId,
       customerAccessCode,
-      reservationDetails: getStoredWorkspaceReservationDetails(
-        input.reservation
-      ),
+      reservationDetails: getStoredWorkspaceReservationDetails(quote.order),
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
@@ -657,9 +740,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
         yield* reservations.updateReservationDetails({
           id: claimConflictReservation.id,
-          reservationDetails: getStoredWorkspaceReservationDetails(
-            input.reservation
-          ),
+          reservationDetails: getStoredWorkspaceReservationDetails(quote.order),
           locale: input.locale,
         });
         yield* legalEvents.recordMany(

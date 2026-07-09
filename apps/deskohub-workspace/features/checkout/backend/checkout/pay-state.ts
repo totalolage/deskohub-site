@@ -7,22 +7,25 @@ import {
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import { z } from "zod/v4";
 import type {
   CheckoutSummaryChangedKeys,
-  WorkspaceCheckoutOrder,
   WorkspaceCheckoutOrderInput,
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
-import { checkoutReturnStateJsonSchema } from "@/features/checkout/schemas/checkout-return-state";
 import {
-  type CheckoutSummary,
+  checkoutReturnStateReservationEffectParser,
+  checkoutReturnStateReservationEffectSchema,
+  normalizeCheckoutReturnStateReservation,
+} from "@/features/checkout/schemas/checkout-return-state";
+import {
+  checkoutSummaryEffectSchema,
   checkoutSummarySchema,
 } from "@/features/checkout/schemas/checkout-summary";
-import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
+import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
 import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
 import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 export const payStateSchemaVersion = 1 as const;
 export const payStateAlgorithm = "A256GCM" as const;
@@ -34,7 +37,7 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const CheckoutOrderSchema = EffectSchema.Union([
+const CheckoutOrderShapeSchema = EffectSchema.Union([
   EffectSchema.Struct({
     _tag: EffectSchema.Literal("cowork"),
     tier: EffectSchema.Literal("basic"),
@@ -64,93 +67,120 @@ const CheckoutOrderSchema = EffectSchema.Union([
   }),
 ]);
 
-const decodeCheckoutOrder =
-  EffectSchema.decodeUnknownOption(CheckoutOrderSchema);
+type CheckoutOrderDraft = typeof CheckoutOrderShapeSchema.Type;
 
-const checkoutOrderSchema = z
-  .custom<WorkspaceCheckoutOrder>((value) =>
-    Option.isSome(decodeCheckoutOrder(value))
-  )
-  .superRefine((order, context) => {
+const CheckoutOrderSchema = CheckoutOrderShapeSchema.check(
+  EffectSchema.makeFilter<CheckoutOrderDraft>((order) => {
     const intervalIssue = getReservationIntervalValidationIssue(order);
-    if (!intervalIssue) return;
 
-    context.addIssue({
-      code: "custom",
-      path: [intervalIssue.path],
-      message: intervalIssue.message,
-    });
-  });
-
-const quoteSnapshotSummarySchema = z.custom<CheckoutSummary>(
-  (value) => checkoutSummarySchema.safeParse(value).success
+    return intervalIssue
+      ? [
+          {
+            path: [intervalIssue.path],
+            issue: intervalIssue.message,
+          },
+        ]
+      : [];
+  })
 );
 
-const quoteSnapshotSchema = z.object({
-  schema: z.literal("workspace-checkout-quote"),
-  schemaVersion: z.literal(1),
-  fingerprint: z.string().min(1),
-  order: checkoutOrderSchema,
-  summary: quoteSnapshotSummarySchema,
-  payment: z.object({
-    expectedPrice: nonNegativeWorkspaceMoneySchema,
-    undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
-    customerDiscount: z
-      .object({
-        source: z.literal("dotypos-discount-group"),
-        discountGroupId: z.string().min(1),
-        percent: z.number().positive().max(100),
-        amount: nonNegativeWorkspaceMoneySchema,
-      })
-      .optional(),
+const customerDiscountEffectSchema = EffectSchema.Struct({
+  source: EffectSchema.Literal("dotypos-discount-group"),
+  discountGroupId: EffectSchema.NonEmptyString,
+  percent: EffectSchema.Number.check(
+    EffectSchema.isGreaterThan(0),
+    EffectSchema.isLessThanOrEqualTo(100)
+  ),
+  amount: nonNegativeWorkspaceMoneyEffectSchema,
+});
+
+const quoteSnapshotEffectSchema = EffectSchema.Struct({
+  schema: EffectSchema.Literal("workspace-checkout-quote"),
+  schemaVersion: EffectSchema.Literal(1),
+  fingerprint: EffectSchema.NonEmptyString,
+  order: CheckoutOrderSchema,
+  summary: checkoutSummaryEffectSchema,
+  payment: EffectSchema.Struct({
+    expectedPrice: nonNegativeWorkspaceMoneyEffectSchema,
+    undiscountedPrice: EffectSchema.optional(
+      nonNegativeWorkspaceMoneyEffectSchema
+    ),
+    customerDiscount: EffectSchema.optional(customerDiscountEffectSchema),
   }),
 });
 
-const changedKeysSchema = z.object({
-  sectionKeys: z.array(z.string()),
-  itemKeys: z.array(z.string()),
+const changedKeysEffectSchema = EffectSchema.Struct({
+  sectionKeys: EffectSchema.Array(EffectSchema.String),
+  itemKeys: EffectSchema.Array(EffectSchema.String),
 });
 
-export const signedPayStateSchema = z.object({
-  type: z.literal("signedPayState"),
-  schema: z.literal("workspace-pay-state"),
-  schemaVersion: z.literal(payStateSchemaVersion),
-  alg: z.literal(payStateAlgorithm),
-  kid: z.string().min(1),
-  iat: z.int().nonnegative(),
-  exp: z.int().positive(),
-  locale: z.enum(locales),
-  orderId: z.string().min(1),
-  reservation: checkoutReturnStateJsonSchema.shape.reservation,
-  quote: quoteSnapshotSchema,
-  acceptedTotal: nonNegativeWorkspaceMoneySchema,
-  changedKeys: changedKeysSchema.optional(),
+const payStateProtectedHeaderEffectSchema = EffectSchema.Struct({
+  v: EffectSchema.Literal(payStateSchemaVersion),
+  alg: EffectSchema.Literal(payStateAlgorithm),
+  kid: EffectSchema.NonEmptyString,
 });
 
-export const retryPayStateSchema = z.object({
-  type: z.literal("retryPayState"),
-  schema: z.literal("workspace-pay-state"),
-  schemaVersion: z.literal(payStateSchemaVersion),
-  checkoutToken: z.string().min(1),
-  paymentOrderId: z.string().min(1),
-  stateSemantics: z.literal("checkout-return-state-token"),
-  repositorySemantics: z.object({
-    repository: z.literal("CheckoutReturnStateTokenRepository"),
-    opaque: z.literal(true),
-    singleUse: z.literal(true),
-    ttlSeconds: z.literal(600),
-    boundToPaymentOrderId: z.literal(true),
+export const signedPayStateEffectSchema = EffectSchema.Struct({
+  type: EffectSchema.Literal("signedPayState"),
+  schema: EffectSchema.Literal("workspace-pay-state"),
+  schemaVersion: EffectSchema.Literal(payStateSchemaVersion),
+  alg: EffectSchema.Literal(payStateAlgorithm),
+  kid: EffectSchema.NonEmptyString,
+  iat: EffectSchema.Int.check(EffectSchema.isGreaterThanOrEqualTo(0)),
+  exp: EffectSchema.Int.check(EffectSchema.isGreaterThan(0)),
+  locale: EffectSchema.Literals(locales),
+  orderId: EffectSchema.NonEmptyString,
+  reservation: checkoutReturnStateReservationEffectSchema,
+  quote: quoteSnapshotEffectSchema,
+  acceptedTotal: nonNegativeWorkspaceMoneyEffectSchema,
+  changedKeys: EffectSchema.optional(changedKeysEffectSchema),
+}).annotate({
+  identifier: "SignedPayState",
+  description: "Workspace checkout signed Pay state payload.",
+});
+
+export const retryPayStateEffectSchema = EffectSchema.Struct({
+  type: EffectSchema.Literal("retryPayState"),
+  schema: EffectSchema.Literal("workspace-pay-state"),
+  schemaVersion: EffectSchema.Literal(payStateSchemaVersion),
+  checkoutToken: EffectSchema.NonEmptyString,
+  paymentOrderId: EffectSchema.NonEmptyString,
+  stateSemantics: EffectSchema.Literal("checkout-return-state-token"),
+  repositorySemantics: EffectSchema.Struct({
+    repository: EffectSchema.Literal("CheckoutReturnStateTokenRepository"),
+    opaque: EffectSchema.Literal(true),
+    singleUse: EffectSchema.Literal(true),
+    ttlSeconds: EffectSchema.Literal(600),
+    boundToPaymentOrderId: EffectSchema.Literal(true),
   }),
+}).annotate({
+  identifier: "RetryPayState",
+  description: "Workspace checkout retry Pay state payload.",
 });
 
-export const payStateSchema = z.discriminatedUnion("type", [
-  signedPayStateSchema,
-  retryPayStateSchema,
-]);
+export const payStateEffectSchema = EffectSchema.Union([
+  signedPayStateEffectSchema,
+  retryPayStateEffectSchema,
+]).annotate({
+  identifier: "PayState",
+  description: "Workspace checkout Pay state payload.",
+});
 
-export type SignedPayState = z.infer<typeof signedPayStateSchema>;
-export type RetryPayState = z.infer<typeof retryPayStateSchema>;
-export type PayState = z.infer<typeof payStateSchema>;
+const payStateProtectedHeaderSchema = makeEffectSchemaParser(
+  payStateProtectedHeaderEffectSchema
+);
+
+export const signedPayStateSchema = makeEffectSchemaParser(
+  signedPayStateEffectSchema
+);
+export const retryPayStateSchema = makeEffectSchemaParser(
+  retryPayStateEffectSchema
+);
+export const payStateSchema = makeEffectSchemaParser(payStateEffectSchema);
+
+export type SignedPayState = typeof signedPayStateEffectSchema.Type;
+export type RetryPayState = typeof retryPayStateEffectSchema.Type;
+export type PayState = typeof payStateEffectSchema.Type;
 
 export type PayStateKey = {
   readonly kid: string;
@@ -301,8 +331,8 @@ export const buildSignedPayState = (
   }
 
   const nowMilliseconds = getNowMilliseconds(options);
-  const reservation = checkoutReturnStateJsonSchema.shape.reservation.parse(
-    input.reservation
+  const reservation = normalizeCheckoutReturnStateReservation(
+    checkoutReturnStateReservationEffectParser.parse(input.reservation)
   );
   const iat = Math.floor(nowMilliseconds / 1000);
   const exp = Math.floor(
@@ -427,13 +457,7 @@ const openPayStateRaw = (
     });
   }
 
-  const header = z
-    .object({
-      v: z.literal(payStateSchemaVersion),
-      alg: z.literal(payStateAlgorithm),
-      kid: z.string().min(1),
-    })
-    .safeParse(parsedHeader);
+  const header = payStateProtectedHeaderSchema.safeParse(parsedHeader);
 
   if (!header.success) {
     throw new PayStateTokenError({
@@ -493,23 +517,11 @@ const openPayStateRaw = (
   return state.data;
 };
 
-const SignedPayStateEffectSchema: EffectSchema.Codec<
-  SignedPayState,
-  SignedPayState
-> = EffectSchema.declare(
-  (input: unknown): input is SignedPayState =>
-    signedPayStateSchema.safeParse(input).success,
-  {
-    identifier: "SignedPayState",
-    description: "Workspace checkout Pay state payload.",
-  }
-);
-
 export const makePayStateTokenSchema = (
   options: PayStateCryptoOptions = {}
 ): EffectSchema.Codec<SignedPayState, string> =>
   EffectSchema.String.pipe(
-    EffectSchema.decodeTo(SignedPayStateEffectSchema, {
+    EffectSchema.decodeTo(signedPayStateEffectSchema, {
       decode: SchemaGetter.transformOrFail((token: string) =>
         Effect.try({
           try: () => openPayStateRaw(token, options),

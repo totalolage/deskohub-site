@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
-import { getReservationOrderSchema } from "./reservation";
+import { getReservationOrderSchema, getReservationSchema } from "./reservation";
 
 const originalDateNow = Date.now;
 
@@ -28,7 +28,7 @@ describe("reservation schema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues).toContainEqual(
+      expect((result.error as { issues: unknown[] }).issues).toContainEqual(
         expect.objectContaining({ path: ["startsAt"] })
       );
     }
@@ -40,5 +40,78 @@ describe("reservation schema", () => {
     expect(
       getReservationOrderSchema().safeParse(validMeetingRoomReservation).success
     ).toBe(true);
+  });
+
+  test("normalizes cowork form dates to a full Prague business day", () => {
+    const result = getReservationSchema().safeParse({
+      entryTier: "plus",
+      date: "2099-06-10",
+      startsAt: "00:00",
+      endsAt: "24:00",
+      coffee: false,
+      monitorOption: undefined,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "  hello  ",
+      legalConsent: true,
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toMatchObject({
+        entryTier: "plus",
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-10T22:00:00Z",
+        coffee: true,
+        message: "hello",
+      });
+    }
+  });
+
+  test("rejects monitor setup for non-profi cowork tiers", () => {
+    const result = getReservationSchema().safeParse({
+      entryTier: "basic",
+      date: "2099-06-10",
+      startsAt: "00:00",
+      endsAt: "24:00",
+      coffee: false,
+      monitorOption: "2x27-qhd",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "",
+      legalConsent: true,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect((result.error as { issues: unknown[] }).issues).toContainEqual(
+        expect.objectContaining({ path: ["monitorOption"] })
+      );
+    }
+  });
+
+  test("requires a monitor setup for profi cowork reservations", () => {
+    const result = getReservationSchema().safeParse({
+      entryTier: "profi",
+      date: "2099-06-10",
+      startsAt: "00:00",
+      endsAt: "24:00",
+      coffee: true,
+      monitorOption: undefined,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "",
+      legalConsent: true,
+    });
+
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect((result.error as { issues: unknown[] }).issues).toContainEqual(
+        expect.objectContaining({ path: ["monitorOption"] })
+      );
+    }
   });
 });

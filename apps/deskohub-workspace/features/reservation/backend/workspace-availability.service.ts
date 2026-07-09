@@ -26,6 +26,7 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import {
@@ -492,7 +493,7 @@ const getAvailabilityTouchedDateRange = (
   }).pipe(
     Effect.map((range) => {
       const to = Temporal.Instant.fromEpochMilliseconds(range.endMs - 1)
-        .toZonedDateTimeISO("Europe/Prague")
+        .toZonedDateTimeISO(reservationTimeZone)
         .toPlainDate()
         .toString();
 

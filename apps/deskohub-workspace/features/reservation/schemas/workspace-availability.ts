@@ -9,6 +9,7 @@ import {
   workspaceCoworkTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   defaultReservationInterval,
   getReservationIntervalValidationIssue,
@@ -87,7 +88,7 @@ const workspaceAvailabilityIntervalSchema = z.object(
 );
 
 const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Prague",
+  timeZone: reservationTimeZone,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -170,9 +171,7 @@ export const parseWorkspaceAvailabilityQuery = (
   const date = getDateParam(searchParams, "date");
   const reservationKind = getReservationKindParam(searchParams);
   const entryTier =
-    reservationKind === "cowork"
-      ? getTierParam(searchParams.get("entryTier"))
-      : undefined;
+    reservationKind === "cowork" && getTierParam(searchParams.get("entryTier"));
   const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
   const interval = getIntervalParam(searchParams, date);
 

@@ -4,6 +4,7 @@ import {
   isWorkspaceMeetingRoomDuration,
   type WorkspaceMeetingRoomDurationMinutes,
 } from "@/features/checkout/product-catalog";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 
 export type MeetingRoomReservationInterval = {
   readonly date: string;
@@ -12,28 +13,28 @@ export type MeetingRoomReservationInterval = {
   readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
 };
 
-export const meetingRoomDateTimePattern =
-  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
-
 export const getMeetingRoomReservationInterval = (
   startDateTime: string,
   durationMinutes: number
 ): MeetingRoomReservationInterval | null => {
-  if (!meetingRoomDateTimePattern.test(startDateTime)) return null;
   if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
 
-  const [date = ""] = startDateTime.split("T");
-  const startInstant = Temporal.PlainDateTime.from(startDateTime)
-    .toZonedDateTime("Europe/Prague")
-    .toInstant();
-  const endInstant = startInstant.add({ minutes: durationMinutes });
+  try {
+    const startPlainDateTime = Temporal.PlainDateTime.from(startDateTime);
+    const startInstant = startPlainDateTime
+      .toZonedDateTime(reservationTimeZone)
+      .toInstant();
+    const endInstant = startInstant.add({ minutes: durationMinutes });
 
-  return {
-    date,
-    startsAt: startInstant.toString(),
-    endsAt: endInstant.toString(),
-    durationMinutes,
-  };
+    return {
+      date: startPlainDateTime.toPlainDate().toString(),
+      startsAt: startInstant.toString(),
+      endsAt: endInstant.toString(),
+      durationMinutes,
+    };
+  } catch {
+    return null;
+  }
 };
 
 export const getMeetingRoomAvailabilityToDate = ({
@@ -44,7 +45,7 @@ export const getMeetingRoomAvailabilityToDate = ({
   );
 
   return lastTouchedInstant
-    .toZonedDateTimeISO("Europe/Prague")
+    .toZonedDateTimeISO(reservationTimeZone)
     .toPlainDate()
     .toString();
 };

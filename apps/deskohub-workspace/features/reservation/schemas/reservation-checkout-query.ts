@@ -36,6 +36,7 @@ type ReservationCheckoutQueryValues = Pick<
   ReservationInput,
   ReservationCheckoutQueryField
 >;
+type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
 const queryBooleanSchema = z
   .enum(["true", "false"])
@@ -68,7 +69,7 @@ const getTrimmedSearchParam = (
 const decodeReservationCheckoutQuery = (
   searchParams: SupportedSearchParams
 ): Partial<ReservationCheckoutQueryValues> => {
-  const decoded: Partial<ReservationCheckoutQueryValues> = {};
+  const decoded: Partial<Mutable<ReservationCheckoutQueryValues>> = {};
   const requestedTier =
     getTrimmedSearchParam(searchParams, "entryTier") ??
     getTrimmedSearchParam(searchParams, "tier");
@@ -140,7 +141,7 @@ const decodeReservationCheckoutQuery = (
 export const getReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams
 ): ReservationInput => {
-  const values: ReservationInput = {
+  const values: Mutable<ReservationInput> = {
     ...reservationDefaultValues,
     ...decodeReservationCheckoutQuery(searchParams),
     legalConsent: false,

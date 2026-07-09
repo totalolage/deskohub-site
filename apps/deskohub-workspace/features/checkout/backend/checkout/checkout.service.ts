@@ -38,11 +38,7 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import {
-  getReservationProductCoffee,
-  getReservationProductMonitorOption,
-  type ReservationOrderData,
-} from "@/features/reservation/schemas/reservation";
+import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
 import {
   PostHogEventService,
@@ -271,43 +267,39 @@ const buildCheckoutDetailsForPayment = (input: {
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: LegalEvidenceMap;
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
-  const reservation = Match.value(input.data).pipe(
-    Match.when({ entryTier: "meeting-room" }, (reservation) => ({
+  const reservation = Match.value(input.quote.order).pipe(
+    Match.tag("meeting-room", () => ({
       _tag: "meeting-room" as const,
-      startsAt: reservation.startsAt,
-      endsAt: reservation.endsAt,
+      startsAt: input.data.startsAt,
+      endsAt: input.data.endsAt,
     })),
-    Match.when({ entryTier: "basic" }, (reservation) => ({
-      _tag: "cowork" as const,
-      tier: "basic" as const,
-      startsAt: reservation.startsAt,
-      endsAt: reservation.endsAt,
-      coffee: getReservationProductCoffee(reservation),
-    })),
-    Match.when({ entryTier: "plus" }, (reservation) => ({
-      _tag: "cowork" as const,
-      tier: "plus" as const,
-      startsAt: reservation.startsAt,
-      endsAt: reservation.endsAt,
-      coffee: true as const,
-    })),
-    Match.when({ entryTier: "profi" }, (reservation) => {
-      const monitorOption = getReservationProductMonitorOption(reservation);
-      if (monitorOption === undefined) {
-        throw new Error(
-          "Validated Profi reservation is missing monitor option."
-        );
-      }
-
-      return {
-        _tag: "cowork" as const,
-        tier: reservation.entryTier,
-        startsAt: reservation.startsAt,
-        endsAt: reservation.endsAt,
-        coffee: true as const,
-        monitorOption,
-      };
-    }),
+    Match.tag("cowork", (order) =>
+      Match.value(order).pipe(
+        Match.when({ tier: "basic" }, (basicOrder) => ({
+          _tag: "cowork" as const,
+          tier: "basic" as const,
+          startsAt: input.data.startsAt,
+          endsAt: input.data.endsAt,
+          coffee: basicOrder.coffee,
+        })),
+        Match.when({ tier: "plus" }, () => ({
+          _tag: "cowork" as const,
+          tier: "plus" as const,
+          startsAt: input.data.startsAt,
+          endsAt: input.data.endsAt,
+          coffee: true as const,
+        })),
+        Match.when({ tier: "profi" }, (profiOrder) => ({
+          _tag: "cowork" as const,
+          tier: "profi" as const,
+          startsAt: input.data.startsAt,
+          endsAt: input.data.endsAt,
+          coffee: true as const,
+          monitorOption: profiOrder.monitorOption,
+        })),
+        Match.exhaustive
+      )
+    ),
     Match.exhaustive
   );
 
@@ -768,7 +760,9 @@ export const CheckoutServiceLive = Layer.effect(
 
           yield* reservations.updateReservationDetails({
             id: reservation.id,
-            reservationDetails: getStoredWorkspaceReservationDetails(data),
+            reservationDetails: getStoredWorkspaceReservationDetails(
+              quote.order
+            ),
             locale,
           });
 

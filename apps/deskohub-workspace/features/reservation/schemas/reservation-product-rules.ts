@@ -2,11 +2,11 @@ import "@/shared/polyfills/temporal";
 
 import { Match } from "effect";
 import {
-  isWorkspaceCoworkProductTier,
   isWorkspaceMeetingRoomDuration,
   type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   getReservationDurationMinutes,
   isDefaultReservationInterval,
@@ -14,8 +14,9 @@ import {
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 
-export type ReservationProductRuleInput = Partial<ReservationInterval> &
-  (
+export type ReservationProductRuleInput = Partial<ReservationInterval> & {
+  readonly date?: string;
+} & (
     | {
         readonly _tag: "cowork";
         readonly tier: WorkspaceCoworkProductTier;
@@ -28,7 +29,7 @@ export type ReservationProductRuleInput = Partial<ReservationInterval> &
         readonly monitorOption?: WorkspaceProductMonitorOption;
       }
     | {
-        readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
+        readonly entryTier: WorkspaceCoworkProductTier;
         readonly coffee?: boolean;
         readonly monitorOption?: WorkspaceProductMonitorOption;
       }
@@ -51,9 +52,6 @@ const getProductRuleReservationKind = (input: ReservationProductRuleInput) =>
     Match.tag("cowork", (coworkInput) => ({
       _tag: "cowork" as const,
       tier: coworkInput.tier,
-    })),
-    Match.when({ entryTier: "meeting-room" }, () => ({
-      _tag: "meeting-room" as const,
     })),
     Match.when({ entryTier: "basic" }, (coworkInput) => ({
       _tag: "cowork" as const,
@@ -109,26 +107,19 @@ export const getReservationProductRuleIssue = (
     return null;
   }
 
-  if (isWorkspaceCoworkProductTier(reservationKind.tier)) {
-    if (!isDefaultReservationInterval(interval)) {
-      return {
-        path: "endsAt",
-        message: "Cowork reservations must use the full-day duration.",
-      };
-    }
-
-    return null;
+  if (!isDefaultReservationInterval(interval)) {
+    return {
+      path: "endsAt",
+      message: "Cowork reservations must use the full-day duration.",
+    };
   }
 
-  return {
-    path: "_tag" in input ? "tier" : "entryTier",
-    message: "Unknown reservation product.",
-  };
+  return null;
 };
 
 const isWholeHourInPrague = (isoTimestamp: string) => {
   const time = Temporal.Instant.from(isoTimestamp)
-    .toZonedDateTimeISO("Europe/Prague")
+    .toZonedDateTimeISO(reservationTimeZone)
     .toPlainTime();
 
   return time.minute === 0 && time.second === 0 && time.millisecond === 0;

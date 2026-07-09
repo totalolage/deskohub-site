@@ -178,9 +178,7 @@ describe("Pay URL state", () => {
       JSON.stringify({ ...buildState(), schemaVersion: 2 })
     );
 
-    expect(() => sealPayState(unsupportedState)).toThrow(
-      "Expected PayStateToken"
-    );
+    expect(() => sealPayState(unsupportedState)).toThrow("schemaVersion");
   });
 
   test("does not expose plaintext PII in the encrypted URL token", () => {

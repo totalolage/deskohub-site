@@ -1,6 +1,6 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
 import {
@@ -261,7 +261,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     [searchParams]
   );
   const form = useForm<ReservationInput, unknown, ReservationData>({
-    resolver: zodResolver(schema),
+    resolver: standardSchemaResolver(schema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",

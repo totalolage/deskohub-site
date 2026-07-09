@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { Data, Effect } from "effect";
 import { z } from "zod/v4";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { temporalInstantToPlainDate } from "@/shared/utils/temporal";
 
 export type ReservationInterval = {
@@ -38,8 +39,6 @@ const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const endTimePattern = /^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/;
 const localDateTimePattern =
   /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-const pragueTimeZone = "Europe/Prague";
-
 const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
 export const reservationIntervalFieldSchemas = {
@@ -164,7 +163,7 @@ export const getReservationDurationMinutes = (
 export const getReservationPragueDate = (interval: ReservationInterval) =>
   temporalInstantToPlainDate({
     instant: Temporal.Instant.from(interval.startsAt),
-    timeZone: pragueTimeZone,
+    timeZone: reservationTimeZone,
   }).toString();
 
 export const reservationDateRangesOverlap = (
@@ -203,10 +202,36 @@ const getNormalizedReservationInterval = (
     };
   }
 
+  const normalizedStartsAt = normalizeReservationTimestamp(date, startsAt);
+  if (!normalizedStartsAt.ok) {
+    return {
+      ok: false,
+      issue: {
+        path: "startsAt",
+        message: normalizedStartsAt.message,
+      },
+    };
+  }
+
+  const normalizedEndsAt = normalizeReservationTimestamp(
+    date,
+    endsAt,
+    startsAt
+  );
+  if (!normalizedEndsAt.ok) {
+    return {
+      ok: false,
+      issue: {
+        path: "endsAt",
+        message: normalizedEndsAt.message,
+      },
+    };
+  }
+
   try {
     const interval = {
-      startsAt: normalizeReservationTimestamp(date, startsAt),
-      endsAt: normalizeReservationTimestamp(date, endsAt, startsAt),
+      startsAt: normalizedStartsAt.value,
+      endsAt: normalizedEndsAt.value,
     };
     const durationMinutes = getReservationDurationMinutes(interval);
 
@@ -253,7 +278,7 @@ const getNormalizedReservationInterval = (
     return {
       ok: false,
       issue: {
-        path: cause instanceof MissingDateError ? "startsAt" : "endsAt",
+        path: "endsAt",
         message:
           cause instanceof Error
             ? cause.message
@@ -263,34 +288,64 @@ const getNormalizedReservationInterval = (
   }
 };
 
-class MissingDateError extends Error {}
+type ReservationTimestampResult =
+  | {
+      readonly ok: true;
+      readonly value: string;
+    }
+  | {
+      readonly ok: false;
+      readonly message: string;
+    };
 
 const normalizeReservationTimestamp = (
   date: string | undefined,
   value: string,
   startsAt?: string
-) => {
+): ReservationTimestampResult => {
   if (timePattern.test(value) || value === "24:00") {
     if (!date) {
-      throw new MissingDateError(
-        "Reservation date is required for local time inputs."
-      );
+      return {
+        ok: false,
+        message: "Reservation date is required for local time inputs.",
+      };
     }
 
-    return timeToPragueIso(date, value, startsAt);
+    const timestamp = timeToPragueIso(date, value, startsAt);
+    return timestamp
+      ? { ok: true, value: timestamp }
+      : {
+          ok: false,
+          message: "Reservation time must use HH:mm format.",
+        };
   }
 
-  if (localDateTimePattern.test(value)) {
-    return plainDateTimeToPragueIso(Temporal.PlainDateTime.from(value));
-  }
+  try {
+    if (localDateTimePattern.test(value)) {
+      return {
+        ok: true,
+        value: plainDateTimeToPragueIso(Temporal.PlainDateTime.from(value)),
+      };
+    }
 
-  return Temporal.Instant.from(value).toString();
+    return { ok: true, value: Temporal.Instant.from(value).toString() };
+  } catch (cause) {
+    return {
+      ok: false,
+      message:
+        cause instanceof Error
+          ? cause.message
+          : "Reservation start and end must be valid timestamps.",
+    };
+  }
 };
 
 const timeToPragueIso = (date: string, time: string, startsAt?: string) => {
   const reservationDate = Temporal.PlainDate.from(date);
   const minutes = timeToMinutes(time);
   const startMinutes = startsAt ? timeToMinutes(startsAt) : undefined;
+  if (minutes === null || startMinutes === null) return null;
+
   const localDate = reservationDate.add({
     days:
       time !== "24:00" && startMinutes !== undefined && minutes <= startMinutes
@@ -310,21 +365,19 @@ const plainDateTimeToPragueIso = (dateTime: {
   toZonedDateTime: (timeZone: string) => {
     toInstant: () => { toString: () => string };
   };
-}) => dateTime.toZonedDateTime(pragueTimeZone).toInstant().toString();
+}) => dateTime.toZonedDateTime(reservationTimeZone).toInstant().toString();
 
 const toInstantMs = (value: string) =>
   Temporal.Instant.from(value).epochMilliseconds;
 
 const toPraguePlainDateTime = (value: string) =>
   Temporal.Instant.from(value)
-    .toZonedDateTimeISO(pragueTimeZone)
+    .toZonedDateTimeISO(reservationTimeZone)
     .toPlainDateTime();
 
 const timeToMinutes = (time: string) => {
   if (time === "24:00") return 24 * 60;
-  if (!endTimePattern.test(time)) {
-    throw new Error("Reservation time must use HH:mm format.");
-  }
+  if (!endTimePattern.test(time)) return null;
 
   const [hours = "0", minutes = "0"] = time.split(":");
   return Number(hours) * 60 + Number(minutes);

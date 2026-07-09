@@ -26,8 +26,8 @@ import { preparePayState } from "@/features/reservation/actions/prepare-pay-stat
 import {
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationInterval,
-  meetingRoomDateTimePattern,
 } from "@/features/reservation/meeting-room-reservation-time";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { RESERVATION_VALIDATION } from "@/features/reservation/schemas/reservation";
 import {
   parseWorkspaceAvailabilityResponse,
@@ -81,8 +81,11 @@ const meetingRoomFormCardClassName =
 const meetingRoomFormSkeletonClassName =
   "rounded-full bg-navy-blue/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
 
+const meetingRoomDateTimePattern =
+  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
+
 const pragueDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Europe/Prague",
+  timeZone: reservationTimeZone,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",

@@ -1,5 +1,3 @@
-import "@/shared/polyfills/temporal";
-
 import type { Locale } from "@/features/i18n";
 import {
   dateToTemporalPlainDate,
@@ -13,7 +11,7 @@ import {
 type ReservationDisplayDate = Date | TemporalInstant | TemporalPlainDate;
 type ReservationDisplayInstant = Date | TemporalInstant;
 
-const reservationTimeZone = "Europe/Prague";
+export const reservationTimeZone = "Europe/Prague";
 const calendarPlainTime = Temporal.PlainTime.from("12:00");
 
 const reservationDisplayDateFormatOptions = {
@@ -60,7 +58,7 @@ export const reservationPlainDateToCalendarDate = (date: Temporal.PlainDate) =>
   });
 
 export const calendarDateToReservationPlainDate = (date: Date) =>
-  dateToTemporalPlainDate({ date, timeZone: Temporal.Now.timeZoneId() });
+  dateToTemporalPlainDate({ date, timeZone: reservationTimeZone });
 
 export const formatReservationDisplayDate = (
   date: ReservationDisplayDate,

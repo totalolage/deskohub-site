@@ -1,6 +1,5 @@
 import { Match, Schema } from "effect";
 import {
-  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
@@ -57,11 +56,27 @@ export type StoredMeetingRoomReservationDetails =
 export type StoredWorkspaceReservationDetails =
   typeof storedWorkspaceReservationDetailsEffectSchema.Type;
 
-export type ReservationDetailsInput = {
-  readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
-  readonly coffee?: boolean;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
-};
+export type ReservationDetailsInput =
+  | StoredWorkspaceReservationDetails
+  | {
+      readonly _tag: "cowork";
+      readonly tier: "basic";
+      readonly coffee: boolean;
+    }
+  | {
+      readonly _tag: "cowork";
+      readonly tier: "plus";
+      readonly coffee: true;
+    }
+  | {
+      readonly _tag: "cowork";
+      readonly tier: "profi";
+      readonly coffee: true;
+      readonly monitorOption: WorkspaceProductMonitorOption;
+    }
+  | {
+      readonly _tag: "meeting-room";
+    };
 
 export const storedWorkspaceReservationDetailsSchema = makeEffectSchemaParser(
   storedWorkspaceReservationDetailsEffectSchema,
@@ -72,25 +87,23 @@ export const getStoredWorkspaceReservationDetails = (
   input: ReservationDetailsInput
 ): StoredWorkspaceReservationDetails =>
   Match.value(input).pipe(
-    Match.when({ entryTier: "basic" }, (basicInput) => ({
+    Match.when({ _tag: "cowork", tier: "basic" }, (basicInput) => ({
       _tag: "cowork" as const,
       tier: "basic" as const,
-      coffee: Boolean(basicInput.coffee),
+      coffee: basicInput.coffee,
     })),
-    Match.when({ entryTier: "plus" }, () => ({
+    Match.when({ _tag: "cowork", tier: "plus" }, () => ({
       _tag: "cowork" as const,
       tier: "plus" as const,
       coffee: true as const,
     })),
-    Match.when({ entryTier: "profi" }, (profiInput) =>
-      storedWorkspaceReservationDetailsSchema.parse({
-        _tag: "cowork",
-        tier: "profi",
-        coffee: true,
-        monitorOption: profiInput.monitorOption,
-      })
-    ),
-    Match.when({ entryTier: "meeting-room" }, () => ({
+    Match.when({ _tag: "cowork", tier: "profi" }, (profiInput) => ({
+      _tag: "cowork" as const,
+      tier: "profi" as const,
+      coffee: true as const,
+      monitorOption: profiInput.monitorOption,
+    })),
+    Match.when({ _tag: "meeting-room" }, () => ({
       _tag: "meeting-room" as const,
     })),
     Match.exhaustive

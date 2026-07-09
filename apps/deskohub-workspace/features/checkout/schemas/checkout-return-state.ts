@@ -8,6 +8,7 @@ import {
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 const CheckoutReturnStateReservationBaseSchema = EffectSchema.Struct({
   startsAt: EffectSchema.NonEmptyString,
@@ -44,7 +45,41 @@ const CheckoutReturnStateReservationShapeSchema = EffectSchema.Union([
 type CheckoutReturnStateReservationDraft =
   typeof CheckoutReturnStateReservationShapeSchema.Type;
 
-const CheckoutReturnStateReservationSchema =
+const getCheckoutReturnStateReservationProductRuleInput = (
+  reservation: CheckoutReturnStateReservationDraft
+) =>
+  Match.value(reservation).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+      _tag: "meeting-room" as const,
+      startsAt: meetingRoomReservation.startsAt,
+      endsAt: meetingRoomReservation.endsAt,
+    })),
+    Match.when({ entryTier: "basic" }, (coworkReservation) => ({
+      _tag: "cowork" as const,
+      tier: "basic" as const,
+      coffee: coworkReservation.coffee,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+    })),
+    Match.when({ entryTier: "plus" }, (coworkReservation) => ({
+      _tag: "cowork" as const,
+      tier: "plus" as const,
+      coffee: coworkReservation.coffee,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+    })),
+    Match.when({ entryTier: "profi" }, (coworkReservation) => ({
+      _tag: "cowork" as const,
+      tier: "profi" as const,
+      coffee: coworkReservation.coffee,
+      monitorOption: coworkReservation.monitorOption,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+    })),
+    Match.exhaustive
+  );
+
+export const checkoutReturnStateReservationEffectSchema =
   CheckoutReturnStateReservationShapeSchema.check(
     EffectSchema.makeFilter<CheckoutReturnStateReservationDraft>(
       (reservation) => {
@@ -102,7 +137,9 @@ const CheckoutReturnStateReservationSchema =
           });
         }
 
-        const productRuleIssue = getReservationProductRuleIssue(reservation);
+        const productRuleIssue = getReservationProductRuleIssue(
+          getCheckoutReturnStateReservationProductRuleInput(reservation)
+        );
         if (productRuleIssue) {
           issues.push({
             path: [productRuleIssue.path],
@@ -116,16 +153,20 @@ const CheckoutReturnStateReservationSchema =
   );
 
 const decodeCheckoutReturnStateReservation = EffectSchema.decodeUnknownOption(
-  CheckoutReturnStateReservationSchema
+  checkoutReturnStateReservationEffectSchema
 );
+
+export const checkoutReturnStateReservationEffectParser =
+  makeEffectSchemaParser(checkoutReturnStateReservationEffectSchema);
 
 const checkoutReturnStateReservationInputSchema =
   z.custom<CheckoutReturnStateReservationDraft>((value) =>
     Option.isSome(decodeCheckoutReturnStateReservation(value))
   );
-type CheckoutReturnStateReservation = CheckoutReturnStateReservationDraft;
+export type CheckoutReturnStateReservation =
+  CheckoutReturnStateReservationDraft;
 
-const normalizeCheckoutReturnStateReservation = (
+export const normalizeCheckoutReturnStateReservation = (
   reservation: CheckoutReturnStateReservationDraft
 ): CheckoutReturnStateReservation =>
   Match.value(reservation).pipe(
