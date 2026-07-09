@@ -2,9 +2,7 @@ import {
   decodeStandardSchema,
   parseStandardSchema,
 } from "@deskohub/standard-schema";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Schema } from "effect";
-import { z } from "zod/v4";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
@@ -31,51 +29,40 @@ export type WorkspaceAvailabilityQuery = Partial<ReservationInterval> & {
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
 
-export type WorkspaceAvailabilityNotice = {
-  readonly date: string;
-  readonly startsAt: string;
-  readonly endsAt: string;
-  readonly summary?: string;
-};
-
-export type WorkspaceAvailability = {
-  readonly date?: string;
-  readonly from: string;
-  readonly to: string;
-  readonly unavailableDates: readonly string[];
-  readonly unavailableCoworkTiers: readonly WorkspaceCoworkProductTier[];
-  readonly meetingRoomUnavailable: boolean;
-  readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
-  readonly notices: readonly WorkspaceAvailabilityNotice[];
-};
-
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
     ["workspace-availability", query] as const,
 };
 
-const workspaceAvailabilityNoticeSchema = z.object({
-  date: z.string(),
-  startsAt: z.string(),
-  endsAt: z.string(),
-  summary: z.string().optional(),
+const workspaceAvailabilityNoticeEffectSchema = Schema.Struct({
+  date: Schema.String,
+  startsAt: Schema.String,
+  endsAt: Schema.String,
+  summary: Schema.optional(Schema.String),
 });
 
-const workspaceAvailabilityResponseSchema = z.object({
-  date: z.string().optional(),
-  from: z.string(),
-  to: z.string(),
-  unavailableDates: z.array(z.string()),
-  unavailableCoworkTiers: z.array(z.enum(workspaceCoworkTiers)),
-  meetingRoomUnavailable: z.boolean(),
-  unavailableMonitorOptions: z.array(z.enum(workspaceProductMonitorOptions)),
-  notices: z.array(workspaceAvailabilityNoticeSchema),
+const workspaceAvailabilityResponseEffectSchema = Schema.Struct({
+  date: Schema.optional(Schema.String),
+  from: Schema.String,
+  to: Schema.String,
+  unavailableDates: Schema.Array(Schema.String),
+  unavailableCoworkTiers: Schema.Array(Schema.Literals(workspaceCoworkTiers)),
+  meetingRoomUnavailable: Schema.Boolean,
+  unavailableMonitorOptions: Schema.Array(
+    Schema.Literals(workspaceProductMonitorOptions)
+  ),
+  notices: Schema.Array(workspaceAvailabilityNoticeEffectSchema),
 });
 
-const workspaceAvailabilitySchema: StandardSchemaV1<
-  unknown,
-  WorkspaceAvailability
-> = workspaceAvailabilityResponseSchema;
+export type WorkspaceAvailabilityNotice =
+  typeof workspaceAvailabilityNoticeEffectSchema.Type;
+
+export type WorkspaceAvailability =
+  typeof workspaceAvailabilityResponseEffectSchema.Type;
+
+const workspaceAvailabilitySchema = Schema.toStandardSchemaV1(
+  workspaceAvailabilityResponseEffectSchema
+);
 
 export const parseWorkspaceAvailabilityResponse = (
   value: unknown

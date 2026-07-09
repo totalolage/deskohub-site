@@ -69,14 +69,16 @@ const CheckoutOrderSchema = CheckoutOrderShapeSchema.check(
   EffectSchema.makeFilter<CheckoutOrderDraft>((order) => {
     const intervalIssue = getReservationIntervalValidationIssue(order);
 
-    return intervalIssue
-      ? [
-          {
-            path: [intervalIssue.path],
-            issue: intervalIssue.message,
-          },
-        ]
-      : [];
+    if (intervalIssue) {
+      return [
+        {
+          path: [intervalIssue.path],
+          issue: intervalIssue.message,
+        },
+      ];
+    }
+
+    return [];
   })
 );
 
