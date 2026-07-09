@@ -3,8 +3,8 @@ import "@/shared/polyfills/temporal";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceMeetingRoomDuration,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import {
   getReservationDurationMinutes,
@@ -14,7 +14,7 @@ import {
 } from "@/features/reservation/schemas/reservation-interval";
 
 export type ReservationProductRuleInput = Partial<ReservationInterval> & {
-  readonly entryTier: WorkspaceProductTier;
+  readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
   readonly coffee?: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };

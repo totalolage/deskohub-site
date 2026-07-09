@@ -11,13 +11,6 @@ import type {
   PaymentState,
   WorkspaceReservation,
 } from "@/db/schema";
-import {
-  isWorkspaceCoworkProductTier,
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
-} from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getWorkspaceTableMap,
@@ -27,6 +20,10 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type StoredCoworkReservationDetails,
+  storedWorkspaceReservationDetailsSchema,
+} from "@/features/reservation/schemas/stored-reservation-details";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
   ReservationHoldCleanupService,
@@ -60,23 +57,11 @@ type WorkspaceCheckoutStatusSummaryBase = {
   readonly reservedUntil: Date;
 };
 
-type BasicCoworkCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
-  readonly tier: Exclude<WorkspaceCoworkProductTier, "profi">;
-  readonly coffee: boolean;
-};
-
-type ProfiCoworkCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
-  readonly tier: "profi";
-  readonly coffee: boolean;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
-};
-
-type CoworkCheckoutStatusSummary =
-  | BasicCoworkCheckoutStatusSummary
-  | ProfiCoworkCheckoutStatusSummary;
+type CoworkCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase &
+  StoredCoworkReservationDetails;
 
 type MeetingRoomCheckoutStatusSummary = WorkspaceCheckoutStatusSummaryBase & {
-  readonly tier: "meeting-room";
+  readonly _tag: "meeting-room";
 };
 
 export type WorkspaceCheckoutStatusSummary =
@@ -219,14 +204,6 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary reconstruction started"
         );
 
-        const productMonitorOption =
-          reservation.productMonitorOption ?? undefined;
-        const monitorOption = isWorkspaceProductMonitorOption(
-          productMonitorOption
-        )
-          ? productMonitorOption
-          : undefined;
-
         if (!reservation.dotyposReservationId) {
           yield* Effect.logWarning(
             "Checkout status summary missing Dotypos reservation id"
@@ -234,23 +211,18 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return {} satisfies CheckoutStatusReconstruction;
         }
 
-        if (!isWorkspaceProductTier(reservation.productTier)) {
-          yield* Effect.logWarning(
-            "Checkout status summary invalid product tier"
+        const parsedReservationDetails =
+          storedWorkspaceReservationDetailsSchema.safeParse(
+            reservation.reservationDetails
           );
-          return {} satisfies CheckoutStatusReconstruction;
-        }
 
-        if (
-          isWorkspaceCoworkProductTier(reservation.productTier) &&
-          productMonitorOption !== undefined &&
-          monitorOption === undefined
-        ) {
+        if (!parsedReservationDetails.success) {
           yield* Effect.logWarning(
-            "Checkout status summary invalid monitor option"
+            "Checkout status summary invalid reservation details"
           );
           return {} satisfies CheckoutStatusReconstruction;
         }
+        const reservationDetails = parsedReservationDetails.data;
 
         const attempt = yield* paymentAttempts.findDisplayableForReservation({
           workspaceReservationId: reservation.id,
@@ -347,29 +319,21 @@ export const CheckoutStatusServiceLive = Layer.effect(
         };
 
         const summary: WorkspaceCheckoutStatusSummary = Match.value(
-          reservation.productTier
+          reservationDetails
         ).pipe(
-          Match.when("meeting-room", () => ({
-            tier: "meeting-room" as const,
+          Match.tag("meeting-room", () => ({
+            _tag: "meeting-room" as const,
             reservedFrom,
             reservedUntil,
             price,
           })),
-          Match.when("profi", () => ({
-            tier: "profi" as const,
-            coffee: reservation.productCoffee,
-            ...(monitorOption ? { monitorOption } : {}),
+          Match.tag("cowork", (coworkDetails) => ({
+            ...coworkDetails,
             reservedFrom,
             reservedUntil,
             price,
           })),
-          Match.orElse((tier) => ({
-            tier,
-            coffee: reservation.productCoffee,
-            reservedFrom,
-            reservedUntil,
-            price,
-          }))
+          Match.exhaustive
         );
 
         yield* Effect.annotateLogsScoped({ summary });
@@ -439,7 +403,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
         );
 
         const result = Match.value(reconstruction.summary).pipe(
-          Match.when({ tier: "meeting-room" }, (summary) => ({
+          Match.tag("meeting-room", (summary) => ({
             _tag: "meeting-room" as const,
             orderId: reservation.id,
             returnOutcome: input.returnOutcome,

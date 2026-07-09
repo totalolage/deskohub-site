@@ -2,7 +2,6 @@ import type {
   WorkspaceCoworkProductTier,
   WorkspaceMeetingRoomDurationMinutes,
   WorkspaceProductMonitorOption,
-  WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 
@@ -23,7 +22,7 @@ type WorkspaceProductTierBulletMessages = {
 };
 
 export const workspaceProductTierMessages: Record<
-  WorkspaceProductTier,
+  WorkspaceCoworkProductTier,
   {
     readonly title: WorkspaceProductMessage;
     readonly description: WorkspaceProductMessage;
@@ -40,10 +39,6 @@ export const workspaceProductTierMessages: Record<
   profi: {
     title: m.reservationTierProfiTitle,
     description: m.reservationTierProfiDescription,
-  },
-  "meeting-room": {
-    title: m.reservationTierMeetingRoomTitle,
-    description: m.reservationTierMeetingRoomDescription,
   },
 };
 
@@ -108,10 +103,13 @@ export const getWorkspaceProductMessage = (
 ) => message({}, { locale });
 
 export const getWorkspaceProductTierTitle = (
-  tier: WorkspaceProductTier,
+  tier: WorkspaceCoworkProductTier,
   locale: Locale
 ) =>
   getWorkspaceProductMessage(workspaceProductTierMessages[tier].title, locale);
+
+export const getWorkspaceMeetingRoomProductTitle = (locale: Locale) =>
+  getWorkspaceProductMessage(m.reservationTierMeetingRoomTitle, locale);
 
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,

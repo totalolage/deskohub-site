@@ -250,7 +250,7 @@ describe("workspace checkout quotes", () => {
 
     expect(oneHour.summary.sections[0]?.items).toEqual([
       {
-        key: "product:meeting-room:60",
+        key: "product:meeting-room",
         meetingRoomDurationMinutes: 60,
         amount: { value: 30_000, exponent: 2, currency: "CZK" },
       },

@@ -143,6 +143,8 @@ const validateCheckoutReturnStateReservation = (
     return;
   }
 
+  if (reservation.entryTier === "meeting-room") return;
+
   const product = getWorkspaceProductByTier(reservation.entryTier);
   const monitorOption = getReservationProductMonitorOption(reservation);
 

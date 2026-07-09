@@ -12,6 +12,7 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     });
 
     expect(query).toMatchObject({
+      _tag: "cowork",
       date: "2099-06-10",
       entryTier: "profi",
       monitorOption: "2x27-qhd",
@@ -25,6 +26,7 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     });
 
     expect(query).toMatchObject({
+      _tag: "cowork",
       date: "2099-06-10",
       entryTier: "basic",
     });
@@ -38,6 +40,7 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
     });
 
     expect(query).toMatchObject({
+      _tag: "cowork",
       date: "2099-06-10",
       entryTier: "basic",
     });

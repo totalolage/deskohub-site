@@ -142,9 +142,12 @@ describe("CheckoutService", () => {
           reservationIntentKey: "intent-key",
           dotyposCustomerId: "customer-id",
           dotyposReservationId: "dotypos-reservation-id",
-          productTier: reservationData.entryTier,
-          productCoffee: reservationData.coffee,
-          productMonitorOption: reservationData.monitorOption,
+          reservationDetails: {
+            _tag: "cowork",
+            tier: reservationData.entryTier,
+            coffee: reservationData.coffee,
+            monitorOption: reservationData.monitorOption,
+          },
           locale: "en-US",
           reservationState: "held",
           reservationHoldExpiresAt: new Date("2099-06-20T10:00:00.000Z"),
@@ -165,7 +168,7 @@ describe("CheckoutService", () => {
           updatedAt: new Date(),
         })
       ),
-      updateProductIntent: mock((input) =>
+      updateReservationDetails: mock((input) =>
         Effect.succeed({ id: input.id } as never)
       ),
       markPaymentTerminal,

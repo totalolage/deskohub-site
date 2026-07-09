@@ -5,8 +5,8 @@ import { isValidPhoneNumber } from "libphonenumber-js";
 import { z } from "zod/v4";
 import {
   getWorkspaceProductByTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
   workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
@@ -184,6 +184,8 @@ const validateReservationOrder = <T extends ReservationOrderObject>(
     }
   }
 
+  if (data.entryTier === "meeting-room") return;
+
   const product = getWorkspaceProductByTier(data.entryTier);
 
   const monitorOption = getReservationProductMonitorOption(data);
@@ -278,7 +280,7 @@ export type ReservationOrderData = z.output<
 >;
 
 type ReservationProductProjectionInput = {
-  readonly entryTier: WorkspaceProductTier;
+  readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
   readonly coffee?: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
@@ -313,11 +315,12 @@ export const reservationDefaultValues: ReservationInput = {
   legalConsent: false,
 };
 
-export const tierIncludesCourtesyCoffee = (tier: WorkspaceProductTier) =>
+export const tierIncludesCourtesyCoffee = (tier: WorkspaceCoworkProductTier) =>
   getWorkspaceProductByTier(tier).includesCourtesyCoffee;
 
-export const tierRequiresMonitorOption = (tier: WorkspaceProductTier) =>
+export const tierRequiresMonitorOption = (tier: WorkspaceCoworkProductTier) =>
   getWorkspaceProductByTier(tier).requiresMonitorOption;
 
-export const getAllowedMonitorOptionsForTier = (tier: WorkspaceProductTier) =>
-  getWorkspaceProductByTier(tier).allowedMonitorOptions;
+export const getAllowedMonitorOptionsForTier = (
+  tier: WorkspaceCoworkProductTier
+) => getWorkspaceProductByTier(tier).allowedMonitorOptions;

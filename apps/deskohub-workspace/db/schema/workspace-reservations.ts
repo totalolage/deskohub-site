@@ -1,18 +1,15 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean,
   check,
   index,
+  jsonb,
   pgTable,
   text,
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import {
-  workspaceProductMonitorOptions,
-  workspaceProductTiers,
-} from "@/features/checkout/product-catalog";
 import { locales } from "@/features/i18n";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 
@@ -77,9 +74,9 @@ export const workspaceReservations = pgTable(
       .notNull()
       .$type<FulfillmentState>(),
     activePaymentAttemptId: text("active_payment_attempt_id"),
-    productTier: text("product_tier").notNull(),
-    productCoffee: boolean("product_coffee").notNull(),
-    productMonitorOption: text("product_monitor_option"),
+    reservationDetails: jsonb("reservation_details")
+      .$type<StoredWorkspaceReservationDetails>()
+      .notNull(),
     locale: text("locale").notNull(),
     reservationHoldExpiresAt: timestamp("reservation_hold_expires_at", {
       withTimezone: true,
@@ -131,14 +128,6 @@ export const workspaceReservations = pgTable(
     check(
       "workspace_reservations_fulfillment_state_check",
       sql`${t.fulfillmentState} in (${quotedSqlList(fulfillmentStates)})`
-    ),
-    check(
-      "workspace_reservations_product_tier_check",
-      sql`${t.productTier} in (${quotedSqlList(workspaceProductTiers)})`
-    ),
-    check(
-      "workspace_reservations_product_monitor_option_check",
-      sql`${t.productMonitorOption} is null or ${t.productMonitorOption} in (${quotedSqlList(workspaceProductMonitorOptions)})`
     ),
     check(
       "workspace_reservations_locale_check",

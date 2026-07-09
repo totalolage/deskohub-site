@@ -148,7 +148,8 @@ const getAvailability = (input: {
   readonly startsAt?: string;
   readonly endsAt?: string;
   readonly to?: string;
-  readonly entryTier?: "basic" | "plus" | "profi" | "meeting-room";
+  readonly _tag?: "cowork" | "meeting-room";
+  readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
   readonly reservations?: readonly Reservation[];
@@ -163,6 +164,7 @@ const getAvailability = (input: {
       );
       const service = yield* availability.WorkspaceAvailabilityService;
       return yield* service.getAvailability({
+        _tag: input._tag ?? "cowork",
         date: input.date,
         from: input.from ?? testDate,
         to: input.to ?? testDate,
@@ -258,7 +260,7 @@ describe("WorkspaceAvailabilityService", () => {
       reservations: [makeReservation({ tableId: "basic-1", status: "NEW" })],
     });
 
-    expect(oneBasicOccupied.unavailableTiers).not.toContain("basic");
+    expect(oneBasicOccupied.unavailableCoworkTiers).not.toContain("basic");
 
     const allBasicOccupied = await getAvailability({
       date: testDate,
@@ -268,7 +270,7 @@ describe("WorkspaceAvailabilityService", () => {
       ],
     });
 
-    expect(allBasicOccupied.unavailableTiers).toContain("basic");
+    expect(allBasicOccupied.unavailableCoworkTiers).toContain("basic");
   });
 
   test("keeps a table available until overlapping reservation seats reach capacity", async () => {
@@ -282,7 +284,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(partiallyOccupied.unavailableDates).not.toContain(testDate);
-    expect(partiallyOccupied.unavailableTiers).not.toContain("basic");
+    expect(partiallyOccupied.unavailableCoworkTiers).not.toContain("basic");
 
     const fullyOccupied = await getAvailability({
       date: testDate,
@@ -299,15 +301,19 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(fullyOccupied.unavailableDates).toContain(testDate);
-    expect(fullyOccupied.unavailableTiers).toContain("basic");
+    expect(fullyOccupied.unavailableCoworkTiers).toContain("basic");
   });
 
   test("marks a meeting room unavailable after any overlapping booking", async () => {
     const availability = await getAvailability({
       date: testDate,
-      entryTier: "meeting-room",
+      _tag: "meeting-room",
       tables: [
-        makeTable({ id: "room-1", tags: ["tier:meeting-room"], seats: "12" }),
+        makeTable({
+          id: "room-1",
+          tags: ["reservation:meeting-room"],
+          seats: "12",
+        }),
       ],
       reservations: [
         makeReservation({ tableId: "room-1", status: "NEW", seats: "1" }),
@@ -315,7 +321,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(availability.unavailableDates).toContain(testDate);
-    expect(availability.unavailableTiers).toContain("meeting-room");
+    expect(availability.meetingRoomUnavailable).toBe(true);
   });
 
   test("keeps non-selected range dates unavailable for cowork date picker", async () => {
@@ -356,7 +362,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(backToBack.unavailableDates).not.toContain(testDate);
-    expect(backToBack.unavailableTiers).not.toContain("basic");
+    expect(backToBack.unavailableCoworkTiers).not.toContain("basic");
 
     const overlapping = await getAvailability({
       date: testDate,
@@ -375,7 +381,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(overlapping.unavailableDates).toContain(testDate);
-    expect(overlapping.unavailableTiers).toContain("basic");
+    expect(overlapping.unavailableCoworkTiers).toContain("basic");
   });
 
   test("ignores inactive, hidden, and untagged tables", async () => {
@@ -388,7 +394,7 @@ describe("WorkspaceAvailabilityService", () => {
       ],
     });
 
-    expect(availability.unavailableTiers).toContain("basic");
+    expect(availability.unavailableCoworkTiers).toContain("basic");
   });
 
   test("marks calendar fully occupied dates unavailable", async () => {
@@ -440,6 +446,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
+            _tag: "cowork",
             date: testDate,
             entryTier: "profi",
             monitorOption: "2x27-qhd",
@@ -468,6 +475,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
+            _tag: "cowork",
             date: testDate,
             entryTier: "basic",
           });
@@ -498,6 +506,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
+            _tag: "cowork",
             date: testDate,
             startsAt: "22:00",
             endsAt: "02:00",
@@ -531,6 +540,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
+            _tag: "cowork",
             date: testDate,
             startsAt: "22:00",
             endsAt: "02:00",

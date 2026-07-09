@@ -9,6 +9,7 @@ import {
   type WorkspaceCoworkProductTier,
   type WorkspaceMeetingRoomDurationMinutes,
   type WorkspaceProductMonitorOption,
+  workspaceMeetingRoomProduct,
 } from "@/features/checkout/product-catalog";
 import {
   addWorkspaceMoneyEffect,
@@ -88,7 +89,10 @@ export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
 export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (order: WorkspaceCheckoutOrder) {
-  const product = getWorkspaceProductByTier(order.entryTier);
+  const product =
+    order.entryTier === "meeting-room"
+      ? undefined
+      : getWorkspaceProductByTier(order.entryTier);
   const interval = yield* normalizeReservationInterval(order).pipe(
     Effect.mapError(
       (cause) =>
@@ -103,7 +107,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
     Match.orElse((coworkOrder) => coworkOrder.monitorOption)
   );
 
-  if (product.requiresMonitorOption && !monitorOption) {
+  if (product?.requiresMonitorOption && !monitorOption) {
     return yield* Effect.fail(
       new CheckoutQuoteError({
         message: "Monitor option is required for this entry tier.",
@@ -112,7 +116,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   }
 
   if (
-    product.requiresMonitorOption &&
+    product?.requiresMonitorOption &&
     monitorOption &&
     !product.allowedMonitorOptions.includes(monitorOption)
   ) {
@@ -123,7 +127,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
     );
   }
 
-  if (!product.requiresMonitorOption && monitorOption) {
+  if (product && !product.requiresMonitorOption && monitorOption) {
     return yield* Effect.fail(
       new CheckoutQuoteError({
         message: "Monitor option is unavailable for this entry tier.",
@@ -150,15 +154,19 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
       startsAt: interval.startsAt,
       endsAt: interval.endsAt,
     })),
-    Match.orElse((coworkOrder) => ({
-      entryTier: coworkOrder.entryTier,
-      coffee: product.requiresCoffee ? true : coworkOrder.coffee,
-      ...(!isDefaultReservationInterval(interval) && {
-        startsAt: interval.startsAt,
-        endsAt: interval.endsAt,
-      }),
-      ...(monitorOption && { monitorOption }),
-    }))
+    Match.orElse((coworkOrder) => {
+      const coworkProduct = getWorkspaceProductByTier(coworkOrder.entryTier);
+
+      return {
+        entryTier: coworkOrder.entryTier,
+        coffee: coworkProduct.requiresCoffee ? true : coworkOrder.coffee,
+        ...(!isDefaultReservationInterval(interval) && {
+          startsAt: interval.startsAt,
+          endsAt: interval.endsAt,
+        }),
+        ...(monitorOption && { monitorOption }),
+      };
+    })
   );
 
   return normalizedOrder;
@@ -167,6 +175,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
 const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
   amount: item.amount.value,
+  meetingRoomDurationMinutes: item.meetingRoomDurationMinutes ?? null,
 });
 
 const getCheckoutQuoteCanonicalPayload = (
@@ -175,7 +184,7 @@ const getCheckoutQuoteCanonicalPayload = (
   const interval = unsafeNormalizeReservationInterval(quote.order);
   const order = Match.value(quote.order).pipe(
     Match.when({ entryTier: "meeting-room" }, (meetingRoomOrder) => ({
-      tier: meetingRoomOrder.entryTier,
+      _tag: meetingRoomOrder.entryTier,
       interval,
     })),
     Match.orElse((coworkOrder) => ({
@@ -235,7 +244,10 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
   } = {}
 ) {
   const normalizedOrder = yield* normalizeWorkspaceCheckoutOrderEffect(order);
-  const product = getWorkspaceProductByTier(normalizedOrder.entryTier);
+  const product =
+    normalizedOrder.entryTier === "meeting-room"
+      ? workspaceMeetingRoomProduct
+      : getWorkspaceProductByTier(normalizedOrder.entryTier);
   const interval = unsafeNormalizeReservationInterval(normalizedOrder);
   const durationMinutes = getReservationDurationMinutes(interval);
   const productPrice = withWorkspaceMoneyCurrency(
@@ -250,16 +262,15 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
     options.currencyOverride
   );
   const coffeePrice = withWorkspaceMoneyCurrency(
-    getWorkspaceProductCoffeeLinePriceForTier(normalizedOrder.entryTier),
+    normalizedOrder.entryTier === "meeting-room"
+      ? workspaceMeetingRoomProduct.price
+      : getWorkspaceProductCoffeeLinePriceForTier(normalizedOrder.entryTier),
     options.currencyOverride
   );
   const orderItems: CheckoutSummaryItem[] = [
     {
       key: Match.value(normalizedOrder).pipe(
-        Match.when(
-          { entryTier: "meeting-room" },
-          () => `product:meeting-room:${durationMinutes}`
-        ),
+        Match.when({ entryTier: "meeting-room" }, () => "product:meeting-room"),
         Match.orElse((coworkOrder) => `product:${coworkOrder.entryTier}`)
       ),
       amount: productPrice,

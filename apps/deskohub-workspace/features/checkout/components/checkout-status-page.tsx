@@ -16,6 +16,7 @@ import type {
   CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
 import {
+  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
@@ -158,12 +159,13 @@ const getStatusCopy = (
 const getReservationSummaryRows = (
   summary: CheckoutStatusSummary,
   locale: Locale,
+  tierTitle: string,
   extraRows: readonly (SummaryRow | undefined)[] = []
 ): SummaryRow[] => {
   const rows: Array<SummaryRow | undefined> = [
     {
       label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
-      value: getWorkspaceProductTierTitle(summary.tier, locale),
+      value: tierTitle,
     },
     {
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
@@ -186,30 +188,35 @@ const getCoworkSummaryRows = (
   const { summary } = status;
   if (!summary) return [];
 
-  return getReservationSummaryRows(summary, locale, [
-    summary.coffee
-      ? {
-          label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-          value: m.checkoutStatusYes({}, { locale }),
-        }
-      : undefined,
-    Match.value(summary).pipe(
-      Match.when({ tier: "profi" }, (profiSummary) =>
-        profiSummary.monitorOption
-          ? {
-              label: String(
-                m.checkoutStatusSummaryMonitorLabel({}, { locale })
-              ),
-              value: getWorkspaceProductMonitorTitle(
-                profiSummary.monitorOption,
-                locale
-              ),
-            }
-          : undefined
+  return getReservationSummaryRows(
+    summary,
+    locale,
+    getWorkspaceProductTierTitle(summary.tier, locale),
+    [
+      summary.coffee
+        ? {
+            label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+            value: m.checkoutStatusYes({}, { locale }),
+          }
+        : undefined,
+      Match.value(summary).pipe(
+        Match.when({ tier: "profi" }, (profiSummary) =>
+          profiSummary.monitorOption
+            ? {
+                label: String(
+                  m.checkoutStatusSummaryMonitorLabel({}, { locale })
+                ),
+                value: getWorkspaceProductMonitorTitle(
+                  profiSummary.monitorOption,
+                  locale
+                ),
+              }
+            : undefined
+        ),
+        Match.orElse(() => undefined)
       ),
-      Match.orElse(() => undefined)
-    ),
-  ]);
+    ]
+  );
 };
 
 const getMeetingRoomSummaryRows = (
@@ -218,16 +225,21 @@ const getMeetingRoomSummaryRows = (
 ) => {
   const { summary } = status;
 
-  return getReservationSummaryRows(summary, locale, [
-    {
-      label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
-      value: formatReservationDisplayTimeRange(
-        summary.reservedFrom,
-        summary.reservedUntil,
-        locale
-      ),
-    },
-  ]);
+  return getReservationSummaryRows(
+    summary,
+    locale,
+    getWorkspaceMeetingRoomProductTitle(locale),
+    [
+      {
+        label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
+        value: formatReservationDisplayTimeRange(
+          summary.reservedFrom,
+          summary.reservedUntil,
+          locale
+        ),
+      },
+    ]
+  );
 };
 
 const getFulfillmentFailedContactMessage = (
@@ -235,7 +247,15 @@ const getFulfillmentFailedContactMessage = (
   locale: Locale
 ) => {
   const tier = status.summary
-    ? getWorkspaceProductTierTitle(status.summary.tier, locale)
+    ? Match.value(status.summary).pipe(
+        Match.tag("meeting-room", () =>
+          getWorkspaceMeetingRoomProductTitle(locale)
+        ),
+        Match.tag("cowork", (summary) =>
+          getWorkspaceProductTierTitle(summary.tier, locale)
+        ),
+        Match.exhaustive
+      )
     : m.checkoutStatusMissingSummary({}, { locale });
   const date = status.summary
     ? formatReservationDisplayDate(status.summary.reservedFrom, locale)

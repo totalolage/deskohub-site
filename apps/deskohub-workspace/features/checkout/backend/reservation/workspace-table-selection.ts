@@ -1,7 +1,10 @@
 import type { Table } from "@deskohub/dotypos/generated";
-import { workspaceProductTiers } from "@/features/checkout/product-catalog";
+import { workspaceCoworkTiers } from "@/features/checkout/product-catalog";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
+
+export const workspaceMeetingRoomReservationTableTag =
+  "reservation:meeting-room";
 
 const fallbackRoomKey = "__workspace-table-selection:fallback-room__";
 
@@ -174,7 +177,10 @@ export const isDisplayableWorkspaceTable = (table: Table) => {
   if (table.enabled !== true || table.display !== true) return false;
 
   const tableTags = new Set(table.tags ?? []);
-  return workspaceProductTiers.some((tier) => tableTags.has(`tier:${tier}`));
+  return (
+    workspaceCoworkTiers.some((tier) => tableTags.has(`tier:${tier}`)) ||
+    tableTags.has(workspaceMeetingRoomReservationTableTag)
+  );
 };
 
 const getWorkspaceTableRoomKey = (table: Table) =>

@@ -96,26 +96,29 @@ type CheckoutDetailsReservationBase =
 
 type CheckoutDetailsReservationDraft =
   | (CheckoutDetailsReservationBase & {
+      readonly _tag: "cowork";
       readonly tier: (typeof workspaceCoworkProductTiers)[number];
       readonly coffee: boolean;
       readonly monitorOption?: WorkspaceProductMonitorOption;
     })
   | (CheckoutDetailsReservationBase & {
-      readonly tier: "meeting-room";
+      readonly _tag: "meeting-room";
     });
 type CheckoutDetailsReservation =
   | (CheckoutDetailsReservationBase & {
+      readonly _tag: "cowork";
       readonly tier: (typeof workspaceCoworkProductTiers)[number];
       readonly coffee: boolean;
       readonly monitorOption?: WorkspaceProductMonitorOption;
     })
   | (CheckoutDetailsReservationBase & {
-      readonly tier: "meeting-room";
+      readonly _tag: "meeting-room";
     });
 
 const CheckoutDetailsReservationSchema = EffectSchema.Union([
   EffectSchema.Struct({
     ...CheckoutDetailsReservationBaseSchema.fields,
+    _tag: EffectSchema.Literal("cowork"),
     tier: EffectSchema.Literals(workspaceCoworkProductTiers),
     coffee: EffectSchema.Boolean,
     monitorOption: EffectSchema.optional(
@@ -124,7 +127,7 @@ const CheckoutDetailsReservationSchema = EffectSchema.Union([
   }),
   EffectSchema.Struct({
     ...CheckoutDetailsReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("meeting-room"),
+    _tag: EffectSchema.Literal("meeting-room"),
   }),
 ]);
 
@@ -151,10 +154,17 @@ const validateCheckoutDetailsReservation = (
     return;
   }
 
-  const productRuleIssue = getReservationProductRuleIssue({
-    ...reservation,
-    entryTier: reservation.tier,
-  });
+  const productRuleIssue = getReservationProductRuleIssue(
+    reservation._tag === "meeting-room"
+      ? {
+          ...reservation,
+          entryTier: "meeting-room",
+        }
+      : {
+          ...reservation,
+          entryTier: reservation.tier,
+        }
+  );
   if (productRuleIssue) {
     context.addIssue({
       code: "custom",
@@ -165,6 +175,8 @@ const validateCheckoutDetailsReservation = (
     });
     return;
   }
+
+  if (reservation._tag === "meeting-room") return;
 
   const product = getWorkspaceProductByTier(reservation.tier);
   const monitorOption = getReservationProductMonitorOption({
@@ -208,10 +220,10 @@ const checkoutDetailsReservationSchema = checkoutDetailsReservationInputSchema
     validateCheckoutDetailsReservation(reservation, context);
   })
   .transform((reservation): CheckoutDetailsReservation => {
-    if (reservation.tier === "meeting-room") {
+    if (reservation._tag === "meeting-room") {
       const normalized = unsafeNormalizeReservationInterval(reservation);
       return {
-        tier: "meeting-room",
+        _tag: "meeting-room",
         startsAt: normalized.startsAt,
         endsAt: normalized.endsAt,
       };
@@ -219,6 +231,7 @@ const checkoutDetailsReservationSchema = checkoutDetailsReservationInputSchema
 
     const normalized = unsafeNormalizeReservationInterval(reservation);
     return {
+      _tag: "cowork",
       tier: reservation.tier,
       startsAt: normalized.startsAt,
       endsAt: normalized.endsAt,

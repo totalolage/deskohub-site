@@ -43,6 +43,7 @@ describe("CheckoutStatusPage", () => {
         status={{
           ...baseStatus,
           summary: {
+            _tag: "cowork",
             tier: "profi",
             coffee: false,
             monitorOption: "2x27-qhd",
@@ -84,7 +85,7 @@ describe("CheckoutStatusPage", () => {
           ...baseStatus,
           _tag: "meeting-room",
           summary: {
-            tier: "meeting-room",
+            _tag: "meeting-room",
             reservedFrom: new Date("2026-06-20T07:00:00.000Z"),
             reservedUntil: new Date("2026-06-20T11:00:00.000Z"),
             price: { value: 60_000, exponent: 2, currency: "CZK" },
@@ -165,6 +166,7 @@ describe("CheckoutStatusPage", () => {
             phone: "+420777777777",
           },
           summary: {
+            _tag: "cowork",
             tier: "basic",
             coffee: false,
             reservedFrom: new Date("2026-06-19T22:00:00.000Z"),

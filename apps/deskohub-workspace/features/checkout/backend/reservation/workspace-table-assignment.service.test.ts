@@ -13,12 +13,35 @@ import {
 type DotyposAssignmentTestService = typeof DotyposService.Service;
 
 const makeReservation = (
-  overrides: Partial<CheckoutDetailsJson["reservation"]> = {}
-): CheckoutDetailsJson["reservation"] => ({
+  overrides: Partial<
+    Extract<CheckoutDetailsJson["reservation"], { readonly _tag: "cowork" }>
+  > = {}
+): Extract<
+  CheckoutDetailsJson["reservation"],
+  { readonly _tag: "cowork" }
+> => ({
+  _tag: "cowork",
   tier: "basic",
   startsAt: "2099-06-09T22:00:00Z",
   endsAt: "2099-06-10T22:00:00Z",
   coffee: false,
+  ...overrides,
+});
+
+const makeMeetingRoomReservation = (
+  overrides: Partial<
+    Extract<
+      CheckoutDetailsJson["reservation"],
+      { readonly _tag: "meeting-room" }
+    >
+  > = {}
+): Extract<
+  CheckoutDetailsJson["reservation"],
+  { readonly _tag: "meeting-room" }
+> => ({
+  _tag: "meeting-room",
+  startsAt: "2099-06-10T07:00:00Z",
+  endsAt: "2099-06-10T08:00:00Z",
   ...overrides,
 });
 
@@ -287,22 +310,18 @@ describe("WorkspaceTableAssignmentService", () => {
   test("reserves meeting room tables exclusively", async () => {
     await expect(
       assignTableId(
-        makeReservation({
-          tier: "meeting-room",
-          startsAt: "2099-06-10T07:00:00Z",
-          endsAt: "2099-06-10T08:00:00Z",
-        }),
+        makeMeetingRoomReservation(),
         [
           makeTable({
             id: "room-1",
             name: "Room 1",
-            tags: ["tier:meeting-room"],
+            tags: ["reservation:meeting-room"],
             seats: "12",
           }),
           makeTable({
             id: "room-2",
             name: "Room 2",
-            tags: ["tier:meeting-room"],
+            tags: ["reservation:meeting-room"],
             seats: "12",
           }),
         ],

@@ -53,9 +53,9 @@ describe("workspace reservation email table map font", () => {
         dotyposCustomerId: "customer-id",
         dotyposReservationId: "dotypos-reservation-id",
         customerAccessCode: "test-code",
-        productTier: "meeting-room",
-        productCoffee: false,
-        productMonitorOption: null,
+        reservationDetails: {
+          _tag: "meeting-room",
+        },
         locale: "en-US",
         customer: { id: "customer-id" },
         reservedFrom: new Date("2026-06-20T07:00:00.000Z"),

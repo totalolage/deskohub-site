@@ -25,6 +25,7 @@ import {
 import {
   getWorkspaceTableCandidates,
   selectWorkspaceTableFromCandidates,
+  workspaceMeetingRoomReservationTableTag,
 } from "./workspace-table-selection";
 
 export interface WorkspaceTableAssignmentService {
@@ -42,19 +43,23 @@ const getReservationAssignment = (
   reservation: CheckoutDetailsJson["reservation"]
 ) =>
   Match.value(reservation).pipe(
-    Match.when({ tier: "meeting-room" }, () => ({
+    Match.tag("meeting-room", () => ({
       logProduct: {},
       monitorOption: undefined,
+      requiredTags: [workspaceMeetingRoomReservationTableTag],
       requireEmptyTable: true,
     })),
-    Match.orElse((coworkReservation) => ({
+    Match.tag("cowork", (coworkReservation) => ({
       logProduct: {
+        tier: coworkReservation.tier,
         coffee: coworkReservation.coffee,
         monitorOption: coworkReservation.monitorOption,
       },
       monitorOption: coworkReservation.monitorOption,
+      requiredTags: [`tier:${coworkReservation.tier}`],
       requireEmptyTable: false,
-    }))
+    })),
+    Match.exhaustive
   );
 
 export const WorkspaceTableAssignmentServiceLive = Layer.effect(
@@ -69,20 +74,27 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ reservation });
           yield* Effect.logInfo("Workspace table assignment started");
 
-          const product = getWorkspaceProductByTier(reservation.tier);
-          const requiredTags = [`tier:${reservation.tier}`];
           const reservationAssignment = getReservationAssignment(reservation);
-          const { monitorOption, requireEmptyTable } = reservationAssignment;
+          const { monitorOption, requireEmptyTable, requiredTags } =
+            reservationAssignment;
+          const product =
+            reservation._tag === "cowork"
+              ? getWorkspaceProductByTier(reservation.tier)
+              : undefined;
           yield* Effect.annotateLogsScoped({ product, requiredTags });
 
-          if (product.requiresMonitorOption && !monitorOption) {
+          if (product?.requiresMonitorOption && !monitorOption) {
             yield* Effect.logWarning(
               "Workspace table assignment rejected: missing monitor option"
             );
 
             return yield* Effect.fail(
               new ValidationError({
-                message: `Workspace reservation tier ${reservation.tier} requires a monitor option for Dotypos table assignment`,
+                message: `Workspace reservation tier ${
+                  reservation._tag === "cowork"
+                    ? reservation.tier
+                    : reservation._tag
+                } requires a monitor option for Dotypos table assignment`,
               })
             );
           }
@@ -204,7 +216,10 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           effect.pipe(
             Effect.scoped,
             Effect.annotateLogs({
-              tier: reservation.tier,
+              reservationKind: reservation._tag,
+              ...(reservation._tag === "cowork"
+                ? { tier: reservation.tier }
+                : {}),
               date: getReservationPragueDate(reservation),
               ...getReservationAssignment(reservation).logProduct,
             })

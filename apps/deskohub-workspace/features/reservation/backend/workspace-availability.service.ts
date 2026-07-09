@@ -16,14 +16,15 @@ import {
   getWorkspaceTableOccupancyById,
   hasAvailableWorkspaceTableCandidate,
   workspaceBookingGuestCount,
+  workspaceMeetingRoomReservationTableTag,
 } from "@/features/checkout/backend/reservation";
 import {
   getWorkspaceProductByTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
+  workspaceCoworkTiers,
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
-  workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
@@ -58,20 +59,29 @@ export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<{
   readonly date: string;
-  readonly tier: WorkspaceProductTier;
+  readonly tier: WorkspaceCoworkProductTier | "meeting-room";
   readonly monitorOption?: WorkspaceProductMonitorOption;
 }> {}
+
+type WorkspaceAvailabilityEnsureQuery = Partial<ReservationInterval> & {
+  readonly date: string;
+} & (
+    | {
+        readonly _tag: "cowork";
+        readonly entryTier: WorkspaceCoworkProductTier;
+        readonly monitorOption?: WorkspaceProductMonitorOption;
+      }
+    | {
+        readonly _tag: "meeting-room";
+      }
+  );
 
 export interface WorkspaceAvailabilityService {
   readonly getAvailability: (
     query: WorkspaceAvailabilityQuery
   ) => Effect.Effect<WorkspaceAvailability, WorkspaceAvailabilityError>;
   readonly ensureAvailable: (
-    query: Partial<ReservationInterval> & {
-      readonly date: string;
-      readonly entryTier: WorkspaceProductTier;
-      readonly monitorOption?: WorkspaceProductMonitorOption;
-    }
+    query: WorkspaceAvailabilityEnsureQuery
   ) => Effect.Effect<
     void,
     WorkspaceAvailabilityError | WorkspaceTableUnavailableError
@@ -189,8 +199,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
                 ? isUnavailableForSelection(
                     tables,
                     occupancyByDate.get(day) ?? new Map(),
-                    query.entryTier,
-                    query.monitorOption
+                    query
                   )
                 : false)
           );
@@ -205,11 +214,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           from: query.from,
           to: query.to,
           unavailableDates,
-          unavailableTiers: date
-            ? workspaceProductTiers.filter((tier) =>
+          unavailableCoworkTiers: date
+            ? workspaceCoworkTiers.filter((tier) =>
                 isTierUnavailable(tables, selectedDateOccupancy, tier)
               )
             : [],
+          meetingRoomUnavailable: date
+            ? isMeetingRoomUnavailable(tables, selectedDateOccupancy)
+            : false,
           unavailableMonitorOptions: date
             ? workspaceProductMonitorOptions.filter((option) =>
                 isMonitorOptionUnavailable(
@@ -248,13 +260,7 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
     );
 
     const ensureAvailable = Effect.fn("workspaceAvailability.ensureAvailable")(
-      function* (query: {
-        readonly date: string;
-        readonly startsAt?: string;
-        readonly endsAt?: string;
-        readonly entryTier: WorkspaceProductTier;
-        readonly monitorOption?: WorkspaceProductMonitorOption;
-      }) {
+      function* (query: WorkspaceAvailabilityEnsureQuery) {
         yield* Effect.annotateLogsScoped({ query });
         yield* Effect.logInfo("Workspace availability assurance started");
 
@@ -263,13 +269,9 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
           query
         );
         const availability = yield* getAvailability({
-          date: query.date,
+          ...query,
           from: availabilityRange.from,
           to: availabilityRange.to,
-          startsAt: query.startsAt,
-          endsAt: query.endsAt,
-          entryTier: query.entryTier,
-          monitorOption: query.monitorOption,
         });
         yield* Effect.annotateLogsScoped({ availability });
 
@@ -283,8 +285,11 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
 
         return yield* new WorkspaceTableUnavailableError({
           date: unavailableDate,
-          tier: query.entryTier,
-          monitorOption: query.monitorOption,
+          tier:
+            query._tag === "meeting-room" ? "meeting-room" : query.entryTier,
+          ...(query._tag === "cowork" && query.monitorOption
+            ? { monitorOption: query.monitorOption }
+            : {}),
         });
       },
       (effect) => effect.pipe(Effect.scoped)
@@ -351,18 +356,26 @@ const getCalendarNotices = (
 const isUnavailableForSelection = (
   tables: readonly Table[],
   occupancyByTableId: ReadonlyMap<string, number>,
-  tier?: WorkspaceProductTier,
-  monitorOption?: WorkspaceProductMonitorOption
+  query: Pick<
+    WorkspaceAvailabilityQuery,
+    "_tag" | "entryTier" | "monitorOption"
+  >
 ) => {
-  if (!tier) {
-    return workspaceProductTiers.every((candidateTier) =>
+  if (query._tag === "meeting-room") {
+    return isMeetingRoomUnavailable(tables, occupancyByTableId);
+  }
+
+  const { entryTier, monitorOption } = query;
+
+  if (!entryTier) {
+    return workspaceCoworkTiers.every((candidateTier) =>
       isTierUnavailable(tables, occupancyByTableId, candidateTier)
     );
   }
 
-  const product = getWorkspaceProductByTier(tier);
+  const product = getWorkspaceProductByTier(entryTier);
   if (!product.requiresMonitorOption) {
-    return isTierUnavailable(tables, occupancyByTableId, tier);
+    return isTierUnavailable(tables, occupancyByTableId, entryTier);
   }
 
   if (monitorOption) {
@@ -381,7 +394,7 @@ const isUnavailableForSelection = (
 const isTierUnavailable = (
   tables: readonly Table[],
   occupancyByTableId: ReadonlyMap<string, number>,
-  tier: WorkspaceProductTier
+  tier: WorkspaceCoworkProductTier
 ) => {
   const product = getWorkspaceProductByTier(tier);
 
@@ -395,10 +408,21 @@ const isTierUnavailable = (
     tables,
     [`tier:${tier}`],
     occupancyByTableId,
-    workspaceBookingGuestCount,
-    tier === "meeting-room"
+    workspaceBookingGuestCount
   );
 };
+
+const isMeetingRoomUnavailable = (
+  tables: readonly Table[],
+  occupancyByTableId: ReadonlyMap<string, number>
+) =>
+  !hasAvailableWorkspaceTableCandidate(
+    tables,
+    [workspaceMeetingRoomReservationTableTag],
+    occupancyByTableId,
+    workspaceBookingGuestCount,
+    true
+  );
 
 const isMonitorOptionUnavailable = (
   tables: readonly Table[],

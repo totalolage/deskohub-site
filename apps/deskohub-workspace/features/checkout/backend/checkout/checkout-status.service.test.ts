@@ -14,9 +14,12 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "dotypos-reservation-id",
-  productTier: "profi",
-  productCoffee: false,
-  productMonitorOption: "2x27-qhd",
+  reservationDetails: {
+    _tag: "cowork",
+    tier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
   locale: "en-US",
   reservationState: "held",
   reservationHoldExpiresAt: new Date("2099-06-20T10:00:00.000Z"),
@@ -102,8 +105,9 @@ describe("CheckoutStatusService", () => {
           makeReservation({
             paymentState: "paid",
             fulfillmentState: "fulfilled",
-            productTier: "meeting-room",
-            productMonitorOption: null,
+            reservationDetails: {
+              _tag: "meeting-room",
+            },
           })
         )
       ),
@@ -230,8 +234,9 @@ describe("CheckoutStatusService", () => {
           makeReservation({
             paymentState: "paid",
             fulfillmentState: "fulfilled",
-            productTier: "meeting-room",
-            productMonitorOption: null,
+            reservationDetails: {
+              _tag: "meeting-room",
+            },
           })
         )
       ),
@@ -291,7 +296,7 @@ describe("CheckoutStatusService", () => {
                   id: "assigned-table",
                   name: "Desk 1",
                   locationName: "Main room",
-                  tags: ["tier:meeting-room"],
+                  tags: ["reservation:meeting-room"],
                 },
                 {
                   _cloudId: "cloud-id",
@@ -300,7 +305,7 @@ describe("CheckoutStatusService", () => {
                   id: "neighbor-table",
                   name: "Desk 2",
                   locationName: "Main room",
-                  tags: ["tier:meeting-room"],
+                  tags: ["reservation:meeting-room"],
                 },
                 {
                   _cloudId: "cloud-id",
@@ -309,7 +314,7 @@ describe("CheckoutStatusService", () => {
                   id: "other-room-table",
                   name: "Desk 3",
                   locationName: "Quiet room",
-                  tags: ["tier:meeting-room"],
+                  tags: ["reservation:meeting-room"],
                 },
               ])
             ),
@@ -323,7 +328,7 @@ describe("CheckoutStatusService", () => {
     expect(status).toMatchObject({
       status: "fulfilled",
       summary: {
-        tier: "meeting-room",
+        _tag: "meeting-room",
         price: { value: 55_000, exponent: 2, currency: "CZK" },
       },
       tableMap: {

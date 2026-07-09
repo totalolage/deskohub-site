@@ -7,6 +7,7 @@ import {
 } from "@/db/database.service";
 import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -20,9 +21,7 @@ export interface CreateWorkspaceReservationInput {
   readonly reservationIntentKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
-  readonly productTier: string;
-  readonly productCoffee: boolean;
-  readonly productMonitorOption?: string;
+  readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
   readonly reservationHoldExpiresAt?: Date;
 }
@@ -37,11 +36,9 @@ export interface WorkspaceReservationRepository {
   readonly findByIntentKey: (
     reservationIntentKey: string
   ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
-  readonly updateProductIntent: (input: {
+  readonly updateReservationDetails: (input: {
     readonly id: string;
-    readonly productTier: string;
-    readonly productCoffee: boolean;
-    readonly productMonitorOption?: string;
+    readonly reservationDetails: StoredWorkspaceReservationDetails;
     readonly locale: string;
   }) => Effect.Effect<
     WorkspaceReservation,
@@ -177,9 +174,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             reservationState: "draft" as const,
             paymentState: "not_started" as const,
             fulfillmentState: "not_started" as const,
-            productTier: input.productTier,
-            productCoffee: input.productCoffee,
-            productMonitorOption: input.productMonitorOption,
+            reservationDetails: input.reservationDetails,
             locale: input.locale,
             reservationHoldExpiresAt: input.reservationHoldExpiresAt,
           };
@@ -240,18 +235,16 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         (effect, reservationIntentKey) =>
           effect.pipe(Effect.annotateLogs({ reservationIntentKey }))
       ),
-      updateProductIntent: Effect.fn(
-        "workspaceReservations.updateProductIntent"
+      updateReservationDetails: Effect.fn(
+        "workspaceReservations.updateReservationDetails"
       )(function* (input) {
         const updated = yield* runDb(
-          "workspaceReservations.updateProductIntent",
+          "workspaceReservations.updateReservationDetails",
           () =>
             db
               .update(workspaceReservations)
               .set({
-                productTier: input.productTier,
-                productCoffee: input.productCoffee,
-                productMonitorOption: input.productMonitorOption ?? null,
+                reservationDetails: input.reservationDetails,
                 locale: input.locale,
                 updatedAt: new Date(),
               })
@@ -269,10 +262,10 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         if (!updated[0]) {
           return yield* Effect.fail(
             new WorkspaceReservationStateError({
-              operation: "workspaceReservations.updateProductIntent",
+              operation: "workspaceReservations.updateReservationDetails",
               reservationId: input.id,
               message:
-                "Only draft or held reservations can refresh product intent.",
+                "Only draft or held reservations can refresh reservation details.",
             })
           );
         }

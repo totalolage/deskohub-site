@@ -1,5 +1,8 @@
-import type { WorkspaceProductTier } from "@/features/checkout/product-catalog";
-import { getWorkspaceProductTierTitle } from "@/features/checkout/product-catalog.i18n";
+import type { WorkspaceCoworkProductTier } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import { type Locale, m } from "@/features/i18n";
 import {
   formatReservationDisplayDate,
@@ -10,7 +13,7 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
   readonly date: string;
   readonly dateFallback?: string;
   readonly locale: Locale;
-  readonly tier: WorkspaceProductTier;
+  readonly tier: WorkspaceCoworkProductTier | "meeting-room";
 }) => {
   const plainDate = parseReservationInputDate(input.date);
 
@@ -23,7 +26,10 @@ export const getReservationAvailabilityUnavailableMessage = (input: {
             input.dateFallback
           )
         : (input.dateFallback ?? input.date),
-      tier: getWorkspaceProductTierTitle(input.tier, input.locale),
+      tier:
+        input.tier === "meeting-room"
+          ? getWorkspaceMeetingRoomProductTitle(input.locale)
+          : getWorkspaceProductTierTitle(input.tier, input.locale),
     },
     { locale: input.locale }
   );

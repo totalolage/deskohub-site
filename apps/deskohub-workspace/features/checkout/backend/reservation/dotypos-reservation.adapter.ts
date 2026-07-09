@@ -8,7 +8,10 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import {
+  getWorkspaceProductByTier,
+  workspaceMeetingRoomProduct,
+} from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
@@ -78,7 +81,10 @@ export const createWorkspaceDotyposReservation: (
       Effect.annotateLogs({
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,
-        entryTier: input.checkoutDetails.reservation.tier,
+        reservationKind: input.checkoutDetails.reservation._tag,
+        ...(input.checkoutDetails.reservation._tag === "cowork"
+          ? { entryTier: input.checkoutDetails.reservation.tier }
+          : {}),
         date: getReservationPragueDate(input.checkoutDetails.reservation),
         reservationStatus: input.status,
       })
@@ -104,23 +110,24 @@ const formatWorkspaceReservationNote = (
 ) => {
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
-  const product = getWorkspaceProductByTier(reservation.tier);
+  const productLabel =
+    reservation._tag === "meeting-room"
+      ? workspaceMeetingRoomProduct.label
+      : getWorkspaceProductByTier(reservation.tier).label;
   const productRows = Match.value(reservation).pipe(
-    Match.when({ tier: "meeting-room" }, () => []),
-    Match.when({ tier: "profi" }, (profiReservation) => [
-      `Coffee: ${profiReservation.coffee ? "yes" : "no"}`,
-      ...(profiReservation.monitorOption
-        ? [`Monitor: ${profiReservation.monitorOption}`]
+    Match.tag("meeting-room", () => []),
+    Match.tag("cowork", (coworkReservation) => [
+      `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
+      ...(coworkReservation.tier === "profi" && coworkReservation.monitorOption
+        ? [`Monitor: ${coworkReservation.monitorOption}`]
         : []),
     ]),
-    Match.orElse((coworkReservation) => [
-      `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
-    ])
+    Match.exhaustive
   );
   const lines = [
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,
-    `Product: ${product.label}`,
+    `Product: ${productLabel}`,
     `Date: ${getReservationPragueDate(reservation)}`,
     `Time: ${reservation.startsAt}-${reservation.endsAt}`,
     `Duration: ${getReservationDurationMinutes(reservation)} minutes`,

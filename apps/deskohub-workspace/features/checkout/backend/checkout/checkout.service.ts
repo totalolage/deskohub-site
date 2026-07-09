@@ -40,6 +40,7 @@ import {
   getReservationProductMonitorOption,
   type ReservationOrderData,
 } from "@/features/reservation/schemas/reservation";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -269,11 +270,12 @@ const buildCheckoutDetailsForPayment = (input: {
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
   const reservation = Match.value(input.data).pipe(
     Match.when({ entryTier: "meeting-room" }, (reservation) => ({
-      tier: reservation.entryTier,
+      _tag: "meeting-room" as const,
       startsAt: reservation.startsAt,
       endsAt: reservation.endsAt,
     })),
     Match.orElse((reservation) => ({
+      _tag: "cowork" as const,
       tier: reservation.entryTier,
       startsAt: reservation.startsAt,
       endsAt: reservation.endsAt,
@@ -735,11 +737,9 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout quote comparison passed"
           );
 
-          yield* reservations.updateProductIntent({
+          yield* reservations.updateReservationDetails({
             id: reservation.id,
-            productTier: data.entryTier,
-            productCoffee: getReservationProductCoffee(data),
-            productMonitorOption: getReservationProductMonitorOption(data),
+            reservationDetails: getStoredWorkspaceReservationDetails(data),
             locale,
           });
 

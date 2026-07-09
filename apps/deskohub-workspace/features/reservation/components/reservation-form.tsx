@@ -158,6 +158,7 @@ const getWorkspaceAvailabilityQuery = ({
   to: string;
 }): WorkspaceAvailabilityQuery => {
   return {
+    _tag: "cowork",
     from,
     to,
     ...(startsAt && { startsAt }),
@@ -170,6 +171,7 @@ const getWorkspaceAvailabilityQuery = ({
 
 const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
   const params = new URLSearchParams({
+    _tag: query._tag,
     from: query.from,
     to: query.to,
   });
@@ -316,8 +318,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     () => new Set(availability?.unavailableDates ?? []),
     [availability]
   );
-  const unavailableTiers = useMemo(
-    () => new Set(availability?.unavailableTiers ?? []),
+  const unavailableCoworkTiers = useMemo(
+    () => new Set(availability?.unavailableCoworkTiers ?? []),
     [availability]
   );
   const unavailableMonitorOptions = useMemo(
@@ -331,7 +333,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       ),
     [availability, selectedDate]
   );
-  const isSelectedTierUnavailable = unavailableTiers.has(selectedTier);
+  const isSelectedTierUnavailable = unavailableCoworkTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
     selectedMonitorOption &&
       unavailableMonitorOptions.has(selectedMonitorOption)
@@ -474,7 +476,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                           option.title,
                           locale
                         );
-                        const isUnavailable = unavailableTiers.has(
+                        const isUnavailable = unavailableCoworkTiers.has(
                           option.value
                         );
 

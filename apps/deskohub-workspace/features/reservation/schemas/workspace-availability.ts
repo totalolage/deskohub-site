@@ -2,12 +2,12 @@ import { parseStandardSchema } from "@deskohub/standard-schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { z } from "zod/v4";
 import {
+  isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
+  workspaceCoworkTiers,
   workspaceProductMonitorOptions,
-  workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import {
   defaultReservationInterval,
@@ -18,10 +18,11 @@ import {
 } from "@/features/reservation/schemas/reservation-interval";
 
 export type WorkspaceAvailabilityQuery = Partial<ReservationInterval> & {
+  readonly _tag: "cowork" | "meeting-room";
   readonly date?: string;
   readonly from: string;
   readonly to: string;
-  readonly entryTier?: WorkspaceProductTier;
+  readonly entryTier?: WorkspaceCoworkProductTier;
   readonly monitorOption?: WorkspaceProductMonitorOption;
 };
 
@@ -37,7 +38,8 @@ export type WorkspaceAvailability = {
   readonly from: string;
   readonly to: string;
   readonly unavailableDates: readonly string[];
-  readonly unavailableTiers: readonly WorkspaceProductTier[];
+  readonly unavailableCoworkTiers: readonly WorkspaceCoworkProductTier[];
+  readonly meetingRoomUnavailable: boolean;
   readonly unavailableMonitorOptions: readonly WorkspaceProductMonitorOption[];
   readonly notices: readonly WorkspaceAvailabilityNotice[];
 };
@@ -59,7 +61,8 @@ const workspaceAvailabilityResponseSchema = z.object({
   from: z.string(),
   to: z.string(),
   unavailableDates: z.array(z.string()),
-  unavailableTiers: z.array(z.enum(workspaceProductTiers)),
+  unavailableCoworkTiers: z.array(z.enum(workspaceCoworkTiers)),
+  meetingRoomUnavailable: z.boolean(),
   unavailableMonitorOptions: z.array(z.enum(workspaceProductMonitorOptions)),
   notices: z.array(workspaceAvailabilityNoticeSchema),
 });
@@ -108,7 +111,16 @@ const getDateParam = (searchParams: URLSearchParams, key: string) => {
 
 const getTierParam = (value: string | null) => {
   const normalized = value?.trim();
-  return isWorkspaceProductTier(normalized) ? normalized : undefined;
+  return isWorkspaceCoworkProductTier(normalized) ? normalized : undefined;
+};
+
+const getReservationKindParam = (searchParams: URLSearchParams) => {
+  const tag = searchParams.get("_tag")?.trim();
+  if (tag === "meeting-room") return "meeting-room";
+  if (tag === "cowork") return "cowork";
+  return searchParams.get("entryTier")?.trim() === "meeting-room"
+    ? "meeting-room"
+    : "cowork";
 };
 
 const getMonitorParam = (value: string | null) => {
@@ -156,17 +168,22 @@ export const parseWorkspaceAvailabilityQuery = (
     getDateParam(searchParams, "to") ??
     Temporal.PlainDate.from(today).add({ months: 6 }).toString();
   const date = getDateParam(searchParams, "date");
-  const entryTier = getTierParam(searchParams.get("entryTier"));
+  const reservationKind = getReservationKindParam(searchParams);
+  const entryTier =
+    reservationKind === "cowork"
+      ? getTierParam(searchParams.get("entryTier"))
+      : undefined;
   const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
   const interval = getIntervalParam(searchParams, date);
 
   return {
+    _tag: reservationKind,
     from,
     to,
     ...(interval.startsAt && { startsAt: interval.startsAt }),
     ...(interval.endsAt && { endsAt: interval.endsAt }),
     ...(date && { date }),
     ...(entryTier && { entryTier }),
-    ...(monitorOption && { monitorOption }),
+    ...(reservationKind === "cowork" && monitorOption && { monitorOption }),
   };
 };

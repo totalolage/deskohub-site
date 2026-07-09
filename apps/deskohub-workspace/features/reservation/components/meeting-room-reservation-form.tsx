@@ -211,7 +211,11 @@ const createReservationIntentId = () =>
   `meeting-room-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
-  const params = new URLSearchParams({ from: query.from, to: query.to });
+  const params = new URLSearchParams({
+    _tag: query._tag,
+    from: query.from,
+    to: query.to,
+  });
 
   if (query.date) params.set("date", query.date);
   if (query.startsAt) params.set("startsAt", query.startsAt);
@@ -269,12 +273,12 @@ export function MeetingRoomReservationForm({
     () =>
       selectedInterval
         ? {
+            _tag: "meeting-room" as const,
             date: selectedInterval.date,
             from: selectedInterval.date,
             to: getMeetingRoomAvailabilityToDate(selectedInterval),
             startsAt: selectedInterval.startsAt,
             endsAt: selectedInterval.endsAt,
-            entryTier: "meeting-room" as const,
           }
         : null,
     [selectedInterval]
@@ -297,7 +301,7 @@ export function MeetingRoomReservationForm({
   const isSelectedReservationUnavailable = Boolean(
     selectedInterval &&
       ((availability?.unavailableDates.length ?? 0) > 0 ||
-        availability?.unavailableTiers.includes("meeting-room"))
+        availability?.meetingRoomUnavailable)
   );
   const isAvailabilityLoading = availabilityQueryResult.isFetching;
   const selectedDurationPrice = isWorkspaceMeetingRoomDuration(

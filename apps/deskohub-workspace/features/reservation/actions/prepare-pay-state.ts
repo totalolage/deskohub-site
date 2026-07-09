@@ -10,7 +10,6 @@ import {
   Duration,
   Effect,
   Layer,
-  Match,
   Predicate,
   Schedule,
   Schema,
@@ -46,8 +45,8 @@ import {
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   getWorkspaceProductByTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
@@ -75,6 +74,7 @@ import {
   isDefaultReservationInterval,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
@@ -102,7 +102,7 @@ const deriveReservationIntentKey = (input: {
     readonly phone: string;
     readonly startsAt?: string;
     readonly endsAt?: string;
-    readonly entryTier: WorkspaceProductTier;
+    readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
     readonly coffee?: boolean;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   };
@@ -177,28 +177,32 @@ const buildReservationCheckoutDetails = (input: {
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
-  const product = getWorkspaceProductByTier(input.reservation.entryTier);
   const reservation = unsafeNormalizeReservationInterval(input.reservation);
   const productCoffee = getReservationProductCoffee(reservation);
   const productMonitorOption = getReservationProductMonitorOption(reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
-  const checkoutReservation = Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
-      tier: meetingRoomReservation.entryTier,
-      startsAt: meetingRoomReservation.startsAt,
-      endsAt: meetingRoomReservation.endsAt,
-    })),
-    Match.orElse((coworkReservation) => ({
-      tier: coworkReservation.entryTier,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
-      coffee: productCoffee,
-      monitorOption: product.requiresMonitorOption
-        ? productMonitorOption
-        : undefined,
-    }))
-  );
+  const checkoutReservation: CheckoutDetailsJson["reservation"] =
+    reservation.entryTier === "meeting-room"
+      ? {
+          _tag: "meeting-room",
+          startsAt: reservation.startsAt,
+          endsAt: reservation.endsAt,
+        }
+      : (() => {
+          const product = getWorkspaceProductByTier(reservation.entryTier);
+
+          return {
+            _tag: "cowork" as const,
+            tier: reservation.entryTier,
+            startsAt: reservation.startsAt,
+            endsAt: reservation.endsAt,
+            coffee: productCoffee,
+            monitorOption: product.requiresMonitorOption
+              ? productMonitorOption
+              : undefined,
+          };
+        })();
 
   return {
     schema: "workspace-checkout-details",
@@ -524,11 +528,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         "Existing workspace reservation hold reused for checkout prep"
       );
 
-      yield* reservations.updateProductIntent({
+      yield* reservations.updateReservationDetails({
         id: existingReservation.id,
-        productTier: input.reservation.entryTier,
-        productCoffee: getReservationProductCoffee(input.reservation),
-        productMonitorOption: getReservationProductMonitorOption(
+        reservationDetails: getStoredWorkspaceReservationDetails(
           input.reservation
         ),
         locale: input.locale,
@@ -564,12 +566,21 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     );
 
     const availability = yield* WorkspaceAvailabilityService;
+    const availabilitySelection =
+      input.reservation.entryTier === "meeting-room"
+        ? ({ _tag: "meeting-room" } as const)
+        : ({
+            _tag: "cowork",
+            entryTier: input.reservation.entryTier,
+            monitorOption: getReservationProductMonitorOption(
+              input.reservation
+            ),
+          } as const);
     yield* availability.ensureAvailable({
       date: getReservationPragueDate(input.reservation),
       startsAt: input.reservation.startsAt,
       endsAt: input.reservation.endsAt,
-      entryTier: input.reservation.entryTier,
-      monitorOption: getReservationProductMonitorOption(input.reservation),
+      ...availabilitySelection,
     });
     yield* Effect.logDebug("Workspace reservation availability confirmed");
 
@@ -595,9 +606,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       reservationIntentKey,
       dotyposCustomerId,
       customerAccessCode,
-      productTier: input.reservation.entryTier,
-      productCoffee: getReservationProductCoffee(input.reservation),
-      productMonitorOption: getReservationProductMonitorOption(
+      reservationDetails: getStoredWorkspaceReservationDetails(
         input.reservation
       ),
       locale: input.locale,
@@ -622,11 +631,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           "Existing workspace reservation hold reused after concurrent hold creation"
         );
 
-        yield* reservations.updateProductIntent({
+        yield* reservations.updateReservationDetails({
           id: claimConflictReservation.id,
-          productTier: input.reservation.entryTier,
-          productCoffee: getReservationProductCoffee(input.reservation),
-          productMonitorOption: getReservationProductMonitorOption(
+          reservationDetails: getStoredWorkspaceReservationDetails(
             input.reservation
           ),
           locale: input.locale,

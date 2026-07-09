@@ -4,11 +4,9 @@ import {
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 
-export const workspaceCoworkProductTiers = ["basic", "plus", "profi"] as const;
-export const workspaceProductTiers = [
-  ...workspaceCoworkProductTiers,
-  "meeting-room",
-] as const;
+export const workspaceCoworkTiers = ["basic", "plus", "profi"] as const;
+export const workspaceCoworkProductTiers = workspaceCoworkTiers;
+export const workspaceProductTiers = workspaceCoworkTiers;
 
 export const workspaceMeetingRoomDurationOptions = [60, 240, 24 * 60] as const;
 
@@ -19,9 +17,8 @@ export const workspaceProductMonitorOptions = [
   "2x32-4k",
 ] as const;
 
-export type WorkspaceProductTier = (typeof workspaceProductTiers)[number];
-export type WorkspaceCoworkProductTier =
-  (typeof workspaceCoworkProductTiers)[number];
+export type WorkspaceCoworkProductTier = (typeof workspaceCoworkTiers)[number];
+export type WorkspaceProductTier = WorkspaceCoworkProductTier;
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
 export type WorkspaceMeetingRoomDurationMinutes =
@@ -38,7 +35,7 @@ export const workspaceProductMonitorOptionTableTags: Record<
 };
 
 export type WorkspaceProductCatalogItem = {
-  readonly tier: WorkspaceProductTier;
+  readonly tier: WorkspaceCoworkProductTier;
   readonly label: string;
   readonly price: WorkspaceMoney;
   readonly includesCourtesyCoffee: boolean;
@@ -47,7 +44,7 @@ export type WorkspaceProductCatalogItem = {
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
 };
 
-export const workspaceProductCatalog: readonly WorkspaceProductCatalogItem[] = [
+export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
   {
     tier: "basic",
     label: "Basic Day Pass",
@@ -75,24 +72,18 @@ export const workspaceProductCatalog: readonly WorkspaceProductCatalogItem[] = [
     requiresMonitorOption: true,
     allowedMonitorOptions: workspaceProductMonitorOptions,
   },
-  {
-    tier: "meeting-room",
-    label: "Meeting Room",
-    price: { value: 30_000, exponent: 2, currency: "CZK" },
-    includesCourtesyCoffee: false,
-    requiresCoffee: false,
-    requiresMonitorOption: false,
-    allowedMonitorOptions: [],
-  },
 ];
 
-export const workspaceCoworkProductCatalog = workspaceProductCatalog.filter(
-  (
-    product
-  ): product is WorkspaceProductCatalogItem & {
-    readonly tier: WorkspaceCoworkProductTier;
-  } => isWorkspaceCoworkProductTier(product.tier)
-);
+export const workspaceProductCatalog = workspaceCoworkCatalog;
+export const workspaceCoworkProductCatalog = workspaceCoworkCatalog;
+
+export const workspaceMeetingRoomProduct = {
+  label: "Meeting Room",
+  price: { value: 30_000, exponent: 2, currency: "CZK" },
+} as const satisfies {
+  readonly label: string;
+  readonly price: WorkspaceMoney;
+};
 
 export const workspaceMeetingRoomDurationPrices: Record<
   WorkspaceMeetingRoomDurationMinutes,
@@ -110,9 +101,9 @@ export const workspaceProductCoffeePrice: WorkspaceMoney = {
 };
 
 const productsByTier = new Map<
-  WorkspaceProductTier,
+  WorkspaceCoworkProductTier,
   WorkspaceProductCatalogItem
->(workspaceProductCatalog.map((product) => [product.tier, product]));
+>(workspaceCoworkCatalog.map((product) => [product.tier, product]));
 
 if (productsByTier.size !== workspaceProductTiers.length) {
   throw new Error(
@@ -174,7 +165,7 @@ export function formatWorkspaceProductCurrencyAmount(
 }
 
 export function getWorkspaceProductCoffeeLinePriceForTier(
-  tier: WorkspaceProductTier
+  tier: WorkspaceCoworkProductTier
 ) {
   if (getWorkspaceProductByTier(tier).includesCourtesyCoffee)
     return {

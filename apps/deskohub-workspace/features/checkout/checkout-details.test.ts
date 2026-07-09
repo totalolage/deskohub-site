@@ -48,6 +48,7 @@ describe("checkout details persistence", () => {
       schemaVersion: 1,
       locale: "en-US",
       reservation: {
+        _tag: "cowork",
         tier: "basic",
         startsAt: "2099-06-09T22:00:00Z",
         endsAt: "2099-06-10T22:00:00Z",
@@ -90,7 +91,7 @@ describe("checkout details persistence", () => {
       schemaVersion: 1,
       locale: "en-US",
       reservation: {
-        tier: "meeting-room",
+        _tag: "meeting-room",
         startsAt: "2099-06-10T07:00:00Z",
         endsAt: "2099-06-10T11:00:00Z",
       },
@@ -132,6 +133,7 @@ describe("checkout details persistence", () => {
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          _tag: "cowork",
           tier: "basic",
           startsAt: "2099-06-09T22:00:00Z",
           endsAt: "2099-06-10T22:00:00Z",
@@ -152,6 +154,7 @@ describe("checkout details persistence", () => {
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          _tag: "cowork",
           tier: "basic",
           startsAt: "2099-06-09T22:00:00Z",
           endsAt: "2099-06-10T22:00:00Z",

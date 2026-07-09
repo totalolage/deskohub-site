@@ -22,10 +22,7 @@ import {
   workspaceTableMapLabelWidth,
 } from "@/features/checkout/components/workspace-table-map-view";
 import {
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
-} from "@/features/checkout/product-catalog";
-import {
+  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
@@ -299,13 +296,13 @@ const createReservationDetailRows = (
   reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
-  const monitorOption = reservation.productMonitorOption ?? undefined;
+  const { reservationDetails } = reservation;
   const rows: readonly (EmailDetailRow | false)[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
       formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
-    reservation.productTier === "meeting-room" && [
+    reservationDetails._tag === "meeting-room" && [
       m.reservationEmailTimeLabel({}, { locale }),
       formatReservationDisplayTimeRange(
         reservation.reservedFrom,
@@ -313,19 +310,23 @@ const createReservationDetailRows = (
         locale
       ),
     ],
-    isWorkspaceProductMonitorOption(monitorOption) && [
-      m.reservationEmailMonitorsLabel({}, { locale }),
-      getWorkspaceProductMonitorTitle(monitorOption, locale),
-    ],
+    reservationDetails._tag === "cowork" &&
+      reservationDetails.tier === "profi" && [
+        m.reservationEmailMonitorsLabel({}, { locale }),
+        getWorkspaceProductMonitorTitle(
+          reservationDetails.monitorOption,
+          locale
+        ),
+      ],
     [
       m.reservationEmailTierLabel({}, { locale }),
-      isWorkspaceProductTier(reservation.productTier)
-        ? getWorkspaceProductTierTitle(reservation.productTier, locale)
-        : reservation.productTier,
+      reservationDetails._tag === "meeting-room"
+        ? getWorkspaceMeetingRoomProductTitle(locale)
+        : getWorkspaceProductTierTitle(reservationDetails.tier, locale),
     ],
-    [
+    reservationDetails._tag === "cowork" && [
       m.reservationEmailCoffeeLabel({}, { locale }),
-      reservation.productCoffee
+      reservationDetails.coffee
         ? m.checkoutStatusYes({}, { locale })
         : m.checkoutStatusNo({}, { locale }),
     ],
