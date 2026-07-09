@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { Effect } from "effect";
+import { type Duration, Effect, Schedule } from "effect";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   effectifyPromise,
   effectifySync,
   type WorkspaceE2EError,
+  workspaceE2EError,
 } from "./errors";
 import { assert, log, repoRoot } from "./runtime";
 import { makeUrl, setSearchParams } from "./urls";
@@ -165,6 +166,21 @@ const vercelFetch = (
         }
       )
     );
+    if (!response.ok && isTransientVercelApiStatus(response.status)) {
+      return yield* Effect.fail(
+        workspaceE2EError(
+          `Vercel API ${path} failed with transient ${response.status}`,
+          {
+            cause: {
+              _tag: "TransientVercelApiResponse",
+              path,
+              status: response.status,
+            },
+            operation: `call Vercel API ${path}`,
+          }
+        )
+      );
+    }
     yield* effectifySync(`assert Vercel API ${path}`, () =>
       assert(
         response.ok || options.allowFailure,
@@ -172,4 +188,29 @@ const vercelFetch = (
       )
     );
     return response;
-  });
+  }).pipe(Effect.retry(vercelApiRetryPolicy));
+
+const isTransientVercelApiStatus = (status: number) =>
+  status === 429 || status >= 500;
+
+const isTransientVercelApiFailure = (
+  cause: unknown
+): cause is {
+  readonly _tag: "TransientVercelApiResponse";
+  readonly path: string;
+  readonly status: number;
+} =>
+  Boolean(
+    cause &&
+      typeof cause === "object" &&
+      "_tag" in cause &&
+      cause._tag === "TransientVercelApiResponse"
+  );
+
+const vercelApiRetryPolicy = Schedule.exponential("1 second").pipe(
+  Schedule.jittered,
+  Schedule.while<WorkspaceE2EError, Duration.Duration>(({ input }) =>
+    isTransientVercelApiFailure(input.cause)
+  ),
+  Schedule.both(Schedule.recurs(3))
+);
