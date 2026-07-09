@@ -23,9 +23,9 @@ import {
   type ReservationProductRuleInput,
 } from "@/features/reservation/schemas/reservation-product-rules";
 import type {
-  StoredBasicReservationDetails,
-  StoredPlusReservationDetails,
-  StoredProfiReservationDetails,
+  StoredCoworkReservationDetails,
+  StoredMeetingRoomReservationDetails,
+  WorkspaceReservationDetailsEntryTierInput,
 } from "@/features/reservation/schemas/stored-reservation-details";
 import type { SchemaSafeParseResult } from "@/shared/utils/effect-schema-parser";
 
@@ -161,28 +161,14 @@ type NormalizedReservationOrderBase = Omit<
   "entryTier" | "coffee" | "monitorOption" | keyof ReservationInterval
 > &
   ReservationInterval;
-type NormalizedBasicCoworkReservationOrder = NormalizedReservationOrderBase & {
-  readonly entryTier: StoredBasicReservationDetails["tier"];
-  readonly coffee: StoredBasicReservationDetails["coffee"];
-};
-type NormalizedPlusCoworkReservationOrder = NormalizedReservationOrderBase & {
-  readonly entryTier: StoredPlusReservationDetails["tier"];
-  readonly coffee: StoredPlusReservationDetails["coffee"];
-};
-type NormalizedProfiCoworkReservationOrder = NormalizedReservationOrderBase & {
-  readonly entryTier: StoredProfiReservationDetails["tier"];
-  readonly coffee: StoredProfiReservationDetails["coffee"];
-  readonly monitorOption: StoredProfiReservationDetails["monitorOption"];
-};
-type NormalizedCoworkReservationOrder =
-  | NormalizedBasicCoworkReservationOrder
-  | NormalizedPlusCoworkReservationOrder
-  | NormalizedProfiCoworkReservationOrder;
+type NormalizedCoworkReservationOrder = NormalizedReservationOrderBase &
+  WorkspaceReservationDetailsEntryTierInput<StoredCoworkReservationDetails>;
 type NormalizedMeetingRoomReservationOrder = Omit<
   MeetingRoomReservationOrderObject,
-  "durationMinutes"
+  "entryTier" | keyof ReservationInterval
 > &
-  ReservationInterval;
+  ReservationInterval &
+  WorkspaceReservationDetailsEntryTierInput<StoredMeetingRoomReservationDetails>;
 type NormalizedReservationOrder =
   | NormalizedCoworkReservationOrder
   | NormalizedMeetingRoomReservationOrder;

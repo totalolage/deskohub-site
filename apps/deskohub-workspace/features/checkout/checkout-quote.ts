@@ -28,11 +28,10 @@ import {
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 import type {
-  StoredBasicReservationDetails,
   StoredCoworkReservationDetails,
   StoredMeetingRoomReservationDetails,
-  StoredPlusReservationDetails,
-  StoredProfiReservationDetails,
+  StoredWorkspaceReservationDetails,
+  WorkspaceReservationDetailsEntryTierInput,
 } from "@/features/reservation/schemas/stored-reservation-details";
 
 export const workspaceCheckoutQuoteSchemaVersion = 1 as const;
@@ -43,54 +42,35 @@ export type {
   CheckoutSummarySection,
 } from "@/features/checkout/schemas/checkout-summary";
 
-export type WorkspaceBasicCheckoutOrder = StoredBasicReservationDetails &
-  Partial<ReservationInterval>;
+type WorkspaceCheckoutOrderFromDetails<
+  Details extends StoredWorkspaceReservationDetails,
+> = Details extends StoredWorkspaceReservationDetails
+  ? Details &
+      (Details extends StoredMeetingRoomReservationDetails
+        ? ReservationInterval
+        : Partial<ReservationInterval>)
+  : never;
 
-export type WorkspacePlusCheckoutOrder = StoredPlusReservationDetails &
-  Partial<ReservationInterval>;
-
-export type WorkspaceProfiCheckoutOrder = StoredProfiReservationDetails &
-  Partial<ReservationInterval>;
-
-export type WorkspaceCoworkCheckoutOrder = StoredCoworkReservationDetails &
-  Partial<ReservationInterval>;
+export type WorkspaceCoworkCheckoutOrder =
+  WorkspaceCheckoutOrderFromDetails<StoredCoworkReservationDetails>;
 
 export type WorkspaceMeetingRoomCheckoutOrder =
-  StoredMeetingRoomReservationDetails & ReservationInterval;
+  WorkspaceCheckoutOrderFromDetails<StoredMeetingRoomReservationDetails>;
 
 export type WorkspaceCheckoutOrder =
-  | WorkspaceCoworkCheckoutOrder
-  | WorkspaceMeetingRoomCheckoutOrder;
+  WorkspaceCheckoutOrderFromDetails<StoredWorkspaceReservationDetails>;
 
-export type WorkspaceBasicCheckoutOrderInput = {
-  readonly entryTier: StoredBasicReservationDetails["tier"];
-  readonly coffee: StoredBasicReservationDetails["coffee"];
-  readonly monitorOption?: never;
-} & Partial<ReservationInterval>;
-
-export type WorkspacePlusCheckoutOrderInput = {
-  readonly entryTier: StoredPlusReservationDetails["tier"];
-  readonly coffee: StoredPlusReservationDetails["coffee"];
-  readonly monitorOption?: never;
-} & Partial<ReservationInterval>;
-
-export type WorkspaceProfiCheckoutOrderInput = {
-  readonly entryTier: StoredProfiReservationDetails["tier"];
-  readonly coffee: StoredProfiReservationDetails["coffee"];
-  readonly monitorOption: StoredProfiReservationDetails["monitorOption"];
-} & Partial<ReservationInterval>;
-
-export type WorkspaceMeetingRoomCheckoutOrderInput = {
-  readonly entryTier: StoredMeetingRoomReservationDetails["_tag"];
-  readonly coffee?: never;
-  readonly monitorOption?: never;
-} & ReservationInterval;
+type WorkspaceCheckoutOrderInputFromDetails<
+  Details extends StoredWorkspaceReservationDetails,
+> = Details extends StoredWorkspaceReservationDetails
+  ? WorkspaceReservationDetailsEntryTierInput<Details> &
+      (Details extends StoredMeetingRoomReservationDetails
+        ? ReservationInterval
+        : Partial<ReservationInterval>)
+  : never;
 
 export type WorkspaceCheckoutOrderInput =
-  | WorkspaceBasicCheckoutOrderInput
-  | WorkspacePlusCheckoutOrderInput
-  | WorkspaceProfiCheckoutOrderInput
-  | WorkspaceMeetingRoomCheckoutOrderInput;
+  WorkspaceCheckoutOrderInputFromDetails<StoredWorkspaceReservationDetails>;
 
 export type WorkspaceCheckoutQuote = {
   readonly schema: "workspace-checkout-quote";
