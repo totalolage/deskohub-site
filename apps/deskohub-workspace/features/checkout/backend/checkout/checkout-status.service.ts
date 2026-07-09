@@ -380,6 +380,10 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return result;
         }
 
+        const statusKind = toCheckoutStatusKind(
+          reservation.paymentState,
+          reservation.fulfillmentState
+        );
         const reconstruction: CheckoutStatusReconstruction =
           yield* reconstructSummary(reservation).pipe(
             Effect.timeoutOrElse({
@@ -389,18 +393,11 @@ export const CheckoutStatusServiceLive = Layer.effect(
                   "Checkout status summary reconstruction timed out",
                   {
                     reservationId: reservation.id,
-                    status: toCheckoutStatusKind(
-                      reservation.paymentState,
-                      reservation.fulfillmentState
-                    ),
+                    status: statusKind,
                   }
                 ).pipe(Effect.as({} satisfies CheckoutStatusReconstruction)),
             })
           );
-        const statusKind = toCheckoutStatusKind(
-          reservation.paymentState,
-          reservation.fulfillmentState
-        );
 
         const result = Match.value(reconstruction.summary).pipe(
           Match.tag("meeting-room", (summary) => ({

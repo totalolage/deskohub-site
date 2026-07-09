@@ -1,4 +1,9 @@
 import type { Effect } from "effect";
+import type {
+  WorkspaceCoworkProductTier,
+  WorkspaceProductMonitorOption,
+} from "../features/checkout/product-catalog";
+import type { StoredWorkspaceReservationDetails } from "../features/reservation/schemas/stored-reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EError } from "./errors";
 
@@ -11,9 +16,7 @@ export type CheckoutRow = {
   payment_state: string;
   fulfillment_state: string;
   active_payment_attempt_id: string | null;
-  product_tier: string;
-  product_coffee: boolean;
-  product_monitor_option: string | null;
+  reservation_details: StoredWorkspaceReservationDetails;
   locale: string;
   reservation_created_at: Date | null;
   reservation_confirmed_at: Date | null;
@@ -51,13 +54,16 @@ export type CheckoutData = {
   readonly date: string;
   readonly email: string;
   readonly expectedCoffee: boolean;
-  readonly expectedMonitorOption: string | null;
-  readonly expectedProductTier: string;
+  readonly expectedEndsAt?: string;
+  readonly expectedMonitorOption: WorkspaceProductMonitorOption | null;
+  readonly expectedProductTier: WorkspaceCoworkProductTier | "meeting-room";
+  readonly expectedStartsAt?: string;
   readonly locale: "en-US";
   readonly message: string;
   readonly name: string;
   readonly orderIdHint: string;
   readonly phone: string;
+  readonly startDateTime?: string;
 };
 
 export type CheckoutFlow = {
@@ -68,6 +74,7 @@ export type CheckoutFlow = {
     date: string
   ) => Effect.Effect<CheckoutData | undefined, WorkspaceE2EError>;
   readonly submitReservationScript: (data: CheckoutData) => string;
+  readonly usesCoworkDate?: boolean;
 };
 
 export type CheckoutFlowState = {

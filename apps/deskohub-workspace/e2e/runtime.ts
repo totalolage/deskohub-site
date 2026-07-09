@@ -98,7 +98,7 @@ export const assertSafeDatabaseUrl = (databaseUrl: string, label: string) => {
     .filter(Boolean);
   assert(
     allowlist.includes(databaseSafetyKey(databaseUrl)),
-    `${label} is not allowlisted for workspace checkout e2e`
+    `${label} is not allowlisted for workspace e2e`
   );
 };
 
@@ -176,7 +176,7 @@ const unquoteEnv = (value: string) => {
 
 export const requireEnv = (name: string) => {
   const value = env(name);
-  assert(value, `${name} is required for workspace checkout e2e`);
+  assert(value, `${name} is required for workspace e2e`);
   addRedaction(value);
   return value;
 };

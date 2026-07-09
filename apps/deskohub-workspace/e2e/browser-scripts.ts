@@ -32,6 +32,65 @@ export const submitCoworkReservationScript = `
 })()
 `;
 
+export const getMeetingRoomSubmitReservationScript = (data: CheckoutData) => {
+  if (!data.startDateTime) {
+    throw new Error("meeting-room start date-time missing");
+  }
+
+  return `
+(async () => {
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const waitUntil = async (predicate, label) => {
+    const deadline = Date.now() + 25000;
+    while (Date.now() < deadline) {
+      if (predicate()) return;
+      await wait(250);
+    }
+    throw new Error(label);
+  };
+  const setValue = (selector, value) => {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) {
+      throw new Error(selector + ' not found');
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value');
+    descriptor?.set?.call(element, value);
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+    element.dispatchEvent(new Event('change', { bubbles: true }));
+  };
+  await waitUntil(
+    () => document.querySelector('input[name="startDateTime"]') instanceof HTMLInputElement,
+    'meeting-room form not ready'
+  );
+  setValue('input[name="startDateTime"]', ${JSON.stringify(data.startDateTime)});
+  setValue('input[name="email"]', ${JSON.stringify(data.email)});
+  setValue('input[name="phone"]', ${JSON.stringify(data.phone)});
+  setValue('input[name="name"]', ${JSON.stringify(data.name)});
+  setValue('textarea[name="message"]', ${JSON.stringify(data.message)});
+  const duration = document.querySelector('input[type="radio"][value="60"]');
+  if (duration instanceof HTMLInputElement && !duration.checked) duration.click();
+  let checkbox;
+  await waitUntil(() => {
+    const candidate = document.querySelector('#meeting-room-privacy-consent');
+    if (candidate instanceof HTMLButtonElement) {
+      checkbox = candidate;
+      return true;
+    }
+    return false;
+  }, 'meeting-room privacy consent checkbox not found');
+  if (checkbox.getAttribute('aria-checked') !== 'true') (checkbox.closest('label') ?? checkbox).click();
+  await waitUntil(() => checkbox.getAttribute('aria-checked') === 'true', 'meeting-room privacy consent checkbox did not check');
+  const form = checkbox.closest('form') ?? document.querySelector('form');
+  if (!(form instanceof HTMLFormElement)) throw new Error('meeting-room form not found');
+  const button = form.querySelector('button[type="submit"]');
+  if (!(button instanceof HTMLButtonElement)) throw new Error('meeting-room submit button not found');
+  await waitUntil(() => !button.disabled, 'meeting-room submit button stayed disabled');
+  setTimeout(() => button.click(), 0);
+  return location.href;
+})()
+`;
+};
+
 export const getClickLocaleSwitchScript = (
   locale: CheckoutData["locale"] | "cs-CZ"
 ) =>

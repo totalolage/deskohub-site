@@ -40,7 +40,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
 
           const config = yield* configService.getConfig;
           const run = yield* commandRunner.getRunner;
-          const sessionPrefix = `workspace-checkout-e2e-${Date.now()}`;
+          const sessionPrefix = `workspace-e2e-${Date.now()}`;
           const artifactRoot = resolve(
             paths.workspaceDir,
             "e2e-artifacts",

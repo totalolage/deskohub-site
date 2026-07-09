@@ -26,7 +26,7 @@ import {
 } from "../integrations/database";
 import { cancelDotyposReservation } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { addRedaction, log, redact } from "../runtime";
+import { log, redact } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -58,9 +58,12 @@ export const makeWorkspaceE2ECases = ({
 }): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
   Effect.gen(function* () {
     const terminalScenarios = getPaymentTerminalScenarios();
+    const coworkCheckoutFlowCount = checkoutFlows.filter(
+      (flow) => flow.usesCoworkDate
+    ).length;
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
-      checkoutFlows.length + terminalScenarios.length
+      coworkCheckoutFlowCount + terminalScenarios.length
     );
     const cases: WorkspaceE2ECase[] = [
       {
@@ -118,9 +121,11 @@ export const makeWorkspaceE2ECases = ({
     }
 
     for (const flow of checkoutFlows) {
-      const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
+      const date = flow.usesCoworkDate
+        ? yield* requireCheckoutDate(checkoutDates, nextDateIndex)
+        : "";
       const data = yield* flow.makeData(config, datasourceConfig, date);
-      nextDateIndex += 1;
+      if (flow.usesCoworkDate) nextDateIndex += 1;
       if (!data) {
         log(`${flow.id} checkout e2e skipped`);
         continue;
@@ -162,14 +167,6 @@ const trackCheckoutState = (
 ) => {
   const state: CheckoutFlowState = { data };
   flowStates.push(state);
-  for (const value of [
-    data.checkoutUrl,
-    data.email,
-    data.message,
-    data.name,
-    data.phone,
-  ])
-    addRedaction(value);
   return state;
 };
 

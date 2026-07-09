@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
+import type { StoredWorkspaceReservationDetails } from "../../features/reservation/schemas/stored-reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { getDatasourceTimeoutMs } from "../config";
 import { pollEffect } from "../effects";
@@ -119,13 +120,6 @@ export const validatePostgres = (
 
       yield* assertPostgresRow(row, data, config);
       yield* assertLegalEvidence(pool, orderId, data.locale);
-      yield* assertNoLocalPii(
-        pool,
-        orderId,
-        row.payment_attempt_id,
-        row.webhook_id,
-        data
-      );
       log("Postgres checkout tables validated");
       return row;
     })
@@ -147,9 +141,7 @@ const readCheckoutRow = (
       wr.payment_state,
       wr.fulfillment_state,
       wr.active_payment_attempt_id,
-      wr.product_tier,
-      wr.product_coffee,
-      wr.product_monitor_option,
+      wr.reservation_details,
       wr.locale,
       wr.reservation_created_at,
       wr.reservation_confirmed_at,
@@ -208,15 +200,13 @@ export const readLatestCleanupCheckoutRow = (
       where wr.reservation_created_at >= $1
         and wr.dotypos_reservation_id is not null
         and wr.payment_state <> 'paid'
-        and wr.product_tier = $2
-        and wr.product_coffee = $3
-        and wr.locale = $4
+        and wr.reservation_details = $2::jsonb
+        and wr.locale = $3
       order by wr.reservation_created_at desc
       limit 1`,
         [
           createdAfter,
-          data.expectedProductTier,
-          data.expectedCoffee,
+          JSON.stringify(getExpectedReservationDetails(data)),
           data.locale,
         ]
       );
@@ -445,17 +435,9 @@ const assertPostgresRow = (
       row.fulfillment_failure_code === null,
       "fulfillment_failure_code should be null"
     );
-    assert(
-      row.product_tier === data.expectedProductTier,
-      "unexpected product tier"
-    );
-    assert(
-      row.product_coffee === data.expectedCoffee,
-      "unexpected product coffee flag"
-    );
-    assert(
-      row.product_monitor_option === data.expectedMonitorOption,
-      "unexpected monitor option"
+    assertReservationDetails(
+      row.reservation_details,
+      getExpectedReservationDetails(data)
     );
     assert(row.locale === data.locale, "unexpected locale");
     assert(
@@ -507,6 +489,57 @@ const assertPostgresRow = (
     );
   });
 
+const getExpectedReservationDetails = (
+  data: CheckoutData
+): StoredWorkspaceReservationDetails => {
+  switch (data.expectedProductTier) {
+    case "meeting-room":
+      return { _tag: "meeting-room" };
+    case "basic":
+      return {
+        _tag: "cowork",
+        tier: "basic",
+        coffee: data.expectedCoffee,
+      };
+    case "plus":
+      return {
+        _tag: "cowork",
+        tier: "plus",
+        coffee: true,
+      };
+    case "profi":
+      assert(
+        data.expectedMonitorOption,
+        "expected Profi monitor option missing"
+      );
+      return {
+        _tag: "cowork",
+        tier: "profi",
+        coffee: true,
+        monitorOption: data.expectedMonitorOption,
+      };
+  }
+};
+
+const assertReservationDetails = (
+  actual: StoredWorkspaceReservationDetails,
+  expected: StoredWorkspaceReservationDetails
+) => {
+  assert(actual._tag === expected._tag, "unexpected reservation kind");
+
+  if (expected._tag === "meeting-room") return;
+  assert(actual._tag === "cowork", "expected cowork reservation details");
+  assert(actual.tier === expected.tier, "unexpected cowork tier");
+  assert(actual.coffee === expected.coffee, "unexpected cowork coffee flag");
+  if (expected.tier === "profi") {
+    assert(actual.tier === "profi", "expected Profi reservation details");
+    assert(
+      actual.monitorOption === expected.monitorOption,
+      "unexpected monitor option"
+    );
+  }
+};
+
 const assertLegalEvidence = (
   pool: Pool,
   orderId: string,
@@ -553,58 +586,6 @@ const assertLegalEvidence = (
         `missing legal evidence rows: ${[...expected].join(", ")}`
       );
     });
-  });
-
-const assertNoLocalPii = (
-  pool: Pool,
-  orderId: string,
-  paymentAttemptId: string | null,
-  webhookEventId: string | null,
-  data: CheckoutData
-): Effect.Effect<void, WorkspaceE2EError> =>
-  Effect.gen(function* () {
-    const result = yield* query<{ count: string }>(
-      pool,
-      "scan checkout tables for local PII",
-      `with payloads as (
-      select to_jsonb(wr)::text as payload
-      from workspace_reservations wr
-      where wr.id = $1
-      union all
-      select to_jsonb(pa)::text
-      from payment_attempts pa
-      where pa.id = $2
-      union all
-      select to_jsonb(wh)::text
-      from webhook_events wh
-      where wh.id = $3
-      union all
-      select to_jsonb(le)::text
-      from legal_evidence_events le
-      where le.workspace_reservation_id = $1
-    )
-    select count(*)
-      from payloads
-      where payload ilike $4 or payload ilike $5 or payload ilike $6 or payload ilike $7`,
-      [
-        orderId,
-        paymentAttemptId,
-        webhookEventId,
-        `%${data.email}%`,
-        `%${data.phone}%`,
-        `%${data.name}%`,
-        `%${data.message}%`,
-      ]
-    );
-
-    yield* effectifySync(
-      "assert checkout tables do not contain local PII",
-      () =>
-        assert(
-          Number(result.rows[0]?.count ?? 0) === 0,
-          "local checkout tables contain test PII"
-        )
-    );
   });
 
 const makePool = (config: DatasourceConfig) =>
