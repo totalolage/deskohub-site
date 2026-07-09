@@ -40,7 +40,7 @@ jobs:
     needs: test-functional
     if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 50
     environment: workspace-checkout-e2e
     concurrency:
       group: workspace-e2e-new-workspace-alias

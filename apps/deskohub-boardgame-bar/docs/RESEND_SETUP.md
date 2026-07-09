@@ -8,7 +8,8 @@ Default behavior:
 
 - `EMAIL_PROVIDER=resend` forces Resend.
 - `EMAIL_PROVIDER=console` forces console logging provider.
-- If `EMAIL_PROVIDER` is omitted, the app defaults to `console`.
+- If `EMAIL_PROVIDER` is omitted, the app uses Resend when `EMAIL_API_KEY` is
+  present and console otherwise.
 - In production, `console` is disabled unless `EMAIL_TEST_MODE=true`; with an `EMAIL_API_KEY`, production falls back to Resend.
 
 ## Required Configuration
@@ -20,7 +21,8 @@ EMAIL_API_KEY=re_...
 EMAIL_PROVIDER=resend
 ```
 
-`EMAIL_PROVIDER` can be omitted for local development; it defaults to `console`.
+`EMAIL_PROVIDER` can be omitted for local development; without `EMAIL_API_KEY`
+it defaults to `console`.
 
 ## Sender Addresses
 

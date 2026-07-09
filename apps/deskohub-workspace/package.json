@@ -14,7 +14,7 @@
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:if-needed": "bun scripts/should-migrate-db.ts && bun run db:migrate || [ $? -eq 78 ]",
     "db:studio": "drizzle-kit studio",
-    "e2e:checkout": "bun scripts/workspace-checkout-e2e.ts",
+    "e2e:checkout": "bun scripts/workspace-e2e.ts",
     "lint": "biome check app db features shared proxy.ts --config-path ../../biome.json --vcs-root ../../",
     "test": "bun test",
     "typecheck": "tsc --noEmit",

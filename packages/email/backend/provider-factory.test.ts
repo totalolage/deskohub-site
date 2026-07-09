@@ -65,4 +65,11 @@ describe("EmailProviderLive", () => {
     );
     expect(resendResult._tag).toBe("Failure");
   });
+
+  test("allows console provider in Vercel preview production builds", async () => {
+    process.env.NODE_ENV = "production";
+    process.env.VERCEL_ENV = "preview";
+
+    expect(await providerName({ apiKey: "api-key" })).toBe("console");
+  });
 });

@@ -387,7 +387,22 @@ export const CheckoutStatusServiceLive = Layer.effect(
         }
 
         const reconstruction: CheckoutStatusReconstruction =
-          yield* reconstructSummary(reservation);
+          yield* reconstructSummary(reservation).pipe(
+            Effect.timeoutOrElse({
+              duration: "8 seconds",
+              orElse: () =>
+                Effect.logWarning(
+                  "Checkout status summary reconstruction timed out",
+                  {
+                    reservationId: reservation.id,
+                    status: toCheckoutStatusKind(
+                      reservation.paymentState,
+                      reservation.fulfillmentState
+                    ),
+                  }
+                ).pipe(Effect.as({} satisfies CheckoutStatusReconstruction)),
+            })
+          );
         const statusKind = toCheckoutStatusKind(
           reservation.paymentState,
           reservation.fulfillmentState
