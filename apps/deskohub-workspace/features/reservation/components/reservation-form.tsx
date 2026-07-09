@@ -395,6 +395,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       return;
     }
     hasTrackedSuccessfulSubmission.current = false;
+    window.scrollTo({ top: 0, behavior: "instant" });
     sendReservation({
       locale,
       reservationIntentId,
