@@ -1,6 +1,6 @@
 import { decodeStandardSchema } from "@deskohub/standard-schema";
+import { Schema } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import { z } from "zod/v4";
 import {
   getWorkspaceProductByTier,
   workspaceCoworkProductTiers,
@@ -38,25 +38,44 @@ type ReservationCheckoutQueryValues = Pick<
 >;
 type Mutable<T> = { -readonly [K in keyof T]: T[K] };
 
-const queryBooleanSchema = z
-  .enum(["true", "false"])
-  .transform((value) => value === "true");
-const queryDateSchema = z.iso.date().refine(isTodayOrFuturePragueDate);
-const queryTierSchema = z.enum(workspaceCoworkProductTiers);
-const queryMonitorOptionSchema = z.enum(workspaceProductMonitorOptions);
-const queryNameSchema = z
-  .string()
-  .min(RESERVATION_VALIDATION.name.min)
-  .max(RESERVATION_VALIDATION.name.max);
-const queryEmailSchema = z
-  .string()
-  .max(RESERVATION_VALIDATION.email.max)
-  .pipe(z.email());
-const queryPhoneSchema = z
-  .string()
-  .max(RESERVATION_VALIDATION.phone.max)
-  .refine((phone) => isValidPhoneNumber(phone, "CZ"));
-const queryMessageSchema = z.string().max(RESERVATION_VALIDATION.message.max);
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const queryBooleanSchema = Schema.toStandardSchemaV1(
+  Schema.Literals(["true", "false"] as const)
+);
+const queryDateSchema = Schema.toStandardSchemaV1(
+  Schema.String.check(
+    Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/),
+    Schema.makeFilter(isTodayOrFuturePragueDate)
+  )
+);
+const queryTierSchema = Schema.toStandardSchemaV1(
+  Schema.Literals(workspaceCoworkProductTiers)
+);
+const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
+  Schema.Literals(workspaceProductMonitorOptions)
+);
+const queryNameSchema = Schema.toStandardSchemaV1(
+  Schema.String.check(
+    Schema.isMinLength(RESERVATION_VALIDATION.name.min),
+    Schema.isMaxLength(RESERVATION_VALIDATION.name.max)
+  )
+);
+const queryEmailSchema = Schema.toStandardSchemaV1(
+  Schema.String.check(
+    Schema.isMaxLength(RESERVATION_VALIDATION.email.max),
+    Schema.isPattern(emailPattern)
+  )
+);
+const queryPhoneSchema = Schema.toStandardSchemaV1(
+  Schema.String.check(
+    Schema.isMaxLength(RESERVATION_VALIDATION.phone.max),
+    Schema.makeFilter((phone) => isValidPhoneNumber(phone, "CZ"))
+  )
+);
+const queryMessageSchema = Schema.toStandardSchemaV1(
+  Schema.String.check(Schema.isMaxLength(RESERVATION_VALIDATION.message.max))
+);
 
 const getTrimmedSearchParam = (
   searchParams: SupportedSearchParams,
@@ -92,7 +111,7 @@ const decodeReservationCheckoutQuery = (
     getTrimmedSearchParam(searchParams, "coffee")
   );
   if (coffee !== undefined) {
-    decoded.coffee = coffee;
+    decoded.coffee = coffee === "true";
   }
 
   const monitorOption = decodeStandardSchema(

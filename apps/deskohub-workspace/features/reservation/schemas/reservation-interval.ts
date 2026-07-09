@@ -1,7 +1,6 @@
 import "@/shared/polyfills/temporal";
 
-import { Data, Effect } from "effect";
-import { z } from "zod/v4";
+import { Data, Effect, Schema } from "effect";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { temporalInstantToPlainDate } from "@/shared/utils/temporal";
 
@@ -39,11 +38,10 @@ const timePattern = /^(?:[01]\d|2[0-3]):[0-5]\d$/;
 const endTimePattern = /^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/;
 const localDateTimePattern =
   /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
-const emptyToUndefined = (value: unknown) => (value === "" ? undefined : value);
 
 export const reservationIntervalFieldSchemas = {
-  startsAt: z.preprocess(emptyToUndefined, z.string().optional()).optional(),
-  endsAt: z.preprocess(emptyToUndefined, z.string().optional()).optional(),
+  startsAt: Schema.optional(Schema.String),
+  endsAt: Schema.optional(Schema.String),
 } as const;
 
 export const isDefaultReservationInterval = (

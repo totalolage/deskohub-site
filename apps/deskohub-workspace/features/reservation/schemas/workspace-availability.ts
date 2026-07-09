@@ -1,5 +1,9 @@
-import { parseStandardSchema } from "@deskohub/standard-schema";
+import {
+  decodeStandardSchema,
+  parseStandardSchema,
+} from "@deskohub/standard-schema";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { Schema } from "effect";
 import { z } from "zod/v4";
 import {
   isWorkspaceCoworkProductTier,
@@ -83,8 +87,8 @@ export const parseWorkspaceAvailabilityResponse = (
   );
 
 const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-const workspaceAvailabilityIntervalSchema = z.object(
-  reservationIntervalFieldSchemas
+const workspaceAvailabilityIntervalSchema = Schema.toStandardSchemaV1(
+  Schema.Struct(reservationIntervalFieldSchemas)
 );
 
 const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -145,13 +149,13 @@ const getIntervalParam = (
 
   if (!startsAt && !endsAt) return defaultInterval();
 
-  const parsed = workspaceAvailabilityIntervalSchema.safeParse({
+  const parsed = decodeStandardSchema(workspaceAvailabilityIntervalSchema, {
     startsAt,
     endsAt,
   });
 
-  if (!parsed.success) return defaultInterval();
-  const interval = { date, ...parsed.data };
+  if (!parsed) return defaultInterval();
+  const interval = { date, ...parsed };
   if (getReservationIntervalValidationIssue(interval)) {
     return defaultInterval();
   }

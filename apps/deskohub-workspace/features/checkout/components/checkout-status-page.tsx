@@ -262,19 +262,12 @@ const getFulfillmentFailedContactMessage = (
   );
   const date = Match.value(status).pipe(
     Match.tag("unknown", () => m.checkoutStatusMissingSummary({}, { locale })),
-    Match.tag("meeting-room", (reservationStatus) =>
+    Match.orElse((reservationStatus) =>
       formatReservationDisplayDate(
         reservationStatus.summary.reservedFrom,
         locale
       )
-    ),
-    Match.tag("cowork", (reservationStatus) =>
-      formatReservationDisplayDate(
-        reservationStatus.summary.reservedFrom,
-        locale
-      )
-    ),
-    Match.exhaustive
+    )
   );
 
   return m.checkoutStatusFulfillmentFailedContactMessage(
