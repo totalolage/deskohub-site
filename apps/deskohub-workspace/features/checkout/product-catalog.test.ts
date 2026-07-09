@@ -15,7 +15,7 @@ describe("workspace product catalog", () => {
     expect(getWorkspaceProductByTier("basic").price.value).toBe(35_000);
     expect(getWorkspaceProductByTier("plus").price.value).toBe(49_000);
     expect(getWorkspaceProductByTier("profi").price.value).toBe(55_000);
-    expect(workspaceMeetingRoomProduct.price.value).toBe(30_000);
+    expect(workspaceMeetingRoomProduct).toEqual({ label: "Meeting Room" });
   });
 
   test("keeps cowork-only catalog consumers separate from meeting room", () => {

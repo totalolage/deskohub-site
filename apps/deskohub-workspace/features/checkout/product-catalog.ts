@@ -44,6 +44,10 @@ export type WorkspaceProductCatalogItem = {
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
 };
 
+export type WorkspaceMeetingRoomProduct = {
+  readonly label: string;
+};
+
 export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
   {
     tier: "basic",
@@ -77,12 +81,8 @@ export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
 export const workspaceProductCatalog = workspaceCoworkCatalog;
 export const workspaceCoworkProductCatalog = workspaceCoworkCatalog;
 
-export const workspaceMeetingRoomProduct = {
+export const workspaceMeetingRoomProduct: WorkspaceMeetingRoomProduct = {
   label: "Meeting Room",
-  price: { value: 30_000, exponent: 2, currency: "CZK" },
-} as const satisfies {
-  readonly label: string;
-  readonly price: WorkspaceMoney;
 };
 
 export const workspaceMeetingRoomDurationPrices: Record<

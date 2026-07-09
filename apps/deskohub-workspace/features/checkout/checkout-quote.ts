@@ -6,7 +6,6 @@ import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceMeetingRoomDuration,
-  workspaceMeetingRoomProduct,
 } from "@/features/checkout/product-catalog";
 import type {
   CheckoutSummary,
@@ -259,7 +258,9 @@ const getWorkspaceCheckoutOrderProductPrice = (
         return getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
       }
 
-      return workspaceMeetingRoomProduct.price;
+      throw new Error(
+        "Meeting room checkout pricing requires an approved duration."
+      );
     }),
     Match.tag(
       "cowork",
@@ -268,9 +269,12 @@ const getWorkspaceCheckoutOrderProductPrice = (
     Match.exhaustive
   );
 
-const getWorkspaceCheckoutOrderCoffeePrice = (order: WorkspaceCheckoutOrder) =>
+const getWorkspaceCheckoutOrderCoffeePrice = (
+  order: WorkspaceCheckoutOrder,
+  productPrice: WorkspaceMoney
+) =>
   Match.value(order).pipe(
-    Match.tag("meeting-room", () => workspaceMeetingRoomProduct.price),
+    Match.tag("meeting-room", () => workspaceMoneyWithValue(0, productPrice)),
     Match.tag("cowork", (coworkOrder) =>
       getWorkspaceProductCoffeeLinePriceForTier(coworkOrder.tier)
     ),
@@ -418,7 +422,7 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
     options.currencyOverride
   );
   const coffeePrice = withWorkspaceMoneyCurrency(
-    getWorkspaceCheckoutOrderCoffeePrice(normalizedOrder),
+    getWorkspaceCheckoutOrderCoffeePrice(normalizedOrder, productPrice),
     options.currencyOverride
   );
   const orderItems: CheckoutSummaryItem[] = [

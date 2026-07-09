@@ -8,13 +8,14 @@ import {
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const CheckoutReturnStateReservationBaseSchema = EffectSchema.Struct({
-  startsAt: EffectSchema.NonEmptyString,
-  endsAt: EffectSchema.NonEmptyString,
+  startsAt: isoDateTimeWithOffsetStringEffectSchema,
+  endsAt: isoDateTimeWithOffsetStringEffectSchema,
   name: EffectSchema.NonEmptyString,
   email: EffectSchema.NonEmptyString,
   phone: EffectSchema.NonEmptyString,

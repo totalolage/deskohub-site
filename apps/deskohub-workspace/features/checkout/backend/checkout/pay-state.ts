@@ -24,6 +24,7 @@ import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/works
 import { type Locale, locales } from "@/features/i18n";
 import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
 import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 export const payStateSchemaVersion = 1 as const;
@@ -39,26 +40,26 @@ const keyByteLength = 32;
 const CheckoutOrderShapeSchema = EffectSchema.Union([
   EffectSchema.TaggedStruct("cowork", {
     tier: EffectSchema.Literal("basic"),
-    startsAt: EffectSchema.optional(EffectSchema.String),
-    endsAt: EffectSchema.optional(EffectSchema.String),
+    startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
+    endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
     coffee: EffectSchema.Boolean,
   }),
   EffectSchema.TaggedStruct("cowork", {
     tier: EffectSchema.Literal("plus"),
-    startsAt: EffectSchema.optional(EffectSchema.String),
-    endsAt: EffectSchema.optional(EffectSchema.String),
+    startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
+    endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
     coffee: EffectSchema.Literal(true),
   }),
   EffectSchema.TaggedStruct("cowork", {
     tier: EffectSchema.Literal("profi"),
-    startsAt: EffectSchema.optional(EffectSchema.String),
-    endsAt: EffectSchema.optional(EffectSchema.String),
+    startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
+    endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
     coffee: EffectSchema.Literal(true),
     monitorOption: workspaceProductMonitorOptionEffectSchema,
   }),
   EffectSchema.TaggedStruct("meeting-room", {
-    startsAt: EffectSchema.NonEmptyString,
-    endsAt: EffectSchema.NonEmptyString,
+    startsAt: isoDateTimeWithOffsetStringEffectSchema,
+    endsAt: isoDateTimeWithOffsetStringEffectSchema,
   }),
 ]);
 
@@ -82,16 +83,11 @@ const CheckoutOrderSchema = CheckoutOrderShapeSchema.check(
 const customerDiscountEffectSchema = EffectSchema.Struct({
   source: EffectSchema.Literal("dotypos-discount-group"),
   discountGroupId: EffectSchema.NonEmptyString,
-  percent: EffectSchema.Number.check(
-    EffectSchema.isGreaterThan(0),
-    EffectSchema.isLessThanOrEqualTo(100)
-  ),
+  percent: EffectSchema.Number,
   amount: nonNegativeWorkspaceMoneyEffectSchema,
 });
 
 const quoteSnapshotEffectSchema = EffectSchema.Struct({
-  schema: EffectSchema.Literal("workspace-checkout-quote"),
-  schemaVersion: EffectSchema.Literal(1),
   fingerprint: EffectSchema.NonEmptyString,
   order: CheckoutOrderSchema,
   summary: checkoutSummaryEffectSchema,
@@ -312,8 +308,6 @@ export const buildSignedPayState = (
     orderId: input.orderId,
     reservation,
     quote: {
-      schema: input.quote.schema,
-      schemaVersion: input.quote.schemaVersion,
       fingerprint: input.quote.fingerprint,
       order: input.quote.order,
       summary: checkoutSummarySchema.parse(
