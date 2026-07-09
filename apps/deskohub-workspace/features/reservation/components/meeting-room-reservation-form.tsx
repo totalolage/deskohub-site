@@ -36,13 +36,7 @@ import {
   workspaceAvailabilityKeys,
 } from "@/features/reservation/schemas/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/shared/components/ui/card";
+import { Card, CardContent } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { DateTimePicker } from "@/shared/components/ui/date-time-picker";
 import {
@@ -59,7 +53,6 @@ import { cn } from "@/shared/utils";
 
 type MeetingRoomReservationFormProps = {
   readonly locale: Locale;
-  readonly showIntro?: boolean;
 };
 
 type SubmissionMessage = {
@@ -243,7 +236,6 @@ const loadWorkspaceAvailability = async ({
 
 export function MeetingRoomReservationForm({
   locale,
-  showIntro = true,
 }: MeetingRoomReservationFormProps) {
   const router = useRouter();
   const { isAccepted } = useCookieConsent();
@@ -402,18 +394,7 @@ export function MeetingRoomReservationForm({
   return (
     <Card className={meetingRoomFormCardClassName}>
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      {showIntro && (
-        <CardHeader className="space-y-3 pb-6">
-          <CardTitle className="text-3xl sm:text-[2.35rem]">
-            {m.reservationMeetingRoomFormTitle({}, { locale })}
-          </CardTitle>
-          <CardDescription className="max-w-2xl text-base leading-7 text-navy-blue/72">
-            {m.reservationMeetingRoomFormDescription({}, { locale })}
-          </CardDescription>
-        </CardHeader>
-      )}
-
-      <CardContent className={cn(!showIntro && "pt-6")}>
+      <CardContent className="pt-6">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="space-y-7">
             <div className="grid gap-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
@@ -662,7 +643,6 @@ export function MeetingRoomReservationForm({
 
 export function MeetingRoomReservationFormFallback({
   locale,
-  showIntro = true,
 }: MeetingRoomReservationFormProps) {
   return (
     <Card
@@ -671,16 +651,7 @@ export function MeetingRoomReservationFormFallback({
       className={meetingRoomFormCardClassName}
     >
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
-      {showIntro && (
-        <CardHeader className="space-y-3 pb-6">
-          <SkeletonBlock className="h-10 w-4/5 max-w-xl sm:h-11" />
-          <div className="max-w-2xl space-y-2">
-            <SkeletonBlock className="h-4 w-full" />
-            <SkeletonBlock className="h-4 w-5/6" />
-          </div>
-        </CardHeader>
-      )}
-      <CardContent className={cn(!showIntro && "pt-6")}>
+      <CardContent className="pt-6">
         <div aria-hidden="true" className="space-y-7">
           <div className="grid gap-5 md:grid-cols-2">
             <SkeletonField />

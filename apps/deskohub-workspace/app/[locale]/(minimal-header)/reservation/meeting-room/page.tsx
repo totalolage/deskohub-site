@@ -66,12 +66,10 @@ export default async function LocalizedMeetingRoomReservationPage({
 
   return runWithRequestLocale(locale, () => (
     <CheckoutOrderPage
-      fallback={
-        <MeetingRoomReservationFormFallback locale={locale} showIntro={false} />
-      }
+      fallback={<MeetingRoomReservationFormFallback locale={locale} />}
       locale={locale}
     >
-      <MeetingRoomReservationForm locale={locale} showIntro={false} />
+      <MeetingRoomReservationForm locale={locale} />
     </CheckoutOrderPage>
   ));
 }
