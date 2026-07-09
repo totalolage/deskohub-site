@@ -1,6 +1,6 @@
-import { Schema as EffectSchema, Match, Option } from "effect";
+import { Schema as EffectSchema, Match } from "effect";
 import { isValidPhoneNumber } from "libphonenumber-js";
-import { z } from "zod/v4";
+import type { WorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quote";
 import { RESERVATION_VALIDATION } from "@/features/reservation/schemas/reservation";
 import {
   getReservationIntervalValidationIssue,
@@ -9,6 +9,8 @@ import {
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const CheckoutReturnStateReservationBaseSchema = EffectSchema.Struct({
   startsAt: EffectSchema.NonEmptyString,
@@ -20,25 +22,24 @@ const CheckoutReturnStateReservationBaseSchema = EffectSchema.Struct({
 });
 
 const CheckoutReturnStateReservationShapeSchema = EffectSchema.Union([
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("cowork", {
     ...CheckoutReturnStateReservationBaseSchema.fields,
-    entryTier: EffectSchema.Literal("basic"),
+    tier: EffectSchema.Literal("basic"),
     coffee: EffectSchema.Boolean,
   }),
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("cowork", {
     ...CheckoutReturnStateReservationBaseSchema.fields,
-    entryTier: EffectSchema.Literal("plus"),
+    tier: EffectSchema.Literal("plus"),
     coffee: EffectSchema.Literal(true),
   }),
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("cowork", {
     ...CheckoutReturnStateReservationBaseSchema.fields,
-    entryTier: EffectSchema.Literal("profi"),
+    tier: EffectSchema.Literal("profi"),
     coffee: EffectSchema.Literal(true),
     monitorOption: workspaceProductMonitorOptionEffectSchema,
   }),
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("meeting-room", {
     ...CheckoutReturnStateReservationBaseSchema.fields,
-    entryTier: EffectSchema.Literal("meeting-room"),
   }),
 ]);
 
@@ -49,26 +50,26 @@ const getCheckoutReturnStateReservationProductRuleInput = (
   reservation: CheckoutReturnStateReservationDraft
 ) =>
   Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+    Match.tag("meeting-room", (meetingRoomReservation) => ({
       _tag: "meeting-room" as const,
       startsAt: meetingRoomReservation.startsAt,
       endsAt: meetingRoomReservation.endsAt,
     })),
-    Match.when({ entryTier: "basic" }, (coworkReservation) => ({
+    Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "basic" as const,
       coffee: coworkReservation.coffee,
       startsAt: coworkReservation.startsAt,
       endsAt: coworkReservation.endsAt,
     })),
-    Match.when({ entryTier: "plus" }, (coworkReservation) => ({
+    Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "plus" as const,
       coffee: coworkReservation.coffee,
       startsAt: coworkReservation.startsAt,
       endsAt: coworkReservation.endsAt,
     })),
-    Match.when({ entryTier: "profi" }, (coworkReservation) => ({
+    Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "profi" as const,
       coffee: coworkReservation.coffee,
@@ -100,7 +101,7 @@ export const checkoutReturnStateReservationEffectSchema =
 
         if (
           reservation.email.trim().length > RESERVATION_VALIDATION.email.max ||
-          !z.email().safeParse(reservation.email.trim()).success
+          !emailPattern.test(reservation.email.trim())
         ) {
           issues.push({
             path: ["email"],
@@ -142,7 +143,11 @@ export const checkoutReturnStateReservationEffectSchema =
         );
         if (productRuleIssue) {
           issues.push({
-            path: [productRuleIssue.path],
+            path: [
+              productRuleIssue.path === "entryTier"
+                ? "tier"
+                : productRuleIssue.path,
+            ],
             issue: productRuleIssue.message,
           });
         }
@@ -152,35 +157,24 @@ export const checkoutReturnStateReservationEffectSchema =
     )
   );
 
-const decodeCheckoutReturnStateReservation = EffectSchema.decodeUnknownOption(
-  checkoutReturnStateReservationEffectSchema
-);
-
 export const checkoutReturnStateReservationEffectParser =
   makeEffectSchemaParser(checkoutReturnStateReservationEffectSchema);
 
-const checkoutReturnStateReservationInputSchema =
-  z.custom<CheckoutReturnStateReservationDraft>((value) =>
-    Option.isSome(decodeCheckoutReturnStateReservation(value))
-  );
-export type CheckoutReturnStateReservation =
-  CheckoutReturnStateReservationDraft;
-
 export const normalizeCheckoutReturnStateReservation = (
   reservation: CheckoutReturnStateReservationDraft
-): CheckoutReturnStateReservation =>
+) =>
   Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) =>
+    Match.tag("meeting-room", (meetingRoomReservation) =>
       unsafeNormalizeReservationInterval(meetingRoomReservation)
     ),
-    Match.when({ entryTier: "basic" }, (basicReservation) =>
+    Match.when({ _tag: "cowork", tier: "basic" }, (basicReservation) =>
       unsafeNormalizeReservationInterval(basicReservation)
     ),
-    Match.when({ entryTier: "plus" }, (plusReservation) => ({
+    Match.when({ _tag: "cowork", tier: "plus" }, (plusReservation) => ({
       ...unsafeNormalizeReservationInterval(plusReservation),
       coffee: true as const,
     })),
-    Match.when({ entryTier: "profi" }, (profiReservation) => ({
+    Match.when({ _tag: "cowork", tier: "profi" }, (profiReservation) => ({
       ...unsafeNormalizeReservationInterval(profiReservation),
       coffee: true as const,
       monitorOption: profiReservation.monitorOption,
@@ -188,17 +182,123 @@ export const normalizeCheckoutReturnStateReservation = (
     Match.exhaustive
   );
 
-export const checkoutReturnStateReservationSchema =
-  checkoutReturnStateReservationInputSchema.transform(
-    normalizeCheckoutReturnStateReservation
-  );
+export type CheckoutReturnStateReservation = ReturnType<
+  typeof normalizeCheckoutReturnStateReservation
+>;
 
-export const checkoutReturnStateJsonSchema = z.object({
-  schema: z.literal("workspace-checkout-return-state"),
-  schemaVersion: z.literal(1),
-  reservation: checkoutReturnStateReservationSchema,
+export const checkoutReturnStateReservationSchema = {
+  parse: (input: unknown): CheckoutReturnStateReservation =>
+    normalizeCheckoutReturnStateReservation(
+      checkoutReturnStateReservationEffectParser.parse(input)
+    ),
+  safeParse: (input: unknown) => {
+    try {
+      return {
+        success: true as const,
+        data: checkoutReturnStateReservationSchema.parse(input),
+      };
+    } catch (error) {
+      return { success: false as const, error };
+    }
+  },
+};
+
+export type CheckoutReturnStateReservationInput =
+  WorkspaceCheckoutOrderInput & {
+    readonly name: string;
+    readonly email: string;
+    readonly phone: string;
+    readonly message?: string;
+  };
+
+const getCheckoutReturnStateReservationBase = (
+  reservation: CheckoutReturnStateReservationInput
+) => ({
+  startsAt: reservation.startsAt,
+  endsAt: reservation.endsAt,
+  name: reservation.name,
+  email: reservation.email,
+  phone: reservation.phone,
+  ...(reservation.message !== undefined && { message: reservation.message }),
 });
 
-export type CheckoutReturnStateJson = z.output<
-  typeof checkoutReturnStateJsonSchema
->;
+const toCheckoutReturnStateReservationPayload = (
+  reservation: CheckoutReturnStateReservationInput
+) =>
+  Match.value(reservation).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+      _tag: "meeting-room" as const,
+      ...getCheckoutReturnStateReservationBase(meetingRoomReservation),
+    })),
+    Match.when({ entryTier: "basic" }, (coworkReservation) => ({
+      _tag: "cowork" as const,
+      tier: "basic" as const,
+      ...getCheckoutReturnStateReservationBase(coworkReservation),
+      coffee: coworkReservation.coffee,
+    })),
+    Match.when({ entryTier: "plus" }, (coworkReservation) => ({
+      _tag: "cowork" as const,
+      tier: "plus" as const,
+      ...getCheckoutReturnStateReservationBase(coworkReservation),
+      coffee: true as const,
+    })),
+    Match.when({ entryTier: "profi" }, (coworkReservation) => ({
+      _tag: "cowork" as const,
+      tier: "profi" as const,
+      ...getCheckoutReturnStateReservationBase(coworkReservation),
+      coffee: true as const,
+      monitorOption: coworkReservation.monitorOption,
+    })),
+    Match.exhaustive
+  );
+
+export const getCheckoutReturnStateReservation = (
+  reservation: CheckoutReturnStateReservationInput
+): CheckoutReturnStateReservation =>
+  checkoutReturnStateReservationSchema.parse(
+    toCheckoutReturnStateReservationPayload(reservation)
+  );
+
+export const checkoutReturnStateJsonEffectSchema = EffectSchema.Struct({
+  schema: EffectSchema.Literal("workspace-checkout-return-state"),
+  schemaVersion: EffectSchema.Literal(1),
+  reservation: checkoutReturnStateReservationEffectSchema,
+});
+
+type CheckoutReturnStateJsonDraft =
+  typeof checkoutReturnStateJsonEffectSchema.Type;
+
+export type CheckoutReturnStateJson = Omit<
+  CheckoutReturnStateJsonDraft,
+  "reservation"
+> & {
+  readonly reservation: CheckoutReturnStateReservation;
+};
+
+const checkoutReturnStateJsonEffectParser = makeEffectSchemaParser(
+  checkoutReturnStateJsonEffectSchema
+);
+
+const normalizeCheckoutReturnStateJson = (
+  details: CheckoutReturnStateJsonDraft
+): CheckoutReturnStateJson => ({
+  ...details,
+  reservation: normalizeCheckoutReturnStateReservation(details.reservation),
+});
+
+export const checkoutReturnStateJsonSchema = {
+  parse: (input: unknown): CheckoutReturnStateJson =>
+    normalizeCheckoutReturnStateJson(
+      checkoutReturnStateJsonEffectParser.parse(input)
+    ),
+  safeParse: (input: unknown) => {
+    try {
+      return {
+        success: true as const,
+        data: checkoutReturnStateJsonSchema.parse(input),
+      };
+    } catch (error) {
+      return { success: false as const, error };
+    }
+  },
+};

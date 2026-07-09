@@ -351,6 +351,61 @@ const openFinalPayState: (
   return state;
 });
 
+const toReservationOrderData = (
+  reservation: SignedPayState["reservation"]
+): ReservationOrderData =>
+  Match.value(reservation).pipe(
+    Match.tag("meeting-room", (meetingRoomReservation) => ({
+      entryTier: "meeting-room" as const,
+      startsAt: meetingRoomReservation.startsAt,
+      endsAt: meetingRoomReservation.endsAt,
+      name: meetingRoomReservation.name,
+      email: meetingRoomReservation.email,
+      phone: meetingRoomReservation.phone,
+      ...(meetingRoomReservation.message !== undefined && {
+        message: meetingRoomReservation.message,
+      }),
+    })),
+    Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) => ({
+      entryTier: "basic" as const,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+      name: coworkReservation.name,
+      email: coworkReservation.email,
+      phone: coworkReservation.phone,
+      ...(coworkReservation.message !== undefined && {
+        message: coworkReservation.message,
+      }),
+      coffee: coworkReservation.coffee,
+    })),
+    Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) => ({
+      entryTier: "plus" as const,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+      name: coworkReservation.name,
+      email: coworkReservation.email,
+      phone: coworkReservation.phone,
+      ...(coworkReservation.message !== undefined && {
+        message: coworkReservation.message,
+      }),
+      coffee: true as const,
+    })),
+    Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) => ({
+      entryTier: "profi" as const,
+      startsAt: coworkReservation.startsAt,
+      endsAt: coworkReservation.endsAt,
+      name: coworkReservation.name,
+      email: coworkReservation.email,
+      phone: coworkReservation.phone,
+      ...(coworkReservation.message !== undefined && {
+        message: coworkReservation.message,
+      }),
+      coffee: true as const,
+      monitorOption: coworkReservation.monitorOption,
+    })),
+    Match.exhaustive
+  );
+
 const getFreshPayUrl: (input: {
   readonly locale: Locale;
   readonly reservation: ReservationOrderData;
@@ -608,7 +663,7 @@ export const CheckoutServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ payState: state });
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
 
-          const data = state.reservation;
+          const data = toReservationOrderData(state.reservation);
           yield* Effect.logDebug(
             "Hosted payment checkout reservation lookup started",
             {

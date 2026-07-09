@@ -100,11 +100,42 @@ describe("Pay URL state", () => {
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
     expect(state.reservation).toMatchObject({
+      _tag: "cowork",
+      tier: "profi",
       startsAt: "2026-06-19T22:00:00Z",
       endsAt: "2026-06-20T22:00:00Z",
     });
+    expect(state.reservation).not.toHaveProperty("entryTier");
     expect(state.reservation).not.toHaveProperty("durationMinutes");
     expect(state.quote.order).not.toHaveProperty("startsAt");
+  });
+
+  test("stores meeting room as a reservation tag", () => {
+    const reservation = {
+      entryTier: "meeting-room" as const,
+      startsAt: "2026-06-19T08:00:00Z",
+      endsAt: "2026-06-19T12:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    };
+    const state = buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation,
+        quote: buildWorkspaceCheckoutQuote(reservation),
+        orderId: "meeting-room-pay-state-test",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    );
+
+    expect(state.reservation).toMatchObject({
+      _tag: "meeting-room",
+      startsAt: "2026-06-19T08:00:00Z",
+      endsAt: "2026-06-19T12:00:00Z",
+    });
+    expect(state.reservation).not.toHaveProperty("entryTier");
+    expect(state.reservation).not.toHaveProperty("tier");
   });
 
   test("fails closed when no encryption key is configured", () => {

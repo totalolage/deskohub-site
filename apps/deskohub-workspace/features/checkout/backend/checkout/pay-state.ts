@@ -13,9 +13,8 @@ import type {
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
-  checkoutReturnStateReservationEffectParser,
   checkoutReturnStateReservationEffectSchema,
-  normalizeCheckoutReturnStateReservation,
+  getCheckoutReturnStateReservation,
 } from "@/features/checkout/schemas/checkout-return-state";
 import {
   checkoutSummaryEffectSchema,
@@ -294,9 +293,7 @@ export const buildSignedPayState = (
   }
 
   const nowMilliseconds = getNowMilliseconds(options);
-  const reservation = normalizeCheckoutReturnStateReservation(
-    checkoutReturnStateReservationEffectParser.parse(input.reservation)
-  );
+  const reservation = getCheckoutReturnStateReservation(input.reservation);
   const iat = Math.floor(nowMilliseconds / 1000);
   const exp = Math.floor(
     (nowMilliseconds +
