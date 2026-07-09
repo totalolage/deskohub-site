@@ -1,7 +1,6 @@
 import "server-only";
 
-import { Context, Data, Effect, Layer } from "effect";
-import { z } from "zod/v4";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import {
   type DatabaseError,
   runDb,
@@ -9,12 +8,17 @@ import {
 } from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import { legalEvidenceSchema } from "@/features/checkout/schemas/checkout-details";
+import { legalEvidenceEffectSchema } from "@/features/checkout/schemas/checkout-details";
+import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
-const legalEvidenceEventInputSchema = z.object({
-  workspaceReservationId: z.string().min(1).optional(),
-  evidence: legalEvidenceSchema,
+const legalEvidenceEventInputEffectSchema = Schema.Struct({
+  workspaceReservationId: Schema.optional(Schema.NonEmptyString),
+  evidence: legalEvidenceEffectSchema,
 });
+
+const legalEvidenceEventInputSchema = makeEffectSchemaParser(
+  legalEvidenceEventInputEffectSchema
+);
 
 export class LegalEvidenceEventInputError extends Data.TaggedError(
   "LegalEvidenceEventInputError"
@@ -23,9 +27,8 @@ export class LegalEvidenceEventInputError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export type LegalEvidenceEventInput = z.input<
-  typeof legalEvidenceEventInputSchema
->;
+export type LegalEvidenceEventInput =
+  typeof legalEvidenceEventInputEffectSchema.Type;
 
 export interface LegalEvidenceEventRepository {
   readonly record: (
