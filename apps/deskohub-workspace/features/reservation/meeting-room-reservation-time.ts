@@ -1,5 +1,3 @@
-import "@/shared/polyfills/temporal";
-
 import {
   isWorkspaceMeetingRoomDuration,
   type WorkspaceMeetingRoomDurationMinutes,
