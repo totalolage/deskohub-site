@@ -421,19 +421,32 @@ export const CheckoutStatusServiceLive = Layer.effect(
             : {}),
         } satisfies CheckoutStatusViewModelBase;
 
+        const summary = reconstruction.summary;
         const result: CheckoutStatusViewModel =
-          reconstruction.summary === undefined
+          summary === undefined
             ? {
                 _tag: "unknown",
                 ...resultBase,
               }
-            : ({
-                _tag: reconstruction.summary._tag,
-                ...resultBase,
-                summary: reconstruction.summary,
-              } as
-                | CheckoutCoworkStatusViewModel
-                | CheckoutMeetingRoomStatusViewModel);
+            : Match.value(summary).pipe(
+                Match.tag(
+                  "cowork",
+                  (coworkSummary): CheckoutCoworkStatusViewModel => ({
+                    _tag: "cowork",
+                    ...resultBase,
+                    summary: coworkSummary,
+                  })
+                ),
+                Match.tag(
+                  "meeting-room",
+                  (meetingRoomSummary): CheckoutMeetingRoomStatusViewModel => ({
+                    _tag: "meeting-room",
+                    ...resultBase,
+                    summary: meetingRoomSummary,
+                  })
+                ),
+                Match.exhaustive
+              );
 
         yield* Effect.annotateLogsScoped({ result });
         yield* Effect.logInfo("Checkout status lookup completed");
