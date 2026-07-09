@@ -38,30 +38,26 @@ const authTagByteLength = 16;
 const keyByteLength = 32;
 
 const CheckoutOrderShapeSchema = EffectSchema.Union([
-  EffectSchema.Struct({
-    _tag: EffectSchema.Literal("cowork"),
+  EffectSchema.TaggedStruct("cowork", {
     tier: EffectSchema.Literal("basic"),
     startsAt: EffectSchema.optional(EffectSchema.String),
     endsAt: EffectSchema.optional(EffectSchema.String),
     coffee: EffectSchema.Boolean,
   }),
-  EffectSchema.Struct({
-    _tag: EffectSchema.Literal("cowork"),
+  EffectSchema.TaggedStruct("cowork", {
     tier: EffectSchema.Literal("plus"),
     startsAt: EffectSchema.optional(EffectSchema.String),
     endsAt: EffectSchema.optional(EffectSchema.String),
     coffee: EffectSchema.Literal(true),
   }),
-  EffectSchema.Struct({
-    _tag: EffectSchema.Literal("cowork"),
+  EffectSchema.TaggedStruct("cowork", {
     tier: EffectSchema.Literal("profi"),
     startsAt: EffectSchema.optional(EffectSchema.String),
     endsAt: EffectSchema.optional(EffectSchema.String),
     coffee: EffectSchema.Literal(true),
     monitorOption: workspaceProductMonitorOptionEffectSchema,
   }),
-  EffectSchema.Struct({
-    _tag: EffectSchema.Literal("meeting-room"),
+  EffectSchema.TaggedStruct("meeting-room", {
     startsAt: EffectSchema.NonEmptyString,
     endsAt: EffectSchema.NonEmptyString,
   }),
