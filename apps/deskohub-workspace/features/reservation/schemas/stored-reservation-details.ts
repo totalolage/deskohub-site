@@ -9,24 +9,30 @@ export const workspaceProductMonitorOptionEffectSchema = Schema.Literals(
   workspaceProductMonitorOptions
 );
 
-export const storedBasicReservationDetailsEffectSchema = Schema.Struct({
-  _tag: Schema.Literal("cowork"),
-  tier: Schema.Literal("basic"),
-  coffee: Schema.Boolean,
-});
+export const storedBasicReservationDetailsEffectSchema = Schema.TaggedStruct(
+  "cowork",
+  {
+    tier: Schema.Literal("basic"),
+    coffee: Schema.Boolean,
+  }
+);
 
-export const storedPlusReservationDetailsEffectSchema = Schema.Struct({
-  _tag: Schema.Literal("cowork"),
-  tier: Schema.Literal("plus"),
-  coffee: Schema.Literal(true),
-});
+export const storedPlusReservationDetailsEffectSchema = Schema.TaggedStruct(
+  "cowork",
+  {
+    tier: Schema.Literal("plus"),
+    coffee: Schema.Literal(true),
+  }
+);
 
-export const storedProfiReservationDetailsEffectSchema = Schema.Struct({
-  _tag: Schema.Literal("cowork"),
-  tier: Schema.Literal("profi"),
-  coffee: Schema.Literal(true),
-  monitorOption: workspaceProductMonitorOptionEffectSchema,
-});
+export const storedProfiReservationDetailsEffectSchema = Schema.TaggedStruct(
+  "cowork",
+  {
+    tier: Schema.Literal("profi"),
+    coffee: Schema.Literal(true),
+    monitorOption: workspaceProductMonitorOptionEffectSchema,
+  }
+);
 
 export const storedCoworkReservationDetailsEffectSchema = Schema.Union([
   storedBasicReservationDetailsEffectSchema,
@@ -34,9 +40,8 @@ export const storedCoworkReservationDetailsEffectSchema = Schema.Union([
   storedProfiReservationDetailsEffectSchema,
 ]);
 
-export const storedMeetingRoomReservationDetailsEffectSchema = Schema.Struct({
-  _tag: Schema.Literal("meeting-room"),
-});
+export const storedMeetingRoomReservationDetailsEffectSchema =
+  Schema.TaggedStruct("meeting-room", {});
 
 export const storedWorkspaceReservationDetailsEffectSchema = Schema.Union([
   storedCoworkReservationDetailsEffectSchema,

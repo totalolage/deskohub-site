@@ -89,28 +89,24 @@ const CheckoutDetailsReservationBaseSchema = EffectSchema.Struct({
 });
 
 const CheckoutDetailsReservationSchema = EffectSchema.Union([
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("cowork", {
     ...CheckoutDetailsReservationBaseSchema.fields,
-    _tag: EffectSchema.Literal("cowork"),
     tier: EffectSchema.Literal("basic"),
     coffee: EffectSchema.Boolean,
   }),
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("cowork", {
     ...CheckoutDetailsReservationBaseSchema.fields,
-    _tag: EffectSchema.Literal("cowork"),
     tier: EffectSchema.Literal("plus"),
     coffee: EffectSchema.Literal(true),
   }),
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("cowork", {
     ...CheckoutDetailsReservationBaseSchema.fields,
-    _tag: EffectSchema.Literal("cowork"),
     tier: EffectSchema.Literal("profi"),
     coffee: EffectSchema.Literal(true),
     monitorOption: workspaceProductMonitorOptionEffectSchema,
   }),
-  EffectSchema.Struct({
+  EffectSchema.TaggedStruct("meeting-room", {
     ...CheckoutDetailsReservationBaseSchema.fields,
-    _tag: EffectSchema.Literal("meeting-room"),
   }),
 ]);
 
