@@ -350,7 +350,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       date: selectedDate,
       dateFallback: m.reservationDatePlaceholder({}, { locale }),
       locale,
-      tier: selectedTier,
+      reservation: { _tag: "cowork", tier: selectedTier },
     });
 
   const {

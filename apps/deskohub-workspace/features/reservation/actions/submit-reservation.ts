@@ -1,6 +1,6 @@
 "use server";
 
-import { Effect, Match } from "effect";
+import { Effect } from "effect";
 import {
   CheckoutService,
   CheckoutServiceLiveWithDependencies,
@@ -31,11 +31,7 @@ const getSubmitReservationErrorMessage = (
     return getReservationAvailabilityUnavailableMessage({
       date: getReservationPragueDate(payState.reservation),
       locale: input.locale,
-      tier: Match.value(payState.reservation).pipe(
-        Match.tag("meeting-room", () => "meeting-room" as const),
-        Match.tag("cowork", (coworkReservation) => coworkReservation.tier),
-        Match.exhaustive
-      ),
+      reservation: payState.reservation,
     });
   } catch {
     return m.reservationErrorMessage({}, { locale: input.locale });

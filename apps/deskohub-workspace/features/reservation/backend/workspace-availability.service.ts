@@ -60,8 +60,15 @@ export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<{
   readonly date: string;
-  readonly tier: WorkspaceCoworkProductTier | "meeting-room";
-  readonly monitorOption?: WorkspaceProductMonitorOption;
+  readonly reservation:
+    | {
+        readonly _tag: "cowork";
+        readonly tier: WorkspaceCoworkProductTier;
+        readonly monitorOption?: WorkspaceProductMonitorOption;
+      }
+    | {
+        readonly _tag: "meeting-room";
+      };
 }> {}
 
 type WorkspaceAvailabilityEnsureQuery = Partial<ReservationInterval> & {
@@ -286,14 +293,19 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
 
         return yield* new WorkspaceTableUnavailableError({
           date: unavailableDate,
-          tier: Match.value(query).pipe(
-            Match.tag("meeting-room", () => "meeting-room" as const),
-            Match.tag("cowork", (coworkQuery) => coworkQuery.entryTier),
+          reservation: Match.value(query).pipe(
+            Match.tag("meeting-room", () => ({
+              _tag: "meeting-room" as const,
+            })),
+            Match.tag("cowork", (coworkQuery) => ({
+              _tag: "cowork" as const,
+              tier: coworkQuery.entryTier,
+              ...(coworkQuery.monitorOption
+                ? { monitorOption: coworkQuery.monitorOption }
+                : {}),
+            })),
             Match.exhaustive
           ),
-          ...(query._tag === "cowork" && query.monitorOption
-            ? { monitorOption: query.monitorOption }
-            : {}),
         });
       },
       (effect) => effect.pipe(Effect.scoped)

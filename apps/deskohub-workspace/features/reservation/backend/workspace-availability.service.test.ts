@@ -463,6 +463,11 @@ describe("WorkspaceAvailabilityService", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
+      expect(result.failure.reservation).toEqual({
+        _tag: "cowork",
+        tier: "profi",
+        monitorOption: "2x27-qhd",
+      });
     }
   });
 
@@ -494,6 +499,10 @@ describe("WorkspaceAvailabilityService", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
+      expect(result.failure.reservation).toEqual({
+        _tag: "cowork",
+        tier: "basic",
+      });
     }
   });
 
@@ -528,6 +537,10 @@ describe("WorkspaceAvailabilityService", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.date).toBe(nextTestDate);
+      expect(result.failure.reservation).toEqual({
+        _tag: "cowork",
+        tier: "basic",
+      });
     }
   });
 
