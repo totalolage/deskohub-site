@@ -401,6 +401,7 @@ export function ReservationForm({
       return;
     }
     hasTrackedSuccessfulSubmission.current = false;
+    window.scrollTo({ top: 0 });
     await sendReservation({
       locale,
       reservationIntentId,
