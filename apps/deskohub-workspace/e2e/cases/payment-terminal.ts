@@ -103,7 +103,8 @@ export const assertPaymentTerminalPath = ({
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
       matches: (url) =>
-        (parseUrl(url)?.pathname ?? "") === "/en-US/checkout/order",
+        (parseUrl(url)?.pathname ?? "") ===
+        "/en-US/checkout/reservation/cowork",
       run,
       session,
       timeoutMs: 60_000,
