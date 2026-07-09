@@ -23,7 +23,7 @@ import {
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
 import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
-import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { makeWorkspaceReservationDetailsWithFieldsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
@@ -37,31 +37,17 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const CheckoutOrderShapeSchema = EffectSchema.Union([
-  EffectSchema.TaggedStruct("cowork", {
-    tier: EffectSchema.Literal("basic"),
-    startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    coffee: EffectSchema.Boolean,
-  }),
-  EffectSchema.TaggedStruct("cowork", {
-    tier: EffectSchema.Literal("plus"),
-    startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    coffee: EffectSchema.Literal(true),
-  }),
-  EffectSchema.TaggedStruct("cowork", {
-    tier: EffectSchema.Literal("profi"),
-    startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    coffee: EffectSchema.Literal(true),
-    monitorOption: workspaceProductMonitorOptionEffectSchema,
-  }),
-  EffectSchema.TaggedStruct("meeting-room", {
-    startsAt: isoDateTimeWithOffsetStringEffectSchema,
-    endsAt: isoDateTimeWithOffsetStringEffectSchema,
-  }),
-]);
+const CheckoutOrderShapeSchema =
+  makeWorkspaceReservationDetailsWithFieldsEffectSchema({
+    cowork: {
+      startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
+      endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
+    },
+    meetingRoom: {
+      startsAt: isoDateTimeWithOffsetStringEffectSchema,
+      endsAt: isoDateTimeWithOffsetStringEffectSchema,
+    },
+  });
 
 type CheckoutOrderDraft = typeof CheckoutOrderShapeSchema.Type;
 

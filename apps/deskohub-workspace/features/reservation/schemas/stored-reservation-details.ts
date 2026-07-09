@@ -9,29 +9,35 @@ export const workspaceProductMonitorOptionEffectSchema = Schema.Literals(
   workspaceProductMonitorOptions
 );
 
+const storedBasicReservationDetailsEffectFields = {
+  tier: Schema.Literal("basic"),
+  coffee: Schema.Boolean,
+};
+
 export const storedBasicReservationDetailsEffectSchema = Schema.TaggedStruct(
   "cowork",
-  {
-    tier: Schema.Literal("basic"),
-    coffee: Schema.Boolean,
-  }
+  storedBasicReservationDetailsEffectFields
 );
+
+const storedPlusReservationDetailsEffectFields = {
+  tier: Schema.Literal("plus"),
+  coffee: Schema.Literal(true),
+};
 
 export const storedPlusReservationDetailsEffectSchema = Schema.TaggedStruct(
   "cowork",
-  {
-    tier: Schema.Literal("plus"),
-    coffee: Schema.Literal(true),
-  }
+  storedPlusReservationDetailsEffectFields
 );
+
+const storedProfiReservationDetailsEffectFields = {
+  tier: Schema.Literal("profi"),
+  coffee: Schema.Literal(true),
+  monitorOption: workspaceProductMonitorOptionEffectSchema,
+};
 
 export const storedProfiReservationDetailsEffectSchema = Schema.TaggedStruct(
   "cowork",
-  {
-    tier: Schema.Literal("profi"),
-    coffee: Schema.Literal(true),
-    monitorOption: workspaceProductMonitorOptionEffectSchema,
-  }
+  storedProfiReservationDetailsEffectFields
 );
 
 export const storedCoworkReservationDetailsEffectSchema = Schema.Union([
@@ -47,6 +53,39 @@ export const storedWorkspaceReservationDetailsEffectSchema = Schema.Union([
   storedCoworkReservationDetailsEffectSchema,
   storedMeetingRoomReservationDetailsEffectSchema,
 ]);
+
+export const makeWorkspaceReservationDetailsWithFieldsEffectSchema = <
+  CoworkFields extends Schema.Struct.Fields,
+  MeetingRoomFields extends Schema.Struct.Fields,
+>(fields: {
+  readonly cowork: CoworkFields;
+  readonly meetingRoom: MeetingRoomFields;
+}) =>
+  Schema.Union([
+    Schema.TaggedStruct("cowork", {
+      ...fields.cowork,
+      ...storedBasicReservationDetailsEffectFields,
+    }),
+    Schema.TaggedStruct("cowork", {
+      ...fields.cowork,
+      ...storedPlusReservationDetailsEffectFields,
+    }),
+    Schema.TaggedStruct("cowork", {
+      ...fields.cowork,
+      ...storedProfiReservationDetailsEffectFields,
+    }),
+    Schema.TaggedStruct("meeting-room", fields.meetingRoom),
+  ]);
+
+export const makeWorkspaceReservationDetailsEffectSchema = <
+  Fields extends Schema.Struct.Fields,
+>(
+  fields: Fields
+) =>
+  makeWorkspaceReservationDetailsWithFieldsEffectSchema({
+    cowork: fields,
+    meetingRoom: fields,
+  });
 
 export type StoredBasicReservationDetails =
   typeof storedBasicReservationDetailsEffectSchema.Type;

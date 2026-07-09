@@ -7,7 +7,7 @@ import {
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
-import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import {
   isoDateTimeWithOffsetStringEffectSchema,
   urlStringEffectSchema,
@@ -105,32 +105,11 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-const CheckoutDetailsReservationBaseSchema = EffectSchema.Struct({
-  startsAt: EffectSchema.NonEmptyString,
-  endsAt: EffectSchema.NonEmptyString,
-});
-
-const CheckoutDetailsReservationShapeSchema = EffectSchema.Union([
-  EffectSchema.TaggedStruct("cowork", {
-    ...CheckoutDetailsReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("basic"),
-    coffee: EffectSchema.Boolean,
-  }),
-  EffectSchema.TaggedStruct("cowork", {
-    ...CheckoutDetailsReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("plus"),
-    coffee: EffectSchema.Literal(true),
-  }),
-  EffectSchema.TaggedStruct("cowork", {
-    ...CheckoutDetailsReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("profi"),
-    coffee: EffectSchema.Literal(true),
-    monitorOption: workspaceProductMonitorOptionEffectSchema,
-  }),
-  EffectSchema.TaggedStruct("meeting-room", {
-    ...CheckoutDetailsReservationBaseSchema.fields,
-  }),
-]);
+const CheckoutDetailsReservationShapeSchema =
+  makeWorkspaceReservationDetailsEffectSchema({
+    startsAt: EffectSchema.NonEmptyString,
+    endsAt: EffectSchema.NonEmptyString,
+  });
 
 type CheckoutDetailsReservationDraft =
   typeof CheckoutDetailsReservationShapeSchema.Type;

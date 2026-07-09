@@ -7,42 +7,21 @@ import {
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
-import { workspaceProductMonitorOptionEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const CheckoutReturnStateReservationBaseSchema = EffectSchema.Struct({
-  startsAt: isoDateTimeWithOffsetStringEffectSchema,
-  endsAt: isoDateTimeWithOffsetStringEffectSchema,
-  name: EffectSchema.NonEmptyString,
-  email: EffectSchema.NonEmptyString,
-  phone: EffectSchema.NonEmptyString,
-  message: EffectSchema.optional(EffectSchema.String),
-});
-
-const CheckoutReturnStateReservationShapeSchema = EffectSchema.Union([
-  EffectSchema.TaggedStruct("cowork", {
-    ...CheckoutReturnStateReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("basic"),
-    coffee: EffectSchema.Boolean,
-  }),
-  EffectSchema.TaggedStruct("cowork", {
-    ...CheckoutReturnStateReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("plus"),
-    coffee: EffectSchema.Literal(true),
-  }),
-  EffectSchema.TaggedStruct("cowork", {
-    ...CheckoutReturnStateReservationBaseSchema.fields,
-    tier: EffectSchema.Literal("profi"),
-    coffee: EffectSchema.Literal(true),
-    monitorOption: workspaceProductMonitorOptionEffectSchema,
-  }),
-  EffectSchema.TaggedStruct("meeting-room", {
-    ...CheckoutReturnStateReservationBaseSchema.fields,
-  }),
-]);
+const CheckoutReturnStateReservationShapeSchema =
+  makeWorkspaceReservationDetailsEffectSchema({
+    startsAt: isoDateTimeWithOffsetStringEffectSchema,
+    endsAt: isoDateTimeWithOffsetStringEffectSchema,
+    name: EffectSchema.NonEmptyString,
+    email: EffectSchema.NonEmptyString,
+    phone: EffectSchema.NonEmptyString,
+    message: EffectSchema.optional(EffectSchema.String),
+  });
 
 type CheckoutReturnStateReservationDraft =
   typeof CheckoutReturnStateReservationShapeSchema.Type;
