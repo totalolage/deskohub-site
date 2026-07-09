@@ -69,6 +69,17 @@ const getSchedule = (): ScheduleItem[] => [
     description: m["palmovcon2026.schedule.bazaar.description"](),
     imagePublicId: "palmovcon-event-boardgame-bazar",
   },
+  {
+    title: m["palmovcon2026.schedule.cardTournaments.title"](),
+    time: m["palmovcon2026.schedule.cardTournaments.time"](),
+    description: m["palmovcon2026.schedule.cardTournaments.description"](),
+    note: m["palmovcon2026.schedule.cardTournaments.note"](),
+    imagePublicId: "palmovcon-event-card-tournaments",
+    cta: {
+      href: "https://forms.gle/q6xBYG5ZRy89wxCV9",
+      label: m["palmovcon2026.registrationCta"](),
+    },
+  },
 ];
 
 export const generateMetadata = metadata({
