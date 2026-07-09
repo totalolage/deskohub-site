@@ -3,7 +3,6 @@
 import { AlertTriangle, CreditCard, RotateCcw } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useAction } from "next-safe-action/hooks";
 import { useState } from "react";
 import type {
   CheckoutSummaryChangedKeys,
@@ -28,6 +27,7 @@ import {
 import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn } from "@/shared/utils";
+import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -57,7 +57,8 @@ export function CheckoutPayPage({
     execute,
     isExecuting,
     result: submitReservationResult,
-  } = useAction(submitReservation, {
+  } = useWorkspaceAction(submitReservation, {
+    actionName: "submitReservation",
     onSuccess: ({ data }) => {
       if (data?.status === "pricing_changed") {
         router.push(data.freshPayUrl);
@@ -80,6 +81,9 @@ export function CheckoutPayPage({
       setErrorMessage(
         error.serverError || m.checkoutPaySubmitError({}, { locale })
       );
+    },
+    onTransportError: () => {
+      setErrorMessage(m.checkoutPaySubmitError({}, { locale }));
     },
   });
   const hasCheckoutRedirect =

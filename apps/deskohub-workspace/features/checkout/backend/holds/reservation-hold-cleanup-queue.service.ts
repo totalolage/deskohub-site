@@ -3,6 +3,7 @@ import { Context, Data, Effect, Layer, Option, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { clamp } from "@/shared/utils";
+import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 import {
   type ReservationHoldCleanupOutcome,
   ReservationHoldCleanupService,
@@ -44,7 +45,10 @@ export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
 }> {
   static fromError(message: string) {
     return (cause: unknown) =>
-      new ReservationHoldCleanupScheduleError({ message, cause });
+      new ReservationHoldCleanupScheduleError({
+        message,
+        cause: serializeErrorForLog(cause),
+      });
   }
 }
 

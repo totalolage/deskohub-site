@@ -152,6 +152,5 @@ export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
 }
 
 async function getFooterCopyrightYear() {
-  "use cache";
   return new Date().getFullYear();
 }

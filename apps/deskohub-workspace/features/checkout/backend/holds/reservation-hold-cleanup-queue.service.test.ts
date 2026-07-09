@@ -141,6 +141,22 @@ describe("ReservationHoldCleanupScheduleService", () => {
     expect(source).toContain('Effect.succeed("duplicate" as const)');
   });
 
+  test("keeps enqueue failure causes visible in structured logs", async () => {
+    const { ReservationHoldCleanupScheduleError } = await import(
+      "./reservation-hold-cleanup-queue.service"
+    );
+    const source = new Error("queue unavailable");
+    const error = ReservationHoldCleanupScheduleError.fromError(
+      "Reservation hold cleanup could not be enqueued."
+    )(source);
+
+    expect(error.cause).toMatchObject({
+      name: "Error",
+      message: "queue unavailable",
+    });
+    expect(error.cause).not.toBe(source);
+  });
+
   test("ignores invalid, not-due, changed-expiry, and completed reservations", async () => {
     const invalid = await runProcessMessage({ schemaVersion: 2 });
     expect(invalid.result).toBe("ignored");
