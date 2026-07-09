@@ -48,7 +48,7 @@ describe("workspace checkout quotes", () => {
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildWorkspaceCheckoutQuote({
       entryTier: "plus",
-      coffee: false,
+      coffee: true,
     });
 
     expect(quote.order.coffee).toBe(true);
@@ -63,23 +63,6 @@ describe("workspace checkout quotes", () => {
       },
     ]);
     expect(quote.payment.expectedPrice.value).toBe(49_000);
-  });
-
-  test("rejects unreachable monitor combinations consistently", () => {
-    expect(() =>
-      buildWorkspaceCheckoutQuote({
-        entryTier: "basic",
-        coffee: false,
-        monitorOption: "2x27-qhd",
-      })
-    ).toThrow("Monitor option is unavailable");
-
-    expect(() =>
-      buildWorkspaceCheckoutQuote({
-        entryTier: "profi",
-        coffee: true,
-      })
-    ).toThrow("Monitor option is required");
   });
 
   test("includes customer discount as a negative display item", () => {
@@ -188,13 +171,13 @@ describe("workspace checkout quotes", () => {
   test("ignores runtime contact and consent fields when fingerprinting", () => {
     const cleanQuote = buildWorkspaceCheckoutQuote({
       entryTier: "plus",
-      coffee: false,
+      coffee: true,
     });
     const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
       entryTier: "plus",
       startsAt: "2026-05-31T22:00:00Z",
       endsAt: "2026-06-01T22:00:00Z",
-      coffee: false,
+      coffee: true,
       legalConsent: true,
       name: "Grace Hopper",
       email: "grace@example.com",
@@ -277,15 +260,6 @@ describe("workspace checkout quotes", () => {
         endsAt: "2099-06-10T08:30:00Z",
       })
     ).toThrow("Meeting room reservations must start on a whole hour");
-
-    expect(() =>
-      buildWorkspaceCheckoutQuote({
-        entryTier: "meeting-room",
-        coffee: true,
-        startsAt: "2099-06-10T07:00:00Z",
-        endsAt: "2099-06-10T08:00:00Z",
-      })
-    ).toThrow("Coffee cannot be added to meeting room reservations");
   });
 
   test("detects changed summary section and item keys", () => {

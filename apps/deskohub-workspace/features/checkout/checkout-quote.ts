@@ -6,8 +6,6 @@ import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceMeetingRoomDuration,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
   workspaceMeetingRoomProduct,
 } from "@/features/checkout/product-catalog";
 import type {
@@ -30,6 +28,13 @@ import {
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
 import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
+import type {
+  StoredBasicReservationDetails,
+  StoredCoworkReservationDetails,
+  StoredMeetingRoomReservationDetails,
+  StoredPlusReservationDetails,
+  StoredProfiReservationDetails,
+} from "@/features/reservation/schemas/stored-reservation-details";
 
 export const workspaceCheckoutQuoteSchemaVersion = 1 as const;
 
@@ -39,47 +44,54 @@ export type {
   CheckoutSummarySection,
 } from "@/features/checkout/schemas/checkout-summary";
 
-export type WorkspaceBasicCheckoutOrder = {
-  readonly _tag: "cowork";
-  readonly tier: "basic";
-  readonly coffee: boolean;
-} & Partial<ReservationInterval>;
+export type WorkspaceBasicCheckoutOrder = StoredBasicReservationDetails &
+  Partial<ReservationInterval>;
 
-export type WorkspacePlusCheckoutOrder = {
-  readonly _tag: "cowork";
-  readonly tier: "plus";
-  readonly coffee: true;
-} & Partial<ReservationInterval>;
+export type WorkspacePlusCheckoutOrder = StoredPlusReservationDetails &
+  Partial<ReservationInterval>;
 
-export type WorkspaceProfiCheckoutOrder = {
-  readonly _tag: "cowork";
-  readonly tier: "profi";
-  readonly coffee: true;
-  readonly monitorOption: WorkspaceProductMonitorOption;
-} & Partial<ReservationInterval>;
+export type WorkspaceProfiCheckoutOrder = StoredProfiReservationDetails &
+  Partial<ReservationInterval>;
 
-export type WorkspaceCoworkCheckoutOrder =
-  | WorkspaceBasicCheckoutOrder
-  | WorkspacePlusCheckoutOrder
-  | WorkspaceProfiCheckoutOrder;
+export type WorkspaceCoworkCheckoutOrder = StoredCoworkReservationDetails &
+  Partial<ReservationInterval>;
 
-export type WorkspaceMeetingRoomCheckoutOrder = {
-  readonly _tag: "meeting-room";
-} & ReservationInterval;
+export type WorkspaceMeetingRoomCheckoutOrder =
+  StoredMeetingRoomReservationDetails & ReservationInterval;
 
 export type WorkspaceCheckoutOrder =
   | WorkspaceCoworkCheckoutOrder
   | WorkspaceMeetingRoomCheckoutOrder;
 
+export type WorkspaceBasicCheckoutOrderInput = {
+  readonly entryTier: StoredBasicReservationDetails["tier"];
+  readonly coffee: StoredBasicReservationDetails["coffee"];
+  readonly monitorOption?: never;
+} & Partial<ReservationInterval>;
+
+export type WorkspacePlusCheckoutOrderInput = {
+  readonly entryTier: StoredPlusReservationDetails["tier"];
+  readonly coffee: StoredPlusReservationDetails["coffee"];
+  readonly monitorOption?: never;
+} & Partial<ReservationInterval>;
+
+export type WorkspaceProfiCheckoutOrderInput = {
+  readonly entryTier: StoredProfiReservationDetails["tier"];
+  readonly coffee: StoredProfiReservationDetails["coffee"];
+  readonly monitorOption: StoredProfiReservationDetails["monitorOption"];
+} & Partial<ReservationInterval>;
+
+export type WorkspaceMeetingRoomCheckoutOrderInput = {
+  readonly entryTier: StoredMeetingRoomReservationDetails["_tag"];
+  readonly coffee?: never;
+  readonly monitorOption?: never;
+} & ReservationInterval;
+
 export type WorkspaceCheckoutOrderInput =
-  | ({
-      readonly entryTier: WorkspaceCoworkProductTier;
-      readonly coffee: boolean;
-      readonly monitorOption?: WorkspaceProductMonitorOption;
-    } & Partial<ReservationInterval>)
-  | ({
-      readonly entryTier: "meeting-room";
-    } & ReservationInterval);
+  | WorkspaceBasicCheckoutOrderInput
+  | WorkspacePlusCheckoutOrderInput
+  | WorkspaceProfiCheckoutOrderInput
+  | WorkspaceMeetingRoomCheckoutOrderInput;
 
 export type WorkspaceCheckoutQuote = {
   readonly schema: "workspace-checkout-quote";
@@ -104,41 +116,6 @@ export type CheckoutSummaryChangedKeys = {
 export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
   readonly message: string;
 }> {}
-
-const getWorkspaceCheckoutOrderInputIssue = (
-  order: WorkspaceCheckoutOrderInput
-): string | undefined =>
-  Match.value(order).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomOrder) => {
-      if ("coffee" in meetingRoomOrder && meetingRoomOrder.coffee === true) {
-        return "Coffee cannot be added to meeting room reservations.";
-      }
-
-      return undefined;
-    }),
-    Match.when({ entryTier: "basic" }, (basicOrder) => {
-      if (basicOrder.monitorOption) {
-        return "Monitor option is unavailable for this entry tier.";
-      }
-
-      return undefined;
-    }),
-    Match.when({ entryTier: "plus" }, (plusOrder) => {
-      if (plusOrder.monitorOption) {
-        return "Monitor option is unavailable for this entry tier.";
-      }
-
-      return undefined;
-    }),
-    Match.when({ entryTier: "profi" }, (profiOrder) => {
-      if (!profiOrder.monitorOption) {
-        return "Monitor option is required for this entry tier.";
-      }
-
-      return undefined;
-    }),
-    Match.exhaustive
-  );
 
 const toWorkspaceCheckoutOrder = (
   order: WorkspaceCheckoutOrderInput
@@ -167,24 +144,16 @@ const toWorkspaceCheckoutOrder = (
       ...("endsAt" in plusOrder &&
         plusOrder.endsAt && { endsAt: plusOrder.endsAt }),
     })),
-    Match.when({ entryTier: "profi" }, (profiOrder) => {
-      if (!profiOrder.monitorOption) {
-        throw new CheckoutQuoteError({
-          message: "Monitor option is required for this entry tier.",
-        });
-      }
-
-      return {
-        _tag: "cowork" as const,
-        tier: "profi" as const,
-        coffee: true as const,
-        ...("startsAt" in profiOrder &&
-          profiOrder.startsAt && { startsAt: profiOrder.startsAt }),
-        ...("endsAt" in profiOrder &&
-          profiOrder.endsAt && { endsAt: profiOrder.endsAt }),
-        monitorOption: profiOrder.monitorOption,
-      };
-    }),
+    Match.when({ entryTier: "profi" }, (profiOrder) => ({
+      _tag: "cowork" as const,
+      tier: "profi" as const,
+      coffee: true as const,
+      ...("startsAt" in profiOrder &&
+        profiOrder.startsAt && { startsAt: profiOrder.startsAt }),
+      ...("endsAt" in profiOrder &&
+        profiOrder.endsAt && { endsAt: profiOrder.endsAt }),
+      monitorOption: profiOrder.monitorOption,
+    })),
     Match.exhaustive
   );
 
@@ -214,15 +183,6 @@ const getReservationProductRuleInput = (
 export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (input: WorkspaceCheckoutOrderInput) {
-  const inputIssue = getWorkspaceCheckoutOrderInputIssue(input);
-  if (inputIssue) {
-    return yield* Effect.fail(
-      new CheckoutQuoteError({
-        message: inputIssue,
-      })
-    );
-  }
-
   const order = toWorkspaceCheckoutOrder(input);
   const interval = yield* normalizeReservationInterval(order).pipe(
     Effect.mapError(

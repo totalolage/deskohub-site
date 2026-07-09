@@ -22,6 +22,11 @@ import {
   getReservationProductRuleIssue,
   type ReservationProductRuleInput,
 } from "@/features/reservation/schemas/reservation-product-rules";
+import type {
+  StoredBasicReservationDetails,
+  StoredPlusReservationDetails,
+  StoredProfiReservationDetails,
+} from "@/features/reservation/schemas/stored-reservation-details";
 import type { SchemaSafeParseResult } from "@/shared/utils/effect-schema-parser";
 
 export const RESERVATION_VALIDATION = {
@@ -151,12 +156,28 @@ type ReservationValidationObject =
   | ReservationOrderObject
   | CoworkReservationFormObject;
 
-type NormalizedCoworkReservationOrder = Omit<
+type NormalizedReservationOrderBase = Omit<
   CoworkReservationOrderObject,
-  "durationMinutes" | "monitorOption"
-> & {
-  readonly monitorOption?: WorkspaceProductMonitorOption;
-} & ReservationInterval;
+  "entryTier" | "coffee" | "monitorOption" | keyof ReservationInterval
+> &
+  ReservationInterval;
+type NormalizedBasicCoworkReservationOrder = NormalizedReservationOrderBase & {
+  readonly entryTier: StoredBasicReservationDetails["tier"];
+  readonly coffee: StoredBasicReservationDetails["coffee"];
+};
+type NormalizedPlusCoworkReservationOrder = NormalizedReservationOrderBase & {
+  readonly entryTier: StoredPlusReservationDetails["tier"];
+  readonly coffee: StoredPlusReservationDetails["coffee"];
+};
+type NormalizedProfiCoworkReservationOrder = NormalizedReservationOrderBase & {
+  readonly entryTier: StoredProfiReservationDetails["tier"];
+  readonly coffee: StoredProfiReservationDetails["coffee"];
+  readonly monitorOption: StoredProfiReservationDetails["monitorOption"];
+};
+type NormalizedCoworkReservationOrder =
+  | NormalizedBasicCoworkReservationOrder
+  | NormalizedPlusCoworkReservationOrder
+  | NormalizedProfiCoworkReservationOrder;
 type NormalizedMeetingRoomReservationOrder = Omit<
   MeetingRoomReservationOrderObject,
   "durationMinutes"
@@ -304,15 +325,45 @@ const validateReservationOrder = (
 const normalizeCoworkReservationOrder = (
   data: CoworkReservationOrderObject
 ): NormalizedCoworkReservationOrder => {
-  const product = getWorkspaceProductByTier(data.entryTier);
   const reservation = unsafeNormalizeReservationInterval({
     ...data,
     monitorOption: normalizeMonitorOption(data.monitorOption),
   });
+  const base = {
+    startsAt: reservation.startsAt,
+    endsAt: reservation.endsAt,
+    name: reservation.name,
+    email: reservation.email,
+    phone: reservation.phone,
+    ...(reservation.message !== undefined && { message: reservation.message }),
+  } satisfies NormalizedReservationOrderBase;
 
-  return product.requiresCoffee
-    ? { ...reservation, coffee: true }
-    : reservation;
+  return Match.value(data).pipe(
+    Match.when({ entryTier: "basic" }, () => ({
+      ...base,
+      entryTier: "basic" as const,
+      coffee: data.coffee,
+    })),
+    Match.when({ entryTier: "plus" }, () => ({
+      ...base,
+      entryTier: "plus" as const,
+      coffee: true as const,
+    })),
+    Match.when({ entryTier: "profi" }, () => {
+      const monitorOption = normalizeMonitorOption(data.monitorOption);
+      if (!monitorOption) {
+        throw new Error(m.reservationValidationMonitorRequired());
+      }
+
+      return {
+        ...base,
+        entryTier: "profi" as const,
+        coffee: true as const,
+        monitorOption,
+      };
+    }),
+    Match.exhaustive
+  );
 };
 
 const normalizeMeetingRoomReservationOrder = (

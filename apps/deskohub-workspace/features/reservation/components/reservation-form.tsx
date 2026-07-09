@@ -413,7 +413,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void  form.handleSubmit((data) => {
+    void   form.handleSubmit((data) => {
       if (hasPreparedPayRedirect) return;
 
       setSubmissionMessage(null);
@@ -431,15 +431,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         locale,
         reservationIntentId,
         legalConsent,
-        reservation: {
-          ...reservation,
-          coffee: tierIncludesCourtesyCoffee(reservation.entryTier)
-            ? true
-            : reservation.coffee,
-          monitorOption: tierRequiresMonitorOption(reservation.entryTier)
-            ? reservation.monitorOption
-            : undefined,
-        },
+        reservation,
       });
     })(event);
   };
