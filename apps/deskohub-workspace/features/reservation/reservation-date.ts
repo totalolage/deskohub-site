@@ -14,21 +14,21 @@ type ReservationDisplayInstant = Date | TemporalInstant;
 export const reservationTimeZone = "Europe/Prague";
 const calendarPlainTime = Temporal.PlainTime.from("12:00");
 
-const reservationDisplayDateFormatOptions = {
+const reservationDisplayDateFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "full",
   timeZone: reservationTimeZone,
-} satisfies Intl.DateTimeFormatOptions;
+};
 
-const reservationDisplayTimeFormatOptions = {
+const reservationDisplayTimeFormatOptions: Intl.DateTimeFormatOptions = {
   timeStyle: "short",
   timeZone: reservationTimeZone,
-} satisfies Intl.DateTimeFormatOptions;
+};
 
-const reservationDisplayDateTimeFormatOptions = {
+const reservationDisplayDateTimeFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "medium",
   timeStyle: "short",
   timeZone: reservationTimeZone,
-} satisfies Intl.DateTimeFormatOptions;
+};
 
 const toReservationPlainDate = (date: ReservationDisplayDate) => {
   const instant =
