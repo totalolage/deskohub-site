@@ -20,7 +20,7 @@ export const getMeetingRoomReservationInterval = (
   try {
     const startPlainDateTime = Temporal.PlainDateTime.from(startDateTime);
     const startInstant = startPlainDateTime
-      .toZonedDateTime(reservationTimeZone)
+      .toZonedDateTime(reservationTimeZone, { disambiguation: "reject" })
       .toInstant();
     const endInstant = startInstant.add({ minutes: durationMinutes });
 

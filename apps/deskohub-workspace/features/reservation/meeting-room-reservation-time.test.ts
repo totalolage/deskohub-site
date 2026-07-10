@@ -19,4 +19,16 @@ describe("meeting room reservation time helpers", () => {
     });
     expect(getMeetingRoomAvailabilityToDate(interval!)).toBe("2026-03-30");
   });
+
+  test("rejects nonexistent Prague times during the spring DST transition", () => {
+    expect(
+      getMeetingRoomReservationInterval("2026-03-29T02:00", 60)
+    ).toBeNull();
+  });
+
+  test("rejects ambiguous Prague times during the autumn DST transition", () => {
+    expect(
+      getMeetingRoomReservationInterval("2026-10-25T02:00", 60)
+    ).toBeNull();
+  });
 });
