@@ -576,4 +576,42 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(result._tag).toBe("Success");
   });
+
+  test("ignores reservations after a multi-day meeting-room interval", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            _tag: "meeting-room",
+            date: testDate,
+            startsAt: "10:00",
+            endsAt: "10:00",
+          });
+        })
+      ),
+      {
+        tables: [
+          makeTable({
+            id: "room-1",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+        ],
+        reservations: [
+          makeReservation({
+            tableId: "room-1",
+            status: "NEW",
+            startDate: "2099-06-11T12:00:00Z",
+            endDate: "2099-06-11T13:00:00Z",
+          }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Success");
+  });
 });

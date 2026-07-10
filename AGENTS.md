@@ -43,3 +43,5 @@ export class FooService extends Context.Service<
 - Do not hoist JSX `className` strings into local variables when they are used only once; inline them at the usage site.
 - Do not hoist simple one-use literals or lookup objects to module scope; inline them where they are consumed.
 - Keep Workspace production releases on the intentionally simple sequence: build a staged Vercel production deployment without assigning domains, run pending migrations against the production Neon branch, then promote the ready deployment. Do not introduce expand/contract migrations or database branch swapping unless explicitly requested.
+- Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
+- For the Workspace checkout route rename, do not add compatibility routes for removed checkout paths or preserve the old retry/result flow. Only the `/reservation` QR-code redirect with its UTM parameters is retained.
