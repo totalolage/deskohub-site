@@ -10,7 +10,10 @@ import {
   getReservationIntervalValidationIssue,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
-import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
+import {
+  getReservationProductRuleIssue,
+  ReservationProductRuleInput,
+} from "@/features/reservation/schemas/reservation-product-rules";
 import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
@@ -32,33 +35,37 @@ const getCheckoutReturnStateReservationProductRuleInput = (
   reservation: CheckoutReturnStateReservationDraft
 ) =>
   Match.value(reservation).pipe(
-    Match.tag("meeting-room", (meetingRoomReservation) => ({
-      _tag: "meeting-room" as const,
-      startsAt: meetingRoomReservation.startsAt,
-      endsAt: meetingRoomReservation.endsAt,
-    })),
-    Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) => ({
-      _tag: "cowork" as const,
-      tier: "basic" as const,
-      coffee: coworkReservation.coffee,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
-    })),
-    Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) => ({
-      _tag: "cowork" as const,
-      tier: "plus" as const,
-      coffee: coworkReservation.coffee,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
-    })),
-    Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) => ({
-      _tag: "cowork" as const,
-      tier: "profi" as const,
-      coffee: coworkReservation.coffee,
-      monitorOption: coworkReservation.monitorOption,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
-    })),
+    Match.tag("meeting-room", (meetingRoomReservation) =>
+      ReservationProductRuleInput["meeting-room"]({
+        startsAt: meetingRoomReservation.startsAt,
+        endsAt: meetingRoomReservation.endsAt,
+      })
+    ),
+    Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) =>
+      ReservationProductRuleInput.cowork({
+        tier: "basic" as const,
+        coffee: coworkReservation.coffee,
+        startsAt: coworkReservation.startsAt,
+        endsAt: coworkReservation.endsAt,
+      })
+    ),
+    Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) =>
+      ReservationProductRuleInput.cowork({
+        tier: "plus" as const,
+        coffee: coworkReservation.coffee,
+        startsAt: coworkReservation.startsAt,
+        endsAt: coworkReservation.endsAt,
+      })
+    ),
+    Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) =>
+      ReservationProductRuleInput.cowork({
+        tier: "profi" as const,
+        coffee: coworkReservation.coffee,
+        monitorOption: coworkReservation.monitorOption,
+        startsAt: coworkReservation.startsAt,
+        endsAt: coworkReservation.endsAt,
+      })
+    ),
     Match.exhaustive
   );
 

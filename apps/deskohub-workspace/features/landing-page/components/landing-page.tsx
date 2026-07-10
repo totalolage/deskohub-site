@@ -21,7 +21,7 @@ export function LandingPage({ locale }: LandingPageProps) {
   const localizedHash = (hash: string) => `${localePath}${hash}`;
   const contactHref = `${localePath}/contact`;
   const reservationHref = getCoworkReservationPath(locale);
-  const contactAddress = workspaceSiteConstants.contact.address;
+  const contactAddress = workspaceSiteConstants.location.address;
   const contactEmail = workspaceSiteConstants.contact.infoEmail;
 
   return (

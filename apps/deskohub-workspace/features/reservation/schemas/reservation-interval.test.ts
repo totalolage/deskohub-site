@@ -6,6 +6,7 @@ import {
   getReservationIntervalValidationIssue,
   getReservationPragueDateRange,
   isDefaultReservationInterval,
+  unsafeNormalizeReservationInterval,
 } from "./reservation-interval";
 
 describe("reservation intervals", () => {
@@ -17,6 +18,57 @@ describe("reservation intervals", () => {
         endsAt: "02:00",
       })
     ).toBeNull();
+  });
+
+  test("normalizes local overnight times to canonical instants", () => {
+    expect(
+      unsafeNormalizeReservationInterval({
+        date: "2099-06-10",
+        startsAt: "22:00",
+        endsAt: "02:00",
+      })
+    ).toMatchObject({
+      startsAt: "2099-06-10T20:00:00Z",
+      endsAt: "2099-06-11T00:00:00Z",
+    });
+  });
+
+  test("requires a date for local time inputs", () => {
+    expect(
+      getReservationIntervalValidationIssue({
+        startsAt: "09:00",
+        endsAt: "10:00",
+      })
+    ).toEqual({
+      path: "startsAt",
+      message: "Reservation date is required for local time inputs.",
+    });
+  });
+
+  test("rejects non-canonical local time strings", () => {
+    expect(
+      getReservationIntervalValidationIssue({
+        date: "2099-06-10",
+        startsAt: "9:00",
+        endsAt: "10:00",
+      })
+    ).toEqual({
+      path: "startsAt",
+      message: "Reservation start and end must be valid timestamps.",
+    });
+  });
+
+  test("validates an expected duration against the normalized interval", () => {
+    expect(
+      getReservationIntervalValidationIssue({
+        startsAt: "2099-06-10T07:00:00Z",
+        endsAt: "2099-06-10T08:00:00Z",
+        durationMinutes: 240,
+      })
+    ).toEqual({
+      path: "endsAt",
+      message: "Reservation duration must match start and end time.",
+    });
   });
 
   test("converts rolling 24-hour reservations to a next-day range", () => {

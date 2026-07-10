@@ -26,7 +26,10 @@ import {
   type ReservationInterval,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
-import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
+import {
+  getReservationProductRuleIssue,
+  ReservationProductRuleInput,
+} from "@/features/reservation/schemas/reservation-product-rules";
 import type {
   StoredCoworkReservationDetails,
   StoredMeetingRoomReservationDetails,
@@ -63,10 +66,7 @@ export type WorkspaceCheckoutOrder =
 type WorkspaceCheckoutOrderInputFromDetails<
   Details extends StoredWorkspaceReservationDetails,
 > = Details extends StoredWorkspaceReservationDetails
-  ? WorkspaceReservationDetailsEntryTierInput<Details> &
-      (Details extends StoredMeetingRoomReservationDetails
-        ? ReservationInterval
-        : Partial<ReservationInterval>)
+  ? WorkspaceReservationDetailsEntryTierInput<Details> & ReservationInterval
   : never;
 
 export type WorkspaceCheckoutOrderInput =
@@ -109,28 +109,22 @@ const toWorkspaceCheckoutOrder = (
       _tag: "cowork" as const,
       tier: "basic" as const,
       coffee: basicOrder.coffee,
-      ...("startsAt" in basicOrder &&
-        basicOrder.startsAt && { startsAt: basicOrder.startsAt }),
-      ...("endsAt" in basicOrder &&
-        basicOrder.endsAt && { endsAt: basicOrder.endsAt }),
+      startsAt: basicOrder.startsAt,
+      endsAt: basicOrder.endsAt,
     })),
     Match.when({ entryTier: "plus" }, (plusOrder) => ({
       _tag: "cowork" as const,
       tier: "plus" as const,
       coffee: true as const,
-      ...("startsAt" in plusOrder &&
-        plusOrder.startsAt && { startsAt: plusOrder.startsAt }),
-      ...("endsAt" in plusOrder &&
-        plusOrder.endsAt && { endsAt: plusOrder.endsAt }),
+      startsAt: plusOrder.startsAt,
+      endsAt: plusOrder.endsAt,
     })),
     Match.when({ entryTier: "profi" }, (profiOrder) => ({
       _tag: "cowork" as const,
       tier: "profi" as const,
       coffee: true as const,
-      ...("startsAt" in profiOrder &&
-        profiOrder.startsAt && { startsAt: profiOrder.startsAt }),
-      ...("endsAt" in profiOrder &&
-        profiOrder.endsAt && { endsAt: profiOrder.endsAt }),
+      startsAt: profiOrder.startsAt,
+      endsAt: profiOrder.endsAt,
       monitorOption: profiOrder.monitorOption,
     })),
     Match.exhaustive
@@ -141,21 +135,23 @@ const getReservationProductRuleInput = (
   interval: ReservationInterval
 ) =>
   Match.value(order).pipe(
-    Match.tag("meeting-room", () => ({
-      _tag: "meeting-room" as const,
-      startsAt: interval.startsAt,
-      endsAt: interval.endsAt,
-    })),
-    Match.tag("cowork", (coworkOrder) => ({
-      _tag: "cowork" as const,
-      tier: coworkOrder.tier,
-      coffee: coworkOrder.coffee,
-      ...("monitorOption" in coworkOrder && {
-        monitorOption: coworkOrder.monitorOption,
-      }),
-      startsAt: interval.startsAt,
-      endsAt: interval.endsAt,
-    })),
+    Match.tag("meeting-room", () =>
+      ReservationProductRuleInput["meeting-room"]({
+        startsAt: interval.startsAt,
+        endsAt: interval.endsAt,
+      })
+    ),
+    Match.tag("cowork", (coworkOrder) =>
+      ReservationProductRuleInput.cowork({
+        tier: coworkOrder.tier,
+        coffee: coworkOrder.coffee,
+        ...("monitorOption" in coworkOrder && {
+          monitorOption: coworkOrder.monitorOption,
+        }),
+        startsAt: interval.startsAt,
+        endsAt: interval.endsAt,
+      })
+    ),
     Match.exhaustive
   );
 

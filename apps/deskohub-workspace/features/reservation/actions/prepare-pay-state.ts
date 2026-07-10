@@ -5,7 +5,6 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
-import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   Data,
   Duration,
@@ -68,13 +67,13 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
-  getReservationOrderSchema,
   getReservationProductCoffee,
   getReservationProductMonitorOption,
   type ReservationOrderData,
+  reservationOrderEffectSchema,
 } from "@/features/reservation/schemas/reservation";
 import {
-  getReservationPragueDate,
+  getReservationDate,
   isDefaultReservationInterval,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
@@ -83,104 +82,14 @@ import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-even
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-type PreparePayStateInput = {
-  readonly locale: Locale;
-  readonly reservationIntentId: string;
-  readonly reservation: ReservationOrderData;
-  readonly legalConsent?: boolean;
-};
-
-const PreparePayStateBaseSchema = Schema.Struct({
+const preparePayStateEffectSchema = Schema.Struct({
   locale: Schema.Literals(locales),
   reservationIntentId: Schema.NonEmptyString,
-  reservation: Schema.Unknown,
+  reservation: reservationOrderEffectSchema,
   legalConsent: Schema.optional(Schema.Boolean),
 });
-
-const prefixReservationIssue = (
-  issue: StandardSchemaV1.Issue
-): StandardSchemaV1.Issue => ({
-  ...issue,
-  path: ["reservation", ...(issue.path ?? [])],
-});
-
-const getPreparePayStateSchema = (): StandardSchemaV1<
-  unknown,
-  PreparePayStateInput
-> => {
-  const baseSchema = Schema.toStandardSchemaV1(PreparePayStateBaseSchema);
-  const reservationSchema = getReservationOrderSchema();
-
-  return {
-    "~standard": {
-      version: 1,
-      vendor: "deskohub",
-      validate: (input) => {
-        const baseResult = baseSchema["~standard"].validate(input);
-        if (baseResult instanceof Promise) {
-          return baseResult.then((resolved) => {
-            if (resolved.issues) return resolved;
-
-            const reservationResult = reservationSchema["~standard"].validate(
-              resolved.value.reservation
-            );
-            if (reservationResult instanceof Promise) {
-              return reservationResult.then((nested) =>
-                nested.issues
-                  ? { issues: nested.issues.map(prefixReservationIssue) }
-                  : {
-                      value: {
-                        ...resolved.value,
-                        reservation: nested.value,
-                      },
-                    }
-              );
-            }
-
-            return reservationResult.issues
-              ? {
-                  issues: reservationResult.issues.map(prefixReservationIssue),
-                }
-              : {
-                  value: {
-                    ...resolved.value,
-                    reservation: reservationResult.value,
-                  },
-                };
-          });
-        }
-
-        if (baseResult.issues) return baseResult;
-
-        const reservationResult = reservationSchema["~standard"].validate(
-          baseResult.value.reservation
-        );
-        if (reservationResult instanceof Promise) {
-          return reservationResult.then((nested) =>
-            nested.issues
-              ? { issues: nested.issues.map(prefixReservationIssue) }
-              : {
-                  value: {
-                    ...baseResult.value,
-                    reservation: nested.value,
-                  },
-                }
-          );
-        }
-
-        return reservationResult.issues
-          ? { issues: reservationResult.issues.map(prefixReservationIssue) }
-          : {
-              value: {
-                ...baseResult.value,
-                reservation: reservationResult.value,
-              },
-            };
-      },
-    },
-  };
-};
 
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
@@ -213,7 +122,10 @@ const deriveReservationIntentKey = (input: {
     name: normalizeIdempotencyPart(input.reservation.name),
     email: normalizeIdempotencyPart(input.reservation.email),
     phone: input.reservation.phone.replaceAll(/\s+/g, ""),
-    date: getReservationPragueDate(interval),
+    date: getReservationDate({
+      interval,
+      timeZone: workspaceSiteConstants.location.timeZone,
+    }),
     entryTier: input.reservation.entryTier,
     coffee: productCoffee,
     monitorOption: productMonitorOption ?? null,
@@ -686,7 +598,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       Match.exhaustive
     );
     yield* availability.ensureAvailable({
-      date: getReservationPragueDate(input.reservation),
+      date: getReservationDate({
+        interval: input.reservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
       startsAt: input.reservation.startsAt,
       endsAt: input.reservation.endsAt,
       ...availabilitySelection,
@@ -958,7 +873,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 );
 
 const preparePayStateAction = createEffectSafeAction(
-  getPreparePayStateSchema(),
+  Schema.toStandardSchemaV1(preparePayStateEffectSchema),
   prepareWorkspacePayStateEffect,
   Layer.mergeAll(
     Layer.mergeAll(

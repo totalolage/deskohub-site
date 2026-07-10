@@ -3,6 +3,7 @@
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
+import { Schema } from "effect";
 import {
   AlertTriangle,
   ArrowRight,
@@ -36,20 +37,20 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
+import { getWorkspaceAvailability as loadWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
   calendarDateToReservationPlainDate,
-  formatReservationDisplayDate,
   formatReservationInputDate,
-  parseReservationInputDate,
-  reservationPlainDateToCalendarDate,
+  formatReservationInputDisplayDate,
+  reservationInputDateToCalendarDate,
 } from "@/features/reservation/reservation-date";
 import {
   getAllowedMonitorOptionsForTier,
-  getReservationSchema,
   type ReservationData,
   type ReservationInput,
+  reservationEffectSchema,
   tierIncludesCourtesyCoffee,
   tierRequiresMonitorOption,
 } from "@/features/reservation/schemas/reservation";
@@ -57,10 +58,7 @@ import {
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/schemas/reservation-checkout-query";
-import { unsafeNormalizeReservationInterval } from "@/features/reservation/schemas/reservation-interval";
 import {
-  parseWorkspaceAvailabilityResponse,
-  type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
   workspaceAvailabilityKeys,
 } from "@/features/reservation/schemas/workspace-availability";
@@ -82,6 +80,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
+import { Skeleton as SkeletonBlock } from "@/shared/components/ui/skeleton";
 import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
@@ -135,25 +134,18 @@ const monitorOptions: ReadonlyArray<{
 const reservationFormCardClassName =
   "relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm";
 
-const reservationFormSkeletonClassName =
-  "rounded-full bg-navy-blue/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
-
 const fallbackTierCards = ["tier-1", "tier-2", "tier-3"] as const;
 
 const getWorkspaceAvailabilityQuery = ({
   date,
-  endsAt,
   from,
   monitorOption,
-  startsAt,
   tier,
   to,
 }: {
   date?: string;
-  endsAt?: string;
   from: string;
   monitorOption?: string;
-  startsAt?: string;
   tier: WorkspaceProductTier;
   to: string;
 }): WorkspaceAvailabilityQuery => {
@@ -161,59 +153,10 @@ const getWorkspaceAvailabilityQuery = ({
     _tag: "cowork",
     from,
     to,
-    ...(startsAt && { startsAt }),
-    ...(endsAt && { endsAt }),
     ...(date && { date }),
     ...(isWorkspaceProductTier(tier) && { entryTier: tier }),
     ...(isWorkspaceProductMonitorOption(monitorOption) && { monitorOption }),
   };
-};
-
-const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
-  const params = new URLSearchParams({
-    kind: query._tag,
-    from: query.from,
-    to: query.to,
-  });
-
-  if (query.date) params.set("date", query.date);
-  if (query.startsAt) params.set("startsAt", query.startsAt);
-  if (query.endsAt) params.set("endsAt", query.endsAt);
-  if (query.entryTier) params.set("entryTier", query.entryTier);
-  if (query.monitorOption) params.set("monitorOption", query.monitorOption);
-
-  return `/api/workspace/availability?${params.toString()}`;
-};
-
-const loadWorkspaceAvailability = async ({
-  query,
-  signal,
-}: {
-  query: WorkspaceAvailabilityQuery;
-  signal: AbortSignal;
-}): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
-  if (!response.ok) throw new Error("Availability request failed");
-
-  return parseWorkspaceAvailabilityResponse(await response.json());
-};
-
-const formatDisplayDate = (date: string, locale: Locale) => {
-  const plainDate = parseReservationInputDate(date);
-
-  return plainDate
-    ? formatReservationDisplayDate(
-        plainDate,
-        locale,
-        m.reservationDatePlaceholder({}, { locale })
-      )
-    : m.reservationDatePlaceholder({}, { locale });
-};
-
-const getCalendarDateFromReservationInput = (date: string) => {
-  const plainDate = parseReservationInputDate(date);
-
-  return plainDate ? reservationPlainDateToCalendarDate(plainDate) : undefined;
 };
 
 const getSanitizedUtmParams = (
@@ -250,7 +193,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     () => getSanitizedUtmParams(searchParams),
     [searchParams]
   );
-  const schema = useMemo(() => getReservationSchema(), []);
+  const schema = useMemo(
+    () => Schema.toStandardSchemaV1(reservationEffectSchema),
+    []
+  );
   const defaultValues = useMemo(
     () => getReservationDefaultValuesFromSearchParams(searchParams),
     [searchParams]
@@ -275,28 +221,18 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
   const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
   const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
-  const selectedAvailabilityInterval = useMemo(
-    () =>
-      selectedDate
-        ? unsafeNormalizeReservationInterval({ date: selectedDate })
-        : null,
-    [selectedDate]
-  );
   const availabilityQuery = useMemo(
     () =>
       getWorkspaceAvailabilityQuery({
         date: selectedDate,
-        endsAt: selectedAvailabilityInterval?.endsAt,
         from: initialAvailabilityQuery.from,
         monitorOption: selectedMonitorOption,
-        startsAt: selectedAvailabilityInterval?.startsAt,
         tier: selectedTier,
         to: initialAvailabilityQuery.to,
       }),
     [
       initialAvailabilityQuery.from,
       initialAvailabilityQuery.to,
-      selectedAvailabilityInterval,
       selectedDate,
       selectedMonitorOption,
       selectedTier,
@@ -304,8 +240,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   );
   const availabilityQueryResult = useQuery({
     queryKey: workspaceAvailabilityKeys.availability(availabilityQuery),
-    queryFn: ({ signal }) =>
-      loadWorkspaceAvailability({ query: availabilityQuery, signal }),
+    queryFn: () => loadWorkspaceAvailability(availabilityQuery),
     placeholderData: keepPreviousData,
     retry: (failureCount) => failureCount < 3,
     staleTime: 30_000,
@@ -920,14 +855,18 @@ function ReservationDateField({
                   )}
                 >
                   <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                  {formatDisplayDate(field.value, locale)}
+                  {formatReservationInputDisplayDate(
+                    field.value,
+                    locale,
+                    m.reservationDatePlaceholder({}, { locale })
+                  )}
                 </Button>
               </FormControl>
             </PopoverTrigger>
             <PopoverContent align="start" className="w-auto p-3">
               <Calendar
                 mode="single"
-                selected={getCalendarDateFromReservationInput(
+                selected={reservationInputDateToCalendarDate(
                   field.value
                 )}
                 onSelect={(date) => {
@@ -1073,10 +1012,6 @@ function SkeletonField() {
       <SkeletonBlock className="h-13 w-full rounded-[1.1rem]" />
     </div>
   );
-}
-
-function SkeletonBlock({ className }: { className: string }) {
-  return <div className={cn(reservationFormSkeletonClassName, className)} />;
 }
 
 type TextFieldProps = {

@@ -13,7 +13,6 @@ import {
 import { cn } from "@/shared/utils";
 import {
   dateToTemporalPlainDate,
-  type TemporalPlainTime,
   temporalPlainDateToDate,
 } from "@/shared/utils/temporal";
 
@@ -31,8 +30,7 @@ type DateTimePickerProps = {
 };
 
 const defaultTimeZone = "Europe/Prague";
-const defaultPlainTime = Temporal.PlainTime.from("10:00");
-const noon = Temporal.PlainTime.from("12:00");
+const defaultTime = "10:00";
 
 const parsePlainDateTime = (value: string | undefined) => {
   if (!value) return undefined;
@@ -49,8 +47,8 @@ const formatDateTimeValue = ({
   time,
 }: {
   readonly date: Temporal.PlainDate;
-  readonly time: TemporalPlainTime;
-}) => `${date.toString()}T${time.toString({ smallestUnit: "minute" })}`;
+  readonly time: string;
+}) => `${date.toString()}T${time}`;
 
 export function DateTimePicker({
   className,
@@ -67,11 +65,12 @@ export function DateTimePicker({
   const [open, setOpen] = useState(false);
   const dateTime = parsePlainDateTime(value);
   const selectedDate = dateTime?.toPlainDate();
-  const selectedTime = dateTime?.toPlainTime() ?? defaultPlainTime;
+  const selectedTime =
+    dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? defaultTime;
   const selectedCalendarDate = selectedDate
     ? temporalPlainDateToDate({
         date: selectedDate,
-        plainTime: noon,
+        plainTime: Temporal.PlainTime.from("12:00"),
         timeZone,
       })
     : undefined;
@@ -86,7 +85,7 @@ export function DateTimePicker({
     [locale, timeZone]
   );
   const displayValue = selectedDate
-    ? `${dateFormatter.format(selectedCalendarDate)} ${selectedTime.toString({ smallestUnit: "minute" })}`
+    ? `${dateFormatter.format(selectedCalendarDate)} ${selectedTime}`
     : placeholder;
 
   return (
@@ -147,7 +146,9 @@ export function DateTimePicker({
               onChange?.(
                 formatDateTimeValue({
                   date: selectedDate,
-                  time: Temporal.PlainTime.from(event.currentTarget.value),
+                  time: Temporal.PlainTime.from(
+                    event.currentTarget.value
+                  ).toString({ smallestUnit: "minute" }),
                 })
               );
             } catch {
@@ -156,7 +157,7 @@ export function DateTimePicker({
           }}
           step={3600}
           type="time"
-          value={selectedTime.toString({ smallestUnit: "minute" })}
+          value={selectedTime}
           variant={variant}
         />
       </div>

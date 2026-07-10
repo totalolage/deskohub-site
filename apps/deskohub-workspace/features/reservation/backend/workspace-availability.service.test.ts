@@ -471,6 +471,40 @@ describe("WorkspaceAvailabilityService", () => {
     }
   });
 
+  test("describes an unavailable meeting-room reservation with its tag", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            _tag: "meeting-room",
+            date: testDate,
+          });
+        })
+      ),
+      {
+        tables: [
+          makeTable({
+            id: "room-1",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+        ],
+        reservations: [
+          makeReservation({ tableId: "room-1", status: "NEW", seats: "1" }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure.reservation).toEqual({ _tag: "meeting-room" });
+    }
+  });
+
   test("fails ensureAvailable when calendar marks the date fully occupied", async () => {
     const result = await runWithInventory(
       Effect.result(

@@ -14,6 +14,11 @@ import {
 } from "@/shared/testing/workspace-component-test-env";
 import { CheckoutSummary } from "./checkout-summary";
 
+const coworkReservationInterval = {
+  startsAt: "2099-06-09T22:00:00Z",
+  endsAt: "2099-06-10T22:00:00Z",
+} as const;
+
 describe("CheckoutSummary", () => {
   beforeAll(() => {
     registerWorkspaceComponentTestEnv();
@@ -29,6 +34,7 @@ describe("CheckoutSummary", () => {
 
   test("renders server-provided summary rows and amounts without a duplicate title", () => {
     const quote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: true,
     });
@@ -45,6 +51,7 @@ describe("CheckoutSummary", () => {
 
   test("localizes product summary item keys", () => {
     const quote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: false,
     });

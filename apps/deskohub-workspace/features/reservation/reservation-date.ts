@@ -1,4 +1,5 @@
 import type { Locale } from "@/features/i18n";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   dateToTemporalPlainDate,
   type TemporalInstant,
@@ -11,8 +12,7 @@ import {
 type ReservationDisplayDate = Date | TemporalInstant | TemporalPlainDate;
 type ReservationDisplayInstant = Date | TemporalInstant;
 
-export const reservationTimeZone = "Europe/Prague";
-const calendarPlainTime = Temporal.PlainTime.from("12:00");
+export const reservationTimeZone = workspaceSiteConstants.location.timeZone;
 
 const reservationDisplayDateFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "full",
@@ -53,12 +53,17 @@ export const formatReservationInputDate = (date: Temporal.PlainDate) =>
 export const reservationPlainDateToCalendarDate = (date: Temporal.PlainDate) =>
   temporalPlainDateToDate({
     date,
-    plainTime: calendarPlainTime,
+    plainTime: Temporal.PlainTime.from("12:00"),
     timeZone: reservationTimeZone,
   });
 
 export const calendarDateToReservationPlainDate = (date: Date) =>
   dateToTemporalPlainDate({ date, timeZone: reservationTimeZone });
+
+export const reservationInputDateToCalendarDate = (date: string) => {
+  const plainDate = parseReservationInputDate(date);
+  return plainDate ? reservationPlainDateToCalendarDate(plainDate) : undefined;
+};
 
 export const formatReservationDisplayDate = (
   date: ReservationDisplayDate,
@@ -70,6 +75,17 @@ export const formatReservationDisplayDate = (
   if (!plainDate) return fallback;
 
   return plainDate.toLocaleString(locale, reservationDisplayDateFormatOptions);
+};
+
+export const formatReservationInputDisplayDate = (
+  date: string,
+  locale: Locale,
+  fallback = ""
+) => {
+  const plainDate = parseReservationInputDate(date);
+  return plainDate
+    ? formatReservationDisplayDate(plainDate, locale, fallback)
+    : fallback;
 };
 
 export const formatReservationDisplayTimeRange = (

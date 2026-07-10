@@ -5,9 +5,15 @@ import {
   type WorkspaceCheckoutOrderInput,
 } from "./checkout-quote";
 
+const coworkReservationInterval = {
+  startsAt: "2099-06-09T22:00:00Z",
+  endsAt: "2099-06-10T22:00:00Z",
+} as const;
+
 describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
     const quote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: false,
     });
@@ -28,6 +34,7 @@ describe("workspace checkout quotes", () => {
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: true,
     });
@@ -47,6 +54,7 @@ describe("workspace checkout quotes", () => {
 
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "plus",
       coffee: true,
     });
@@ -68,6 +76,7 @@ describe("workspace checkout quotes", () => {
   test("includes customer discount as a negative display item", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
+        ...coworkReservationInterval,
         entryTier: "basic",
         coffee: true,
       },
@@ -97,6 +106,7 @@ describe("workspace checkout quotes", () => {
   test("preserves minor-unit rounding behavior", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
+        ...coworkReservationInterval,
         entryTier: "basic",
         coffee: false,
       },
@@ -115,11 +125,13 @@ describe("workspace checkout quotes", () => {
 
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: false,
     });
     const coffeeDiscountedToSameTotal = buildWorkspaceCheckoutQuote(
       {
+        ...coworkReservationInterval,
         entryTier: "basic",
         coffee: true,
       },
@@ -170,6 +182,7 @@ describe("workspace checkout quotes", () => {
 
   test("ignores runtime contact and consent fields when fingerprinting", () => {
     const cleanQuote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "plus",
       coffee: true,
     });
@@ -190,6 +203,7 @@ describe("workspace checkout quotes", () => {
 
   test("only fingerprints non-default reservation intervals", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: false,
     });
@@ -264,10 +278,12 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: false,
     });
     const withCoffee = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: true,
     });
@@ -282,6 +298,7 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary currency and exponent", () => {
     const quote = buildWorkspaceCheckoutQuote({
+      ...coworkReservationInterval,
       entryTier: "basic",
       coffee: false,
     });

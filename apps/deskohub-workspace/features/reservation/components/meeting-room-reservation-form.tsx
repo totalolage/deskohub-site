@@ -3,14 +3,13 @@
 import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
-import { isValidPhoneNumber } from "libphonenumber-js";
+import { Schema } from "effect";
 import { AlertTriangle, ArrowRight, Clock } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useMemo, useRef, useState } from "react";
 import { type Control, useForm } from "react-hook-form";
-import { z } from "zod/v4";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
@@ -22,19 +21,18 @@ import { getWorkspaceProductMessage } from "@/features/checkout/product-catalog.
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
+import { getWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import {
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
-import { RESERVATION_VALIDATION } from "@/features/reservation/schemas/reservation";
 import {
-  parseWorkspaceAvailabilityResponse,
-  type WorkspaceAvailability,
-  type WorkspaceAvailabilityQuery,
-  workspaceAvailabilityKeys,
-} from "@/features/reservation/schemas/workspace-availability";
+  type MeetingRoomReservationData,
+  type MeetingRoomReservationInput,
+  meetingRoomReservationEffectSchema,
+} from "@/features/reservation/schemas/meeting-room-reservation";
+import { workspaceAvailabilityKeys } from "@/features/reservation/schemas/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";
@@ -48,6 +46,7 @@ import {
   FormMessage,
 } from "@/shared/components/ui/form";
 import { Input } from "@/shared/components/ui/input";
+import { Skeleton as SkeletonBlock } from "@/shared/components/ui/skeleton";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
 
@@ -69,25 +68,6 @@ const meetingRoomDurationMessages: Record<
   1440: m.reservationMeetingRoomDurationTwentyFourHours,
 };
 
-const meetingRoomFormCardClassName =
-  "relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm";
-const meetingRoomFormSkeletonClassName =
-  "rounded-full bg-navy-blue/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
-
-const meetingRoomDateTimePattern =
-  /^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d$/;
-
-const pragueDateTimeFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: reservationTimeZone,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-  hour: "2-digit",
-  minute: "2-digit",
-  second: "2-digit",
-  hourCycle: "h23",
-});
-
 const getMeetingRoomDurationMessage = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes
 ) => {
@@ -99,100 +79,7 @@ const getMeetingRoomDurationMessage = (
   return message;
 };
 
-const getCurrentPragueDateTime = () => {
-  const dateParts = Object.fromEntries(
-    pragueDateTimeFormatter
-      .formatToParts(new Date())
-      .map((part) => [part.type, part.value])
-  );
-
-  return `${dateParts.year}-${dateParts.month}-${dateParts.day}T${dateParts.hour}:${dateParts.minute}:${dateParts.second}`;
-};
-
-const isFuturePragueDateTime = (value: string) => {
-  if (!meetingRoomDateTimePattern.test(value)) return true;
-
-  return `${value}:00` > getCurrentPragueDateTime();
-};
-
-const getMeetingRoomReservationSchema = () =>
-  z.object({
-    startDateTime: z
-      .string()
-      .min(1, { error: m.reservationValidationMeetingRoomStartRequired() })
-      .regex(meetingRoomDateTimePattern, {
-        error: m.reservationValidationMeetingRoomStartRequired(),
-      })
-      .refine((value) => value.endsWith(":00"), {
-        error: m.reservationValidationMeetingRoomStartWholeHour(),
-      })
-      .refine(isFuturePragueDateTime, {
-        error: m.reservationValidationDatePast(),
-      }),
-    durationMinutes: z.coerce
-      .number()
-      .int()
-      .refine(isWorkspaceMeetingRoomDuration, {
-        error: m.reservationValidationMeetingRoomDuration(),
-      }),
-    name: z
-      .string()
-      .trim()
-      .min(RESERVATION_VALIDATION.name.min, {
-        error: m.contactValidationNameMinimum({
-          min: RESERVATION_VALIDATION.name.min,
-        }),
-      })
-      .max(RESERVATION_VALIDATION.name.max, {
-        error: m.contactValidationNameMaximum({
-          max: RESERVATION_VALIDATION.name.max,
-        }),
-      }),
-    email: z
-      .string()
-      .trim()
-      .min(1, { error: m.contactValidationEmailRequired() })
-      .max(RESERVATION_VALIDATION.email.max, {
-        error: m.contactValidationEmailMaximum({
-          max: RESERVATION_VALIDATION.email.max,
-        }),
-      })
-      .pipe(z.email({ error: m.contactValidationEmailInvalid() })),
-    phone: z
-      .string()
-      .trim()
-      .min(1, { error: m.contactValidationPhoneRequired() })
-      .max(RESERVATION_VALIDATION.phone.max, {
-        error: m.contactValidationPhoneMaximum({
-          max: RESERVATION_VALIDATION.phone.max,
-        }),
-      })
-      .refine((phone) => isValidPhoneNumber(phone, "CZ"), {
-        error: m.contactValidationPhoneInvalid(),
-      }),
-    message: z
-      .string()
-      .trim()
-      .max(RESERVATION_VALIDATION.message.max, {
-        error: m.contactValidationMessageMaximum({
-          max: RESERVATION_VALIDATION.message.max,
-        }),
-      })
-      .optional()
-      .or(z.literal("")),
-    legalConsent: z.boolean().refine(Boolean, {
-      error: m.reservationValidationLegalConsentRequired(),
-    }),
-  });
-
-type MeetingRoomReservationInput = z.input<
-  ReturnType<typeof getMeetingRoomReservationSchema>
->;
-type MeetingRoomReservationData = z.output<
-  ReturnType<typeof getMeetingRoomReservationSchema>
->;
-
-const meetingRoomDefaultValues = {
+const meetingRoomDefaultValues: MeetingRoomReservationInput = {
   startDateTime: "",
   durationMinutes: 60,
   name: "",
@@ -200,39 +87,14 @@ const meetingRoomDefaultValues = {
   phone: "",
   message: "",
   legalConsent: false,
-} satisfies MeetingRoomReservationInput;
+};
 
 const createReservationIntentId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `meeting-room-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
-  const params = new URLSearchParams({
-    kind: query._tag,
-    from: query.from,
-    to: query.to,
-  });
-
-  if (query.date) params.set("date", query.date);
-  if (query.startsAt) params.set("startsAt", query.startsAt);
-  if (query.endsAt) params.set("endsAt", query.endsAt);
-  if (query.entryTier) params.set("entryTier", query.entryTier);
-
-  return `/api/workspace/availability?${params.toString()}`;
-};
-
-const loadWorkspaceAvailability = async ({
-  query,
-  signal,
-}: {
-  readonly query: WorkspaceAvailabilityQuery;
-  readonly signal: AbortSignal;
-}): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
-  if (!response.ok) throw new Error("Availability request failed");
-
-  return parseWorkspaceAvailabilityResponse(await response.json());
-};
+const meetingRoomFormCardClassName =
+  "relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm";
 
 export function MeetingRoomReservationForm({
   locale,
@@ -243,7 +105,10 @@ export function MeetingRoomReservationForm({
   const [reservationIntentId] = useState(createReservationIntentId);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
-  const schema = useMemo(() => getMeetingRoomReservationSchema(), []);
+  const schema = useMemo(
+    () => Schema.toStandardSchemaV1(meetingRoomReservationEffectSchema),
+    []
+  );
   const form = useForm<
     MeetingRoomReservationInput,
     unknown,
@@ -282,10 +147,7 @@ export function MeetingRoomReservationForm({
     queryKey: availabilityQuery
       ? workspaceAvailabilityKeys.availability(availabilityQuery)
       : ["workspace-availability", "meeting-room", "empty"],
-    queryFn: ({ signal }) =>
-      availabilityQuery
-        ? loadWorkspaceAvailability({ query: availabilityQuery, signal })
-        : Promise.reject(new Error("Missing meeting room reservation start")),
+    queryFn: () => getWorkspaceAvailability(availabilityQuery!),
     enabled: Boolean(availabilityQuery),
     retry: (failureCount) => failureCount < 3,
     staleTime: 30_000,
@@ -732,8 +594,4 @@ function SkeletonField() {
       <SkeletonBlock className="h-13 w-full rounded-[1.1rem]" />
     </div>
   );
-}
-
-function SkeletonBlock({ className }: { readonly className: string }) {
-  return <div className={cn(meetingRoomFormSkeletonClassName, className)} />;
 }

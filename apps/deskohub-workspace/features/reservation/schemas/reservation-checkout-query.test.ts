@@ -1,7 +1,10 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { getWorkspaceAvailabilityQueryFromReservationSearchParams } from "./reservation-checkout-query";
+import {
+  getReservationDefaultValuesFromSearchParams,
+  getWorkspaceAvailabilityQueryFromReservationSearchParams,
+} from "./reservation-checkout-query";
 
 describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
   test("normalizes checkout tier aliases for availability", () => {
@@ -72,5 +75,18 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
       startsAt: "2099-06-09T22:00:00Z",
       endsAt: "2099-06-10T22:00:00Z",
     });
+  });
+});
+
+describe("getReservationDefaultValuesFromSearchParams", () => {
+  test("uses the shared email validator for checkout query defaults", () => {
+    expect(
+      getReservationDefaultValuesFromSearchParams({
+        email: '  "quoted local"@example.com  ',
+      }).email
+    ).toBe('"quoted local"@example.com');
+    expect(
+      getReservationDefaultValuesFromSearchParams({ email: "invalid@" }).email
+    ).toBe("");
   });
 });

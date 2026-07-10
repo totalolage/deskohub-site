@@ -6,8 +6,6 @@ import { Schema } from "effect";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
   workspaceCoworkTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
@@ -19,15 +17,30 @@ import {
   reservationIntervalFieldSchemas,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
+import { isPlainDateString } from "@/shared/utils/temporal";
 
-export type WorkspaceAvailabilityQuery = Partial<ReservationInterval> & {
-  readonly _tag: "cowork" | "meeting-room";
-  readonly date?: string;
-  readonly from: string;
-  readonly to: string;
-  readonly entryTier?: WorkspaceCoworkProductTier;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
+const workspaceAvailabilityQueryBaseEffectFields = {
+  date: Schema.optional(Schema.String),
+  from: Schema.String,
+  to: Schema.String,
+  ...reservationIntervalFieldSchemas,
 };
+
+export const workspaceAvailabilityQueryEffectSchema = Schema.Union([
+  Schema.TaggedStruct("cowork", {
+    ...workspaceAvailabilityQueryBaseEffectFields,
+    entryTier: Schema.optional(Schema.Literals(workspaceCoworkTiers)),
+    monitorOption: Schema.optional(
+      Schema.Literals(workspaceProductMonitorOptions)
+    ),
+  }),
+  Schema.TaggedStruct("meeting-room", {
+    ...workspaceAvailabilityQueryBaseEffectFields,
+  }),
+]);
+
+export type WorkspaceAvailabilityQuery =
+  typeof workspaceAvailabilityQueryEffectSchema.Type;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
@@ -73,7 +86,9 @@ export const parseWorkspaceAvailabilityResponse = (
     "Invalid workspace availability response"
   );
 
-const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+const isCanonicalPlainDate = Schema.is(
+  Schema.String.check(isPlainDateString())
+);
 const workspaceAvailabilityIntervalSchema = Schema.toStandardSchemaV1(
   Schema.Struct(reservationIntervalFieldSchemas)
 );
@@ -97,7 +112,7 @@ const getCurrentPragueDate = (date: Date) => {
 
 const getDateParam = (searchParams: URLSearchParams, key: string) => {
   const value = searchParams.get(key)?.trim();
-  if (!value || !datePattern.test(value)) return undefined;
+  if (!value || !isCanonicalPlainDate(value)) return undefined;
   return value;
 };
 

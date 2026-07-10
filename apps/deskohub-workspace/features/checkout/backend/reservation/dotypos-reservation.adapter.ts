@@ -9,16 +9,17 @@ import {
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
 import {
-  getWorkspaceProductByTier,
-  workspaceMeetingRoomProduct,
-} from "@/features/checkout/product-catalog";
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
+  getReservationDate,
   getReservationDurationMinutes,
-  getReservationPragueDate,
   getReservationPragueDateRange,
 } from "@/features/reservation/schemas/reservation-interval";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
@@ -89,7 +90,10 @@ export const createWorkspaceDotyposReservation: (
           })),
           Match.exhaustive
         ),
-        date: getReservationPragueDate(input.checkoutDetails.reservation),
+        date: getReservationDate({
+          interval: input.checkoutDetails.reservation,
+          timeZone: workspaceSiteConstants.location.timeZone,
+        }),
         reservationStatus: input.status,
       })
     )
@@ -115,11 +119,14 @@ const formatWorkspaceReservationNote = (
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
   const productLabel = Match.value(reservation).pipe(
-    Match.tag("meeting-room", () => workspaceMeetingRoomProduct.label),
-    Match.tag(
-      "cowork",
-      (coworkReservation) =>
-        getWorkspaceProductByTier(coworkReservation.tier).label
+    Match.tag("meeting-room", () =>
+      getWorkspaceMeetingRoomProductTitle(checkoutDetails.locale)
+    ),
+    Match.tag("cowork", (coworkReservation) =>
+      getWorkspaceProductTierTitle(
+        coworkReservation.tier,
+        checkoutDetails.locale
+      )
     ),
     Match.exhaustive
   );
@@ -144,7 +151,10 @@ const formatWorkspaceReservationNote = (
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,
     `Product: ${productLabel}`,
-    `Date: ${getReservationPragueDate(reservation)}`,
+    `Date: ${getReservationDate({
+      interval: reservation,
+      timeZone: workspaceSiteConstants.location.timeZone,
+    })}`,
     `Time: ${reservation.startsAt}-${reservation.endsAt}`,
     `Duration: ${getReservationDurationMinutes(reservation)} minutes`,
     ...productRows,

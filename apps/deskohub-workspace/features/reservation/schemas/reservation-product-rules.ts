@@ -1,6 +1,4 @@
-import "@/shared/polyfills/temporal";
-
-import { Match } from "effect";
+import { Data, Schema } from "effect";
 import {
   isWorkspaceMeetingRoomDuration,
   type WorkspaceCoworkProductTier,
@@ -13,69 +11,50 @@ import {
   type ReservationInterval,
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/schemas/reservation-interval";
+import { makeWholeHourInstantStringEffectSchema } from "@/shared/utils/temporal";
 
-export type ReservationProductRuleInput = Partial<ReservationInterval> & {
+type ReservationProductRuleIntervalInput = Partial<ReservationInterval> & {
   readonly date?: string;
-} & (
-    | {
-        readonly _tag: "cowork";
-        readonly tier: WorkspaceCoworkProductTier;
-        readonly coffee?: boolean;
-        readonly monitorOption?: WorkspaceProductMonitorOption;
-      }
-    | {
-        readonly _tag: "meeting-room";
-        readonly coffee?: boolean;
-        readonly monitorOption?: WorkspaceProductMonitorOption;
-      }
-    | {
-        readonly entryTier: WorkspaceCoworkProductTier;
-        readonly coffee?: boolean;
-        readonly monitorOption?: WorkspaceProductMonitorOption;
-      }
-  );
+};
+
+export type ReservationProductRuleInput = Data.TaggedEnum<{
+  cowork: ReservationProductRuleIntervalInput & {
+    readonly tier: WorkspaceCoworkProductTier;
+    readonly coffee?: boolean;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  };
+  "meeting-room": ReservationProductRuleIntervalInput & {
+    readonly coffee?: boolean;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  };
+}>;
+
+export const ReservationProductRuleInput =
+  Data.taggedEnum<ReservationProductRuleInput>();
+
+type ReservationProductRuleFields = ReservationProductRuleIntervalInput & {
+  readonly entryTier?: WorkspaceCoworkProductTier;
+  readonly tier?: WorkspaceCoworkProductTier;
+  readonly coffee?: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption;
+};
 
 export type ReservationProductRuleIssue = {
-  readonly path:
-    | "entryTier"
-    | "tier"
-    | "coffee"
-    | "monitorOption"
-    | "endsAt"
-    | "startsAt";
+  readonly path: keyof ReservationProductRuleFields;
   readonly message: string;
 };
 
-const getProductRuleReservationKind = (input: ReservationProductRuleInput) =>
-  Match.value(input).pipe(
-    Match.tag("meeting-room", () => ({ _tag: "meeting-room" as const })),
-    Match.tag("cowork", (coworkInput) => ({
-      _tag: "cowork" as const,
-      tier: coworkInput.tier,
-    })),
-    Match.when({ entryTier: "basic" }, (coworkInput) => ({
-      _tag: "cowork" as const,
-      tier: coworkInput.entryTier,
-    })),
-    Match.when({ entryTier: "plus" }, (coworkInput) => ({
-      _tag: "cowork" as const,
-      tier: coworkInput.entryTier,
-    })),
-    Match.when({ entryTier: "profi" }, (coworkInput) => ({
-      _tag: "cowork" as const,
-      tier: coworkInput.entryTier,
-    })),
-    Match.exhaustive
-  );
+const isWholeHourInReservationTimeZone = Schema.is(
+  makeWholeHourInstantStringEffectSchema(reservationTimeZone)
+);
 
 export const getReservationProductRuleIssue = (
   input: ReservationProductRuleInput
 ): ReservationProductRuleIssue | null => {
   const interval = unsafeNormalizeReservationInterval(input);
   const durationMinutes = getReservationDurationMinutes(interval);
-  const reservationKind = getProductRuleReservationKind(input);
 
-  if (reservationKind._tag === "meeting-room") {
+  if (input._tag === "meeting-room") {
     if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
       return {
         path: "endsAt",
@@ -83,7 +62,7 @@ export const getReservationProductRuleIssue = (
       };
     }
 
-    if (!isWholeHourInPrague(interval.startsAt)) {
+    if (!isWholeHourInReservationTimeZone(interval.startsAt)) {
       return {
         path: "startsAt",
         message: "Meeting room reservations must start on a whole hour.",
@@ -115,12 +94,4 @@ export const getReservationProductRuleIssue = (
   }
 
   return null;
-};
-
-const isWholeHourInPrague = (isoTimestamp: string) => {
-  const time = Temporal.Instant.from(isoTimestamp)
-    .toZonedDateTimeISO(reservationTimeZone)
-    .toPlainTime();
-
-  return time.minute === 0 && time.second === 0 && time.millisecond === 0;
 };

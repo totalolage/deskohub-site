@@ -9,9 +9,10 @@ import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/prod
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
-  getReservationPragueDate,
+  getReservationDate,
   getReservationPragueDateRange,
 } from "@/features/reservation/schemas/reservation-interval";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {
   excludeExpiredLocalHolds,
@@ -197,7 +198,10 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               ...(reservation._tag === "cowork"
                 ? { tier: reservation.tier }
                 : {}),
-              date: getReservationPragueDate(reservation),
+              date: getReservationDate({
+                interval: reservation,
+                timeZone: workspaceSiteConstants.location.timeZone,
+              }),
               ...getReservationAssignment(reservation).logProduct,
             })
           )

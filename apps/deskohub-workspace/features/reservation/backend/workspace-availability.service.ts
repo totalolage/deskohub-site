@@ -56,19 +56,22 @@ type WorkspaceAvailabilityError =
   | NetworkError
   | ValidationError;
 
+type WorkspaceTableUnavailableReservation = Data.TaggedEnum<{
+  cowork: {
+    readonly tier: WorkspaceCoworkProductTier;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  };
+  "meeting-room": Record<never, never>;
+}>;
+
+const WorkspaceTableUnavailableReservation =
+  Data.taggedEnum<WorkspaceTableUnavailableReservation>();
+
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
 )<{
   readonly date: string;
-  readonly reservation:
-    | {
-        readonly _tag: "cowork";
-        readonly tier: WorkspaceCoworkProductTier;
-        readonly monitorOption?: WorkspaceProductMonitorOption;
-      }
-    | {
-        readonly _tag: "meeting-room";
-      };
+  readonly reservation: WorkspaceTableUnavailableReservation;
 }> {}
 
 type WorkspaceAvailabilityEnsureQuery = Partial<ReservationInterval> & {
@@ -261,8 +264,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
             to: query.to,
             startsAt: query.startsAt,
             endsAt: query.endsAt,
-            entryTier: query.entryTier,
-            monitorOption: query.monitorOption,
+            ...Match.value(query).pipe(
+              Match.tag("meeting-room", () => ({})),
+              Match.tag("cowork", (coworkQuery) => ({
+                entryTier: coworkQuery.entryTier,
+                monitorOption: coworkQuery.monitorOption,
+              })),
+              Match.exhaustive
+            ),
           })
         )
     );
@@ -294,16 +303,17 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         return yield* new WorkspaceTableUnavailableError({
           date: unavailableDate,
           reservation: Match.value(query).pipe(
-            Match.tag("meeting-room", () => ({
-              _tag: "meeting-room" as const,
-            })),
-            Match.tag("cowork", (coworkQuery) => ({
-              _tag: "cowork" as const,
-              tier: coworkQuery.entryTier,
-              ...(coworkQuery.monitorOption
-                ? { monitorOption: coworkQuery.monitorOption }
-                : {}),
-            })),
+            Match.tag("meeting-room", () =>
+              WorkspaceTableUnavailableReservation["meeting-room"]()
+            ),
+            Match.tag("cowork", (coworkQuery) =>
+              WorkspaceTableUnavailableReservation.cowork({
+                tier: coworkQuery.entryTier,
+                ...(coworkQuery.monitorOption && {
+                  monitorOption: coworkQuery.monitorOption,
+                }),
+              })
+            ),
             Match.exhaustive
           ),
         });
@@ -372,10 +382,7 @@ const getCalendarNotices = (
 const isUnavailableForSelection = (
   tables: readonly Table[],
   occupancyByTableId: ReadonlyMap<string, number>,
-  query: Pick<
-    WorkspaceAvailabilityQuery,
-    "_tag" | "entryTier" | "monitorOption"
-  >
+  query: WorkspaceAvailabilityQuery
 ) => {
   if (query._tag === "meeting-room") {
     return isMeetingRoomUnavailable(tables, occupancyByTableId);

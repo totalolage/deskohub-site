@@ -6,6 +6,8 @@ export const workspaceSiteConstants = {
   },
   contact: {
     infoEmail: "workspace@deskohub.cz",
+  },
+  location: {
     address: {
       street: "Turnovská 430/10",
       cityDistrict: "Libeň",
@@ -16,6 +18,7 @@ export const workspaceSiteConstants = {
       lat: 50.103277,
       lng: 14.479023,
     },
+    timeZone: "Europe/Prague",
   },
   company: {
     identificationNumber: "24531596",

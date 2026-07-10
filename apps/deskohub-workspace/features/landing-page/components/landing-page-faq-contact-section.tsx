@@ -14,7 +14,7 @@ import {
 } from "@/shared/components/ui/card";
 import type { workspaceSiteConstants } from "@/shared/utils";
 
-type ContactAddress = typeof workspaceSiteConstants.contact.address;
+type ContactAddress = typeof workspaceSiteConstants.location.address;
 
 type LandingPageFaqContactSectionProps = {
   locale: Locale;

@@ -1,5 +1,3 @@
-import "@/shared/polyfills/temporal";
-
 import { Schema } from "effect";
 
 export const TemporalInstantSchema = Schema.declare(
@@ -32,6 +30,15 @@ export const TemporalPlainTimeSchema = Schema.declare(
 export type TemporalInstant = typeof TemporalInstantSchema.Type;
 export type TemporalPlainDate = typeof TemporalPlainDateSchema.Type;
 export type TemporalPlainTime = typeof TemporalPlainTimeSchema.Type;
+
+export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
+  Schema.makeFilter<string>((value) => {
+    try {
+      return Temporal.PlainDate.from(value).toString() === value;
+    } catch {
+      return false;
+    }
+  }, annotations);
 
 export const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
 
@@ -74,3 +81,38 @@ export const dateToTemporalPlainDate = ({
   readonly date: Date;
   readonly timeZone: string;
 }) => dateToTemporalInstant(date)?.toZonedDateTimeISO(timeZone).toPlainDate();
+
+export const isFuturePlainDateTime = ({
+  dateTime,
+  timeZone,
+  now = Temporal.Now.instant(),
+}: {
+  readonly dateTime: ReturnType<typeof Temporal.PlainDateTime.from>;
+  readonly timeZone: string;
+  readonly now?: TemporalInstant;
+}) =>
+  Temporal.PlainDateTime.compare(
+    dateTime,
+    now.toZonedDateTimeISO(timeZone).toPlainDateTime()
+  ) > 0;
+
+export const makeWholeHourInstantStringEffectSchema = (timeZone: string) =>
+  Schema.String.check(
+    Schema.makeFilter((value) => {
+      try {
+        const time = Temporal.Instant.from(value)
+          .toZonedDateTimeISO(timeZone)
+          .toPlainTime();
+
+        return (
+          time.minute === 0 &&
+          time.second === 0 &&
+          time.millisecond === 0 &&
+          time.microsecond === 0 &&
+          time.nanosecond === 0
+        );
+      } catch {
+        return false;
+      }
+    })
+  );

@@ -1,6 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
-import { getReservationOrderSchema, getReservationSchema } from "./reservation";
+import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import {
+  reservationEffectSchema,
+  reservationOrderEffectSchema,
+} from "./reservation";
+
+const reservationOrderSchema = makeEffectSchemaParser(
+  reservationOrderEffectSchema
+);
+const reservationSchema = makeEffectSchemaParser(reservationEffectSchema);
 
 const originalDateNow = Date.now;
 
@@ -15,6 +24,17 @@ const validMeetingRoomReservation = {
 } as const;
 
 describe("reservation schema", () => {
+  test("rejects a meeting-room order without an interval", () => {
+    const result = reservationOrderSchema.safeParse({
+      entryTier: "meeting-room",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    });
+
+    expect(result.success).toBe(false);
+  });
+
   afterEach(() => {
     Date.now = originalDateNow;
   });
@@ -22,15 +42,13 @@ describe("reservation schema", () => {
   test("rejects meeting room start times in the past", () => {
     Date.now = () => new Date("2099-06-10T08:00:00.000Z").getTime();
 
-    const result = getReservationOrderSchema().safeParse(
+    const result = reservationOrderSchema.safeParse(
       validMeetingRoomReservation
     );
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect((result.error as { issues: unknown[] }).issues).toContainEqual(
-        expect.objectContaining({ path: ["startsAt"] })
-      );
+      expect(String(result.error)).toContain('at ["startsAt"]');
     }
   });
 
@@ -38,12 +56,12 @@ describe("reservation schema", () => {
     Date.now = () => new Date("2099-06-10T06:00:00.000Z").getTime();
 
     expect(
-      getReservationOrderSchema().safeParse(validMeetingRoomReservation).success
+      reservationOrderSchema.safeParse(validMeetingRoomReservation).success
     ).toBe(true);
   });
 
   test("normalizes cowork form dates to a full Prague business day", () => {
-    const result = getReservationSchema().safeParse({
+    const result = reservationSchema.safeParse({
       entryTier: "plus",
       date: "2099-06-10",
       startsAt: "00:00",
@@ -70,7 +88,7 @@ describe("reservation schema", () => {
   });
 
   test("rejects monitor setup for non-profi cowork tiers", () => {
-    const result = getReservationSchema().safeParse({
+    const result = reservationSchema.safeParse({
       entryTier: "basic",
       date: "2099-06-10",
       startsAt: "00:00",
@@ -86,14 +104,12 @@ describe("reservation schema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect((result.error as { issues: unknown[] }).issues).toContainEqual(
-        expect.objectContaining({ path: ["monitorOption"] })
-      );
+      expect(String(result.error)).toContain('at ["monitorOption"]');
     }
   });
 
   test("requires a monitor setup for profi cowork reservations", () => {
-    const result = getReservationSchema().safeParse({
+    const result = reservationSchema.safeParse({
       entryTier: "profi",
       date: "2099-06-10",
       startsAt: "00:00",
@@ -109,9 +125,7 @@ describe("reservation schema", () => {
 
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect((result.error as { issues: unknown[] }).issues).toContainEqual(
-        expect.objectContaining({ path: ["monitorOption"] })
-      );
+      expect(String(result.error)).toContain('at ["monitorOption"]');
     }
   });
 });

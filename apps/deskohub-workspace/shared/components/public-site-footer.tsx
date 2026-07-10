@@ -12,7 +12,7 @@ export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
   const localePath = `/${locale}`;
   const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract";
-  const companyAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
+  const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
   const copyrightYear = await getFooterCopyrightYear();
 
   return (
