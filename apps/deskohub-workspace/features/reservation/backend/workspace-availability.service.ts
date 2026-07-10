@@ -61,7 +61,7 @@ type WorkspaceTableUnavailableReservation = Data.TaggedEnum<{
     readonly tier: WorkspaceCoworkProductTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   };
-  "meeting-room": Record<never, never>;
+  "meeting-room": object;
 }>;
 
 const WorkspaceTableUnavailableReservation =
@@ -74,18 +74,15 @@ export class WorkspaceTableUnavailableError extends Data.TaggedError(
   readonly reservation: WorkspaceTableUnavailableReservation;
 }> {}
 
-type WorkspaceAvailabilityEnsureQuery = Partial<ReservationInterval> & {
+type WorkspaceAvailabilityEnsureQuery = {
   readonly date: string;
-} & (
-    | {
-        readonly _tag: "cowork";
-        readonly entryTier: WorkspaceCoworkProductTier;
-        readonly monitorOption?: WorkspaceProductMonitorOption;
-      }
-    | {
-        readonly _tag: "meeting-room";
-      }
-  );
+} & Data.TaggedEnum<{
+  cowork: {
+    readonly entryTier: WorkspaceCoworkProductTier;
+    readonly monitorOption?: WorkspaceProductMonitorOption;
+  };
+  "meeting-room": Partial<ReservationInterval>;
+}>;
 
 export interface WorkspaceAvailabilityService {
   readonly getAvailability: (
@@ -178,15 +175,18 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
         const occupancyByDate = new Map<string, Map<string, number>>();
         const selectedDate = date ? plainDateToString(date) : undefined;
+        const selectedInterval =
+          query._tag === "meeting-room"
+            ? { startsAt: query.startsAt, endsAt: query.endsAt }
+            : {};
         const selectedDateRange = selectedDate
-          ? yield* getAvailabilityDateRange(selectedDate, query)
+          ? yield* getAvailabilityDateRange(selectedDate, selectedInterval)
           : undefined;
         const shouldCheckRangeDateSelection =
           !selectedDate ||
           isDefaultReservationInterval({
             date: selectedDate,
-            startsAt: query.startsAt,
-            endsAt: query.endsAt,
+            ...selectedInterval,
           });
 
         for (const day of dates) {
@@ -262,10 +262,11 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
             date: query.date,
             from: query.from,
             to: query.to,
-            startsAt: query.startsAt,
-            endsAt: query.endsAt,
             ...Match.value(query).pipe(
-              Match.tag("meeting-room", () => ({})),
+              Match.tag("meeting-room", (meetingRoomQuery) => ({
+                startsAt: meetingRoomQuery.startsAt,
+                endsAt: meetingRoomQuery.endsAt,
+              })),
               Match.tag("cowork", (coworkQuery) => ({
                 entryTier: coworkQuery.entryTier,
                 monitorOption: coworkQuery.monitorOption,
@@ -281,9 +282,13 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ query });
         yield* Effect.logInfo("Workspace availability assurance started");
 
+        const interval =
+          query._tag === "meeting-room"
+            ? { startsAt: query.startsAt, endsAt: query.endsAt }
+            : {};
         const availabilityRange = yield* getAvailabilityTouchedDateRange(
           query.date,
-          query
+          interval
         );
         const availability = yield* getAvailability({
           ...query,

@@ -7,13 +7,13 @@ import {
   reservationCustomerPhoneEffectSchema,
 } from "@/features/reservation/schemas/reservation";
 import {
+  getReservationDurationMinutes,
   getReservationIntervalValidationIssue,
+  isDefaultReservationInterval,
+  meetingRoomReservationDurationMinutesEffectSchema,
   unsafeNormalizeReservationInterval,
+  wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/schemas/reservation-interval";
-import {
-  getReservationProductRuleIssue,
-  ReservationProductRuleInput,
-} from "@/features/reservation/schemas/reservation-product-rules";
 import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
@@ -31,43 +31,12 @@ const CheckoutReturnStateReservationShapeSchema =
 type CheckoutReturnStateReservationDraft =
   typeof CheckoutReturnStateReservationShapeSchema.Type;
 
-const getCheckoutReturnStateReservationProductRuleInput = (
-  reservation: CheckoutReturnStateReservationDraft
-) =>
-  Match.value(reservation).pipe(
-    Match.tag("meeting-room", (meetingRoomReservation) =>
-      ReservationProductRuleInput["meeting-room"]({
-        startsAt: meetingRoomReservation.startsAt,
-        endsAt: meetingRoomReservation.endsAt,
-      })
-    ),
-    Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) =>
-      ReservationProductRuleInput.cowork({
-        tier: "basic" as const,
-        coffee: coworkReservation.coffee,
-        startsAt: coworkReservation.startsAt,
-        endsAt: coworkReservation.endsAt,
-      })
-    ),
-    Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) =>
-      ReservationProductRuleInput.cowork({
-        tier: "plus" as const,
-        coffee: coworkReservation.coffee,
-        startsAt: coworkReservation.startsAt,
-        endsAt: coworkReservation.endsAt,
-      })
-    ),
-    Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) =>
-      ReservationProductRuleInput.cowork({
-        tier: "profi" as const,
-        coffee: coworkReservation.coffee,
-        monitorOption: coworkReservation.monitorOption,
-        startsAt: coworkReservation.startsAt,
-        endsAt: coworkReservation.endsAt,
-      })
-    ),
-    Match.exhaustive
-  );
+const isMeetingRoomReservationDuration = EffectSchema.is(
+  meetingRoomReservationDurationMinutesEffectSchema
+);
+const isWholeHourReservationInstant = EffectSchema.is(
+  wholeHourReservationInstantEffectSchema
+);
 
 export const checkoutReturnStateReservationEffectSchema =
   CheckoutReturnStateReservationShapeSchema.check(
@@ -87,19 +56,37 @@ export const checkoutReturnStateReservationEffectSchema =
           });
         }
 
-        const productRuleIssue = getReservationProductRuleIssue(
-          getCheckoutReturnStateReservationProductRuleInput(reservation)
-        );
-        if (productRuleIssue) {
+        const interval = unsafeNormalizeReservationInterval(reservation);
+        if (
+          reservation._tag === "cowork" &&
+          !isDefaultReservationInterval(interval)
+        ) {
           issues.push({
-            path: [
-              productRuleIssue.path === "entryTier"
-                ? "tier"
-                : productRuleIssue.path,
-            ],
-            issue: productRuleIssue.message,
+            path: ["endsAt"],
+            issue: "Cowork reservations must use the full-day duration.",
           });
         }
+
+        if (
+          reservation._tag === "meeting-room" &&
+          !isWholeHourReservationInstant(interval.startsAt)
+        )
+          issues.push({
+            path: ["startsAt"],
+            issue: "Meeting room reservations must start on a whole hour.",
+          });
+
+        if (
+          reservation._tag === "meeting-room" &&
+          !isMeetingRoomReservationDuration(
+            getReservationDurationMinutes(interval)
+          )
+        )
+          issues.push({
+            path: ["endsAt"],
+            issue:
+              "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+          });
 
         return issues;
       }
@@ -161,10 +148,11 @@ export type CheckoutReturnStateReservationInput =
   };
 
 const getCheckoutReturnStateReservationBase = (
-  reservation: CheckoutReturnStateReservationInput
+  reservation: CheckoutReturnStateReservationInput,
+  interval: { readonly startsAt: string; readonly endsAt: string }
 ) => ({
-  startsAt: reservation.startsAt,
-  endsAt: reservation.endsAt,
+  startsAt: interval.startsAt,
+  endsAt: interval.endsAt,
   name: reservation.name,
   email: reservation.email,
   phone: reservation.phone,
@@ -173,33 +161,37 @@ const getCheckoutReturnStateReservationBase = (
 
 const toCheckoutReturnStateReservationPayload = (
   reservation: CheckoutReturnStateReservationInput
-) =>
-  Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+) => {
+  const interval = unsafeNormalizeReservationInterval(reservation);
+  const base = getCheckoutReturnStateReservationBase(reservation, interval);
+
+  return Match.value(reservation).pipe(
+    Match.when({ entryTier: "meeting-room" }, () => ({
       _tag: "meeting-room" as const,
-      ...getCheckoutReturnStateReservationBase(meetingRoomReservation),
+      ...base,
     })),
     Match.when({ entryTier: "basic" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "basic" as const,
-      ...getCheckoutReturnStateReservationBase(coworkReservation),
+      ...base,
       coffee: coworkReservation.coffee,
     })),
-    Match.when({ entryTier: "plus" }, (coworkReservation) => ({
+    Match.when({ entryTier: "plus" }, () => ({
       _tag: "cowork" as const,
       tier: "plus" as const,
-      ...getCheckoutReturnStateReservationBase(coworkReservation),
+      ...base,
       coffee: true as const,
     })),
     Match.when({ entryTier: "profi" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "profi" as const,
-      ...getCheckoutReturnStateReservationBase(coworkReservation),
+      ...base,
       coffee: true as const,
       monitorOption: coworkReservation.monitorOption,
     })),
     Match.exhaustive
   );
+};
 
 export const getCheckoutReturnStateReservation = (
   reservation: CheckoutReturnStateReservationInput

@@ -1,13 +1,15 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Cause, Effect } from "effect";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   getReservationIntervalValidationIssue,
   getReservationPragueDateRange,
   isDefaultReservationInterval,
   unsafeNormalizeReservationInterval,
 } from "./reservation-interval";
+import { normalizeReservationIntervalFields } from "./reservation-interval-normalization";
 
 describe("reservation intervals", () => {
   test("accepts overnight intervals", () => {
@@ -43,6 +45,38 @@ describe("reservation intervals", () => {
       path: "startsAt",
       message: "Reservation date is required for local time inputs.",
     });
+  });
+
+  test("reports invalid normalization as a typed Effect failure without throwing on invocation", () => {
+    expect(() =>
+      normalizeReservationIntervalFields(
+        {
+          date: "2099-06-10",
+          startsAt: "9:00",
+          endsAt: "10:00",
+        },
+        reservationTimeZone
+      )
+    ).not.toThrow();
+
+    const exit = Effect.runSyncExit(
+      normalizeReservationIntervalFields(
+        {
+          date: "2099-06-10",
+          startsAt: "9:00",
+          endsAt: "10:00",
+        },
+        reservationTimeZone
+      )
+    );
+
+    expect(exit._tag).toBe("Failure");
+    if (exit._tag === "Failure") {
+      expect(Cause.squash(exit.cause)).toMatchObject({
+        _tag: "ReservationIntervalValidationError",
+        message: "Reservation start and end must be valid timestamps.",
+      });
+    }
   });
 
   test("rejects non-canonical local time strings", () => {

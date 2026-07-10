@@ -1,4 +1,9 @@
-import { normalizeReservationTimestamp } from "@/features/reservation/schemas/reservation-timestamp";
+import { Data, Effect, Option, Schema } from "effect";
+import {
+  instantEffectSchema,
+  localDateTimeEffectSchema,
+  localTimeEffectSchema,
+} from "@/shared/utils/temporal";
 
 export type ReservationInterval = {
   readonly startsAt: string;
@@ -15,83 +20,94 @@ export type ReservationIntervalValidationIssue = {
   readonly message: string;
 };
 
-export class ReservationIntervalValidationError extends Error {
-  readonly path: keyof ReservationInterval;
-
-  constructor(
-    issue: ReservationIntervalValidationIssue,
-    options?: ErrorOptions
-  ) {
-    super(issue.message, options);
-    this.name = "ReservationIntervalValidationError";
-    this.path = issue.path;
-  }
-}
+export class ReservationIntervalValidationError extends Data.TaggedError(
+  "ReservationIntervalValidationError"
+)<ReservationIntervalValidationIssue & { readonly cause?: unknown }> {}
 
 export const defaultReservationInterval = {
   startsAt: "00:00",
   endsAt: "24:00",
 } as const satisfies ReservationInterval;
 
+const reservationLocalTimeEffectSchema = Schema.Union([
+  Schema.Literal("24:00"),
+  localTimeEffectSchema,
+]);
+
+const decodeReservationLocalTime = Schema.decodeUnknownOption(
+  reservationLocalTimeEffectSchema
+);
+const decodeLocalDateTime = Schema.decodeUnknownOption(
+  localDateTimeEffectSchema
+);
+const decodeInstant = Schema.decodeUnknownOption(instantEffectSchema);
+
 export const normalizeReservationIntervalFields = (
   value: ReservationIntervalInput,
   timeZone: string
-): ReservationInterval => {
-  const hasExplicitInterval =
-    value.startsAt !== undefined || value.endsAt !== undefined;
-  const startsAt = value.startsAt ?? defaultReservationInterval.startsAt;
-  const endsAt = value.endsAt ?? defaultReservationInterval.endsAt;
-  const date = value.date ?? (hasExplicitInterval ? undefined : "2099-01-01");
-  const normalizedStartsAt = normalizeTimestampField({
-    date,
-    path: "startsAt",
-    timeZone,
-    value: startsAt,
-  });
-  const normalizedEndsAt = normalizeTimestampField({
-    date,
-    path: "endsAt",
-    startsAt,
-    timeZone,
-    value: endsAt,
-  });
-  const interval = {
-    startsAt: normalizedStartsAt,
-    endsAt: normalizedEndsAt,
-  };
-  const durationMinutes = getDurationMinutes(interval);
-
-  if (durationMinutes <= 0) {
-    throw new ReservationIntervalValidationError({
-      path: "endsAt",
-      message: "Reservation end time must be after start time.",
-    });
-  }
-
-  if (
-    value.date &&
-    hasExplicitInterval &&
-    toPlainDateTime(interval.startsAt, timeZone).toPlainDate().toString() !==
-      value.date
-  ) {
-    throw new ReservationIntervalValidationError({
+): Effect.Effect<ReservationInterval, ReservationIntervalValidationError> =>
+  Effect.gen(function* () {
+    const hasExplicitInterval =
+      value.startsAt !== undefined || value.endsAt !== undefined;
+    const startsAt = value.startsAt ?? defaultReservationInterval.startsAt;
+    const endsAt = value.endsAt ?? defaultReservationInterval.endsAt;
+    const date = value.date ?? (hasExplicitInterval ? undefined : "2099-01-01");
+    const normalizedStartsAt = yield* normalizeTimestampField({
+      date,
       path: "startsAt",
-      message: "Reservation start time must match reservation date.",
+      timeZone,
+      value: startsAt,
     });
-  }
-
-  if (
-    value.durationMinutes !== undefined &&
-    durationMinutes !== value.durationMinutes
-  ) {
-    throw new ReservationIntervalValidationError({
+    const normalizedEndsAt = yield* normalizeTimestampField({
+      date,
       path: "endsAt",
-      message: "Reservation duration must match start and end time.",
+      startsAt,
+      timeZone,
+      value: endsAt,
     });
-  }
+    const interval = {
+      startsAt: normalizedStartsAt,
+      endsAt: normalizedEndsAt,
+    };
+    const durationMinutes = getDurationMinutes(interval);
 
-  return interval;
-};
+    if (durationMinutes <= 0) {
+      return yield* Effect.fail(
+        new ReservationIntervalValidationError({
+          path: "endsAt",
+          message: "Reservation end time must be after start time.",
+        })
+      );
+    }
+
+    if (
+      value.date &&
+      hasExplicitInterval &&
+      toPlainDateTime(interval.startsAt, timeZone).toPlainDate().toString() !==
+        value.date
+    ) {
+      return yield* Effect.fail(
+        new ReservationIntervalValidationError({
+          path: "startsAt",
+          message: "Reservation start time must match reservation date.",
+        })
+      );
+    }
+
+    if (
+      value.durationMinutes !== undefined &&
+      durationMinutes !== value.durationMinutes
+    ) {
+      return yield* Effect.fail(
+        new ReservationIntervalValidationError({
+          path: "endsAt",
+          message: "Reservation duration must match start and end time.",
+        })
+      );
+    }
+
+    return interval;
+  });
 
 export const getDurationMinutes = (interval: ReservationInterval) =>
   (toInstantMilliseconds(interval.endsAt) -
@@ -116,24 +132,102 @@ const normalizeTimestampField = ({
   readonly startsAt?: string;
   readonly timeZone: string;
   readonly value: string;
-}) => {
-  try {
-    return normalizeReservationTimestamp({
-      date,
-      startsAt,
-      timeZone,
-      value,
+}): Effect.Effect<string, ReservationIntervalValidationError> => {
+  const localTime = decodeReservationLocalTime(value);
+  if (Option.isSome(localTime)) {
+    if (!date) {
+      return Effect.fail(
+        new ReservationIntervalValidationError({
+          path,
+          message: "Reservation date is required for local time inputs.",
+        })
+      );
+    }
+
+    return Effect.try({
+      try: () =>
+        localTimeToInstant({ date, startsAt, time: localTime.value, timeZone }),
+      catch: (cause) => toValidationError(path, cause),
     });
-  } catch (cause) {
-    throw new ReservationIntervalValidationError(
-      {
-        path,
-        message:
-          cause instanceof Error
-            ? cause.message
-            : "Reservation start and end must be valid timestamps.",
-      },
-      { cause }
-    );
   }
+
+  const localDateTime = decodeLocalDateTime(value);
+  if (Option.isSome(localDateTime)) {
+    return Effect.try({
+      try: () =>
+        Temporal.PlainDateTime.from(localDateTime.value)
+          .toZonedDateTime(timeZone)
+          .toInstant()
+          .toString(),
+      catch: (cause) => toValidationError(path, cause),
+    });
+  }
+
+  const instant = decodeInstant(value);
+  if (Option.isSome(instant)) {
+    return Effect.try({
+      try: () => Temporal.Instant.from(instant.value).toString(),
+      catch: (cause) => toValidationError(path, cause),
+    });
+  }
+
+  return Effect.fail(
+    new ReservationIntervalValidationError({
+      path,
+      message: "Reservation start and end must be valid timestamps.",
+    })
+  );
 };
+
+const localTimeToInstant = ({
+  date,
+  startsAt,
+  time,
+  timeZone,
+}: {
+  readonly date: string;
+  readonly startsAt?: string;
+  readonly time: string;
+  readonly timeZone: string;
+}) => {
+  const reservationDate = Temporal.PlainDate.from(date);
+  const minutes = localTimeToMinutes(time);
+  const decodedStartTime = startsAt
+    ? decodeReservationLocalTime(startsAt)
+    : Option.none();
+  const startMinutes = Option.isSome(decodedStartTime)
+    ? localTimeToMinutes(decodedStartTime.value)
+    : undefined;
+  const localDate = reservationDate.add({
+    days:
+      time !== "24:00" && startMinutes !== undefined && minutes <= startMinutes
+        ? 1
+        : Math.floor(minutes / (24 * 60)),
+  });
+  const localMinutes = minutes % (24 * 60);
+
+  return localDate
+    .toPlainDateTime(
+      new Temporal.PlainTime(Math.floor(localMinutes / 60), localMinutes % 60)
+    )
+    .toZonedDateTime(timeZone)
+    .toInstant()
+    .toString();
+};
+
+const localTimeToMinutes = (time: string) => {
+  if (time === "24:00") return 24 * 60;
+
+  const parsed = Temporal.PlainTime.from(time);
+  return parsed.hour * 60 + parsed.minute;
+};
+
+const toValidationError = (path: keyof ReservationInterval, cause: unknown) =>
+  new ReservationIntervalValidationError({
+    path,
+    message:
+      cause instanceof Error
+        ? cause.message
+        : "Reservation start and end must be valid timestamps.",
+    cause,
+  });

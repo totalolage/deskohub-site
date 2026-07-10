@@ -11,15 +11,13 @@ import {
 import { m } from "@/features/i18n";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
+  getReservationDurationMinutes,
   getReservationIntervalValidationIssue,
   getReservationPragueDateRange,
-  type ReservationInterval,
+  meetingRoomReservationDurationMinutesEffectSchema,
   unsafeNormalizeReservationInterval,
+  wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/schemas/reservation-interval";
-import {
-  getReservationProductRuleIssue,
-  ReservationProductRuleInput,
-} from "@/features/reservation/schemas/reservation-product-rules";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
 export const RESERVATION_VALIDATION = {
@@ -102,9 +100,7 @@ const monitorOptionEffectSchema = Schema.optional(
   ])
 );
 
-const reservationOrderBaseEffectShape = {
-  startsAt: Schema.String,
-  endsAt: Schema.String,
+const reservationCustomerEffectShape = {
   name: reservationCustomerNameEffectSchema,
   email: reservationCustomerEmailEffectSchema,
   phone: reservationCustomerPhoneEffectSchema,
@@ -112,15 +108,18 @@ const reservationOrderBaseEffectShape = {
 } as const;
 
 const coworkReservationOrderObjectEffectSchema = Schema.Struct({
-  ...reservationOrderBaseEffectShape,
+  ...reservationCustomerEffectShape,
   entryTier: Schema.Literals(workspaceCoworkProductTiers),
+  date: dateEffectSchema,
   coffee: Schema.Boolean,
   monitorOption: monitorOptionEffectSchema,
 });
 
 const meetingRoomReservationOrderObjectEffectSchema = Schema.Struct({
-  ...reservationOrderBaseEffectShape,
+  ...reservationCustomerEffectShape,
   entryTier: Schema.Literal("meeting-room"),
+  startsAt: Schema.String,
+  endsAt: Schema.String,
 });
 
 const reservationOrderObjectEffectSchema = Schema.Union([
@@ -129,11 +128,7 @@ const reservationOrderObjectEffectSchema = Schema.Union([
 ]);
 
 const coworkReservationFormObjectEffectSchema = Schema.Struct({
-  ...reservationOrderBaseEffectShape,
-  entryTier: Schema.Literals(workspaceCoworkProductTiers),
-  coffee: Schema.Boolean,
-  monitorOption: monitorOptionEffectSchema,
-  date: dateEffectSchema,
+  ...coworkReservationOrderObjectEffectSchema.fields,
   legalConsent: reservationLegalConsentEffectSchema,
 });
 
@@ -149,8 +144,6 @@ type ReservationValidationObject =
   | CoworkReservationFormObject;
 
 const normalizedReservationOrderBaseEffectShape = {
-  startsAt: Schema.String,
-  endsAt: Schema.String,
   name: Schema.String,
   email: Schema.String,
   phone: Schema.String,
@@ -160,18 +153,21 @@ const normalizedReservationOrderBaseEffectShape = {
 const normalizedBasicReservationOrderEffectSchema = Schema.Struct({
   ...normalizedReservationOrderBaseEffectShape,
   entryTier: Schema.Literal("basic"),
+  date: Schema.String,
   coffee: Schema.Boolean,
 });
 
 const normalizedPlusReservationOrderEffectSchema = Schema.Struct({
   ...normalizedReservationOrderBaseEffectShape,
   entryTier: Schema.Literal("plus"),
+  date: Schema.String,
   coffee: Schema.Literal(true),
 });
 
 const normalizedProfiReservationOrderEffectSchema = Schema.Struct({
   ...normalizedReservationOrderBaseEffectShape,
   entryTier: Schema.Literal("profi"),
+  date: Schema.String,
   coffee: Schema.Literal(true),
   monitorOption: Schema.Literals(workspaceProductMonitorOptions),
 });
@@ -185,6 +181,8 @@ const normalizedCoworkReservationOrderEffectSchema = Schema.Union([
 const normalizedMeetingRoomReservationOrderEffectSchema = Schema.Struct({
   ...normalizedReservationOrderBaseEffectShape,
   entryTier: Schema.Literal("meeting-room"),
+  startsAt: Schema.String,
+  endsAt: Schema.String,
 });
 
 const normalizedReservationOrderEffectSchema = Schema.Union([
@@ -195,26 +193,22 @@ const normalizedReservationOrderEffectSchema = Schema.Union([
 const normalizedCoworkReservationFormEffectSchema = Schema.Union([
   Schema.Struct({
     ...normalizedBasicReservationOrderEffectSchema.fields,
-    date: Schema.String,
     legalConsent: Schema.Boolean,
   }),
   Schema.Struct({
     ...normalizedPlusReservationOrderEffectSchema.fields,
-    date: Schema.String,
     legalConsent: Schema.Boolean,
   }),
   Schema.Struct({
     ...normalizedProfiReservationOrderEffectSchema.fields,
-    date: Schema.String,
     legalConsent: Schema.Boolean,
   }),
 ]);
 
 type NormalizedReservationOrderBase = Omit<
   CoworkReservationOrderObject,
-  "entryTier" | "coffee" | "monitorOption" | keyof ReservationInterval
-> &
-  ReservationInterval;
+  "entryTier" | "date" | "coffee" | "monitorOption"
+>;
 type NormalizedCoworkReservationOrder =
   typeof normalizedCoworkReservationOrderEffectSchema.Type;
 type NormalizedMeetingRoomReservationOrder =
@@ -228,10 +222,12 @@ const normalizeMonitorOption = (
   monitorOption: WorkspaceProductMonitorOption | "" | undefined
 ) => monitorOption || undefined;
 
-const getReservationDraftDate = (reservation: ReservationValidationObject) =>
-  "date" in reservation && typeof reservation.date === "string"
-    ? reservation.date
-    : undefined;
+const isMeetingRoomReservationDuration = Schema.is(
+  meetingRoomReservationDurationMinutesEffectSchema
+);
+const isWholeHourReservationInstant = Schema.is(
+  wholeHourReservationInstantEffectSchema
+);
 
 const toIssue = (
   path: readonly PropertyKey[],
@@ -241,55 +237,6 @@ const toIssue = (
   issue: message,
 });
 
-const getReservationProductRuleInput = (
-  data: ReservationValidationObject
-): ReservationProductRuleInput =>
-  Match.value(data).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) =>
-      ReservationProductRuleInput["meeting-room"]({
-        startsAt: meetingRoomReservation.startsAt,
-        endsAt: meetingRoomReservation.endsAt,
-      })
-    ),
-    Match.when({ entryTier: "basic" }, (coworkReservation) =>
-      ReservationProductRuleInput.cowork({
-        tier: "basic" as const,
-        coffee: coworkReservation.coffee,
-        monitorOption: normalizeMonitorOption(coworkReservation.monitorOption),
-        ...(getReservationDraftDate(coworkReservation) && {
-          date: getReservationDraftDate(coworkReservation),
-        }),
-        startsAt: coworkReservation.startsAt,
-        endsAt: coworkReservation.endsAt,
-      })
-    ),
-    Match.when({ entryTier: "plus" }, (coworkReservation) =>
-      ReservationProductRuleInput.cowork({
-        tier: "plus" as const,
-        coffee: coworkReservation.coffee,
-        monitorOption: normalizeMonitorOption(coworkReservation.monitorOption),
-        ...(getReservationDraftDate(coworkReservation) && {
-          date: getReservationDraftDate(coworkReservation),
-        }),
-        startsAt: coworkReservation.startsAt,
-        endsAt: coworkReservation.endsAt,
-      })
-    ),
-    Match.when({ entryTier: "profi" }, (coworkReservation) =>
-      ReservationProductRuleInput.cowork({
-        tier: "profi" as const,
-        coffee: coworkReservation.coffee,
-        monitorOption: normalizeMonitorOption(coworkReservation.monitorOption),
-        ...(getReservationDraftDate(coworkReservation) && {
-          date: getReservationDraftDate(coworkReservation),
-        }),
-        startsAt: coworkReservation.startsAt,
-        endsAt: coworkReservation.endsAt,
-      })
-    ),
-    Match.exhaustive
-  );
-
 const getReservationOrderIssues = (
   data: ReservationValidationObject
 ): readonly Schema.FilterIssue[] => {
@@ -298,23 +245,28 @@ const getReservationOrderIssues = (
     return [toIssue([intervalIssue.path], intervalIssue.message)];
   }
 
-  const productRuleIssue = getReservationProductRuleIssue(
-    getReservationProductRuleInput(data)
-  );
-  if (productRuleIssue) {
-    return [
-      toIssue(
-        [
-          productRuleIssue.path === "entryTier"
-            ? "tier"
-            : productRuleIssue.path,
-        ],
-        productRuleIssue.message
-      ),
-    ];
-  }
-
   if (data.entryTier === "meeting-room") {
+    const interval = unsafeNormalizeReservationInterval(data);
+    if (!isWholeHourReservationInstant(interval.startsAt)) {
+      return [
+        toIssue(
+          ["startsAt"],
+          "Meeting room reservations must start on a whole hour."
+        ),
+      ];
+    }
+
+    if (
+      !isMeetingRoomReservationDuration(getReservationDurationMinutes(interval))
+    ) {
+      return [
+        toIssue(
+          ["endsAt"],
+          "Meeting room duration must be 1 hour, 4 hours, or 24 hours."
+        ),
+      ];
+    }
+
     const range = Effect.runSync(getReservationPragueDateRange(data));
     if (range.startMs < Date.now()) {
       return [toIssue(["startsAt"], m.reservationValidationDatePast())];
@@ -354,41 +306,33 @@ const getReservationOrderIssues = (
 const normalizeCoworkReservationOrder = (
   data: CoworkReservationOrderObject
 ): NormalizedCoworkReservationOrder => {
-  const reservation = unsafeNormalizeReservationInterval({
-    ...data,
-    monitorOption: normalizeMonitorOption(data.monitorOption),
-  });
-  const base = {
-    startsAt: reservation.startsAt,
-    endsAt: reservation.endsAt,
-    name: reservation.name,
-    email: reservation.email,
-    phone: reservation.phone,
-    ...(reservation.message !== undefined && { message: reservation.message }),
-  } satisfies NormalizedReservationOrderBase;
+  const base: NormalizedReservationOrderBase = {
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    ...(data.message !== undefined && { message: data.message }),
+  };
 
   return Match.value(data).pipe(
     Match.when({ entryTier: "basic" }, () => ({
       ...base,
       entryTier: "basic" as const,
+      date: data.date,
       coffee: data.coffee,
     })),
     Match.when({ entryTier: "plus" }, () => ({
       ...base,
       entryTier: "plus" as const,
+      date: data.date,
       coffee: true as const,
     })),
     Match.when({ entryTier: "profi" }, () => {
-      const monitorOption = normalizeMonitorOption(data.monitorOption);
-      if (!monitorOption) {
-        throw new Error(m.reservationValidationMonitorRequired());
-      }
-
       return {
         ...base,
         entryTier: "profi" as const,
+        date: data.date,
         coffee: true as const,
-        monitorOption,
+        monitorOption: normalizeMonitorOption(data.monitorOption)!,
       };
     }),
     Match.exhaustive
@@ -408,10 +352,7 @@ const normalizeReservationOrder = (
       { entryTier: "meeting-room" },
       normalizeMeetingRoomReservationOrder
     ),
-    Match.when({ entryTier: "basic" }, normalizeCoworkReservationOrder),
-    Match.when({ entryTier: "plus" }, normalizeCoworkReservationOrder),
-    Match.when({ entryTier: "profi" }, normalizeCoworkReservationOrder),
-    Match.exhaustive
+    Match.orElse(normalizeCoworkReservationOrder)
   );
 
 const normalizeCoworkReservationForm = (
@@ -497,8 +438,6 @@ export const getReservationProductMonitorOption = (
 export const reservationDefaultValues: ReservationInput = {
   entryTier: "basic",
   date: "",
-  startsAt: "00:00",
-  endsAt: "24:00",
   coffee: false,
   monitorOption: undefined,
   name: "",

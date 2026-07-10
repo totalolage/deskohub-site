@@ -31,6 +31,45 @@ export type TemporalInstant = typeof TemporalInstantSchema.Type;
 export type TemporalPlainDate = typeof TemporalPlainDateSchema.Type;
 export type TemporalPlainTime = typeof TemporalPlainTimeSchema.Type;
 
+export const localTimeEffectSchema = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      return (
+        Temporal.PlainTime.from(value).toString({ smallestUnit: "minute" }) ===
+        value
+      );
+    } catch {
+      return false;
+    }
+  })
+);
+
+export const localDateTimeEffectSchema = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      const dateTime = Temporal.PlainDateTime.from(value);
+      return (
+        dateTime.toString({
+          smallestUnit: dateTime.second === 0 ? "minute" : "second",
+        }) === value
+      );
+    } catch {
+      return false;
+    }
+  })
+);
+
+export const instantEffectSchema = Schema.String.check(
+  Schema.makeFilter((value) => {
+    try {
+      Temporal.Instant.from(value);
+      return true;
+    } catch {
+      return false;
+    }
+  })
+);
+
 export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
   Schema.makeFilter<string>((value) => {
     try {

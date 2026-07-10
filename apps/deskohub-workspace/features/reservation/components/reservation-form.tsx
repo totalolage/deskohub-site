@@ -37,7 +37,7 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
-import { getWorkspaceAvailability as loadWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
+import { getWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
@@ -240,7 +240,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   );
   const availabilityQueryResult = useQuery({
     queryKey: workspaceAvailabilityKeys.availability(availabilityQuery),
-    queryFn: () => loadWorkspaceAvailability(availabilityQuery),
+    queryFn: () => getWorkspaceAvailability(availabilityQuery),
     placeholderData: keepPreviousData,
     retry: (failureCount) => failureCount < 3,
     staleTime: 30_000,
@@ -348,7 +348,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    void   form.handleSubmit((data) => {
+    void form.handleSubmit((data) => {
       if (hasPreparedPayRedirect) return;
 
       setSubmissionMessage(null);
@@ -359,9 +359,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         });
         return;
       }
-      hasTrackedSuccessfulSubmission.current = false;
       window.scrollTo({ top: 0, behavior: "instant" });
-      const { date: _date, legalConsent, ...reservation } = data;
+      const { legalConsent, ...reservation } = data;
       sendReservation({
         locale,
         reservationIntentId,
@@ -1011,6 +1010,85 @@ function SkeletonField() {
       <SkeletonBlock className="h-4 w-28" />
       <SkeletonBlock className="h-13 w-full rounded-[1.1rem]" />
     </div>
+  );
+}
+
+function ReservationDateField({
+  control,
+  locale,
+  unavailableDates,
+}: {
+  readonly control: Control<ReservationInput, unknown, ReservationData>;
+  readonly locale: Locale;
+  readonly unavailableDates: ReadonlySet<string>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <FormField
+      control={control}
+      name="date"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel
+            className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+            required
+          >
+            {m.reservationDateLabel({}, { locale })}
+          </FormLabel>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <FormControl>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn(
+                    "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                    !field.value && "text-navy-blue/44"
+                  )}
+                >
+                  <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                  {formatReservationInputDisplayDate(
+                    field.value,
+                    locale,
+                    m.reservationDatePlaceholder({}, { locale })
+                  )}
+                </Button>
+              </FormControl>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto p-3">
+              <Calendar
+                mode="single"
+                selected={reservationInputDateToCalendarDate(field.value)}
+                onSelect={(date) => {
+                  const plainDate = date
+                    ? calendarDateToReservationPlainDate(date)
+                    : undefined;
+
+                  if (!plainDate) return;
+
+                  field.onChange(formatReservationInputDate(plainDate));
+                  setOpen(false);
+                }}
+                disabled={[
+                  { before: new Date() },
+                  (date) => {
+                    const plainDate = calendarDateToReservationPlainDate(date);
+
+                    return plainDate
+                      ? unavailableDates.has(
+                          formatReservationInputDate(plainDate)
+                        )
+                      : true;
+                  },
+                ]}
+              />
+            </PopoverContent>
+          </Popover>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   );
 }
 

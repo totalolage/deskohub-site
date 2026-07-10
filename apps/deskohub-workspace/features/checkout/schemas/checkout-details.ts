@@ -3,10 +3,13 @@ import { checkoutSummarySectionEffectSchema } from "@/features/checkout/schemas/
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
 import {
+  getReservationDurationMinutes,
   getReservationIntervalValidationIssue,
+  isDefaultReservationInterval,
+  meetingRoomReservationDurationMinutesEffectSchema,
   unsafeNormalizeReservationInterval,
+  wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/schemas/reservation-interval";
-import { getReservationProductRuleIssue } from "@/features/reservation/schemas/reservation-product-rules";
 import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import {
   isoDateTimeWithOffsetStringEffectSchema,
@@ -114,6 +117,13 @@ const CheckoutDetailsReservationShapeSchema =
 type CheckoutDetailsReservationDraft =
   typeof CheckoutDetailsReservationShapeSchema.Type;
 
+const isMeetingRoomReservationDuration = EffectSchema.is(
+  meetingRoomReservationDurationMinutesEffectSchema
+);
+const isWholeHourReservationInstant = EffectSchema.is(
+  wholeHourReservationInstantEffectSchema
+);
+
 const getCheckoutDetailsReservationIssues = (
   reservation: CheckoutDetailsReservationDraft
 ) => {
@@ -127,19 +137,36 @@ const getCheckoutDetailsReservationIssues = (
     ];
   }
 
-  const productRuleIssue = getReservationProductRuleIssue(reservation);
-  if (productRuleIssue) {
+  const interval = unsafeNormalizeReservationInterval(reservation);
+  if (reservation._tag === "cowork" && !isDefaultReservationInterval(interval))
     return [
       {
-        path: [
-          productRuleIssue.path === "entryTier"
-            ? "tier"
-            : productRuleIssue.path,
-        ],
-        issue: productRuleIssue.message,
+        path: ["endsAt"],
+        issue: "Cowork reservations must use the full-day duration.",
       },
     ];
-  }
+
+  if (
+    reservation._tag === "meeting-room" &&
+    !isWholeHourReservationInstant(interval.startsAt)
+  )
+    return [
+      {
+        path: ["startsAt"],
+        issue: "Meeting room reservations must start on a whole hour.",
+      },
+    ];
+
+  if (
+    reservation._tag === "meeting-room" &&
+    !isMeetingRoomReservationDuration(getReservationDurationMinutes(interval))
+  )
+    return [
+      {
+        path: ["endsAt"],
+        issue: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+      },
+    ];
 
   return [];
 };

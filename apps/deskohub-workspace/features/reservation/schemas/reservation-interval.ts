@@ -6,6 +6,7 @@ import {
   SchemaGetter,
   SchemaIssue,
 } from "effect";
+import { isWorkspaceMeetingRoomDuration } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   defaultReservationInterval,
@@ -13,11 +14,13 @@ import {
   normalizeReservationIntervalFields,
   type ReservationInterval,
   type ReservationIntervalInput,
-  ReservationIntervalValidationError,
   toInstantMilliseconds,
   toPlainDateTime,
 } from "@/features/reservation/schemas/reservation-interval-normalization";
-import { temporalInstantToPlainDate } from "@/shared/utils/temporal";
+import {
+  makeWholeHourInstantStringEffectSchema,
+  temporalInstantToPlainDate,
+} from "@/shared/utils/temporal";
 
 export type {
   ReservationInterval,
@@ -61,11 +64,9 @@ export const normalizedReservationIntervalEffectSchema =
   reservationIntervalInputEffectSchema.pipe(
     Schema.decodeTo(reservationIntervalEffectSchema, {
       decode: SchemaGetter.transformOrFail((input) =>
-        Effect.try({
-          try: () =>
-            normalizeReservationIntervalFields(input, reservationTimeZone),
-          catch: (cause) => toSchemaIssue(input, cause),
-        })
+        normalizeReservationIntervalFields(input, reservationTimeZone).pipe(
+          Effect.mapError((issue) => toSchemaIssue(input, issue))
+        )
       ),
       encode: SchemaGetter.transform(
         (interval): ReservationIntervalInput => interval
@@ -83,44 +84,81 @@ export const isDefaultReservationInterval = (
   const hasExplicitInterval =
     interval.startsAt !== undefined || interval.endsAt !== undefined;
 
-  try {
-    const normalized = normalizeReservationIntervalFields(
+  return Effect.runSync(
+    normalizeReservationIntervalFields(
       {
         ...(!hasExplicitInterval && { date: "2099-01-01" }),
         ...interval,
       },
       reservationTimeZone
-    );
-    const start = toPlainDateTime(normalized.startsAt, reservationTimeZone);
-    const end = toPlainDateTime(normalized.endsAt, reservationTimeZone);
+    ).pipe(
+      Effect.map((normalized) => {
+        const start = toPlainDateTime(normalized.startsAt, reservationTimeZone);
+        const end = toPlainDateTime(normalized.endsAt, reservationTimeZone);
 
-    return (
-      isMidnight(start) &&
-      isMidnight(end) &&
-      end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
-    );
-  } catch {
-    return false;
-  }
+        return (
+          isMidnight(start) &&
+          isMidnight(end) &&
+          end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
+        );
+      }),
+      Effect.catch(() => Effect.succeed(false))
+    )
+  );
 };
+
+export const wholeHourReservationInstantEffectSchema =
+  makeWholeHourInstantStringEffectSchema(reservationTimeZone);
+
+export const meetingRoomReservationDurationMinutesEffectSchema =
+  Schema.Number.check(
+    Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
+      message: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+    })
+  );
+
+const isWholeHourReservationInstant = Schema.is(
+  wholeHourReservationInstantEffectSchema
+);
+const isMeetingRoomReservationDuration = Schema.is(
+  meetingRoomReservationDurationMinutesEffectSchema
+);
+
+export const coworkReservationIntervalEffectSchema =
+  normalizedReservationIntervalEffectSchema.check(
+    Schema.makeFilter(isDefaultReservationInterval, {
+      message: "Cowork reservations must use the full-day duration.",
+    })
+  );
+
+export const meetingRoomReservationIntervalEffectSchema =
+  normalizedReservationIntervalEffectSchema.check(
+    Schema.makeFilter(
+      (interval) =>
+        isMeetingRoomReservationDuration(getDurationMinutes(interval)),
+      {
+        message: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+      }
+    ),
+    Schema.makeFilter(
+      (interval) => isWholeHourReservationInstant(interval.startsAt),
+      {
+        message: "Meeting room reservations must start on a whole hour.",
+      }
+    )
+  );
 
 export const getReservationIntervalValidationIssue = (
   interval: ReservationIntervalInput
 ) => {
-  try {
-    normalizeReservationIntervalFields(interval, reservationTimeZone);
-    return null;
-  } catch (cause) {
-    return cause instanceof ReservationIntervalValidationError
-      ? { path: cause.path, message: cause.message }
-      : {
-          path: "endsAt" as const,
-          message:
-            cause instanceof Error
-              ? cause.message
-              : "Reservation start and end must be valid timestamps.",
-        };
-  }
+  return Effect.runSync(
+    normalizeReservationIntervalFields(interval, reservationTimeZone).pipe(
+      Effect.as(null),
+      Effect.catch((issue) =>
+        Effect.succeed({ path: issue.path, message: issue.message })
+      )
+    )
+  );
 };
 
 export const unsafeNormalizeReservationInterval = <T extends object>(
@@ -138,25 +176,27 @@ export const unsafeNormalizeReservationInterval = <T extends object>(
 export const normalizeReservationInterval = Effect.fn(
   "normalizeReservationInterval"
 )(function* <T extends object>(value: T) {
-  return yield* Effect.try({
-    try: () => unsafeNormalizeReservationInterval(value),
-    catch: (cause) =>
-      new ReservationIntervalError({
-        message:
-          cause instanceof Error
-            ? cause.message
-            : "Reservation start and end must be valid timestamps.",
-        cause,
-      }),
-  });
+  const interval = yield* normalizeReservationIntervalFields(
+    value as ReservationIntervalInput,
+    reservationTimeZone
+  ).pipe(
+    Effect.mapError(
+      (cause) => new ReservationIntervalError({ message: cause.message, cause })
+    )
+  );
+  const { durationMinutes: _durationMinutes, ...rest } = value as T & {
+    readonly durationMinutes?: number;
+  };
+
+  return { ...rest, ...interval } as Omit<T, "durationMinutes"> &
+    ReservationInterval;
 });
 
 export const getReservationPragueDateRange = (
   reservation: ReservationIntervalInput
 ): Effect.Effect<ReservationDateRange, ReservationIntervalError> =>
-  Effect.try({
-    try: () => {
-      const interval = unsafeNormalizeReservationInterval(reservation);
+  normalizeReservationInterval(reservation).pipe(
+    Effect.map((interval) => {
       const startMs = toInstantMilliseconds(interval.startsAt);
       const endMs = toInstantMilliseconds(interval.endsAt);
 
@@ -166,16 +206,8 @@ export const getReservationPragueDateRange = (
         startMs,
         endMs,
       };
-    },
-    catch: (cause) =>
-      new ReservationIntervalError({
-        message:
-          cause instanceof Error
-            ? cause.message
-            : "Reservation start and end must be valid timestamps.",
-        cause,
-      }),
-  });
+    })
+  );
 
 export const getReservationDurationMinutes = getDurationMinutes;
 
@@ -202,25 +234,14 @@ const isMidnight = (dateTime: ReturnType<typeof toPlainDateTime>) =>
   dateTime.second === 0 &&
   dateTime.millisecond === 0;
 
-const toSchemaIssue = (input: unknown, cause: unknown) => {
-  const issue =
-    cause instanceof ReservationIntervalValidationError
-      ? cause
-      : new ReservationIntervalValidationError(
-          {
-            path: "endsAt",
-            message:
-              cause instanceof Error
-                ? cause.message
-                : "Reservation start and end must be valid timestamps.",
-          },
-          { cause }
-        );
-
+const toSchemaIssue = (
+  input: unknown,
+  cause: { readonly path: keyof ReservationInterval; readonly message: string }
+) => {
   return new SchemaIssue.Pointer(
-    [issue.path],
+    [cause.path],
     new SchemaIssue.InvalidValue(Option.some(input), {
-      message: issue.message,
+      message: cause.message,
     })
   );
 };

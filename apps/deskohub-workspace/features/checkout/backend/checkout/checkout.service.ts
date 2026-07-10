@@ -39,6 +39,10 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import {
+  getReservationDate,
+  unsafeNormalizeReservationInterval,
+} from "@/features/reservation/schemas/reservation-interval";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
 import {
   PostHogEventService,
@@ -51,6 +55,7 @@ import {
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
 import { PostResponseTaskService } from "@/shared/backend/post-response-task.service";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   capturePaymentFailed,
   capturePaymentStarted,
@@ -267,33 +272,34 @@ const buildCheckoutDetailsForPayment = (input: {
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: LegalEvidenceMap;
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
+  const interval = unsafeNormalizeReservationInterval(input.data);
   const reservation = Match.value(input.quote.order).pipe(
     Match.tag("meeting-room", () => ({
       _tag: "meeting-room" as const,
-      startsAt: input.data.startsAt,
-      endsAt: input.data.endsAt,
+      startsAt: interval.startsAt,
+      endsAt: interval.endsAt,
     })),
     Match.tag("cowork", (order) =>
       Match.value(order).pipe(
         Match.when({ tier: "basic" }, (basicOrder) => ({
           _tag: "cowork" as const,
           tier: "basic" as const,
-          startsAt: input.data.startsAt,
-          endsAt: input.data.endsAt,
+          startsAt: interval.startsAt,
+          endsAt: interval.endsAt,
           coffee: basicOrder.coffee,
         })),
         Match.when({ tier: "plus" }, () => ({
           _tag: "cowork" as const,
           tier: "plus" as const,
-          startsAt: input.data.startsAt,
-          endsAt: input.data.endsAt,
+          startsAt: interval.startsAt,
+          endsAt: interval.endsAt,
           coffee: true as const,
         })),
         Match.when({ tier: "profi" }, (profiOrder) => ({
           _tag: "cowork" as const,
           tier: "profi" as const,
-          startsAt: input.data.startsAt,
-          endsAt: input.data.endsAt,
+          startsAt: interval.startsAt,
+          endsAt: interval.endsAt,
           coffee: true as const,
           monitorOption: profiOrder.monitorOption,
         })),
@@ -368,8 +374,10 @@ const toReservationOrderData = (
     })),
     Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) => ({
       entryTier: "basic" as const,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
+      date: getReservationDate({
+        interval: coworkReservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
       name: coworkReservation.name,
       email: coworkReservation.email,
       phone: coworkReservation.phone,
@@ -380,8 +388,10 @@ const toReservationOrderData = (
     })),
     Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) => ({
       entryTier: "plus" as const,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
+      date: getReservationDate({
+        interval: coworkReservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
       name: coworkReservation.name,
       email: coworkReservation.email,
       phone: coworkReservation.phone,
@@ -392,8 +402,10 @@ const toReservationOrderData = (
     })),
     Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) => ({
       entryTier: "profi" as const,
-      startsAt: coworkReservation.startsAt,
-      endsAt: coworkReservation.endsAt,
+      date: getReservationDate({
+        interval: coworkReservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
       name: coworkReservation.name,
       email: coworkReservation.email,
       phone: coworkReservation.phone,

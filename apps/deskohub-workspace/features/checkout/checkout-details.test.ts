@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import "@/shared/polyfills/temporal";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   checkoutDetailsJsonSchema,
@@ -39,8 +40,7 @@ describe("checkout details persistence", () => {
   test("persists quote summary, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
-      startsAt: "2099-06-09T22:00:00Z",
-      endsAt: "2099-06-10T22:00:00Z",
+      date: "2099-06-10",
       coffee: false,
     });
     const details = checkoutDetailsJsonSchema.parse({
@@ -114,8 +114,7 @@ describe("checkout details persistence", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
         entryTier: "basic",
-        startsAt: "2099-06-09T22:00:00Z",
-        endsAt: "2099-06-10T22:00:00Z",
+        date: "2099-06-10",
         coffee: false,
       },
       {

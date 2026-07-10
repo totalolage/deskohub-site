@@ -17,4 +17,40 @@ describe("parseWorkspaceAvailabilityQuery", () => {
       to: "2099-06-10",
     });
   });
+
+  test("does not treat meeting room as a cowork entry tier", () => {
+    const query = parseWorkspaceAvailabilityQuery(
+      new URLSearchParams({
+        entryTier: "meeting-room",
+        from: "2099-06-10",
+        to: "2099-06-10",
+      })
+    );
+
+    expect(query).toEqual({
+      _tag: "cowork",
+      from: "2099-06-10",
+      to: "2099-06-10",
+    });
+  });
+
+  test("drops interval fields from cowork availability queries", () => {
+    const query = parseWorkspaceAvailabilityQuery(
+      new URLSearchParams({
+        kind: "cowork",
+        date: "2099-06-10",
+        from: "2099-06-10",
+        to: "2099-06-10",
+        startsAt: "10:00",
+        endsAt: "11:00",
+      })
+    );
+
+    expect(query).toEqual({
+      _tag: "cowork",
+      date: "2099-06-10",
+      from: "2099-06-10",
+      to: "2099-06-10",
+    });
+  });
 });

@@ -9,7 +9,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
 import { useMemo, useRef, useState } from "react";
-import { type Control, useForm } from "react-hook-form";
+import { type Control, useForm, useWatch } from "react-hook-form";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
@@ -89,6 +89,10 @@ const meetingRoomDefaultValues: MeetingRoomReservationInput = {
   legalConsent: false,
 };
 
+const meetingRoomReservationSchema = Schema.toStandardSchemaV1(
+  meetingRoomReservationEffectSchema
+);
+
 const createReservationIntentId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `meeting-room-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -105,22 +109,20 @@ export function MeetingRoomReservationForm({
   const [reservationIntentId] = useState(createReservationIntentId);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
-  const schema = useMemo(
-    () => Schema.toStandardSchemaV1(meetingRoomReservationEffectSchema),
-    []
-  );
   const form = useForm<
     MeetingRoomReservationInput,
     unknown,
     MeetingRoomReservationData
   >({
-    resolver: standardSchemaResolver(schema),
+    resolver: standardSchemaResolver(meetingRoomReservationSchema),
     defaultValues: meetingRoomDefaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const selectedStartDateTime = form.watch("startDateTime");
-  const selectedDurationMinutes = form.watch("durationMinutes");
+  const [selectedStartDateTime, selectedDurationMinutes] = useWatch({
+    control: form.control,
+    name: ["startDateTime", "durationMinutes"],
+  });
   const selectedInterval = useMemo(
     () =>
       getMeetingRoomReservationInterval(
@@ -232,7 +234,6 @@ export function MeetingRoomReservationForm({
       return;
     }
 
-    hasTrackedSuccessfulSubmission.current = false;
     await sendReservation({
       locale,
       reservationIntentId,

@@ -20,15 +20,14 @@ import {
 import { isPlainDateString } from "@/shared/utils/temporal";
 
 const workspaceAvailabilityQueryBaseEffectFields = {
-  date: Schema.optional(Schema.String),
   from: Schema.String,
   to: Schema.String,
-  ...reservationIntervalFieldSchemas,
 };
 
 export const workspaceAvailabilityQueryEffectSchema = Schema.Union([
   Schema.TaggedStruct("cowork", {
     ...workspaceAvailabilityQueryBaseEffectFields,
+    date: Schema.optional(Schema.String),
     entryTier: Schema.optional(Schema.Literals(workspaceCoworkTiers)),
     monitorOption: Schema.optional(
       Schema.Literals(workspaceProductMonitorOptions)
@@ -36,6 +35,8 @@ export const workspaceAvailabilityQueryEffectSchema = Schema.Union([
   }),
   Schema.TaggedStruct("meeting-room", {
     ...workspaceAvailabilityQueryBaseEffectFields,
+    date: Schema.optional(Schema.String),
+    ...reservationIntervalFieldSchemas,
   }),
 ]);
 
@@ -124,10 +125,7 @@ const getTierParam = (value: string | null) => {
 const getReservationKindParam = (searchParams: URLSearchParams) => {
   const kind = searchParams.get("kind")?.trim();
   if (kind === "meeting-room") return "meeting-room";
-  if (kind === "cowork") return "cowork";
-  return searchParams.get("entryTier")?.trim() === "meeting-room"
-    ? "meeting-room"
-    : "cowork";
+  return "cowork";
 };
 
 const getMonitorParam = (value: string | null) => {
@@ -179,7 +177,10 @@ export const parseWorkspaceAvailabilityQuery = (
   const entryTier =
     reservationKind === "cowork" && getTierParam(searchParams.get("entryTier"));
   const monitorOption = getMonitorParam(searchParams.get("monitorOption"));
-  const interval = getIntervalParam(searchParams, date);
+  const interval =
+    reservationKind === "meeting-room"
+      ? getIntervalParam(searchParams, date)
+      : {};
 
   return {
     _tag: reservationKind,

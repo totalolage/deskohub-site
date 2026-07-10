@@ -1,19 +1,17 @@
 import { describe, expect, test } from "bun:test";
+import "@/shared/polyfills/temporal";
 import {
   buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutOrderInput,
 } from "./checkout-quote";
 
-const coworkReservationInterval = {
-  startsAt: "2099-06-09T22:00:00Z",
-  endsAt: "2099-06-10T22:00:00Z",
-} as const;
+const coworkReservationDate = { date: "2099-06-10" } as const;
 
 describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: false,
     });
@@ -34,7 +32,7 @@ describe("workspace checkout quotes", () => {
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: true,
     });
@@ -54,7 +52,7 @@ describe("workspace checkout quotes", () => {
 
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "plus",
       coffee: true,
     });
@@ -76,7 +74,7 @@ describe("workspace checkout quotes", () => {
   test("includes customer discount as a negative display item", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        ...coworkReservationInterval,
+        ...coworkReservationDate,
         entryTier: "basic",
         coffee: true,
       },
@@ -106,7 +104,7 @@ describe("workspace checkout quotes", () => {
   test("preserves minor-unit rounding behavior", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        ...coworkReservationInterval,
+        ...coworkReservationDate,
         entryTier: "basic",
         coffee: false,
       },
@@ -125,13 +123,13 @@ describe("workspace checkout quotes", () => {
 
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: false,
     });
     const coffeeDiscountedToSameTotal = buildWorkspaceCheckoutQuote(
       {
-        ...coworkReservationInterval,
+        ...coworkReservationDate,
         entryTier: "basic",
         coffee: true,
       },
@@ -155,8 +153,7 @@ describe("workspace checkout quotes", () => {
   test("sanitizes runtime contact and consent fields from quote output", () => {
     const orderWithRuntimeExtras = {
       entryTier: "basic",
-      startsAt: "2026-05-31T22:00:00Z",
-      endsAt: "2026-06-01T22:00:00Z",
+      date: "2099-06-10",
       coffee: false,
       legalConsent: true,
       name: "Ada Lovelace",
@@ -182,14 +179,13 @@ describe("workspace checkout quotes", () => {
 
   test("ignores runtime contact and consent fields when fingerprinting", () => {
     const cleanQuote = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "plus",
       coffee: true,
     });
     const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
       entryTier: "plus",
-      startsAt: "2026-05-31T22:00:00Z",
-      endsAt: "2026-06-01T22:00:00Z",
+      date: "2099-06-10",
       coffee: true,
       legalConsent: true,
       name: "Grace Hopper",
@@ -201,26 +197,25 @@ describe("workspace checkout quotes", () => {
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
   });
 
-  test("only fingerprints non-default reservation intervals", () => {
+  test("excludes cowork dates but fingerprints meeting-room intervals", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: false,
     });
-    const explicitAllDay = buildWorkspaceCheckoutQuote({
+    const differentCoworkDate = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
       coffee: false,
-      startsAt: "2099-06-09T22:00:00Z",
-      endsAt: "2099-06-10T22:00:00Z",
-    } as unknown as WorkspaceCheckoutOrderInput);
+      date: "2099-06-11",
+    });
     const morningOnly = buildWorkspaceCheckoutQuote({
       entryTier: "meeting-room",
       startsAt: "2099-06-10T07:00:00Z",
       endsAt: "2099-06-10T11:00:00Z",
     });
 
-    expect(explicitAllDay.order).toEqual(accessOnly.order);
-    expect(explicitAllDay.fingerprint).toBe(accessOnly.fingerprint);
+    expect(differentCoworkDate.order).toEqual(accessOnly.order);
+    expect(differentCoworkDate.fingerprint).toBe(accessOnly.fingerprint);
     expect(morningOnly.order).toMatchObject({
       startsAt: "2099-06-10T07:00:00Z",
       endsAt: "2099-06-10T11:00:00Z",
@@ -260,15 +255,6 @@ describe("workspace checkout quotes", () => {
   test("rejects unsupported product and interval combinations", () => {
     expect(() =>
       buildWorkspaceCheckoutQuote({
-        entryTier: "basic",
-        coffee: false,
-        startsAt: "2099-06-10T09:00",
-        endsAt: "2099-06-10T10:00",
-      })
-    ).toThrow("Cowork reservations must use the full-day duration");
-
-    expect(() =>
-      buildWorkspaceCheckoutQuote({
         entryTier: "meeting-room",
         startsAt: "2099-06-10T07:30:00Z",
         endsAt: "2099-06-10T08:30:00Z",
@@ -278,12 +264,12 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: false,
     });
     const withCoffee = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: true,
     });
@@ -298,7 +284,7 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary currency and exponent", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      ...coworkReservationInterval,
+      ...coworkReservationDate,
       entryTier: "basic",
       coffee: false,
     });

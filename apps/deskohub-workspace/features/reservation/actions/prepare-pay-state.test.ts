@@ -33,8 +33,7 @@ mock.module("next/headers", () => ({
 
 const reservation = {
   entryTier: "basic" as const,
-  startsAt: "2026-06-30T22:00:00Z",
-  endsAt: "2026-07-01T22:00:00Z",
+  date: "2026-07-01",
   coffee: false,
   name: "Ada Lovelace",
   email: "ada@example.com",

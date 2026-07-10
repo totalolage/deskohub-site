@@ -43,10 +43,6 @@ import {
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import type {
-  WorkspaceCoworkProductTier,
-  WorkspaceProductMonitorOption,
-} from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
@@ -99,16 +95,7 @@ const normalizeIdempotencyPart = (value: string) =>
 
 const deriveReservationIntentKey = (input: {
   readonly reservationIntentId: string;
-  readonly reservation: {
-    readonly name: string;
-    readonly email: string;
-    readonly phone: string;
-    readonly startsAt?: string;
-    readonly endsAt?: string;
-    readonly entryTier: WorkspaceCoworkProductTier | "meeting-room";
-    readonly coffee?: boolean;
-    readonly monitorOption?: WorkspaceProductMonitorOption;
-  };
+  readonly reservation: ReservationOrderData;
 }) => {
   const interval = unsafeNormalizeReservationInterval(input.reservation);
   const productCoffee = getReservationProductCoffee(input.reservation);
@@ -586,10 +573,28 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     );
 
     const availability = yield* WorkspaceAvailabilityService;
+    const reservationInterval = unsafeNormalizeReservationInterval(
+      input.reservation
+    );
+    const reservationDate = Match.value(input.reservation).pipe(
+      Match.when({ entryTier: "meeting-room" }, () =>
+        getReservationDate({
+          interval: reservationInterval,
+          timeZone: workspaceSiteConstants.location.timeZone,
+        })
+      ),
+      Match.orElse((coworkReservation) => coworkReservation.date)
+    );
     const availabilitySelection = Match.value(quote.order).pipe(
-      Match.tag("meeting-room", () => ({ _tag: "meeting-room" as const })),
+      Match.tag("meeting-room", () => ({
+        _tag: "meeting-room" as const,
+        date: reservationDate,
+        startsAt: reservationInterval.startsAt,
+        endsAt: reservationInterval.endsAt,
+      })),
       Match.tag("cowork", (coworkOrder) => ({
         _tag: "cowork" as const,
+        date: reservationDate,
         entryTier: coworkOrder.tier,
         ...("monitorOption" in coworkOrder && {
           monitorOption: coworkOrder.monitorOption,
@@ -597,15 +602,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       })),
       Match.exhaustive
     );
-    yield* availability.ensureAvailable({
-      date: getReservationDate({
-        interval: input.reservation,
-        timeZone: workspaceSiteConstants.location.timeZone,
-      }),
-      startsAt: input.reservation.startsAt,
-      endsAt: input.reservation.endsAt,
-      ...availabilitySelection,
-    });
+    yield* availability.ensureAvailable(availabilitySelection);
     yield* Effect.logDebug("Workspace reservation availability confirmed");
 
     const customerName = splitCustomerName(input.reservation.name);

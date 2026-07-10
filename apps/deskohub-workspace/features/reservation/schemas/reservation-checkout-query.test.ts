@@ -57,23 +57,27 @@ describe("getWorkspaceAvailabilityQueryFromReservationSearchParams", () => {
       endsAt: "11:30",
     });
 
-    expect(query).toMatchObject({
+    expect(query).toEqual({
+      _tag: "cowork",
       date: "2099-06-10",
-      startsAt: "2099-06-09T22:00:00Z",
-      endsAt: "2099-06-10T22:00:00Z",
+      entryTier: "basic",
+      from: expect.any(String),
+      to: expect.any(String),
     });
   });
 
-  test("falls back to all-day availability for incomplete interval query params", () => {
+  test("ignores incomplete interval query params", () => {
     const query = getWorkspaceAvailabilityQueryFromReservationSearchParams({
       date: "2099-06-10",
       startsAt: "09:00",
     });
 
-    expect(query).toMatchObject({
+    expect(query).toEqual({
+      _tag: "cowork",
       date: "2099-06-10",
-      startsAt: "2099-06-09T22:00:00Z",
-      endsAt: "2099-06-10T22:00:00Z",
+      entryTier: "basic",
+      from: expect.any(String),
+      to: expect.any(String),
     });
   });
 });

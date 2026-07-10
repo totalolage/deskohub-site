@@ -92,24 +92,6 @@ export type StoredMeetingRoomReservationDetails =
 export type StoredWorkspaceReservationDetails =
   typeof storedWorkspaceReservationDetailsEffectSchema.Type;
 
-export type WorkspaceReservationDetailsEntryTierInput<
-  Details extends
-    StoredWorkspaceReservationDetails = StoredWorkspaceReservationDetails,
-> = Details extends {
-  readonly _tag: "cowork";
-  readonly tier: unknown;
-}
-  ? Omit<Details, "_tag" | "tier"> & {
-      readonly entryTier: Details["tier"];
-    }
-  : Details extends { readonly _tag: "meeting-room" }
-    ? Omit<Details, "_tag"> & {
-        readonly entryTier: Details["_tag"];
-        readonly coffee?: never;
-        readonly monitorOption?: never;
-      }
-    : never;
-
 export const storedWorkspaceReservationDetailsSchema = makeEffectSchemaParser(
   storedWorkspaceReservationDetailsEffectSchema,
   { onExcessProperty: "error" }
