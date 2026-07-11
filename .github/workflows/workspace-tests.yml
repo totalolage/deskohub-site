@@ -69,7 +69,15 @@ jobs:
 
       - run: agent-browser install --with-deps
 
-      - run: bun run e2e:checkout
+      - name: Migrate E2E database
+        run: bun run db:migrate
+        working-directory: apps/deskohub-workspace
+        env:
+          DATABASE_URL: ${{ secrets.WORKSPACE_E2E_DATABASE_URL }}
+          DATABASE_URL_UNPOOLED: ${{ secrets.WORKSPACE_E2E_DATABASE_URL_UNPOOLED }}
+
+      - name: Run checkout E2E
+        run: bun run e2e:checkout
         working-directory: apps/deskohub-workspace
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}

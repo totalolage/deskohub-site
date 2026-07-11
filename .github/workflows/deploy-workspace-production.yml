@@ -1,0 +1,86 @@
+name: Deploy Workspace Production
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .vercelignore
+      - .github/workflows/deploy-workspace-production.yml
+      - apps/deskohub-workspace/**
+      - packages/**
+      - bun.lock
+      - package.json
+      - tsconfig.json
+      - turbo.json
+  workflow_dispatch:
+
+concurrency:
+  group: workspace-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: Production – deskohub-workspace-site
+      url: ${{ steps.deploy.outputs.url }}
+    env:
+      NEON_API_KEY: ${{ secrets.NEON_API_KEY }}
+      NEON_PROJECT_ID: ${{ vars.NEON_PROJECT_ID }}
+      VERCEL_ORG_ID: team_MgMQ4MEWijWnYa1R48C2JU5e
+      VERCEL_PROJECT_ID: prj_7FliQBcbBiBwGaO2JLrigicnXCRd
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build staged production deployment
+        id: deploy
+        run: |
+          set -euo pipefail
+
+          deployment_output="$(bunx vercel@54.9.1 deploy \
+            --prod \
+            --skip-domain \
+            --yes \
+            --archive=tgz \
+            --cwd . \
+            --token "$VERCEL_TOKEN")"
+          printf '%s\n' "$deployment_output"
+
+          deployment_url="$(printf '%s\n' "$deployment_output" | grep -Eo 'https://[^[:space:]]+\.vercel\.app' | tail -n 1)"
+          if [ -z "$deployment_url" ]; then
+            echo "Vercel did not return a deployment URL" >&2
+            exit 1
+          fi
+
+          echo "url=$deployment_url" >> "$GITHUB_OUTPUT"
+
+      - name: Migrate production database
+        working-directory: apps/deskohub-workspace
+        run: |
+          set -euo pipefail
+
+          database_url="$(bunx neonctl@2.30.1 connection-string \
+            --project-id "$NEON_PROJECT_ID" \
+            --role-name neondb_owner \
+            --database-name neondb \
+            --api-key "$NEON_API_KEY")"
+          echo "::add-mask::$database_url"
+
+          DATABASE_URL="$database_url" \
+            DATABASE_URL_UNPOOLED="$database_url" \
+            bun run db:migrate
+
+      - name: Promote production deployment
+        run: bunx vercel@54.9.1 promote "${{ steps.deploy.outputs.url }}" --yes --timeout 10m --token "$VERCEL_TOKEN"
