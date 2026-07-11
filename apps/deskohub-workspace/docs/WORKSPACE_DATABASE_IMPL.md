@@ -87,8 +87,6 @@ Recommended indexes:
 checkout_details must conform to a strict JSON schema summarised below:
 
 type CheckoutDetailsJson = {
-  schema: "workspace-checkout-details";
-  schemaVersion: 1;
   locale: "cs-CZ" | "en-US";
   reservation: {
     tier: "basic" | "plus" | "profi";

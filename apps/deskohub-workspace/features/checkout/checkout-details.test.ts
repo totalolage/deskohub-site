@@ -45,8 +45,6 @@ describe("checkout details persistence", () => {
       coffee: false,
     });
     const details = checkoutDetailsJsonSchema.parse({
-      schema: "workspace-checkout-details",
-      schemaVersion: 1,
       locale: "en-US",
       reservation: {
         _tag: "cowork",
@@ -88,8 +86,6 @@ describe("checkout details persistence", () => {
     });
 
     const details = checkoutDetailsJsonSchema.parse({
-      schema: "workspace-checkout-details",
-      schemaVersion: 1,
       locale: "en-US",
       reservation: {
         _tag: "meeting-room",
@@ -130,8 +126,6 @@ describe("checkout details persistence", () => {
 
     expect(() =>
       checkoutDetailsJsonSchema.parse({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
           _tag: "cowork",
@@ -151,8 +145,6 @@ describe("checkout details persistence", () => {
 
     expect(() =>
       checkoutDetailsJsonSchema.parse({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
           _tag: "cowork",

@@ -311,8 +311,6 @@ const buildCheckoutDetailsForPayment = (input: {
   );
 
   return {
-    schema: "workspace-checkout-details",
-    schemaVersion: 1,
     locale: input.locale,
     reservation,
     payment: {

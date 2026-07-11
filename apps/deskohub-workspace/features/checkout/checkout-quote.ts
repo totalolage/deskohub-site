@@ -34,8 +34,6 @@ import type {
   StoredMeetingRoomReservationDetails,
 } from "@/features/reservation/schemas/stored-reservation-details";
 
-export const workspaceCheckoutQuoteSchemaVersion = 1 as const;
-
 export type {
   CheckoutSummary,
   CheckoutSummaryItem,
@@ -78,8 +76,6 @@ export type WorkspaceCheckoutOrderInput =
     };
 
 export type WorkspaceCheckoutQuote = {
-  readonly schema: "workspace-checkout-quote";
-  readonly schemaVersion: typeof workspaceCheckoutQuoteSchemaVersion;
   readonly order: WorkspaceCheckoutOrder;
   readonly summary: CheckoutSummary;
   readonly fingerprint: string;
@@ -334,8 +330,6 @@ const getCheckoutQuoteCanonicalPayload = (
   const order = getCanonicalCheckoutOrder(quote.order, interval);
 
   return JSON.stringify({
-    schema: quote.schema,
-    schemaVersion: quote.schemaVersion,
     order,
     currency: quote.summary.total.currency,
     exponent: quote.summary.total.exponent,
@@ -445,14 +439,10 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
   });
 
   const summary: CheckoutSummary = {
-    schema: "workspace-checkout-summary",
-    schemaVersion: workspaceCheckoutQuoteSchemaVersion,
     sections,
     total: pricing.expectedPrice,
   };
   const quoteWithoutFingerprint = {
-    schema: "workspace-checkout-quote" as const,
-    schemaVersion: workspaceCheckoutQuoteSchemaVersion,
     order: normalizedOrder,
     summary,
     payment: {

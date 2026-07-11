@@ -290,8 +290,6 @@ const checkoutDetailsPaymentCustomerDiscountEffectSchema = EffectSchema.Struct({
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
 // added here or as local database columns.
 export const checkoutDetailsJsonEffectSchema = EffectSchema.Struct({
-  schema: EffectSchema.Literal("workspace-checkout-details"),
-  schemaVersion: EffectSchema.Literal(1),
   locale: EffectSchema.Literals(locales),
   reservation: checkoutDetailsReservationEffectSchema,
   payment: EffectSchema.Struct({

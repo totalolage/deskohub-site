@@ -212,8 +212,6 @@ const buildReservationCheckoutDetails = (input: {
   );
 
   return {
-    schema: "workspace-checkout-details",
-    schemaVersion: 1,
     locale: input.locale,
     reservation: checkoutReservation,
     payment: {

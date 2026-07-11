@@ -110,9 +110,6 @@ Recommended `jsonb` shape:
 
 ```ts
 type CheckoutDetailsJson = {
-  schema: "workspace-checkout-details";
-  schemaVersion: 1;
-
   locale: "cs-CZ" | "en-US";
 
   reservation: {

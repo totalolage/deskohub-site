@@ -13,8 +13,6 @@ describe("createWorkspaceDotyposReservation", () => {
   test("localizes the product name in the Dotypos reservation note", async () => {
     let reservationInput: CreateDotyposReservationInput | undefined;
     const checkoutDetails = {
-      schema: "workspace-checkout-details",
-      schemaVersion: 1,
       locale: "cs-CZ",
       reservation: {
         _tag: "meeting-room",

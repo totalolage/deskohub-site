@@ -43,8 +43,6 @@ export const checkoutSummarySectionEffectSchema = Schema.Union([
 ]);
 
 export const checkoutSummaryEffectSchema = Schema.Struct({
-  schema: Schema.Literal("workspace-checkout-summary"),
-  schemaVersion: Schema.Literal(1),
   sections: Schema.Array(checkoutSummarySectionEffectSchema),
   total: nonNegativeWorkspaceMoneyEffectSchema,
 });

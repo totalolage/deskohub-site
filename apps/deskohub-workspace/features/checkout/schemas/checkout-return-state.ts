@@ -226,16 +226,3 @@ export const getCheckoutReturnStateReservation = (
   checkoutReturnStateReservationSchema.parse(
     toCheckoutReturnStateReservationPayload(reservation)
   );
-
-export const checkoutReturnStateJsonEffectSchema = EffectSchema.Struct({
-  schema: EffectSchema.Literal("workspace-checkout-return-state"),
-  schemaVersion: EffectSchema.Literal(1),
-  reservation: checkoutReturnStateReservationEffectSchema,
-});
-
-export type CheckoutReturnStateJson =
-  typeof checkoutReturnStateJsonEffectSchema.Type;
-
-export const checkoutReturnStateJsonSchema = makeEffectSchemaParser(
-  checkoutReturnStateJsonEffectSchema
-);
