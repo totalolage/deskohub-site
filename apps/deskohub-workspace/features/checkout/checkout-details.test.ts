@@ -39,7 +39,8 @@ const legalEvidenceMap = legalEvidenceMapSchema.parse({
 describe("checkout details persistence", () => {
   test("persists quote summary, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       date: "2099-06-10",
       coffee: false,
     });
@@ -81,7 +82,7 @@ describe("checkout details persistence", () => {
 
   test("persists custom reservation intervals", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T07:00:00Z",
       endsAt: "2099-06-10T11:00:00Z",
     });
@@ -113,7 +114,8 @@ describe("checkout details persistence", () => {
   test("accepts negative discount rows but rejects negative expected totals", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic",
+        kind: "cowork",
+        tier: "basic",
         date: "2099-06-10",
         coffee: false,
       },

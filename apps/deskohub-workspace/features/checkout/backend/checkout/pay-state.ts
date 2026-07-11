@@ -9,9 +9,9 @@ import {
 } from "effect";
 import type {
   CheckoutSummaryChangedKeys,
-  WorkspaceCheckoutOrderInput,
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
+import { toWorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quote";
 import {
   checkoutReturnStateReservationEffectSchema,
   getCheckoutReturnStateReservation,
@@ -22,6 +22,7 @@ import {
 } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
+import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
 import { makeWorkspaceReservationDetailsWithFieldsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
@@ -147,12 +148,7 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
-  readonly reservation: WorkspaceCheckoutOrderInput & {
-    readonly name: string;
-    readonly email: string;
-    readonly phone: string;
-    readonly message?: string;
-  };
+  readonly reservation: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
@@ -277,7 +273,16 @@ export const buildSignedPayState = (
   }
 
   const nowMilliseconds = getNowMilliseconds(options);
-  const reservation = getCheckoutReturnStateReservation(input.reservation);
+  const checkoutOrder = toWorkspaceCheckoutOrderInput(input.reservation);
+  const reservation = getCheckoutReturnStateReservation({
+    ...checkoutOrder,
+    name: input.reservation.name,
+    email: input.reservation.email,
+    phone: input.reservation.phone,
+    ...(input.reservation.message !== undefined && {
+      message: input.reservation.message,
+    }),
+  });
   const iat = Math.floor(nowMilliseconds / 1000);
   const exp = Math.floor(
     (nowMilliseconds +

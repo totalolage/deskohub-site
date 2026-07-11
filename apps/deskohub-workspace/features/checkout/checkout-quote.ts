@@ -20,6 +20,7 @@ import {
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
+import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import {
   coworkReservationIntervalEffectSchema,
   getReservationDurationMinutes,
@@ -52,23 +53,26 @@ export type WorkspaceCheckoutOrder =
 
 export type WorkspaceCheckoutOrderInput =
   | {
-      readonly entryTier: "basic";
+      readonly kind: "cowork";
+      readonly tier: "basic";
       readonly date: string;
       readonly coffee: boolean;
     }
   | {
-      readonly entryTier: "plus";
+      readonly kind: "cowork";
+      readonly tier: "plus";
       readonly date: string;
       readonly coffee: true;
     }
   | {
-      readonly entryTier: "profi";
+      readonly kind: "cowork";
+      readonly tier: "profi";
       readonly date: string;
       readonly coffee: true;
       readonly monitorOption: WorkspaceProductMonitorOption;
     }
   | {
-      readonly entryTier: "meeting-room";
+      readonly kind: "meeting-room";
       readonly startsAt: string;
       readonly endsAt: string;
     };
@@ -97,26 +101,57 @@ export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
   readonly message: string;
 }> {}
 
+export const toWorkspaceCheckoutOrderInput = (
+  reservation: ReservationOrderData
+): WorkspaceCheckoutOrderInput =>
+  Match.value(reservation).pipe(
+    Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) => ({
+      kind: "meeting-room" as const,
+      startsAt: meetingRoomReservation.startsAt,
+      endsAt: meetingRoomReservation.endsAt,
+    })),
+    Match.when({ entryTier: "basic" }, (basicReservation) => ({
+      kind: "cowork" as const,
+      tier: "basic" as const,
+      date: basicReservation.date,
+      coffee: basicReservation.coffee,
+    })),
+    Match.when({ entryTier: "plus" }, (plusReservation) => ({
+      kind: "cowork" as const,
+      tier: "plus" as const,
+      date: plusReservation.date,
+      coffee: true as const,
+    })),
+    Match.when({ entryTier: "profi" }, (profiReservation) => ({
+      kind: "cowork" as const,
+      tier: "profi" as const,
+      date: profiReservation.date,
+      coffee: true as const,
+      monitorOption: profiReservation.monitorOption,
+    })),
+    Match.exhaustive
+  );
+
 const toWorkspaceCheckoutOrder = (
   order: WorkspaceCheckoutOrderInput
 ): WorkspaceCheckoutOrder =>
   Match.value(order).pipe(
-    Match.when({ entryTier: "meeting-room" }, (meetingRoomOrder) => ({
+    Match.when({ kind: "meeting-room" }, (meetingRoomOrder) => ({
       _tag: "meeting-room" as const,
       startsAt: meetingRoomOrder.startsAt,
       endsAt: meetingRoomOrder.endsAt,
     })),
-    Match.when({ entryTier: "basic" }, (basicOrder) => ({
+    Match.when({ kind: "cowork", tier: "basic" }, (basicOrder) => ({
       _tag: "cowork" as const,
       tier: "basic" as const,
       coffee: basicOrder.coffee,
     })),
-    Match.when({ entryTier: "plus" }, () => ({
+    Match.when({ kind: "cowork", tier: "plus" }, () => ({
       _tag: "cowork" as const,
       tier: "plus" as const,
       coffee: true as const,
     })),
-    Match.when({ entryTier: "profi" }, (profiOrder) => ({
+    Match.when({ kind: "cowork", tier: "profi" }, (profiOrder) => ({
       _tag: "cowork" as const,
       tier: "profi" as const,
       coffee: true as const,
@@ -129,7 +164,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (input: WorkspaceCheckoutOrderInput) {
   const intervalSchema =
-    input.entryTier === "meeting-room"
+    input.kind === "meeting-room"
       ? meetingRoomReservationIntervalEffectSchema
       : coworkReservationIntervalEffectSchema;
   const interval = yield* Schema.decodeUnknownEffect(intervalSchema)(

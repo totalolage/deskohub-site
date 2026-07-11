@@ -4,7 +4,10 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import {
+  buildWorkspaceCheckoutQuote,
+  toWorkspaceCheckoutOrderInput,
+} from "@/features/checkout/checkout-quote";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
@@ -31,8 +34,7 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
 
 const reservationData: ReservationOrderData = {
   entryTier: "profi",
-  startsAt: "2026-06-19T22:00:00Z",
-  endsAt: "2026-06-20T22:00:00Z",
+  date: "2026-06-20",
   coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
@@ -45,7 +47,9 @@ const buildPayStateToken = async (
   data: ReservationOrderData = reservationData
 ) => {
   const { buildSignedPayState, sealPayState } = await import("./pay-state");
-  const quote = buildWorkspaceCheckoutQuote(data);
+  const quote = buildWorkspaceCheckoutQuote(
+    toWorkspaceCheckoutOrderInput(data)
+  );
   return sealPayState(
     buildSignedPayState({
       locale: "en-US",

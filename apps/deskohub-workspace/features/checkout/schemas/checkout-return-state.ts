@@ -193,23 +193,23 @@ const toCheckoutReturnStateReservationPayload = (
   const base = getCheckoutReturnStateReservationBase(reservation, interval);
 
   return Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, () => ({
+    Match.when({ kind: "meeting-room" }, () => ({
       _tag: "meeting-room" as const,
       ...base,
     })),
-    Match.when({ entryTier: "basic" }, (coworkReservation) => ({
+    Match.when({ kind: "cowork", tier: "basic" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "basic" as const,
       ...base,
       coffee: coworkReservation.coffee,
     })),
-    Match.when({ entryTier: "plus" }, () => ({
+    Match.when({ kind: "cowork", tier: "plus" }, () => ({
       _tag: "cowork" as const,
       tier: "plus" as const,
       ...base,
       coffee: true as const,
     })),
-    Match.when({ entryTier: "profi" }, (coworkReservation) => ({
+    Match.when({ kind: "cowork", tier: "profi" }, (coworkReservation) => ({
       _tag: "cowork" as const,
       tier: "profi" as const,
       ...base,

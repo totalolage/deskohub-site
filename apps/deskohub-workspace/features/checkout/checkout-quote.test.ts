@@ -12,7 +12,8 @@ describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
     const quote = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
 
@@ -33,7 +34,8 @@ describe("workspace checkout quotes", () => {
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: true,
     });
 
@@ -53,7 +55,8 @@ describe("workspace checkout quotes", () => {
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "plus",
+      kind: "cowork",
+      tier: "plus",
       coffee: true,
     });
 
@@ -75,7 +78,8 @@ describe("workspace checkout quotes", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
         ...coworkReservationDate,
-        entryTier: "basic",
+        kind: "cowork",
+        tier: "basic",
         coffee: true,
       },
       {
@@ -105,7 +109,8 @@ describe("workspace checkout quotes", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
         ...coworkReservationDate,
-        entryTier: "basic",
+        kind: "cowork",
+        tier: "basic",
         coffee: false,
       },
       {
@@ -124,13 +129,15 @@ describe("workspace checkout quotes", () => {
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const coffeeDiscountedToSameTotal = buildWorkspaceCheckoutQuote(
       {
         ...coworkReservationDate,
-        entryTier: "basic",
+        kind: "cowork",
+        tier: "basic",
         coffee: true,
       },
       {
@@ -152,7 +159,8 @@ describe("workspace checkout quotes", () => {
 
   test("sanitizes runtime contact and consent fields from quote output", () => {
     const orderWithRuntimeExtras = {
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       date: "2099-06-10",
       coffee: false,
       legalConsent: true,
@@ -180,11 +188,13 @@ describe("workspace checkout quotes", () => {
   test("ignores runtime contact and consent fields when fingerprinting", () => {
     const cleanQuote = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "plus",
+      kind: "cowork",
+      tier: "plus",
       coffee: true,
     });
     const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
-      entryTier: "plus",
+      kind: "cowork",
+      tier: "plus",
       date: "2099-06-10",
       coffee: true,
       legalConsent: true,
@@ -200,16 +210,18 @@ describe("workspace checkout quotes", () => {
   test("excludes cowork dates but fingerprints meeting-room intervals", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const differentCoworkDate = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
       date: "2099-06-11",
     });
     const morningOnly = buildWorkspaceCheckoutQuote({
-      entryTier: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T07:00:00Z",
       endsAt: "2099-06-10T11:00:00Z",
     });
@@ -226,17 +238,17 @@ describe("workspace checkout quotes", () => {
 
   test("prices meeting room reservations by approved duration", () => {
     const oneHour = buildWorkspaceCheckoutQuote({
-      entryTier: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T07:00:00Z",
       endsAt: "2099-06-10T08:00:00Z",
     });
     const fourHours = buildWorkspaceCheckoutQuote({
-      entryTier: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T07:00:00Z",
       endsAt: "2099-06-10T11:00:00Z",
     });
     const fullDay = buildWorkspaceCheckoutQuote({
-      entryTier: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T13:00:00Z",
       endsAt: "2099-06-11T13:00:00Z",
     });
@@ -255,7 +267,7 @@ describe("workspace checkout quotes", () => {
   test("rejects unsupported product and interval combinations", () => {
     expect(() =>
       buildWorkspaceCheckoutQuote({
-        entryTier: "meeting-room",
+        kind: "meeting-room",
         startsAt: "2099-06-10T07:30:00Z",
         endsAt: "2099-06-10T08:30:00Z",
       })
@@ -265,12 +277,14 @@ describe("workspace checkout quotes", () => {
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const withCoffee = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: true,
     });
 
@@ -285,7 +299,8 @@ describe("workspace checkout quotes", () => {
   test("detects changed summary currency and exponent", () => {
     const quote = buildWorkspaceCheckoutQuote({
       ...coworkReservationDate,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const changedCurrency = {

@@ -1,7 +1,10 @@
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import {
+  buildWorkspaceCheckoutQuote,
+  toWorkspaceCheckoutOrderInput,
+} from "@/features/checkout/checkout-quote";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 const {
@@ -27,8 +30,7 @@ const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 
 const baseReservation = {
   entryTier: "profi" as const,
-  startsAt: "2026-06-19T22:00:00Z",
-  endsAt: "2026-06-20T22:00:00Z",
+  date: "2026-06-20",
   coffee: true,
   monitorOption: "2x27-qhd" as const,
   name: "Ada Lovelace",
@@ -42,7 +44,9 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
     {
       locale: "en-US",
       reservation: baseReservation,
-      quote: buildWorkspaceCheckoutQuote(baseReservation),
+      quote: buildWorkspaceCheckoutQuote(
+        toWorkspaceCheckoutOrderInput(baseReservation)
+      ),
       orderId: "pay-state-test-order-id",
       ttlMilliseconds: 10 * 60 * 1000,
     },
@@ -123,7 +127,9 @@ describe("Pay URL state", () => {
       {
         locale: "en-US",
         reservation,
-        quote: buildWorkspaceCheckoutQuote(reservation),
+        quote: buildWorkspaceCheckoutQuote(
+          toWorkspaceCheckoutOrderInput(reservation)
+        ),
         orderId: "meeting-room-pay-state-test",
       },
       { keys: [fixedKey], now: () => fixedNow }
@@ -147,7 +153,9 @@ describe("Pay URL state", () => {
         buildSignedPayState({
           locale: "en-US",
           reservation: baseReservation,
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          quote: buildWorkspaceCheckoutQuote(
+            toWorkspaceCheckoutOrderInput(baseReservation)
+          ),
           orderId: "missing-key-test",
         })
       ).toThrow("CHECKOUT_PAY_STATE_KEYS");

@@ -16,6 +16,7 @@ import { env } from "@/env";
 import {
   buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
+  toWorkspaceCheckoutOrderInput,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
@@ -780,10 +781,13 @@ export const CheckoutServiceLive = Layer.effect(
           const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
             data
           ).pipe(Effect.provideService(DotyposService, dotypos));
-          const quote = yield* buildWorkspaceCheckoutQuoteEffect(data, {
-            customerDiscount,
-            currencyOverride: getNexiCheckoutCurrencyOverride(),
-          });
+          const quote = yield* buildWorkspaceCheckoutQuoteEffect(
+            toWorkspaceCheckoutOrderInput(data),
+            {
+              customerDiscount,
+              currencyOverride: getNexiCheckoutCurrencyOverride(),
+            }
+          );
           yield* Effect.annotateLogsScoped({ quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");
           yield* Effect.logDebug(

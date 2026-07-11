@@ -35,7 +35,8 @@ describe("CheckoutSummary", () => {
   test("renders server-provided summary rows and amounts without a duplicate title", () => {
     const quote = buildWorkspaceCheckoutQuote({
       ...coworkReservationInterval,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: true,
     });
 
@@ -52,7 +53,8 @@ describe("CheckoutSummary", () => {
   test("localizes product summary item keys", () => {
     const quote = buildWorkspaceCheckoutQuote({
       ...coworkReservationInterval,
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
 
@@ -66,7 +68,7 @@ describe("CheckoutSummary", () => {
 
   test("localizes meeting room duration item keys", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "meeting-room",
+      kind: "meeting-room",
       coffee: false,
       startsAt: "2099-06-10T09:00",
       endsAt: "2099-06-10T13:00",
