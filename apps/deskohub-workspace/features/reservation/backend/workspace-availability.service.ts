@@ -30,8 +30,10 @@ import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import {
+  getReservationDate,
   getReservationPragueDateRange,
   isDefaultReservationInterval,
+  type ReservationDateOrInterval,
   type ReservationInterval,
   type ReservationIntervalError,
 } from "../reservation-interval";
@@ -74,14 +76,13 @@ export class WorkspaceTableUnavailableError extends Data.TaggedError(
   readonly reservation: WorkspaceTableUnavailableReservation;
 }> {}
 
-type WorkspaceAvailabilityEnsureQuery = {
-  readonly date: string;
-} & Data.TaggedEnum<{
+type WorkspaceAvailabilityEnsureQuery = Data.TaggedEnum<{
   cowork: {
+    readonly date: string;
     readonly entryTier: WorkspaceCoworkProductTier;
     readonly monitorOption?: WorkspaceProductMonitorOption;
   };
-  "meeting-room": Partial<ReservationInterval>;
+  "meeting-room": ReservationInterval;
 }>;
 
 export interface WorkspaceAvailabilityService {
@@ -165,8 +166,26 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         yield* Effect.logInfo("Workspace availability computation started");
 
         const dates = yield* getDateRange(query.from, query.to);
-        const date = query.date ? yield* parsePlainDate(query.date) : undefined;
-        yield* Effect.annotateLogsScoped({ dates, date });
+        const selectedDateRange = yield* Match.value(query).pipe(
+          Match.tag("meeting-room", ({ startsAt, endsAt }) =>
+            startsAt && endsAt
+              ? getAvailabilityDateRange({ startsAt, endsAt })
+              : Effect.succeed(undefined)
+          ),
+          Match.tag("cowork", ({ date }) =>
+            date
+              ? getAvailabilityDateRange({ date })
+              : Effect.succeed(undefined)
+          ),
+          Match.exhaustive
+        );
+        const selectedDate = selectedDateRange
+          ? Temporal.Instant.fromEpochMilliseconds(selectedDateRange.startMs)
+              .toZonedDateTimeISO(reservationTimeZone)
+              .toPlainDate()
+              .toString()
+          : undefined;
+        yield* Effect.annotateLogsScoped({ dates, selectedDate });
 
         const { tables, reservations, limitations } = yield* loadInventory({
           from: query.from,
@@ -174,27 +193,27 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         });
         const fullyOccupiedDates = getFullyOccupiedCalendarDates(limitations);
         const occupancyByDate = new Map<string, Map<string, number>>();
-        const selectedDate = date ? plainDateToString(date) : undefined;
-        const selectedInterval =
-          query._tag === "meeting-room"
-            ? { startsAt: query.startsAt, endsAt: query.endsAt }
-            : {};
-        const selectedDateRange = selectedDate
-          ? yield* getAvailabilityDateRange(selectedDate, selectedInterval)
-          : undefined;
-        const shouldCheckRangeDateSelection =
-          !selectedDate ||
-          isDefaultReservationInterval({
-            date: selectedDate,
-            ...selectedInterval,
-          });
+        const shouldCheckRangeDateSelection = Match.value(query).pipe(
+          Match.tag(
+            "meeting-room",
+            ({ startsAt, endsAt }) =>
+              !startsAt ||
+              !endsAt ||
+              isDefaultReservationInterval({ startsAt, endsAt })
+          ),
+          Match.tag(
+            "cowork",
+            ({ date }) => !date || isDefaultReservationInterval({ date })
+          ),
+          Match.exhaustive
+        );
 
         for (const day of dates) {
           const dayKey = plainDateToString(day);
           const range =
             selectedDateRange && dayKey === selectedDate
               ? selectedDateRange
-              : yield* getAvailabilityDateRange(dayKey, {});
+              : yield* getAvailabilityDateRange({ date: dayKey });
           occupancyByDate.set(
             dayKey,
             getWorkspaceTableOccupancyById(reservations, range)
@@ -215,25 +234,24 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
                 : false)
           );
 
-        const selectedDateOccupancy = date
-          ? (occupancyByDate.get(plainDateToString(date)) ??
-            new Map<string, number>())
+        const selectedDateOccupancy = selectedDate
+          ? (occupancyByDate.get(selectedDate) ?? new Map<string, number>())
           : new Map<string, number>();
 
         const result = {
-          date: query.date,
+          date: selectedDate,
           from: query.from,
           to: query.to,
           unavailableDates,
-          unavailableCoworkTiers: date
+          unavailableCoworkTiers: selectedDate
             ? workspaceCoworkTiers.filter((tier) =>
                 isTierUnavailable(tables, selectedDateOccupancy, tier)
               )
             : [],
-          meetingRoomUnavailable: date
+          meetingRoomUnavailable: selectedDate
             ? isMeetingRoomUnavailable(tables, selectedDateOccupancy)
             : false,
-          unavailableMonitorOptions: date
+          unavailableMonitorOptions: selectedDate
             ? workspaceProductMonitorOptions.filter((option) =>
                 isMonitorOptionUnavailable(
                   tables,
@@ -259,7 +277,6 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
             })
           ),
           Effect.annotateLogs({
-            date: query.date,
             from: query.from,
             to: query.to,
             ...Match.value(query).pipe(
@@ -282,13 +299,14 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ query });
         yield* Effect.logInfo("Workspace availability assurance started");
 
-        const interval =
-          query._tag === "meeting-room"
-            ? { startsAt: query.startsAt, endsAt: query.endsAt }
-            : {};
-        const availabilityRange = yield* getAvailabilityTouchedDateRange(
-          query.date,
-          interval
+        const availabilityRange = yield* Match.value(query).pipe(
+          Match.tag("meeting-room", ({ startsAt, endsAt }) =>
+            getAvailabilityTouchedDateRange({ startsAt, endsAt })
+          ),
+          Match.tag("cowork", ({ date }) =>
+            getAvailabilityTouchedDateRange({ date })
+          ),
+          Match.exhaustive
         );
         const availability = yield* getAvailability({
           ...query,
@@ -496,40 +514,41 @@ const parsePlainDate = (date: string) =>
       }),
   });
 
-const getAvailabilityDateRange = (
-  date: string,
-  interval: Partial<ReservationInterval>
-) =>
-  getReservationPragueDateRange({
-    date,
-    startsAt: interval.startsAt,
-    endsAt: interval.endsAt,
-  }).pipe(Effect.mapError(toAvailabilityIntervalError(date)));
+const getAvailabilityDateRange = (input: ReservationDateOrInterval) =>
+  getReservationPragueDateRange(input).pipe(
+    Effect.mapError(
+      toAvailabilityIntervalError("date" in input ? input.date : undefined)
+    )
+  );
 
-const getAvailabilityTouchedDateRange = (
-  date: string,
-  interval: Partial<ReservationInterval>
-) =>
-  getReservationPragueDateRange({
-    date,
-    startsAt: interval.startsAt,
-    endsAt: interval.endsAt,
-  }).pipe(
+const getAvailabilityTouchedDateRange = (input: ReservationDateOrInterval) =>
+  getReservationPragueDateRange(input).pipe(
     Effect.map((range) => {
+      const from =
+        input.date !== undefined
+          ? input.date
+          : getReservationDate({
+              interval: input,
+              timeZone: reservationTimeZone,
+            });
       const to = Temporal.Instant.fromEpochMilliseconds(range.endMs - 1)
         .toZonedDateTimeISO(reservationTimeZone)
         .toPlainDate()
         .toString();
 
-      return { from: date, to };
+      return { from, to };
     }),
-    Effect.mapError(toAvailabilityIntervalError(date))
+    Effect.mapError(
+      toAvailabilityIntervalError("date" in input ? input.date : undefined)
+    )
   );
 
 const toAvailabilityIntervalError =
-  (date: string) => (_error: ReservationIntervalError) =>
+  (date: string | undefined) => (_error: ReservationIntervalError) =>
     new ValidationError({
-      message: `Availability interval must be valid for date: ${date}`,
+      message: date
+        ? `Availability interval must be valid for date: ${date}`
+        : "Availability interval must be valid.",
     });
 
 const plainDateToString = (date: Temporal.PlainDate) => date.toString();

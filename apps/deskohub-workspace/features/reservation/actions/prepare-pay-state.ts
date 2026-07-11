@@ -105,7 +105,6 @@ const deriveReservationIntentKey = (input: {
   );
   const basePayload = {
     schema: "workspace-reservation-intent-key",
-    schemaVersion: 2,
     reservationIntentId: input.reservationIntentId,
     name: normalizeIdempotencyPart(input.reservation.name),
     email: normalizeIdempotencyPart(input.reservation.email),
@@ -553,7 +552,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const availabilitySelection = Match.value(quote.order).pipe(
       Match.tag("meeting-room", () => ({
         _tag: "meeting-room" as const,
-        date: reservationDate,
         startsAt: reservationInterval.startsAt,
         endsAt: reservationInterval.endsAt,
       })),

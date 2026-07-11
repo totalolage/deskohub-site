@@ -16,6 +16,7 @@ describe("parseWorkspaceAvailabilityQuery", () => {
       from: "2099-06-10",
       to: "2099-06-10",
     });
+    expect(query).not.toHaveProperty("date");
   });
 
   test("does not treat meeting room as a cowork entry tier", () => {

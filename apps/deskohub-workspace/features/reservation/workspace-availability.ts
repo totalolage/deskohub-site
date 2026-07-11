@@ -2,7 +2,7 @@ import {
   decodeStandardSchema,
   parseStandardSchema,
 } from "@deskohub/standard-schema";
-import { Schema } from "effect";
+import { Match, Schema } from "effect";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
@@ -35,7 +35,6 @@ export const workspaceAvailabilityQueryEffectSchema = Schema.Union([
   }),
   Schema.TaggedStruct("meeting-room", {
     ...workspaceAvailabilityQueryBaseEffectFields,
-    date: Schema.optional(Schema.String),
     ...reservationIntervalFieldSchemas,
   }),
 ]);
@@ -182,14 +181,18 @@ export const parseWorkspaceAvailabilityQuery = (
       ? getIntervalParam(searchParams, date)
       : {};
 
-  return {
-    _tag: reservationKind,
-    from,
-    to,
-    ...(interval.startsAt && { startsAt: interval.startsAt }),
-    ...(interval.endsAt && { endsAt: interval.endsAt }),
-    ...(date && { date }),
-    ...(entryTier && { entryTier }),
-    ...(reservationKind === "cowork" && monitorOption && { monitorOption }),
-  };
+  const reservationFields = Match.value(reservationKind).pipe(
+    Match.when("meeting-room", () => ({
+      ...(interval.startsAt && { startsAt: interval.startsAt }),
+      ...(interval.endsAt && { endsAt: interval.endsAt }),
+    })),
+    Match.when("cowork", () => ({
+      ...(date && { date }),
+      ...(entryTier && { entryTier }),
+      ...(monitorOption && { monitorOption }),
+    })),
+    Match.exhaustive
+  );
+
+  return { _tag: reservationKind, from, to, ...reservationFields };
 };

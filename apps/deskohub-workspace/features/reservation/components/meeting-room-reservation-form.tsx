@@ -136,7 +136,6 @@ export function MeetingRoomReservationForm({
       selectedInterval
         ? {
             _tag: "meeting-room" as const,
-            date: selectedInterval.date,
             from: selectedInterval.date,
             to: getMeetingRoomAvailabilityToDate(selectedInterval),
             startsAt: selectedInterval.startsAt,

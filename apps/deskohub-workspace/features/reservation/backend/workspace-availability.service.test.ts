@@ -164,7 +164,6 @@ const getAvailability = (input: {
       );
       const service = yield* availability.WorkspaceAvailabilityService;
       const baseQuery = {
-        date: input.date,
         from: input.from ?? testDate,
         to: input.to ?? testDate,
       };
@@ -179,6 +178,7 @@ const getAvailability = (input: {
         : service.getAvailability({
             ...baseQuery,
             _tag: "cowork",
+            date: input.date,
             entryTier: input.entryTier,
             monitorOption: input.monitorOption,
           });
@@ -315,8 +315,9 @@ describe("WorkspaceAvailabilityService", () => {
 
   test("marks a meeting room unavailable after any overlapping booking", async () => {
     const availability = await getAvailability({
-      date: testDate,
       _tag: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T09:00:00Z",
       tables: [
         makeTable({
           id: "room-1",
@@ -356,9 +357,8 @@ describe("WorkspaceAvailabilityService", () => {
   test("uses half-open interval overlap for selected availability", async () => {
     const backToBack = await getAvailability({
       _tag: "meeting-room",
-      date: testDate,
-      startsAt: "14:00",
-      endsAt: "16:00",
+      startsAt: "2099-06-10T12:00:00Z",
+      endsAt: "2099-06-10T14:00:00Z",
       tables: [makeTable({ id: "room-1", tags: ["reservation:meeting-room"] })],
       reservations: [
         makeReservation({
@@ -375,9 +375,8 @@ describe("WorkspaceAvailabilityService", () => {
 
     const overlapping = await getAvailability({
       _tag: "meeting-room",
-      date: testDate,
-      startsAt: "14:00",
-      endsAt: "16:00",
+      startsAt: "2099-06-10T12:00:00Z",
+      endsAt: "2099-06-10T14:00:00Z",
       tables: [makeTable({ id: "room-1", tags: ["reservation:meeting-room"] })],
       reservations: [
         makeReservation({
@@ -490,7 +489,8 @@ describe("WorkspaceAvailabilityService", () => {
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
             _tag: "meeting-room",
-            date: testDate,
+            startsAt: "2099-06-10T08:00:00Z",
+            endsAt: "2099-06-10T09:00:00Z",
           });
         })
       ),
@@ -559,9 +559,8 @@ describe("WorkspaceAvailabilityService", () => {
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
             _tag: "meeting-room",
-            date: testDate,
-            startsAt: "22:00",
-            endsAt: "02:00",
+            startsAt: "2099-06-10T20:00:00Z",
+            endsAt: "2099-06-11T00:00:00Z",
           });
         })
       ),
@@ -596,9 +595,8 @@ describe("WorkspaceAvailabilityService", () => {
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
             _tag: "meeting-room",
-            date: testDate,
-            startsAt: "22:00",
-            endsAt: "02:00",
+            startsAt: "2099-06-10T20:00:00Z",
+            endsAt: "2099-06-11T00:00:00Z",
           });
         })
       ),
@@ -630,9 +628,8 @@ describe("WorkspaceAvailabilityService", () => {
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
             _tag: "meeting-room",
-            date: testDate,
-            startsAt: "10:00",
-            endsAt: "10:00",
+            startsAt: "2099-06-10T08:00:00Z",
+            endsAt: "2099-06-11T08:00:00Z",
           });
         })
       ),
