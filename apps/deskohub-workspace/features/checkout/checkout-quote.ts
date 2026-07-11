@@ -174,10 +174,14 @@ export const toWorkspaceCheckoutOrder = (
 export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (input: WorkspaceCheckoutOrderInput) {
-  const intervalSchema =
-    input.kind === "meeting-room"
-      ? meetingRoomReservationIntervalEffectSchema
-      : coworkReservationIntervalEffectSchema;
+  const intervalSchema = Match.value(input).pipe(
+    Match.when(
+      { kind: "meeting-room" },
+      () => meetingRoomReservationIntervalEffectSchema
+    ),
+    Match.when({ kind: "cowork" }, () => coworkReservationIntervalEffectSchema),
+    Match.exhaustive
+  );
   const interval = yield* Schema.decodeUnknownEffect(intervalSchema)(
     input
   ).pipe(
