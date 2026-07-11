@@ -40,10 +40,7 @@ const keyByteLength = 32;
 
 const CheckoutOrderShapeSchema =
   makeWorkspaceReservationDetailsWithFieldsEffectSchema({
-    cowork: {
-      startsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-      endsAt: EffectSchema.optional(isoDateTimeWithOffsetStringEffectSchema),
-    },
+    cowork: {},
     meetingRoom: {
       startsAt: isoDateTimeWithOffsetStringEffectSchema,
       endsAt: isoDateTimeWithOffsetStringEffectSchema,
@@ -54,6 +51,10 @@ type CheckoutOrderDraft = typeof CheckoutOrderShapeSchema.Type;
 
 const CheckoutOrderSchema = CheckoutOrderShapeSchema.check(
   EffectSchema.makeFilter<CheckoutOrderDraft>((order) => {
+    if (order._tag !== "meeting-room") {
+      return [];
+    }
+
     const intervalIssue = getReservationIntervalValidationIssue(order);
 
     if (intervalIssue) {

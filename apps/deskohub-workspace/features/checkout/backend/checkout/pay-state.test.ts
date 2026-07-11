@@ -15,6 +15,7 @@ const {
   payStateTokenQueryParam,
   sealPayState,
   sealPayStateForUrl,
+  signedPayStateSchema,
 } = await import("./pay-state");
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
@@ -112,6 +113,27 @@ describe("Pay URL state", () => {
     expect(state.reservation).not.toHaveProperty("entryTier");
     expect(state.reservation).not.toHaveProperty("durationMinutes");
     expect(state.quote.order).not.toHaveProperty("startsAt");
+  });
+
+  test("does not retain interval fields on cowork quote orders", () => {
+    const state = buildState();
+    const result = signedPayStateSchema.safeParse({
+      ...state,
+      quote: {
+        ...state.quote,
+        order: {
+          ...state.quote.order,
+          startsAt: "2026-06-19T22:00:00Z",
+          endsAt: "2026-06-20T22:00:00Z",
+        },
+      },
+    });
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.quote.order).not.toHaveProperty("startsAt");
+      expect(result.data.quote.order).not.toHaveProperty("endsAt");
+    }
   });
 
   test("stores meeting room as a reservation tag", () => {

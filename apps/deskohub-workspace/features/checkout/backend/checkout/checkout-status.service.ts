@@ -400,11 +400,11 @@ export const CheckoutStatusServiceLive = Layer.effect(
                     reservationId: reservation.id,
                     status: statusKind,
                   }
-                ).pipe(Effect.as({} satisfies CheckoutStatusReconstruction)),
+                ).pipe(Effect.as<CheckoutStatusReconstruction>({})),
             })
           );
 
-        const resultBase = {
+        const resultBase: CheckoutStatusViewModelBase = {
           orderId: reservation.id,
           returnOutcome: input.returnOutcome,
           status: statusKind,
@@ -419,7 +419,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
                 supportContactPrefill: reconstruction.supportContactPrefill,
               }
             : {}),
-        } satisfies CheckoutStatusViewModelBase;
+        };
 
         const summary = reconstruction.summary;
         const result: CheckoutStatusViewModel =
