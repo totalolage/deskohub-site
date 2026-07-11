@@ -86,7 +86,7 @@ jobs:
         uses: neondatabase/create-branch-action@v6
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
-          branch_name: workspace-checkout-e2e
+          branch_name: workspace-checkout-e2e-${{ github.run_id }}-${{ github.run_attempt }}
           parent_branch: production
           role: neondb_owner
           database: neondb
@@ -128,3 +128,11 @@ jobs:
           path: apps/deskohub-workspace/e2e-artifacts/**
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Delete E2E database branch
+        if: always() && steps.e2e-database.outputs.branch_id != ''
+        uses: neondatabase/delete-branch-action@v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ steps.e2e-database.outputs.branch_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}
