@@ -66,4 +66,4 @@ jobs:
             bun run db:migrate
 
       - name: Promote production deployment
-        run: bunx vercel@54.9.1 promote "${{ steps.deploy.outputs.url }}" --yes --timeout 10m --token "$VERCEL_TOKEN"
+        run: bunx vercel@54.9.1 promote "${{ steps.deploy.outputs.url }}" --scope filip-kalny-projects --yes --timeout 10m --token "$VERCEL_TOKEN"
