@@ -8,7 +8,6 @@ import {
   useAction,
 } from "next-safe-action/hooks";
 import posthog from "posthog-js";
-import { useCallback } from "react";
 
 type WorkspaceActionTransportErrorInput<
   Schema extends StandardSchemaV1 | undefined,
@@ -74,37 +73,33 @@ export function useWorkspaceAction<
   const { actionName, onTransportError, ...hookOptions } = opts;
   const action = useAction(safeActionFn, hookOptions);
 
-  const handleTransportError = useCallback(
-    (error: unknown, input: WorkspaceActionTransportErrorInput<Schema>) => {
-      captureTransportError({ actionName, error });
-      try {
-        onTransportError?.({ error, input });
-      } catch {}
-    },
-    [actionName, onTransportError]
-  );
+  const handleTransportError = (
+    error: unknown,
+    input: WorkspaceActionTransportErrorInput<Schema>
+  ) => {
+    captureTransportError({ actionName, error });
+    try {
+      onTransportError?.({ error, input });
+    } catch {}
+  };
 
-  const executeAsync = useCallback(
-    async (input: Parameters<typeof action.executeAsync>[0]) => {
-      try {
-        return await action.executeAsync(input);
-      } catch (error) {
-        handleTransportError(
-          error,
-          input as WorkspaceActionTransportErrorInput<Schema>
-        );
-        throw error;
-      }
-    },
-    [action, handleTransportError]
-  );
+  const executeAsync = async (
+    input: Parameters<typeof action.executeAsync>[0]
+  ) => {
+    try {
+      return await action.executeAsync(input);
+    } catch (error) {
+      handleTransportError(
+        error,
+        input as WorkspaceActionTransportErrorInput<Schema>
+      );
+      throw error;
+    }
+  };
 
-  const execute = useCallback(
-    (input: Parameters<typeof action.execute>[0]) => {
-      void executeAsync(input).catch(() => undefined);
-    },
-    [executeAsync]
-  );
+  const execute = (input: Parameters<typeof action.execute>[0]) => {
+    void executeAsync(input).catch(() => undefined);
+  };
 
   return {
     ...action,

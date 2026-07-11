@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { type Control, useForm } from "react-hook-form";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type Control, useForm, useWatch } from "react-hook-form";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import {
   formatWorkspaceProductCurrencyAmount,
@@ -248,9 +248,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     mode: "onBlur",
     reValidateMode: "onChange",
   });
-  const selectedTier = form.watch("entryTier");
-  const selectedDate = form.watch("date");
-  const selectedMonitorOption = form.watch("monitorOption");
+  const [selectedTier, selectedDate, selectedMonitorOption] = useWatch({
+    control: form.control,
+    name: ["entryTier", "date", "monitorOption"],
+  });
   const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
   const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
@@ -383,32 +384,36 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     Boolean(preparePayStateResult.data.redirectUrl);
   const isPreparingCheckout = isSendingReservation || hasPreparedPayRedirect;
 
-  const handleSubmit = form.handleSubmit((data) => {
-    if (hasPreparedPayRedirect) return;
+  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+    void form.handleSubmit((data) => {
+      if (hasPreparedPayRedirect) return;
 
-    setSubmissionMessage(null);
-    if (isSelectedReservationUnavailable) {
-      setSubmissionMessage({
-        status: "error",
-        text: selectedReservationUnavailableMessage,
+      setSubmissionMessage(null);
+      if (isSelectedReservationUnavailable) {
+        setSubmissionMessage({
+          status: "error",
+          text: selectedReservationUnavailableMessage,
+        });
+        return;
+      }
+      hasTrackedSuccessfulSubmission.current = false;
+      window.scrollTo({ top: 0, behavior: "instant" });
+      sendReservation({
+        locale,
+        reservationIntentId,
+        legalConsent: data.legalConsent,
+        reservation: {
+          ...data,
+          coffee: tierIncludesCourtesyCoffee(data.entryTier)
+            ? true
+            : data.coffee,
+          monitorOption: tierRequiresMonitorOption(data.entryTier)
+            ? data.monitorOption
+            : undefined,
+        },
       });
-      return;
-    }
-    hasTrackedSuccessfulSubmission.current = false;
-    window.scrollTo({ top: 0, behavior: "instant" });
-    sendReservation({
-      locale,
-      reservationIntentId,
-      legalConsent: data.legalConsent,
-      reservation: {
-        ...data,
-        coffee: tierIncludesCourtesyCoffee(data.entryTier) ? true : data.coffee,
-        monitorOption: tierRequiresMonitorOption(data.entryTier)
-          ? data.monitorOption
-          : undefined,
-      },
-    });
-  });
+    })(event);
+  };
 
   if (isPreparingCheckout) {
     return <CheckoutPayPageSkeleton locale={locale} />;
@@ -571,62 +576,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
 
             <div className="grid gap-5 [grid-template-areas:'date'_'notice'_'coffee'] md:grid-cols-2 md:[grid-template-areas:'date_coffee'_'notice_notice']">
               <div className="[grid-area:date]">
-                <FormField
+                <ReservationDateField
                   control={form.control}
-                  name="date"
-                  render={({ field }) => {
-                    // biome-ignore lint/correctness/useHookAtTopLevel: this ends up being a self contained component
-                    const [open, setOpen] = useState(false);
-                    return (
-                      <FormItem>
-                        <FormLabel
-                          className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
-                          required
-                        >
-                          {m.reservationDateLabel({}, { locale })}
-                        </FormLabel>
-                        <Popover open={open} onOpenChange={setOpen}>
-                          <PopoverTrigger asChild>
-                            <FormControl>
-                              <Button
-                                type="button"
-                                variant="secondary"
-                                className={cn(
-                                  "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-                                  !field.value && "text-navy-blue/44"
-                                )}
-                              >
-                                <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                                {formatDisplayDate(field.value, locale)}
-                              </Button>
-                            </FormControl>
-                          </PopoverTrigger>
-                          <PopoverContent align="start" className="w-auto p-3">
-                            <Calendar
-                              mode="single"
-                              selected={parseReservationInputDate(field.value)}
-                              onSelect={(date) => {
-                                if (!date) {
-                                  return;
-                                }
-
-                                field.onChange(formatDateForInput(date));
-                                setOpen(false);
-                              }}
-                              disabled={[
-                                { before: new Date() },
-                                (date) =>
-                                  unavailableDates.has(
-                                    formatDateForInput(date)
-                                  ),
-                              ]}
-                            />
-                          </PopoverContent>
-                        </Popover>
-                        <FormMessage />
-                      </FormItem>
-                    );
-                  }}
+                  locale={locale}
+                  unavailableDates={unavailableDates}
                 />
               </div>
 
@@ -908,6 +861,69 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         </Form>
       </CardContent>
     </Card>
+  );
+}
+
+function ReservationDateField({
+  control,
+  locale,
+  unavailableDates,
+}: {
+  readonly control: Control<ReservationInput, unknown, ReservationData>;
+  readonly locale: Locale;
+  readonly unavailableDates: ReadonlySet<string>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <FormField
+      control={control}
+      name="date"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel
+            className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+            required
+          >
+            {m.reservationDateLabel({}, { locale })}
+          </FormLabel>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <FormControl>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn(
+                    "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                    !field.value && "text-navy-blue/44"
+                  )}
+                >
+                  <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                  {formatDisplayDate(field.value, locale)}
+                </Button>
+              </FormControl>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto p-3">
+              <Calendar
+                mode="single"
+                selected={parseReservationInputDate(field.value)}
+                onSelect={(date) => {
+                  if (!date) return;
+
+                  field.onChange(formatDateForInput(date));
+                  setOpen(false);
+                }}
+                disabled={[
+                  { before: new Date() },
+                  (date) => unavailableDates.has(formatDateForInput(date)),
+                ]}
+              />
+            </PopoverContent>
+          </Popover>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
   );
 }
 
