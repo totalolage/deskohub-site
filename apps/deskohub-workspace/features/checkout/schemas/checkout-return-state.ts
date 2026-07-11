@@ -1,4 +1,11 @@
-import { Schema as EffectSchema, Match } from "effect";
+import {
+  Effect,
+  Schema as EffectSchema,
+  Match,
+  Option,
+  SchemaGetter,
+  SchemaIssue,
+} from "effect";
 import type { WorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quote";
 import {
   reservationCustomerEmailEffectSchema,
@@ -11,6 +18,7 @@ import {
   getReservationIntervalValidationIssue,
   isDefaultReservationInterval,
   meetingRoomReservationDurationMinutesEffectSchema,
+  normalizeReservationInterval,
   unsafeNormalizeReservationInterval,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/schemas/reservation-interval";
@@ -38,25 +46,27 @@ const isWholeHourReservationInstant = EffectSchema.is(
   wholeHourReservationInstantEffectSchema
 );
 
-export const checkoutReturnStateReservationEffectSchema =
+const checkoutReturnStateReservationDraftEffectSchema =
   CheckoutReturnStateReservationShapeSchema.check(
     EffectSchema.makeFilter<CheckoutReturnStateReservationDraft>(
       (reservation) => {
+        const intervalIssue =
+          getReservationIntervalValidationIssue(reservation);
+        if (intervalIssue) {
+          return [
+            {
+              path: [intervalIssue.path],
+              issue: intervalIssue.message,
+            },
+          ];
+        }
+
+        const interval = unsafeNormalizeReservationInterval(reservation);
         const issues: Array<{
           readonly path: readonly PropertyKey[];
           readonly issue: string;
         }> = [];
 
-        const intervalIssue =
-          getReservationIntervalValidationIssue(reservation);
-        if (intervalIssue) {
-          issues.push({
-            path: [intervalIssue.path],
-            issue: intervalIssue.message,
-          });
-        }
-
-        const interval = unsafeNormalizeReservationInterval(reservation);
         if (
           reservation._tag === "cowork" &&
           !isDefaultReservationInterval(interval)
@@ -93,51 +103,68 @@ export const checkoutReturnStateReservationEffectSchema =
     )
   );
 
-export const checkoutReturnStateReservationEffectParser =
-  makeEffectSchemaParser(checkoutReturnStateReservationEffectSchema);
-
 export const normalizeCheckoutReturnStateReservation = (
   reservation: CheckoutReturnStateReservationDraft
 ) =>
-  Match.value(reservation).pipe(
-    Match.tag("meeting-room", (meetingRoomReservation) =>
-      unsafeNormalizeReservationInterval(meetingRoomReservation)
-    ),
-    Match.when({ _tag: "cowork", tier: "basic" }, (basicReservation) =>
-      unsafeNormalizeReservationInterval(basicReservation)
-    ),
-    Match.when({ _tag: "cowork", tier: "plus" }, (plusReservation) => ({
-      ...unsafeNormalizeReservationInterval(plusReservation),
-      coffee: true as const,
-    })),
-    Match.when({ _tag: "cowork", tier: "profi" }, (profiReservation) => ({
-      ...unsafeNormalizeReservationInterval(profiReservation),
-      coffee: true as const,
-      monitorOption: profiReservation.monitorOption,
-    })),
-    Match.exhaustive
+  normalizeReservationInterval(reservation).pipe(
+    Effect.map((normalized) =>
+      Match.value(reservation).pipe(
+        Match.tag("meeting-room", (meetingRoomReservation) => ({
+          ...meetingRoomReservation,
+          startsAt: normalized.startsAt,
+          endsAt: normalized.endsAt,
+        })),
+        Match.when({ _tag: "cowork", tier: "basic" }, (basicReservation) => ({
+          ...basicReservation,
+          startsAt: normalized.startsAt,
+          endsAt: normalized.endsAt,
+        })),
+        Match.when({ _tag: "cowork", tier: "plus" }, (plusReservation) => ({
+          ...plusReservation,
+          startsAt: normalized.startsAt,
+          endsAt: normalized.endsAt,
+          coffee: true as const,
+        })),
+        Match.when({ _tag: "cowork", tier: "profi" }, (profiReservation) => ({
+          ...profiReservation,
+          startsAt: normalized.startsAt,
+          endsAt: normalized.endsAt,
+          coffee: true as const,
+          monitorOption: profiReservation.monitorOption,
+        })),
+        Match.exhaustive
+      )
+    )
   );
 
-export type CheckoutReturnStateReservation = ReturnType<
-  typeof normalizeCheckoutReturnStateReservation
->;
+export const checkoutReturnStateReservationEffectSchema =
+  checkoutReturnStateReservationDraftEffectSchema.pipe(
+    EffectSchema.decodeTo(CheckoutReturnStateReservationShapeSchema, {
+      decode: SchemaGetter.transformOrFail((reservation) =>
+        normalizeCheckoutReturnStateReservation(reservation).pipe(
+          Effect.mapError(
+            (error) =>
+              new SchemaIssue.InvalidValue(Option.some(reservation), {
+                message: error.message,
+              })
+          )
+        )
+      ),
+      encode: SchemaGetter.transform(
+        (reservation): CheckoutReturnStateReservationDraft => reservation
+      ),
+    })
+  );
 
-export const checkoutReturnStateReservationSchema = {
-  parse: (input: unknown): CheckoutReturnStateReservation =>
-    normalizeCheckoutReturnStateReservation(
-      checkoutReturnStateReservationEffectParser.parse(input)
-    ),
-  safeParse: (input: unknown) => {
-    try {
-      return {
-        success: true as const,
-        data: checkoutReturnStateReservationSchema.parse(input),
-      };
-    } catch (error) {
-      return { success: false as const, error };
-    }
-  },
-};
+export const checkoutReturnStateReservationEffectParser =
+  makeEffectSchemaParser(checkoutReturnStateReservationEffectSchema);
+
+export type CheckoutReturnStateReservation =
+  typeof checkoutReturnStateReservationEffectSchema.Type;
+
+export const checkoutReturnStateReservationSchema = makeEffectSchemaParser(
+  checkoutReturnStateReservationEffectSchema
+);
 
 export type CheckoutReturnStateReservationInput =
   WorkspaceCheckoutOrderInput & {
@@ -206,40 +233,9 @@ export const checkoutReturnStateJsonEffectSchema = EffectSchema.Struct({
   reservation: checkoutReturnStateReservationEffectSchema,
 });
 
-type CheckoutReturnStateJsonDraft =
+export type CheckoutReturnStateJson =
   typeof checkoutReturnStateJsonEffectSchema.Type;
 
-export type CheckoutReturnStateJson = Omit<
-  CheckoutReturnStateJsonDraft,
-  "reservation"
-> & {
-  readonly reservation: CheckoutReturnStateReservation;
-};
-
-const checkoutReturnStateJsonEffectParser = makeEffectSchemaParser(
+export const checkoutReturnStateJsonSchema = makeEffectSchemaParser(
   checkoutReturnStateJsonEffectSchema
 );
-
-const normalizeCheckoutReturnStateJson = (
-  details: CheckoutReturnStateJsonDraft
-): CheckoutReturnStateJson => ({
-  ...details,
-  reservation: normalizeCheckoutReturnStateReservation(details.reservation),
-});
-
-export const checkoutReturnStateJsonSchema = {
-  parse: (input: unknown): CheckoutReturnStateJson =>
-    normalizeCheckoutReturnStateJson(
-      checkoutReturnStateJsonEffectParser.parse(input)
-    ),
-  safeParse: (input: unknown) => {
-    try {
-      return {
-        success: true as const,
-        data: checkoutReturnStateJsonSchema.parse(input),
-      };
-    } catch (error) {
-      return { success: false as const, error };
-    }
-  },
-};

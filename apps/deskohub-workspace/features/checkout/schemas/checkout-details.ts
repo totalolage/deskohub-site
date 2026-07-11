@@ -1,4 +1,12 @@
-import { Data, Schema as EffectSchema, Match, SchemaGetter } from "effect";
+import {
+  Data,
+  Effect,
+  Schema as EffectSchema,
+  Match,
+  Option,
+  SchemaGetter,
+  SchemaIssue,
+} from "effect";
 import { checkoutSummarySectionEffectSchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
@@ -7,6 +15,7 @@ import {
   getReservationIntervalValidationIssue,
   isDefaultReservationInterval,
   meetingRoomReservationDurationMinutesEffectSchema,
+  normalizeReservationInterval,
   unsafeNormalizeReservationInterval,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/schemas/reservation-interval";
@@ -199,57 +208,44 @@ const getCheckoutDetailsReservationIssues = (
 const normalizeCheckoutDetailsReservation = (
   reservation: CheckoutDetailsReservationDraft
 ) =>
-  Match.value(reservation).pipe(
-    Match.tag("meeting-room", (meetingRoomReservation) => {
-      const normalized = unsafeNormalizeReservationInterval(
-        meetingRoomReservation
-      );
-      return {
-        _tag: "meeting-room" as const,
-        startsAt: normalized.startsAt,
-        endsAt: normalized.endsAt,
-      };
-    }),
-    Match.tag("cowork", (coworkReservation) =>
-      Match.value(coworkReservation).pipe(
-        Match.when({ tier: "basic" }, (basicReservation) => {
-          const normalized =
-            unsafeNormalizeReservationInterval(basicReservation);
-          return {
-            _tag: "cowork" as const,
-            tier: "basic" as const,
-            startsAt: normalized.startsAt,
-            endsAt: normalized.endsAt,
-            coffee: basicReservation.coffee,
-          };
-        }),
-        Match.when({ tier: "plus" }, (plusReservation) => {
-          const normalized =
-            unsafeNormalizeReservationInterval(plusReservation);
-          return {
-            _tag: "cowork" as const,
-            tier: "plus" as const,
-            startsAt: normalized.startsAt,
-            endsAt: normalized.endsAt,
-            coffee: true as const,
-          };
-        }),
-        Match.when({ tier: "profi" }, (profiReservation) => {
-          const normalized =
-            unsafeNormalizeReservationInterval(profiReservation);
-          return {
-            _tag: "cowork" as const,
-            tier: "profi" as const,
-            startsAt: normalized.startsAt,
-            endsAt: normalized.endsAt,
-            coffee: true as const,
-            monitorOption: profiReservation.monitorOption,
-          };
-        }),
+  normalizeReservationInterval(reservation).pipe(
+    Effect.map((normalized) =>
+      Match.value(reservation).pipe(
+        Match.tag("meeting-room", () => ({
+          _tag: "meeting-room" as const,
+          startsAt: normalized.startsAt,
+          endsAt: normalized.endsAt,
+        })),
+        Match.tag("cowork", (coworkReservation) =>
+          Match.value(coworkReservation).pipe(
+            Match.when({ tier: "basic" }, (basicReservation) => ({
+              _tag: "cowork" as const,
+              tier: "basic" as const,
+              startsAt: normalized.startsAt,
+              endsAt: normalized.endsAt,
+              coffee: basicReservation.coffee,
+            })),
+            Match.when({ tier: "plus" }, () => ({
+              _tag: "cowork" as const,
+              tier: "plus" as const,
+              startsAt: normalized.startsAt,
+              endsAt: normalized.endsAt,
+              coffee: true as const,
+            })),
+            Match.when({ tier: "profi" }, (profiReservation) => ({
+              _tag: "cowork" as const,
+              tier: "profi" as const,
+              startsAt: normalized.startsAt,
+              endsAt: normalized.endsAt,
+              coffee: true as const,
+              monitorOption: profiReservation.monitorOption,
+            })),
+            Match.exhaustive
+          )
+        ),
         Match.exhaustive
       )
-    ),
-    Match.exhaustive
+    )
   );
 
 const checkoutDetailsReservationDraftEffectSchema =
@@ -260,7 +256,16 @@ const checkoutDetailsReservationDraftEffectSchema =
 const checkoutDetailsReservationEffectSchema =
   checkoutDetailsReservationDraftEffectSchema.pipe(
     EffectSchema.decodeTo(CheckoutDetailsReservationShapeSchema, {
-      decode: SchemaGetter.transform(normalizeCheckoutDetailsReservation),
+      decode: SchemaGetter.transformOrFail((reservation) =>
+        normalizeCheckoutDetailsReservation(reservation).pipe(
+          Effect.mapError(
+            (error) =>
+              new SchemaIssue.InvalidValue(Option.some(reservation), {
+                message: error.message,
+              })
+          )
+        )
+      ),
       encode: SchemaGetter.transform(
         (reservation): CheckoutDetailsReservationDraft => reservation
       ),
