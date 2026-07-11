@@ -105,6 +105,7 @@ For E2E that validates current code, deploy a fresh preview from the current che
 ```bash
 git status --short
 vercel env pull .env.local --cwd apps/deskohub-workspace
+bun --cwd apps/deskohub-workspace run db:migrate
 vercel --cwd apps/deskohub-workspace --yes
 vercel alias set <preview-url> new.workspace.deskohub.cz --cwd apps/deskohub-workspace
 ```
@@ -130,23 +131,24 @@ The pulled `.env.local` is useful for Vercel preview runtime values such as `DAT
 
 If the project is not linked yet, run Vercel's link flow from `apps/deskohub-workspace` and confirm it points at the Workspace project before deploying.
 
-## Build-Time Migrations
+## Release Migrations
 
-Workspace production Vercel builds intentionally run Drizzle migrations before the app build. Preview/development builds run `scripts/should-migrate-db.ts` and migrate only when the branch differs from `origin/main` under `db/schema`, `db/migrations`, or `drizzle.config.ts`; if the Git diff check cannot run, the build runs migrations rather than risking a stale preview schema. Keep that wiring scoped to the Workspace Vercel project. The app's `build` script remains the atomic core Next build (`next build --turbo`), while Turbo's Workspace build task is responsible for running `i18n:compile` and upstream generation such as `@deskohub/nexi#generate` before that build starts.
+Workspace Vercel builds do not migrate databases. Production releases are serialized by `.github/workflows/deploy-workspace-production.yml`: Vercel first builds a staged production deployment without assigning the production domain, GitHub Actions then runs pending Drizzle migrations against Neon's default production branch, and the ready deployment is promoted only after migration succeeds. Automatic Vercel Git deployments from `main` are disabled for the Workspace project so this workflow is the only production release path.
+
+The checkout E2E workflow provisions an isolated Neon branch from production for each workflow run, migrates it explicitly before deploying a fresh preview, and deletes it when the job finishes. For other preview or development databases, run `bun run db:migrate` before deploying whenever the branch contains pending Workspace migrations. The app's `build` script remains the atomic core Next build (`next build --turbo`), while Turbo's Workspace build task is responsible for running `i18n:compile` and upstream generation such as `@deskohub/nexi#generate` before that build starts.
 
 Workspace runtime variables are listed in the root Turbo `globalPassThroughEnv` so tasks can read the same environment Vercel provides without every secret invalidating cache entries. Individual task `env` lists should contain only variables that affect that task's cache key, such as `DATABASE_URL` for `db:migrate` and public/build-url variables for `build`. The Drizzle config intentionally validates only `DATABASE_URL` for `db:migrate`; the later Next build validates the rest of the Workspace runtime environment.
 
 Do not put Workspace migrations in the shared repository-root `vercel.json`: root-linked Vercel projects for other apps must not advance the Workspace database schema or build the Workspace app. If the Workspace Vercel project remains linked at the repository root instead of `apps/deskohub-workspace`, configure that specific Vercel project's Build Command in Vercel project settings to run `bun turbo build:vercel --filter=deskohub-workspace`.
 
-The selected migration policy is: `VERCEL_ENV=production` always runs `db:migrate`; preview/development builds run `db:migrate:if-needed`, which runs `db:migrate` only when Workspace DB schema or migration files differ from `origin/main`, with fail-open migration if the diff check fails. Run `bun run db:migrate` manually for disposable preview/dev databases when needed.
-
 Database requirements and risks:
 
-- `DATABASE_URL` is required for production builds, preview/dev builds with Workspace DB schema diffs, and any manual preview/dev migration run.
+- Production migrations obtain a direct connection string for Neon's default branch using the repository's `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable.
+- `DATABASE_URL` is required for explicit preview/development migration runs.
 - Prefer a direct, unpooled Neon Postgres connection URL for migrations. Keep pooled URLs for runtime traffic only when both are configured separately.
 - Review and commit generated SQL in `apps/deskohub-workspace/db/migrations` before deploy.
-- Migrations can advance the schema even if the later Next.js build or deployment fails.
-- Concurrent production builds can race on the same database; preview builds can also race when they contain Workspace DB schema diffs.
+- A production migration can advance the schema even if the later Vercel promotion fails. The staged deployment is already built at that point and the workflow can be rerun to retry migration and promotion.
+- Production releases use a non-cancelling concurrency group so only one Workspace migration and promotion sequence runs at a time.
 
 ## Checkout E2E Procedure
 

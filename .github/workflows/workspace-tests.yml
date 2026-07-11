@@ -17,6 +17,22 @@ on:
       - turbo.json
 
 jobs:
+  validate-workspace-migrations:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Validate Workspace migration count
+        working-directory: apps/deskohub-workspace
+        run: bun scripts/validate-migration-count.ts "${{ github.event.pull_request.base.sha }}"
+
   test-functional:
     runs-on: ubuntu-latest
     env:
@@ -65,19 +81,38 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      - name: Provision E2E database branch
+        id: e2e-database
+        uses: neondatabase/create-branch-action@v6
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch_name: workspace-checkout-e2e-${{ github.run_id }}-${{ github.run_attempt }}
+          parent_branch: production
+          role: neondb_owner
+          database: neondb
+          api_key: ${{ secrets.NEON_API_KEY }}
+
+      - name: Migrate E2E database
+        run: bun run db:migrate
+        working-directory: apps/deskohub-workspace
+        env:
+          DATABASE_URL: ${{ steps.e2e-database.outputs.db_url_pooled }}
+          DATABASE_URL_UNPOOLED: ${{ steps.e2e-database.outputs.db_url }}
+
       - run: bun add -g agent-browser
 
       - run: agent-browser install --with-deps
 
-      - run: bun run e2e:checkout
+      - name: Run checkout E2E
+        run: bun run e2e:checkout
         working-directory: apps/deskohub-workspace
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          DATABASE_URL: ${{ secrets.WORKSPACE_E2E_DATABASE_URL }}
-          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ secrets.WORKSPACE_E2E_DATABASE_URL_UNPOOLED }}
-          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ vars.WORKSPACE_E2E_DATABASE_ALLOWLIST }}
+          DATABASE_URL: ${{ steps.e2e-database.outputs.db_url_pooled }}
+          WORKSPACE_E2E_DATABASE_URL_UNPOOLED: ${{ steps.e2e-database.outputs.db_url }}
+          WORKSPACE_E2E_DATABASE_ALLOWLIST: ${{ steps.e2e-database.outputs.db_url }}
           DOTYPOS_API_URL: ${{ secrets.WORKSPACE_E2E_DOTYPOS_API_URL }}
           DOTYPOS_CLIENT_ID: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_ID }}
           DOTYPOS_CLIENT_SECRET: ${{ secrets.WORKSPACE_E2E_DOTYPOS_CLIENT_SECRET }}
@@ -93,3 +128,11 @@ jobs:
           path: apps/deskohub-workspace/e2e-artifacts/**
           if-no-files-found: ignore
           retention-days: 7
+
+      - name: Delete E2E database branch
+        if: always() && steps.e2e-database.outputs.branch_id != ''
+        uses: neondatabase/delete-branch-action@v3.2.1
+        with:
+          project_id: ${{ vars.NEON_PROJECT_ID }}
+          branch: ${{ steps.e2e-database.outputs.branch_id }}
+          api_key: ${{ secrets.NEON_API_KEY }}

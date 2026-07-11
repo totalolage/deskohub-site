@@ -42,3 +42,4 @@ export class FooService extends Context.Service<
 - When mapping a small variant union to copy, icons, or similar values, use an inline object lookup instead of ternaries; keep one-use lookup objects inline.
 - Do not hoist JSX `className` strings into local variables when they are used only once; inline them at the usage site.
 - Do not hoist simple one-use literals or lookup objects to module scope; inline them where they are consumed.
+- Keep Workspace production releases on the intentionally simple sequence: build a staged Vercel production deployment without assigning domains, run pending migrations against the production Neon branch, then promote the ready deployment. Do not introduce expand/contract migrations or database branch swapping unless explicitly requested.
