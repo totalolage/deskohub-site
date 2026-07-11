@@ -100,19 +100,37 @@ export function LandingPagePhotoCarousel({
 }: LandingPagePhotoCarouselProps) {
   const images = use(imagesPromise);
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const carousel = useMotionSwipeCarousel({
+  const {
+    activeIndex,
+    dragControls,
+    dragX,
+    handleDragEnd,
+    handleDragMove,
+    handleDragStart,
+    isSwiping,
+    moveToIndex,
+    moveToVirtualIndex,
+    setIsFocusWithin,
+    setIsPointerOver,
+    shouldReduceMotion,
+    shouldSuppressClickAfterSwipe,
+    stageRef,
+    startDrag,
+    virtualIndex: currentVirtualIndex,
+    visibleVirtualIndex,
+  } = useMotionSwipeCarousel({
     autoPlayInterval,
     count: images.length,
   });
-  const activeSlideTransition = carousel.shouldReduceMotion
+  const activeSlideTransition = shouldReduceMotion
     ? instantTransition
-    : carousel.isSwiping
+    : isSwiping
       ? instantTransition
       : slideTransition;
-  const activeDotTransition = carousel.shouldReduceMotion
+  const activeDotTransition = shouldReduceMotion
     ? instantTransition
     : dotTransition;
-  const lightboxAnimation = carousel.shouldReduceMotion
+  const lightboxAnimation = shouldReduceMotion
     ? { fade: 0, navigation: 0, swipe: 0 }
     : undefined;
 
@@ -135,11 +153,11 @@ export function LandingPagePhotoCarousel({
   const visibleOffsets: readonly SlideOffset[] =
     images.length === 0 ? [] : images.length === 1 ? [0] : slideOffsets;
   const visibleSlides = visibleOffsets.map((offset) => {
-    const virtualIndex = carousel.virtualIndex + offset;
+    const virtualIndex = currentVirtualIndex + offset;
     return {
       image: images[wrapIndex(virtualIndex, images.length)]!,
       isCurrent: offset === 0,
-      offset: virtualIndex - carousel.visibleVirtualIndex,
+      offset: virtualIndex - visibleVirtualIndex,
       virtualIndex,
     };
   });
@@ -157,38 +175,38 @@ export function LandingPagePhotoCarousel({
           !(nextTarget instanceof Node) ||
           !event.currentTarget.contains(nextTarget)
         ) {
-          carousel.setIsFocusWithin(false);
+          setIsFocusWithin(false);
         }
       }}
-      onFocus={() => carousel.setIsFocusWithin(true)}
-      onPointerEnter={() => carousel.setIsPointerOver(true)}
-      onPointerLeave={() => carousel.setIsPointerOver(false)}
+      onFocus={() => setIsFocusWithin(true)}
+      onPointerEnter={() => setIsPointerOver(true)}
+      onPointerLeave={() => setIsPointerOver(false)}
     >
       <motion.div
         className="relative mx-auto h-72 max-w-6xl touch-pan-y @container-[size] sm:h-112 lg:h-136"
         onClickCapture={(event) => {
-          if (!carousel.shouldSuppressClickAfterSwipe()) return;
+          if (!shouldSuppressClickAfterSwipe()) return;
 
           event.preventDefault();
           event.stopPropagation();
         }}
-        onPointerDownCapture={carousel.startDrag}
-        ref={carousel.stageRef}
+        onPointerDownCapture={startDrag}
+        ref={stageRef}
       >
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
           drag="x"
-          dragControls={carousel.dragControls}
+          dragControls={dragControls}
           dragListener={false}
           dragMomentum={false}
-          onDrag={carousel.handleDragMove}
-          onDragEnd={carousel.handleDragEnd}
-          onDragStart={carousel.handleDragStart}
-          style={{ touchAction: "pan-y", x: carousel.dragX }}
+          onDrag={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onDragStart={handleDragStart}
+          style={{ touchAction: "pan-y", x: dragX }}
         />
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
-          const baseOffset = virtualIndex - carousel.virtualIndex;
+          const baseOffset = virtualIndex - currentVirtualIndex;
           const logicalIndex = wrapIndex(virtualIndex, images.length);
           const isVisibleSide = Math.abs(baseOffset) === 1;
           const isVisible = isCurrent || isVisibleSide;
@@ -213,30 +231,28 @@ export function LandingPagePhotoCarousel({
               )}
               disabled={!isVisible}
               draggable={false}
-              initial={
-                carousel.shouldReduceMotion ? false : getSlideMotion(offset)
-              }
+              initial={shouldReduceMotion ? false : getSlideMotion(offset)}
               key={virtualIndex}
               onClick={() => {
-                if (carousel.shouldSuppressClickAfterSwipe()) return;
+                if (shouldSuppressClickAfterSwipe()) return;
 
                 if (isCurrent) {
                   openLightbox(logicalIndex);
                   return;
                 }
 
-                if (isVisibleSide) carousel.moveToVirtualIndex(virtualIndex);
+                if (isVisibleSide) moveToVirtualIndex(virtualIndex);
               }}
               tabIndex={isVisible ? undefined : -1}
               transition={activeSlideTransition}
               type="button"
               whileHover={
-                isVisibleSide && !carousel.shouldReduceMotion
+                isVisibleSide && !shouldReduceMotion
                   ? { filter: "brightness(0.96)" }
                   : undefined
               }
               whileTap={
-                isVisibleSide && !carousel.shouldReduceMotion
+                isVisibleSide && !shouldReduceMotion
                   ? { opacity: 0.72 }
                   : undefined
               }
@@ -256,12 +272,12 @@ export function LandingPagePhotoCarousel({
         })}
       </motion.div>
       <CarouselPositionIndicator
-        activeIndex={carousel.activeIndex}
+        activeIndex={activeIndex}
         className="justify-center px-4"
         count={images.length}
         getKey={(index) => images[index]?.public_id ?? index}
         getLabel={(index) => `Show carousel image ${index + 1}`}
-        onSelect={carousel.moveToIndex}
+        onSelect={moveToIndex}
         transition={activeDotTransition}
       />
       <Lightbox

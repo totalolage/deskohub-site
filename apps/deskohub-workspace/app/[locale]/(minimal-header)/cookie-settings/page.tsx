@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import {
   type ConsentCategory,
   useCookieConsent,
@@ -40,29 +39,17 @@ export default function CookieSettingsPage() {
   const locale = getLocale();
   const { acceptAll, rejectAll, acceptCategory, rejectCategory, isAccepted } =
     useCookieConsent();
-  const [preferences, setPreferences] = useState<
-    Record<ConsentCategory, boolean>
-  >({
+  const preferences: Record<ConsentCategory, boolean> = {
     necessary: true,
-    analytics: false,
-    marketing: false,
-    preferences: false,
-  });
-
-  useEffect(() => {
-    setPreferences({
-      necessary: true,
-      analytics: isAccepted("analytics"),
-      marketing: isAccepted("marketing"),
-      preferences: isAccepted("preferences"),
-    });
-  }, [isAccepted]);
+    analytics: isAccepted("analytics"),
+    marketing: isAccepted("marketing"),
+    preferences: isAccepted("preferences"),
+  };
 
   const handleToggle = (category: ConsentCategory) => {
     if (category === "necessary") return;
 
     const nextValue = !preferences[category];
-    setPreferences((current) => ({ ...current, [category]: nextValue }));
 
     if (nextValue) {
       acceptCategory(category);

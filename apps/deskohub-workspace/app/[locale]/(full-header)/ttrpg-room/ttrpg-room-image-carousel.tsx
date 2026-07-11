@@ -47,17 +47,34 @@ export function TtrpgRoomImageCarousel({
   openLabel,
 }: TtrpgRoomImageCarouselProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
-  const carousel = useMotionSwipeCarousel({
+  const {
+    activeIndex,
+    dragControls,
+    dragX,
+    handleDragEnd,
+    handleDragMove,
+    handleDragStart,
+    isSwiping,
+    moveToIndex,
+    setIsFocusWithin,
+    setIsPointerOver,
+    shouldReduceMotion,
+    shouldSuppressClickAfterSwipe,
+    stageRef,
+    startDrag,
+    virtualIndex: currentVirtualIndex,
+    visibleVirtualIndex,
+  } = useMotionSwipeCarousel({
     count: images.length,
     getSwipeDistance: (stageWidth) => stageWidth,
   });
-  const activeImage = images[carousel.activeIndex];
-  const activeTransition = carousel.shouldReduceMotion
+  const activeImage = images[activeIndex];
+  const activeTransition = shouldReduceMotion
     ? instantTransition
-    : carousel.isSwiping
+    : isSwiping
       ? instantTransition
       : slideTransition;
-  const lightboxAnimation = carousel.shouldReduceMotion
+  const lightboxAnimation = shouldReduceMotion
     ? { fade: 0, navigation: 0, swipe: 0 }
     : undefined;
   const slides: SlideImage[] = useMemo(
@@ -83,12 +100,12 @@ export function TtrpgRoomImageCarousel({
 
   const visibleSlides = (images.length === 1 ? [0] : slideOffsets).map(
     (offset) => {
-      const virtualIndex = carousel.virtualIndex + offset;
+      const virtualIndex = currentVirtualIndex + offset;
 
       return {
         image: images[wrapIndex(virtualIndex, images.length)]!,
         isCurrent: offset === 0,
-        offset: virtualIndex - carousel.visibleVirtualIndex,
+        offset: virtualIndex - visibleVirtualIndex,
         virtualIndex,
       };
     }
@@ -105,35 +122,35 @@ export function TtrpgRoomImageCarousel({
           !(nextTarget instanceof Node) ||
           !event.currentTarget.contains(nextTarget)
         ) {
-          carousel.setIsFocusWithin(false);
+          setIsFocusWithin(false);
         }
       }}
-      onFocus={() => carousel.setIsFocusWithin(true)}
-      onPointerEnter={() => carousel.setIsPointerOver(true)}
-      onPointerLeave={() => carousel.setIsPointerOver(false)}
+      onFocus={() => setIsFocusWithin(true)}
+      onPointerEnter={() => setIsPointerOver(true)}
+      onPointerLeave={() => setIsPointerOver(false)}
     >
       <motion.div
         className="relative aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-[1.25rem] bg-navy-blue"
         onClickCapture={(event) => {
-          if (!carousel.shouldSuppressClickAfterSwipe()) return;
+          if (!shouldSuppressClickAfterSwipe()) return;
 
           event.preventDefault();
           event.stopPropagation();
         }}
-        onPointerDownCapture={carousel.startDrag}
-        ref={carousel.stageRef}
+        onPointerDownCapture={startDrag}
+        ref={stageRef}
       >
         <motion.div
           aria-hidden="true"
           className="pointer-events-none absolute inset-0"
           drag="x"
-          dragControls={carousel.dragControls}
+          dragControls={dragControls}
           dragListener={false}
           dragMomentum={false}
-          onDrag={carousel.handleDragMove}
-          onDragEnd={carousel.handleDragEnd}
-          onDragStart={carousel.handleDragStart}
-          style={{ touchAction: "pan-y", x: carousel.dragX }}
+          onDrag={handleDragMove}
+          onDragEnd={handleDragEnd}
+          onDragStart={handleDragStart}
+          style={{ touchAction: "pan-y", x: dragX }}
         />
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
           const logicalIndex = wrapIndex(virtualIndex, images.length);
@@ -146,12 +163,10 @@ export function TtrpgRoomImageCarousel({
               className="group absolute inset-0 cursor-zoom-in overflow-hidden bg-navy-blue text-left focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-burned-orange"
               disabled={!isCurrent}
               draggable={false}
-              initial={
-                carousel.shouldReduceMotion ? false : getSlideMotion(offset)
-              }
+              initial={shouldReduceMotion ? false : getSlideMotion(offset)}
               key={virtualIndex}
               onClick={() => {
-                if (carousel.shouldSuppressClickAfterSwipe()) return;
+                if (shouldSuppressClickAfterSwipe()) return;
 
                 setLightboxIndex(logicalIndex);
               }}
@@ -163,7 +178,7 @@ export function TtrpgRoomImageCarousel({
                 asset={image}
                 className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
                 draggable={false}
-                preload={logicalIndex === carousel.activeIndex}
+                preload={logicalIndex === activeIndex}
                 size={{ width: "fill", height: "fill" }}
                 sizes="(min-width: 768px) 42vw, 100vw"
                 variant="gallery"
@@ -180,11 +195,11 @@ export function TtrpgRoomImageCarousel({
 
       <div className="flex min-h-10 items-center justify-center">
         <CarouselPositionIndicator
-          activeIndex={carousel.activeIndex}
+          activeIndex={activeIndex}
           count={images.length}
           getKey={(dotIndex) => images[dotIndex]?.public_id ?? dotIndex}
           getLabel={(dotIndex) => getAssetLabel(images[dotIndex]!)}
-          onSelect={carousel.moveToIndex}
+          onSelect={moveToIndex}
           variant="navy"
         />
       </div>
