@@ -16,10 +16,15 @@ import {
   isDefaultReservationInterval,
   meetingRoomReservationDurationMinutesEffectSchema,
   normalizeReservationInterval,
+  type ReservationInterval,
   unsafeNormalizeReservationInterval,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/schemas/reservation-interval";
-import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import {
+  makeWorkspaceReservationDetailsEffectSchema,
+  type StoredCoworkReservationDetails,
+  type StoredMeetingRoomReservationDetails,
+} from "@/features/reservation/schemas/stored-reservation-details";
 import {
   isoDateTimeWithOffsetStringEffectSchema,
   urlStringEffectSchema,
@@ -209,43 +214,11 @@ const normalizeCheckoutDetailsReservation = (
   reservation: CheckoutDetailsReservationDraft
 ) =>
   normalizeReservationInterval(reservation).pipe(
-    Effect.map((normalized) =>
-      Match.value(reservation).pipe(
-        Match.tag("meeting-room", () => ({
-          _tag: "meeting-room" as const,
-          startsAt: normalized.startsAt,
-          endsAt: normalized.endsAt,
-        })),
-        Match.tag("cowork", (coworkReservation) =>
-          Match.value(coworkReservation).pipe(
-            Match.when({ tier: "basic" }, (basicReservation) => ({
-              _tag: "cowork" as const,
-              tier: "basic" as const,
-              startsAt: normalized.startsAt,
-              endsAt: normalized.endsAt,
-              coffee: basicReservation.coffee,
-            })),
-            Match.when({ tier: "plus" }, () => ({
-              _tag: "cowork" as const,
-              tier: "plus" as const,
-              startsAt: normalized.startsAt,
-              endsAt: normalized.endsAt,
-              coffee: true as const,
-            })),
-            Match.when({ tier: "profi" }, (profiReservation) => ({
-              _tag: "cowork" as const,
-              tier: "profi" as const,
-              startsAt: normalized.startsAt,
-              endsAt: normalized.endsAt,
-              coffee: true as const,
-              monitorOption: profiReservation.monitorOption,
-            })),
-            Match.exhaustive
-          )
-        ),
-        Match.exhaustive
-      )
-    )
+    Effect.map((normalized) => ({
+      ...reservation,
+      startsAt: normalized.startsAt,
+      endsAt: normalized.endsAt,
+    }))
   );
 
 const checkoutDetailsReservationDraftEffectSchema =
@@ -275,6 +248,23 @@ const checkoutDetailsReservationEffectSchema =
 export const checkoutDetailsReservationSchema = makeEffectSchemaParser(
   checkoutDetailsReservationEffectSchema
 );
+
+export type CheckoutDetailsReservation =
+  typeof checkoutDetailsReservationEffectSchema.Type;
+
+type CheckoutDetailsReservationInput =
+  | StoredCoworkReservationDetails
+  | (StoredMeetingRoomReservationDetails & ReservationInterval);
+
+export const parseCheckoutDetailsReservation = (
+  reservation: CheckoutDetailsReservationInput,
+  interval: ReservationInterval
+): CheckoutDetailsReservation =>
+  checkoutDetailsReservationSchema.parse({
+    ...reservation,
+    startsAt: interval.startsAt,
+    endsAt: interval.endsAt,
+  });
 
 const checkoutDetailsPaymentCustomerDiscountEffectSchema = EffectSchema.Struct({
   source: EffectSchema.Literal("dotypos-discount-group"),

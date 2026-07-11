@@ -21,6 +21,7 @@ import {
 } from "@/features/checkout/checkout-quote";
 import {
   legalEvidenceMapSchema,
+  parseCheckoutDetailsReservation,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
 import {
@@ -274,40 +275,9 @@ const buildCheckoutDetailsForPayment = (input: {
   readonly legalEvidence: LegalEvidenceMap;
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
   const interval = unsafeNormalizeReservationInterval(input.data);
-  const reservation = Match.value(input.quote.order).pipe(
-    Match.tag("meeting-room", () => ({
-      _tag: "meeting-room" as const,
-      startsAt: interval.startsAt,
-      endsAt: interval.endsAt,
-    })),
-    Match.tag("cowork", (order) =>
-      Match.value(order).pipe(
-        Match.when({ tier: "basic" }, (basicOrder) => ({
-          _tag: "cowork" as const,
-          tier: "basic" as const,
-          startsAt: interval.startsAt,
-          endsAt: interval.endsAt,
-          coffee: basicOrder.coffee,
-        })),
-        Match.when({ tier: "plus" }, () => ({
-          _tag: "cowork" as const,
-          tier: "plus" as const,
-          startsAt: interval.startsAt,
-          endsAt: interval.endsAt,
-          coffee: true as const,
-        })),
-        Match.when({ tier: "profi" }, (profiOrder) => ({
-          _tag: "cowork" as const,
-          tier: "profi" as const,
-          startsAt: interval.startsAt,
-          endsAt: interval.endsAt,
-          coffee: true as const,
-          monitorOption: profiOrder.monitorOption,
-        })),
-        Match.exhaustive
-      )
-    ),
-    Match.exhaustive
+  const reservation = parseCheckoutDetailsReservation(
+    input.quote.order,
+    interval
   );
 
   return {

@@ -128,7 +128,7 @@ export const toWorkspaceCheckoutOrderInput = (
     Match.exhaustive
   );
 
-const toWorkspaceCheckoutOrder = (
+export const toWorkspaceCheckoutOrder = (
   order: WorkspaceCheckoutOrderInput
 ): WorkspaceCheckoutOrder =>
   Match.value(order).pipe(

@@ -45,6 +45,7 @@ import {
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   legalEvidenceMapSchema,
+  parseCheckoutDetailsReservation,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
 import {
@@ -173,42 +174,9 @@ const buildReservationCheckoutDetails = (input: {
   const reservation = unsafeNormalizeReservationInterval(input.reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
-  const checkoutReservation: CheckoutDetailsJson["reservation"] = Match.value(
-    input.quote.order
-  ).pipe(
-    Match.tag("meeting-room", () => ({
-      _tag: "meeting-room" as const,
-      startsAt: reservation.startsAt,
-      endsAt: reservation.endsAt,
-    })),
-    Match.tag("cowork", (coworkOrder) =>
-      Match.value(coworkOrder).pipe(
-        Match.when({ tier: "basic" }, (basicOrder) => ({
-          _tag: "cowork" as const,
-          tier: "basic" as const,
-          startsAt: reservation.startsAt,
-          endsAt: reservation.endsAt,
-          coffee: basicOrder.coffee,
-        })),
-        Match.when({ tier: "plus" }, () => ({
-          _tag: "cowork" as const,
-          tier: "plus" as const,
-          startsAt: reservation.startsAt,
-          endsAt: reservation.endsAt,
-          coffee: true as const,
-        })),
-        Match.when({ tier: "profi" }, (profiOrder) => ({
-          _tag: "cowork" as const,
-          tier: "profi" as const,
-          startsAt: reservation.startsAt,
-          endsAt: reservation.endsAt,
-          coffee: true as const,
-          monitorOption: profiOrder.monitorOption,
-        })),
-        Match.exhaustive
-      )
-    ),
-    Match.exhaustive
+  const checkoutReservation = parseCheckoutDetailsReservation(
+    input.quote.order,
+    reservation
   );
 
   return {

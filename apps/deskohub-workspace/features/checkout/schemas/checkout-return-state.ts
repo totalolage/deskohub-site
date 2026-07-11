@@ -1,12 +1,14 @@
 import {
   Effect,
   Schema as EffectSchema,
-  Match,
   Option,
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import type { WorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quote";
+import {
+  toWorkspaceCheckoutOrder,
+  type WorkspaceCheckoutOrderInput,
+} from "@/features/checkout/checkout-quote";
 import {
   reservationCustomerEmailEffectSchema,
   reservationCustomerMessageEffectSchema,
@@ -107,34 +109,11 @@ export const normalizeCheckoutReturnStateReservation = (
   reservation: CheckoutReturnStateReservationDraft
 ) =>
   normalizeReservationInterval(reservation).pipe(
-    Effect.map((normalized) =>
-      Match.value(reservation).pipe(
-        Match.tag("meeting-room", (meetingRoomReservation) => ({
-          ...meetingRoomReservation,
-          startsAt: normalized.startsAt,
-          endsAt: normalized.endsAt,
-        })),
-        Match.when({ _tag: "cowork", tier: "basic" }, (basicReservation) => ({
-          ...basicReservation,
-          startsAt: normalized.startsAt,
-          endsAt: normalized.endsAt,
-        })),
-        Match.when({ _tag: "cowork", tier: "plus" }, (plusReservation) => ({
-          ...plusReservation,
-          startsAt: normalized.startsAt,
-          endsAt: normalized.endsAt,
-          coffee: true as const,
-        })),
-        Match.when({ _tag: "cowork", tier: "profi" }, (profiReservation) => ({
-          ...profiReservation,
-          startsAt: normalized.startsAt,
-          endsAt: normalized.endsAt,
-          coffee: true as const,
-          monitorOption: profiReservation.monitorOption,
-        })),
-        Match.exhaustive
-      )
-    )
+    Effect.map((normalized) => ({
+      ...reservation,
+      startsAt: normalized.startsAt,
+      endsAt: normalized.endsAt,
+    }))
   );
 
 export const checkoutReturnStateReservationEffectSchema =
@@ -192,32 +171,12 @@ const toCheckoutReturnStateReservationPayload = (
   const interval = unsafeNormalizeReservationInterval(reservation);
   const base = getCheckoutReturnStateReservationBase(reservation, interval);
 
-  return Match.value(reservation).pipe(
-    Match.when({ kind: "meeting-room" }, () => ({
-      _tag: "meeting-room" as const,
-      ...base,
-    })),
-    Match.when({ kind: "cowork", tier: "basic" }, (coworkReservation) => ({
-      _tag: "cowork" as const,
-      tier: "basic" as const,
-      ...base,
-      coffee: coworkReservation.coffee,
-    })),
-    Match.when({ kind: "cowork", tier: "plus" }, () => ({
-      _tag: "cowork" as const,
-      tier: "plus" as const,
-      ...base,
-      coffee: true as const,
-    })),
-    Match.when({ kind: "cowork", tier: "profi" }, (coworkReservation) => ({
-      _tag: "cowork" as const,
-      tier: "profi" as const,
-      ...base,
-      coffee: true as const,
-      monitorOption: coworkReservation.monitorOption,
-    })),
-    Match.exhaustive
-  );
+  return {
+    ...toWorkspaceCheckoutOrder(reservation),
+    ...base,
+    startsAt: interval.startsAt,
+    endsAt: interval.endsAt,
+  };
 };
 
 export const getCheckoutReturnStateReservation = (
