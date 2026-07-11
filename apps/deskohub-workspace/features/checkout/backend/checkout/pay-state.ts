@@ -97,8 +97,6 @@ const payStateProtectedHeaderEffectSchema = EffectSchema.Struct({
 
 export const signedPayStateEffectSchema = EffectSchema.Struct({
   type: EffectSchema.Literal("signedPayState"),
-  schema: EffectSchema.Literal("workspace-pay-state"),
-  schemaVersion: EffectSchema.Literal(payStateSchemaVersion),
   alg: EffectSchema.Literal(payStateAlgorithm),
   kid: EffectSchema.NonEmptyString,
   iat: EffectSchema.Int.check(EffectSchema.isGreaterThanOrEqualTo(0)),
@@ -286,8 +284,6 @@ export const buildSignedPayState = (
   );
   const state: SignedPayState = {
     type: "signedPayState",
-    schema: "workspace-pay-state",
-    schemaVersion: payStateSchemaVersion,
     alg: payStateAlgorithm,
     kid: activeKey.kid,
     iat,

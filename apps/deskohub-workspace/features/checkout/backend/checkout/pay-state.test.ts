@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, test } from "bun:test";
@@ -113,6 +114,8 @@ describe("Pay URL state", () => {
     expect(state.reservation).not.toHaveProperty("entryTier");
     expect(state.reservation).not.toHaveProperty("durationMinutes");
     expect(state.quote.order).not.toHaveProperty("startsAt");
+    expect(state).not.toHaveProperty("schemaVersion");
+    expect(state).not.toHaveProperty("schema");
   });
 
   test("does not retain interval fields on cowork quote orders", () => {
@@ -225,7 +228,7 @@ describe("Pay URL state", () => {
     ).toThrow("unknown key id");
   });
 
-  test("rejects unsupported token and payload versions", () => {
+  test("rejects unsupported token header versions", () => {
     const versionTwoToken = replaceTokenHeader(seal(), (header) => ({
       ...header,
       v: 2,
@@ -234,11 +237,6 @@ describe("Pay URL state", () => {
     expect(() =>
       openPayState(versionTwoToken, { keys: [fixedKey], now: () => fixedNow })
     ).toThrow("Unsupported Pay state token header");
-    const unsupportedState = parseJsonRecord(
-      JSON.stringify({ ...buildState(), schemaVersion: 2 })
-    );
-
-    expect(() => sealPayState(unsupportedState)).toThrow("schemaVersion");
   });
 
   test("does not expose plaintext PII in the encrypted URL token", () => {
