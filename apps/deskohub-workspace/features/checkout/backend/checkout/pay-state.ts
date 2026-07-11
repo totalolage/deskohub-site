@@ -40,11 +40,9 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const CheckoutOrderShapeSchema = workspaceCheckoutOrderEffectSchema;
+type CheckoutOrderDraft = typeof workspaceCheckoutOrderEffectSchema.Type;
 
-type CheckoutOrderDraft = typeof CheckoutOrderShapeSchema.Type;
-
-const CheckoutOrderSchema = CheckoutOrderShapeSchema.check(
+const CheckoutOrderSchema = workspaceCheckoutOrderEffectSchema.check(
   EffectSchema.makeFilter<CheckoutOrderDraft>((order) => {
     return Match.value(order).pipe(
       Match.tag("cowork", () => []),

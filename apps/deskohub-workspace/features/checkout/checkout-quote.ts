@@ -230,20 +230,24 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
 const getWorkspaceCheckoutOrderProductPrice = (
   order: WorkspaceCheckoutOrder,
   durationMinutes: number
-) =>
+): Effect.Effect<WorkspaceMoney, CheckoutQuoteError> =>
   Match.value(order).pipe(
     Match.tag("meeting-room", () => {
-      if (isWorkspaceMeetingRoomDuration(durationMinutes)) {
-        return getWorkspaceMeetingRoomPriceForDuration(durationMinutes);
+      if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
+        return Effect.fail(
+          new CheckoutQuoteError({
+            message:
+              "Meeting room checkout pricing requires an approved duration.",
+          })
+        );
       }
 
-      throw new Error(
-        "Meeting room checkout pricing requires an approved duration."
+      return Effect.succeed(
+        getWorkspaceMeetingRoomPriceForDuration(durationMinutes)
       );
     }),
-    Match.tag(
-      "cowork",
-      (coworkOrder) => getWorkspaceProductByTier(coworkOrder.tier).price
+    Match.tag("cowork", (coworkOrder) =>
+      Effect.succeed(getWorkspaceProductByTier(coworkOrder.tier).price)
     ),
     Match.exhaustive
   );
@@ -395,7 +399,10 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
   const interval = unsafeNormalizeReservationInterval(normalizedOrder);
   const durationMinutes = getReservationDurationMinutes(interval);
   const productPrice = withWorkspaceMoneyCurrency(
-    getWorkspaceCheckoutOrderProductPrice(normalizedOrder, durationMinutes),
+    yield* getWorkspaceCheckoutOrderProductPrice(
+      normalizedOrder,
+      durationMinutes
+    ),
     options.currencyOverride
   );
   const coffeePrice = withWorkspaceMoneyCurrency(
