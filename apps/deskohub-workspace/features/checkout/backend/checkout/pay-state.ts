@@ -15,16 +15,16 @@ import { toWorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quot
 import {
   checkoutReturnStateReservationEffectSchema,
   getCheckoutReturnStateReservation,
-} from "@/features/checkout/schemas/checkout-return-state";
+} from "@/features/checkout/checkout-return-state";
 import {
   checkoutSummaryEffectSchema,
   checkoutSummarySchema,
-} from "@/features/checkout/schemas/checkout-summary";
+} from "@/features/checkout/checkout-summary";
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
-import { getReservationIntervalValidationIssue } from "@/features/reservation/schemas/reservation-interval";
-import { makeWorkspaceReservationDetailsWithFieldsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+import { getReservationIntervalValidationIssue } from "@/features/reservation/reservation-interval";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import { makeWorkspaceReservationDetailsWithFieldsEffectSchema } from "@/features/reservation/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 

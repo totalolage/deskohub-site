@@ -8,7 +8,7 @@ import {
 } from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import { legalEvidenceEffectSchema } from "@/features/checkout/schemas/checkout-details";
+import { legalEvidenceEffectSchema } from "@/features/checkout/legal-evidence";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 const legalEvidenceEventInputEffectSchema = Schema.Struct({

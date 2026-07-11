@@ -1,6 +1,11 @@
 import type { DotyposCustomerDiscount } from "@deskohub/dotypos";
 import { Data, Effect, Match, Schema } from "effect";
 import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout/checkout-pricing";
+import type {
+  CheckoutSummary,
+  CheckoutSummaryItem,
+  CheckoutSummarySection,
+} from "@/features/checkout/checkout-summary";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
@@ -8,11 +13,6 @@ import {
   isWorkspaceMeetingRoomDuration,
   type WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
-import type {
-  CheckoutSummary,
-  CheckoutSummaryItem,
-  CheckoutSummarySection,
-} from "@/features/checkout/schemas/checkout-summary";
 import {
   addWorkspaceMoneyEffect,
   type WorkspaceMoney,
@@ -20,7 +20,6 @@ import {
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import {
   coworkReservationIntervalEffectSchema,
   getReservationDurationMinutes,
@@ -28,17 +27,18 @@ import {
   meetingRoomReservationIntervalEffectSchema,
   type ReservationInterval,
   unsafeNormalizeReservationInterval,
-} from "@/features/reservation/schemas/reservation-interval";
+} from "@/features/reservation/reservation-interval";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import type {
   StoredCoworkReservationDetails,
   StoredMeetingRoomReservationDetails,
-} from "@/features/reservation/schemas/stored-reservation-details";
+} from "@/features/reservation/stored-reservation-details";
 
 export type {
   CheckoutSummary,
   CheckoutSummaryItem,
   CheckoutSummarySection,
-} from "@/features/checkout/schemas/checkout-summary";
+} from "@/features/checkout/checkout-summary";
 
 export type WorkspaceCoworkCheckoutOrder = StoredCoworkReservationDetails;
 

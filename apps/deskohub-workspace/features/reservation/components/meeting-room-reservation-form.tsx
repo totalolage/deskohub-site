@@ -24,15 +24,15 @@ import { type Locale, m } from "@/features/i18n";
 import { getWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
 import {
-  getMeetingRoomAvailabilityToDate,
-  getMeetingRoomReservationInterval,
-} from "@/features/reservation/meeting-room-reservation-time";
-import {
   type MeetingRoomReservationData,
   type MeetingRoomReservationInput,
   meetingRoomReservationEffectSchema,
-} from "@/features/reservation/schemas/meeting-room-reservation";
-import { workspaceAvailabilityKeys } from "@/features/reservation/schemas/workspace-availability";
+} from "@/features/reservation/meeting-room-reservation";
+import {
+  getMeetingRoomAvailabilityToDate,
+  getMeetingRoomReservationInterval,
+} from "@/features/reservation/meeting-room-reservation-time";
+import { workspaceAvailabilityKeys } from "@/features/reservation/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Card, CardContent } from "@/shared/components/ui/card";
 import { Checkbox } from "@/shared/components/ui/checkbox";

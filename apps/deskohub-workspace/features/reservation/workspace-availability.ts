@@ -16,7 +16,7 @@ import {
   type ReservationInterval,
   reservationIntervalFieldSchemas,
   unsafeNormalizeReservationInterval,
-} from "@/features/reservation/schemas/reservation-interval";
+} from "@/features/reservation/reservation-interval";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
 const workspaceAvailabilityQueryBaseEffectFields = {

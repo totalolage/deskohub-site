@@ -24,7 +24,7 @@ import {
   type StoredCoworkReservationDetails,
   type StoredMeetingRoomReservationDetails,
   storedWorkspaceReservationDetailsSchema,
-} from "@/features/reservation/schemas/stored-reservation-details";
+} from "@/features/reservation/stored-reservation-details";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
   ReservationHoldCleanupService,

@@ -10,9 +10,9 @@ import {
   ReservationFormFallback,
 } from "@/features/reservation/components/reservation-form";
 import {
-  reservationDefaultValues,
-  tierRequiresMonitorOption,
-} from "@/features/reservation/schemas/reservation";
+  coworkReservationDefaultValues,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
@@ -65,8 +65,8 @@ export default async function LocalizedCoworkReservationPage({
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
-  const showMonitorOptionFallback = tierRequiresMonitorOption(
-    reservationDefaultValues.entryTier
+  const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
+    coworkReservationDefaultValues.entryTier
   );
 
   return runWithRequestLocale(locale, () => (

@@ -2,7 +2,7 @@ import type { Reservation } from "@deskohub/dotypos/generated";
 import {
   type ReservationDateRange,
   reservationDateRangesOverlap,
-} from "@/features/reservation/schemas/reservation-interval";
+} from "@/features/reservation/reservation-interval";
 
 export const workspaceBookingGuestCount = 1;
 

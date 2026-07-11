@@ -5,7 +5,7 @@ import { loadWorkspaceAvailability } from "@/features/reservation/backend/worksp
 import {
   type WorkspaceAvailabilityQuery,
   workspaceAvailabilityQueryEffectSchema,
-} from "@/features/reservation/schemas/workspace-availability";
+} from "@/features/reservation/workspace-availability";
 
 const parseWorkspaceAvailabilityQuery = Schema.decodeUnknownSync(
   workspaceAvailabilityQueryEffectSchema

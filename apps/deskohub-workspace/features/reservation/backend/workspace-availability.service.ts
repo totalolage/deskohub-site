@@ -34,12 +34,12 @@ import {
   isDefaultReservationInterval,
   type ReservationInterval,
   type ReservationIntervalError,
-} from "../schemas/reservation-interval";
+} from "../reservation-interval";
 import type {
   WorkspaceAvailability,
   WorkspaceAvailabilityNotice,
   WorkspaceAvailabilityQuery,
-} from "../schemas/workspace-availability";
+} from "../workspace-availability";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   type WorkspaceCalendarLimitation as WorkspaceCalendarLimitationType,

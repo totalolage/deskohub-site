@@ -14,6 +14,12 @@ type ReservationDisplayInstant = Date | TemporalInstant;
 
 export const reservationTimeZone = workspaceSiteConstants.location.timeZone;
 
+const getCurrentPragueDate = () =>
+  Temporal.Now.zonedDateTimeISO(reservationTimeZone).toPlainDate().toString();
+
+export const isTodayOrFuturePragueDate = (date: string) =>
+  date >= getCurrentPragueDate();
+
 const reservationDisplayDateFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "full",
   timeZone: reservationTimeZone,

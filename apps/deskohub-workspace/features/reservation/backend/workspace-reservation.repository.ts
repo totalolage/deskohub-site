@@ -7,7 +7,7 @@ import {
 } from "@/db/database.service";
 import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import type { StoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"

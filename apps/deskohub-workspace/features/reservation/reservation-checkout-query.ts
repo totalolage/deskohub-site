@@ -6,18 +6,20 @@ import {
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
-  isTodayOrFuturePragueDate,
-  type ReservationInput,
+  type CoworkReservationInput,
+  coworkReservationDefaultValues,
+} from "@/features/reservation/cowork-reservation";
+import {
   reservationCustomerEmailEffectSchema,
   reservationCustomerMessageEffectSchema,
   reservationCustomerNameEffectSchema,
   reservationCustomerPhoneEffectSchema,
-  reservationDefaultValues,
-} from "@/features/reservation/schemas/reservation";
+} from "@/features/reservation/reservation-contact";
+import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
 import {
   parseWorkspaceAvailabilityQuery,
   type WorkspaceAvailabilityQuery,
-} from "@/features/reservation/schemas/workspace-availability";
+} from "@/features/reservation/workspace-availability";
 import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
 const reservationCheckoutQueryFields = [
@@ -35,7 +37,7 @@ type ReservationCheckoutQueryField =
   (typeof reservationCheckoutQueryFields)[number];
 
 type ReservationCheckoutQueryValues = Pick<
-  ReservationInput,
+  CoworkReservationInput,
   ReservationCheckoutQueryField
 >;
 const queryBooleanSchema = Schema.toStandardSchemaV1(
@@ -131,9 +133,9 @@ const decodeReservationCheckoutQuery = (
 
 export const getReservationDefaultValuesFromSearchParams = (
   searchParams: SupportedSearchParams
-): ReservationInput => {
-  const values: ReservationInput = {
-    ...reservationDefaultValues,
+): CoworkReservationInput => {
+  const values: CoworkReservationInput = {
+    ...coworkReservationDefaultValues,
     ...decodeReservationCheckoutQuery(searchParams),
     legalConsent: false,
   };

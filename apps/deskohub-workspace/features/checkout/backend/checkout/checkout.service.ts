@@ -13,6 +13,8 @@ import {
 } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
+import { parseCheckoutDetailsReservation } from "@/features/checkout/checkout-details";
 import {
   buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
@@ -20,18 +22,14 @@ import {
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
-  legalEvidenceMapSchema,
-  parseCheckoutDetailsReservation,
-  paymentSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
-import {
   checkoutSummarySchema,
   toCheckoutDetailsPaymentSummary,
-} from "@/features/checkout/schemas/checkout-summary";
-import type {
-  CheckoutDetailsJson,
-  LegalEvidenceMap,
-} from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/checkout-summary";
+import type { LegalEvidenceMap } from "@/features/checkout/legal-evidence";
+import {
+  legalEvidenceMapSchema,
+  paymentSubmitLegalEvidenceSource,
+} from "@/features/checkout/legal-evidence";
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
@@ -40,12 +38,12 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import {
   getReservationDate,
   unsafeNormalizeReservationInterval,
-} from "@/features/reservation/schemas/reservation-interval";
-import { getStoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
+} from "@/features/reservation/reservation-interval";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 import {
   PostHogEventService,
   PostHogEventServiceLive,

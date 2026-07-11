@@ -5,13 +5,13 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Context, Effect, Layer, Match } from "effect";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
 import { workspaceProductMonitorOptionTableTags } from "@/features/checkout/product-catalog";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   getReservationDate,
   getReservationPragueDateRange,
-} from "@/features/reservation/schemas/reservation-interval";
+} from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {

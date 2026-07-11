@@ -42,17 +42,17 @@ import {
   WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/reservation";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
+import { parseCheckoutDetailsReservation } from "@/features/checkout/checkout-details";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import {
-  legalEvidenceMapSchema,
-  parseCheckoutDetailsReservation,
-  reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
 import {
   checkoutSummarySchema,
   toCheckoutDetailsPaymentSummary,
-} from "@/features/checkout/schemas/checkout-summary";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/checkout-summary";
+import {
+  legalEvidenceMapSchema,
+  reservationSubmitLegalEvidenceSource,
+} from "@/features/checkout/legal-evidence";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import {
@@ -64,17 +64,17 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
+  getReservationDate,
+  isDefaultReservationInterval,
+  unsafeNormalizeReservationInterval,
+} from "@/features/reservation/reservation-interval";
+import {
   getReservationProductCoffee,
   getReservationProductMonitorOption,
   type ReservationOrderData,
   reservationOrderEffectSchema,
-} from "@/features/reservation/schemas/reservation";
-import {
-  getReservationDate,
-  isDefaultReservationInterval,
-  unsafeNormalizeReservationInterval,
-} from "@/features/reservation/schemas/reservation-interval";
-import { getStoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
+} from "@/features/reservation/reservation-order";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";

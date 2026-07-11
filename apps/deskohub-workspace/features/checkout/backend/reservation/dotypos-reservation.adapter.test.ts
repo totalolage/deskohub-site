@@ -5,7 +5,7 @@ import {
   type Reservation,
 } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
 import { createWorkspaceDotyposReservation } from "./dotypos-reservation.adapter";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 

@@ -1,12 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
+import { checkoutDetailsJsonSchema } from "@/features/checkout/checkout-details";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
-  checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
+} from "@/features/checkout/legal-evidence";
 
 const document = {
   path: "/en-US/terms-and-conditions",

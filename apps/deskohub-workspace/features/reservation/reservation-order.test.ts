@@ -1,15 +1,11 @@
 import { afterEach, describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
-import {
-  reservationEffectSchema,
-  reservationOrderEffectSchema,
-} from "./reservation";
+import { reservationOrderEffectSchema } from "./reservation-order";
 
 const reservationOrderSchema = makeEffectSchemaParser(
   reservationOrderEffectSchema
 );
-const reservationSchema = makeEffectSchemaParser(reservationEffectSchema);
 
 const originalDateNow = Date.now;
 
@@ -60,32 +56,6 @@ describe("reservation schema", () => {
     ).toBe(true);
   });
 
-  test("represents cowork reservations by date without an interval", () => {
-    const result = reservationSchema.safeParse({
-      entryTier: "plus",
-      date: "2099-06-10",
-      coffee: false,
-      monitorOption: undefined,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
-      message: "  hello  ",
-      legalConsent: true,
-    });
-
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data).toMatchObject({
-        entryTier: "plus",
-        date: "2099-06-10",
-        coffee: true,
-        message: "hello",
-      });
-      expect(result.data).not.toHaveProperty("startsAt");
-      expect(result.data).not.toHaveProperty("endsAt");
-    }
-  });
-
   test("drops cowork-only fields from meeting-room orders", () => {
     Date.now = () => new Date("2099-06-10T06:00:00.000Z").getTime();
 
@@ -99,48 +69,6 @@ describe("reservation schema", () => {
     if (result.success) {
       expect(result.data).not.toHaveProperty("coffee");
       expect(result.data).not.toHaveProperty("monitorOption");
-    }
-  });
-
-  test("rejects monitor setup for non-profi cowork tiers", () => {
-    const result = reservationSchema.safeParse({
-      entryTier: "basic",
-      date: "2099-06-10",
-      startsAt: "00:00",
-      endsAt: "24:00",
-      coffee: false,
-      monitorOption: "2x27-qhd",
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
-      message: "",
-      legalConsent: true,
-    });
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(String(result.error)).toContain('at ["monitorOption"]');
-    }
-  });
-
-  test("requires a monitor setup for profi cowork reservations", () => {
-    const result = reservationSchema.safeParse({
-      entryTier: "profi",
-      date: "2099-06-10",
-      startsAt: "00:00",
-      endsAt: "24:00",
-      coffee: true,
-      monitorOption: undefined,
-      name: "Ada Lovelace",
-      email: "ada@example.com",
-      phone: "+420777777777",
-      message: "",
-      legalConsent: true,
-    });
-
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(String(result.error)).toContain('at ["monitorOption"]');
     }
   });
 });

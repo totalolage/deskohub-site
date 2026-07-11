@@ -13,7 +13,7 @@ import {
   type SubmitReservationInput,
 } from "@/features/reservation/actions/submit-reservation-input";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
-import { getReservationDate } from "@/features/reservation/schemas/reservation-interval";
+import { getReservationDate } from "@/features/reservation/reservation-interval";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";

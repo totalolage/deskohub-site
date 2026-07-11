@@ -1,7 +1,7 @@
 import { Effect } from "effect";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
-import type { StoredWorkspaceReservationDetails } from "../../features/reservation/schemas/stored-reservation-details";
+import type { StoredWorkspaceReservationDetails } from "../../features/reservation/stored-reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { getDatasourceTimeoutMs } from "../config";
 import { pollEffect } from "../effects";

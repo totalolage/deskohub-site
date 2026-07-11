@@ -8,17 +8,17 @@ import {
   ValidationError,
 } from "@deskohub/dotypos";
 import { Effect, Match } from "effect";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
 import {
   getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   getReservationDate,
   getReservationDurationMinutes,
   getReservationPragueDateRange,
-} from "@/features/reservation/schemas/reservation-interval";
+} from "@/features/reservation/reservation-interval";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";

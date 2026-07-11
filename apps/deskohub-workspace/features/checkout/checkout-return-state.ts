@@ -14,7 +14,7 @@ import {
   reservationCustomerMessageEffectSchema,
   reservationCustomerNameEffectSchema,
   reservationCustomerPhoneEffectSchema,
-} from "@/features/reservation/schemas/reservation";
+} from "@/features/reservation/reservation-contact";
 import {
   getReservationDurationMinutes,
   getReservationIntervalValidationIssue,
@@ -23,8 +23,8 @@ import {
   normalizeReservationInterval,
   unsafeNormalizeReservationInterval,
   wholeHourReservationInstantEffectSchema,
-} from "@/features/reservation/schemas/reservation-interval";
-import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/schemas/stored-reservation-details";
+} from "@/features/reservation/reservation-interval";
+import { makeWorkspaceReservationDetailsEffectSchema } from "@/features/reservation/stored-reservation-details";
 import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 

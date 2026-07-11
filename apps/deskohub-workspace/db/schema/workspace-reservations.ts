@@ -9,7 +9,7 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { locales } from "@/features/i18n";
-import type { StoredWorkspaceReservationDetails } from "@/features/reservation/schemas/stored-reservation-details";
+import type { StoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 

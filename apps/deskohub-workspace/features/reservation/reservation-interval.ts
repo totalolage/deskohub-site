@@ -16,7 +16,7 @@ import {
   type ReservationIntervalInput,
   toInstantMilliseconds,
   toPlainDateTime,
-} from "@/features/reservation/schemas/reservation-interval-normalization";
+} from "@/features/reservation/reservation-interval-normalization";
 import {
   makeWholeHourInstantStringEffectSchema,
   temporalInstantToPlainDate,
@@ -25,7 +25,7 @@ import {
 export type {
   ReservationInterval,
   ReservationIntervalInput,
-} from "@/features/reservation/schemas/reservation-interval-normalization";
+} from "@/features/reservation/reservation-interval-normalization";
 export { defaultReservationInterval };
 
 export type ReservationDateInterval = ReservationInterval & {

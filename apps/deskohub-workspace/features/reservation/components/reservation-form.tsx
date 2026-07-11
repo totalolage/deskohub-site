@@ -39,7 +39,19 @@ import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { getWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import {
+  type CoworkReservationData,
+  type CoworkReservationInput,
+  coworkReservationEffectSchema,
+  getAllowedMonitorOptionsForCoworkTier,
+  getCoworkTierIncludesCourtesyCoffee,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import {
+  getReservationDefaultValuesFromSearchParams,
+  getWorkspaceAvailabilityQueryFromReservationSearchParams,
+} from "@/features/reservation/reservation-checkout-query";
 import {
   calendarDateToReservationPlainDate,
   formatReservationInputDate,
@@ -47,21 +59,9 @@ import {
   reservationInputDateToCalendarDate,
 } from "@/features/reservation/reservation-date";
 import {
-  getAllowedMonitorOptionsForTier,
-  type ReservationData,
-  type ReservationInput,
-  reservationEffectSchema,
-  tierIncludesCourtesyCoffee,
-  tierRequiresMonitorOption,
-} from "@/features/reservation/schemas/reservation";
-import {
-  getReservationDefaultValuesFromSearchParams,
-  getWorkspaceAvailabilityQueryFromReservationSearchParams,
-} from "@/features/reservation/schemas/reservation-checkout-query";
-import {
   type WorkspaceAvailabilityQuery,
   workspaceAvailabilityKeys,
-} from "@/features/reservation/schemas/workspace-availability";
+} from "@/features/reservation/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -194,7 +194,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     [searchParams]
   );
   const schema = useMemo(
-    () => Schema.toStandardSchemaV1(reservationEffectSchema),
+    () => Schema.toStandardSchemaV1(coworkReservationEffectSchema),
     []
   );
   const defaultValues = useMemo(
@@ -206,7 +206,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams),
     [searchParams]
   );
-  const form = useForm<ReservationInput, unknown, ReservationData>({
+  const form = useForm<CoworkReservationInput, unknown, CoworkReservationData>({
     resolver: standardSchemaResolver(schema),
     defaultValues,
     mode: "onBlur",
@@ -216,11 +216,13 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     control: form.control,
     name: ["entryTier", "date", "monitorOption"],
   });
-  const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
+  const courtesyCoffeeIncluded =
+    getCoworkTierIncludesCourtesyCoffee(selectedTier);
   const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
-  const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
-  const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
+  const shouldShowMonitors = getCoworkTierRequiresMonitorOption(selectedTier);
+  const allowedMonitorOptions =
+    getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
     () =>
       getWorkspaceAvailabilityQuery({
@@ -1018,7 +1020,11 @@ function ReservationDateField({
   locale,
   unavailableDates,
 }: {
-  readonly control: Control<ReservationInput, unknown, ReservationData>;
+  readonly control: Control<
+    CoworkReservationInput,
+    unknown,
+    CoworkReservationData
+  >;
   readonly locale: Locale;
   readonly unavailableDates: ReadonlySet<string>;
 }) {
@@ -1093,7 +1099,7 @@ function ReservationDateField({
 }
 
 type TextFieldProps = {
-  control: Control<ReservationInput, unknown, ReservationData>;
+  control: Control<CoworkReservationInput, unknown, CoworkReservationData>;
   name: "name" | "email" | "phone";
   label: string;
   placeholder: string;

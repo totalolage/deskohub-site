@@ -3,7 +3,7 @@ import type {
   WorkspaceCoworkProductTier,
   WorkspaceProductMonitorOption,
 } from "../features/checkout/product-catalog";
-import type { StoredWorkspaceReservationDetails } from "../features/reservation/schemas/stored-reservation-details";
+import type { StoredWorkspaceReservationDetails } from "../features/reservation/stored-reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EError } from "./errors";
 
