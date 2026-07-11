@@ -1,4 +1,4 @@
-import { Data, Schema as EffectSchema, Match } from "effect";
+import { Data, Schema as EffectSchema, Match, SchemaGetter } from "effect";
 import { checkoutSummarySectionEffectSchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { locales } from "@/features/i18n";
@@ -117,6 +117,16 @@ const CheckoutDetailsReservationShapeSchema =
 type CheckoutDetailsReservationDraft =
   typeof CheckoutDetailsReservationShapeSchema.Type;
 
+type CheckoutDetailsCoworkReservationDraft = Extract<
+  CheckoutDetailsReservationDraft,
+  { readonly _tag: "cowork" }
+>;
+
+type CheckoutDetailsMeetingRoomReservationDraft = Extract<
+  CheckoutDetailsReservationDraft,
+  { readonly _tag: "meeting-room" }
+>;
+
 const isMeetingRoomReservationDuration = EffectSchema.is(
   meetingRoomReservationDurationMinutesEffectSchema
 );
@@ -124,61 +134,67 @@ const isWholeHourReservationInstant = EffectSchema.is(
   wholeHourReservationInstantEffectSchema
 );
 
-const getCheckoutDetailsReservationIssues = (
-  reservation: CheckoutDetailsReservationDraft
-) => {
-  const intervalIssue = getReservationIntervalValidationIssue(reservation);
-  if (intervalIssue) {
-    return [
-      {
-        path: [intervalIssue.path],
-        issue: intervalIssue.message,
-      },
-    ];
-  }
-
+const getCheckoutDetailsCoworkReservationIssue = (
+  reservation: CheckoutDetailsCoworkReservationDraft
+): EffectSchema.FilterIssue | undefined => {
   const interval = unsafeNormalizeReservationInterval(reservation);
-  if (reservation._tag === "cowork" && !isDefaultReservationInterval(interval))
-    return [
-      {
+
+  return isDefaultReservationInterval(interval)
+    ? undefined
+    : {
         path: ["endsAt"],
         issue: "Cowork reservations must use the full-day duration.",
-      },
-    ];
-
-  if (
-    reservation._tag === "meeting-room" &&
-    !isWholeHourReservationInstant(interval.startsAt)
-  )
-    return [
-      {
-        path: ["startsAt"],
-        issue: "Meeting room reservations must start on a whole hour.",
-      },
-    ];
-
-  if (
-    reservation._tag === "meeting-room" &&
-    !isMeetingRoomReservationDuration(getReservationDurationMinutes(interval))
-  )
-    return [
-      {
-        path: ["endsAt"],
-        issue: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
-      },
-    ];
-
-  return [];
+      };
 };
 
-const checkoutDetailsReservationEffectSchema =
-  CheckoutDetailsReservationShapeSchema.check(
-    EffectSchema.makeFilter(getCheckoutDetailsReservationIssues)
-  );
+const getCheckoutDetailsMeetingRoomReservationIssue = (
+  reservation: CheckoutDetailsMeetingRoomReservationDraft
+): EffectSchema.FilterIssue | undefined => {
+  const interval = unsafeNormalizeReservationInterval(reservation);
 
-const checkoutDetailsReservationEffectParser = makeEffectSchemaParser(
-  checkoutDetailsReservationEffectSchema
-);
+  if (!isWholeHourReservationInstant(interval.startsAt)) {
+    return {
+      path: ["startsAt"],
+      issue: "Meeting room reservations must start on a whole hour.",
+    };
+  }
+
+  if (
+    !isMeetingRoomReservationDuration(getReservationDurationMinutes(interval))
+  ) {
+    return {
+      path: ["endsAt"],
+      issue: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+    };
+  }
+
+  return undefined;
+};
+
+const getCheckoutDetailsReservationIssue = (
+  reservation: CheckoutDetailsReservationDraft
+): EffectSchema.FilterIssue | undefined => {
+  const intervalIssue = getReservationIntervalValidationIssue(reservation);
+  if (intervalIssue) {
+    return {
+      path: [intervalIssue.path],
+      issue: intervalIssue.message,
+    };
+  }
+
+  return Match.value(reservation).pipe(
+    Match.tag("cowork", getCheckoutDetailsCoworkReservationIssue),
+    Match.tag("meeting-room", getCheckoutDetailsMeetingRoomReservationIssue),
+    Match.exhaustive
+  );
+};
+
+const getCheckoutDetailsReservationIssues = (
+  reservation: CheckoutDetailsReservationDraft
+): readonly EffectSchema.FilterIssue[] => {
+  const issue = getCheckoutDetailsReservationIssue(reservation);
+  return issue ? [issue] : [];
+};
 
 const normalizeCheckoutDetailsReservation = (
   reservation: CheckoutDetailsReservationDraft
@@ -236,26 +252,24 @@ const normalizeCheckoutDetailsReservation = (
     Match.exhaustive
   );
 
-type CheckoutDetailsReservation = ReturnType<
-  typeof normalizeCheckoutDetailsReservation
->;
+const checkoutDetailsReservationDraftEffectSchema =
+  CheckoutDetailsReservationShapeSchema.check(
+    EffectSchema.makeFilter(getCheckoutDetailsReservationIssues)
+  );
 
-export const checkoutDetailsReservationSchema = {
-  parse: (input: unknown): CheckoutDetailsReservation =>
-    normalizeCheckoutDetailsReservation(
-      checkoutDetailsReservationEffectParser.parse(input)
-    ),
-  safeParse: (input: unknown) => {
-    try {
-      return {
-        success: true as const,
-        data: checkoutDetailsReservationSchema.parse(input),
-      };
-    } catch (error) {
-      return { success: false as const, error };
-    }
-  },
-};
+const checkoutDetailsReservationEffectSchema =
+  checkoutDetailsReservationDraftEffectSchema.pipe(
+    EffectSchema.decodeTo(CheckoutDetailsReservationShapeSchema, {
+      decode: SchemaGetter.transform(normalizeCheckoutDetailsReservation),
+      encode: SchemaGetter.transform(
+        (reservation): CheckoutDetailsReservationDraft => reservation
+      ),
+    })
+  );
+
+export const checkoutDetailsReservationSchema = makeEffectSchemaParser(
+  checkoutDetailsReservationEffectSchema
+);
 
 const checkoutDetailsPaymentCustomerDiscountEffectSchema = EffectSchema.Struct({
   source: EffectSchema.Literal("dotypos-discount-group"),
@@ -295,37 +309,8 @@ export const checkoutDetailsJsonEffectSchema = EffectSchema.Struct({
   }),
 });
 
-type CheckoutDetailsJsonDraft = typeof checkoutDetailsJsonEffectSchema.Type;
+export type CheckoutDetailsJson = typeof checkoutDetailsJsonEffectSchema.Type;
 
-export type CheckoutDetailsJson = Omit<
-  CheckoutDetailsJsonDraft,
-  "reservation"
-> & {
-  readonly reservation: CheckoutDetailsReservation;
-};
-
-const checkoutDetailsJsonEffectParser = makeEffectSchemaParser(
+export const checkoutDetailsJsonSchema = makeEffectSchemaParser(
   checkoutDetailsJsonEffectSchema
 );
-
-const normalizeCheckoutDetailsJson = (
-  details: CheckoutDetailsJsonDraft
-): CheckoutDetailsJson => ({
-  ...details,
-  reservation: normalizeCheckoutDetailsReservation(details.reservation),
-});
-
-export const checkoutDetailsJsonSchema = {
-  parse: (input: unknown): CheckoutDetailsJson =>
-    normalizeCheckoutDetailsJson(checkoutDetailsJsonEffectParser.parse(input)),
-  safeParse: (input: unknown) => {
-    try {
-      return {
-        success: true as const,
-        data: checkoutDetailsJsonSchema.parse(input),
-      };
-    } catch (error) {
-      return { success: false as const, error };
-    }
-  },
-};
