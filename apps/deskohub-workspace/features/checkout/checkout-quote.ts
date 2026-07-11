@@ -11,7 +11,6 @@ import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceMeetingRoomDuration,
-  type WorkspaceProductMonitorOption,
 } from "@/features/checkout/product-catalog";
 import {
   addWorkspaceMoneyEffect,
@@ -29,10 +28,11 @@ import {
   unsafeNormalizeReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
-import type {
-  StoredCoworkReservationDetails,
-  StoredMeetingRoomReservationDetails,
+import {
+  makeWorkspaceReservationDetailsWithFieldsEffectSchema,
+  workspaceProductMonitorOptionEffectSchema,
 } from "@/features/reservation/stored-reservation-details";
+import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 
 export type {
   CheckoutSummary,
@@ -40,40 +40,55 @@ export type {
   CheckoutSummarySection,
 } from "@/features/checkout/checkout-summary";
 
-export type WorkspaceCoworkCheckoutOrder = StoredCoworkReservationDetails;
-
-export type WorkspaceMeetingRoomCheckoutOrder =
-  StoredMeetingRoomReservationDetails & ReservationInterval;
+export const workspaceCheckoutOrderEffectSchema =
+  makeWorkspaceReservationDetailsWithFieldsEffectSchema({
+    cowork: {},
+    meetingRoom: {
+      startsAt: isoDateTimeWithOffsetStringEffectSchema,
+      endsAt: isoDateTimeWithOffsetStringEffectSchema,
+    },
+  });
 
 export type WorkspaceCheckoutOrder =
-  | WorkspaceCoworkCheckoutOrder
-  | WorkspaceMeetingRoomCheckoutOrder;
+  typeof workspaceCheckoutOrderEffectSchema.Type;
+
+const workspaceCheckoutBasicOrderInputEffectSchema = Schema.Struct({
+  kind: Schema.Literal("cowork"),
+  tier: Schema.Literal("basic"),
+  date: Schema.String,
+  coffee: Schema.Boolean,
+});
+
+const workspaceCheckoutPlusOrderInputEffectSchema = Schema.Struct({
+  kind: Schema.Literal("cowork"),
+  tier: Schema.Literal("plus"),
+  date: Schema.String,
+  coffee: Schema.Literal(true),
+});
+
+const workspaceCheckoutProfiOrderInputEffectSchema = Schema.Struct({
+  kind: Schema.Literal("cowork"),
+  tier: Schema.Literal("profi"),
+  date: Schema.String,
+  coffee: Schema.Literal(true),
+  monitorOption: workspaceProductMonitorOptionEffectSchema,
+});
+
+const workspaceCheckoutMeetingRoomOrderInputEffectSchema = Schema.Struct({
+  kind: Schema.Literal("meeting-room"),
+  startsAt: isoDateTimeWithOffsetStringEffectSchema,
+  endsAt: isoDateTimeWithOffsetStringEffectSchema,
+});
+
+export const workspaceCheckoutOrderInputEffectSchema = Schema.Union([
+  workspaceCheckoutBasicOrderInputEffectSchema,
+  workspaceCheckoutPlusOrderInputEffectSchema,
+  workspaceCheckoutProfiOrderInputEffectSchema,
+  workspaceCheckoutMeetingRoomOrderInputEffectSchema,
+]);
 
 export type WorkspaceCheckoutOrderInput =
-  | {
-      readonly kind: "cowork";
-      readonly tier: "basic";
-      readonly date: string;
-      readonly coffee: boolean;
-    }
-  | {
-      readonly kind: "cowork";
-      readonly tier: "plus";
-      readonly date: string;
-      readonly coffee: true;
-    }
-  | {
-      readonly kind: "cowork";
-      readonly tier: "profi";
-      readonly date: string;
-      readonly coffee: true;
-      readonly monitorOption: WorkspaceProductMonitorOption;
-    }
-  | {
-      readonly kind: "meeting-room";
-      readonly startsAt: string;
-      readonly endsAt: string;
-    };
+  typeof workspaceCheckoutOrderInputEffectSchema.Type;
 
 export type WorkspaceCheckoutQuote = {
   readonly order: WorkspaceCheckoutOrder;

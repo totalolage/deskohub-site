@@ -3,6 +3,7 @@ import {
   Data,
   Effect,
   Schema as EffectSchema,
+  Match,
   Option,
   SchemaGetter,
   SchemaIssue,
@@ -11,7 +12,10 @@ import type {
   CheckoutSummaryChangedKeys,
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
-import { toWorkspaceCheckoutOrderInput } from "@/features/checkout/checkout-quote";
+import {
+  toWorkspaceCheckoutOrderInput,
+  workspaceCheckoutOrderEffectSchema,
+} from "@/features/checkout/checkout-quote";
 import {
   checkoutReturnStateReservationEffectSchema,
   getCheckoutReturnStateReservation,
@@ -24,8 +28,6 @@ import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/works
 import { type Locale, locales } from "@/features/i18n";
 import { getReservationIntervalValidationIssue } from "@/features/reservation/reservation-interval";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
-import { makeWorkspaceReservationDetailsWithFieldsEffectSchema } from "@/features/reservation/stored-reservation-details";
-import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
 export const payStateSchemaVersion = 1 as const;
@@ -38,35 +40,29 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const CheckoutOrderShapeSchema =
-  makeWorkspaceReservationDetailsWithFieldsEffectSchema({
-    cowork: {},
-    meetingRoom: {
-      startsAt: isoDateTimeWithOffsetStringEffectSchema,
-      endsAt: isoDateTimeWithOffsetStringEffectSchema,
-    },
-  });
+const CheckoutOrderShapeSchema = workspaceCheckoutOrderEffectSchema;
 
 type CheckoutOrderDraft = typeof CheckoutOrderShapeSchema.Type;
 
 const CheckoutOrderSchema = CheckoutOrderShapeSchema.check(
   EffectSchema.makeFilter<CheckoutOrderDraft>((order) => {
-    if (order._tag !== "meeting-room") {
-      return [];
-    }
+    return Match.value(order).pipe(
+      Match.tag("cowork", () => []),
+      Match.tag("meeting-room", (meetingRoom) => {
+        const intervalIssue =
+          getReservationIntervalValidationIssue(meetingRoom);
 
-    const intervalIssue = getReservationIntervalValidationIssue(order);
-
-    if (intervalIssue) {
-      return [
-        {
-          path: [intervalIssue.path],
-          issue: intervalIssue.message,
-        },
-      ];
-    }
-
-    return [];
+        return intervalIssue
+          ? [
+              {
+                path: [intervalIssue.path],
+                issue: intervalIssue.message,
+              },
+            ]
+          : [];
+      }),
+      Match.exhaustive
+    );
   })
 );
 
