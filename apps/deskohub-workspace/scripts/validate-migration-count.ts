@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { $ } from "bun";
 
 const workspaceMigrationPathspec =
   "apps/deskohub-workspace/db/migrations/*.sql";
@@ -20,31 +21,20 @@ export const assertValidMigrationCount = (
 };
 
 const validateMigrationCount = async (baseSha: string) => {
-  const git = Bun.spawn(
-    [
-      "git",
-      "diff",
-      "--name-only",
-      `${baseSha}...HEAD`,
-      "--",
-      workspaceMigrationPathspec,
-    ],
-    {
-      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-      stdout: "pipe",
-      stderr: "inherit",
-    }
-  );
+  const git =
+    await $`git diff --name-only ${`${baseSha}...HEAD`} -- ${workspaceMigrationPathspec}`
+      .cwd(fileURLToPath(new URL("../../..", import.meta.url)))
+      .quiet()
+      .nothrow();
+  process.stderr.write(git.stderr);
 
-  const output = await new Response(git.stdout).text();
-  const exitCode = await git.exited;
-  if (exitCode !== 0) {
+  if (git.exitCode !== 0) {
     throw new Error(
-      `Unable to inspect Workspace migrations (git exit ${exitCode})`
+      `Unable to inspect Workspace migrations (git exit ${git.exitCode})`
     );
   }
 
-  assertValidMigrationCount(parseChangedMigrationPaths(output));
+  assertValidMigrationCount(parseChangedMigrationPaths(git.stdout.toString()));
 };
 
 if (import.meta.main) {

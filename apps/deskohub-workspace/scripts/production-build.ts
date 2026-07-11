@@ -1,5 +1,6 @@
 import { appendFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { $ } from "bun";
 
 export const findDeploymentUrl = (output: string) =>
   output.match(/https:\/\/[^\s]+\.vercel\.app/g)?.at(-1);
@@ -15,34 +16,19 @@ const buildStagedProductionDeployment = async () => {
     throw new Error("VERCEL_TOKEN is not set");
   }
 
-  const deployment = Bun.spawn(
-    [
-      "bunx",
-      "vercel@54.9.1",
-      "deploy",
-      "--prod",
-      "--skip-domain",
-      "--yes",
-      "--archive=tgz",
-      "--cwd",
-      ".",
-      "--token",
-      vercelToken,
-    ],
-    {
-      cwd: fileURLToPath(new URL("../../..", import.meta.url)),
-      env: process.env,
-      stdout: "pipe",
-      stderr: "inherit",
-    }
-  );
-
-  const deploymentOutput = await new Response(deployment.stdout).text();
-  const exitCode = await deployment.exited;
+  const deployment =
+    await $`bunx vercel@54.9.1 deploy --prod --skip-domain --yes --archive=tgz --cwd . --token ${vercelToken}`
+      .cwd(fileURLToPath(new URL("../../..", import.meta.url)))
+      .quiet()
+      .nothrow();
+  const deploymentOutput = deployment.stdout.toString();
   process.stdout.write(deploymentOutput);
+  process.stderr.write(deployment.stderr);
 
-  if (exitCode !== 0) {
-    throw new Error(`Vercel deployment failed with exit code ${exitCode}`);
+  if (deployment.exitCode !== 0) {
+    throw new Error(
+      `Vercel deployment failed with exit code ${deployment.exitCode}`
+    );
   }
 
   const deploymentUrl = findDeploymentUrl(deploymentOutput);
