@@ -122,7 +122,6 @@ const deriveReservationIntentKey = (input: {
     ? basePayload
     : {
         ...basePayload,
-        schemaVersion: 3,
         startsAt: interval.startsAt,
         endsAt: interval.endsAt,
       };
