@@ -6,16 +6,28 @@ import { CldImage, type CldImageProps } from "next-cloudinary";
 type ImageSize = number | "fill";
 type CloudinaryImageVariant = "hero" | "gallery" | "thumbnail" | "full";
 
-interface CloudinaryImageProps
-  extends Omit<CldImageProps, "src" | "alt" | "width" | "height" | "fill"> {
-  asset: CloudinaryAsset;
-  alt?: string;
-  variant?: CloudinaryImageVariant;
-  size?: {
-    width: ImageSize;
-    height: ImageSize;
+type CloudinaryImageSource =
+  | {
+      asset: CloudinaryAsset;
+      publicId?: never;
+    }
+  | {
+      asset?: never;
+      publicId: string;
+    };
+
+type CloudinaryImageProps = Omit<
+  CldImageProps,
+  "src" | "alt" | "width" | "height" | "fill"
+> &
+  CloudinaryImageSource & {
+    alt?: string;
+    variant?: CloudinaryImageVariant;
+    size?: {
+      width: ImageSize;
+      height: ImageSize;
+    };
   };
-}
 
 const variantConfig: Record<
   CloudinaryImageVariant,
@@ -55,6 +67,7 @@ const classNames = (...values: Array<string | undefined>) =>
 
 export function CloudinaryImage({
   asset,
+  publicId,
   alt,
   variant = "gallery",
   size,
@@ -101,11 +114,15 @@ export function CloudinaryImage({
     objectFit: config.crop === "fill" ? "cover" : "contain",
     ...style,
   };
-  const fallbackAlt = asset.context?.custom?.alt?.trim() || asset.public_id;
+  const src = asset?.public_id ?? publicId;
+
+  if (!src) return null;
+
+  const fallbackAlt = asset?.context?.custom?.alt?.trim() || src;
 
   return (
     <CldImage
-      src={asset.public_id}
+      src={src}
       alt={alt ?? fallbackAlt}
       blurDataURL={blurDataURL}
       placeholder={blurDataURL ? "blur" : "empty"}

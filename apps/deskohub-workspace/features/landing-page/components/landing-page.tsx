@@ -2,6 +2,7 @@ import type { Locale } from "@/features/i18n";
 import { siteHeaderSectionIds } from "@/shared/components/site-header-config";
 import { workspaceSiteConstants } from "@/shared/utils";
 import { LandingPageFaqContactSection } from "./landing-page-faq-contact-section";
+import { LandingPageFoundersSection } from "./landing-page-founders-section";
 import {
   LandingPageHeroSection,
   landingPageHeroVars,
@@ -9,7 +10,6 @@ import {
 import { LandingPageLocationMapSection } from "./landing-page-location-map-section";
 import { LandingPagePhotoCarouselSection } from "./landing-page-photo-carousel-section";
 import { LandingPageTeambuildingsSection } from "./landing-page-teambuildings-section";
-import { LandingPageWorkspaceSection } from "./landing-page-workspace-section";
 
 type LandingPageProps = {
   locale: Locale;
@@ -39,11 +39,9 @@ export function LandingPage({ locale }: LandingPageProps) {
         locationMapSectionId={siteHeaderSectionIds.locationMap}
       />
 
-      <LandingPageWorkspaceSection
+      <LandingPageFoundersSection
         locale={locale}
-        coworkSectionId={siteHeaderSectionIds.cowork}
-        privateOfficeSectionId={siteHeaderSectionIds.privateOffice}
-        contactEmail={contactEmail}
+        foundersSectionId={siteHeaderSectionIds.founders}
       />
 
       {/* <LandingPageExperiencesSection */}
