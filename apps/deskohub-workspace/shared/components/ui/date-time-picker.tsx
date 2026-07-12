@@ -20,6 +20,7 @@ type DateTimePickerProps = {
   readonly className?: string;
   readonly disabled?: CalendarProps["disabled"];
   readonly locale?: string;
+  readonly minimum?: string | (() => string);
   readonly name?: string;
   readonly onBlur?: () => void;
   readonly onChange?: (value: string) => void;
@@ -42,6 +43,19 @@ const parsePlainDateTime = (value: string | undefined) => {
   }
 };
 
+const resolveMinimumDateTime = (minimum: DateTimePickerProps["minimum"]) =>
+  parsePlainDateTime(typeof minimum === "function" ? minimum() : minimum);
+
+const getMinimumTimeForDate = (
+  date: Temporal.PlainDate | undefined,
+  minimum: ReturnType<typeof Temporal.PlainDateTime.from> | undefined
+) =>
+  date &&
+  minimum &&
+  Temporal.PlainDate.compare(date, minimum.toPlainDate()) === 0
+    ? minimum.toPlainTime().toString({ smallestUnit: "minute" })
+    : undefined;
+
 const formatDateTimeValue = ({
   date,
   time,
@@ -54,6 +68,7 @@ export function DateTimePicker({
   className,
   disabled,
   locale,
+  minimum,
   name,
   onBlur,
   onChange,
@@ -64,9 +79,15 @@ export function DateTimePicker({
 }: DateTimePickerProps) {
   const [open, setOpen] = useState(false);
   const dateTime = parsePlainDateTime(value);
+  const minimumDateTime = resolveMinimumDateTime(minimum);
+  const minimumDate = minimumDateTime?.toPlainDate();
   const selectedDate = dateTime?.toPlainDate();
   const selectedTime =
     dateTime?.toPlainTime().toString({ smallestUnit: "minute" }) ?? defaultTime;
+  const selectedDateMinimumTime = getMinimumTimeForDate(
+    selectedDate,
+    minimumDateTime
+  );
   const selectedCalendarDate = selectedDate
     ? temporalPlainDateToDate({
         date: selectedDate,
@@ -87,6 +108,19 @@ export function DateTimePicker({
   const displayValue = selectedDate
     ? `${dateFormatter.format(selectedCalendarDate)} ${selectedTime}`
     : placeholder;
+  const minimumCalendarDate = minimumDate
+    ? temporalPlainDateToDate({
+        date: minimumDate,
+        plainTime: Temporal.PlainTime.from("12:00"),
+        timeZone,
+      })
+    : undefined;
+  const calendarDisabled = minimumCalendarDate
+    ? [
+        { before: minimumCalendarDate },
+        ...(Array.isArray(disabled) ? disabled : disabled ? [disabled] : []),
+      ]
+    : disabled;
 
   return (
     <div className={cn("grid gap-3", className)}>
@@ -115,7 +149,7 @@ export function DateTimePicker({
         </PopoverTrigger>
         <PopoverContent align="start" className="w-auto p-3">
           <Calendar
-            disabled={disabled}
+            disabled={calendarDisabled}
             mode="single"
             onSelect={(date) => {
               const plainDate = date
@@ -124,9 +158,27 @@ export function DateTimePicker({
 
               if (!plainDate) return;
 
-              onChange?.(
-                formatDateTimeValue({ date: plainDate, time: selectedTime })
+              const currentMinimumDateTime = resolveMinimumDateTime(minimum);
+              if (
+                currentMinimumDateTime &&
+                Temporal.PlainDate.compare(
+                  plainDate,
+                  currentMinimumDateTime.toPlainDate()
+                ) < 0
+              ) {
+                return;
+              }
+
+              const minimumTime = getMinimumTimeForDate(
+                plainDate,
+                currentMinimumDateTime
               );
+              const time =
+                minimumTime && selectedTime < minimumTime
+                  ? minimumTime
+                  : selectedTime;
+
+              onChange?.(formatDateTimeValue({ date: plainDate, time }));
               setOpen(false);
             }}
             selected={selectedCalendarDate}
@@ -143,18 +195,28 @@ export function DateTimePicker({
             if (!selectedDate) return;
 
             try {
+              const time = Temporal.PlainTime.from(
+                event.currentTarget.value
+              ).toString({ smallestUnit: "minute" });
+              const currentMinimumTime = getMinimumTimeForDate(
+                selectedDate,
+                resolveMinimumDateTime(minimum)
+              );
+              if (currentMinimumTime && time < currentMinimumTime) {
+                return;
+              }
+
               onChange?.(
                 formatDateTimeValue({
                   date: selectedDate,
-                  time: Temporal.PlainTime.from(
-                    event.currentTarget.value
-                  ).toString({ smallestUnit: "minute" }),
+                  time,
                 })
               );
             } catch {
               // Keep the last valid value while the browser input is transiently empty.
             }
           }}
+          min={selectedDateMinimumTime}
           step={3600}
           type="time"
           value={selectedTime}

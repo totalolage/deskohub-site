@@ -11,6 +11,22 @@ export type MeetingRoomReservationInterval = {
   readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
 };
 
+export const getEarliestMeetingRoomStartDateTime = (
+  now = Temporal.Now.instant()
+) =>
+  now
+    .toZonedDateTimeISO(reservationTimeZone)
+    .with({
+      minute: 0,
+      second: 0,
+      millisecond: 0,
+      microsecond: 0,
+      nanosecond: 0,
+    })
+    .add({ hours: 1 })
+    .toPlainDateTime()
+    .toString({ smallestUnit: "minute" });
+
 export const getMeetingRoomReservationInterval = (
   startDateTime: string,
   durationMinutes: number

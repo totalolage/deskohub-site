@@ -28,6 +28,7 @@ import {
   meetingRoomReservationEffectSchema,
 } from "@/features/reservation/meeting-room-reservation";
 import {
+  getEarliestMeetingRoomStartDateTime,
   getMeetingRoomAvailabilityToDate,
   getMeetingRoomReservationInterval,
 } from "@/features/reservation/meeting-room-reservation-time";
@@ -266,6 +267,7 @@ export function MeetingRoomReservationForm({
                     <DateTimePicker
                       className="grid-cols-1 sm:grid-cols-2"
                       locale={locale}
+                      minimum={getEarliestMeetingRoomStartDateTime}
                       name={field.name}
                       onBlur={field.onBlur}
                       onChange={field.onChange}
