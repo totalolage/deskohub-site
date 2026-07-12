@@ -20,17 +20,16 @@ const nextScrambleDelay = () =>
 
 export function CensoredFounderName() {
   const shouldReduceMotion = useReducedMotion();
-  const [label, setLabel] = useState(censoredLabel);
+  const [scrambledLabel, setScrambledLabel] = useState(censoredLabel);
 
   useEffect(() => {
     if (shouldReduceMotion) {
-      setLabel(censoredLabel);
       return;
     }
 
     const timeouts = new Set<number>();
     const updateCharacter = (index: number) => {
-      setLabel(
+      setScrambledLabel(
         (currentLabel) =>
           `${currentLabel.slice(0, index)}${createScrambledCharacter()}${currentLabel.slice(index + 1)}`
       );
@@ -61,7 +60,7 @@ export function CensoredFounderName() {
       aria-hidden="true"
       className="font-mono text-lg font-medium tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,2,79,0.9)]"
     >
-      {label}
+      {shouldReduceMotion ? censoredLabel : scrambledLabel}
     </span>
   );
 }
