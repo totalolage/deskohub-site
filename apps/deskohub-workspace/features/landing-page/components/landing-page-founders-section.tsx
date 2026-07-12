@@ -83,7 +83,7 @@ export function LandingPageFoundersSection({
                   </div>
                 </div>
 
-                <div className="relative -ml-14 min-w-0 flex-1 rounded-r-[1.5rem] border-y border-r border-navy-blue/18 bg-white/90 px-5 pb-5 pl-18 pt-14 text-navy-blue shadow-[0_20px_40px_-28px_rgba(0,2,79,0.38)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
+                <div className="relative -ml-14 min-w-0 flex-1 rounded-[1.5rem] border border-navy-blue/18 bg-white/90 px-5 pb-5 pl-18 pt-14 text-navy-blue shadow-[0_20px_40px_-28px_rgba(0,2,79,0.38)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
                   <h3 className="text-2xl leading-tight sm:text-3xl">
                     {founder.role}
                   </h3>
