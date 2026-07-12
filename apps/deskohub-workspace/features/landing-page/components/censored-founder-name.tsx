@@ -1,59 +1,56 @@
 "use client";
 
+import { useAtom } from "@effect/atom-react";
+import { Effect, Fiber, Random, Schedule } from "effect";
+import * as Atom from "effect/unstable/reactivity/Atom";
 import { useReducedMotion } from "motion/react";
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 
 const censoredLabel = "********";
 const scrambleCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*";
-const scrambleLength = 8;
-const scrambleDelayMs = 200;
-const scrambleDelayJitterMs = 50;
-
-const createScrambledCharacter = () =>
-  scrambleCharacters[Math.floor(Math.random() * scrambleCharacters.length)];
-
-const nextScrambleDelay = () =>
-  scrambleDelayMs +
-  Math.round(
-    Math.random() * (scrambleDelayJitterMs * 2) - scrambleDelayJitterMs
-  );
+const scrambledLabelAtom = Atom.make(censoredLabel);
+const scramblingSchedule = Schedule.spaced(200).pipe(Schedule.jittered);
 
 export function CensoredFounderName() {
   const shouldReduceMotion = useReducedMotion();
-  const [scrambledLabel, setScrambledLabel] = useState(censoredLabel);
+  const [scrambledLabel, setScrambledLabel] = useAtom(scrambledLabelAtom);
 
   useEffect(() => {
     if (shouldReduceMotion) {
       return;
     }
 
-    const timeouts = new Set<number>();
-    const updateCharacter = (index: number) => {
-      setScrambledLabel(
-        (currentLabel) =>
-          `${currentLabel.slice(0, index)}${createScrambledCharacter()}${currentLabel.slice(index + 1)}`
-      );
-    };
-    const scheduleCharacterUpdate = (index: number) => {
-      const timeout = window.setTimeout(() => {
-        timeouts.delete(timeout);
-        updateCharacter(index);
-        scheduleCharacterUpdate(index);
-      }, nextScrambleDelay());
+    const fiber = Effect.runFork(
+      Effect.forEach(
+        Array.from({ length: censoredLabel.length }, (_, index) => index),
+        (index) =>
+          Effect.gen(function* () {
+            const initialDelay = yield* Random.nextIntBetween(160, 240);
 
-      timeouts.add(timeout);
-    };
+            yield* Effect.sleep(initialDelay);
+            yield* Effect.repeat(
+              Effect.gen(function* () {
+                const characterIndex = yield* Random.nextIntBetween(
+                  0,
+                  scrambleCharacters.length - 1
+                );
 
-    for (let index = 0; index < scrambleLength; index += 1) {
-      scheduleCharacterUpdate(index);
-    }
+                setScrambledLabel(
+                  (label) =>
+                    `${label.slice(0, index)}${scrambleCharacters[characterIndex]}${label.slice(index + 1)}`
+                );
+              }),
+              scramblingSchedule
+            );
+          }),
+        { concurrency: "unbounded", discard: true }
+      )
+    );
 
     return () => {
-      for (const timeout of timeouts) {
-        window.clearTimeout(timeout);
-      }
+      Effect.runFork(Fiber.interrupt(fiber));
     };
-  }, [shouldReduceMotion]);
+  }, [setScrambledLabel, shouldReduceMotion]);
 
   return (
     <span
