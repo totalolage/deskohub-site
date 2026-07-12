@@ -282,7 +282,6 @@
   "reservationMeetingRoomFormDescription": "Vyber datum a čas začátku, délku rezervace a pokračuj k bezpečné platbě.",
   "reservationMeetingRoomStartLabel": "Datum a čas začátku",
   "reservationMeetingRoomDurationLabel": "Délka rezervace",
-  "reservationMeetingRoomPricePreviewLabel": "Vybraná cena",
   "reservationMeetingRoomMessagePlaceholder": "Název firmy, nastavení místnosti, poznámka k fakturaci nebo cokoliv, co máme vědět.",
   "reservationMeetingRoomUnavailable": "Zasedací místnost není v tomto termínu dostupná. Zkus jiný začátek nebo délku rezervace.",
   "reservationCoffeeLabel": "Káva",

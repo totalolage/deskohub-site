@@ -4,7 +4,7 @@ import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
 import { Schema } from "effect";
-import { AlertTriangle, ArrowRight, Clock } from "lucide-react";
+import { AlertTriangle, ArrowRight } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useAction } from "next-safe-action/hooks";
@@ -13,7 +13,6 @@ import { type Control, useForm, useWatch } from "react-hook-form";
 import { CheckoutPayPageSkeleton } from "@/features/checkout/components/checkout-pay-page";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
-  isWorkspaceMeetingRoomDuration,
   type WorkspaceMeetingRoomDurationMinutes,
   workspaceMeetingRoomDurationOptions,
 } from "@/features/checkout/product-catalog";
@@ -162,13 +161,6 @@ export function MeetingRoomReservationForm({
         availability?.meetingRoomUnavailable)
   );
   const isAvailabilityLoading = availabilityQueryResult.isFetching;
-  const selectedDurationPrice = isWorkspaceMeetingRoomDuration(
-    Number(selectedDurationMinutes)
-  )
-    ? getWorkspaceMeetingRoomPriceForDuration(
-        Number(selectedDurationMinutes) as WorkspaceMeetingRoomDurationMinutes
-      )
-    : getWorkspaceMeetingRoomPriceForDuration(60);
 
   const {
     executeAsync: sendReservation,
@@ -259,47 +251,33 @@ export function MeetingRoomReservationForm({
       <CardContent className="pt-6">
         <Form {...form}>
           <form onSubmit={handleSubmit} className="space-y-7">
-            <div className="grid gap-5 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
-              <FormField
-                control={form.control}
-                name="startDateTime"
-                render={({ field, fieldState }) => (
-                  <FormItem>
-                    <FormLabel
-                      className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
-                      required
-                    >
-                      {m.reservationMeetingRoomStartLabel({}, { locale })}
-                    </FormLabel>
-                    <FormControl>
-                      <DateTimePicker
-                        locale={locale}
-                        name={field.name}
-                        onBlur={field.onBlur}
-                        onChange={field.onChange}
-                        placeholder={m.reservationDatePlaceholder(
-                          {},
-                          { locale }
-                        )}
-                        value={field.value}
-                        variant={fieldState.error ? "error" : "default"}
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <div className="rounded-[1.35rem] border border-navy-blue/10 bg-linear-to-br from-sunset-yellow/16 to-white p-4">
-                <div className="flex items-center gap-2 text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72">
-                  <Clock className="h-4 w-4 text-burned-orange" />
-                  {m.reservationMeetingRoomPricePreviewLabel({}, { locale })}
-                </div>
-                <p className="mt-3 text-3xl font-semibold text-navy-blue">
-                  {formatWorkspaceMoney(selectedDurationPrice, locale)}
-                </p>
-              </div>
-            </div>
+            <FormField
+              control={form.control}
+              name="startDateTime"
+              render={({ field, fieldState }) => (
+                <FormItem>
+                  <FormLabel
+                    className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+                    required
+                  >
+                    {m.reservationMeetingRoomStartLabel({}, { locale })}
+                  </FormLabel>
+                  <FormControl>
+                    <DateTimePicker
+                      className="grid-cols-1 sm:grid-cols-2"
+                      locale={locale}
+                      name={field.name}
+                      onBlur={field.onBlur}
+                      onChange={field.onChange}
+                      placeholder={m.reservationDatePlaceholder({}, { locale })}
+                      value={field.value}
+                      variant={fieldState.error ? "error" : "default"}
+                    />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}
@@ -515,9 +493,12 @@ export function MeetingRoomReservationFormFallback({
       <div className="pointer-events-none absolute inset-x-8 top-0 h-px bg-linear-to-r from-transparent via-sunset-yellow/80 to-transparent" />
       <CardContent className="pt-6">
         <div aria-hidden="true" className="space-y-7">
-          <div className="grid gap-5 md:grid-cols-2">
-            <SkeletonField />
-            <SkeletonField />
+          <div className="space-y-2">
+            <SkeletonBlock className="h-4 w-40" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SkeletonBlock className="h-13 w-full rounded-[1.1rem]" />
+              <SkeletonBlock className="h-13 w-full rounded-[1.1rem]" />
+            </div>
           </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <SkeletonBlock className="h-24 rounded-[1.1rem]" />

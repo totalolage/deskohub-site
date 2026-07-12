@@ -282,7 +282,6 @@
   "reservationMeetingRoomFormDescription": "Choose the start date and time, pick a duration, and continue to secure payment.",
   "reservationMeetingRoomStartLabel": "Start date and time",
   "reservationMeetingRoomDurationLabel": "Duration",
-  "reservationMeetingRoomPricePreviewLabel": "Selected price",
   "reservationMeetingRoomMessagePlaceholder": "Company name, room setup, invoice note, or anything we should know.",
   "reservationMeetingRoomUnavailable": "The meeting room is not available for this time. Try another start time or duration.",
   "reservationCoffeeLabel": "Coffee",
