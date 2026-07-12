@@ -24,11 +24,13 @@ export function FounderProfileImage({
         <div className="contents" onErrorCapture={() => setHasImageError(true)}>
           <CloudinaryImage
             alt=""
-            className="absolute inset-0 transition-transform duration-700 group-hover:scale-105"
+            aspectRatio={1}
+            className="absolute inset-0"
+            gravity="auto:thirds_0"
             preload={false}
             publicId={publicId}
             size={{ width: "fill", height: "fill" }}
-            sizes="(min-width: 1280px) 31vw, (min-width: 768px) 46vw, 96px"
+            sizes="(min-width: 640px) 128px, 96px"
             variant="gallery"
             version={version}
           />

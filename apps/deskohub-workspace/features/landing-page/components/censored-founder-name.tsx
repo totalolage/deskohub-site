@@ -5,13 +5,18 @@ import { Effect, Fiber, Random, Schedule } from "effect";
 import * as Atom from "effect/unstable/reactivity/Atom";
 import { useReducedMotion } from "motion/react";
 import { useEffect } from "react";
+import { cn } from "@/shared/utils";
 
 const censoredLabel = "********";
 const scrambleCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*";
 const scrambledLabelAtom = Atom.make(censoredLabel);
 const scramblingSchedule = Schedule.spaced(200).pipe(Schedule.jittered);
 
-export function CensoredFounderName() {
+type CensoredFounderNameProps = {
+  className?: string;
+};
+
+export function CensoredFounderName({ className }: CensoredFounderNameProps) {
   const shouldReduceMotion = useReducedMotion();
   const [scrambledLabel, setScrambledLabel] = useAtom(scrambledLabelAtom);
 
@@ -55,7 +60,10 @@ export function CensoredFounderName() {
   return (
     <span
       aria-hidden="true"
-      className="font-mono text-lg font-medium tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,2,79,0.9)]"
+      className={cn(
+        "font-mono text-lg font-medium tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,2,79,0.9)]",
+        className
+      )}
     >
       {shouldReduceMotion ? censoredLabel : scrambledLabel}
     </span>
