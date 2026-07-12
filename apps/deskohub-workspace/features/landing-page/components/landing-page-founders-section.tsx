@@ -61,9 +61,9 @@ export function LandingPageFoundersSection({
         <div className="mt-10 grid max-w-4xl gap-8 xl:mt-12">
           {founders.map((founder) => (
             <article key={founder.role} className="relative overflow-visible">
-              <div className="relative flex min-h-24 items-stretch sm:min-h-32">
-                <div className="relative z-10 w-24 shrink-0 self-stretch sm:w-32">
-                  <div className="absolute top-1/2 h-24 w-24 -translate-y-1/2 overflow-hidden rounded-full border-4 border-white/70 bg-navy-blue shadow-[0_16px_32px_-18px_rgba(0,2,79,0.9)] sm:h-32 sm:w-32">
+              <div className="relative flex min-h-28 items-stretch sm:min-h-40">
+                <div className="relative z-10 w-28 shrink-0 self-stretch sm:w-40">
+                  <div className="absolute top-1/2 h-28 w-28 -translate-y-1/2 overflow-hidden rounded-full border-4 border-white bg-navy-blue shadow-[0_16px_32px_-18px_rgba(0,2,79,0.72)] sm:h-40 sm:w-40">
                     <FounderProfileImage
                       publicId={founder.imagePublicId}
                       version={founder.imageVersion}
@@ -72,22 +72,22 @@ export function LandingPageFoundersSection({
 
                   <div className="absolute left-[calc(100%+1rem)] top-5 z-10 sm:top-6">
                     {founder.name ? (
-                      <div className="w-fit rounded-full border border-white/30 bg-white/12 px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-white shadow-[0_2px_4px_rgba(0,2,79,0.9)]">
+                      <div className="w-fit rounded-full border border-burned-orange/30 bg-burned-orange px-3 py-1 text-xs font-medium uppercase tracking-[0.16em] text-white shadow-[0_2px_4px_rgba(221,72,10,0.38)]">
                         {founder.name}
                       </div>
                     ) : (
-                      <div className="w-fit rounded-full border border-white/30 bg-white/12 px-3 py-1 leading-none shadow-[0_2px_4px_rgba(0,2,79,0.9)]">
+                      <div className="w-fit rounded-full border border-burned-orange/30 bg-burned-orange px-3 py-1 leading-none shadow-[0_2px_4px_rgba(221,72,10,0.38)]">
                         <CensoredFounderName className="text-xs tracking-[0.16em] drop-shadow-none" />
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="relative -ml-12 min-w-0 flex-1 rounded-r-[1.5rem] border-y border-r border-white/65 px-5 pb-5 pl-16 pt-14 text-white sm:-ml-16 sm:px-6 sm:pb-6 sm:pl-20 sm:pt-16">
+                <div className="relative -ml-14 min-w-0 flex-1 rounded-r-[1.5rem] border-y border-r border-navy-blue/18 bg-white/90 px-5 pb-5 pl-18 pt-14 text-navy-blue shadow-[0_20px_40px_-28px_rgba(0,2,79,0.38)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
                   <h3 className="text-2xl leading-tight sm:text-3xl">
                     {founder.role}
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-white/80 sm:mt-3 sm:leading-7">
+                  <p className="mt-2 text-sm leading-6 text-navy-blue/72 sm:mt-3 sm:leading-7">
                     {founder.description}
                   </p>
                 </div>

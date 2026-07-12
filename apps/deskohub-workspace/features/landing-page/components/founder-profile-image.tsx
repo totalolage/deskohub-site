@@ -30,7 +30,7 @@ export function FounderProfileImage({
             preload={false}
             publicId={publicId}
             size={{ width: "fill", height: "fill" }}
-            sizes="(min-width: 640px) 128px, 96px"
+            sizes="(min-width: 640px) 160px, 112px"
             variant="gallery"
             version={version}
           />
