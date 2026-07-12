@@ -3,6 +3,7 @@ import {
   type WorkspaceMeetingRoomDurationMinutes,
 } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
+import "@/shared/polyfills/temporal";
 
 export type MeetingRoomReservationInterval = {
   readonly date: string;
