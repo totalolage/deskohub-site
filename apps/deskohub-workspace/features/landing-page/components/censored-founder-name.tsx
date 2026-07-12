@@ -1,16 +1,13 @@
 "use client";
 
-import { useAtom } from "@effect/atom-react";
-import { Effect, Fiber, Random, Schedule } from "effect";
-import * as Atom from "effect/unstable/reactivity/Atom";
+import { useAtomValue } from "@effect/atom-react";
 import { useReducedMotion } from "motion/react";
-import { useEffect } from "react";
 import { cn } from "@/shared/utils";
-
-const censoredLabel = "********";
-const scrambleCharacters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#$%&*";
-const scrambledLabelAtom = Atom.make(censoredLabel);
-const scramblingSchedule = Schedule.spaced(200).pipe(Schedule.jittered);
+import {
+  censoredFounderNameLabel,
+  scrambledFounderNameAtom,
+} from "./censored-founder-name-animation";
+import { useCensoredFounderNameAnimation } from "./use-censored-founder-name-animation";
 
 type CensoredFounderNameProps = {
   className?: string;
@@ -18,44 +15,9 @@ type CensoredFounderNameProps = {
 
 export function CensoredFounderName({ className }: CensoredFounderNameProps) {
   const shouldReduceMotion = useReducedMotion();
-  const [scrambledLabel, setScrambledLabel] = useAtom(scrambledLabelAtom);
+  const scrambledLabel = useAtomValue(scrambledFounderNameAtom);
 
-  useEffect(() => {
-    if (shouldReduceMotion) {
-      return;
-    }
-
-    const fiber = Effect.runFork(
-      Effect.forEach(
-        Array.from({ length: censoredLabel.length }, (_, index) => index),
-        (index) =>
-          Effect.gen(function* () {
-            const initialDelay = yield* Random.nextIntBetween(160, 240);
-
-            yield* Effect.sleep(initialDelay);
-            yield* Effect.repeat(
-              Effect.gen(function* () {
-                const characterIndex = yield* Random.nextIntBetween(
-                  0,
-                  scrambleCharacters.length - 1
-                );
-
-                setScrambledLabel(
-                  (label) =>
-                    `${label.slice(0, index)}${scrambleCharacters[characterIndex]}${label.slice(index + 1)}`
-                );
-              }),
-              scramblingSchedule
-            );
-          }),
-        { concurrency: "unbounded", discard: true }
-      )
-    );
-
-    return () => {
-      Effect.runFork(Fiber.interrupt(fiber));
-    };
-  }, [setScrambledLabel, shouldReduceMotion]);
+  useCensoredFounderNameAnimation(!shouldReduceMotion);
 
   return (
     <span
@@ -65,7 +27,7 @@ export function CensoredFounderName({ className }: CensoredFounderNameProps) {
         className
       )}
     >
-      {shouldReduceMotion ? censoredLabel : scrambledLabel}
+      {shouldReduceMotion ? censoredFounderNameLabel : scrambledLabel}
     </span>
   );
 }
