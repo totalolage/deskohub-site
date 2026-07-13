@@ -66,6 +66,7 @@ describe("GoogleCalendarService", () => {
                 {
                   id: "event-1",
                   iCalUID: "ical-1",
+                  recurringEventId: "recurring-event-1",
                   status: "confirmed",
                   summary: "Summary",
                   description: "Description",
@@ -74,6 +75,10 @@ describe("GoogleCalendarService", () => {
                     timeZone: "Europe/Prague",
                   },
                   end: { dateTime: "2026-06-20T11:00:00+02:00" },
+                  originalStartTime: {
+                    dateTime: "2026-06-20T09:00:00+02:00",
+                    timeZone: "Europe/Prague",
+                  },
                 },
               ],
             },
@@ -114,6 +119,7 @@ describe("GoogleCalendarService", () => {
       {
         id: "event-1",
         iCalUID: "ical-1",
+        recurringEventId: "recurring-event-1",
         status: "confirmed",
         summary: "Summary",
         description: "Description",
@@ -122,6 +128,10 @@ describe("GoogleCalendarService", () => {
           timeZone: "Europe/Prague",
         },
         end: { dateTime: "2026-06-20T11:00:00+02:00" },
+        originalStartTime: {
+          dateTime: "2026-06-20T09:00:00+02:00",
+          timeZone: "Europe/Prague",
+        },
       },
       {
         id: "event-2",

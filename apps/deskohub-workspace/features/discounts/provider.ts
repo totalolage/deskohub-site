@@ -27,11 +27,6 @@ type DiscountProviderErrorType =
   | DiscountCodeUnavailableError
   | DiscountProviderError;
 
-type CalendarDiscountProviderInput = Pick<
-  DiscountQuoteInput,
-  "product" | "reservationDate"
->;
-
 type CustomerDiscountProviderInput = Pick<
   DiscountQuoteInput,
   "dotyposCustomerId" | "locale" | "product"
@@ -41,15 +36,6 @@ type CodeDiscountProviderInput = Pick<
   DiscountQuoteInput,
   "discountableSubtotal" | "dotyposCustomerId" | "product" | "submittedCode"
 >;
-
-interface ICalendarDiscountProvider {
-  readonly quote: (
-    input: CalendarDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
-  readonly revalidate: (
-    input: CalendarDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
-}
 
 interface ICustomerDiscountProvider {
   readonly quote: (
@@ -68,11 +54,6 @@ interface ICodeDiscountProvider {
     input: CodeDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderErrorType>;
 }
-
-export class CalendarDiscountProvider extends Context.Service<
-  CalendarDiscountProvider,
-  ICalendarDiscountProvider
->()("@deskohub-workspace/discounts/CalendarDiscountProvider") {}
 
 export class CustomerDiscountProvider extends Context.Service<
   CustomerDiscountProvider,

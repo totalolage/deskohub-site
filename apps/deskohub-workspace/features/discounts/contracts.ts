@@ -21,20 +21,19 @@ export const discountIdSchema = Schema.NonEmptyString.pipe(
 
 export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
 
+export const discountProductIdentityEffectSchema = Schema.Struct({
+  kind: Schema.Literal("cowork"),
+  tier: Schema.Literals(workspaceProductTiers),
+});
+
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
   DiscountProductIdentity
-> = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    kind: Schema.Literal("cowork"),
-    tier: Schema.Literals(workspaceProductTiers),
-  }),
-  {
-    parseOptions: {
-      onExcessProperty: "error",
-    },
-  }
-);
+> = Schema.toStandardSchemaV1(discountProductIdentityEffectSchema, {
+  parseOptions: {
+    onExcessProperty: "error",
+  },
+});
 
 export type DiscountAdjustment =
   | {
