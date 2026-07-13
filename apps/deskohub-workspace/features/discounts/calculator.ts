@@ -37,10 +37,7 @@ type DiscountCalculationState = {
 
 export const calculateDiscounts = Effect.fn("DiscountCalculator.calculate")(
   (input: DiscountCalculationInput) =>
-    Effect.Do.pipe(
-      Effect.let("product", () => input.product),
-      Effect.let("discountableSubtotal", () => input.discountableSubtotal),
-      Effect.let("candidates", () => input.candidates),
+    Effect.succeed(input).pipe(
       Effect.bind("validatedSubtotal", validateDiscountableSubtotal),
       Effect.bind("calculation", calculateApplications),
       Effect.map(toDiscountCalculation)
