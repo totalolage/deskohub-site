@@ -7,7 +7,6 @@ import {
 import {
   normalizeTimestampField,
   toInstantMilliseconds,
-  toPlainDateTime,
 } from "./reservation-interval-parser";
 
 export const normalizeReservationIntervalFields = (
@@ -15,22 +14,15 @@ export const normalizeReservationIntervalFields = (
   timeZone: string
 ): Effect.Effect<ReservationInterval, ReservationIntervalValidationError> =>
   Effect.gen(function* () {
-    const startsAt = yield* requireTimestampField(value.startsAt, "startsAt");
-    const endsAt = yield* requireTimestampField(value.endsAt, "endsAt");
-    const date = value.date;
-
     const normalizedStartsAt = yield* normalizeTimestampField({
-      date,
       path: "startsAt",
       timeZone,
-      value: startsAt,
+      value: value.startsAt,
     });
     const normalizedEndsAt = yield* normalizeTimestampField({
-      date,
       path: "endsAt",
-      startsAt,
       timeZone,
-      value: endsAt,
+      value: value.endsAt,
     });
 
     const interval = {
@@ -44,19 +36,6 @@ export const normalizeReservationIntervalFields = (
         new ReservationIntervalValidationError({
           path: "endsAt",
           message: "Reservation end time must be after start time.",
-        })
-      );
-    }
-
-    if (
-      value.date &&
-      toPlainDateTime(interval.startsAt, timeZone).toPlainDate().toString() !==
-        value.date
-    ) {
-      return yield* Effect.fail(
-        new ReservationIntervalValidationError({
-          path: "startsAt",
-          message: "Reservation start time must match reservation date.",
         })
       );
     }
@@ -81,23 +60,12 @@ export const getDurationMinutes = (interval: ReservationInterval) =>
     toInstantMilliseconds(interval.startsAt)) /
   (60 * 1000);
 
-const requireTimestampField = (
-  value: string | undefined,
-  path: keyof ReservationInterval
-) =>
-  value === undefined
-    ? Effect.fail(
-        new ReservationIntervalValidationError({
-          path,
-          message: `Reservation ${path === "startsAt" ? "start" : "end"} time is required.`,
-        })
-      )
-    : Effect.succeed(value);
-
 export type {
+  ReservationDateInput,
   ReservationInterval,
   ReservationIntervalInput,
   ReservationIntervalValidationIssue,
+  ReservationTimeInput,
 } from "./reservation-interval-domain";
 export { ReservationIntervalValidationError } from "./reservation-interval-domain";
 export {

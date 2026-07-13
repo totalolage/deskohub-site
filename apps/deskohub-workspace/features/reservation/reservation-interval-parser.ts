@@ -1,38 +1,14 @@
-import { Effect, Match, Option, Schema, SchemaGetter } from "effect";
+import { Effect, Match, Schema, SchemaGetter } from "effect";
 import {
-  type InstantString,
+  type Instant,
   instantStringEffectSchema,
-  type LocalDateTimeString,
+  type LocalDateTime,
   localDateTimeEffectSchema,
-  localTimeEffectSchema,
-  plainDateStringEffectSchema,
 } from "@/shared/utils/temporal";
 import {
   type ReservationInterval,
   ReservationIntervalValidationError,
 } from "./reservation-interval-domain";
-
-const reservationLocalTimeEffectSchema = Schema.Union([
-  Schema.Literal("24:00"),
-  localTimeEffectSchema,
-]);
-
-const localTimeTimestampEffectSchema = reservationLocalTimeEffectSchema.pipe(
-  Schema.decodeTo(
-    Schema.TaggedStruct("LocalTime", {
-      value: reservationLocalTimeEffectSchema,
-    }),
-    {
-      decode: SchemaGetter.transform((value) => ({
-        _tag: "LocalTime" as const,
-        value,
-      })),
-      encode: SchemaGetter.transform(
-        ({ value }) => value as typeof reservationLocalTimeEffectSchema.Type
-      ),
-    }
-  )
-);
 
 const localDateTimeTimestampEffectSchema = localDateTimeEffectSchema.pipe(
   Schema.decodeTo(
@@ -44,9 +20,7 @@ const localDateTimeTimestampEffectSchema = localDateTimeEffectSchema.pipe(
         _tag: "LocalDateTime" as const,
         value,
       })),
-      encode: SchemaGetter.transform(
-        ({ value }) => value as LocalDateTimeString
-      ),
+      encode: SchemaGetter.transform(({ value }) => value as LocalDateTime),
     }
   )
 );
@@ -61,25 +35,18 @@ const instantTimestampEffectSchema = instantStringEffectSchema.pipe(
         _tag: "Instant" as const,
         value,
       })),
-      encode: SchemaGetter.transform(({ value }) => value as InstantString),
+      encode: SchemaGetter.transform(({ value }) => value as Instant),
     }
   )
 );
 
 const reservationTimestampEffectSchema = Schema.Union([
-  localTimeTimestampEffectSchema,
   localDateTimeTimestampEffectSchema,
   instantTimestampEffectSchema,
 ]);
 
 const decodeReservationTimestamp = Schema.decodeUnknownEffect(
   reservationTimestampEffectSchema
-);
-const decodeReservationLocalTime = Schema.decodeUnknownOption(
-  reservationLocalTimeEffectSchema
-);
-const decodePlainDateString = Schema.decodeUnknownSync(
-  plainDateStringEffectSchema
 );
 const decodeInstantString = Schema.decodeUnknownSync(instantStringEffectSchema);
 
@@ -90,21 +57,17 @@ export const toInstantMilliseconds = (value: string) =>
   Temporal.Instant.from(value).epochMilliseconds;
 
 type TimestampFieldInput = {
-  readonly date?: string;
   readonly path: keyof ReservationInterval;
-  readonly startsAt?: string;
   readonly timeZone: string;
   readonly value: string;
 };
 
 export const normalizeTimestampField = ({
-  date,
   path,
-  startsAt,
   timeZone,
   value,
 }: TimestampFieldInput): Effect.Effect<
-  InstantString,
+  Instant,
   ReservationIntervalValidationError
 > =>
   decodeReservationTimestamp(value).pipe(
@@ -118,24 +81,6 @@ export const normalizeTimestampField = ({
     ),
     Effect.flatMap((timestamp) =>
       Match.value(timestamp).pipe(
-        Match.tag("LocalTime", ({ value: time }) =>
-          date
-            ? normalizeInstantString(path, () =>
-                localTimeToInstant({
-                  date,
-                  startsAt,
-                  time,
-                  timeZone,
-                })
-              )
-            : Effect.fail(
-                new ReservationIntervalValidationError({
-                  path,
-                  message:
-                    "Reservation date is required for local time inputs.",
-                })
-              )
-        ),
         Match.tag("LocalDateTime", ({ value: localDateTime }) =>
           normalizeInstantString(path, () =>
             Temporal.PlainDateTime.from(localDateTime)
@@ -162,49 +107,6 @@ const normalizeInstantString = (
     try: () => decodeInstantString(normalize()),
     catch: (cause) => toValidationError(path, cause),
   });
-
-const localTimeToInstant = ({
-  date,
-  startsAt,
-  time,
-  timeZone,
-}: {
-  readonly date: string;
-  readonly startsAt?: string;
-  readonly time: string;
-  readonly timeZone: string;
-}) => {
-  const reservationDate = Temporal.PlainDate.from(decodePlainDateString(date));
-  const minutes = localTimeToMinutes(time);
-  const decodedStartTime = startsAt
-    ? decodeReservationLocalTime(startsAt)
-    : Option.none();
-  const startMinutes = Option.isSome(decodedStartTime)
-    ? localTimeToMinutes(decodedStartTime.value)
-    : undefined;
-  const localDate = reservationDate.add({
-    days:
-      time !== "24:00" && startMinutes !== undefined && minutes <= startMinutes
-        ? 1
-        : Math.floor(minutes / (24 * 60)),
-  });
-  const localMinutes = minutes % (24 * 60);
-
-  return localDate
-    .toPlainDateTime(
-      new Temporal.PlainTime(Math.floor(localMinutes / 60), localMinutes % 60)
-    )
-    .toZonedDateTime(timeZone)
-    .toInstant()
-    .toString();
-};
-
-const localTimeToMinutes = (time: string) => {
-  if (time === "24:00") return 24 * 60;
-
-  const parsed = Temporal.PlainTime.from(time);
-  return parsed.hour * 60 + parsed.minute;
-};
 
 const toValidationError = (path: keyof ReservationInterval, cause: unknown) =>
   new ReservationIntervalValidationError({

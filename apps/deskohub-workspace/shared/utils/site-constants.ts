@@ -20,8 +20,6 @@ export const workspaceSiteConstants = {
   },
   contact: {
     infoEmail: "workspace@deskohub.cz",
-    address: workspaceLocation.address,
-    coordinates: workspaceLocation.coordinates,
   },
   location: workspaceLocation,
   reservation: {
