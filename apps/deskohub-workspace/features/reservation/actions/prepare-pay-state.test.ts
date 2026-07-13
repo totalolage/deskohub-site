@@ -5,7 +5,6 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
-import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "@/features/checkout/backend/holds";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
 import type {
   WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
@@ -90,9 +89,6 @@ const runReusableReservationScenario = async (input: {
   const { LegalEvidenceEventRepository } = await import(
     "@/features/checkout/backend/repositories"
   );
-  const { ReservationHoldCleanupService } = await import(
-    "@/features/checkout/backend/holds"
-  );
   const { ReservationHoldCleanupScheduleService } = await import(
     "@/features/checkout/backend/holds"
   );
@@ -148,14 +144,6 @@ const runReusableReservationScenario = async (input: {
       } as unknown as LegalEvidenceEventRepositoryType)
     ),
     Effect.provide(
-      Layer.succeed(ReservationHoldCleanupService, {
-        cancelOrderHold: mock(() => Effect.die("unused")),
-        sweepExpiredHolds: mock(() =>
-          Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
-        ),
-      } satisfies ReservationHoldCleanupServiceType)
-    ),
-    Effect.provide(
       Layer.succeed(ReservationHoldCleanupScheduleService, {
         enqueueCleanup,
       } as never)
@@ -195,9 +183,6 @@ describe("prepareWorkspacePayStateEffect", () => {
     );
     const { LegalEvidenceEventRepository } = await import(
       "@/features/checkout/backend/repositories"
-    );
-    const { ReservationHoldCleanupService } = await import(
-      "@/features/checkout/backend/holds"
     );
     const { ReservationHoldCleanupScheduleService } = await import(
       "@/features/checkout/backend/holds"
@@ -253,13 +238,6 @@ describe("prepareWorkspacePayStateEffect", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const assignTableId = mock(() => Effect.succeed("table-id"));
-    const sweepExpiredHolds = mock(() =>
-      Effect.sync(() => {
-        eventOrder.push("sweep");
-        return { cancelled: 0, skipped: 0, failed: 0 };
-      })
-    );
-
     const result = await prepareWorkspacePayStateEffect({
       locale: "en-US",
       reservationIntentId: "intent-id",
@@ -299,12 +277,6 @@ describe("prepareWorkspacePayStateEffect", () => {
         Layer.succeed(WorkspaceTableAssignmentService, {
           assignTableId,
         } satisfies WorkspaceTableAssignmentServiceType)
-      ),
-      Effect.provide(
-        Layer.succeed(ReservationHoldCleanupService, {
-          cancelOrderHold: mock(() => Effect.succeed("cancelled" as const)),
-          sweepExpiredHolds,
-        } satisfies ReservationHoldCleanupServiceType)
       ),
       Effect.provide(
         Layer.succeed(ReservationHoldCleanupScheduleService, {
@@ -351,11 +323,7 @@ describe("prepareWorkspacePayStateEffect", () => {
       orderId: "reservation-id",
       reservationHoldExpiresAt: expect.any(Date),
     });
-    expect(sweepExpiredHolds).toHaveBeenCalledWith({
-      now: expect.any(Date),
-      limit: 10,
-    });
-    expect(eventOrder).toEqual(["sweep", "availability", "attach", "enqueue"]);
+    expect(eventOrder).toEqual(["availability", "attach", "enqueue"]);
     expect(recordMany).toHaveBeenCalledWith([
       expect.objectContaining({
         workspaceReservationId: "reservation-id",
@@ -373,7 +341,7 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(openPayState(token ?? "").orderId).toBe("reservation-id");
   });
 
-  test("enqueues cleanup when reusing an existing held reservation", async () => {
+  test("reuses an existing held reservation without scheduling cleanup", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
       findByIntentKey: mock(() => Effect.succeed(existingReservation)),
@@ -381,10 +349,7 @@ describe("prepareWorkspacePayStateEffect", () => {
 
     expect(result.result.status).toBe("ready");
     expect(result.ensureAvailable).not.toHaveBeenCalled();
-    expect(result.enqueueCleanup).toHaveBeenCalledWith({
-      orderId: existingReservation.id,
-      reservationHoldExpiresAt: reusableHoldExpiresAt,
-    });
+    expect(result.enqueueCleanup).not.toHaveBeenCalled();
     expect(result.updateProductIntent).toHaveBeenCalledWith({
       id: existingReservation.id,
       productTier: "basic",
@@ -394,7 +359,7 @@ describe("prepareWorkspacePayStateEffect", () => {
     });
   });
 
-  test("enqueues cleanup when reusing a concurrently created held reservation", async () => {
+  test("reuses a concurrently created held reservation without scheduling cleanup", async () => {
     const claimConflictReservation = makeReusableReservation({
       id: "claim-conflict-reservation-id",
     });
@@ -408,9 +373,6 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(result.result.status).toBe("ready");
     expect(result.claimHoldCreation).toHaveBeenCalledWith("draft-id");
     expect(result.findById).toHaveBeenCalledWith("draft-id");
-    expect(result.enqueueCleanup).toHaveBeenCalledWith({
-      orderId: claimConflictReservation.id,
-      reservationHoldExpiresAt: reusableHoldExpiresAt,
-    });
+    expect(result.enqueueCleanup).not.toHaveBeenCalled();
   });
 });

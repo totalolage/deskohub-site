@@ -26,11 +26,7 @@ import {
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
-import {
-  ReservationHoldCleanupScheduleService,
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "@/features/checkout/backend/holds";
+import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
   LegalEvidenceEventRepositoryLive,
@@ -397,41 +393,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     yield* Effect.annotateLogsScoped({ existingReservation });
     yield* Effect.logDebug("Workspace reservation intent key lookup completed");
 
-    if (
-      existingReservation?.reservationState === "held" &&
-      existingReservation.paymentState === "not_started" &&
-      existingReservation.reservationHoldExpiresAt &&
-      existingReservation.reservationHoldExpiresAt <= new Date()
-    ) {
-      yield* Effect.logInfo(
-        "Expired existing workspace reservation hold detected before checkout prep"
-      );
-
-      const existingReservationId = existingReservation.id;
-      const holdCleanup = yield* ReservationHoldCleanupService;
-      yield* holdCleanup
-        .cancelOrderHold({
-          orderId: existingReservationId,
-          holdExpiredAt: new Date(),
-        })
-        .pipe(
-          Effect.tapError((cause) =>
-            Effect.logError(
-              "Expired existing reservation hold cleanup failed",
-              {
-                cause,
-              }
-            )
-          ),
-          Effect.ignore
-        );
-      existingReservation = yield* reservations.findById(existingReservationId);
-      yield* Effect.annotateLogsScoped({ existingReservation });
-      yield* Effect.logInfo(
-        "Expired existing workspace reservation hold cleanup completed"
-      );
-    }
-
     if (existingReservation?.reservationState === "creating_hold") {
       existingReservation = yield* waitForPendingHoldCreation({
         reservations,
@@ -497,10 +458,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           evidence,
         }))
       );
-      yield* enqueueReservationHoldCleanup({
-        orderId: existingReservation.id,
-        reservationHoldExpiresAt: existingReservation.reservationHoldExpiresAt,
-      });
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
       return toReadyResult({
@@ -510,16 +467,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         reservationId: existingReservation.id,
       });
     }
-
-    const holdCleanup = yield* ReservationHoldCleanupService;
-    yield* holdCleanup.sweepExpiredHolds({ now: new Date(), limit: 10 }).pipe(
-      Effect.tapError((cause) =>
-        Effect.logWarning("Reservation submit expired hold sweep failed", {
-          cause,
-        })
-      ),
-      Effect.ignore
-    );
 
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
@@ -589,11 +536,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
             evidence,
           }))
         );
-        yield* enqueueReservationHoldCleanup({
-          orderId: claimConflictReservation.id,
-          reservationHoldExpiresAt:
-            claimConflictReservation.reservationHoldExpiresAt,
-        });
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
         return toReadyResult({
@@ -805,7 +747,6 @@ const preparePayStateAction = createEffectSafeAction(
       WorkspaceReservationRepositoryLive,
       LegalEvidenceEventRepositoryLive
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
-    ReservationHoldCleanupServiceLiveWithDependencies,
     WorkspaceAvailabilityServiceLiveWithDependencies,
     WorkspaceTableAssignmentServiceLive.pipe(
       Layer.provide(

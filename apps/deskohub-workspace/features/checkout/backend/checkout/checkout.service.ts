@@ -1,16 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
-import {
-  Context,
-  Data,
-  Duration,
-  Effect,
-  Layer,
-  Match,
-  Predicate,
-  Schema,
-} from "effect";
+import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import {
@@ -46,16 +37,10 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
-import { PostResponseTaskService } from "@/shared/backend/post-response-task.service";
 import {
   capturePaymentFailed,
   capturePaymentStarted,
 } from "../analytics/posthog-lifecycle-events";
-import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "../holds/reservation-hold-cleanup.service";
-import { ReservationHoldCleanupScheduleService } from "../holds/reservation-hold-cleanup-queue.service";
 import { NexiAmountFromWorkspaceMoney } from "../payment/nexi-amount.codec";
 import {
   LegalEvidenceEventRepository,
@@ -372,49 +357,7 @@ export const CheckoutServiceLive = Layer.effect(
     const reservations = yield* WorkspaceReservationRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
-    const holdCleanup = yield* ReservationHoldCleanupService;
-    const cleanupSchedule = yield* ReservationHoldCleanupScheduleService;
-    const postResponseTasks = yield* PostResponseTaskService;
     const posthogEvents = yield* PostHogEventService;
-
-    const scheduleHoldCleanup = Effect.fn("checkout.scheduleHoldCleanup")(
-      function* (input: {
-        readonly orderId: string;
-        readonly reservationHoldExpiresAt: Date | null;
-      }) {
-        if (!input.reservationHoldExpiresAt) return;
-
-        const enqueue = cleanupSchedule
-          .enqueueCleanup({
-            orderId: input.orderId,
-            reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-          })
-          .pipe(
-            Effect.tapError((cause) =>
-              Effect.logWarning("Checkout cleanup schedule enqueue failed", {
-                orderId: input.orderId,
-                cause,
-              })
-            )
-          );
-
-        yield* postResponseTasks.run(
-          enqueue.pipe(
-            Effect.timeoutOrElse({
-              duration: Duration.seconds(30),
-              orElse: () =>
-                Effect.logWarning(
-                  "Checkout cleanup schedule enqueue timed out",
-                  {
-                    orderId: input.orderId,
-                  }
-                ),
-            }),
-            Effect.ignore
-          )
-        );
-      }
-    );
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -531,10 +474,6 @@ export const CheckoutServiceLive = Layer.effect(
           attempt: attachedAttempt,
           timestamp: attachedAttempt.updatedAt,
         }).pipe(Effect.provideService(PostHogEventService, posthogEvents));
-        yield* scheduleHoldCleanup({
-          orderId: input.workspaceReservationId,
-          reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-        });
         yield* Effect.logDebug("Checkout hosted payment page attach completed");
         yield* Effect.logInfo("Checkout provider session started");
 
@@ -614,23 +553,6 @@ export const CheckoutServiceLive = Layer.effect(
             reservation.reservationHoldExpiresAt &&
             reservation.reservationHoldExpiresAt <= new Date()
           ) {
-            yield* holdCleanup
-              .cancelOrderHold({
-                orderId: reservation.id,
-                holdExpiredAt: new Date(),
-              })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Checkout expired hold cancellation failed",
-                    {
-                      orderId: reservation.id,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.ignore
-              );
             yield* Effect.logInfo(
               "Hosted payment checkout returned in_progress: reservation hold expired"
             );
@@ -659,11 +581,6 @@ export const CheckoutServiceLive = Layer.effect(
               yield* Effect.logInfo(
                 "Hosted payment checkout reused active provider session"
               );
-              yield* scheduleHoldCleanup({
-                orderId: reservation.id,
-                reservationHoldExpiresAt: reservation.reservationHoldExpiresAt,
-              });
-
               return {
                 status: "redirect" as const,
                 redirectUrl: attempt.providerRedirectUrl,
@@ -778,9 +695,6 @@ export const CheckoutServiceLive = Layer.effect(
 );
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
-  Layer.provide(PostResponseTaskService.Live),
-  Layer.provide(ReservationHoldCleanupScheduleService.Live),
-  Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
   Layer.provide(LegalEvidenceEventRepositoryLive),
   Layer.provide(PostHogEventServiceLive),
   Layer.provide(PaymentAttemptRepositoryLive),

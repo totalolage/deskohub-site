@@ -28,10 +28,6 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "../holds/reservation-hold-cleanup.service";
-import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
 } from "../payment/provider-payment-finalization.service";
@@ -197,7 +193,6 @@ export const CheckoutStatusServiceLive = Layer.effect(
     const reservations = yield* WorkspaceReservationRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
     const dotypos = yield* DotyposService;
-    const holdCleanup = yield* ReservationHoldCleanupService;
     const finalization = yield* ProviderPaymentFinalizationService;
 
     const reconstructSummary = Effect.fn("checkoutStatus.reconstructSummary")(
@@ -470,28 +465,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
             "Checkout status refresh finalization completed"
           );
 
-          if (result === "terminal") {
-            yield* Effect.logInfo(
-              "Checkout status refresh terminal hold cleanup invoked"
-            );
-            yield* holdCleanup
-              .cancelOrderHold({ orderId: reservation.id })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Checkout status terminal hold cleanup failed",
-                    {
-                      orderId: reservation.id,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.ignore
-              );
-            yield* Effect.logInfo(
-              "Checkout status refresh terminal hold cleanup completed"
-            );
-          } else {
+          if (result !== "terminal") {
             if (
               result === "not_verifiable" ||
               result === "verification_mismatch"
@@ -529,7 +503,6 @@ export const CheckoutStatusServiceLive = Layer.effect(
 
 export const CheckoutStatusServiceLiveWithDependencies =
   CheckoutStatusServiceLive.pipe(
-    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(ProviderPaymentFinalizationServiceLiveWithDependencies),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
