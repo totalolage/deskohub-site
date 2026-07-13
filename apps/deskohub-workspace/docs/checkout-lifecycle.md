@@ -262,8 +262,6 @@ Example transient payload before HMAC:
 
 ```json
 {
-  "schema": "workspace-reservation-intent-key",
-  "schemaVersion": 2,
   "reservationIntentId": "opaque-client-intent-id",
   "name": "Ada Lovelace",
   "email": "ada@example.test",
@@ -279,8 +277,6 @@ Example implementation shape:
 
 ```ts
 const intentKeyPayload = {
-  schema: "workspace-reservation-intent-key",
-  schemaVersion: 2,
   reservationIntentId,
   name: normalizedName,
   email: normalizedEmail,

@@ -272,9 +272,6 @@ Required shape:
 
 ```ts
 type CheckoutDetailsJson = {
-  schema: "workspace-checkout-details";
-  schemaVersion: 1;
-
   locale: "cs-CZ" | "en-US";
 
   reservation: {
@@ -321,8 +318,6 @@ type LegalDocumentHash = {
 
 Validation expectations:
 
-- `schema` must be `workspace-checkout-details`.
-- `schemaVersion` must be `1` for the initial connector.
 - `reservation.date` and `legal.acceptedAt` must be ISO strings.
 - `payment.expectedPrice.currency` must be an uppercase ISO 4217 currency code.
 - `payment.expectedPrice.value` and `payment.expectedPrice.exponent` must match the server-calculated amount for the selected tier/options. `payment.expectedPrice.exponent` must be an integer from 0 to 20, matching the ECMA-402 currency fraction digit range used for formatting.

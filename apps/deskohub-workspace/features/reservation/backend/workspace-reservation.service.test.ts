@@ -27,9 +27,7 @@ type TestWorkspaceReservation = Pick<
   | "dotyposCustomerId"
   | "dotyposReservationId"
   | "customerAccessCode"
-  | "productTier"
-  | "productCoffee"
-  | "productMonitorOption"
+  | "reservationDetails"
   | "locale"
 >;
 
@@ -40,9 +38,12 @@ const makeWorkspaceReservation = (
   dotyposCustomerId: "customer-id",
   dotyposReservationId: " dotypos-reservation-id ",
   customerAccessCode: "1234",
-  productTier: "profi",
-  productCoffee: true,
-  productMonitorOption: "2x27-qhd",
+  reservationDetails: {
+    _tag: "cowork",
+    tier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
   locale: "cs-CZ",
   ...overrides,
 });
@@ -127,6 +128,12 @@ describe("WorkspaceReservationService", () => {
       id: "reservation-id",
       dotyposCustomerId: "customer-id",
       dotyposReservationId: "dotypos-reservation-id",
+      reservationDetails: {
+        _tag: "cowork",
+        tier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      },
       customer,
       tableName: "12",
       tableMap: {
