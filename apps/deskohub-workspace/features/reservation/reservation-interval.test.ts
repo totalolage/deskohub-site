@@ -47,6 +47,13 @@ describe("reservation intervals", () => {
     });
   });
 
+  test("does not invent a date for an empty interval input", () => {
+    expect(getReservationIntervalValidationIssue({})).toEqual({
+      path: "startsAt",
+      message: "Reservation date is required for local time inputs.",
+    });
+  });
+
   test("reports invalid normalization as a typed Effect failure without throwing on invocation", () => {
     expect(() =>
       normalizeReservationIntervalFields(

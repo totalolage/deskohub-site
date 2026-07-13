@@ -22,10 +22,7 @@ import {
 import {
   coworkReservationIntervalEffectSchema,
   getReservationDurationMinutes,
-  isDefaultReservationInterval,
   meetingRoomReservationIntervalEffectSchema,
-  type ReservationInterval,
-  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import {
@@ -228,11 +225,12 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
 });
 
 const getWorkspaceCheckoutOrderProductPrice = (
-  order: WorkspaceCheckoutOrder,
-  durationMinutes: number
+  order: WorkspaceCheckoutOrder
 ): Effect.Effect<WorkspaceMoney, CheckoutQuoteError> =>
   Match.value(order).pipe(
-    Match.tag("meeting-room", () => {
+    Match.tag("meeting-room", (meetingRoomOrder) => {
+      const durationMinutes = getReservationDurationMinutes(meetingRoomOrder);
+
       if (!isWorkspaceMeetingRoomDuration(durationMinutes)) {
         return Effect.fail(
           new CheckoutQuoteError({
@@ -266,17 +264,20 @@ const getWorkspaceCheckoutOrderCoffeePrice = (
 
 const getWorkspaceCheckoutOrderProductItem = (
   order: WorkspaceCheckoutOrder,
-  productPrice: CheckoutSummaryItem["amount"],
-  durationMinutes: number
+  productPrice: CheckoutSummaryItem["amount"]
 ): CheckoutSummaryItem =>
   Match.value(order).pipe(
-    Match.tag("meeting-room", () => ({
-      key: "product:meeting-room",
-      amount: productPrice,
-      ...(isWorkspaceMeetingRoomDuration(durationMinutes) && {
-        meetingRoomDurationMinutes: durationMinutes,
-      }),
-    })),
+    Match.tag("meeting-room", (meetingRoomOrder) => {
+      const durationMinutes = getReservationDurationMinutes(meetingRoomOrder);
+
+      return {
+        key: "product:meeting-room",
+        amount: productPrice,
+        ...(isWorkspaceMeetingRoomDuration(durationMinutes) && {
+          meetingRoomDurationMinutes: durationMinutes,
+        }),
+      };
+    }),
     Match.tag("cowork", (coworkOrder) => ({
       key: `product:${coworkOrder.tier}`,
       amount: productPrice,
@@ -313,14 +314,11 @@ const getWorkspaceCheckoutOrderAddons = (
     Match.exhaustive
   );
 
-const getCanonicalCheckoutOrder = (
-  order: WorkspaceCheckoutOrder,
-  interval: ReservationInterval
-) =>
+const getCanonicalCheckoutOrder = (order: WorkspaceCheckoutOrder) =>
   Match.value(order).pipe(
-    Match.tag("meeting-room", () => ({
+    Match.tag("meeting-room", ({ startsAt, endsAt }) => ({
       _tag: "meeting-room" as const,
-      interval,
+      interval: { startsAt, endsAt },
     })),
     Match.tag("cowork", (coworkOrder) => {
       return {
@@ -332,9 +330,6 @@ const getCanonicalCheckoutOrder = (
         ).value,
         monitorOption:
           "monitorOption" in coworkOrder ? coworkOrder.monitorOption : null,
-        ...(!isDefaultReservationInterval(interval) && {
-          interval,
-        }),
       };
     }),
     Match.exhaustive
@@ -349,8 +344,7 @@ const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
 const getCheckoutQuoteCanonicalPayload = (
   quote: Omit<WorkspaceCheckoutQuote, "fingerprint">
 ) => {
-  const interval = unsafeNormalizeReservationInterval(quote.order);
-  const order = getCanonicalCheckoutOrder(quote.order, interval);
+  const order = getCanonicalCheckoutOrder(quote.order);
 
   return JSON.stringify({
     order,
@@ -396,13 +390,8 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
   } = {}
 ) {
   const normalizedOrder = yield* normalizeWorkspaceCheckoutOrderEffect(order);
-  const interval = unsafeNormalizeReservationInterval(normalizedOrder);
-  const durationMinutes = getReservationDurationMinutes(interval);
   const productPrice = withWorkspaceMoneyCurrency(
-    yield* getWorkspaceCheckoutOrderProductPrice(
-      normalizedOrder,
-      durationMinutes
-    ),
+    yield* getWorkspaceCheckoutOrderProductPrice(normalizedOrder),
     options.currencyOverride
   );
   const coffeePrice = withWorkspaceMoneyCurrency(
@@ -410,11 +399,7 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
     options.currencyOverride
   );
   const orderItems: CheckoutSummaryItem[] = [
-    getWorkspaceCheckoutOrderProductItem(
-      normalizedOrder,
-      productPrice,
-      durationMinutes
-    ),
+    getWorkspaceCheckoutOrderProductItem(normalizedOrder, productPrice),
     ...getWorkspaceCheckoutOrderAddons(
       normalizedOrder,
       coffeePrice,

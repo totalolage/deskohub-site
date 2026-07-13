@@ -77,17 +77,8 @@ const decodeReservationInterval = Schema.decodeUnknownSync(
 export const isDefaultReservationInterval = (
   interval: ReservationIntervalInput
 ) => {
-  const hasExplicitInterval =
-    interval.startsAt !== undefined || interval.endsAt !== undefined;
-
   return Effect.runSync(
-    normalizeReservationIntervalFields(
-      {
-        ...(!hasExplicitInterval && { date: "2099-01-01" }),
-        ...interval,
-      },
-      reservationTimeZone
-    ).pipe(
+    normalizeReservationIntervalFields(interval, reservationTimeZone).pipe(
       Effect.map((normalized) => {
         const start = toPlainDateTime(normalized.startsAt, reservationTimeZone);
         const end = toPlainDateTime(normalized.endsAt, reservationTimeZone);

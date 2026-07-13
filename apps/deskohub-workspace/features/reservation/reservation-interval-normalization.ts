@@ -51,7 +51,7 @@ export const normalizeReservationIntervalFields = (
       value.startsAt !== undefined || value.endsAt !== undefined;
     const startsAt = value.startsAt ?? defaultReservationInterval.startsAt;
     const endsAt = value.endsAt ?? defaultReservationInterval.endsAt;
-    const date = value.date ?? (hasExplicitInterval ? undefined : "2099-01-01");
+    const date = value.date;
     const normalizedStartsAt = yield* normalizeTimestampField({
       date,
       path: "startsAt",
