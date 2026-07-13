@@ -1,7 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import {
+  getWorkspaceMeetingRoomPriceForDuration,
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
+  workspaceCoworkProductCatalog,
+  workspaceMeetingRoomDurationOptions,
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "./product-catalog";
@@ -11,6 +14,31 @@ describe("workspace product catalog", () => {
     expect(getWorkspaceProductByTier("basic").price.value).toBe(35_000);
     expect(getWorkspaceProductByTier("plus").price.value).toBe(49_000);
     expect(getWorkspaceProductByTier("profi").price.value).toBe(55_000);
+  });
+
+  test("keeps cowork-only catalog consumers separate from meeting room", () => {
+    expect(
+      workspaceCoworkProductCatalog.map((product) => product.tier)
+    ).toEqual(["basic", "plus", "profi"]);
+  });
+
+  test("exposes approved meeting room duration prices", () => {
+    expect([...workspaceMeetingRoomDurationOptions]).toEqual([60, 240, 1440]);
+    expect(getWorkspaceMeetingRoomPriceForDuration(60)).toEqual({
+      value: 30_000,
+      exponent: 2,
+      currency: "CZK",
+    });
+    expect(getWorkspaceMeetingRoomPriceForDuration(240)).toEqual({
+      value: 60_000,
+      exponent: 2,
+      currency: "CZK",
+    });
+    expect(getWorkspaceMeetingRoomPriceForDuration(1440)).toEqual({
+      value: 100_000,
+      exponent: 2,
+      currency: "CZK",
+    });
   });
 
   test("uses the shared coffee line price contract", () => {

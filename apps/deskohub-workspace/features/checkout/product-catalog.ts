@@ -4,7 +4,11 @@ import {
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 
-export const workspaceProductTiers = ["basic", "plus", "profi"] as const;
+export const workspaceCoworkTiers = ["basic", "plus", "profi"] as const;
+export const workspaceCoworkProductTiers = workspaceCoworkTiers;
+export const workspaceProductTiers = workspaceCoworkTiers;
+
+export const workspaceMeetingRoomDurationOptions = [60, 240, 24 * 60] as const;
 
 export const workspaceProductMonitorOptions = [
   "2x27-qhd",
@@ -13,9 +17,12 @@ export const workspaceProductMonitorOptions = [
   "2x32-4k",
 ] as const;
 
-export type WorkspaceProductTier = (typeof workspaceProductTiers)[number];
+export type WorkspaceCoworkProductTier = (typeof workspaceCoworkTiers)[number];
+export type WorkspaceProductTier = WorkspaceCoworkProductTier;
 export type WorkspaceProductMonitorOption =
   (typeof workspaceProductMonitorOptions)[number];
+export type WorkspaceMeetingRoomDurationMinutes =
+  (typeof workspaceMeetingRoomDurationOptions)[number];
 
 export const workspaceProductMonitorOptionTableTags: Record<
   WorkspaceProductMonitorOption,
@@ -28,7 +35,7 @@ export const workspaceProductMonitorOptionTableTags: Record<
 };
 
 export type WorkspaceProductCatalogItem = {
-  readonly tier: WorkspaceProductTier;
+  readonly tier: WorkspaceCoworkProductTier;
   readonly label: string;
   readonly price: WorkspaceMoney;
   readonly includesCourtesyCoffee: boolean;
@@ -37,7 +44,7 @@ export type WorkspaceProductCatalogItem = {
   readonly allowedMonitorOptions: readonly WorkspaceProductMonitorOption[];
 };
 
-export const workspaceProductCatalog: readonly WorkspaceProductCatalogItem[] = [
+export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
   {
     tier: "basic",
     label: "Basic Day Pass",
@@ -67,6 +74,18 @@ export const workspaceProductCatalog: readonly WorkspaceProductCatalogItem[] = [
   },
 ];
 
+export const workspaceProductCatalog = workspaceCoworkCatalog;
+export const workspaceCoworkProductCatalog = workspaceCoworkCatalog;
+
+export const workspaceMeetingRoomDurationPrices: Record<
+  WorkspaceMeetingRoomDurationMinutes,
+  WorkspaceMoney
+> = {
+  60: { value: 30_000, exponent: 2, currency: "CZK" },
+  240: { value: 60_000, exponent: 2, currency: "CZK" },
+  1440: { value: 100_000, exponent: 2, currency: "CZK" },
+};
+
 export const workspaceProductCoffeePrice: WorkspaceMoney = {
   value: 5000,
   exponent: 2,
@@ -74,9 +93,9 @@ export const workspaceProductCoffeePrice: WorkspaceMoney = {
 };
 
 const productsByTier = new Map<
-  WorkspaceProductTier,
+  WorkspaceCoworkProductTier,
   WorkspaceProductCatalogItem
->(workspaceProductCatalog.map((product) => [product.tier, product]));
+>(workspaceCoworkCatalog.map((product) => [product.tier, product]));
 
 if (productsByTier.size !== workspaceProductTiers.length) {
   throw new Error(
@@ -102,6 +121,23 @@ export function isWorkspaceProductTier(
   );
 }
 
+export function isWorkspaceCoworkProductTier(
+  value: string | undefined
+): value is WorkspaceCoworkProductTier {
+  return (
+    value !== undefined &&
+    workspaceCoworkProductTiers.includes(value as WorkspaceCoworkProductTier)
+  );
+}
+
+export function isWorkspaceMeetingRoomDuration(
+  durationMinutes: number
+): durationMinutes is WorkspaceMeetingRoomDurationMinutes {
+  return workspaceMeetingRoomDurationOptions.includes(
+    durationMinutes as WorkspaceMeetingRoomDurationMinutes
+  );
+}
+
 export function isWorkspaceProductMonitorOption(
   value: string | undefined
 ): value is WorkspaceProductMonitorOption {
@@ -121,7 +157,7 @@ export function formatWorkspaceProductCurrencyAmount(
 }
 
 export function getWorkspaceProductCoffeeLinePriceForTier(
-  tier: WorkspaceProductTier
+  tier: WorkspaceCoworkProductTier
 ) {
   if (getWorkspaceProductByTier(tier).includesCourtesyCoffee)
     return {
@@ -129,4 +165,15 @@ export function getWorkspaceProductCoffeeLinePriceForTier(
       value: 0,
     };
   return workspaceProductCoffeePrice;
+}
+
+export function getWorkspaceMeetingRoomPriceForDuration(
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes
+) {
+  const price = workspaceMeetingRoomDurationPrices[durationMinutes];
+  if (!price) {
+    throw new Error(`Unknown meeting room duration: ${durationMinutes}`);
+  }
+
+  return price;
 }
