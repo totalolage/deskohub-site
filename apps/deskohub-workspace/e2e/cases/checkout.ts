@@ -26,12 +26,7 @@ import {
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
-import type {
-  CheckoutData,
-  CheckoutFlow,
-  CheckoutFlowState,
-  WorkspaceE2EResourceScope,
-} from "../types";
+import type { CheckoutData, CheckoutFlow, CheckoutFlowState } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 import { verifyAlias } from "../vercel";
 
@@ -41,7 +36,6 @@ export const executeCheckoutFlow = ({
   datasourceConfig,
   deploymentId,
   flow,
-  resources,
   run,
   session,
   state,
@@ -51,42 +45,36 @@ export const executeCheckoutFlow = ({
   datasourceConfig: DatasourceConfig;
   deploymentId: string;
   flow: CheckoutFlow;
-  resources: WorkspaceE2EResourceScope;
   run: Runner;
   session: string;
   state: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    const orderId = yield* resources.withCheckoutFlowProviderSession(
-      Effect.gen(function* () {
-        const orderId = yield* startCheckoutPaymentAttempt({
-          config,
-          data,
-          onOrderId: (orderId) => {
-            state.orderId = orderId;
-          },
-          run,
-          session,
-          submitReservationScript: flow.submitReservationScript(data),
-        }).pipe(Effect.retry({ times: 1 }));
-        yield* completeNexiHostedPayment({ data, run, session });
-        yield* waitForBrowserUrl({
-          description: "checkout status page",
-          matches: (url) => {
-            const parsed = parseUrl(url);
-            return (
-              parsed?.host === config.alias &&
-              parsed.pathname.includes("/checkout/status/")
-            );
-          },
-          run,
-          session,
-          timeoutMs: getCheckoutTimeoutMs(),
-        });
-        return orderId;
-      })
-    );
+    const orderId = yield* startCheckoutPaymentAttempt({
+      config,
+      data,
+      onOrderId: (orderId) => {
+        state.orderId = orderId;
+      },
+      run,
+      session,
+      submitReservationScript: flow.submitReservationScript(data),
+    }).pipe(Effect.retry({ times: 1 }));
+    yield* completeNexiHostedPayment({ data, run, session });
+    yield* waitForBrowserUrl({
+      description: "checkout status page",
+      matches: (url) => {
+        const parsed = parseUrl(url);
+        return (
+          parsed?.host === config.alias &&
+          parsed.pathname.includes("/checkout/status/")
+        );
+      },
+      run,
+      session,
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
     state.orderId = orderId;
 
     // Nexi verification happens inside the deployed webhook handler. The runner

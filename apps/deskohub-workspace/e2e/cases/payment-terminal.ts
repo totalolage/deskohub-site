@@ -25,7 +25,6 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   PaymentTerminalScenario,
-  WorkspaceE2EResourceScope,
 } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 
@@ -47,7 +46,6 @@ export const assertPaymentTerminalPath = ({
   config,
   data,
   datasourceConfig,
-  resources,
   run,
   scenario,
   session,
@@ -56,7 +54,6 @@ export const assertPaymentTerminalPath = ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
-  resources: WorkspaceE2EResourceScope;
   run: Runner;
   scenario: PaymentTerminalScenario;
   session: string;
@@ -64,18 +61,16 @@ export const assertPaymentTerminalPath = ({
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    const orderId = yield* resources.withPaymentTerminalProviderSession(
-      startCheckoutPaymentAttempt({
-        config,
-        data,
-        onOrderId: (orderId) => {
-          state.orderId = orderId;
-        },
-        run,
-        session,
-        submitReservationScript: submitCoworkReservationScript,
-      }).pipe(Effect.retry({ times: 1 }))
-    );
+    const orderId = yield* startCheckoutPaymentAttempt({
+      config,
+      data,
+      onOrderId: (orderId) => {
+        state.orderId = orderId;
+      },
+      run,
+      session,
+      submitReservationScript: submitCoworkReservationScript,
+    }).pipe(Effect.retry({ times: 1 }));
     state.orderId = orderId;
     state.checkoutRow = yield* waitForWebhookReplayRow(
       datasourceConfig,

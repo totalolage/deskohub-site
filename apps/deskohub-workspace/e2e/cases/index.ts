@@ -31,7 +31,6 @@ import type {
   CheckoutData,
   CheckoutFlowState,
   WorkspaceE2ECase,
-  WorkspaceE2EResourceScope,
 } from "../types";
 import { executeCheckoutFlow } from "./checkout";
 import { assertContactForm } from "./contact";
@@ -46,14 +45,12 @@ export const makeWorkspaceE2ECases = ({
   datasourceConfig,
   deploymentId,
   flowStates,
-  resources,
   run,
 }: {
   config: WorkspaceE2EConfig;
   datasourceConfig: DatasourceConfig;
   deploymentId: string;
   flowStates: CheckoutFlowState[];
-  resources: WorkspaceE2EResourceScope;
   run: Runner;
 }): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -83,7 +80,6 @@ export const makeWorkspaceE2ECases = ({
       },
     ];
     let nextDateIndex = 0;
-    let checkoutFlowProviderSessionCount = 0;
 
     for (const scenario of terminalScenarios) {
       const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
@@ -100,7 +96,6 @@ export const makeWorkspaceE2ECases = ({
             config,
             data,
             datasourceConfig,
-            resources,
             run,
             scenario,
             session,
@@ -127,7 +122,6 @@ export const makeWorkspaceE2ECases = ({
       }
 
       const state = trackCheckoutState(flowStates, data);
-      checkoutFlowProviderSessionCount += 1;
       cases.push({
         execute: ({ session }) =>
           executeCheckoutFlow({
@@ -136,7 +130,6 @@ export const makeWorkspaceE2ECases = ({
             datasourceConfig,
             deploymentId,
             flow,
-            resources,
             run,
             session,
             state,
@@ -148,10 +141,6 @@ export const makeWorkspaceE2ECases = ({
         id: `checkout-${flow.id}`,
       });
     }
-
-    yield* resources.expectCheckoutFlowProviderSessions(
-      checkoutFlowProviderSessionCount
-    );
 
     return cases;
   });
