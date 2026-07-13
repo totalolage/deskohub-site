@@ -14,6 +14,11 @@ const reservationDisplayDateFormatOptions = {
   timeZone: reservationTimeZone,
 } satisfies Intl.DateTimeFormatOptions;
 
+const reservationDisplayTimeFormatOptions = {
+  timeStyle: "short",
+  timeZone: reservationTimeZone,
+} satisfies Intl.DateTimeFormatOptions;
+
 export const parseReservationInputDate = (date: Date | string) => {
   if (date instanceof Date) {
     return Number.isNaN(date.getTime()) ? undefined : date;
@@ -43,4 +48,21 @@ export const formatReservationDisplayDate = (
     locale,
     reservationDisplayDateFormatOptions
   );
+};
+
+export const formatReservationDisplayTimeRange = (
+  start: Date,
+  end: Date,
+  locale: Locale,
+  fallback = ""
+) => {
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    return fallback;
+  }
+
+  const formatter = new Intl.DateTimeFormat(
+    locale,
+    reservationDisplayTimeFormatOptions
+  );
+  return `${formatter.format(start)} - ${formatter.format(end)}`;
 };

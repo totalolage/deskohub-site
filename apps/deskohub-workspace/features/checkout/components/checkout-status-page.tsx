@@ -1,4 +1,5 @@
 import { cva } from "class-variance-authority";
+import { Match } from "effect";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -9,16 +10,28 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import type {
+  CheckoutCoworkStatusViewModel,
+  CheckoutMeetingRoomStatusViewModel,
   CheckoutStatusKind,
   CheckoutStatusViewModel,
+  CheckoutUnknownStatusViewModel,
+  WorkspaceCheckoutStatusSummary,
 } from "@/features/checkout/backend/checkout";
 import {
+  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
+import {
+  getCoworkReservationPath,
+  getMeetingRoomReservationPath,
+} from "@/features/checkout/routes";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import { Button } from "@/shared/components/ui/button";
 import { cn } from "@/shared/utils";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
@@ -29,9 +42,31 @@ type CheckoutStatusPageProps = {
   readonly status: CheckoutStatusViewModel;
 };
 
+type CoworkStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutCoworkStatusViewModel;
+};
+
+type MeetingRoomStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutMeetingRoomStatusViewModel;
+};
+
+type UnknownStatusPageProps = {
+  readonly locale: Locale;
+  readonly status: CheckoutUnknownStatusViewModel;
+};
+
+type CheckoutStatusSummary = WorkspaceCheckoutStatusSummary;
+
 type SummaryRow = {
   readonly label: string;
   readonly value: string;
+};
+
+type ReservationStatusProps = CheckoutStatusPageProps & {
+  readonly reservationPath: string;
+  readonly summaryRows: readonly SummaryRow[];
 };
 
 type StatusCopy = {
@@ -128,57 +163,112 @@ const getStatusCopy = (
   }
 };
 
-const getSummaryRows = (
-  status: CheckoutStatusViewModel,
-  locale: Locale
+const getReservationSummaryRows = (
+  summary: CheckoutStatusSummary,
+  locale: Locale,
+  tierTitle: string,
+  extraRows: readonly SummaryRow[] = []
 ): SummaryRow[] => {
-  const { summary } = status;
-  if (!summary) {
-    return [];
-  }
-
-  const rows: Array<SummaryRow | undefined> = [
+  return [
     {
       label: String(m.checkoutStatusSummaryTierLabel({}, { locale })),
-      value: getWorkspaceProductTierTitle(summary.tier, locale),
+      value: tierTitle,
     },
     {
       label: String(m.checkoutStatusSummaryDateLabel({}, { locale })),
-      value: formatReservationDisplayDate(summary.date, locale),
+      value: formatReservationDisplayDate(summary.reservedFrom, locale),
     },
-    summary.coffee
-      ? {
-          label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
-          value: summary.coffee
-            ? m.checkoutStatusYes({}, { locale })
-            : m.checkoutStatusNo({}, { locale }),
-        }
-      : undefined,
-    summary.monitorOption
-      ? {
-          label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
-          value: getWorkspaceProductMonitorTitle(summary.monitorOption, locale),
-        }
-      : undefined,
+    ...extraRows,
     {
       label: String(m.checkoutStatusSummaryPriceLabel({}, { locale })),
       value: formatWorkspaceMoney(summary.price, locale),
     },
   ];
+};
 
-  return rows.filter(Boolean);
+const getCoworkSummaryRows = (
+  status: CheckoutCoworkStatusViewModel,
+  locale: Locale
+) => {
+  const { summary } = status;
+
+  return getReservationSummaryRows(
+    summary,
+    locale,
+    getWorkspaceProductTierTitle(summary.tier, locale),
+    [
+      ...(summary.coffee
+        ? [
+            {
+              label: String(m.checkoutStatusSummaryCoffeeLabel({}, { locale })),
+              value: m.checkoutStatusYes({}, { locale }),
+            },
+          ]
+        : []),
+      ...Match.value(summary).pipe(
+        Match.when({ tier: "profi" }, (profiSummary) => [
+          {
+            label: String(m.checkoutStatusSummaryMonitorLabel({}, { locale })),
+            value: getWorkspaceProductMonitorTitle(
+              profiSummary.monitorOption,
+              locale
+            ),
+          },
+        ]),
+        Match.when({ tier: "basic" }, () => []),
+        Match.when({ tier: "plus" }, () => []),
+        Match.exhaustive
+      ),
+    ]
+  );
+};
+
+const getMeetingRoomSummaryRows = (
+  status: CheckoutMeetingRoomStatusViewModel,
+  locale: Locale
+) => {
+  const { summary } = status;
+
+  return getReservationSummaryRows(
+    summary,
+    locale,
+    getWorkspaceMeetingRoomProductTitle(locale),
+    [
+      {
+        label: String(m.checkoutStatusSummaryTimeLabel({}, { locale })),
+        value: formatReservationDisplayTimeRange(
+          summary.reservedFrom,
+          summary.reservedUntil,
+          locale
+        ),
+      },
+    ]
+  );
 };
 
 const getFulfillmentFailedContactMessage = (
   status: CheckoutStatusViewModel,
   locale: Locale
 ) => {
-  const tier = status.summary
-    ? getWorkspaceProductTierTitle(status.summary.tier, locale)
-    : m.checkoutStatusMissingSummary({}, { locale });
-  const date = status.summary
-    ? formatReservationDisplayDate(status.summary.date, locale)
-    : m.checkoutStatusMissingSummary({}, { locale });
+  const tier = Match.value(status).pipe(
+    Match.tag("unknown", () => m.checkoutStatusMissingSummary({}, { locale })),
+    Match.tag("meeting-room", () =>
+      getWorkspaceMeetingRoomProductTitle(locale)
+    ),
+    Match.tag("cowork", (reservationStatus) =>
+      getWorkspaceProductTierTitle(reservationStatus.summary.tier, locale)
+    ),
+    Match.exhaustive
+  );
+  const date = Match.value(status).pipe(
+    Match.tag("unknown", () => m.checkoutStatusMissingSummary({}, { locale })),
+    Match.orElse((reservationStatus) =>
+      formatReservationDisplayDate(
+        reservationStatus.summary.reservedFrom,
+        locale
+      )
+    )
+  );
 
   return m.checkoutStatusFulfillmentFailedContactMessage(
     { orderId: status.orderId, tier, date },
@@ -209,9 +299,73 @@ export function CheckoutStatusPage({
   locale,
   status,
 }: CheckoutStatusPageProps) {
+  return Match.value(status).pipe(
+    Match.tag("meeting-room", (meetingRoomStatus) => (
+      <MeetingRoomReservationStatus
+        locale={locale}
+        status={meetingRoomStatus}
+      />
+    )),
+    Match.tag("cowork", (coworkStatus) => (
+      <CoworkReservationStatus locale={locale} status={coworkStatus} />
+    )),
+    Match.tag("unknown", (unknownStatus) => (
+      <UnknownReservationStatus locale={locale} status={unknownStatus} />
+    )),
+    Match.exhaustive
+  );
+}
+
+export function CoworkReservationStatus({
+  locale,
+  status,
+}: CoworkStatusPageProps) {
+  return (
+    <ReservationStatusCard
+      locale={locale}
+      reservationPath={getCoworkReservationPath(locale)}
+      status={status}
+      summaryRows={getCoworkSummaryRows(status, locale)}
+    />
+  );
+}
+
+export function MeetingRoomReservationStatus({
+  locale,
+  status,
+}: MeetingRoomStatusPageProps) {
+  return (
+    <ReservationStatusCard
+      locale={locale}
+      reservationPath={getMeetingRoomReservationPath(locale)}
+      status={status}
+      summaryRows={getMeetingRoomSummaryRows(status, locale)}
+    />
+  );
+}
+
+export function UnknownReservationStatus({
+  locale,
+  status,
+}: UnknownStatusPageProps) {
+  return (
+    <ReservationStatusCard
+      locale={locale}
+      reservationPath={getCoworkReservationPath(locale)}
+      status={status}
+      summaryRows={[]}
+    />
+  );
+}
+
+function ReservationStatusCard({
+  locale,
+  reservationPath,
+  status,
+  summaryRows,
+}: ReservationStatusProps) {
   const copy = getStatusCopy(status.status, locale);
   const showReservationDetails = status.status !== "not_found";
-  const summaryRows = getSummaryRows(status, locale);
   const supportContactHref = getFulfillmentFailedContactHref(status, locale);
   const showSupportButton = !!supportContactHref;
   const Icon = copy.Icon;
@@ -319,7 +473,7 @@ export function CheckoutStatusPage({
 
         <div className="mt-8 flex flex-col gap-3 sm:flex-row">
           <Button asChild className="h-12 px-6">
-            <Link href={`/${locale}/checkout/order`}>
+            <Link href={reservationPath}>
               {m.checkoutStatusReserveAgain({}, { locale })}
             </Link>
           </Button>
