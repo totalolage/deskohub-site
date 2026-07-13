@@ -80,7 +80,7 @@ export const completeCheckout = ({
         const parsed = parseUrl(url);
         return (
           parsed?.host === config.alias &&
-          parsed.pathname.includes("/checkout/status/")
+          parsed.pathname.includes("/reservation/status/")
         );
       },
       run,
@@ -320,7 +320,7 @@ const formatReservationStartDiagnostics = (
 };
 
 const isCheckoutStatusUrl = (url: string | undefined) =>
-  parseUrl(url ?? "")?.pathname.includes("/checkout/status/") ?? false;
+  parseUrl(url ?? "")?.pathname.includes("/reservation/status/") ?? false;
 
 const submitPaymentAndWaitForHostedPage = ({
   run,

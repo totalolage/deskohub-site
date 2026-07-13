@@ -68,7 +68,7 @@ export const executeCheckoutFlow = ({
         const parsed = parseUrl(url);
         return (
           parsed?.host === config.alias &&
-          parsed.pathname.includes("/checkout/status/")
+          parsed.pathname.includes("/reservation/status/")
         );
       },
       run,
@@ -136,7 +136,7 @@ const assertFulfilledStatusPage = ({
       config,
       run,
       session,
-      `${config.browserUrl}/${locale}/checkout/status/${orderId}`,
+      `${config.browserUrl}/${locale}/reservation/status/${orderId}`,
       { timeoutMs: getCheckoutTimeoutMs() }
     );
     yield* waitForBrowserText({
@@ -179,7 +179,7 @@ const assertFulfillmentFailedSupportPath = ({
     yield* markFulfillmentFailedForE2E(datasourceConfig, orderId);
     const statusUrl = yield* makeUrl(
       "build fulfillment failed checkout status URL",
-      `${config.browserUrl}/${data.locale}/checkout/status/${orderId}`
+      `${config.browserUrl}/${data.locale}/reservation/status/${orderId}`
     );
     yield* setSearchParams(statusUrl, {
       e2eAt: String(Date.now()),
