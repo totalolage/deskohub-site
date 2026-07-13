@@ -1,19 +1,24 @@
-import { describe, expect, mock, test } from "bun:test";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import type { PayStateKey, SignedPayState } from "./pay-state";
+import "@/shared/polyfills/temporal";
+import "@/shared/testing/workspace-test-env";
 
-mock.module("server-only", () => ({}));
+import { describe, expect, test } from "bun:test";
+import { Result } from "effect";
+import {
+  buildWorkspaceCheckoutQuote,
+  toWorkspaceCheckoutOrderInput,
+} from "@/features/checkout/checkout-quote-v2";
+import type { PayStateKey, SignedPayState } from "./pay-state-v2";
 
 const {
   buildPayStateQueryParams,
-  buildRetryPayState,
   buildSignedPayState,
   openPayState,
   parsePayStateKey,
   payStateTokenQueryParam,
   sealPayState,
   sealPayStateForUrl,
-} = await import("./pay-state");
+  signedPayStateSchema,
+} = await import("./pay-state-v2");
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
 const fixedKey: PayStateKey = parsePayStateKey(
@@ -42,7 +47,9 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
     {
       locale: "en-US",
       reservation: baseReservation,
-      quote: buildWorkspaceCheckoutQuote(baseReservation),
+      quote: buildWorkspaceCheckoutQuote(
+        toWorkspaceCheckoutOrderInput(baseReservation)
+      ),
       orderId: "pay-state-test-order-id",
       ttlMilliseconds: 10 * 60 * 1000,
     },
@@ -99,6 +106,68 @@ describe("Pay URL state", () => {
       openPayState(token, { keys: [fixedKey], now: () => fixedNow })
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
+    expect(state.reservation).toMatchObject({
+      _tag: "cowork",
+      tier: "profi",
+      startsAt: "2026-06-19T22:00:00Z",
+      endsAt: "2026-06-20T22:00:00Z",
+    });
+    expect(state.reservation).not.toHaveProperty("entryTier");
+    expect(state.reservation).not.toHaveProperty("durationMinutes");
+    expect(state.quote.order).not.toHaveProperty("startsAt");
+    expect(state).not.toHaveProperty("schemaVersion");
+    expect(state).not.toHaveProperty("schema");
+  });
+
+  test("does not retain interval fields on cowork quote orders", () => {
+    const state = buildState();
+    const result = signedPayStateSchema.safeParse({
+      ...state,
+      quote: {
+        ...state.quote,
+        order: {
+          ...state.quote.order,
+          startsAt: "2026-06-19T22:00:00Z",
+          endsAt: "2026-06-20T22:00:00Z",
+        },
+      },
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success.quote.order).not.toHaveProperty("startsAt");
+      expect(result.success.quote.order).not.toHaveProperty("endsAt");
+    }
+  });
+
+  test("stores meeting room as a reservation tag", () => {
+    const reservation = {
+      entryTier: "meeting-room" as const,
+      startsAt: "2026-06-19T08:00:00Z",
+      endsAt: "2026-06-19T12:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    };
+    const state = buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation,
+        quote: buildWorkspaceCheckoutQuote(
+          toWorkspaceCheckoutOrderInput(reservation)
+        ),
+        orderId: "meeting-room-pay-state-test",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    );
+
+    expect(state.reservation).toMatchObject({
+      _tag: "meeting-room",
+      startsAt: "2026-06-19T08:00:00Z",
+      endsAt: "2026-06-19T12:00:00Z",
+    });
+    expect(state.reservation).not.toHaveProperty("entryTier");
+    expect(state.reservation).not.toHaveProperty("tier");
   });
 
   test("fails closed when no encryption key is configured", () => {
@@ -110,7 +179,9 @@ describe("Pay URL state", () => {
         buildSignedPayState({
           locale: "en-US",
           reservation: baseReservation,
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          quote: buildWorkspaceCheckoutQuote(
+            toWorkspaceCheckoutOrderInput(baseReservation)
+          ),
           orderId: "missing-key-test",
         })
       ).toThrow("CHECKOUT_PAY_STATE_KEYS");
@@ -158,7 +229,7 @@ describe("Pay URL state", () => {
     ).toThrow("unknown key id");
   });
 
-  test("rejects unsupported token and payload versions", () => {
+  test("rejects unsupported token header versions", () => {
     const versionTwoToken = replaceTokenHeader(seal(), (header) => ({
       ...header,
       v: 2,
@@ -167,13 +238,6 @@ describe("Pay URL state", () => {
     expect(() =>
       openPayState(versionTwoToken, { keys: [fixedKey], now: () => fixedNow })
     ).toThrow("Unsupported Pay state token header");
-    const unsupportedState = parseJsonRecord(
-      JSON.stringify({ ...buildState(), schemaVersion: 2 })
-    );
-
-    expect(() => sealPayState(unsupportedState)).toThrow(
-      "Expected PayStateToken"
-    );
   });
 
   test("does not expose plaintext PII in the encrypted URL token", () => {
@@ -194,23 +258,5 @@ describe("Pay URL state", () => {
 
     expect(result.type).toBe("sealedPayState");
     expect(searchParams.get(payStateTokenQueryParam)).toBe(result.token);
-  });
-
-  test("models retry state as CheckoutReturnStateTokenRepository semantics", () => {
-    expect(
-      buildRetryPayState({
-        paymentOrderId: "payment-order-id",
-        checkoutToken: "A".repeat(43),
-      })
-    ).toMatchObject({
-      type: "retryPayState",
-      stateSemantics: "checkout-return-state-token",
-      repositorySemantics: {
-        repository: "CheckoutReturnStateTokenRepository",
-        opaque: true,
-        singleUse: true,
-        boundToPaymentOrderId: true,
-      },
-    });
   });
 });

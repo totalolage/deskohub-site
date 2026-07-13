@@ -1,0 +1,542 @@
+import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import {
+  Data,
+  Effect,
+  Schema as EffectSchema,
+  Match,
+  Option,
+  Result,
+  SchemaGetter,
+  SchemaIssue,
+} from "effect";
+import type {
+  CheckoutSummaryChangedKeys,
+  WorkspaceCheckoutQuote,
+} from "@/features/checkout/checkout-quote-v2";
+import {
+  toWorkspaceCheckoutOrderInput,
+  workspaceCheckoutOrderEffectSchema,
+} from "@/features/checkout/checkout-quote-v2";
+import {
+  checkoutReturnStateReservationEffectSchema,
+  getCheckoutReturnStateReservation,
+} from "@/features/checkout/checkout-return-state";
+import {
+  checkoutSummaryEffectSchema,
+  checkoutSummarySchema,
+} from "@/features/checkout/checkout-summary";
+import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
+import { type Locale, locales } from "@/features/i18n";
+import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import {
+  getReservationIntervalNormalization,
+  getReservationIntervalValidationIssue,
+} from "@/features/reservation/reservation-interval";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+
+export const payStateSchemaVersion = 1 as const;
+export const payStateAlgorithm = "A256GCM" as const;
+export const payStateTokenQueryParam = "payState" as const;
+export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
+
+const payStateTokenPrefix = "dhp1" as const;
+const ivByteLength = 12;
+const authTagByteLength = 16;
+const keyByteLength = 32;
+
+type CheckoutOrderDraft = typeof workspaceCheckoutOrderEffectSchema.Type;
+
+const CheckoutOrderSchema = workspaceCheckoutOrderEffectSchema.check(
+  EffectSchema.makeFilter<CheckoutOrderDraft>((order) => {
+    return Match.value(order).pipe(
+      Match.tag("cowork", () => []),
+      Match.tag("meeting-room", (meetingRoom) => {
+        const intervalIssue =
+          getReservationIntervalValidationIssue(meetingRoom);
+
+        return intervalIssue
+          ? [
+              {
+                path: [intervalIssue.path],
+                issue: intervalIssue.message,
+              },
+            ]
+          : [];
+      }),
+      Match.exhaustive
+    );
+  })
+);
+
+const customerDiscountEffectSchema = EffectSchema.Struct({
+  source: EffectSchema.Literal("dotypos-discount-group"),
+  discountGroupId: EffectSchema.NonEmptyString,
+  percent: EffectSchema.Number,
+  amount: nonNegativeWorkspaceMoneyEffectSchema,
+});
+
+const quoteSnapshotEffectSchema = EffectSchema.Struct({
+  fingerprint: EffectSchema.NonEmptyString,
+  order: CheckoutOrderSchema,
+  summary: checkoutSummaryEffectSchema,
+  payment: EffectSchema.Struct({
+    expectedPrice: nonNegativeWorkspaceMoneyEffectSchema,
+    undiscountedPrice: EffectSchema.optional(
+      nonNegativeWorkspaceMoneyEffectSchema
+    ),
+    customerDiscount: EffectSchema.optional(customerDiscountEffectSchema),
+  }),
+});
+
+const changedKeysEffectSchema = EffectSchema.Struct({
+  sectionKeys: EffectSchema.Array(EffectSchema.String),
+  itemKeys: EffectSchema.Array(EffectSchema.String),
+});
+
+const payStateProtectedHeaderEffectSchema = EffectSchema.Struct({
+  v: EffectSchema.Literal(payStateSchemaVersion),
+  alg: EffectSchema.Literal(payStateAlgorithm),
+  kid: EffectSchema.NonEmptyString,
+});
+
+export const signedPayStateEffectSchema = EffectSchema.Struct({
+  type: EffectSchema.Literal("signedPayState"),
+  alg: EffectSchema.Literal(payStateAlgorithm),
+  kid: EffectSchema.NonEmptyString,
+  iat: EffectSchema.Int.check(EffectSchema.isGreaterThanOrEqualTo(0)),
+  exp: EffectSchema.Int.check(EffectSchema.isGreaterThan(0)),
+  locale: EffectSchema.Literals(locales),
+  orderId: EffectSchema.NonEmptyString,
+  reservation: checkoutReturnStateReservationEffectSchema,
+  quote: quoteSnapshotEffectSchema,
+  acceptedTotal: nonNegativeWorkspaceMoneyEffectSchema,
+  changedKeys: EffectSchema.optional(changedKeysEffectSchema),
+}).annotate({
+  identifier: "SignedPayState",
+  description: "Workspace checkout signed Pay state payload.",
+});
+
+const payStateProtectedHeaderSchema = makeEffectSchemaParser(
+  payStateProtectedHeaderEffectSchema
+);
+
+export const signedPayStateSchema = makeEffectSchemaParser(
+  signedPayStateEffectSchema
+);
+
+export type SignedPayState = typeof signedPayStateEffectSchema.Type;
+
+type EncodedSignedPayState = typeof signedPayStateEffectSchema.Encoded;
+
+export type PayStateKey = {
+  readonly kid: string;
+  readonly key: Buffer;
+};
+
+export type PayStateCryptoOptions = {
+  readonly keys?: readonly PayStateKey[];
+  readonly now?: () => Date;
+  readonly randomBytes?: (size: number) => Buffer;
+};
+
+export type SealPayStateForUrlResult = {
+  readonly type: "sealedPayState";
+  readonly token: string;
+  readonly queryParam: typeof payStateTokenQueryParam;
+};
+
+export type BuildSignedPayStateInput = {
+  readonly locale: Locale;
+  readonly reservation: ReservationOrderData;
+  readonly quote: WorkspaceCheckoutQuote;
+  readonly orderId: string;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
+  readonly ttlMilliseconds?: number;
+};
+
+const textEncoder = new TextEncoder();
+const textDecoder = new TextDecoder();
+
+const base64UrlEncode = (bytes: Buffer | Uint8Array | string) =>
+  Buffer.from(bytes).toString("base64url");
+
+const base64UrlDecode = (value: string) => Buffer.from(value, "base64url");
+
+const getNowMilliseconds = (options: PayStateCryptoOptions = {}) =>
+  (options.now?.() ?? new Date()).getTime();
+
+const getPayStateKeysFromEnvironment = (): readonly PayStateKey[] => {
+  const rawKeys = process.env.CHECKOUT_PAY_STATE_KEYS;
+
+  if (!rawKeys) {
+    throw new PayStateTokenError({
+      code: "missing-secret",
+      message: "CHECKOUT_PAY_STATE_KEYS is required to seal/open Pay state.",
+    });
+  }
+
+  return rawKeys.split(",").map((entry) => {
+    const [kid, key] = entry.split(":");
+    if (!kid || !key) {
+      throw new PayStateTokenError({
+        code: "invalid-secret",
+        message:
+          "CHECKOUT_PAY_STATE_KEYS entries must be formatted as kid:base64url-32-byte-key.",
+      });
+    }
+
+    return parsePayStateKey(kid, key);
+  });
+};
+
+const getPayStateKeys = (options: PayStateCryptoOptions = {}) => {
+  const keys = options.keys ?? getPayStateKeysFromEnvironment();
+  if (keys.length === 0) {
+    throw new PayStateTokenError({
+      code: "missing-secret",
+      message: "At least one Pay state encryption key is required.",
+    });
+  }
+
+  for (const key of keys) {
+    if (key.key.byteLength !== keyByteLength) {
+      throw new PayStateTokenError({
+        code: "invalid-secret",
+        message: "Pay state encryption keys must be 32 bytes.",
+      });
+    }
+  }
+
+  return keys;
+};
+
+const getPayStateKeyByKid = (
+  kid: string,
+  options: PayStateCryptoOptions = {}
+) => {
+  const key = getPayStateKeys(options).find(
+    (candidate) => candidate.kid === kid
+  );
+  if (!key) {
+    throw new PayStateTokenError({
+      code: "unknown-kid",
+      message: "Pay state token used an unknown key id.",
+    });
+  }
+
+  return key;
+};
+
+export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
+  readonly code:
+    | "missing-secret"
+    | "invalid-secret"
+    | "invalid-token"
+    | "unknown-kid"
+    | "expired"
+    | "unsupported-version";
+  readonly message: string;
+}> {}
+
+export const parsePayStateKey = (
+  kid: string,
+  base64UrlKey: string
+): PayStateKey => {
+  const key = base64UrlDecode(base64UrlKey);
+  if (key.byteLength !== keyByteLength) {
+    throw new PayStateTokenError({
+      code: "invalid-secret",
+      message: "Pay state encryption keys must decode to 32 bytes.",
+    });
+  }
+
+  return { kid, key };
+};
+
+const getProtectedHeader = (kid: string) => ({
+  v: payStateSchemaVersion,
+  alg: payStateAlgorithm,
+  kid,
+});
+
+export const buildSignedPayState = (
+  input: BuildSignedPayStateInput,
+  options: PayStateCryptoOptions = {}
+): SignedPayState => {
+  const [activeKey] = getPayStateKeys(options);
+  if (!activeKey) {
+    throw new PayStateTokenError({
+      code: "missing-secret",
+      message: "At least one Pay state encryption key is required.",
+    });
+  }
+
+  const nowMilliseconds = getNowMilliseconds(options);
+  const checkoutOrder = toWorkspaceCheckoutOrderInput(input.reservation);
+  const intervalInput = Match.value(input.reservation).pipe(
+    Match.when(
+      { entryTier: "meeting-room" },
+      (meetingRoomReservation) => meetingRoomReservation
+    ),
+    Match.orElse((coworkReservation) =>
+      getCoworkReservationIntervalInput(coworkReservation.date)
+    )
+  );
+  const intervalNormalization =
+    getReservationIntervalNormalization(intervalInput);
+  if (intervalNormalization._tag === "Failure") {
+    throw new PayStateTokenError({
+      code: "invalid-token",
+      message: intervalNormalization.issue.message,
+    });
+  }
+  const reservation = getCheckoutReturnStateReservation(
+    {
+      ...checkoutOrder,
+      name: input.reservation.name,
+      email: input.reservation.email,
+      phone: input.reservation.phone,
+      ...(input.reservation.message !== undefined && {
+        message: input.reservation.message,
+      }),
+    },
+    intervalNormalization.interval
+  );
+  const iat = Math.floor(nowMilliseconds / 1000);
+  const exp = Math.floor(
+    (nowMilliseconds +
+      (input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds)) /
+      1000
+  );
+  const state: SignedPayState = {
+    type: "signedPayState",
+    alg: payStateAlgorithm,
+    kid: activeKey.kid,
+    iat,
+    exp,
+    locale: input.locale,
+    orderId: input.orderId,
+    reservation,
+    quote: {
+      fingerprint: input.quote.fingerprint,
+      order: input.quote.order,
+      summary: checkoutSummarySchema.parse(
+        JSON.parse(JSON.stringify(input.quote.summary))
+      ),
+      payment: input.quote.payment,
+    },
+    acceptedTotal: input.quote.summary.total,
+    ...(input.changedKeys && {
+      changedKeys: {
+        sectionKeys: [...input.changedKeys.sectionKeys],
+        itemKeys: [...input.changedKeys.itemKeys],
+      },
+    }),
+  };
+
+  return signedPayStateSchema.parse(state);
+};
+
+const payStateSchemaIssue = (actual: unknown, message: string) =>
+  new SchemaIssue.InvalidValue(Option.some(actual), { message });
+
+const sealPayStateRaw = (
+  state: EncodedSignedPayState,
+  options: PayStateCryptoOptions = {}
+) => {
+  const key = getPayStateKeyByKid(state.kid, options);
+  const header = getProtectedHeader(key.kid);
+  const encodedHeader = base64UrlEncode(JSON.stringify(header));
+  const iv = options.randomBytes?.(ivByteLength) ?? randomBytes(ivByteLength);
+  const cipher = createCipheriv("aes-256-gcm", key.key, iv, {
+    authTagLength: authTagByteLength,
+  });
+
+  cipher.setAAD(textEncoder.encode(encodedHeader));
+  const ciphertext = Buffer.concat([
+    cipher.update(JSON.stringify(state), "utf8"),
+    cipher.final(),
+  ]);
+  const authTag = cipher.getAuthTag();
+
+  return [
+    payStateTokenPrefix,
+    encodedHeader,
+    base64UrlEncode(iv),
+    base64UrlEncode(ciphertext),
+    base64UrlEncode(authTag),
+  ].join(".");
+};
+
+const openPayStateRaw = (
+  token: string,
+  options: PayStateCryptoOptions = {}
+): SignedPayState => {
+  const tokenParts = token.split(".");
+  const [prefix, encodedHeader, encodedIv, encodedCiphertext, encodedAuthTag] =
+    tokenParts;
+  if (
+    tokenParts.length !== 5 ||
+    prefix !== payStateTokenPrefix ||
+    !encodedHeader ||
+    !encodedIv ||
+    !encodedCiphertext ||
+    !encodedAuthTag
+  ) {
+    throw new PayStateTokenError({
+      code: "invalid-token",
+      message: "Invalid Pay state token.",
+    });
+  }
+
+  let parsedHeader: unknown;
+  try {
+    parsedHeader = JSON.parse(
+      textDecoder.decode(base64UrlDecode(encodedHeader))
+    );
+  } catch {
+    throw new PayStateTokenError({
+      code: "invalid-token",
+      message: "Invalid Pay state token header.",
+    });
+  }
+
+  const header = payStateProtectedHeaderSchema.safeParse(parsedHeader);
+
+  if (Result.isFailure(header)) {
+    throw new PayStateTokenError({
+      code: "unsupported-version",
+      message: "Unsupported Pay state token header.",
+    });
+  }
+
+  const protectedHeader = header.success;
+  const key = getPayStateKeyByKid(protectedHeader.kid, options);
+  let plaintext: string;
+
+  try {
+    const decipher = createDecipheriv(
+      "aes-256-gcm",
+      key.key,
+      base64UrlDecode(encodedIv),
+      { authTagLength: authTagByteLength }
+    );
+    decipher.setAAD(textEncoder.encode(encodedHeader));
+    decipher.setAuthTag(base64UrlDecode(encodedAuthTag));
+    plaintext = Buffer.concat([
+      decipher.update(base64UrlDecode(encodedCiphertext)),
+      decipher.final(),
+    ]).toString("utf8");
+  } catch {
+    throw new PayStateTokenError({
+      code: "invalid-token",
+      message: "Invalid Pay state token.",
+    });
+  }
+
+  let parsedPlaintext: unknown;
+  try {
+    parsedPlaintext = JSON.parse(plaintext);
+  } catch {
+    throw new PayStateTokenError({
+      code: "invalid-token",
+      message: "Invalid Pay state token payload.",
+    });
+  }
+
+  const state = signedPayStateSchema.safeParse(parsedPlaintext);
+  if (Result.isFailure(state) || state.success.kid !== protectedHeader.kid) {
+    throw new PayStateTokenError({
+      code: "unsupported-version",
+      message: "Unsupported Pay state payload.",
+    });
+  }
+
+  const signedState = state.success;
+  if (signedState.exp <= Math.floor(getNowMilliseconds(options) / 1000)) {
+    throw new PayStateTokenError({
+      code: "expired",
+      message: "Pay state token expired.",
+    });
+  }
+
+  return signedState;
+};
+
+export const makePayStateTokenSchema = (
+  options: PayStateCryptoOptions = {}
+): EffectSchema.Codec<SignedPayState, string> =>
+  EffectSchema.String.pipe(
+    EffectSchema.decodeTo(signedPayStateEffectSchema, {
+      decode: SchemaGetter.transformOrFail((token: string) =>
+        Effect.try({
+          try: () => openPayStateRaw(token, options),
+          catch: (error) =>
+            payStateSchemaIssue(
+              token,
+              error instanceof Error
+                ? error.message
+                : "Invalid Pay state token."
+            ),
+        })
+      ),
+      encode: SchemaGetter.transformOrFail((state) =>
+        Effect.try({
+          try: () => sealPayStateRaw(state, options),
+          catch: (error) =>
+            payStateSchemaIssue(
+              state,
+              error instanceof Error
+                ? error.message
+                : "Pay state could not be sealed."
+            ),
+        })
+      ),
+    })
+  ).annotate({
+    identifier: "PayStateToken",
+    description:
+      "AES-GCM encrypted URL token for Workspace checkout Pay state.",
+  });
+
+export const sealPayState = (
+  state: SignedPayState,
+  options: PayStateCryptoOptions = {}
+) => EffectSchema.encodeSync(makePayStateTokenSchema(options))(state);
+
+export const openPayState = (
+  token: string,
+  options: PayStateCryptoOptions = {}
+): SignedPayState =>
+  EffectSchema.decodeSync(makePayStateTokenSchema(options))(token);
+
+export const sealPayStateForUrl = (
+  state: SignedPayState,
+  options: PayStateCryptoOptions = {}
+): SealPayStateForUrlResult => {
+  const token = sealPayState(state, options);
+
+  return {
+    type: "sealedPayState",
+    token,
+    queryParam: payStateTokenQueryParam,
+  };
+};
+
+export const buildPayStateQueryParams = (result: SealPayStateForUrlResult) => {
+  const searchParams = new URLSearchParams();
+  searchParams.set(payStateTokenQueryParam, result.token);
+
+  return searchParams;
+};
+
+export const buildPayUrl = (
+  baseUrl: string | URL,
+  result: SealPayStateForUrlResult
+) => {
+  const url = new URL(baseUrl);
+  url.searchParams.set(payStateTokenQueryParam, result.token);
+
+  return { type: "payUrl" as const, url };
+};

@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import "@/shared/polyfills/temporal";
+import { checkoutDetailsJsonSchema } from "@/features/checkout/checkout-details";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote-v2";
 import {
-  checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
+} from "@/features/checkout/legal-evidence";
 
 const document = {
   path: "/en-US/terms-and-conditions",
@@ -38,18 +39,19 @@ const legalEvidenceMap = legalEvidenceMapSchema.parse({
 describe("checkout details persistence", () => {
   test("persists quote summary, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      kind: "cowork",
+      tier: "basic",
+      date: "2099-06-10",
       coffee: false,
     });
     const details = checkoutDetailsJsonSchema.parse({
-      schema: "workspace-checkout-details",
-      schemaVersion: 1,
       locale: "en-US",
       reservation: {
+        _tag: "cowork",
         tier: "basic",
-        date: "2099-06-10",
+        startsAt: "2099-06-09T22:00:00Z",
+        endsAt: "2099-06-10T22:00:00Z",
         coffee: false,
-        message: "Please keep this private.",
       },
       payment: {
         expectedPrice: quote.payment.expectedPrice,
@@ -69,11 +71,50 @@ describe("checkout details persistence", () => {
     expect(serialized).not.toContain("ada@example.com");
     expect(serialized).not.toContain("+420777123456");
     expect(serialized).not.toContain("Please keep this private.");
+    expect(details.reservation).toMatchObject({
+      startsAt: "2099-06-09T22:00:00Z",
+      endsAt: "2099-06-10T22:00:00Z",
+    });
+    expect(details.reservation).not.toHaveProperty("durationMinutes");
+  });
+
+  test("persists custom reservation intervals", () => {
+    const quote = buildWorkspaceCheckoutQuote({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+
+    const details = checkoutDetailsJsonSchema.parse({
+      locale: "en-US",
+      reservation: {
+        _tag: "meeting-room",
+        startsAt: "2099-06-10T07:00:00Z",
+        endsAt: "2099-06-10T11:00:00Z",
+      },
+      payment: {
+        expectedPrice: quote.payment.expectedPrice,
+        summary: quote.summary,
+      },
+      legal: legalEvidenceMap,
+      fulfillment: { accessCodePolicy: "workspace-static-v1" },
+    });
+
+    expect(details.reservation).toMatchObject({
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+    expect(details.reservation).not.toHaveProperty("durationMinutes");
   });
 
   test("accepts negative discount rows but rejects negative expected totals", () => {
     const quote = buildWorkspaceCheckoutQuote(
-      { entryTier: "basic", coffee: false },
+      {
+        kind: "cowork",
+        tier: "basic",
+        date: "2099-06-10",
+        coffee: false,
+      },
       {
         customerDiscount: {
           source: "dotypos-discount-group",
@@ -85,12 +126,12 @@ describe("checkout details persistence", () => {
 
     expect(() =>
       checkoutDetailsJsonSchema.parse({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          _tag: "cowork",
           tier: "basic",
-          date: "2099-06-10",
+          startsAt: "2099-06-09T22:00:00Z",
+          endsAt: "2099-06-10T22:00:00Z",
           coffee: false,
         },
         payment: {
@@ -104,12 +145,12 @@ describe("checkout details persistence", () => {
 
     expect(() =>
       checkoutDetailsJsonSchema.parse({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          _tag: "cowork",
           tier: "basic",
-          date: "2099-06-10",
+          startsAt: "2099-06-09T22:00:00Z",
+          endsAt: "2099-06-10T22:00:00Z",
           coffee: false,
         },
         payment: {
