@@ -17,19 +17,18 @@ export function FounderProfileImage({ publicId }: FounderProfileImageProps) {
         <ImageOff aria-hidden="true" className="h-10 w-10 text-white/45" />
       </div>
       {!hasImageError && (
-        <div className="contents" onErrorCapture={() => setHasImageError(true)}>
-          <CloudinaryImage
-            alt=""
-            aspectRatio={1}
-            className="absolute inset-0"
-            gravity="auto:thirds_0"
-            preload={false}
-            publicId={publicId}
-            size={{ width: "fill", height: "fill" }}
-            sizes="(min-width: 640px) 160px, 112px"
-            variant="gallery"
-          />
-        </div>
+        <CloudinaryImage
+          alt=""
+          aspectRatio={1}
+          className="absolute inset-0"
+          gravity="auto:thirds_0"
+          onError={() => setHasImageError(true)}
+          preload={false}
+          publicId={publicId}
+          size={{ width: "fill", height: "fill" }}
+          sizes="(min-width: 640px) 160px, 112px"
+          variant="gallery"
+        />
       )}
     </>
   );
