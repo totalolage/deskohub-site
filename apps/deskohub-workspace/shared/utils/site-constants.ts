@@ -1,3 +1,17 @@
+const workspaceLocation = {
+  address: {
+    street: "Turnovská 430/10",
+    cityDistrict: "Libeň",
+    city: "Praha 8",
+    postalCode: "180 00",
+  },
+  coordinates: {
+    lat: 50.103277,
+    lng: 14.479023,
+  },
+  timeZone: "Europe/Prague",
+} as const;
+
 export const workspaceSiteConstants = {
   brand: {
     name: "Deskohub Workspace",
@@ -6,30 +20,10 @@ export const workspaceSiteConstants = {
   },
   contact: {
     infoEmail: "workspace@deskohub.cz",
-    address: {
-      street: "Turnovská 430/10",
-      cityDistrict: "Libeň",
-      city: "Praha 8",
-      postalCode: "180 00",
-    },
-    coordinates: {
-      lat: 50.103277,
-      lng: 14.479023,
-    },
+    address: workspaceLocation.address,
+    coordinates: workspaceLocation.coordinates,
   },
-  location: {
-    address: {
-      street: "Turnovská 430/10",
-      cityDistrict: "Libeň",
-      city: "Praha 8",
-      postalCode: "180 00",
-    },
-    coordinates: {
-      lat: 50.103277,
-      lng: 14.479023,
-    },
-    timeZone: "Europe/Prague",
-  },
+  location: workspaceLocation,
   reservation: {
     defaultStartTime: "10:00",
   },
