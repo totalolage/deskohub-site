@@ -33,7 +33,6 @@ describe("meeting room reservation time helpers", () => {
       date: "2026-03-29",
       startsAt: "2026-03-28T23:00:00Z",
       endsAt: "2026-03-29T23:00:00Z",
-      durationMinutes: 1440,
     });
     expect(getMeetingRoomAvailabilityToDate(interval!)).toBe("2026-03-30");
   });

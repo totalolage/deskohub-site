@@ -15,6 +15,7 @@ import {
   getReservationIntervalNormalization,
   getReservationPragueDateRange,
   meetingRoomReservationDurationMinutesEffectSchema,
+  reservationIntervalFieldSchemas,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/reservation-interval";
 import { isFuturePlainDateTime } from "@/shared/utils";
@@ -23,8 +24,8 @@ import { instantStringEffectSchema } from "@/shared/utils/temporal";
 export const meetingRoomReservationOrderObjectEffectSchema = Schema.Struct({
   ...reservationCustomerEffectFields,
   entryTier: Schema.Literal("meeting-room"),
-  startsAt: Schema.String,
-  endsAt: Schema.String,
+  startsAt: reservationIntervalFieldSchemas.startsAt,
+  endsAt: reservationIntervalFieldSchemas.endsAt,
 });
 
 export const normalizedMeetingRoomReservationOrderEffectSchema = Schema.Struct({
