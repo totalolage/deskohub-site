@@ -10,6 +10,7 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
+import { getCoworkReservationPath } from "@/features/checkout/routes";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
@@ -148,7 +149,7 @@ function InvalidPayState({ locale }: { readonly locale: Locale }) {
             asChild
             className="h-13 w-full rounded-full text-sm uppercase tracking-[0.18em]"
           >
-            <Link href={`/${locale}/checkout/order`}>
+            <Link href={getCoworkReservationPath(locale)}>
               {m.checkoutPayRestartButton({}, { locale })}
             </Link>
           </Button>

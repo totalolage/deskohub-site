@@ -20,6 +20,14 @@ const postHogSourceMapConfig =
             : {}),
           deleteAfterUpload: true,
         },
+    }
+    : undefined;
+
+const serverActions =
+  process.env.WORKSPACE_E2E_ALLOW_NULL_SERVER_ACTION_ORIGIN === "1"
+    ? {
+        // agent-browser submits Server Actions with Origin: null in CI.
+        allowedOrigins: ["null"],
       }
     : undefined;
 
@@ -27,12 +35,13 @@ const postHogSourceMapConfig =
 const nextConfig = {
   cacheComponents: false,
   reactCompiler: true,
+  ...(serverActions ? { experimental: { serverActions } } : {}),
   transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
   async redirects() {
     return [
       {
         source: `/:locale(${localeRedirectPattern})/reservation`,
-        destination: `/:locale/checkout/order?${new URLSearchParams({
+        destination: `/:locale/reservation/cowork?${new URLSearchParams({
           utm_source: "qr",
           utm_medium: "print",
           utm_campaign: "bud jako doma",

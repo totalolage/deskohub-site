@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { getCoworkReservationPath } from "@/features/checkout/routes";
 import { type Locale, m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { workspaceSiteConstants } from "@/shared/utils";
@@ -9,7 +10,7 @@ type PublicSiteFooterProps = {
 
 export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
   const localePath = `/${locale}`;
-  const reservationPath = `${localePath}/checkout/order`;
+  const reservationPath = getCoworkReservationPath(locale);
   const companyExtractPath = "/official-company-extract";
   const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
   const copyrightYear = await getFooterCopyrightYear();
@@ -128,7 +129,7 @@ export async function PublicSiteFooter({ locale }: PublicSiteFooterProps) {
                 {m.footerContactLink({}, { locale })}
               </Link>
               <Link
-                href={`${localePath}/checkout/order`}
+                href={reservationPath}
                 className="transition-colors hover:text-sunset-yellow"
               >
                 {m.footerReservationLink({}, { locale })}

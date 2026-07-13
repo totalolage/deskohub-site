@@ -1,15 +1,16 @@
 import { describe, expect, mock, test } from "bun:test";
-import { isValidElement, type ReactNode } from "react";
+import { createElement, isValidElement, type ReactNode } from "react";
 
 mock.module("server-only", () => ({}));
-mock.module("@/features/reservation/components/reservation-form", () => ({
-  ReservationForm: () => null,
-  ReservationFormFallback: () => null,
-}));
 
-const getFallbackProps = async () => {
+const getSuspenseProps = async (input: {
+  readonly children: ReactNode;
+  readonly fallback: ReactNode;
+}) => {
   const { CheckoutOrderPage } = await import("./checkout-order-page");
   const page = CheckoutOrderPage({
+    children: input.children,
+    fallback: input.fallback,
     locale: "en-US",
   });
 
@@ -27,17 +28,19 @@ const getFallbackProps = async () => {
     throw new Error("CheckoutOrderPage did not render a Suspense boundary");
   }
 
-  const fallback = (suspense.props as { fallback: ReactNode }).fallback;
-
-  if (!isValidElement(fallback)) {
-    throw new Error("CheckoutOrderPage did not configure a React fallback");
-  }
-
-  return fallback.props as { readonly showMonitorOption?: boolean };
+  return suspense.props as { readonly fallback: ReactNode };
 };
 
 describe("CheckoutOrderPage", () => {
-  test("uses a static generic reservation fallback", async () => {
-    expect((await getFallbackProps()).showMonitorOption).toBe(false);
+  test("renders the explicit product fallback", async () => {
+    const fallback = createElement("div", {
+      "data-testid": "meeting-room-fallback",
+    });
+    const suspenseProps = await getSuspenseProps({
+      children: createElement("div", { "data-testid": "meeting-room-form" }),
+      fallback,
+    });
+
+    expect(suspenseProps.fallback).toBe(fallback);
   });
 });

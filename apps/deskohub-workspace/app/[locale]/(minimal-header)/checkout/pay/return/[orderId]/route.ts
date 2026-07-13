@@ -2,36 +2,48 @@ import { Effect, Option, Ref, Schema } from "effect";
 import { NextResponse } from "next/server";
 import {
   appendVercelPreviewProtectionBypass,
+  type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
-  type CheckoutStatusViewModel,
 } from "@/features/checkout/backend/checkout";
-import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
-import type { SearchParamsRecord } from "@/shared/utils";
+import {
+  getSearchParamsDecoder,
+  type SearchParamsRecord,
+} from "@/shared/utils";
 
 export const maxDuration = 45;
 
-type LocalizedCheckoutResultRouteContext = {
+type LocalizedCheckoutPayReturnRouteContext = {
   readonly params: Promise<{ locale: string; orderId: string }>;
 };
 
-const decodeCheckoutResultParams = getParamsDecoder({
+const decodeCheckoutPayReturnParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
 
-const loadCheckoutStatusEffect = (orderId: string) =>
+const decodeCheckoutPayReturnSearchParams = getSearchParamsDecoder(
+  Schema.Struct({
+    outcome: Schema.Literals(["success", "cancelled"]),
+  })
+);
+
+const loadCheckoutStatusEffect = (
+  orderId: string,
+  returnOutcome: CheckoutStatusReturnOutcome
+) =>
   Effect.gen(function* () {
     const service = yield* CheckoutStatusService;
     return yield* service.refreshStatus({
       orderId,
-      returnOutcome: "unknown",
+      returnOutcome,
     });
   });
 
 const loadCheckoutStatusAttempt = (
   orderId: string,
+  returnOutcome: CheckoutStatusReturnOutcome,
   attempts: Ref.Ref<number>
 ) =>
   Effect.gen(function* () {
@@ -44,10 +56,11 @@ const loadCheckoutStatusAttempt = (
       yield* Effect.sleep("1500 millis");
     }
 
-    return yield* loadCheckoutStatusEffect(orderId).pipe(
+    return yield* loadCheckoutStatusEffect(orderId, returnOutcome).pipe(
       Effect.catchCause((cause) =>
         Effect.logWarning("Checkout status refresh retry failed", {
           orderId,
+          returnOutcome,
           attempt,
           cause,
         }).pipe(Effect.as(undefined))
@@ -55,10 +68,17 @@ const loadCheckoutStatusAttempt = (
     );
   });
 
-const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
+const loadCheckoutStatusWithBriefRetry = async (
+  orderId: string,
+  returnOutcome: CheckoutStatusReturnOutcome
+) => {
   const status = Effect.gen(function* () {
     const attempts = yield* Ref.make(0);
-    return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
+    return yield* loadCheckoutStatusAttempt(
+      orderId,
+      returnOutcome,
+      attempts
+    ).pipe(
       Effect.repeat({
         times: 3,
         while: (attemptStatus) =>
@@ -75,37 +95,17 @@ const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
   return status;
 };
 
-const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
-  if (status === "cancelled") return "cancelled";
-  if (status === "payment_failed" || status === "expired") return "failed";
-  return undefined;
-};
-
-const getCheckoutPaymentRetryRedirectPath = (input: {
-  readonly locale: string;
-  readonly orderId: string;
-  readonly outcome: "cancelled" | "failed";
-  readonly searchParams: SearchParamsRecord;
-}) => {
-  const url = new URL(
-    `/${input.locale}/checkout/payment/${input.orderId}`,
-    "https://deskohub.local"
-  );
-  url.searchParams.set("outcome", input.outcome);
-  appendExistingCheckoutReturnStateToken(url, input.searchParams);
-  appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
-
-  return `${url.pathname}${url.search}`;
-};
-
 const getCheckoutStatusRedirectPath = (input: {
   readonly locale: string;
   readonly orderId: string;
+  readonly outcome: CheckoutStatusReturnOutcome;
 }) => {
   const url = new URL(
-    `/${input.locale}/checkout/status/${input.orderId}`,
+    `/${input.locale}/reservation/status/${input.orderId}`,
     "https://deskohub.local"
   );
+  if (input.outcome !== "unknown")
+    url.searchParams.set("outcome", input.outcome);
   appendVercelPreviewProtectionBypass(url, { setBypassCookie: true });
 
   return `${url.pathname}${url.search}`;
@@ -116,32 +116,24 @@ const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
 
 export async function GET(
   request: Request,
-  { params }: LocalizedCheckoutResultRouteContext
+  { params }: LocalizedCheckoutPayReturnRouteContext
 ): Promise<NextResponse> {
-  const decodedParams = decodeCheckoutResultParams(await params);
+  const decodedParams = decodeCheckoutPayReturnParams(await params);
   const routeParams = Option.getOrUndefined(decodedParams);
   if (!routeParams) return new NextResponse(null, { status: 404 });
 
   const { locale, orderId } = routeParams;
   const rawSearchParams = getSearchParamsRecord(new URL(request.url));
-  const status = await loadCheckoutStatusWithBriefRetry(orderId);
-  const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
-
-  if (retryOutcome) {
-    return NextResponse.redirect(
-      new URL(
-        getCheckoutPaymentRetryRedirectPath({
-          locale,
-          orderId,
-          outcome: retryOutcome,
-          searchParams: rawSearchParams,
-        }),
-        request.url
-      )
-    );
-  }
+  const { outcome } = Option.getOrElse(
+    decodeCheckoutPayReturnSearchParams(rawSearchParams),
+    () => ({ outcome: "unknown" as const })
+  );
+  await loadCheckoutStatusWithBriefRetry(orderId, outcome);
 
   return NextResponse.redirect(
-    new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
+    new URL(
+      getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
+      request.url
+    )
   );
 }

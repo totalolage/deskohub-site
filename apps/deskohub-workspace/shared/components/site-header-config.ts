@@ -1,3 +1,4 @@
+import { getCoworkReservationPath } from "@/features/checkout/routes";
 import { type Locale, m } from "@/features/i18n";
 
 const siteHeaderSectionIds = {
@@ -46,7 +47,7 @@ export function getSiteHeaderConfig(locale: Locale) {
       },
     ],
     contactLabel: m.reservationNavCta({}, { locale }),
-    contactHref: `${localePath}/checkout/order`,
+    contactHref: getCoworkReservationPath(locale),
   };
 }
 
