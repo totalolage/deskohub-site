@@ -4,28 +4,29 @@ import { createHmac } from "node:crypto";
 import {
   DotyposService,
   ValidationError as DotyposValidationError,
+  normalizePhoneNumber,
 } from "@deskohub/dotypos";
 import {
   Data,
   Duration,
   Effect,
   Layer,
+  Match,
   Predicate,
   Schedule,
   Schema,
 } from "effect";
-import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
+import { buildCheckoutPayPath } from "@/features/checkout/backend/checkout";
 import {
-  buildAuthoritativeWorkspaceCheckoutQuoteEffect,
-  buildCheckoutPayPath,
   buildSignedPayState,
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
-} from "@/features/checkout/backend/checkout";
+} from "@/features/checkout/backend/checkout/pay-state-v2";
+import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/checkout/workspace-checkout-quote-v2.server";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
@@ -38,14 +39,17 @@ import {
   WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/reservation";
-import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
+import { parseCheckoutDetailsReservation } from "@/features/checkout/checkout-details";
+import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote-v2";
+import {
+  checkoutSummarySchema,
+  toCheckoutDetailsPaymentSummary,
+} from "@/features/checkout/checkout-summary";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/legal-evidence";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import {
@@ -56,7 +60,21 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
+import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import {
+  getReservationDate,
+  isDefaultReservationInterval,
+  normalizeReservationInterval,
+  type ReservationInterval,
+  type ReservationIntervalInput,
+} from "@/features/reservation/reservation-interval";
+import {
+  getReservationProductCoffee,
+  getReservationProductMonitorOption,
+  type ReservationOrderData,
+  reservationOrderEffectSchema,
+} from "@/features/reservation/reservation-order";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import {
   BotDetectedError,
@@ -65,14 +83,14 @@ import {
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-const getPreparePayStateSchema = () =>
-  z.object({
-    locale: z.enum(locales),
-    reservationIntentId: z.string().min(1),
-    reservation: getReservationOrderSchema(),
-    legalConsent: z.boolean().optional(),
-  });
+const preparePayStateEffectSchema = Schema.Struct({
+  locale: Schema.Literals(locales),
+  reservationIntentId: Schema.NonEmptyString,
+  reservation: reservationOrderEffectSchema,
+  legalConsent: Schema.optional(Schema.Boolean),
+});
 
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
@@ -82,28 +100,33 @@ const normalizeIdempotencyPart = (value: string) =>
 
 const deriveReservationIntentKey = (input: {
   readonly reservationIntentId: string;
-  readonly reservation: {
-    readonly name: string;
-    readonly email: string;
-    readonly phone: string;
-    readonly date: string;
-    readonly entryTier: string;
-    readonly coffee: boolean;
-    readonly monitorOption?: string;
-  };
+  readonly reservation: ReservationOrderData;
+  readonly reservationInterval: ReservationInterval;
 }) => {
-  const payload = {
-    schema: "workspace-reservation-intent-key",
-    schemaVersion: 2,
+  const productCoffee = getReservationProductCoffee(input.reservation);
+  const productMonitorOption = getReservationProductMonitorOption(
+    input.reservation
+  );
+  const basePayload = {
     reservationIntentId: input.reservationIntentId,
     name: normalizeIdempotencyPart(input.reservation.name),
     email: normalizeIdempotencyPart(input.reservation.email),
-    phone: input.reservation.phone.replaceAll(/\s+/g, ""),
-    date: input.reservation.date,
+    phone: normalizePhoneNumber(input.reservation.phone),
+    date: getReservationDate({
+      interval: input.reservationInterval,
+      timeZone: workspaceSiteConstants.location.timeZone,
+    }),
     entryTier: input.reservation.entryTier,
-    coffee: input.reservation.coffee,
-    monitorOption: input.reservation.monitorOption ?? null,
+    coffee: productCoffee,
+    monitorOption: productMonitorOption ?? null,
   };
+  const payload = isDefaultReservationInterval(input.reservationInterval)
+    ? basePayload
+    : {
+        ...basePayload,
+        startsAt: input.reservationInterval.startsAt,
+        endsAt: input.reservationInterval.endsAt,
+      };
 
   return createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
     .update(JSON.stringify(payload))
@@ -145,29 +168,26 @@ const getDotyposCustomerId = Effect.fn(
 
 const buildReservationCheckoutDetails = (input: {
   readonly locale: Locale;
-  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly reservation: ReservationOrderData;
+  readonly reservationInterval: ReservationInterval;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
-  const product = getWorkspaceProductByTier(input.reservation.entryTier);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
+  const checkoutReservation = parseCheckoutDetailsReservation(
+    input.quote.order,
+    input.reservationInterval
+  );
 
   return {
-    schema: "workspace-checkout-details",
-    schemaVersion: 1,
     locale: input.locale,
-    reservation: {
-      tier: input.reservation.entryTier,
-      date: input.reservation.date,
-      coffee: input.reservation.coffee,
-      monitorOption: product.requiresMonitorOption
-        ? input.reservation.monitorOption
-        : undefined,
-    },
+    reservation: checkoutReservation,
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
-      summary: checkoutSummarySchema.parse(input.quote.summary),
+      summary: toCheckoutDetailsPaymentSummary(
+        checkoutSummarySchema.parse(input.quote.summary)
+      ),
       ...(input.quote.payment.customerDiscount && {
         undiscountedPrice: baseCheckoutPrice,
         customerDiscount: input.quote.payment.customerDiscount,
@@ -208,7 +228,7 @@ const getReservationPrivacyEvidence = Effect.fn(
 
 const toReadyResult = (input: {
   readonly locale: Locale;
-  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly reservation: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
 }) => {
@@ -347,9 +367,19 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
+    const intervalInput: ReservationIntervalInput =
+      input.reservation.entryTier === "meeting-room"
+        ? {
+            startsAt: input.reservation.startsAt,
+            endsAt: input.reservation.endsAt,
+          }
+        : getCoworkReservationIntervalInput(input.reservation.date);
+    const reservationInterval =
+      yield* normalizeReservationInterval(intervalInput);
     const reservationIntentKey = deriveReservationIntentKey({
       reservationIntentId: input.reservationIntentId,
       reservation: input.reservation,
+      reservationInterval,
     });
     yield* Effect.annotateLogsScoped({
       locale: input.locale,
@@ -452,11 +482,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
         "Existing workspace reservation hold reused for checkout prep"
       );
 
-      yield* reservations.updateProductIntent({
+      yield* reservations.updateReservationDetails({
         id: existingReservation.id,
-        productTier: input.reservation.entryTier,
-        productCoffee: input.reservation.coffee,
-        productMonitorOption: input.reservation.monitorOption,
+        reservationDetails: getStoredWorkspaceReservationDetails(quote.order),
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
@@ -476,12 +504,27 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     }
 
     const availability = yield* WorkspaceAvailabilityService;
-    yield* availability.ensureAvailable({
-      _tag: "cowork",
-      date: input.reservation.date,
-      entryTier: input.reservation.entryTier,
-      monitorOption: input.reservation.monitorOption,
+    const reservationDate = getReservationDate({
+      interval: reservationInterval,
+      timeZone: workspaceSiteConstants.location.timeZone,
     });
+    const availabilitySelection = Match.value(quote.order).pipe(
+      Match.tag("meeting-room", () => ({
+        _tag: "meeting-room" as const,
+        startsAt: reservationInterval.startsAt,
+        endsAt: reservationInterval.endsAt,
+      })),
+      Match.tag("cowork", (coworkOrder) => ({
+        _tag: "cowork" as const,
+        date: reservationDate,
+        entryTier: coworkOrder.tier,
+        ...("monitorOption" in coworkOrder && {
+          monitorOption: coworkOrder.monitorOption,
+        }),
+      })),
+      Match.exhaustive
+    );
+    yield* availability.ensureAvailable(availabilitySelection);
     yield* Effect.logDebug("Workspace reservation availability confirmed");
 
     const customerName = splitCustomerName(input.reservation.name);
@@ -506,9 +549,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       reservationIntentKey,
       dotyposCustomerId,
       customerAccessCode,
-      productTier: input.reservation.entryTier,
-      productCoffee: input.reservation.coffee,
-      productMonitorOption: input.reservation.monitorOption,
+      reservationDetails: getStoredWorkspaceReservationDetails(quote.order),
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
@@ -531,11 +572,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
           "Existing workspace reservation hold reused after concurrent hold creation"
         );
 
-        yield* reservations.updateProductIntent({
+        yield* reservations.updateReservationDetails({
           id: claimConflictReservation.id,
-          productTier: input.reservation.entryTier,
-          productCoffee: input.reservation.coffee,
-          productMonitorOption: input.reservation.monitorOption,
+          reservationDetails: getStoredWorkspaceReservationDetails(quote.order),
           locale: input.locale,
         });
         yield* legalEvents.recordMany(
@@ -568,6 +607,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const checkoutDetails = buildReservationCheckoutDetails({
       locale: input.locale,
       reservation: input.reservation,
+      reservationInterval,
       quote,
       legalEvidence: privacyEvidence,
     });
@@ -751,7 +791,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 );
 
 const preparePayStateAction = createEffectSafeAction(
-  getPreparePayStateSchema(),
+  Schema.toStandardSchemaV1(preparePayStateEffectSchema),
   prepareWorkspacePayStateEffect,
   Layer.mergeAll(
     Layer.mergeAll(

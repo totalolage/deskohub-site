@@ -57,9 +57,11 @@ const makeReusableReservation = (
     paymentState: "not_started",
     fulfillmentState: "not_started",
     activePaymentAttemptId: null,
-    productTier: "basic",
-    productCoffee: false,
-    productMonitorOption: null,
+    reservationDetails: {
+      _tag: "cowork",
+      tier: "basic",
+      coffee: false,
+    },
     locale: "en-US",
     reservationHoldExpiresAt: reusableHoldExpiresAt,
     reservationHoldExpiredAt: null,
@@ -105,7 +107,7 @@ const runReusableReservationScenario = async (input: {
   );
 
   const enqueueCleanup = mock(() => Effect.void);
-  const updateProductIntent = mock(() => Effect.void);
+  const updateReservationDetails = mock(() => Effect.void);
   const recordMany = mock((events) => Effect.succeed(events as never));
   const ensureAvailable = mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
@@ -134,7 +136,7 @@ const runReusableReservationScenario = async (input: {
         claimHoldCreation,
         findById,
         releaseHoldCreation: mock(() => Effect.void),
-        updateProductIntent,
+        updateReservationDetails,
         attachHold: mock(() => Effect.die("unused")),
         markAttachFailedCancellationRequired: mock(() => Effect.void),
       } as unknown as WorkspaceReservationRepositoryType)
@@ -168,7 +170,7 @@ const runReusableReservationScenario = async (input: {
   return {
     result,
     enqueueCleanup,
-    updateProductIntent,
+    updateReservationDetails,
     recordMany,
     ensureAvailable,
     createDraft,
@@ -184,7 +186,7 @@ describe("prepareWorkspacePayStateEffect", () => {
       "./prepare-pay-state"
     );
     const { openPayState, payStateTokenQueryParam } = await import(
-      "@/features/checkout/backend/checkout"
+      "@/features/checkout/backend/checkout/pay-state-v2"
     );
     const { WorkspaceCheckoutAccessCodeService } = await import(
       "@/features/checkout/backend/reservation"
@@ -231,9 +233,7 @@ describe("prepareWorkspacePayStateEffect", () => {
         fulfillmentState: "not_started",
         dotyposCustomerId: input.dotyposCustomerId,
         customerAccessCode: input.customerAccessCode,
-        productTier: input.productTier,
-        productCoffee: input.productCoffee,
-        productMonitorOption: input.productMonitorOption,
+        reservationDetails: input.reservationDetails,
         locale: input.locale,
         reservationHoldExpiresAt: input.reservationHoldExpiresAt,
       } as never)
@@ -275,7 +275,7 @@ describe("prepareWorkspacePayStateEffect", () => {
           attachHold,
           findById: mock(() => Effect.succeed(null)),
           releaseHoldCreation: mock(() => Effect.void),
-          updateProductIntent: mock(() => Effect.die("unused")),
+          updateReservationDetails: mock(() => Effect.die("unused")),
           markAttachFailedCancellationRequired: mock(() => Effect.void),
         } as unknown as WorkspaceReservationRepositoryType)
       ),
@@ -317,15 +317,20 @@ describe("prepareWorkspacePayStateEffect", () => {
     );
 
     expect(ensureAvailable).toHaveBeenCalledWith({
-      date: reservation.date,
+      date: "2026-07-01",
+      _tag: "cowork",
       entryTier: reservation.entryTier,
+      startsAt: reservation.startsAt,
+      endsAt: reservation.endsAt,
       monitorOption: undefined,
     });
     expect(createDraft).toHaveBeenCalledTimes(1);
     expect(claimHoldCreation).toHaveBeenCalledWith("reservation-id");
     expect(assignTableId).toHaveBeenCalledWith({
+      _tag: "cowork",
       tier: "basic",
-      date: reservation.date,
+      startsAt: "2026-06-30T22:00:00Z",
+      endsAt: "2026-07-01T22:00:00Z",
       coffee: false,
       monitorOption: undefined,
     });
@@ -378,11 +383,13 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(result.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
     });
-    expect(result.updateProductIntent).toHaveBeenCalledWith({
+    expect(result.updateReservationDetails).toHaveBeenCalledWith({
       id: existingReservation.id,
-      productTier: "basic",
-      productCoffee: false,
-      productMonitorOption: undefined,
+      reservationDetails: {
+        _tag: "cowork",
+        tier: "basic",
+        coffee: false,
+      },
       locale: "en-US",
     });
   });

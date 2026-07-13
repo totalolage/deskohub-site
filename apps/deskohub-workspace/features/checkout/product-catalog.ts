@@ -36,7 +36,6 @@ export const workspaceProductMonitorOptionTableTags: Record<
 
 export type WorkspaceProductCatalogItem = {
   readonly tier: WorkspaceCoworkProductTier;
-  readonly label: string;
   readonly price: WorkspaceMoney;
   readonly includesCourtesyCoffee: boolean;
   readonly requiresCoffee: boolean;
@@ -47,7 +46,6 @@ export type WorkspaceProductCatalogItem = {
 export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
   {
     tier: "basic",
-    label: "Basic Day Pass",
     price: { value: 35_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: false,
     requiresCoffee: false,
@@ -56,7 +54,6 @@ export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
   },
   {
     tier: "plus",
-    label: "Cowork Plus",
     price: { value: 49_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: true,
     requiresCoffee: true,
@@ -65,7 +62,6 @@ export const workspaceCoworkCatalog: readonly WorkspaceProductCatalogItem[] = [
   },
   {
     tier: "profi",
-    label: "Profi Workstation",
     price: { value: 55_000, exponent: 2, currency: "CZK" },
     includesCourtesyCoffee: true,
     requiresCoffee: true,
