@@ -86,7 +86,7 @@
       "cache": false,
       "persistent": true
     },
-    "e2e:checkout": {
+    "test:e2e": {
       "cache": false
     },
     "lint": {
