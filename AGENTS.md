@@ -22,6 +22,26 @@ export class FooService extends Context.Service<
 
 
 - Use `Layer.effect(this, ...)` for effectful/fallible setup, `Layer.sync(this, ...)` for pure lazy construction, and `Layer.succeed(this, ...)` for already-created implementations or test fakes.
+- Structure Effect service modules as top-down narratives. After imports, put the public interface and `Context.Service` declaration first, followed by the primary workflow, then progressively more concrete operations. A reader should be able to stop at any depth and still understand the behavior at that abstraction level. Split the module when implementation detail branches into separate concerns.
+- Make every non-trivial Effect workflow declarative, including service, provider, repository, and complex domain implementations. Prefer `Effect.Do.pipe`, using `Effect.bind` for effectful steps, `Effect.let` for pure derived values, `Effect.tap` for observational effects, and a final `Effect.map` for the result. Continue this structure down through the abstraction layers until reaching simple leaf operations where direct code is clearer.
+- Type the real operations in a declarative workflow to accept object arguments containing the named domain values they require, and pass those operations directly to `Effect.bind`, `Effect.let`, or `Effect.tap`. Do not add adapter functions merely to translate an `Effect.Do` accumulator into positional arguments. Preferred shape:
+
+```ts
+Effect.Do.pipe(
+  Effect.bind("candidates", findDiscountCandidates),
+  Effect.let("eligible", collectEligibleDiscounts),
+  Effect.let("ordered", orderDiscounts),
+  Effect.bind("quote", applyDiscounts),
+  Effect.map(({ quote }) => quote),
+);
+```
+
+- Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose their implementations with Layers; never pass them as ordinary function arguments or dependency objects. Resolve capabilities while constructing the consuming service and close over them in its implementation so public service methods accept domain input only. A service's `Live` layer should require its dependencies from Context rather than hardwiring their live layers; provide those layers at the application composition boundary, and replace them with test layers in tests.
+- Represent service construction directly as an Effect when a factory function adds no behavior or reuse. Avoid `make*` functions that merely return a single Effect expression.
+- Name public service operations with `Effect.fn("Service.operation")`. Do not wrap the whole named operation in a redundant `Effect.withSpan`; add explicit spans only for meaningful nested trace boundaries.
+- Omit Effect options that merely restate defaults, such as unbounded concurrency when it is already the default. Specify options only when they change behavior or communicate an important constraint.
+- Expose each feature's public service API through its `index.ts` barrel. Keep providers, repositories, intermediate candidates, and other implementation modules private so consumers cannot depend on source-specific concerns.
+- Prefer declarative pipelines where they clarify multi-step behavior, but do not force trivial leaf calculations into `Effect.Do`. If a leaf becomes conditional or multi-stage, extract it into its own named declarative pipeline.
 - Make heavy use of exploration and research subagents to make sure you are taking the correct approach
 - Prefer the optimal domain structure over preserving an existing layout by default. If current placement is awkward, refactor toward the better boundary rather than bending new code around the old shape.
 - Do not leave genuinely generic utility functions as one-off helpers in the first file that needs them. Before adding one, check whether an equivalent or related helper already exists in shared utilities and either reuse or extend it; otherwise place the new utility where future callers can reasonably share it.
