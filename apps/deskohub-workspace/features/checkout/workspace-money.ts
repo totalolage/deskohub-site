@@ -18,19 +18,38 @@ export const nonNegativeWorkspaceMoneySchema = workspaceMoneySchema.extend({
   value: z.int().nonnegative(),
 });
 
+const workspaceMoneyExponentEffectSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0)
+);
+
+const workspaceMoneyCurrencyEffectSchema = Schema.String.pipe(
+  Schema.check(
+    Schema.isPattern(/^[A-Z]{3}$/, {
+      description: "ISO 4217 uppercase alphabetic currency code.",
+    })
+  )
+);
+
+export const nonNegativeWorkspaceMoneyEffectSchema: Schema.Codec<
+  WorkspaceMoney,
+  WorkspaceMoney
+> = Schema.Struct({
+  value: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+  exponent: workspaceMoneyExponentEffectSchema,
+  currency: workspaceMoneyCurrencyEffectSchema,
+}).annotate({
+  identifier: "NonNegativeWorkspaceMoney",
+  description:
+    "Non-negative workspace money stored as a scaled integer value, decimal exponent, and ISO currency code.",
+});
+
 export const positiveWorkspaceMoneyEffectSchema: Schema.Codec<
   WorkspaceMoney,
   WorkspaceMoney
 > = Schema.Struct({
   value: Schema.Int.check(Schema.isGreaterThan(0)),
-  exponent: Schema.Int.check(Schema.isGreaterThan(0)),
-  currency: Schema.String.pipe(
-    Schema.check(
-      Schema.isPattern(/^[A-Z]{3}$/, {
-        description: "ISO 4217 uppercase alphabetic currency code.",
-      })
-    )
-  ),
+  exponent: workspaceMoneyExponentEffectSchema,
+  currency: workspaceMoneyCurrencyEffectSchema,
 }).annotate({
   identifier: "PositiveWorkspaceMoney",
   description:

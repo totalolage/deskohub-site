@@ -78,6 +78,12 @@ describe("discount calculator", () => {
     });
   });
 
+  test("accepts a valid zero-exponent subtotal", () => {
+    expect(
+      calculate(money(350, "CZK", 0), []).quote.discountableSubtotal
+    ).toEqual(money(350, "CZK", 0));
+  });
+
   test("applies percentages in integer basis points with minor-unit rounding", () => {
     const result = calculate(money(35_000), [percentage("sale", 1250)]);
 
@@ -242,6 +248,7 @@ describe("discount calculator", () => {
       money(Number.MAX_SAFE_INTEGER + 1),
       money(100, "czk"),
       money(100, "CZK", -1),
+      money(100, "CZK", Number.MAX_SAFE_INTEGER + 1),
     ]) {
       expect(calculateError(invalidSubtotal, []).reason).toBe(
         "invalid_discountable_subtotal"

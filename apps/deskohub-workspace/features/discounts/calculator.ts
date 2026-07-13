@@ -1,5 +1,6 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
+  nonNegativeWorkspaceMoneyEffectSchema,
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
@@ -46,31 +47,19 @@ export const calculateDiscounts = Effect.fn("DiscountCalculator.calculate")(
 
 const validateDiscountableSubtotal = (input: {
   readonly discountableSubtotal: WorkspaceMoney;
-}) => {
-  const { discountableSubtotal } = input;
-
-  if (
-    !Number.isSafeInteger(discountableSubtotal.value) ||
-    discountableSubtotal.value < 0 ||
-    !Number.isSafeInteger(discountableSubtotal.exponent) ||
-    discountableSubtotal.exponent < 0 ||
-    !/^[A-Z]{3}$/.test(discountableSubtotal.currency)
-  ) {
-    return Effect.fail(
-      new DiscountCalculationError({
-        reason: "invalid_discountable_subtotal",
-        message:
-          "Discountable subtotal must be non-negative integer money with a valid exponent and currency.",
-      })
-    );
-  }
-
-  return Effect.succeed({
-    value: discountableSubtotal.value,
-    exponent: discountableSubtotal.exponent,
-    currency: discountableSubtotal.currency,
-  });
-};
+}) =>
+  Schema.decodeEffect(nonNegativeWorkspaceMoneyEffectSchema)(
+    input.discountableSubtotal
+  ).pipe(
+    Effect.mapError(
+      () =>
+        new DiscountCalculationError({
+          reason: "invalid_discountable_subtotal",
+          message:
+            "Discountable subtotal must be non-negative integer money with a valid exponent and currency.",
+        })
+    )
+  );
 
 const calculateApplications = (input: {
   readonly candidates: readonly DiscountCandidate[];
@@ -101,10 +90,11 @@ const applyNextCandidate = (input: {
     });
   }
 
-  return Effect.Do.pipe(
-    Effect.let("state", () => state),
-    Effect.let("candidate", () => candidate),
-    Effect.let("remaining", () => state.remaining),
+  return Effect.succeed({
+    state,
+    candidate,
+    remaining: state.remaining,
+  }).pipe(
     Effect.bind("appliedValue", getAppliedValue),
     Effect.let("nextState", toNextCalculationState),
     Effect.flatMap(applyNextCandidate)

@@ -1,8 +1,12 @@
-declare const discountCommitmentBrand: unique symbol;
+import { Schema } from "effect";
 
-export type DiscountCommitment = {
-  readonly [discountCommitmentBrand]: "DiscountCommitment";
-};
+const DiscountCommitmentSchema = Schema.ObjectKeyword.pipe(
+  Schema.brand("DiscountCommitment")
+);
+
+export type DiscountCommitment = Schema.Schema.Type<
+  typeof DiscountCommitmentSchema
+>;
 
 type Assert<T extends true> = T;
 
