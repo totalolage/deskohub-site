@@ -10,14 +10,21 @@ import { m } from "@/features/i18n";
 import { reservationLegalConsentEffectSchema } from "@/features/reservation/reservation-consent";
 import { reservationCustomerEffectFields } from "@/features/reservation/reservation-contact";
 import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
-import type { ReservationIntervalInput } from "@/features/reservation/reservation-interval-normalization";
-import { isPlainDateString } from "@/shared/utils/temporal";
+import type { ReservationIntervalInput } from "@/features/reservation/reservation-interval-domain";
+import {
+  isPlainDateString,
+  localDateTimeEffectSchema,
+} from "@/shared/utils/temporal";
+
+const decodeLocalDateTime = Schema.decodeUnknownSync(localDateTimeEffectSchema);
 
 export const getCoworkReservationIntervalInput = (
   date: string
 ): ReservationIntervalInput => ({
-  startsAt: `${date}T00:00`,
-  endsAt: `${Temporal.PlainDate.from(date).add({ days: 1 })}T00:00`,
+  startsAt: decodeLocalDateTime(`${date}T00:00`),
+  endsAt: decodeLocalDateTime(
+    `${Temporal.PlainDate.from(date).add({ days: 1 })}T00:00`
+  ),
 });
 
 const dateEffectSchema = Schema.String.check(
