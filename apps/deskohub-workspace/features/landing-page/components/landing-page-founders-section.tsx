@@ -16,21 +16,18 @@ export function LandingPageFoundersSection({
   const founders = [
     {
       imagePublicId: "founder-profile-danica",
-      imageVersion: 1783848283,
       name: "Danica",
       role: m.landingFounderDanicaRole({}, { locale }),
       description: m.landingFounderDanicaDescription({}, { locale }),
     },
     {
       imagePublicId: "founder-profile-filip",
-      imageVersion: 1783848282,
       name: "Filip",
       role: m.landingFounderFilipRole({}, { locale }),
       description: m.landingFounderFilipDescription({}, { locale }),
     },
     {
       imagePublicId: "founder-profile-carp",
-      imageVersion: 1783848283,
       name: null,
       role: m.landingFounderHardwareRole({}, { locale }),
       description: m.landingFounderHardwareDescription({}, { locale }),
@@ -64,10 +61,7 @@ export function LandingPageFoundersSection({
               <div className="relative flex min-h-28 items-stretch sm:min-h-40">
                 <div className="relative z-10 w-28 shrink-0 self-stretch sm:w-40">
                   <div className="absolute top-1/2 h-28 w-28 -translate-y-1/2 overflow-hidden rounded-full border-4 border-white bg-navy-blue shadow-[0_16px_32px_-18px_rgba(0,2,79,0.72)] sm:h-40 sm:w-40">
-                    <FounderProfileImage
-                      publicId={founder.imagePublicId}
-                      version={founder.imageVersion}
-                    />
+                    <FounderProfileImage publicId={founder.imagePublicId} />
                   </div>
 
                   <div className="absolute left-[calc(100%+1rem)] top-5 z-10 sm:top-6">

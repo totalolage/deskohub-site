@@ -6,13 +6,9 @@ import { useState } from "react";
 
 type FounderProfileImageProps = {
   publicId: string;
-  version: number;
 };
 
-export function FounderProfileImage({
-  publicId,
-  version,
-}: FounderProfileImageProps) {
+export function FounderProfileImage({ publicId }: FounderProfileImageProps) {
   const [hasImageError, setHasImageError] = useState(false);
 
   return (
@@ -32,7 +28,6 @@ export function FounderProfileImage({
             size={{ width: "fill", height: "fill" }}
             sizes="(min-width: 640px) 160px, 112px"
             variant="gallery"
-            version={version}
           />
         </div>
       )}
