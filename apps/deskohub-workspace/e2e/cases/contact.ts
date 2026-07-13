@@ -10,7 +10,7 @@ import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
-import { addRedaction, log } from "../runtime";
+import { log } from "../runtime";
 import { makeUrl, setSearchParams } from "../urls";
 
 export const assertContactForm = ({
@@ -31,8 +31,6 @@ export const assertContactForm = ({
       phone: `+420736${runId.slice(8, 14)}`,
     };
 
-    for (const value of Object.values(data)) addRedaction(value);
-
     const url = yield* makeUrl(
       "build contact form URL",
       `${config.browserUrl}/en-US/contact`
@@ -42,34 +40,18 @@ export const assertContactForm = ({
     yield* openBrowserPage(config, run, session, url.toString(), {
       timeoutMs: getCheckoutTimeoutMs(),
     });
-    yield* fillBrowserField(
-      run,
-      session,
-      "#contact-name",
-      data.name,
-      { timeoutMs: getCheckoutTimeoutMs() }
-    );
-    yield* fillBrowserField(
-      run,
-      session,
-      "#contact-phone",
-      data.phone,
-      { timeoutMs: getCheckoutTimeoutMs() }
-    );
-    yield* fillBrowserField(
-      run,
-      session,
-      "#contact-email",
-      data.email,
-      { timeoutMs: getCheckoutTimeoutMs() }
-    );
-    yield* fillBrowserField(
-      run,
-      session,
-      "#contact-message",
-      data.message,
-      { timeoutMs: getCheckoutTimeoutMs() }
-    );
+    yield* fillBrowserField(run, session, "#contact-name", data.name, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+    yield* fillBrowserField(run, session, "#contact-phone", data.phone, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+    yield* fillBrowserField(run, session, "#contact-email", data.email, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+    yield* fillBrowserField(run, session, "#contact-message", data.message, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
     const submitRef = yield* requireEnabledSnapshotRef({
       description: "contact submit button",
       labels: ["Send message"],
