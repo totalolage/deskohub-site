@@ -18,13 +18,6 @@ export type ReservationIntervalValidationIssue = {
   readonly message: string;
 };
 
-export const defaultReservationInterval: Required<
-  Pick<ReservationIntervalInput, "startsAt" | "endsAt">
-> = {
-  startsAt: "00:00",
-  endsAt: "24:00",
-};
-
 export class ReservationIntervalValidationError extends Data.TaggedError(
   "ReservationIntervalValidationError"
 )<ReservationIntervalValidationIssue & { readonly cause?: unknown }> {}

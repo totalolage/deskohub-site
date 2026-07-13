@@ -1,7 +1,6 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect } from "effect";
-import { defaultReservationInterval } from "./reservation-interval-domain";
 import {
   getDurationMinutes,
   normalizeReservationIntervalFields,
@@ -42,14 +41,14 @@ describe("normalizeReservationIntervalFields", () => {
     expect(getDurationMinutes(interval)).toBe(24 * 60);
   });
 
-  test("normalizes optional defaults to a full-day interval when only date is supplied", async () => {
-    const interval = await Effect.runPromise(
-      normalizeReservationIntervalFields({ date }, timeZone)
-    );
-
-    expect(interval.startsAt).toBe(toInstant(`${date}T00:00`));
-    expect(interval.endsAt).toBe(toInstant("2026-07-02T00:00"));
-    expect(getDurationMinutes(interval)).toBe(24 * 60);
+  test("requires an explicit interval", async () => {
+    await expect(
+      Effect.runPromise(normalizeReservationIntervalFields({ date }, timeZone))
+    ).rejects.toMatchObject({
+      _tag: "ReservationIntervalValidationError",
+      path: "startsAt",
+      message: "Reservation start time is required.",
+    });
   });
 
   test("accepts explicit ISO instants without a reservation date", async () => {
@@ -122,15 +121,6 @@ describe("normalizeReservationIntervalFields", () => {
       _tag: "ReservationIntervalValidationError",
       path: "endsAt",
       message: "Reservation duration must match start and end time.",
-    });
-  });
-});
-
-describe("Reservation interval defaults", () => {
-  test("default interval values are explicit default startsAt/endsAt", () => {
-    expect(defaultReservationInterval).toEqual({
-      startsAt: "00:00",
-      endsAt: "24:00",
     });
   });
 });

@@ -2,8 +2,10 @@ import { Effect, Match, Option, Schema, SchemaGetter } from "effect";
 import {
   type InstantString,
   instantStringEffectSchema,
+  type LocalDateTimeString,
   localDateTimeEffectSchema,
   localTimeEffectSchema,
+  plainDateStringEffectSchema,
 } from "@/shared/utils/temporal";
 import {
   type ReservationInterval,
@@ -25,7 +27,9 @@ const localTimeTimestampEffectSchema = reservationLocalTimeEffectSchema.pipe(
         _tag: "LocalTime" as const,
         value,
       })),
-      encode: SchemaGetter.transform(({ value }) => value),
+      encode: SchemaGetter.transform(
+        ({ value }) => value as typeof reservationLocalTimeEffectSchema.Type
+      ),
     }
   )
 );
@@ -40,7 +44,9 @@ const localDateTimeTimestampEffectSchema = localDateTimeEffectSchema.pipe(
         _tag: "LocalDateTime" as const,
         value,
       })),
-      encode: SchemaGetter.transform(({ value }) => value),
+      encode: SchemaGetter.transform(
+        ({ value }) => value as LocalDateTimeString
+      ),
     }
   )
 );
@@ -71,6 +77,9 @@ const decodeReservationTimestamp = Schema.decodeUnknownEffect(
 );
 const decodeReservationLocalTime = Schema.decodeUnknownOption(
   reservationLocalTimeEffectSchema
+);
+const decodePlainDateString = Schema.decodeUnknownSync(
+  plainDateStringEffectSchema
 );
 const decodeInstantString = Schema.decodeUnknownSync(instantStringEffectSchema);
 
@@ -165,7 +174,7 @@ const localTimeToInstant = ({
   readonly time: string;
   readonly timeZone: string;
 }) => {
-  const reservationDate = Temporal.PlainDate.from(date);
+  const reservationDate = Temporal.PlainDate.from(decodePlainDateString(date));
   const minutes = localTimeToMinutes(time);
   const decodedStartTime = startsAt
     ? decodeReservationLocalTime(startsAt)

@@ -50,6 +50,7 @@ export const localTimeEffectSchema = Schema.String.check(
   });
 
 export type LocalTime = typeof localTimeEffectSchema.Type;
+export type LocalTimeString = LocalTime;
 
 export const localDateTimeEffectSchema = Schema.String.check(
   Schema.makeFilter((value) => {
@@ -72,6 +73,7 @@ export const localDateTimeEffectSchema = Schema.String.check(
   });
 
 export type LocalDateTime = typeof localDateTimeEffectSchema.Type;
+export type LocalDateTimeString = LocalDateTime;
 
 export const instantStringEffectSchema = Schema.String.check(
   Schema.makeFilter((value) => {
@@ -90,6 +92,7 @@ export const instantStringEffectSchema = Schema.String.check(
   });
 
 export type Instant = typeof instantStringEffectSchema.Type;
+export type InstantString = Instant;
 
 export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
   Schema.makeFilter<string>((value) => {
@@ -110,6 +113,7 @@ export const plainDateStringEffectSchema = Schema.String.check(
   });
 
 export type PlainDate = typeof plainDateStringEffectSchema.Type;
+export type PlainDateString = PlainDate;
 
 export const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
 

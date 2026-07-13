@@ -1,6 +1,5 @@
 import { Effect } from "effect";
 import {
-  defaultReservationInterval,
   type ReservationInterval,
   type ReservationIntervalInput,
   ReservationIntervalValidationError,
@@ -16,10 +15,8 @@ export const normalizeReservationIntervalFields = (
   timeZone: string
 ): Effect.Effect<ReservationInterval, ReservationIntervalValidationError> =>
   Effect.gen(function* () {
-    const hasExplicitInterval =
-      value.startsAt !== undefined || value.endsAt !== undefined;
-    const startsAt = value.startsAt ?? defaultReservationInterval.startsAt;
-    const endsAt = value.endsAt ?? defaultReservationInterval.endsAt;
+    const startsAt = yield* requireTimestampField(value.startsAt, "startsAt");
+    const endsAt = yield* requireTimestampField(value.endsAt, "endsAt");
     const date = value.date;
 
     const normalizedStartsAt = yield* normalizeTimestampField({
@@ -53,7 +50,6 @@ export const normalizeReservationIntervalFields = (
 
     if (
       value.date &&
-      hasExplicitInterval &&
       toPlainDateTime(interval.startsAt, timeZone).toPlainDate().toString() !==
         value.date
     ) {
@@ -85,15 +81,25 @@ export const getDurationMinutes = (interval: ReservationInterval) =>
     toInstantMilliseconds(interval.startsAt)) /
   (60 * 1000);
 
+const requireTimestampField = (
+  value: string | undefined,
+  path: keyof ReservationInterval
+) =>
+  value === undefined
+    ? Effect.fail(
+        new ReservationIntervalValidationError({
+          path,
+          message: `Reservation ${path === "startsAt" ? "start" : "end"} time is required.`,
+        })
+      )
+    : Effect.succeed(value);
+
 export type {
   ReservationInterval,
   ReservationIntervalInput,
   ReservationIntervalValidationIssue,
 } from "./reservation-interval-domain";
-export {
-  defaultReservationInterval,
-  ReservationIntervalValidationError,
-} from "./reservation-interval-domain";
+export { ReservationIntervalValidationError } from "./reservation-interval-domain";
 export {
   toInstantMilliseconds,
   toPlainDateTime,
