@@ -28,10 +28,6 @@ import {
   WorkspacePaidFulfillmentServiceLiveWithDependencies,
 } from "../fulfillment/paid-fulfillment.service";
 import {
-  ReservationHoldCleanupService,
-  ReservationHoldCleanupServiceLiveWithDependencies,
-} from "../holds/reservation-hold-cleanup.service";
-import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
@@ -133,7 +129,6 @@ export const NexiWebhookServiceLive = Layer.effect(
     const webhookEvents = yield* WebhookEventRepository;
     const paymentAttempts = yield* PaymentAttemptRepository;
     const reservations = yield* WorkspaceReservationRepository;
-    const holdCleanup = yield* ReservationHoldCleanupService;
     const nexi = yield* NexiService;
     const fulfillment = yield* WorkspacePaidFulfillmentService;
     const posthogEvents = yield* PostHogEventService;
@@ -520,26 +515,6 @@ export const NexiWebhookServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Nexi webhook payment attempt marked terminal"
             );
-
-            yield* holdCleanup
-              .cancelOrderHold({ orderId: reservation.id })
-              .pipe(
-                Effect.tapError((cause) =>
-                  Effect.logWarning(
-                    "Nexi webhook terminal hold cleanup failed",
-                    {
-                      eventId,
-                      orderId: reservation.id,
-                      providerOrderId,
-                      cause,
-                    }
-                  )
-                ),
-                Effect.ignore
-              );
-            yield* Effect.logInfo(
-              "Nexi webhook terminal hold cleanup attempted"
-            );
           } else {
             yield* Effect.logInfo(
               "Nexi webhook verification did not require payment transition"
@@ -599,7 +574,6 @@ export const NexiWebhookServiceLive = Layer.effect(
 export const NexiWebhookServiceLiveWithDependencies =
   NexiWebhookServiceLive.pipe(
     Layer.provide(WebhookEventRepositoryLive),
-    Layer.provide(ReservationHoldCleanupServiceLiveWithDependencies),
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(PostHogEventServiceLive),
     Layer.provide(WorkspaceReservationRepositoryLive),

@@ -57,6 +57,7 @@ Effect.Do.pipe(
 - Workspace E2E secrets that are only available in Vercel, such as email provider API keys, are not pullable into local env by design; validate email delivery through Vercel/runtime/webhook evidence and validate body content with a fake email transport renderer.
 - Workspace checkout E2E for current-code webhook validation must deploy a fresh manual Vercel CLI preview from the current working tree, assign `new.workspace.deskohub.cz` to that deployment, and then run through that alias; do not use whatever the alias already points to unless the user explicitly asks to test the already-live alias.
 - Keep `--force --archive=tgz` on that manual Vercel deploy; stale Vercel build/file caches have produced impossible TypeScript errors from older source during checkout E2E.
+- Reservation hold cleanup must happen only through the per-reservation scheduled queue task, with the daily cron job as the recovery path; do not add inline cleanup, sweep, or terminal-payment cancellation fallbacks.
 - Generate Drizzle migrations, journals, and snapshots with Drizzle tooling; do not hand-write migration metadata or journal entries.
 - For conditional rendering with no else branch, use `{condition && <Component />}` instead of `{condition ? <Component /> : null}`.
 - When mapping a small variant union to copy, icons, or similar values, use an inline object lookup instead of ternaries; keep one-use lookup objects inline.

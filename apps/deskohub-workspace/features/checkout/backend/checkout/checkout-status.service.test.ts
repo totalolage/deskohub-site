@@ -147,7 +147,7 @@ describe("CheckoutStatusService", () => {
     expect(holdCleanup.cancelOrderHold).not.toHaveBeenCalled();
   });
 
-  test("cancels the hold after refresh finds terminal payment", async () => {
+  test("does not clean up the hold after refresh finds terminal payment", async () => {
     const { CheckoutStatusService, CheckoutStatusServiceLive } = await import(
       "./checkout-status.service"
     );
@@ -202,7 +202,7 @@ describe("CheckoutStatusService", () => {
       Effect.runPromise
     );
 
-    expect(cancelOrderHold).toHaveBeenCalledWith({ orderId });
+    expect(cancelOrderHold).not.toHaveBeenCalled();
   });
 
   test("reconstructs a paid fulfilled reservation summary without PII", async () => {
