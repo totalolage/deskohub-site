@@ -18,7 +18,10 @@ import {
 export const reservationOrderSchema = Schema.Union([
   coworkReservationOrderSchema,
   meetingRoomReservationOrderSchema,
-]);
+]).annotate({
+  identifier: "ReservationOrder",
+  description: "Validated cowork or meeting-room reservation order.",
+});
 
 export type ReservationOrderInput = typeof reservationOrderSchema.Encoded;
 export type ReservationOrderData = typeof reservationOrderSchema.Type;

@@ -3,7 +3,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   WorkspaceTableAssignmentService,

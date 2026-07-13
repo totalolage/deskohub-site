@@ -4,11 +4,11 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
-  checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
+} from "@/features/checkout/legal-evidence";
+import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
 import {
   type DiscountQuote,
   discountIdSchema,
