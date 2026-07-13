@@ -148,7 +148,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
           <div className="relative h-[300px] lg:h-[500px] overflow-hidden bg-[linear-gradient(90deg,_#060852_0_50%,_#23221E_50%_100%)] flex justify-center">
             <CloudinaryImage
               alt={m["palmovcon2026.heroAlt"]()}
-              asset={heroImage}
+              source={heroImage}
               blurDataURL={heroBlurDataURL}
               className="mx-auto h-full w-auto max-w-full"
               preload
@@ -300,7 +300,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   <CloudinaryImage
                     aria-hidden="true"
                     alt=""
-                    asset={mobileEventImage}
+                    source={mobileEventImage}
                     blurDataURL={mobileEventBlurDataURL}
                     className="pointer-events-none absolute inset-x-0 top-0 h-[300px] w-full select-none lg:hidden"
                     preload={false}
@@ -320,7 +320,7 @@ export default async function Palmovcon2026Page({ params }: RouteProps_locale) {
                   <CloudinaryImage
                     aria-hidden="true"
                     alt=""
-                    asset={eventImage.image.desktop}
+                    source={eventImage.image.desktop}
                     blurDataURL={eventImage.blurDataURL.desktop}
                     className="pointer-events-none absolute inset-y-0 left-0 hidden h-full w-auto max-w-full select-none lg:block"
                     preload={false}

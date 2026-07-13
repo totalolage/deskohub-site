@@ -13,12 +13,15 @@
     "generate": "openapigen --spec ./openapi/dotypos-api.yaml --name DotyposClient --format httpclient > ./src/generated/effect.gen.ts"
   },
   "dependencies": {
-    "@types/react": "^19.1.0",
     "effect": "4.0.0-beta.85",
-    "libphonenumber-js": "^1.12.10",
-    "react": "^19.1.0"
+    "libphonenumber-js": "^1.12.10"
+  },
+  "peerDependencies": {
+    "react": "^19.2.7"
   },
   "devDependencies": {
+    "@types/react": "^19.2.17",
+    "react": "19.2.7",
     "typescript": "^5"
   }
 }

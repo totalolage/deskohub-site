@@ -1,23 +1,14 @@
 "use client";
 
-import { useAtomValue } from "@effect/atom-react";
-import { useReducedMotion } from "motion/react";
 import { cn } from "@/shared/utils";
-import {
-  censoredFounderNameLabel,
-  scrambledFounderNameAtom,
-} from "./censored-founder-name-animation";
-import { useCensoredFounderNameAnimation } from "./use-censored-founder-name-animation";
+import { useCensoredFounderName } from "./use-censored-founder-name";
 
 type CensoredFounderNameProps = {
   className?: string;
 };
 
 export function CensoredFounderName({ className }: CensoredFounderNameProps) {
-  const shouldReduceMotion = useReducedMotion();
-  const scrambledLabel = useAtomValue(scrambledFounderNameAtom);
-
-  useCensoredFounderNameAnimation(!shouldReduceMotion);
+  const label = useCensoredFounderName();
 
   return (
     <span
@@ -27,7 +18,7 @@ export function CensoredFounderName({ className }: CensoredFounderNameProps) {
         className
       )}
     >
-      {shouldReduceMotion ? censoredFounderNameLabel : scrambledLabel}
+      {label}
     </span>
   );
 }

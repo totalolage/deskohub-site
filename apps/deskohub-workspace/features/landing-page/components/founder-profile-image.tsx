@@ -24,7 +24,7 @@ export function FounderProfileImage({ publicId }: FounderProfileImageProps) {
           gravity="auto:thirds_0"
           onError={() => setHasImageError(true)}
           preload={false}
-          publicId={publicId}
+          source={publicId}
           size={{ width: "fill", height: "fill" }}
           sizes="(min-width: 640px) 160px, 112px"
           variant="gallery"

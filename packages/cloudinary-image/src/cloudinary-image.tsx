@@ -6,28 +6,18 @@ import { CldImage, type CldImageProps } from "next-cloudinary";
 type ImageSize = number | "fill";
 type CloudinaryImageVariant = "hero" | "gallery" | "thumbnail" | "full";
 
-type CloudinaryImageSource =
-  | {
-      asset: CloudinaryAsset;
-      publicId?: never;
-    }
-  | {
-      asset?: never;
-      publicId: string;
-    };
-
 type CloudinaryImageProps = Omit<
   CldImageProps,
   "src" | "alt" | "width" | "height" | "fill"
-> &
-  CloudinaryImageSource & {
-    alt?: string;
-    variant?: CloudinaryImageVariant;
-    size?: {
-      width: ImageSize;
-      height: ImageSize;
-    };
+> & {
+  source: CloudinaryAsset | string;
+  alt?: string;
+  variant?: CloudinaryImageVariant;
+  size?: {
+    width: ImageSize;
+    height: ImageSize;
   };
+};
 
 const variantConfig: Record<
   CloudinaryImageVariant,
@@ -66,8 +56,7 @@ const classNames = (...values: Array<string | undefined>) =>
   values.filter(Boolean).join(" ");
 
 export function CloudinaryImage({
-  asset,
-  publicId,
+  source,
   alt,
   variant = "gallery",
   size,
@@ -114,9 +103,8 @@ export function CloudinaryImage({
     objectFit: config.crop === "fill" ? "cover" : "contain",
     ...style,
   };
-  const src = asset?.public_id ?? publicId;
-
-  if (!src) return null;
+  const asset = typeof source === "string" ? undefined : source;
+  const src = typeof source === "string" ? source : source.public_id;
 
   const fallbackAlt = asset?.context?.custom?.alt?.trim() || src;
 

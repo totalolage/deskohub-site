@@ -56,9 +56,9 @@
         "next-cloudinary": "^6.16.0",
         "next-safe-action": "^8.0.7",
         "next-themes": "^0.4.4",
-        "react": "^19.1.0",
-        "react-day-picker": "8.10.1",
-        "react-dom": "^19.1.0",
+        "react": "19.2.7",
+        "react-day-picker": "8.10.2",
+        "react-dom": "19.2.7",
         "react-hook-form": "^7.60.0",
         "react-leaflet": "^5.0.0",
         "resend": "^6.0.1",
@@ -80,8 +80,8 @@
         "@types/js-cookie": "^3.0.6",
         "@types/leaflet": "^1.9.20",
         "@types/node": "^22",
-        "@types/react": "^19.1.0",
-        "@types/react-dom": "^19.1.0",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
         "@types/uuid": "^10.0.0",
         "autoprefixer": "^10.4.20",
         "chokidar-cli": "^3.0.0",
@@ -159,14 +159,14 @@
         "pg": "^8.21.0",
         "posthog-js": "^1.388.1",
         "posthog-node": "^5.38.0",
-        "react": "19.2.4",
+        "react": "19.2.7",
         "react-day-picker": "^9.14.0",
-        "react-dom": "19.2.4",
+        "react-dom": "19.2.7",
         "react-error-boundary": "^6.1.2",
         "react-hook-form": "^7.74.0",
         "react-photo-album": "^3.6.0",
         "resend": "^6.0.1",
-        "scheduler": "^0.27.0",
+        "scheduler": "0.27.0",
         "tailwind-merge": "^3.3.1",
         "vanilla-cookieconsent": "^3.1.0",
         "yet-another-react-lightbox": "^3.25.0",
@@ -180,8 +180,8 @@
         "@total-typescript/ts-reset": "^0.6.1",
         "@types/node": "^22",
         "@types/pg": "^8.20.0",
-        "@types/react": "^19.1.0",
-        "@types/react-dom": "^19.1.0",
+        "@types/react": "^19.2.17",
+        "@types/react-dom": "^19.2.3",
         "@typescript-eslint/parser": "^8.63.0",
         "babel-plugin-react-compiler": "^1.0.0",
         "chokidar-cli": "^3.0.0",
@@ -209,21 +209,29 @@
       "version": "0.1.0",
       "dependencies": {
         "@deskohub/cloudinary": "workspace:*",
-        "@types/react": "^19.1.0",
         "next-cloudinary": "^6.16.0",
+      },
+      "devDependencies": {
+        "@types/react": "^19.2.17",
+      },
+      "peerDependencies": {
+        "react": "^19.2.7",
       },
     },
     "packages/dotypos": {
       "name": "@deskohub/dotypos",
       "version": "0.1.0",
       "dependencies": {
-        "@types/react": "^19.1.0",
         "effect": "4.0.0-beta.85",
         "libphonenumber-js": "^1.12.10",
-        "react": "^19.1.0",
       },
       "devDependencies": {
+        "@types/react": "^19.2.17",
+        "react": "19.2.7",
         "typescript": "^5",
+      },
+      "peerDependencies": {
+        "react": "^19.2.7",
       },
     },
     "packages/email": {
@@ -323,8 +331,6 @@
   },
   "overrides": {
     "effect": "4.0.0-beta.85",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
   },
   "packages": {
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
@@ -1003,7 +1009,7 @@
 
     "@types/qrcode": ["@types/qrcode@1.5.6", "", { "dependencies": { "@types/node": "*" } }, "sha512-te7NQcV2BOvdj2b1hCAHzAoMNuj65kNBMz0KBaxM6c3VGBOhU0dURQKOtH8CFNI/dsKkwlv32p26qYQTWoB5bw=="],
 
-    "@types/react": ["@types/react@19.2.7", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-MWtvHrGZLFttgeEj28VXHxpmwYbor/ATPYbBfSFZEIRK0ecCFLl2Qo55z52Hss+UV9CRN7trSeq1zbgx7YDWWg=="],
+    "@types/react": ["@types/react@19.2.17", "", { "dependencies": { "csstype": "^3.2.2" } }, "sha512-MXfmqaVPEVgkBT/aY0aGCkRWWtByiYQXo3xdQ8r5RzuFrPiRn8Gar2tQdXSUQ2GKV3bkXckek89V8wQBY2Q/Aw=="],
 
     "@types/react-dom": ["@types/react-dom@19.2.3", "", { "peerDependencies": { "@types/react": "^19.2.0" } }, "sha512-jp2L/eY6fn+KgVVQAOqYItbF0VY/YApe5Mz2F0aykSO8gx31bYCZyvSeYxCHKvzHG5eZjc+zyaS5BrBWya2+kQ=="],
 
@@ -2035,11 +2041,11 @@
 
     "radix3": ["radix3@1.1.2", "", {}, "sha512-b484I/7b8rDEdSDKckSSBA8knMpcdsXudlE/LNL639wFoHKwLbEkQFZHWEYwDC0wa0FKUcCY+GAF73Z7wxNVFA=="],
 
-    "react": ["react@19.2.4", "", {}, "sha512-9nfp2hYpCwOjAN+8TZFGhtWEwgvWHXqESH8qT89AT/lWklpLON22Lc8pEtnpsZz7VmawabSU0gCjnj8aC0euHQ=="],
+    "react": ["react@19.2.7", "", {}, "sha512-HNe9WslTbXmFK8o8cmwgAeJFSBvt1bPdHCVKtaaV+WlAN36mpT4hcRpwbf3fY56ar2oIXzsBpOAiIRHAdY0OlQ=="],
 
-    "react-day-picker": ["react-day-picker@8.10.1", "", { "peerDependencies": { "date-fns": "^2.28.0 || ^3.0.0", "react": "^16.8.0 || ^17.0.0 || ^18.0.0" } }, "sha512-TMx7fNbhLk15eqcMt+7Z7S2KF7mfTId/XJDjKE8f+IUcFn0l08/kI4FiYTL/0yuOLmEcbR4Fwe3GJf/NiiMnPA=="],
+    "react-day-picker": ["react-day-picker@8.10.2", "", { "peerDependencies": { "date-fns": "^2.28.0 || ^3.0.0", "react": "^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0" } }, "sha512-LK68OTbHB3oJNhl9cA0qVizzp3o26w61YSjAFkYi67N86iro32wx86kSNeFU/hq+gI8m1yzWhnomMLfZ041RzQ=="],
 
-    "react-dom": ["react-dom@19.2.4", "", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.4" } }, "sha512-AXJdLo8kgMbimY95O2aKQqsz2iWi9jMgKJhRBAxECE4IFxfcazB2LmzloIoibJI3C12IlY20+KFaLv+71bUJeQ=="],
+    "react-dom": ["react-dom@19.2.7", "", { "dependencies": { "scheduler": "^0.27.0" }, "peerDependencies": { "react": "^19.2.7" } }, "sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ=="],
 
     "react-error-boundary": ["react-error-boundary@6.1.2", "", { "peerDependencies": { "react": "^18.0.0 || ^19.0.0" } }, "sha512-3DpCr5HVdZ0caUjYE/kIHBEJN0mNP3ZCgf16c48uJ5TbWjorKVp+YG8W3XqlJ7vJAVNw6wNIImyPXmFydwmyng=="],
 

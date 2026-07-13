@@ -16,9 +16,7 @@
     "turbo": "^2.9.14"
   },
   "overrides": {
-    "effect": "4.0.0-beta.85",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "effect": "4.0.0-beta.85"
   },
   "packageManager": "bun@1.3.14"
 }

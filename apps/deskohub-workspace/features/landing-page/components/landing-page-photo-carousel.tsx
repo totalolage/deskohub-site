@@ -259,7 +259,7 @@ export function LandingPagePhotoCarousel({
             >
               <div className="relative h-full overflow-hidden rounded-[1.25rem] bg-navy-blue sm:rounded-[1.85rem]">
                 <CloudinaryImage
-                  asset={image}
+                  source={image}
                   className="absolute inset-0"
                   preload={isCurrent}
                   size={{ width: "fill", height: "fill" }}
