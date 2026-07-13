@@ -33,6 +33,9 @@ const reservationOrderObjectEffectSchema = Schema.Union([
 ]);
 
 type ReservationOrderObject = typeof reservationOrderObjectEffectSchema.Type;
+const decodeReservationOrderObject = Schema.decodeUnknownSync(
+  reservationOrderObjectEffectSchema
+);
 
 const normalizedReservationOrderEffectSchema = Schema.Union([
   normalizedCoworkReservationOrderEffectSchema,
@@ -95,9 +98,7 @@ export const reservationOrderEffectSchema =
           )
         )
       ),
-      encode: SchemaGetter.transform(
-        (reservation): ReservationOrderObject => reservation
-      ),
+      encode: SchemaGetter.transform(decodeReservationOrderObject),
     })
   );
 
