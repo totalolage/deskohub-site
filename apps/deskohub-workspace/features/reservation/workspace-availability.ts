@@ -52,6 +52,8 @@ export type WorkspaceAvailabilityQuery =
   typeof workspaceAvailabilityQuerySchema.Type;
 export type CoworkWorkspaceAvailabilityQuery =
   typeof coworkWorkspaceAvailabilityQuerySchema.Type;
+export type MeetingRoomWorkspaceAvailabilityQuery =
+  typeof meetingRoomWorkspaceAvailabilityQuerySchema.Type;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>

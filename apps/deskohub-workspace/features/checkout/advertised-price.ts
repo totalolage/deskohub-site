@@ -54,6 +54,9 @@ export type AdvertisedPrice =
   | typeof meetingRoomAdvertisedPriceSchema.Type;
 
 export const isCoworkAdvertisedPrice = Schema.is(coworkAdvertisedPriceSchema);
+export const isMeetingRoomAdvertisedPrice = Schema.is(
+  meetingRoomAdvertisedPriceSchema
+);
 
 export const advertisedPriceKeys = {
   all: ["advertised-price"] as const,

@@ -33,20 +33,25 @@ describe("reservation routes", () => {
       )
     ).toBe("/en-US/reservation/cowork?payState=signed-state");
     expect(getReservationStartPath("cs-CZ", "meeting-room")).toBe(
-      "/cs-CZ/meeting-room"
+      "/cs-CZ/reservation/meeting-room"
     );
     expect(
       getReservationStartPath(
         "cs-CZ",
         "meeting-room",
-        new URLSearchParams({ payState: "cowork-only-state" })
+        new URLSearchParams({ payState: "signed-state" })
       )
-    ).toBe("/cs-CZ/meeting-room");
+    ).toBe("/cs-CZ/reservation/meeting-room?payState=signed-state");
   });
 
   test("keeps only the P14 route entries", () => {
     expect(
       appRouteExists("[locale]/(minimal-header)/reservation/cowork/page.tsx")
+    ).toBe(true);
+    expect(
+      appRouteExists(
+        "[locale]/(minimal-header)/reservation/meeting-room/page.tsx"
+      )
     ).toBe(true);
     expect(
       appRouteExists(
