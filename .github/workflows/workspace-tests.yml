@@ -114,7 +114,7 @@ jobs:
       - run: agent-browser install --with-deps
 
       - name: Run checkout E2E
-        run: bun run e2e:checkout
+        run: bun run test:e2e
         working-directory: apps/deskohub-workspace
         env:
           TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}

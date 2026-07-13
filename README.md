@@ -90,7 +90,7 @@ bun turbo test --filter=deskohub-workspace
 bun turbo db:generate --filter=deskohub-workspace
 bun turbo db:migrate --filter=deskohub-workspace
 bun turbo db:studio --filter=deskohub-workspace
-bun turbo e2e:checkout --filter=deskohub-workspace
+bun turbo test:e2e --filter=deskohub-workspace
 ```
 
 Packages with generated clients or package-level checks expose their own scripts.

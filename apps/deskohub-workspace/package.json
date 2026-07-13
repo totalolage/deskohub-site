@@ -13,7 +13,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:studio": "drizzle-kit studio",
-    "e2e:checkout": "bun scripts/workspace-e2e.ts",
+    "test:e2e": "bun scripts/workspace-e2e.ts",
     "lint": "bun run --parallel lint:biome lint:eslint",
     "lint:biome": "biome check app db features shared proxy.ts --config-path ../../biome.json --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db features shared proxy.ts",
