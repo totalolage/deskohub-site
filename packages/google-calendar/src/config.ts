@@ -1,23 +1,21 @@
 import { Context, Effect } from "effect";
 import { GoogleCalendarConfigError } from "./errors";
 
-export type GoogleCalendarRuntimeConfigObj = {
-  readonly calendarId: string;
+export interface IGoogleCalendarRuntimeConfig {
   readonly serviceAccountEmail: string;
   readonly privateKey: string;
   readonly timeZone: string;
-};
+}
 
 export class GoogleCalendarRuntimeConfig extends Context.Service<
   GoogleCalendarRuntimeConfig,
-  GoogleCalendarRuntimeConfigObj
+  IGoogleCalendarRuntimeConfig
 >()("@deskohub/google-calendar/GoogleCalendarRuntimeConfig") {}
 
 export const validateGoogleCalendarRuntimeConfig = (
-  config: GoogleCalendarRuntimeConfigObj
+  config: IGoogleCalendarRuntimeConfig
 ) => {
   for (const field of [
-    "calendarId",
     "serviceAccountEmail",
     "privateKey",
     "timeZone",
