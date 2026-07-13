@@ -30,6 +30,19 @@ const workspaceMoneyCurrencyEffectSchema = Schema.String.pipe(
   description: "ISO 4217 uppercase alphabetic currency code.",
 });
 
+export const workspaceMoneyEffectSchema: Schema.Codec<
+  WorkspaceMoney,
+  WorkspaceMoney
+> = Schema.Struct({
+  value: Schema.Int,
+  exponent: workspaceMoneyExponentEffectSchema,
+  currency: workspaceMoneyCurrencyEffectSchema,
+}).annotate({
+  identifier: "WorkspaceMoney",
+  description:
+    "Workspace money stored as a scaled integer value, decimal exponent, and ISO currency code.",
+});
+
 export const nonNegativeWorkspaceMoneyEffectSchema: Schema.Codec<
   WorkspaceMoney,
   WorkspaceMoney
@@ -42,7 +55,6 @@ export const nonNegativeWorkspaceMoneyEffectSchema: Schema.Codec<
   description:
     "Non-negative workspace money stored as a scaled integer value, decimal exponent, and ISO currency code.",
 });
-
 export const positiveWorkspaceMoneyEffectSchema: Schema.Codec<
   WorkspaceMoney,
   WorkspaceMoney
