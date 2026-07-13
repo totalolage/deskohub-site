@@ -5,9 +5,8 @@ const siteHeaderSectionIds = {
   teambuildings: "teambuildings",
   ttrpg: "ttrpg",
   events: "events",
-  cowork: "cowork",
+  founders: "founders",
   locationMap: "location-map",
-  privateOffice: "private-office",
   faqContact: "faq-contact",
 } as const;
 
@@ -32,6 +31,10 @@ export function getSiteHeaderConfig(locale: Locale) {
       {
         label: m.landingNavGallery({}, { locale }),
         href: `${localePath}/gallery`,
+      },
+      {
+        label: m.landingNavOurTeam({}, { locale }),
+        href: localizedHash(`#${siteHeaderSectionIds.founders}`),
       },
       {
         label: m.landingNavFaqContact({}, { locale }),

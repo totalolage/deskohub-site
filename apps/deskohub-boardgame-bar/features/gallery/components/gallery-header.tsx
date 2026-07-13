@@ -71,7 +71,7 @@ export function GalleryHeader({
         {images.map((image) => (
           <div key={image.public_id} className="relative min-w-full h-full">
             <CloudinaryImage
-              asset={image}
+              source={image}
               variant="hero"
               priority={images.indexOf(image) === 0}
             />

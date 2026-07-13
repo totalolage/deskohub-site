@@ -55,7 +55,7 @@ export async function Hero({
     >
       {image && (
         <CloudinaryImage
-          asset={image}
+          source={image}
           variant="hero"
           blurDataURL={blurDataURL}
         />

@@ -50,7 +50,7 @@ export function ClientGallery({
             className="rounded-full overflow-hidden aspect-square"
           >
             <CloudinaryImage
-              asset={image}
+              source={image}
               blurDataURL={blurUrls?.[image.public_id]}
               variant="gallery"
             />
@@ -101,7 +101,7 @@ export function ClientGallery({
           >
             <div className="relative aspect-square overflow-hidden">
               <CloudinaryImage
-                asset={image}
+                source={image}
                 blurDataURL={blurUrls?.[image.public_id]}
                 variant="thumbnail"
               />
@@ -150,7 +150,7 @@ export function ClientGallery({
               return (
                 <div className="relative w-full h-full flex items-center justify-center">
                   <CloudinaryImage
-                    asset={image}
+                    source={image}
                     blurDataURL={blurUrls?.[image.public_id]}
                     variant="full"
                     size={{ width: displayWidth, height: displayHeight }}

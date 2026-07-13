@@ -175,7 +175,7 @@ export function TtrpgRoomImageCarousel({
               type="button"
             >
               <CloudinaryImage
-                asset={image}
+                source={image}
                 className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
                 draggable={false}
                 preload={logicalIndex === activeIndex}
