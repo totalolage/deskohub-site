@@ -1,13 +1,20 @@
 import type { Reservation } from "@deskohub/dotypos/generated";
+import {
+  type ReservationDateRange,
+  reservationDateRangesOverlap,
+} from "@/features/reservation/reservation-interval";
 
 export const workspaceBookingGuestCount = 1;
 
 export const getWorkspaceTableOccupancyById = (
   reservations: readonly Reservation[],
-  day: Temporal.PlainDate
+  input:
+    | Pick<ReservationDateRange, "startMs" | "endMs">
+    | Temporal.PlainDate
 ) => {
   const occupancyByTableId = new Map<string, number>();
-  const dayRange = getPragueDayRange(day);
+  const range =
+    input instanceof Temporal.PlainDate ? getPragueDayRange(input) : input;
 
   for (const reservation of reservations) {
     if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
@@ -26,8 +33,10 @@ export const getWorkspaceTableOccupancyById = (
     }
 
     if (
-      reservationStart < dayRange.endMs &&
-      reservationEnd > dayRange.startMs
+      reservationDateRangesOverlap(
+        { startMs: reservationStart, endMs: reservationEnd },
+        range
+      )
     ) {
       occupancyByTableId.set(
         tableId,
@@ -40,6 +49,16 @@ export const getWorkspaceTableOccupancyById = (
   return occupancyByTableId;
 };
 
+const getPragueDayRange = (date: Temporal.PlainDate) => ({
+  startMs: date
+    .toZonedDateTime({ timeZone: "Europe/Prague" })
+    .toInstant().epochMilliseconds,
+  endMs: date
+    .add({ days: 1 })
+    .toZonedDateTime({ timeZone: "Europe/Prague" })
+    .toInstant().epochMilliseconds,
+});
+
 export const excludeExpiredLocalHolds = (
   reservations: readonly Reservation[],
   expiredDotyposReservationIds: readonly string[]
@@ -50,18 +69,6 @@ export const excludeExpiredLocalHolds = (
   return reservations.filter(
     (reservation) => !reservation.id || !expiredIds.has(reservation.id)
   );
-};
-
-const getPragueDayRange = (date: Temporal.PlainDate) => {
-  const startMs = date
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-  const endMs = date
-    .add({ days: 1 })
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-
-  return { startMs, endMs };
 };
 
 const parsePositiveNumber = (value: string | undefined) => {

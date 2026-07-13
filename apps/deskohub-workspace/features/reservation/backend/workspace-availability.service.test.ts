@@ -13,6 +13,7 @@ import type { WorkspaceAvailabilityService } from "./workspace-availability.serv
 import { WorkspaceReservationRepository } from "./workspace-reservation.repository";
 
 const testDate = "2099-06-10";
+const nextTestDate = "2099-06-11";
 const testStart = "2099-06-09T22:00:00Z";
 const testEnd = "2099-06-10T22:00:00Z";
 
@@ -143,6 +144,11 @@ const runWithInventory = async <A>(
 
 const getAvailability = (input: {
   readonly date?: string;
+  readonly from?: string;
+  readonly startsAt?: string;
+  readonly endsAt?: string;
+  readonly to?: string;
+  readonly _tag?: "cowork" | "meeting-room";
   readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
@@ -157,13 +163,25 @@ const getAvailability = (input: {
         () => import("./workspace-availability.service")
       );
       const service = yield* availability.WorkspaceAvailabilityService;
-      return yield* service.getAvailability({
-        date: input.date,
-        from: testDate,
-        to: testDate,
-        entryTier: input.entryTier,
-        monitorOption: input.monitorOption,
-      });
+      const baseQuery = {
+        from: input.from ?? testDate,
+        to: input.to ?? testDate,
+      };
+
+      return yield* input._tag === "meeting-room"
+        ? service.getAvailability({
+            ...baseQuery,
+            _tag: "meeting-room",
+            startsAt: input.startsAt,
+            endsAt: input.endsAt,
+          })
+        : service.getAvailability({
+            ...baseQuery,
+            _tag: "cowork",
+            date: input.date,
+            entryTier: input.entryTier,
+            monitorOption: input.monitorOption,
+          });
     }),
     input
   );
@@ -251,7 +269,7 @@ describe("WorkspaceAvailabilityService", () => {
       reservations: [makeReservation({ tableId: "basic-1", status: "NEW" })],
     });
 
-    expect(oneBasicOccupied.unavailableTiers).not.toContain("basic");
+    expect(oneBasicOccupied.unavailableCoworkTiers).not.toContain("basic");
 
     const allBasicOccupied = await getAvailability({
       date: testDate,
@@ -261,7 +279,7 @@ describe("WorkspaceAvailabilityService", () => {
       ],
     });
 
-    expect(allBasicOccupied.unavailableTiers).toContain("basic");
+    expect(allBasicOccupied.unavailableCoworkTiers).toContain("basic");
   });
 
   test("keeps a table available until overlapping reservation seats reach capacity", async () => {
@@ -275,7 +293,7 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(partiallyOccupied.unavailableDates).not.toContain(testDate);
-    expect(partiallyOccupied.unavailableTiers).not.toContain("basic");
+    expect(partiallyOccupied.unavailableCoworkTiers).not.toContain("basic");
 
     const fullyOccupied = await getAvailability({
       date: testDate,
@@ -292,7 +310,86 @@ describe("WorkspaceAvailabilityService", () => {
     });
 
     expect(fullyOccupied.unavailableDates).toContain(testDate);
-    expect(fullyOccupied.unavailableTiers).toContain("basic");
+    expect(fullyOccupied.unavailableCoworkTiers).toContain("basic");
+  });
+
+  test("marks a meeting room unavailable after any overlapping booking", async () => {
+    const availability = await getAvailability({
+      _tag: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T09:00:00Z",
+      tables: [
+        makeTable({
+          id: "room-1",
+          tags: ["reservation:meeting-room"],
+          seats: "12",
+        }),
+      ],
+      reservations: [
+        makeReservation({ tableId: "room-1", status: "NEW", seats: "1" }),
+      ],
+    });
+
+    expect(availability.unavailableDates).toContain(testDate);
+    expect(availability.meetingRoomUnavailable).toBe(true);
+  });
+
+  test("keeps non-selected range dates unavailable for cowork date picker", async () => {
+    const availability = await getAvailability({
+      date: testDate,
+      to: nextTestDate,
+      entryTier: "basic",
+      tables: [makeTable({ id: "basic-1", tags: ["tier:basic"] })],
+      reservations: [
+        makeReservation({
+          tableId: "basic-1",
+          status: "NEW",
+          startDate: "2099-06-10T22:00:00Z",
+          endDate: "2099-06-11T22:00:00Z",
+        }),
+      ],
+    });
+
+    expect(availability.unavailableDates).not.toContain(testDate);
+    expect(availability.unavailableDates).toContain(nextTestDate);
+  });
+
+  test("uses half-open interval overlap for selected availability", async () => {
+    const backToBack = await getAvailability({
+      _tag: "meeting-room",
+      startsAt: "2099-06-10T12:00:00Z",
+      endsAt: "2099-06-10T14:00:00Z",
+      tables: [makeTable({ id: "room-1", tags: ["reservation:meeting-room"] })],
+      reservations: [
+        makeReservation({
+          tableId: "room-1",
+          status: "NEW",
+          startDate: "2099-06-10T06:00:00Z",
+          endDate: "2099-06-10T12:00:00Z",
+        }),
+      ],
+    });
+
+    expect(backToBack.unavailableDates).not.toContain(testDate);
+    expect(backToBack.meetingRoomUnavailable).toBe(false);
+
+    const overlapping = await getAvailability({
+      _tag: "meeting-room",
+      startsAt: "2099-06-10T12:00:00Z",
+      endsAt: "2099-06-10T14:00:00Z",
+      tables: [makeTable({ id: "room-1", tags: ["reservation:meeting-room"] })],
+      reservations: [
+        makeReservation({
+          tableId: "room-1",
+          status: "NEW",
+          startDate: "2099-06-10T13:00:00Z",
+          endDate: "2099-06-10T15:00:00Z",
+        }),
+      ],
+    });
+
+    expect(overlapping.unavailableDates).toContain(testDate);
+    expect(overlapping.meetingRoomUnavailable).toBe(true);
   });
 
   test("ignores inactive, hidden, and untagged tables", async () => {
@@ -305,7 +402,7 @@ describe("WorkspaceAvailabilityService", () => {
       ],
     });
 
-    expect(availability.unavailableTiers).toContain("basic");
+    expect(availability.unavailableCoworkTiers).toContain("basic");
   });
 
   test("marks calendar fully occupied dates unavailable", async () => {
@@ -357,6 +454,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
+            _tag: "cowork",
             date: testDate,
             entryTier: "profi",
             monitorOption: "2x27-qhd",
@@ -373,6 +471,46 @@ describe("WorkspaceAvailabilityService", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
+      expect(result.failure.reservation).toEqual({
+        _tag: "cowork",
+        tier: "profi",
+        monitorOption: "2x27-qhd",
+      });
+    }
+  });
+
+  test("describes an unavailable meeting-room reservation with its tag", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            _tag: "meeting-room",
+            startsAt: "2099-06-10T08:00:00Z",
+            endsAt: "2099-06-10T09:00:00Z",
+          });
+        })
+      ),
+      {
+        tables: [
+          makeTable({
+            id: "room-1",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+        ],
+        reservations: [
+          makeReservation({ tableId: "room-1", status: "NEW", seats: "1" }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure.reservation).toEqual({ _tag: "meeting-room" });
     }
   });
 
@@ -385,6 +523,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
+            _tag: "cowork",
             date: testDate,
             entryTier: "basic",
           });
@@ -403,6 +542,116 @@ describe("WorkspaceAvailabilityService", () => {
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
+      expect(result.failure.reservation).toEqual({
+        _tag: "cowork",
+        tier: "basic",
+      });
     }
+  });
+
+  test("fails ensureAvailable when an overnight interval touches a fully occupied date", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            _tag: "meeting-room",
+            startsAt: "2099-06-10T20:00:00Z",
+            endsAt: "2099-06-11T00:00:00Z",
+          });
+        })
+      ),
+      {
+        tables: [
+          makeTable({ id: "room-1", tags: ["reservation:meeting-room"] }),
+        ],
+        limitations: [
+          WorkspaceCalendarLimitation.FullyOccupied({
+            date: nextTestDate,
+            sourceEventId: "calendar-full-next-day",
+          }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Failure");
+    if (result._tag === "Failure") {
+      expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
+      expect(result.failure.date).toBe(nextTestDate);
+      expect(result.failure.reservation).toEqual({ _tag: "meeting-room" });
+    }
+  });
+
+  test("does not shift overnight availability checks onto the following night", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            _tag: "meeting-room",
+            startsAt: "2099-06-10T20:00:00Z",
+            endsAt: "2099-06-11T00:00:00Z",
+          });
+        })
+      ),
+      {
+        tables: [
+          makeTable({ id: "room-1", tags: ["reservation:meeting-room"] }),
+        ],
+        reservations: [
+          makeReservation({
+            tableId: "room-1",
+            status: "NEW",
+            startDate: "2099-06-11T20:00:00Z",
+            endDate: "2099-06-12T00:00:00Z",
+          }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Success");
+  });
+
+  test("ignores reservations after a multi-day meeting-room interval", async () => {
+    const result = await runWithInventory(
+      Effect.result(
+        Effect.gen(function* () {
+          const availability = yield* Effect.promise(
+            () => import("./workspace-availability.service")
+          );
+          const service = yield* availability.WorkspaceAvailabilityService;
+          return yield* service.ensureAvailable({
+            _tag: "meeting-room",
+            startsAt: "2099-06-10T08:00:00Z",
+            endsAt: "2099-06-11T08:00:00Z",
+          });
+        })
+      ),
+      {
+        tables: [
+          makeTable({
+            id: "room-1",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+        ],
+        reservations: [
+          makeReservation({
+            tableId: "room-1",
+            status: "NEW",
+            startDate: "2099-06-11T12:00:00Z",
+            endDate: "2099-06-11T13:00:00Z",
+          }),
+        ],
+      }
+    );
+
+    expect(result._tag).toBe("Success");
   });
 });
