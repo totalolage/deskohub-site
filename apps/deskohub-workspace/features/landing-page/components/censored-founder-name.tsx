@@ -23,7 +23,7 @@ export function CensoredFounderName({ className }: CensoredFounderNameProps) {
     <span
       aria-hidden="true"
       className={cn(
-        "font-mono text-lg font-medium tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,2,79,0.9)]",
+        "inline-block whitespace-nowrap font-mono text-lg font-medium tracking-wide text-white drop-shadow-[0_2px_4px_rgba(0,2,79,0.9)]",
         className
       )}
     >

@@ -76,7 +76,7 @@ export function LandingPageFoundersSection({
                         {founder.name}
                       </div>
                     ) : (
-                      <div className="w-fit rounded-full border border-burned-orange/30 bg-burned-orange px-3 py-1 leading-none shadow-[0_2px_4px_rgba(221,72,10,0.38)]">
+                      <div className="w-max whitespace-nowrap rounded-full border border-burned-orange/30 bg-burned-orange px-3 py-1 leading-none shadow-[0_2px_4px_rgba(221,72,10,0.38)]">
                         <CensoredFounderName className="text-xs tracking-[0.16em] drop-shadow-none" />
                       </div>
                     )}
