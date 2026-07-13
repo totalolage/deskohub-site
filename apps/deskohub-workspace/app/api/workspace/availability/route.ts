@@ -5,7 +5,7 @@ import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLiveWithDependencies,
 } from "@/features/reservation/backend/workspace-availability.service";
-import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/schemas/workspace-availability";
+import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const getAvailabilityRequest = (request: Request) => {

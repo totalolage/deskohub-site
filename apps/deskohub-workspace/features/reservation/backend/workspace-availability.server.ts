@@ -2,7 +2,7 @@ import "server-only";
 
 import { Effect } from "effect";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
-import type { WorkspaceAvailabilityQuery } from "../schemas/workspace-availability";
+import type { WorkspaceAvailabilityQuery } from "../workspace-availability";
 import {
   WorkspaceAvailabilityService,
   WorkspaceAvailabilityServiceLiveWithDependencies,

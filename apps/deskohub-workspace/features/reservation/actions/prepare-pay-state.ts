@@ -477,6 +477,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
+      _tag: "cowork",
       date: input.reservation.date,
       entryTier: input.reservation.entryTier,
       monitorOption: input.reservation.monitorOption,
