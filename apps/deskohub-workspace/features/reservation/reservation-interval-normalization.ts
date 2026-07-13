@@ -47,16 +47,3 @@ export const getDurationMinutes = (interval: ReservationInterval) =>
   (toInstantMilliseconds(interval.endsAt) -
     toInstantMilliseconds(interval.startsAt)) /
   (60 * 1000);
-
-export type {
-  ReservationDateInput,
-  ReservationInterval,
-  ReservationIntervalInput,
-  ReservationIntervalValidationIssue,
-  ReservationTimeInput,
-} from "./reservation-interval-domain";
-export { ReservationIntervalValidationError } from "./reservation-interval-domain";
-export {
-  toInstantMilliseconds,
-  toPlainDateTime,
-} from "./reservation-interval-parser";
