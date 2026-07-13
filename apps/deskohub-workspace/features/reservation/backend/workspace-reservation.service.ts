@@ -26,13 +26,10 @@ export type WorkspaceReservationDetails = Pick<
   | "id"
   | "dotyposCustomerId"
   | "customerAccessCode"
-  | "productTier"
-  | "productCoffee"
-  | "productMonitorOption"
+  | "reservationDetails"
   | "locale"
 > & {
   readonly dotyposReservationId: string;
-  readonly reservationDetails?: WorkspaceReservation["reservationDetails"];
   readonly customer: Customer;
   readonly reservedFrom: Date;
   readonly reservedUntil: Date;
@@ -151,9 +148,6 @@ export class WorkspaceReservationService extends Context.Service<
             dotyposReservationId,
             customerAccessCode: reservation.customerAccessCode,
             reservationDetails: reservation.reservationDetails,
-            productTier: reservation.productTier,
-            productCoffee: reservation.productCoffee,
-            productMonitorOption: reservation.productMonitorOption,
             locale: reservation.locale,
             customer: dotyposReservationDetails.customer,
             reservedFrom,

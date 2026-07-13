@@ -22,17 +22,17 @@ import {
   workspaceTableMapLabelWidth,
 } from "@/features/checkout/components/workspace-table-map-view";
 import {
-  isWorkspaceProductMonitorOption,
-  isWorkspaceProductTier,
-} from "@/features/checkout/product-catalog";
-import {
+  getWorkspaceMeetingRoomProductTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import type { WorkspaceTableMap } from "@/features/checkout/workspace-table-map";
 import { isLocale, type Locale, m } from "@/features/i18n";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
-import { formatReservationDisplayDate } from "@/features/reservation/reservation-date";
+import {
+  formatReservationDisplayDate,
+  formatReservationDisplayTimeRange,
+} from "@/features/reservation/reservation-date";
 import {
   type EmailDetailRow,
   renderEmailRowsText,
@@ -296,34 +296,43 @@ const createReservationDetailRows = (
   reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
-  const monitorOption = reservation.productMonitorOption ?? undefined;
-  const rows: EmailDetailRow[] = [
+  const { reservationDetails } = reservation;
+  const rows: readonly (EmailDetailRow | false)[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
       formatReservationDisplayDate(reservation.reservedFrom, locale),
     ],
+    reservationDetails._tag === "meeting-room" && [
+      m.reservationEmailTimeLabel({}, { locale }),
+      formatReservationDisplayTimeRange(
+        reservation.reservedFrom,
+        reservation.reservedUntil,
+        locale
+      ),
+    ],
+    reservationDetails._tag === "cowork" &&
+      reservationDetails.tier === "profi" && [
+        m.reservationEmailMonitorsLabel({}, { locale }),
+        getWorkspaceProductMonitorTitle(
+          reservationDetails.monitorOption,
+          locale
+        ),
+      ],
     [
       m.reservationEmailTierLabel({}, { locale }),
-      isWorkspaceProductTier(reservation.productTier)
-        ? getWorkspaceProductTierTitle(reservation.productTier, locale)
-        : reservation.productTier,
+      reservationDetails._tag === "meeting-room"
+        ? getWorkspaceMeetingRoomProductTitle(locale)
+        : getWorkspaceProductTierTitle(reservationDetails.tier, locale),
     ],
-    [
+    reservationDetails._tag === "cowork" && [
       m.reservationEmailCoffeeLabel({}, { locale }),
-      reservation.productCoffee
+      reservationDetails.coffee
         ? m.checkoutStatusYes({}, { locale })
         : m.checkoutStatusNo({}, { locale }),
     ],
   ];
 
-  if (isWorkspaceProductMonitorOption(monitorOption)) {
-    rows.splice(2, 0, [
-      m.reservationEmailMonitorsLabel({}, { locale }),
-      getWorkspaceProductMonitorTitle(monitorOption, locale),
-    ]);
-  }
-
-  return rows;
+  return rows.filter(Boolean);
 };
 
 const appendReservationReferenceRows = (
