@@ -1,8 +1,8 @@
 import {
   formatWorkspaceProductCurrencyAmount,
-  getWorkspaceProductByTier,
-  type WorkspaceProductTier,
-  workspaceProductCatalog,
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductCatalogItem,
+  workspaceCoworkProductCatalog,
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 
@@ -21,8 +21,8 @@ type PricingDocumentCopy = {
 };
 
 export type PricingTariff = {
-  id: "basic" | "plus" | "profi";
-  reservationTier: WorkspaceProductTier;
+  id: WorkspaceCoworkProductTier;
+  reservationTier: WorkspaceCoworkProductTier;
   name: string;
   price: string;
   description: string;
@@ -59,7 +59,7 @@ type PricingMessage = (
 ) => string;
 
 const pricingTariffMessageKeys: Record<
-  WorkspaceProductTier,
+  WorkspaceCoworkProductTier,
   PricingTariffMessageKeys
 > = {
   basic: {
@@ -96,7 +96,7 @@ const getMessages = (messages: readonly PricingMessage[], locale: Locale) =>
   messages.map((message) => message({}, { locale }));
 
 const formatTariffPrice = (
-  product: ReturnType<typeof getWorkspaceProductByTier>,
+  product: WorkspaceProductCatalogItem,
   locale: Locale
 ) =>
   `${formatWorkspaceProductCurrencyAmount(product, locale)}${m.pricingTariffPricePeriodSuffix({}, { locale })}`;
@@ -124,15 +124,14 @@ export function getPricingContent(locale: Locale): PricingContent {
       ],
       eventRentalContact: m.pricingDocumentEventRentalContact({}, { locale }),
     },
-    tariffs: workspaceProductCatalog.map((product) => {
-      const catalogProduct = getWorkspaceProductByTier(product.tier);
+    tariffs: workspaceCoworkProductCatalog.map((product) => {
       const tariffMessages = pricingTariffMessageKeys[product.tier];
 
       return {
-        id: catalogProduct.tier,
-        reservationTier: catalogProduct.tier,
+        id: product.tier,
+        reservationTier: product.tier,
         name: tariffMessages.name({}, { locale }),
-        price: formatTariffPrice(catalogProduct, locale),
+        price: formatTariffPrice(product, locale),
         description: tariffMessages.description({}, { locale }),
         includes: getMessages(tariffMessages.includes, locale),
         featured: tariffMessages.featured,
