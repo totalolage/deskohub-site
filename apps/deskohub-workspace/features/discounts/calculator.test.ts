@@ -256,9 +256,10 @@ describe("discount calculator", () => {
       money(100, "CZK", -1),
       money(100, "CZK", Number.MAX_SAFE_INTEGER + 1),
     ]) {
-      expect(calculateError(invalidSubtotal, []).reason).toBe(
-        "invalid_discountable_subtotal"
-      );
+      const error = calculateError(invalidSubtotal, []);
+
+      expect(error.reason).toBe("invalid_discountable_subtotal");
+      expect(error.cause).toBeDefined();
     }
   });
 

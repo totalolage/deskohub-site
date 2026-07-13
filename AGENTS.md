@@ -39,8 +39,10 @@ Effect.Do.pipe(
 - When a declarative Effect workflow starts from an existing object input, use `Effect.succeed(input).pipe(...)` and bind from that record instead of rebuilding its fields with `Effect.Do` and `Effect.let`.
 - Use Effect Schema codecs and checks for runtime domain validation when the value has a schema; do not duplicate that validation with manual predicate chains.
 - Use Effect Schema branding utilities for schema-backed branded values; do not hand-roll `unique symbol` brands.
+- Annotate branded Effect schemas with a stable identifier and domain description.
 - Use Effect Schema rather than Zod for new schema definitions.
 - Use branded domain identifier types in contracts and error fields instead of plain strings.
+- When mapping one error into a domain error, preserve the original error in the wrapping error's `cause` property; never discard it.
 
 - Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose their implementations with Layers; never pass them as ordinary function arguments or dependency objects. Resolve capabilities while constructing the consuming service and close over them in its implementation so public service methods accept domain input only. A service's `Live` layer should require its dependencies from Context rather than hardwiring their live layers; provide those layers at the application composition boundary, and replace them with test layers in tests.
 - Keep an Effect service's interface, Context service declaration, and live layer in its `*.service.ts` module. Put its mock layer in an adjacent `*.service.mock.ts` module and use `Layer.mock` for partial test implementations instead of declaring service mocks inline in tests.

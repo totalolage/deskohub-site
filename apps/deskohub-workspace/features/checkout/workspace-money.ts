@@ -23,12 +23,12 @@ const workspaceMoneyExponentEffectSchema = Schema.Int.check(
 );
 
 const workspaceMoneyCurrencyEffectSchema = Schema.String.pipe(
-  Schema.check(
-    Schema.isPattern(/^[A-Z]{3}$/, {
-      description: "ISO 4217 uppercase alphabetic currency code.",
-    })
-  )
-);
+  Schema.check(Schema.isPattern(/^[A-Z]{3}$/)),
+  Schema.brand("WorkspaceMoneyCurrency")
+).annotate({
+  identifier: "WorkspaceMoneyCurrency",
+  description: "ISO 4217 uppercase alphabetic currency code.",
+});
 
 export const nonNegativeWorkspaceMoneyEffectSchema: Schema.Codec<
   WorkspaceMoney,

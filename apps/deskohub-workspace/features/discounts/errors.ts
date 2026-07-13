@@ -14,6 +14,7 @@ export class DiscountCalculationError extends Data.TaggedError(
   readonly reason: DiscountCalculationFailureReason;
   readonly message: string;
   readonly discountId?: DiscountId;
+  readonly cause?: unknown;
 }> {}
 
 export type DiscountCodeUnavailableReason =

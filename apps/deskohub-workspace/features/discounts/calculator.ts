@@ -52,11 +52,12 @@ const validateDiscountableSubtotal = (input: {
     input.discountableSubtotal
   ).pipe(
     Effect.mapError(
-      () =>
+      (cause) =>
         new DiscountCalculationError({
           reason: "invalid_discountable_subtotal",
           message:
             "Discountable subtotal must be non-negative integer money with a valid exponent and currency.",
+          cause,
         })
     )
   );
