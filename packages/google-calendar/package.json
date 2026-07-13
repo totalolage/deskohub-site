@@ -6,6 +6,7 @@
   "exports": {
     ".": "./src/index.ts",
     "./backend/service": "./src/backend/service.ts",
+    "./backend/service.mock": "./src/backend/service.mock.ts",
     "./config": "./src/config.ts",
     "./errors": "./src/errors.ts",
     "./types": "./src/types.ts"

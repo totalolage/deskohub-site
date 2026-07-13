@@ -1,10 +1,13 @@
+import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import {
-  type GoogleCalendarEvent,
-  GoogleCalendarService,
+import type {
+  GoogleCalendarEvent,
+  GoogleCalendarListEventsInput,
 } from "@deskohub/google-calendar";
+import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
 import { Effect, Layer } from "effect";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
   GoogleCalendarWorkspaceLimitationsService,
   WorkspaceCalendarLimitation,
@@ -12,7 +15,8 @@ import {
 
 const runWithEvents = async (
   events: readonly GoogleCalendarEvent[],
-  query = { from: "2026-06-10", to: "2026-06-11" }
+  query = { from: "2026-06-10", to: "2026-06-11" },
+  onListEvents?: (input: GoogleCalendarListEventsInput) => void
 ) =>
   Effect.gen(function* () {
     const service = yield* GoogleCalendarWorkspaceLimitationsService;
@@ -20,14 +24,39 @@ const runWithEvents = async (
   }).pipe(
     Effect.provide(GoogleCalendarWorkspaceLimitationsService.Live),
     Effect.provide(
-      Layer.succeed(GoogleCalendarService, {
-        listEvents: mock(() => Effect.succeed([...events])),
+      GoogleCalendarServiceMock({
+        listEvents: mock((input) => {
+          onListEvents?.(input);
+          return Effect.succeed([...events]);
+        }),
+      })
+    ),
+    Effect.provide(
+      Layer.succeed(CalendarResourceConfig, {
+        workspaceLimitationsCalendarId: "workspace-limitations-calendar",
+        salesCalendarId: "sales-calendar",
       })
     ),
     Effect.runPromise
   );
 
 describe("GoogleCalendarWorkspaceLimitationsService", () => {
+  test("loads only the configured workspace limitations resource", async () => {
+    const inputs: GoogleCalendarListEventsInput[] = [];
+
+    await runWithEvents([], { from: "2026-06-10", to: "2026-06-11" }, (input) =>
+      inputs.push(input)
+    );
+
+    expect(inputs).toEqual([
+      {
+        calendarId: "workspace-limitations-calendar",
+        from: "2026-06-10",
+        to: "2026-06-11",
+      },
+    ]);
+  });
+
   test("translates description markers into workspace limitations", async () => {
     const limitations = await runWithEvents([
       {

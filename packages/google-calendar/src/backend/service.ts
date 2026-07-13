@@ -1,15 +1,15 @@
 import { auth, calendar, type calendar_v3 } from "@googleapis/calendar";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option, Stream } from "effect";
 import {
   GoogleCalendarRuntimeConfig,
-  type GoogleCalendarRuntimeConfigObj,
+  type IGoogleCalendarRuntimeConfig,
   validateGoogleCalendarRuntimeConfig,
 } from "../config";
 import { GoogleCalendarAPIError, type GoogleCalendarError } from "../errors";
 import type {
   GoogleCalendarEvent,
   GoogleCalendarEventDateTime,
-  GoogleCalendarEventQuery,
+  GoogleCalendarListEventsInput,
 } from "../types";
 
 const calendarReadonlyScope =
@@ -18,7 +18,7 @@ const defaultPageSize = 250;
 
 export interface IGoogleCalendarService {
   readonly listEvents: (
-    query: GoogleCalendarEventQuery
+    input: GoogleCalendarListEventsInput
   ) => Effect.Effect<readonly GoogleCalendarEvent[], GoogleCalendarError>;
 }
 
@@ -33,53 +33,39 @@ export class GoogleCalendarService extends Context.Service<
       const config = yield* validateGoogleCalendarRuntimeConfig(rawConfig);
       const client = getCalendarClient(config);
 
-      const listEvents = Effect.fn("googleCalendar.listEvents")(
-        function* (query: GoogleCalendarEventQuery) {
-          yield* Effect.annotateLogsScoped({ query });
-          yield* Effect.logInfo("Google Calendar events load started");
-
-          const timeMin = toCalendarBoundary(addDays(query.from, -1));
-          const timeMax = toCalendarBoundary(addDays(query.to, 2));
-          const events: calendar_v3.Schema$Event[] = [];
-          let pageToken: string | undefined;
-
-          do {
-            const response = yield* Effect.tryPromise({
-              try: () =>
-                client.events.list({
-                  calendarId: config.calendarId,
-                  maxResults: defaultPageSize,
-                  orderBy: "startTime",
-                  pageToken,
-                  singleEvents: true,
-                  timeMax,
-                  timeMin,
-                  timeZone: config.timeZone,
-                }),
-              catch: (cause) =>
-                new GoogleCalendarAPIError({
-                  operation: "events.list",
-                  statusCode: getGoogleStatusCode(cause),
-                  message: getGoogleErrorMessage(cause),
-                  cause,
-                }),
-            });
-
-            events.push(...(response.data.items ?? []));
-            pageToken = response.data.nextPageToken ?? undefined;
-          } while (pageToken);
-
-          const result = events.map(toGoogleCalendarEvent);
-
-          yield* Effect.annotateLogsScoped({ eventCount: result.length });
-          yield* Effect.logInfo("Google Calendar events load completed");
-
-          return result;
-        },
-        (effect, query) =>
+      const listEvents = Effect.fn("GoogleCalendarService.listEvents")(
+        (input: GoogleCalendarListEventsInput) =>
+          Effect.succeed(input).pipe(
+            Effect.tap(() => Effect.annotateLogsScoped({ input })),
+            Effect.tap(() =>
+              Effect.logInfo("Google Calendar events load started")
+            ),
+            Effect.let("timeMin", ({ from }) =>
+              toCalendarBoundary(addDays(from, -1))
+            ),
+            Effect.let("timeMax", ({ to }) =>
+              toCalendarBoundary(addDays(to, 2))
+            ),
+            Effect.bind("events", loadEventPages),
+            Effect.let("result", ({ events }) =>
+              events.map(toGoogleCalendarEvent)
+            ),
+            Effect.tap(({ result }) =>
+              Effect.annotateLogsScoped({ eventCount: result.length })
+            ),
+            Effect.tap(() =>
+              Effect.logInfo("Google Calendar events load completed")
+            ),
+            Effect.map(({ result }) => result)
+          ),
+        (effect, input) =>
           effect.pipe(
             Effect.scoped,
-            Effect.annotateLogs({ from: query.from, to: query.to }),
+            Effect.annotateLogs({
+              calendarId: input.calendarId,
+              from: input.from,
+              to: input.to,
+            }),
             Effect.tapError((cause) =>
               Effect.logError("Google Calendar events load failed", {
                 cause,
@@ -88,12 +74,58 @@ export class GoogleCalendarService extends Context.Service<
           )
       );
 
+      const loadEventPages = (input: {
+        readonly calendarId: string;
+        readonly timeMax: string;
+        readonly timeMin: string;
+      }) =>
+        Stream.paginate(
+          undefined as string | undefined,
+          (pageToken: string | undefined) =>
+            loadEventPage({ ...input, pageToken }).pipe(
+              Effect.map(
+                (response) =>
+                  [
+                    response.data.items ?? [],
+                    Option.fromNullishOr(response.data.nextPageToken),
+                  ] as const
+              )
+            )
+        ).pipe(Stream.runCollect);
+
+      const loadEventPage = (input: {
+        readonly calendarId: string;
+        readonly pageToken?: string;
+        readonly timeMax: string;
+        readonly timeMin: string;
+      }) =>
+        Effect.tryPromise({
+          try: () =>
+            client.events.list({
+              calendarId: input.calendarId,
+              maxResults: defaultPageSize,
+              orderBy: "startTime",
+              pageToken: input.pageToken,
+              singleEvents: true,
+              timeMax: input.timeMax,
+              timeMin: input.timeMin,
+              timeZone: config.timeZone,
+            }),
+          catch: (cause) =>
+            new GoogleCalendarAPIError({
+              operation: "events.list",
+              statusCode: getGoogleStatusCode(cause),
+              message: getGoogleErrorMessage(cause),
+              cause,
+            }),
+        });
+
       return { listEvents };
     })
   );
 }
 
-const getCalendarClient = (config: GoogleCalendarRuntimeConfigObj) => {
+const getCalendarClient = (config: IGoogleCalendarRuntimeConfig) => {
   const clientAuth = new auth.JWT({
     email: config.serviceAccountEmail,
     key: config.privateKey.replaceAll("\\n", "\n"),

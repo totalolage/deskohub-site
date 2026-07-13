@@ -3,6 +3,10 @@ export type GoogleCalendarEventQuery = {
   readonly to: string;
 };
 
+export type GoogleCalendarListEventsInput = GoogleCalendarEventQuery & {
+  readonly calendarId: string;
+};
+
 export type GoogleCalendarEventDateTime = {
   readonly date?: string;
   readonly dateTime?: string;

@@ -23,7 +23,6 @@ mock.module("@googleapis/calendar", () => ({
 const { GoogleCalendarService } = await import("./service");
 
 const config = {
-  calendarId: "calendar-id",
   serviceAccountEmail: "service@example.test",
   privateKey: "line1\\nline2",
   timeZone: "Europe/Prague",
@@ -85,6 +84,7 @@ describe("GoogleCalendarService", () => {
       Effect.gen(function* () {
         const googleCalendar = yield* GoogleCalendarService;
         return yield* googleCalendar.listEvents({
+          calendarId: "calendar-id",
           from: "2026-06-20",
           to: "2026-06-21",
         });
@@ -107,6 +107,7 @@ describe("GoogleCalendarService", () => {
       timeZone: "Europe/Prague",
     });
     expect(listEvents.mock.calls[1]?.[0]).toMatchObject({
+      calendarId: "calendar-id",
       pageToken: "next-page",
     });
     expect(result).toEqual([
@@ -130,6 +131,74 @@ describe("GoogleCalendarService", () => {
     ]);
   });
 
+  test("keeps concurrent paginated resource calendars isolated", async () => {
+    listEvents = mock(
+      async (params: { calendarId: string; pageToken?: string }) => ({
+        data: {
+          items: [
+            {
+              id: `${params.calendarId}-${params.pageToken ? "second" : "first"}`,
+            },
+          ],
+          ...(!params.pageToken && {
+            nextPageToken: `${params.calendarId}-next-page`,
+          }),
+        },
+      })
+    );
+
+    const [workspaceEvents, salesEvents] = await runWithCalendar(
+      Effect.gen(function* () {
+        const googleCalendar = yield* GoogleCalendarService;
+
+        return yield* Effect.all([
+          googleCalendar.listEvents({
+            calendarId: "workspace-limitations-calendar",
+            from: "2026-06-20",
+            to: "2026-06-21",
+          }),
+          googleCalendar.listEvents({
+            calendarId: "sales-calendar",
+            from: "2026-06-20",
+            to: "2026-06-21",
+          }),
+        ]);
+      })
+    );
+
+    expect(workspaceEvents.map(({ id }) => id)).toEqual([
+      "workspace-limitations-calendar-first",
+      "workspace-limitations-calendar-second",
+    ]);
+    expect(salesEvents.map(({ id }) => id)).toEqual([
+      "sales-calendar-first",
+      "sales-calendar-second",
+    ]);
+    expect(listEvents).toHaveBeenCalledTimes(4);
+    expect(
+      listEvents.mock.calls.map(([query]) => ({
+        calendarId: query.calendarId,
+        pageToken: query.pageToken,
+      }))
+    ).toEqual(
+      expect.arrayContaining([
+        {
+          calendarId: "workspace-limitations-calendar",
+          pageToken: undefined,
+        },
+        {
+          calendarId: "workspace-limitations-calendar",
+          pageToken: "workspace-limitations-calendar-next-page",
+        },
+        { calendarId: "sales-calendar", pageToken: undefined },
+        {
+          calendarId: "sales-calendar",
+          pageToken: "sales-calendar-next-page",
+        },
+      ])
+    );
+  });
+
   test("maps provider errors", async () => {
     listEvents = mock(async () => {
       const error = new Error("Forbidden");
@@ -141,7 +210,11 @@ describe("GoogleCalendarService", () => {
       Effect.gen(function* () {
         const googleCalendar = yield* GoogleCalendarService;
         return yield* googleCalendar
-          .listEvents({ from: "2026-06-20", to: "2026-06-21" })
+          .listEvents({
+            calendarId: "calendar-id",
+            from: "2026-06-20",
+            to: "2026-06-21",
+          })
           .pipe(Effect.result);
       })
     );

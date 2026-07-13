@@ -5,6 +5,7 @@ import {
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
@@ -47,9 +48,10 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
+      const { workspaceLimitationsCalendarId } = yield* CalendarResourceConfig;
 
       const listLimitations = Effect.fn(
-        "googleCalendarWorkspaceLimitations.listLimitations"
+        "GoogleCalendarWorkspaceLimitationsService.listLimitations"
       )(
         function* (query: GoogleCalendarEventQuery) {
           yield* Effect.annotateLogsScoped({ query });
@@ -57,7 +59,10 @@ export class GoogleCalendarWorkspaceLimitationsService extends Context.Service<
             "Google Calendar workspace limitations load started"
           );
 
-          const events = yield* calendar.listEvents(query);
+          const events = yield* calendar.listEvents({
+            ...query,
+            calendarId: workspaceLimitationsCalendarId,
+          });
           const limitations = events
             .flatMap((event) => toWorkspaceCalendarLimitations(event))
             .filter((limitation) => isLimitationInRange(limitation, query));

@@ -25,6 +25,7 @@ import {
   workspaceProductMonitorOptionTableTags,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
 import type {
@@ -261,7 +262,8 @@ export const WorkspaceAvailabilityServiceLive = Layer.effect(
 
 const GoogleCalendarWorkspaceLimitationsLive =
   GoogleCalendarWorkspaceLimitationsService.Live.pipe(
-    Layer.provide(GoogleCalendarServiceLive)
+    Layer.provide(GoogleCalendarServiceLive),
+    Layer.provide(CalendarResourceConfig.Live)
   );
 
 export const WorkspaceAvailabilityServiceLiveWithDependencies =
