@@ -1,14 +1,20 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { calculateDiscounts } from "./calculator";
-import type { Discount, DiscountProductIdentity } from "./contracts";
+import {
+  type Discount,
+  type DiscountProductIdentity,
+  discountIdSchema,
+} from "./contracts";
 import type { DiscountCandidate } from "./provider";
 
 const product = {
   kind: "cowork",
   tier: "basic",
 } satisfies DiscountProductIdentity;
+
+const discountId = Schema.decodeUnknownSync(discountIdSchema);
 
 const money = (
   value: number,
@@ -30,7 +36,7 @@ const candidate = (
 
 const percentage = (id: string, basisPoints: number): DiscountCandidate =>
   candidate({
-    id,
+    id: discountId(id),
     label: id,
     adjustment: { kind: "percentage", basisPoints },
   });
@@ -42,7 +48,7 @@ const fixed = (
 ): DiscountCandidate =>
   candidate(
     {
-      id,
+      id: discountId(id),
       label: id,
       adjustment: { kind: "fixed", amount },
     },

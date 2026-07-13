@@ -1,4 +1,5 @@
 import { Data } from "effect";
+import type { DiscountId } from "./contracts";
 
 export type DiscountCalculationFailureReason =
   | "invalid_discountable_subtotal"
@@ -12,7 +13,7 @@ export class DiscountCalculationError extends Data.TaggedError(
 )<{
   readonly reason: DiscountCalculationFailureReason;
   readonly message: string;
-  readonly discountId?: string;
+  readonly discountId?: DiscountId;
 }> {}
 
 export type DiscountCodeUnavailableReason =

@@ -1,5 +1,5 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { z } from "zod/v4";
+import { Schema } from "effect";
 import {
   type WorkspaceProductTier,
   workspaceProductTiers,
@@ -12,15 +12,29 @@ export type DiscountProductIdentity = {
   readonly tier: WorkspaceProductTier;
 };
 
+export const discountIdSchema = Schema.NonEmptyString.pipe(
+  Schema.brand("DiscountId")
+).annotate({
+  identifier: "DiscountId",
+  description: "Deterministic opaque public discount identifier.",
+});
+
+export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
+
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
   DiscountProductIdentity
-> = z.discriminatedUnion("kind", [
-  z.strictObject({
-    kind: z.literal("cowork"),
-    tier: z.enum(workspaceProductTiers),
+> = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    kind: Schema.Literal("cowork"),
+    tier: Schema.Literals(workspaceProductTiers),
   }),
-]);
+  {
+    parseOptions: {
+      onExcessProperty: "error",
+    },
+  }
+);
 
 export type DiscountAdjustment =
   | {
@@ -33,7 +47,7 @@ export type DiscountAdjustment =
     };
 
 export type Discount = {
-  readonly id: string;
+  readonly id: DiscountId;
   readonly label: string;
   readonly adjustment: DiscountAdjustment;
   readonly expiresAt?: string;

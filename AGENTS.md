@@ -39,12 +39,16 @@ Effect.Do.pipe(
 - When a declarative Effect workflow starts from an existing object input, use `Effect.succeed(input).pipe(...)` and bind from that record instead of rebuilding its fields with `Effect.Do` and `Effect.let`.
 - Use Effect Schema codecs and checks for runtime domain validation when the value has a schema; do not duplicate that validation with manual predicate chains.
 - Use Effect Schema branding utilities for schema-backed branded values; do not hand-roll `unique symbol` brands.
+- Use Effect Schema rather than Zod for new schema definitions.
+- Use branded domain identifier types in contracts and error fields instead of plain strings.
 
 - Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose their implementations with Layers; never pass them as ordinary function arguments or dependency objects. Resolve capabilities while constructing the consuming service and close over them in its implementation so public service methods accept domain input only. A service's `Live` layer should require its dependencies from Context rather than hardwiring their live layers; provide those layers at the application composition boundary, and replace them with test layers in tests.
+- Keep an Effect service's interface, Context service declaration, and live layer in its `*.service.ts` module. Put its mock layer in an adjacent `*.service.mock.ts` module and use `Layer.mock` for partial test implementations instead of declaring service mocks inline in tests.
 - Represent service construction directly as an Effect when a factory function adds no behavior or reuse. Avoid `make*` functions that merely return a single Effect expression.
 - Name public service operations with `Effect.fn("Service.operation")`. Do not wrap the whole named operation in a redundant `Effect.withSpan`; add explicit spans only for meaningful nested trace boundaries.
 - Omit Effect options that merely restate defaults, such as unbounded concurrency when it is already the default. Specify options only when they change behavior or communicate an important constraint.
 - Expose each feature's public service API through its `index.ts` barrel. Keep providers, repositories, intermediate candidates, and other implementation modules private so consumers cannot depend on source-specific concerns.
+- Tests should import the declaration modules they exercise directly rather than importing through the feature barrel.
 - Prefer declarative pipelines where they clarify multi-step behavior, but do not force trivial leaf calculations into `Effect.Do`. If a leaf becomes conditional or multi-stage, extract it into its own named declarative pipeline.
 - Make heavy use of exploration and research subagents to make sure you are taking the correct approach
 - Prefer the optimal domain structure over preserving an existing layout by default. If current placement is awkward, refactor toward the better boundary rather than bending new code around the old shape.

@@ -3,6 +3,7 @@ export {
   type AppliedDiscount,
   type Discount,
   type DiscountAdjustment,
+  type DiscountId,
   type DiscountProductIdentity,
   type DiscountQuote,
   type DiscountQuoteInput,

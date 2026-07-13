@@ -1,14 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
-import { Effect, Layer } from "effect";
+import { Effect, Schema } from "effect";
 import {
-  type DiscountCommitment,
   type DiscountQuote,
   type DiscountQuoteInput,
-  DiscountService,
+  discountIdSchema,
   discountProductIdentitySchema,
-  type IDiscountService,
-} from "./index";
+} from "./contracts";
+import { DiscountService } from "./discount.service";
+import { DiscountServiceMock } from "./discount.service.mock";
 
 const quote: DiscountQuote = {
   product: { kind: "cowork", tier: "basic" },
@@ -19,6 +19,13 @@ const quote: DiscountQuote = {
 };
 
 describe("discount contracts", () => {
+  test("brands non-empty opaque discount IDs", () => {
+    const decodeDiscountId = Schema.decodeUnknownSync(discountIdSchema);
+
+    expect(decodeDiscountId("opaque-discount-id")).toBe("opaque-discount-id");
+    expect(() => decodeDiscountId("")).toThrow();
+  });
+
   test("decodes every current cowork product identity", () => {
     expect(
       ["basic", "plus", "profi"].map((tier) =>
@@ -57,14 +64,6 @@ describe("discount contracts", () => {
   });
 
   test("supports source-neutral service test layers", async () => {
-    const service: IDiscountService = {
-      quote: () => Effect.succeed(quote),
-      revalidate: () =>
-        Effect.succeed({
-          quote,
-          commitment: {} as DiscountCommitment,
-        }),
-    };
     const input: DiscountQuoteInput = {
       product: quote.product,
       discountableSubtotal: quote.discountableSubtotal,
@@ -77,7 +76,11 @@ describe("discount contracts", () => {
       const discounts = yield* DiscountService;
       return yield* discounts.quote(input);
     }).pipe(
-      Effect.provide(Layer.succeed(DiscountService, service)),
+      Effect.provide(
+        DiscountServiceMock({
+          quote: () => Effect.succeed(quote),
+        })
+      ),
       Effect.runPromise
     );
 
