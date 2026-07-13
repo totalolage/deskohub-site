@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import { checkoutDetailsJsonSchema } from "@/features/checkout/checkout-details";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote-v2";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,

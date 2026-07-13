@@ -1,6 +1,6 @@
 import { DotyposService, type FindCustomerResult } from "@deskohub/dotypos";
 import { Data, Effect, Match } from "effect";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export class AmbiguousDotyposCustomerError extends Data.TaggedError(
   "AmbiguousDotyposCustomerError"

@@ -186,7 +186,7 @@ describe("prepareWorkspacePayStateEffect", () => {
       "./prepare-pay-state"
     );
     const { openPayState, payStateTokenQueryParam } = await import(
-      "@/features/checkout/backend/checkout/pay-state-v2"
+      "@/features/checkout/backend/checkout"
     );
     const { WorkspaceCheckoutAccessCodeService } = await import(
       "@/features/checkout/backend/reservation"

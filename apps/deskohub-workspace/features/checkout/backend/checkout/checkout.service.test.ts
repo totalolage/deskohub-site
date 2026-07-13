@@ -1,14 +1,17 @@
 import "@/shared/testing/workspace-test-env";
+import "@/shared/polyfills/temporal";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import {
+  buildWorkspaceCheckoutQuote,
+  toWorkspaceCheckoutOrderInput,
+} from "@/features/checkout/checkout-quote";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
-import { buildSignedPayState, sealPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
 
@@ -31,20 +34,26 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
 
 const reservationData: ReservationOrderData = {
   entryTier: "profi",
-  date: "2026-06-20",
-  coffee: false,
+  date: "2099-06-20",
+  coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
 };
 
-const buildPayStateToken = (orderId: string) => {
-  const quote = buildWorkspaceCheckoutQuote(reservationData);
+const buildPayStateToken = async (
+  orderId: string,
+  data: ReservationOrderData = reservationData
+) => {
+  const { buildSignedPayState, sealPayState } = await import("./pay-state");
+  const quote = buildWorkspaceCheckoutQuote(
+    toWorkspaceCheckoutOrderInput(data)
+  );
   return sealPayState(
     buildSignedPayState({
       locale: "en-US",
-      reservation: reservationData,
+      reservation: data,
       quote,
       orderId,
       ttlMilliseconds: 10 * 60 * 1000,
@@ -128,9 +137,12 @@ describe("CheckoutService", () => {
           reservationIntentKey: "intent-key",
           dotyposCustomerId: "customer-id",
           dotyposReservationId: "dotypos-reservation-id",
-          productTier: reservationData.entryTier,
-          productCoffee: reservationData.coffee,
-          productMonitorOption: reservationData.monitorOption,
+          reservationDetails: {
+            _tag: "cowork",
+            tier: reservationData.entryTier,
+            coffee: reservationData.coffee,
+            monitorOption: reservationData.monitorOption,
+          },
           locale: "en-US",
           reservationState: "held",
           reservationHoldExpiresAt: new Date("2099-06-20T10:00:00.000Z"),
@@ -151,7 +163,7 @@ describe("CheckoutService", () => {
           updatedAt: new Date(),
         })
       ),
-      updateProductIntent: mock((input) =>
+      updateReservationDetails: mock((input) =>
         Effect.succeed({ id: input.id } as never)
       ),
       markPaymentTerminal,
@@ -167,10 +179,12 @@ describe("CheckoutService", () => {
       ),
       verifyPaymentOutcome: mock(() => Effect.die("not used")),
     } as unknown as typeof NexiService.Service;
+    const payStateToken = await buildPayStateToken(orderId);
+
     await Effect.gen(function* () {
       const service = yield* CheckoutService;
       return yield* service.createHostedPaymentCheckout(
-        { payStateToken: buildPayStateToken(orderId), legalConsent: true },
+        { payStateToken, legalConsent: true },
         "en-US"
       );
     }).pipe(

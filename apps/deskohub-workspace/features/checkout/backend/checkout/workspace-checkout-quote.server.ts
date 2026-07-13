@@ -1,6 +1,9 @@
 import { Effect } from "effect";
-import { buildWorkspaceCheckoutQuoteEffect } from "@/features/checkout/checkout-quote";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import {
+  buildWorkspaceCheckoutQuoteEffect,
+  toWorkspaceCheckoutOrderInput,
+} from "@/features/checkout/checkout-quote";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { getConfirmedDotyposCustomerDiscount } from "../reservation/dotypos-customer-policy";
 import { getNexiCheckoutCurrencyOverride } from "./checkout.service";
 
@@ -18,10 +21,13 @@ export const buildAuthoritativeWorkspaceCheckoutQuoteEffect = Effect.fn(
     yield* Effect.annotateLogsScoped({ customerDiscount });
     yield* Effect.logInfo("Workspace checkout quote discount resolved");
 
-    const quote = yield* buildWorkspaceCheckoutQuoteEffect(reservation, {
-      customerDiscount,
-      currencyOverride: getNexiCheckoutCurrencyOverride(),
-    });
+    const quote = yield* buildWorkspaceCheckoutQuoteEffect(
+      toWorkspaceCheckoutOrderInput(reservation),
+      {
+        customerDiscount,
+        currencyOverride: getNexiCheckoutCurrencyOverride(),
+      }
+    );
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logInfo("Authoritative workspace checkout quote built");
 

@@ -6,8 +6,8 @@ import { Result } from "effect";
 import {
   buildWorkspaceCheckoutQuote,
   toWorkspaceCheckoutOrderInput,
-} from "@/features/checkout/checkout-quote-v2";
-import type { PayStateKey, SignedPayState } from "./pay-state-v2";
+} from "@/features/checkout/checkout-quote";
+import type { PayStateKey, SignedPayState } from "./pay-state";
 
 const {
   buildPayStateQueryParams,
@@ -18,7 +18,7 @@ const {
   sealPayState,
   sealPayStateForUrl,
   signedPayStateSchema,
-} = await import("./pay-state-v2");
+} = await import("./pay-state");
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
 const fixedKey: PayStateKey = parsePayStateKey(
