@@ -697,6 +697,10 @@ export const CheckoutServiceLive = Layer.effect(
             note: formatWorkspaceReservationNote({
               paymentOrderId: reservation.id,
               checkoutDetails: checkoutDetails as CheckoutDetailsJson,
+              reservation: {
+                kind: data.kind,
+                ...checkoutDetails.reservation,
+              },
             }),
           });
           yield* Effect.logInfo(

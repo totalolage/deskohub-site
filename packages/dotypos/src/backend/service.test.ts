@@ -2,7 +2,12 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Logger, Predicate, References } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import { makeDotyposRuntimeConfigLayer } from "../config";
-import type { Category, Customer, Reservation } from "../generated/effect.gen";
+import type {
+  Category,
+  Customer,
+  Reservation,
+  Table,
+} from "../generated/effect.gen";
 import { DotyposService } from "./service";
 
 const config = {
@@ -38,6 +43,15 @@ const reservation = (overrides: Partial<Reservation> = {}): Reservation => ({
   endDate: "2026-06-20T12:00:00.000Z",
   seats: "2",
   status: "NEW",
+  ...overrides,
+});
+
+const table = (overrides: Partial<Table> = {}): Table => ({
+  id: "table-id",
+  _cloudId: config.cloudId,
+  name: "Table 1",
+  display: true,
+  enabled: true,
   ...overrides,
 });
 
@@ -911,6 +925,206 @@ describe("DotyposService customer discounts", () => {
 });
 
 describe("DotyposService reservation listing", () => {
+  test("treats a first-page 404 as an empty reservation list", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json(
+          { error: "not_found", error_description: "Not found" },
+          { status: 404 }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([]);
+  });
+
+  test("accepts nullable reservation notes", async () => {
+    const liveReservation = {
+      ...reservation(),
+      note: null,
+    };
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json({ data: [liveReservation] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([liveReservation]);
+  });
+
+  test("accepts live whole-second UTC reservation timestamps", async () => {
+    const liveReservation = reservation({
+      startDate: "2026-06-20T10:00:00Z",
+      endDate: "2026-06-20T12:00:00Z",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json({ data: [liveReservation] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([liveReservation]);
+  });
+
+  test("accepts reservation timestamps with an ISO 8601 numeric offset", async () => {
+    const offsetReservation = reservation({
+      startDate: "2026-06-20T12:00:00.000+02:00",
+      endDate: "2026-06-20T14:00:00.000+02:00",
+    });
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        return Response.json({ data: [offsetReservation] });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([offsetReservation]);
+  });
+
+  test("loads every reservation page", async () => {
+    const firstReservation = reservation({ id: "reservation-1" });
+    const secondReservation = reservation({ id: "reservation-2" });
+    const requestedPages: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        const page = url.searchParams.get("page") ?? "1";
+        requestedPages.push(page);
+
+        return Response.json(
+          page === "1"
+            ? {
+                currentPage: "1",
+                perPage: "100",
+                totalItemsOnPage: "1",
+                totalItemsCount: "2",
+                firstPage: "1",
+                lastPage: "2",
+                nextPage: "2",
+                prevPage: null,
+                data: [firstReservation],
+              }
+            : {
+                currentPage: "2",
+                perPage: "100",
+                totalItemsOnPage: "1",
+                totalItemsCount: "2",
+                firstPage: "1",
+                lastPage: "2",
+                nextPage: null,
+                prevPage: "1",
+                data: [secondReservation],
+              }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([firstReservation, secondReservation]);
+    expect(requestedPages).toEqual(["1", "2"]);
+  });
+
+  test("preserves a later-page 404 as an API error", async () => {
+    const firstReservation = reservation({ id: "reservation-1" });
+    const requestedPages: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/reservations") {
+        const page = url.searchParams.get("page") ?? "1";
+        requestedPages.push(page);
+
+        return page === "1"
+          ? Response.json({
+              currentPage: "1",
+              perPage: "100",
+              totalItemsOnPage: "1",
+              totalItemsCount: "2",
+              firstPage: "1",
+              lastPage: "2",
+              nextPage: "2",
+              prevPage: null,
+              data: [firstReservation],
+            })
+          : Response.json(
+              { error: "not_found", error_description: "Not found" },
+              { status: 404 }
+            );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.listReservations().pipe(Effect.result);
+      }),
+      fetchMock
+    );
+
+    expect(Predicate.isTagged(result, "Failure")).toBe(true);
+    if (Predicate.isTagged(result, "Failure")) {
+      expect(result.failure).toMatchObject({
+        _tag: "ExternalAPIError",
+        operation: "listReservations",
+        statusCode: 404,
+      });
+    }
+    expect(requestedPages).toEqual(["1", "2"]);
+  });
+
   test("preserves typed Dotypos API errors", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
@@ -941,5 +1155,59 @@ describe("DotyposService reservation listing", () => {
         statusCode: 403,
       });
     }
+  });
+});
+
+describe("DotyposService table listing", () => {
+  test("loads every table page", async () => {
+    const firstTable = table({ id: "table-1", name: "Table 1" });
+    const secondTable = table({ id: "table-2", name: "Table 2" });
+    const requestedPages: string[] = [];
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/tables") {
+        const page = url.searchParams.get("page") ?? "1";
+        requestedPages.push(page);
+
+        return Response.json(
+          page === "1"
+            ? {
+                currentPage: "1",
+                perPage: "100",
+                totalItemsOnPage: "1",
+                totalItemsCount: "2",
+                firstPage: "1",
+                lastPage: "2",
+                nextPage: "2",
+                prevPage: null,
+                data: [firstTable],
+              }
+            : {
+                currentPage: "2",
+                perPage: "100",
+                totalItemsOnPage: "1",
+                totalItemsCount: "2",
+                firstPage: "1",
+                lastPage: "2",
+                nextPage: null,
+                prevPage: "1",
+                data: [secondTable],
+              }
+        );
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getTables();
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual([firstTable, secondTable]);
+    expect(requestedPages).toEqual(["1", "2"]);
   });
 });

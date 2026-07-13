@@ -7,21 +7,29 @@ import {
   type Reservation,
   ValidationError,
 } from "@deskohub/dotypos";
-import { Effect } from "effect";
+import { Effect, Match } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import { getWorkspaceMeetingRoomProductTitle } from "@/features/checkout/product-catalog.i18n";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
+import { getReservationDate } from "@/features/reservation/reservation-interval";
+import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
-import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
+import { temporalInstantToDate } from "@/shared/utils/temporal";
+import {
+  type WorkspaceTableAssignmentReservation,
+  WorkspaceTableAssignmentService,
+} from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
 export interface CreateWorkspaceDotyposReservationInput {
   readonly paymentOrderId: string;
   readonly dotyposCustomerId: string;
   readonly checkoutDetails: CheckoutDetailsJson;
+  readonly reservation: WorkspaceTableAssignmentReservation;
   readonly status: DotyposReservationStatus;
 }
 
@@ -40,12 +48,10 @@ export const createWorkspaceDotyposReservation: (
 
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const { startDate, endDate } = yield* getPragueAllDayRange(
-      input.checkoutDetails.reservation.date
+    const { startDate, endDate } = yield* getDotyposReservationDateRange(
+      input.reservation
     );
-    const tableId = yield* tableAssignments.assignTableId(
-      input.checkoutDetails.reservation
-    );
+    const tableId = yield* tableAssignments.assignTableId(input.reservation);
 
     const reservationInput: CreateDotyposReservationInput = {
       customerId: input.dotyposCustomerId,
@@ -77,12 +83,26 @@ export const createWorkspaceDotyposReservation: (
       Effect.annotateLogs({
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,
-        entryTier: input.checkoutDetails.reservation.entryTier,
-        date: input.checkoutDetails.reservation.date,
+        reservationKind: input.reservation.kind,
+        ...getReservationLogAnnotations(input.reservation),
         reservationStatus: input.status,
       })
     )
 );
+
+const getDotyposReservationDateRange = (
+  reservation: WorkspaceTableAssignmentReservation
+) =>
+  Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ date }) => getPragueAllDayRange(date),
+      "meeting-room": ({ endsAt, startsAt }) =>
+        Effect.succeed({
+          startDate: temporalInstantToDate(Temporal.Instant.from(startsAt)),
+          endDate: temporalInstantToDate(Temporal.Instant.from(endsAt)),
+        }),
+    })
+  );
 
 const getPragueAllDayRange = (
   date: string
@@ -111,19 +131,43 @@ const toPragueMidnightDate = (plainDate: Temporal.PlainDate) =>
 export const formatWorkspaceReservationNote = (
   input: Pick<
     CreateWorkspaceDotyposReservationInput,
-    "checkoutDetails" | "paymentOrderId"
+    "checkoutDetails" | "paymentOrderId" | "reservation"
   >
 ) => {
-  const { checkoutDetails } = input;
-  const { reservation } = checkoutDetails;
-  const product = getWorkspaceProductByTier(reservation.entryTier);
+  const { checkoutDetails, reservation } = input;
+  const { productLabel, reservationRows } = Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: (coworkReservation) => ({
+        productLabel: getWorkspaceProductByTier(coworkReservation.entryTier)
+          .label,
+        reservationRows: [
+          `Date: ${coworkReservation.date}`,
+          `Coffee: ${coworkReservation.coffee ? "yes" : "no"}`,
+          coworkReservation.monitorOption
+            ? `Monitor: ${coworkReservation.monitorOption}`
+            : null,
+        ],
+      }),
+      "meeting-room": (meetingRoomReservation) => ({
+        productLabel: getWorkspaceMeetingRoomProductTitle(
+          checkoutDetails.locale
+        ),
+        reservationRows: [
+          `Date: ${getReservationDate({
+            interval: meetingRoomReservation,
+            timeZone: workspaceSiteConstants.location.timeZone,
+          })}`,
+          `Time: ${meetingRoomReservation.startsAt}-${meetingRoomReservation.endsAt}`,
+          `Duration: ${getDurationMinutes(meetingRoomReservation)} minutes`,
+        ],
+      }),
+    })
+  );
   const lines = [
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,
-    `Product: ${product.label}`,
-    `Date: ${reservation.date}`,
-    `Coffee: ${reservation.coffee ? "yes" : "no"}`,
-    reservation.monitorOption ? `Monitor: ${reservation.monitorOption}` : null,
+    `Product: ${productLabel}`,
+    ...reservationRows,
     `Price: ${formatWorkspaceMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
@@ -139,3 +183,18 @@ export const formatWorkspaceReservationNote = (
 
   return lines.filter((line) => line !== null).join("\n");
 };
+
+const getReservationLogAnnotations = (
+  reservation: WorkspaceTableAssignmentReservation
+) =>
+  Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ date, entryTier }) => ({ entryTier, date }),
+      "meeting-room": (meetingRoomReservation) => ({
+        date: getReservationDate({
+          interval: meetingRoomReservation,
+          timeZone: workspaceSiteConstants.location.timeZone,
+        }),
+      }),
+    })
+  );
