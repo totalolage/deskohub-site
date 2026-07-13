@@ -10,34 +10,20 @@ import {
   parseReservationInputDate,
 } from "@/features/reservation/reservation-date";
 
-type ReservationAvailabilityUnavailableMessageInput = {
+export const getReservationAvailabilityUnavailableMessage = (input: {
   readonly date: string;
   readonly dateFallback?: string;
   readonly locale: Locale;
-} & (
-  | {
-      readonly reservation:
-        | {
-            readonly _tag: "cowork";
-            readonly tier: WorkspaceCoworkProductTier;
-          }
-        | {
-            readonly _tag: "meeting-room";
-          };
-    }
-  | {
-      readonly tier: WorkspaceCoworkProductTier;
-    }
-);
-
-export const getReservationAvailabilityUnavailableMessage = (
-  input: ReservationAvailabilityUnavailableMessageInput
-) => {
+  readonly reservation:
+    | {
+        readonly _tag: "cowork";
+        readonly tier: WorkspaceCoworkProductTier;
+      }
+    | {
+        readonly _tag: "meeting-room";
+      };
+}) => {
   const plainDate = parseReservationInputDate(input.date);
-  const reservation =
-    "reservation" in input
-      ? input.reservation
-      : ({ _tag: "cowork", tier: input.tier } as const);
 
   return m.reservationAvailabilityUnavailable(
     {
@@ -48,7 +34,7 @@ export const getReservationAvailabilityUnavailableMessage = (
             input.dateFallback
           )
         : (input.dateFallback ?? input.date),
-      tier: Match.value(reservation).pipe(
+      tier: Match.value(input.reservation).pipe(
         Match.tag("meeting-room", () =>
           getWorkspaceMeetingRoomProductTitle(input.locale)
         ),

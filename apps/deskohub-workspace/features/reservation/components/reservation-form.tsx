@@ -1,8 +1,9 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
+import { Schema } from "effect";
 import {
   AlertTriangle,
   ArrowRight,
@@ -20,10 +21,11 @@ import {
   getWorkspaceProductCoffeeLinePriceForTier,
   isWorkspaceProductMonitorOption,
   isWorkspaceProductTier,
+  type WorkspaceCoworkProductTier,
   type WorkspaceProductCatalogItem,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
-  workspaceProductCatalog,
+  workspaceCoworkProductCatalog,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
@@ -35,30 +37,31 @@ import {
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
+import { getWorkspaceAvailability } from "@/features/reservation/actions/get-workspace-availability";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import {
+  type CoworkReservationData,
+  type CoworkReservationInput,
+  coworkReservationEffectSchema,
+  getAllowedMonitorOptionsForCoworkTier,
+  getCoworkTierIncludesCourtesyCoffee,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
-import {
-  formatReservationDisplayDate,
-  parseReservationInputDate,
-} from "@/features/reservation/reservation-date";
-import {
-  getAllowedMonitorOptionsForTier,
-  getReservationSchema,
-  type ReservationData,
-  type ReservationInput,
-  tierIncludesCourtesyCoffee,
-  tierRequiresMonitorOption,
-} from "@/features/reservation/schemas/reservation";
 import {
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
-} from "@/features/reservation/schemas/reservation-checkout-query";
+} from "@/features/reservation/reservation-checkout-query";
 import {
-  parseWorkspaceAvailabilityResponse,
-  type WorkspaceAvailability,
+  calendarDateToReservationPlainDate,
+  formatReservationInputDate,
+  formatReservationInputDisplayDate,
+  reservationInputDateToCalendarDate,
+} from "@/features/reservation/reservation-date";
+import {
   type WorkspaceAvailabilityQuery,
   workspaceAvailabilityKeys,
-} from "@/features/reservation/schemas/workspace-availability";
+} from "@/features/reservation/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -77,6 +80,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
+import { Skeleton as SkeletonBlock } from "@/shared/components/ui/skeleton";
 import { Switch } from "@/shared/components/ui/switch";
 import { Textarea } from "@/shared/components/ui/textarea";
 import { cn } from "@/shared/utils";
@@ -109,10 +113,10 @@ type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
 const tierOptions: ReadonlyArray<{
   product: WorkspaceProductCatalogItem;
-  value: WorkspaceProductTier;
+  value: WorkspaceCoworkProductTier;
   title: Parameters<typeof getWorkspaceProductMessage>[0];
   description: Parameters<typeof getWorkspaceProductMessage>[0];
-}> = workspaceProductCatalog.map((product) => ({
+}> = workspaceCoworkProductCatalog.map((product) => ({
   product,
   value: product.tier,
   ...workspaceProductTierMessages[product.tier],
@@ -130,18 +134,7 @@ const monitorOptions: ReadonlyArray<{
 const reservationFormCardClassName =
   "relative overflow-hidden rounded-4xl border-white/55 bg-white/94 text-navy-blue shadow-[0_44px_140px_-54px_rgba(0,2,79,0.62)] backdrop-blur-sm";
 
-const reservationFormSkeletonClassName =
-  "rounded-full bg-navy-blue/8 shadow-[inset_0_1px_0_rgba(255,255,255,0.75)]";
-
 const fallbackTierCards = ["tier-1", "tier-2", "tier-3"] as const;
-
-const formatDateForInput = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-
-  return `${year}-${month}-${day}`;
-};
 
 const getWorkspaceAvailabilityQuery = ({
   date,
@@ -157,6 +150,7 @@ const getWorkspaceAvailabilityQuery = ({
   to: string;
 }): WorkspaceAvailabilityQuery => {
   return {
+    _tag: "cowork",
     from,
     to,
     ...(date && { date }),
@@ -164,39 +158,6 @@ const getWorkspaceAvailabilityQuery = ({
     ...(isWorkspaceProductMonitorOption(monitorOption) && { monitorOption }),
   };
 };
-
-const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
-  const params = new URLSearchParams({
-    from: query.from,
-    to: query.to,
-  });
-
-  if (query.date) params.set("date", query.date);
-  if (query.entryTier) params.set("entryTier", query.entryTier);
-  if (query.monitorOption) params.set("monitorOption", query.monitorOption);
-
-  return `/api/workspace/availability?${params.toString()}`;
-};
-
-const loadWorkspaceAvailability = async ({
-  query,
-  signal,
-}: {
-  query: WorkspaceAvailabilityQuery;
-  signal: AbortSignal;
-}): Promise<WorkspaceAvailability> => {
-  const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
-  if (!response.ok) throw new Error("Availability request failed");
-
-  return parseWorkspaceAvailabilityResponse(await response.json());
-};
-
-const formatDisplayDate = (date: string, locale: Locale) =>
-  formatReservationDisplayDate(
-    date,
-    locale,
-    m.reservationDatePlaceholder({}, { locale })
-  );
 
 const getSanitizedUtmParams = (
   searchParams: URLSearchParams
@@ -232,7 +193,10 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     () => getSanitizedUtmParams(searchParams),
     [searchParams]
   );
-  const schema = useMemo(() => getReservationSchema(), []);
+  const schema = useMemo(
+    () => Schema.toStandardSchemaV1(coworkReservationEffectSchema),
+    []
+  );
   const defaultValues = useMemo(
     () => getReservationDefaultValuesFromSearchParams(searchParams),
     [searchParams]
@@ -242,8 +206,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams),
     [searchParams]
   );
-  const form = useForm<ReservationInput, unknown, ReservationData>({
-    resolver: zodResolver(schema),
+  const form = useForm<CoworkReservationInput, unknown, CoworkReservationData>({
+    resolver: standardSchemaResolver(schema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -252,11 +216,13 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     control: form.control,
     name: ["entryTier", "date", "monitorOption"],
   });
-  const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
+  const courtesyCoffeeIncluded =
+    getCoworkTierIncludesCourtesyCoffee(selectedTier);
   const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
-  const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
-  const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
+  const shouldShowMonitors = getCoworkTierRequiresMonitorOption(selectedTier);
+  const allowedMonitorOptions =
+    getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
     () =>
       getWorkspaceAvailabilityQuery({
@@ -276,8 +242,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   );
   const availabilityQueryResult = useQuery({
     queryKey: workspaceAvailabilityKeys.availability(availabilityQuery),
-    queryFn: ({ signal }) =>
-      loadWorkspaceAvailability({ query: availabilityQuery, signal }),
+    queryFn: () => getWorkspaceAvailability(availabilityQuery),
     placeholderData: keepPreviousData,
     retry: (failureCount) => failureCount < 3,
     staleTime: 30_000,
@@ -290,8 +255,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     () => new Set(availability?.unavailableDates ?? []),
     [availability]
   );
-  const unavailableTiers = useMemo(
-    () => new Set(availability?.unavailableTiers ?? []),
+  const unavailableCoworkTiers = useMemo(
+    () => new Set(availability?.unavailableCoworkTiers ?? []),
     [availability]
   );
   const unavailableMonitorOptions = useMemo(
@@ -305,7 +270,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       ),
     [availability, selectedDate]
   );
-  const isSelectedTierUnavailable = unavailableTiers.has(selectedTier);
+  const isSelectedTierUnavailable = unavailableCoworkTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
     selectedMonitorOption &&
       unavailableMonitorOptions.has(selectedMonitorOption)
@@ -322,7 +287,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       date: selectedDate,
       dateFallback: m.reservationDatePlaceholder({}, { locale }),
       locale,
-      tier: selectedTier,
+      reservation: { _tag: "cowork", tier: selectedTier },
     });
 
   const {
@@ -396,21 +361,13 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         });
         return;
       }
-      hasTrackedSuccessfulSubmission.current = false;
       window.scrollTo({ top: 0, behavior: "instant" });
+      const { legalConsent, ...reservation } = data;
       sendReservation({
         locale,
         reservationIntentId,
-        legalConsent: data.legalConsent,
-        reservation: {
-          ...data,
-          coffee: tierIncludesCourtesyCoffee(data.entryTier)
-            ? true
-            : data.coffee,
-          monitorOption: tierRequiresMonitorOption(data.entryTier)
-            ? data.monitorOption
-            : undefined,
-        },
+        legalConsent,
+        reservation,
       });
     })(event);
   };
@@ -447,7 +404,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                           option.title,
                           locale
                         );
-                        const isUnavailable = unavailableTiers.has(
+                        const isUnavailable = unavailableCoworkTiers.has(
                           option.value
                         );
 
@@ -864,69 +821,6 @@ export function ReservationForm({ locale }: ReservationFormProps) {
   );
 }
 
-function ReservationDateField({
-  control,
-  locale,
-  unavailableDates,
-}: {
-  readonly control: Control<ReservationInput, unknown, ReservationData>;
-  readonly locale: Locale;
-  readonly unavailableDates: ReadonlySet<string>;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <FormField
-      control={control}
-      name="date"
-      render={({ field }) => (
-        <FormItem>
-          <FormLabel
-            className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
-            required
-          >
-            {m.reservationDateLabel({}, { locale })}
-          </FormLabel>
-          <Popover open={open} onOpenChange={setOpen}>
-            <PopoverTrigger asChild>
-              <FormControl>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  className={cn(
-                    "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
-                    !field.value && "text-navy-blue/44"
-                  )}
-                >
-                  <CalendarIcon className="h-5 w-5 text-burned-orange" />
-                  {formatDisplayDate(field.value, locale)}
-                </Button>
-              </FormControl>
-            </PopoverTrigger>
-            <PopoverContent align="start" className="w-auto p-3">
-              <Calendar
-                mode="single"
-                selected={parseReservationInputDate(field.value)}
-                onSelect={(date) => {
-                  if (!date) return;
-
-                  field.onChange(formatDateForInput(date));
-                  setOpen(false);
-                }}
-                disabled={[
-                  { before: new Date() },
-                  (date) => unavailableDates.has(formatDateForInput(date)),
-                ]}
-              />
-            </PopoverContent>
-          </Popover>
-          <FormMessage />
-        </FormItem>
-      )}
-    />
-  );
-}
-
 export function ReservationFormFallback({
   locale,
   showMonitorOption = false,
@@ -1037,12 +931,91 @@ function SkeletonField() {
   );
 }
 
-function SkeletonBlock({ className }: { className: string }) {
-  return <div className={cn(reservationFormSkeletonClassName, className)} />;
+function ReservationDateField({
+  control,
+  locale,
+  unavailableDates,
+}: {
+  readonly control: Control<
+    CoworkReservationInput,
+    unknown,
+    CoworkReservationData
+  >;
+  readonly locale: Locale;
+  readonly unavailableDates: ReadonlySet<string>;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <FormField
+      control={control}
+      name="date"
+      render={({ field }) => (
+        <FormItem>
+          <FormLabel
+            className="text-sm font-semibold uppercase tracking-[0.14em] text-navy-blue/72"
+            required
+          >
+            {m.reservationDateLabel({}, { locale })}
+          </FormLabel>
+          <Popover open={open} onOpenChange={setOpen}>
+            <PopoverTrigger asChild>
+              <FormControl>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className={cn(
+                    "h-13 w-full justify-start rounded-[1.1rem] border-navy-blue/12 bg-white px-4 py-3 text-left text-base font-normal text-navy-blue hover:border-burned-orange/45",
+                    !field.value && "text-navy-blue/44"
+                  )}
+                >
+                  <CalendarIcon className="h-5 w-5 text-burned-orange" />
+                  {formatReservationInputDisplayDate(
+                    field.value,
+                    locale,
+                    m.reservationDatePlaceholder({}, { locale })
+                  )}
+                </Button>
+              </FormControl>
+            </PopoverTrigger>
+            <PopoverContent align="start" className="w-auto p-3">
+              <Calendar
+                mode="single"
+                selected={reservationInputDateToCalendarDate(field.value)}
+                onSelect={(date) => {
+                  const plainDate = date
+                    ? calendarDateToReservationPlainDate(date)
+                    : undefined;
+
+                  if (!plainDate) return;
+
+                  field.onChange(formatReservationInputDate(plainDate));
+                  setOpen(false);
+                }}
+                disabled={[
+                  { before: new Date() },
+                  (date) => {
+                    const plainDate = calendarDateToReservationPlainDate(date);
+
+                    return plainDate
+                      ? unavailableDates.has(
+                          formatReservationInputDate(plainDate)
+                        )
+                      : true;
+                  },
+                ]}
+              />
+            </PopoverContent>
+          </Popover>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+  );
 }
 
 type TextFieldProps = {
-  control: Control<ReservationInput, unknown, ReservationData>;
+  control: Control<CoworkReservationInput, unknown, CoworkReservationData>;
   name: "name" | "email" | "phone";
   label: string;
   placeholder: string;
