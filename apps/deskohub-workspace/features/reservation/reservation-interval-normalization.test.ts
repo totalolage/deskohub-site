@@ -1,6 +1,10 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
+import {
+  instantStringEffectSchema,
+  localDateTimeEffectSchema,
+} from "@/shared/utils/temporal";
 import {
   getDurationMinutes,
   normalizeReservationIntervalFields,
@@ -8,6 +12,8 @@ import {
 
 const timeZone = "Europe/Prague";
 const date = "2026-07-01";
+const localDateTime = Schema.decodeUnknownSync(localDateTimeEffectSchema);
+const instant = Schema.decodeUnknownSync(instantStringEffectSchema);
 
 const toInstant = (value: string) =>
   Temporal.PlainDateTime.from(value)
@@ -20,8 +26,8 @@ describe("normalizeReservationIntervalFields", () => {
     const interval = await Effect.runPromise(
       normalizeReservationIntervalFields(
         {
-          startsAt: `${date}T12:00`,
-          endsAt: `${date}T13:30`,
+          startsAt: localDateTime(`${date}T12:00`),
+          endsAt: localDateTime(`${date}T13:30`),
         },
         timeZone
       )
@@ -35,8 +41,8 @@ describe("normalizeReservationIntervalFields", () => {
     const interval = await Effect.runPromise(
       normalizeReservationIntervalFields(
         {
-          startsAt: `${date}T22:00`,
-          endsAt: "2026-07-02T22:00",
+          startsAt: localDateTime(`${date}T22:00`),
+          endsAt: localDateTime("2026-07-02T22:00"),
         },
         timeZone
       )
@@ -51,8 +57,8 @@ describe("normalizeReservationIntervalFields", () => {
     const interval = await Effect.runPromise(
       normalizeReservationIntervalFields(
         {
-          startsAt: "2026-07-01T10:00:00.000Z",
-          endsAt: "2026-07-01T11:00:00.000Z",
+          startsAt: instant("2026-07-01T10:00:00.000Z"),
+          endsAt: instant("2026-07-01T11:00:00.000Z"),
         },
         timeZone
       )
@@ -67,8 +73,8 @@ describe("normalizeReservationIntervalFields", () => {
       Effect.runPromise(
         normalizeReservationIntervalFields(
           {
-            startsAt: "2026-07-01T10:00:00+02:00",
-            endsAt: "2026-07-01T09:00:00+02:00",
+            startsAt: instant("2026-07-01T10:00:00+02:00"),
+            endsAt: instant("2026-07-01T09:00:00+02:00"),
           },
           timeZone
         )
@@ -80,22 +86,17 @@ describe("normalizeReservationIntervalFields", () => {
     });
   });
 
-  test("rejects a duration mismatch when provided", async () => {
-    await expect(
-      Effect.runPromise(
-        normalizeReservationIntervalFields(
-          {
-            startsAt: `${date}T10:00`,
-            endsAt: `${date}T12:00`,
-            durationMinutes: 90,
-          },
-          timeZone
-        )
+  test("derives duration from the interval boundaries", async () => {
+    const interval = await Effect.runPromise(
+      normalizeReservationIntervalFields(
+        {
+          startsAt: localDateTime(`${date}T10:00`),
+          endsAt: localDateTime(`${date}T12:00`),
+        },
+        timeZone
       )
-    ).rejects.toMatchObject({
-      _tag: "ReservationIntervalValidationError",
-      path: "endsAt",
-      message: "Reservation duration must match start and end time.",
-    });
+    );
+
+    expect(getDurationMinutes(interval)).toBe(120);
   });
 });

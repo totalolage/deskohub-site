@@ -50,16 +50,16 @@ const decodeReservationTimestamp = Schema.decodeUnknownEffect(
 );
 const decodeInstantString = Schema.decodeUnknownSync(instantStringEffectSchema);
 
-export const toPlainDateTime = (value: string, timeZone: string) =>
+export const toPlainDateTime = (value: Instant, timeZone: string) =>
   Temporal.Instant.from(value).toZonedDateTimeISO(timeZone).toPlainDateTime();
 
-export const toInstantMilliseconds = (value: string) =>
+export const toInstantMilliseconds = (value: Instant) =>
   Temporal.Instant.from(value).epochMilliseconds;
 
 type TimestampFieldInput = {
   readonly path: keyof ReservationInterval;
   readonly timeZone: string;
-  readonly value: string;
+  readonly value: Instant | LocalDateTime;
 };
 
 export const normalizeTimestampField = ({

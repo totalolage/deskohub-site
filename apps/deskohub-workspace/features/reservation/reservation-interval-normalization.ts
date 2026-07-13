@@ -40,18 +40,6 @@ export const normalizeReservationIntervalFields = (
       );
     }
 
-    if (
-      value.durationMinutes !== undefined &&
-      durationMinutes !== value.durationMinutes
-    ) {
-      return yield* Effect.fail(
-        new ReservationIntervalValidationError({
-          path: "endsAt",
-          message: "Reservation duration must match start and end time.",
-        })
-      );
-    }
-
     return interval;
   });
 

@@ -1,5 +1,5 @@
 import { Data } from "effect";
-import type { Instant } from "@/shared/utils/temporal";
+import type { Instant, LocalDateTime } from "@/shared/utils/temporal";
 
 export type ReservationInterval = {
   readonly startsAt: Instant;
@@ -7,9 +7,8 @@ export type ReservationInterval = {
 };
 
 export type ReservationIntervalInput = {
-  readonly startsAt: string;
-  readonly endsAt: string;
-  readonly durationMinutes?: number;
+  readonly startsAt: Instant | LocalDateTime;
+  readonly endsAt: Instant | LocalDateTime;
   readonly date?: never;
 };
 
@@ -17,7 +16,6 @@ export type ReservationDateInput = {
   readonly date: string;
   readonly startsAt?: never;
   readonly endsAt?: never;
-  readonly durationMinutes?: never;
 };
 
 export type ReservationTimeInput =
