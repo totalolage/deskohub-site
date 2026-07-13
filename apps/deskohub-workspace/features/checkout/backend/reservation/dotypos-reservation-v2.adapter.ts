@@ -7,13 +7,19 @@ import {
   type Reservation,
   ValidationError,
 } from "@deskohub/dotypos";
-import { Effect } from "effect";
-import { parseCheckoutDetailsReservation } from "@/features/checkout/checkout-details";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import { Effect, Match } from "effect";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
+import {
+  getWorkspaceMeetingRoomProductTitle,
+  getWorkspaceProductTierTitle,
+} from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
-import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import { normalizeReservationInterval } from "@/features/reservation/reservation-interval";
+import {
+  getReservationDate,
+  getReservationDurationMinutes,
+  getReservationPragueDateRange,
+} from "@/features/reservation/reservation-interval";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
@@ -39,14 +45,11 @@ export const createWorkspaceDotyposReservation: (
 
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const { startDate, endDate } = yield* getPragueAllDayRange(
-      input.checkoutDetails.reservation.date
-    );
-    const assignmentReservation = yield* getLegacyAssignmentReservation(
+    const { startDate, endDate } = yield* getReservationDateRange(
       input.checkoutDetails.reservation
     );
     const tableId = yield* tableAssignments.assignTableId(
-      assignmentReservation
+      input.checkoutDetails.reservation
     );
 
     const reservationInput: CreateDotyposReservationInput = {
@@ -79,79 +82,35 @@ export const createWorkspaceDotyposReservation: (
       Effect.annotateLogs({
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,
-        entryTier: input.checkoutDetails.reservation.tier,
-        date: input.checkoutDetails.reservation.date,
+        reservationKind: input.checkoutDetails.reservation._tag,
+        ...Match.value(input.checkoutDetails.reservation).pipe(
+          Match.tag("meeting-room", () => ({})),
+          Match.tag("cowork", (reservation) => ({
+            entryTier: reservation.tier,
+          })),
+          Match.exhaustive
+        ),
+        date: getReservationDate({
+          interval: input.checkoutDetails.reservation,
+          timeZone: workspaceSiteConstants.location.timeZone,
+        }),
         reservationStatus: input.status,
       })
     )
 );
 
-const getLegacyAssignmentReservation = Effect.fn(
-  "createWorkspaceDotyposReservation.getLegacyAssignmentReservation"
-)(function* (reservation: CheckoutDetailsJson["reservation"]) {
-  const interval = yield* normalizeReservationInterval(
-    getCoworkReservationIntervalInput(reservation.date)
-  ).pipe(
+const getReservationDateRange = (
+  reservation: CheckoutDetailsJson["reservation"]
+): Effect.Effect<{ startDate: Date; endDate: Date }, ValidationError> =>
+  getReservationPragueDateRange(reservation).pipe(
     Effect.mapError(
       (cause) =>
         new ValidationError({
-          message: "Legacy cowork reservation interval must be valid.",
+          message:
+            "Workspace reservation interval must be valid for Dotypos reservation creation.",
           cause,
         })
     )
-  );
-
-  if (reservation.tier === "basic") {
-    return parseCheckoutDetailsReservation(
-      { _tag: "cowork", tier: "basic", coffee: reservation.coffee },
-      interval
-    );
-  }
-  if (reservation.tier === "plus") {
-    return parseCheckoutDetailsReservation(
-      { _tag: "cowork", tier: "plus", coffee: true },
-      interval
-    );
-  }
-  if (!reservation.monitorOption) {
-    return yield* Effect.fail(
-      new ValidationError({
-        message: "Legacy Profi reservation requires a monitor option.",
-      })
-    );
-  }
-  return parseCheckoutDetailsReservation(
-    {
-      _tag: "cowork",
-      tier: "profi",
-      coffee: true,
-      monitorOption: reservation.monitorOption,
-    },
-    interval
-  );
-});
-
-const getPragueAllDayRange = (
-  date: string
-): Effect.Effect<{ startDate: Date; endDate: Date }, ValidationError> =>
-  Effect.try({
-    try: () => {
-      const reservationDate = Temporal.PlainDate.from(date);
-      return {
-        startDate: toPragueMidnightDate(reservationDate),
-        endDate: toPragueMidnightDate(reservationDate.add({ days: 1 })),
-      };
-    },
-    catch: () =>
-      new ValidationError({
-        message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
-      }),
-  });
-
-const toPragueMidnightDate = (plainDate: Temporal.PlainDate) =>
-  new Date(
-    plainDate.toZonedDateTime({ timeZone: "Europe/Prague" }).toInstant()
-      .epochMilliseconds
   );
 
 const formatWorkspaceReservationNote = (
@@ -159,14 +118,46 @@ const formatWorkspaceReservationNote = (
 ) => {
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
-  const product = getWorkspaceProductByTier(reservation.tier);
+  const productLabel = Match.value(reservation).pipe(
+    Match.tag("meeting-room", () =>
+      getWorkspaceMeetingRoomProductTitle(checkoutDetails.locale)
+    ),
+    Match.tag("cowork", (coworkReservation) =>
+      getWorkspaceProductTierTitle(
+        coworkReservation.tier,
+        checkoutDetails.locale
+      )
+    ),
+    Match.exhaustive
+  );
+  const productRows = Match.value(reservation).pipe(
+    Match.tag("meeting-room", () => []),
+    Match.tag("cowork", (coworkReservation) =>
+      Match.value(coworkReservation).pipe(
+        Match.when({ tier: "basic" }, (basicReservation) => [
+          `Coffee: ${basicReservation.coffee ? "yes" : "no"}`,
+        ]),
+        Match.when({ tier: "plus" }, () => ["Coffee: yes"]),
+        Match.when({ tier: "profi" }, (profiReservation) => [
+          "Coffee: yes",
+          `Monitor: ${profiReservation.monitorOption}`,
+        ]),
+        Match.exhaustive
+      )
+    ),
+    Match.exhaustive
+  );
   const lines = [
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,
-    `Product: ${product.label}`,
-    `Date: ${reservation.date}`,
-    `Coffee: ${reservation.coffee ? "yes" : "no"}`,
-    reservation.monitorOption ? `Monitor: ${reservation.monitorOption}` : null,
+    `Product: ${productLabel}`,
+    `Date: ${getReservationDate({
+      interval: reservation,
+      timeZone: workspaceSiteConstants.location.timeZone,
+    })}`,
+    `Time: ${reservation.startsAt}-${reservation.endsAt}`,
+    `Duration: ${getReservationDurationMinutes(reservation)} minutes`,
+    ...productRows,
     `Price: ${formatWorkspaceMoney(
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
