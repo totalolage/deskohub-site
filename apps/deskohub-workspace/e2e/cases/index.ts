@@ -26,7 +26,7 @@ import {
 } from "../integrations/database";
 import { cancelDotyposReservation } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
-import { addRedaction, log, redact } from "../runtime";
+import { log, redact } from "../runtime";
 import type {
   CheckoutData,
   CheckoutFlowState,
@@ -151,14 +151,6 @@ const trackCheckoutState = (
 ) => {
   const state: CheckoutFlowState = { data };
   flowStates.push(state);
-  for (const value of [
-    data.checkoutUrl,
-    data.email,
-    data.message,
-    data.name,
-    data.phone,
-  ])
-    addRedaction(value);
   return state;
 };
 
