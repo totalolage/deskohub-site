@@ -8,9 +8,7 @@ export const workspaceBookingGuestCount = 1;
 
 export const getWorkspaceTableOccupancyById = (
   reservations: readonly Reservation[],
-  input:
-    | Pick<ReservationDateRange, "startMs" | "endMs">
-    | Temporal.PlainDate
+  input: Pick<ReservationDateRange, "startMs" | "endMs"> | Temporal.PlainDate
 ) => {
   const occupancyByTableId = new Map<string, number>();
   const range =
@@ -50,9 +48,8 @@ export const getWorkspaceTableOccupancyById = (
 };
 
 const getPragueDayRange = (date: Temporal.PlainDate) => ({
-  startMs: date
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds,
+  startMs: date.toZonedDateTime({ timeZone: "Europe/Prague" }).toInstant()
+    .epochMilliseconds,
   endMs: date
     .add({ days: 1 })
     .toZonedDateTime({ timeZone: "Europe/Prague" })

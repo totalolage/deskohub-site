@@ -5,8 +5,8 @@ import {
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
