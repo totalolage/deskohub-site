@@ -8,16 +8,21 @@ import {
 } from "effect";
 import { isWorkspaceMeetingRoomDuration } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
+import type {
+  ReservationInterval,
+  ReservationIntervalInput,
+} from "@/features/reservation/reservation-interval-domain";
 import {
   getDurationMinutes,
   normalizeReservationIntervalFields,
-  type ReservationInterval,
-  type ReservationIntervalInput,
-  toInstantMilliseconds,
-  toPlainDateTime,
 } from "@/features/reservation/reservation-interval-normalization";
 import {
+  toInstantMilliseconds,
+  toPlainDateTime,
+} from "@/features/reservation/reservation-interval-parser";
+import {
   instantStringEffectSchema,
+  localDateTimeEffectSchema,
   makeWholeHourInstantStringEffectSchema,
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
@@ -25,7 +30,7 @@ import {
 export type {
   ReservationInterval,
   ReservationIntervalInput,
-} from "@/features/reservation/reservation-interval-normalization";
+} from "@/features/reservation/reservation-interval-domain";
 export type ReservationDateRange = {
   readonly startDate: Date;
   readonly endDate: Date;
@@ -38,10 +43,15 @@ export class ReservationIntervalError extends Data.TaggedError(
 )<{ readonly message: string; readonly cause?: unknown }> {}
 
 export const reservationIntervalInputEffectSchema = Schema.Struct({
-  durationMinutes: Schema.optional(Schema.Number),
-  startsAt: Schema.String,
-  endsAt: Schema.String,
+  startsAt: Schema.Union([
+    localDateTimeEffectSchema,
+    instantStringEffectSchema,
+  ]),
+  endsAt: Schema.Union([localDateTimeEffectSchema, instantStringEffectSchema]),
 });
+const decodeReservationIntervalInput = Schema.decodeUnknownSync(
+  reservationIntervalInputEffectSchema
+);
 
 export const reservationIntervalFieldSchemas = {
   startsAt: reservationIntervalInputEffectSchema.fields.startsAt,
@@ -61,9 +71,7 @@ export const normalizedReservationIntervalEffectSchema =
           Effect.mapError((issue) => toSchemaIssue(input, issue))
         )
       ),
-      encode: SchemaGetter.transform(
-        (interval): ReservationIntervalInput => interval
-      ),
+      encode: SchemaGetter.transform(decodeReservationIntervalInput),
     })
   );
 
@@ -157,7 +165,7 @@ export const getReservationIntervalNormalization = (
 
 type NormalizedReservationInterval<T extends ReservationIntervalInput> = Omit<
   T,
-  "durationMinutes" | "startsAt" | "endsAt"
+  "startsAt" | "endsAt"
 > &
   ReservationInterval;
 
@@ -172,12 +180,7 @@ export const normalizeReservationInterval = Effect.fn(
       (cause) => new ReservationIntervalError({ message: cause.message, cause })
     )
   );
-  const {
-    durationMinutes: _durationMinutes,
-    startsAt: _startsAt,
-    endsAt: _endsAt,
-    ...rest
-  } = value;
+  const { startsAt: _startsAt, endsAt: _endsAt, ...rest } = value;
 
   return { ...rest, ...interval } as NormalizedReservationInterval<T>;
 });

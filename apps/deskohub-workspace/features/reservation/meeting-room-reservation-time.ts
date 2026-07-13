@@ -1,15 +1,18 @@
-import {
-  isWorkspaceMeetingRoomDuration,
-  type WorkspaceMeetingRoomDurationMinutes,
-} from "@/features/checkout/product-catalog";
+import { Schema } from "effect";
+import { isWorkspaceMeetingRoomDuration } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import "@/shared/polyfills/temporal";
+import {
+  type Instant,
+  instantStringEffectSchema,
+} from "@/shared/utils/temporal";
+
+const decodeInstant = Schema.decodeUnknownSync(instantStringEffectSchema);
 
 export type MeetingRoomReservationInterval = {
   readonly date: string;
-  readonly startsAt: string;
-  readonly endsAt: string;
-  readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
+  readonly startsAt: Instant;
+  readonly endsAt: Instant;
 };
 
 export const getEarliestMeetingRoomStartDateTime = (
@@ -43,9 +46,8 @@ export const getMeetingRoomReservationInterval = (
 
     return {
       date: startPlainDateTime.toPlainDate().toString(),
-      startsAt: startInstant.toString(),
-      endsAt: endInstant.toString(),
-      durationMinutes,
+      startsAt: decodeInstant(startInstant.toString()),
+      endsAt: decodeInstant(endInstant.toString()),
     };
   } catch {
     return null;
