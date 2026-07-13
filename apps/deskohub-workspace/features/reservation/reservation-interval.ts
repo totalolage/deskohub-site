@@ -28,18 +28,6 @@ export type {
 } from "@/features/reservation/reservation-interval-normalization";
 export { defaultReservationInterval };
 
-export type ReservationDateOrInterval =
-  | {
-      readonly date: string;
-      readonly startsAt?: never;
-      readonly endsAt?: never;
-    }
-  | {
-      readonly startsAt: string;
-      readonly endsAt: string;
-      readonly date?: never;
-    };
-
 export type ReservationDateRange = {
   readonly startDate: Date;
   readonly endDate: Date;
@@ -201,7 +189,7 @@ export const normalizeReservationInterval = Effect.fn(
 });
 
 export const getReservationPragueDateRange = (
-  reservation: ReservationDateOrInterval
+  reservation: ReservationInterval
 ): Effect.Effect<ReservationDateRange, ReservationIntervalError> =>
   normalizeReservationInterval(reservation).pipe(
     Effect.map((interval) => {

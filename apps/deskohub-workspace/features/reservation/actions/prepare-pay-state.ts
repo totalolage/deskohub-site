@@ -540,15 +540,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const reservationInterval = unsafeNormalizeReservationInterval(
       input.reservation
     );
-    const reservationDate = Match.value(input.reservation).pipe(
-      Match.when({ entryTier: "meeting-room" }, () =>
-        getReservationDate({
-          interval: reservationInterval,
-          timeZone: workspaceSiteConstants.location.timeZone,
-        })
-      ),
-      Match.orElse((coworkReservation) => coworkReservation.date)
-    );
+    const reservationDate = getReservationDate({
+      interval: reservationInterval,
+      timeZone: workspaceSiteConstants.location.timeZone,
+    });
     const availabilitySelection = Match.value(quote.order).pipe(
       Match.tag("meeting-room", () => ({
         _tag: "meeting-room" as const,

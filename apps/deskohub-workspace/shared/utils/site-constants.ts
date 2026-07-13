@@ -20,6 +20,9 @@ export const workspaceSiteConstants = {
     },
     timeZone: "Europe/Prague",
   },
+  reservation: {
+    defaultStartTime: "10:00",
+  },
   company: {
     identificationNumber: "24531596",
     establishmentId: "1016069146",

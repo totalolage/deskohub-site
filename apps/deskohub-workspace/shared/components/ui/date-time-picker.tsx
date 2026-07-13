@@ -11,6 +11,7 @@ import {
   PopoverTrigger,
 } from "@/shared/components/ui/popover";
 import { cn } from "@/shared/utils";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   dateToTemporalPlainDate,
   temporalPlainDateToDate,
@@ -30,8 +31,8 @@ type DateTimePickerProps = {
   readonly variant?: "default" | "error";
 };
 
-const defaultTimeZone = "Europe/Prague";
-const defaultTime = "10:00";
+const defaultTimeZone = workspaceSiteConstants.location.timeZone;
+const defaultTime = workspaceSiteConstants.reservation.defaultStartTime;
 
 const parsePlainDateTime = (value: string | undefined) => {
   if (!value) return undefined;
