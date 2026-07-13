@@ -1,14 +1,19 @@
 import { describe, expect, test } from "bun:test";
+import "@/shared/polyfills/temporal";
 import {
   buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
-  type WorkspaceCheckoutOrder,
-} from "./checkout-quote";
+  type WorkspaceCheckoutOrderInput,
+} from "./checkout-quote-v2";
+
+const coworkReservationDate = { date: "2099-06-10" } as const;
 
 describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
 
@@ -28,7 +33,9 @@ describe("workspace checkout quotes", () => {
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
       coffee: true,
     });
 
@@ -47,8 +54,10 @@ describe("workspace checkout quotes", () => {
 
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "plus",
-      coffee: false,
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "plus",
+      coffee: true,
     });
 
     expect(quote.order.coffee).toBe(true);
@@ -65,27 +74,12 @@ describe("workspace checkout quotes", () => {
     expect(quote.payment.expectedPrice.value).toBe(49_000);
   });
 
-  test("rejects unreachable monitor combinations consistently", () => {
-    expect(() =>
-      buildWorkspaceCheckoutQuote({
-        entryTier: "basic",
-        coffee: false,
-        monitorOption: "2x27-qhd",
-      })
-    ).toThrow("Monitor option is unavailable");
-
-    expect(() =>
-      buildWorkspaceCheckoutQuote({
-        entryTier: "profi",
-        coffee: true,
-      })
-    ).toThrow("Monitor option is required");
-  });
-
   test("includes customer discount as a negative display item", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic",
+        ...coworkReservationDate,
+        kind: "cowork",
+        tier: "basic",
         coffee: true,
       },
       {
@@ -114,7 +108,9 @@ describe("workspace checkout quotes", () => {
   test("preserves minor-unit rounding behavior", () => {
     const quote = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic",
+        ...coworkReservationDate,
+        kind: "cowork",
+        tier: "basic",
         coffee: false,
       },
       {
@@ -132,12 +128,16 @@ describe("workspace checkout quotes", () => {
 
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const coffeeDiscountedToSameTotal = buildWorkspaceCheckoutQuote(
       {
-        entryTier: "basic",
+        ...coworkReservationDate,
+        kind: "cowork",
+        tier: "basic",
         coffee: true,
       },
       {
@@ -159,20 +159,22 @@ describe("workspace checkout quotes", () => {
 
   test("sanitizes runtime contact and consent fields from quote output", () => {
     const orderWithRuntimeExtras = {
-      entryTier: "basic",
-      date: "2026-06-01",
+      kind: "cowork",
+      tier: "basic",
+      date: "2099-06-10",
       coffee: false,
       legalConsent: true,
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420 777 777 777",
       message: "Please keep this private.",
-    } as unknown as WorkspaceCheckoutOrder;
+    } as unknown as WorkspaceCheckoutOrderInput;
 
     const quote = buildWorkspaceCheckoutQuote(orderWithRuntimeExtras);
 
     expect(quote.order).toEqual({
-      entryTier: "basic",
+      _tag: "cowork",
+      tier: "basic",
       coffee: false,
     });
     expect(quote.order).not.toHaveProperty("date");
@@ -185,30 +187,104 @@ describe("workspace checkout quotes", () => {
 
   test("ignores runtime contact and consent fields when fingerprinting", () => {
     const cleanQuote = buildWorkspaceCheckoutQuote({
-      entryTier: "plus",
-      coffee: false,
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "plus",
+      coffee: true,
     });
     const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
-      entryTier: "plus",
-      date: "2026-06-01",
-      coffee: false,
+      kind: "cowork",
+      tier: "plus",
+      date: "2099-06-10",
+      coffee: true,
       legalConsent: true,
       name: "Grace Hopper",
       email: "grace@example.com",
       phone: "+420 111 111 111",
       message: "Do not fingerprint this.",
-    } as unknown as WorkspaceCheckoutOrder);
+    } as unknown as WorkspaceCheckoutOrderInput);
 
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
   });
 
+  test("excludes cowork dates but fingerprints meeting-room intervals", () => {
+    const accessOnly = buildWorkspaceCheckoutQuote({
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
+      coffee: false,
+    });
+    const differentCoworkDate = buildWorkspaceCheckoutQuote({
+      kind: "cowork",
+      tier: "basic",
+      coffee: false,
+      date: "2099-06-11",
+    });
+    const morningOnly = buildWorkspaceCheckoutQuote({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+
+    expect(differentCoworkDate.order).toEqual(accessOnly.order);
+    expect(differentCoworkDate.fingerprint).toBe(accessOnly.fingerprint);
+    expect(morningOnly.order).toMatchObject({
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+    expect(morningOnly.order).not.toHaveProperty("durationMinutes");
+    expect(morningOnly.fingerprint).not.toBe(accessOnly.fingerprint);
+  });
+
+  test("prices meeting room reservations by approved duration", () => {
+    const oneHour = buildWorkspaceCheckoutQuote({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T08:00:00Z",
+    });
+    const fourHours = buildWorkspaceCheckoutQuote({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T07:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+    });
+    const fullDay = buildWorkspaceCheckoutQuote({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T13:00:00Z",
+      endsAt: "2099-06-11T13:00:00Z",
+    });
+
+    expect(oneHour.summary.sections[0]?.items).toEqual([
+      {
+        key: "product:meeting-room",
+        meetingRoomDurationMinutes: 60,
+        amount: { value: 30_000, exponent: 2, currency: "CZK" },
+      },
+    ]);
+    expect(fourHours.payment.expectedPrice.value).toBe(60_000);
+    expect(fullDay.payment.expectedPrice.value).toBe(100_000);
+  });
+
+  test("rejects unsupported product and interval combinations", () => {
+    expect(() =>
+      buildWorkspaceCheckoutQuote({
+        kind: "meeting-room",
+        startsAt: "2099-06-10T07:30:00Z",
+        endsAt: "2099-06-10T08:30:00Z",
+      })
+    ).toThrow("Meeting room reservations must start on a whole hour");
+  });
+
   test("detects changed summary section and item keys", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const withCoffee = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
       coffee: true,
     });
 
@@ -222,7 +298,9 @@ describe("workspace checkout quotes", () => {
 
   test("detects changed summary currency and exponent", () => {
     const quote = buildWorkspaceCheckoutQuote({
-      entryTier: "basic",
+      ...coworkReservationDate,
+      kind: "cowork",
+      tier: "basic",
       coffee: false,
     });
     const changedCurrency = {
