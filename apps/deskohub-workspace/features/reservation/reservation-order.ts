@@ -1,4 +1,11 @@
-import { Match, Schema, SchemaGetter } from "effect";
+import {
+  Effect,
+  Match,
+  Option,
+  Schema,
+  SchemaGetter,
+  SchemaIssue,
+} from "effect";
 import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
   type CoworkReservationProductInput,
@@ -13,12 +20,11 @@ import {
   getMeetingRoomReservationIssues,
   type MeetingRoomReservationOrderObject,
   meetingRoomReservationOrderObjectEffectSchema,
-  type NormalizedMeetingRoomReservationOrder,
   normalizedMeetingRoomReservationOrderEffectSchema,
 } from "@/features/reservation/meeting-room-reservation";
 import {
   getReservationIntervalValidationIssue,
-  unsafeNormalizeReservationInterval,
+  normalizeReservationInterval,
 } from "@/features/reservation/reservation-interval";
 
 const reservationOrderObjectEffectSchema = Schema.Union([
@@ -61,24 +67,32 @@ const reservationOrderDraftEffectSchema =
 
 const normalizeMeetingRoomReservationOrder = (
   data: MeetingRoomReservationOrderObject
-): NormalizedMeetingRoomReservationOrder =>
-  unsafeNormalizeReservationInterval(data);
+) => normalizeReservationInterval(data);
 
-const normalizeReservationOrder = (
-  data: ReservationOrderObject
-): typeof normalizedReservationOrderEffectSchema.Type =>
+const normalizeReservationOrder = (data: ReservationOrderObject) =>
   Match.value(data).pipe(
     Match.when(
       { entryTier: "meeting-room" },
       normalizeMeetingRoomReservationOrder
     ),
-    Match.orElse(normalizeCoworkReservationOrder)
+    Match.orElse((coworkReservation) =>
+      Effect.succeed(normalizeCoworkReservationOrder(coworkReservation))
+    )
   );
 
 export const reservationOrderEffectSchema =
   reservationOrderDraftEffectSchema.pipe(
     Schema.decodeTo(normalizedReservationOrderEffectSchema, {
-      decode: SchemaGetter.transform(normalizeReservationOrder),
+      decode: SchemaGetter.transformOrFail((reservation) =>
+        normalizeReservationOrder(reservation).pipe(
+          Effect.mapError(
+            (error) =>
+              new SchemaIssue.InvalidValue(Option.some(reservation), {
+                message: error.message,
+              })
+          )
+        )
+      ),
       encode: SchemaGetter.transform(
         (reservation): ReservationOrderObject => reservation
       ),

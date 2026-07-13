@@ -40,7 +40,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
   getReservationDate,
-  unsafeNormalizeReservationInterval,
+  normalizeReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { getStoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
@@ -266,13 +266,15 @@ const getCheckoutLegalEvidence = (input: {
   });
 };
 
-const buildCheckoutDetailsForPayment = (input: {
+const buildCheckoutDetailsForPayment = Effect.fn(
+  "checkout.buildCheckoutDetailsForPayment"
+)(function* (input: {
   readonly locale: Locale;
   readonly data: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: LegalEvidenceMap;
-}): Omit<CheckoutDetailsJson, "fulfillment"> => {
-  const interval = unsafeNormalizeReservationInterval(input.data);
+}) {
+  const interval = yield* normalizeReservationInterval(input.data);
   const reservation = parseCheckoutDetailsReservation(
     input.quote.order,
     interval
@@ -294,8 +296,8 @@ const buildCheckoutDetailsForPayment = (input: {
       }),
     },
     legal: input.legalEvidence,
-  };
-};
+  } satisfies Omit<CheckoutDetailsJson, "fulfillment">;
+});
 
 const openFinalPayState: (
   payStateToken: string,
@@ -811,7 +813,7 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
             legalDocuments,
           });
-          const checkoutDetails = buildCheckoutDetailsForPayment({
+          const checkoutDetails = yield* buildCheckoutDetailsForPayment({
             locale,
             data,
             quote,

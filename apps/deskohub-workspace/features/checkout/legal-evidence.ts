@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 import { locales } from "@/features/i18n";
-import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import { instantStringEffectSchema } from "@/shared/utils/temporal";
 
 export const legalDocumentKeys = [
   "termsAndConditions",
@@ -35,7 +35,7 @@ export const legalEvidenceEffectSchema = Schema.Struct({
   documentKey: Schema.Literals(legalDocumentKeys),
   documentHash: Schema.NonEmptyString,
   accepted: Schema.Boolean,
-  acceptedAt: isoDateTimeWithOffsetStringEffectSchema,
+  acceptedAt: instantStringEffectSchema,
   locale: Schema.Literals(locales),
   source: Schema.NonEmptyString,
   document: legalDocumentHashEffectSchema,

@@ -18,6 +18,7 @@ import {
   toPlainDateTime,
 } from "@/features/reservation/reservation-interval-normalization";
 import {
+  instantStringEffectSchema,
   makeWholeHourInstantStringEffectSchema,
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
@@ -52,8 +53,8 @@ export const reservationIntervalFieldSchemas = {
 } as const;
 
 export const reservationIntervalEffectSchema = Schema.Struct({
-  startsAt: Schema.String,
-  endsAt: Schema.String,
+  startsAt: instantStringEffectSchema,
+  endsAt: instantStringEffectSchema,
 });
 
 export const normalizedReservationIntervalEffectSchema =
@@ -69,10 +70,6 @@ export const normalizedReservationIntervalEffectSchema =
       ),
     })
   );
-
-const decodeReservationInterval = Schema.decodeUnknownSync(
-  normalizedReservationIntervalEffectSchema
-);
 
 export const isDefaultReservationInterval = (
   interval: ReservationIntervalInput
@@ -138,45 +135,55 @@ export const meetingRoomReservationIntervalEffectSchema =
 export const getReservationIntervalValidationIssue = (
   interval: ReservationIntervalInput
 ) => {
-  return Effect.runSync(
+  const normalization = getReservationIntervalNormalization(interval);
+  return normalization._tag === "Failure"
+    ? {
+        path: normalization.issue.path,
+        message: normalization.issue.message,
+      }
+    : null;
+};
+
+export const getReservationIntervalNormalization = (
+  interval: ReservationIntervalInput
+) =>
+  Effect.runSync(
     normalizeReservationIntervalFields(interval, reservationTimeZone).pipe(
-      Effect.as(null),
+      Effect.map((normalized) => ({
+        _tag: "Success" as const,
+        interval: normalized,
+      })),
       Effect.catch((issue) =>
-        Effect.succeed({ path: issue.path, message: issue.message })
+        Effect.succeed({ _tag: "Failure" as const, issue })
       )
     )
   );
-};
 
-export const unsafeNormalizeReservationInterval = <T extends object>(
-  value: T
-): Omit<T, "durationMinutes"> & ReservationInterval => {
-  const interval = decodeReservationInterval(value);
-  const { durationMinutes: _durationMinutes, ...rest } = value as T & {
-    readonly durationMinutes?: number;
-  };
-
-  return { ...rest, ...interval } as Omit<T, "durationMinutes"> &
-    ReservationInterval;
-};
+type NormalizedReservationInterval<T extends ReservationIntervalInput> = Omit<
+  T,
+  "durationMinutes" | "startsAt" | "endsAt"
+> &
+  ReservationInterval;
 
 export const normalizeReservationInterval = Effect.fn(
   "normalizeReservationInterval"
-)(function* <T extends object>(value: T) {
+)(function* <T extends ReservationIntervalInput>(value: T) {
   const interval = yield* normalizeReservationIntervalFields(
-    value as ReservationIntervalInput,
+    value,
     reservationTimeZone
   ).pipe(
     Effect.mapError(
       (cause) => new ReservationIntervalError({ message: cause.message, cause })
     )
   );
-  const { durationMinutes: _durationMinutes, ...rest } = value as T & {
-    readonly durationMinutes?: number;
-  };
+  const {
+    durationMinutes: _durationMinutes,
+    startsAt: _startsAt,
+    endsAt: _endsAt,
+    ...rest
+  } = value;
 
-  return { ...rest, ...interval } as Omit<T, "durationMinutes"> &
-    ReservationInterval;
+  return { ...rest, ...interval } as NormalizedReservationInterval<T>;
 });
 
 export const getReservationPragueDateRange = (

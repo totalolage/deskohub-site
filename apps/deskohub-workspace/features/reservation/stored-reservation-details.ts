@@ -6,78 +6,39 @@ export const workspaceProductMonitorOptionEffectSchema = Schema.Literals(
   workspaceProductMonitorOptions
 );
 
-const makeWorkspaceReservationDetailsEffectSchemas = <
-  CoworkFields extends Schema.Struct.Fields,
-  MeetingRoomFields extends Schema.Struct.Fields,
->(fields: {
-  readonly cowork: CoworkFields;
-  readonly meetingRoom: MeetingRoomFields;
-}) => {
-  const basic = Schema.TaggedStruct("cowork", {
-    ...fields.cowork,
+export const storedBasicReservationDetailsEffectSchema = Schema.TaggedStruct(
+  "cowork",
+  {
     tier: Schema.Literal("basic"),
     coffee: Schema.Boolean,
-  });
-  const plus = Schema.TaggedStruct("cowork", {
-    ...fields.cowork,
+  }
+);
+export const storedPlusReservationDetailsEffectSchema = Schema.TaggedStruct(
+  "cowork",
+  {
     tier: Schema.Literal("plus"),
     coffee: Schema.Literal(true),
-  });
-  const profi = Schema.TaggedStruct("cowork", {
-    ...fields.cowork,
+  }
+);
+export const storedProfiReservationDetailsEffectSchema = Schema.TaggedStruct(
+  "cowork",
+  {
     tier: Schema.Literal("profi"),
     coffee: Schema.Literal(true),
     monitorOption: workspaceProductMonitorOptionEffectSchema,
-  });
-  const meetingRoom = Schema.TaggedStruct("meeting-room", fields.meetingRoom);
-  const cowork = Schema.Union([basic, plus, profi]);
-
-  return {
-    basic,
-    plus,
-    profi,
-    cowork,
-    meetingRoom,
-    workspace: Schema.Union([cowork, meetingRoom]),
-  } as const;
-};
-
-const storedWorkspaceReservationDetailsEffectSchemas =
-  makeWorkspaceReservationDetailsEffectSchemas({
-    cowork: {},
-    meetingRoom: {},
-  });
-
-export const storedBasicReservationDetailsEffectSchema =
-  storedWorkspaceReservationDetailsEffectSchemas.basic;
-export const storedPlusReservationDetailsEffectSchema =
-  storedWorkspaceReservationDetailsEffectSchemas.plus;
-export const storedProfiReservationDetailsEffectSchema =
-  storedWorkspaceReservationDetailsEffectSchemas.profi;
-export const storedCoworkReservationDetailsEffectSchema =
-  storedWorkspaceReservationDetailsEffectSchemas.cowork;
+  }
+);
+export const storedCoworkReservationDetailsEffectSchema = Schema.Union([
+  storedBasicReservationDetailsEffectSchema,
+  storedPlusReservationDetailsEffectSchema,
+  storedProfiReservationDetailsEffectSchema,
+]);
 export const storedMeetingRoomReservationDetailsEffectSchema =
-  storedWorkspaceReservationDetailsEffectSchemas.meetingRoom;
-export const storedWorkspaceReservationDetailsEffectSchema =
-  storedWorkspaceReservationDetailsEffectSchemas.workspace;
-
-export const makeWorkspaceReservationDetailsWithFieldsEffectSchema = <
-  CoworkFields extends Schema.Struct.Fields,
-  MeetingRoomFields extends Schema.Struct.Fields,
->(fields: {
-  readonly cowork: CoworkFields;
-  readonly meetingRoom: MeetingRoomFields;
-}) => makeWorkspaceReservationDetailsEffectSchemas(fields).workspace;
-
-export const makeWorkspaceReservationDetailsEffectSchema = <
-  Fields extends Schema.Struct.Fields,
->(
-  fields: Fields
-) =>
-  makeWorkspaceReservationDetailsWithFieldsEffectSchema({
-    cowork: fields,
-    meetingRoom: fields,
-  });
+  Schema.TaggedStruct("meeting-room", {});
+export const storedWorkspaceReservationDetailsEffectSchema = Schema.Union([
+  storedCoworkReservationDetailsEffectSchema,
+  storedMeetingRoomReservationDetailsEffectSchema,
+]);
 
 export type StoredBasicReservationDetails =
   typeof storedBasicReservationDetailsEffectSchema.Type;

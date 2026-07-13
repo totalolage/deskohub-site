@@ -2,10 +2,25 @@ import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import { Schema } from "effect";
 import {
+  instantStringEffectSchema,
   isFuturePlainDateTime,
   isPlainDateString,
   makeWholeHourInstantStringEffectSchema,
 } from "./temporal";
+
+describe("instantStringEffectSchema", () => {
+  const isInstantString = Schema.is(instantStringEffectSchema);
+
+  test("accepts ISO timestamps with an offset", () => {
+    expect(isInstantString("2026-07-10T08:00:00Z")).toBe(true);
+    expect(isInstantString("2026-07-10T10:00:00+02:00")).toBe(true);
+  });
+
+  test("rejects local timestamps and invalid strings", () => {
+    expect(isInstantString("2026-07-10T10:00:00")).toBe(false);
+    expect(isInstantString("not-an-instant")).toBe(false);
+  });
+});
 
 describe("isFuturePlainDateTime", () => {
   test("compares a local date-time in the supplied time zone", () => {

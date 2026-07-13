@@ -12,10 +12,9 @@ import {
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   defaultReservationInterval,
-  getReservationIntervalValidationIssue,
+  getReservationIntervalNormalization,
   type ReservationInterval,
   reservationIntervalFieldSchemas,
-  unsafeNormalizeReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
@@ -136,13 +135,14 @@ const getIntervalParam = (
   searchParams: URLSearchParams,
   date?: string
 ): Partial<ReservationInterval> => {
-  const defaultInterval = () =>
-    date
-      ? unsafeNormalizeReservationInterval({
-          date,
-          ...defaultReservationInterval,
-        })
-      : {};
+  const defaultInterval = () => {
+    if (!date) return {};
+    const normalization = getReservationIntervalNormalization({
+      date,
+      ...defaultReservationInterval,
+    });
+    return normalization._tag === "Success" ? normalization.interval : {};
+  };
   const startsAt = searchParams.get("startsAt")?.trim() || undefined;
   const endsAt = searchParams.get("endsAt")?.trim() || undefined;
 
@@ -154,12 +154,13 @@ const getIntervalParam = (
   });
 
   if (!parsed) return defaultInterval();
-  const interval = { date, ...parsed };
-  if (getReservationIntervalValidationIssue(interval)) {
-    return defaultInterval();
-  }
-
-  return unsafeNormalizeReservationInterval(interval);
+  const normalization = getReservationIntervalNormalization({
+    date,
+    ...parsed,
+  });
+  return normalization._tag === "Success"
+    ? normalization.interval
+    : defaultInterval();
 };
 
 export const parseWorkspaceAvailabilityQuery = (

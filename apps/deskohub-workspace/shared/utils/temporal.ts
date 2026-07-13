@@ -1,3 +1,4 @@
+import { Temporal } from "@js-temporal/polyfill";
 import { Schema } from "effect";
 
 export const TemporalInstantSchema = Schema.declare(
@@ -59,7 +60,7 @@ export const localDateTimeEffectSchema = Schema.String.check(
   })
 );
 
-export const instantEffectSchema = Schema.String.check(
+export const instantStringEffectSchema = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
       Temporal.Instant.from(value);
@@ -68,7 +69,9 @@ export const instantEffectSchema = Schema.String.check(
       return false;
     }
   })
-);
+).pipe(Schema.brand("InstantString"));
+
+export type InstantString = typeof instantStringEffectSchema.Type;
 
 export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
   Schema.makeFilter<string>((value) => {
@@ -136,7 +139,7 @@ export const isFuturePlainDateTime = ({
   ) > 0;
 
 export const makeWholeHourInstantStringEffectSchema = (timeZone: string) =>
-  Schema.String.check(
+  instantStringEffectSchema.check(
     Schema.makeFilter((value) => {
       try {
         const time = Temporal.Instant.from(value)

@@ -1,16 +1,19 @@
 import { Data, Effect, Option, Schema } from "effect";
 import {
-  instantEffectSchema,
+  type InstantString,
+  instantStringEffectSchema,
   localDateTimeEffectSchema,
   localTimeEffectSchema,
 } from "@/shared/utils/temporal";
 
 export type ReservationInterval = {
-  readonly startsAt: string;
-  readonly endsAt: string;
+  readonly startsAt: InstantString;
+  readonly endsAt: InstantString;
 };
 
-export type ReservationIntervalInput = Partial<ReservationInterval> & {
+export type ReservationIntervalInput = {
+  readonly startsAt?: string;
+  readonly endsAt?: string;
   readonly date?: string;
   readonly durationMinutes?: number;
 };
@@ -27,7 +30,9 @@ export class ReservationIntervalValidationError extends Data.TaggedError(
 export const defaultReservationInterval = {
   startsAt: "00:00",
   endsAt: "24:00",
-} as const satisfies ReservationInterval;
+} as const satisfies Required<
+  Pick<ReservationIntervalInput, "startsAt" | "endsAt">
+>;
 
 const reservationLocalTimeEffectSchema = Schema.Union([
   Schema.Literal("24:00"),
@@ -40,7 +45,8 @@ const decodeReservationLocalTime = Schema.decodeUnknownOption(
 const decodeLocalDateTime = Schema.decodeUnknownOption(
   localDateTimeEffectSchema
 );
-const decodeInstant = Schema.decodeUnknownOption(instantEffectSchema);
+const decodeInstant = Schema.decodeUnknownOption(instantStringEffectSchema);
+const decodeInstantString = Schema.decodeUnknownSync(instantStringEffectSchema);
 
 export const normalizeReservationIntervalFields = (
   value: ReservationIntervalInput,
@@ -132,7 +138,7 @@ const normalizeTimestampField = ({
   readonly startsAt?: string;
   readonly timeZone: string;
   readonly value: string;
-}): Effect.Effect<string, ReservationIntervalValidationError> => {
+}): Effect.Effect<InstantString, ReservationIntervalValidationError> => {
   const localTime = decodeReservationLocalTime(value);
   if (Option.isSome(localTime)) {
     if (!date) {
@@ -146,7 +152,14 @@ const normalizeTimestampField = ({
 
     return Effect.try({
       try: () =>
-        localTimeToInstant({ date, startsAt, time: localTime.value, timeZone }),
+        decodeInstantString(
+          localTimeToInstant({
+            date,
+            startsAt,
+            time: localTime.value,
+            timeZone,
+          })
+        ),
       catch: (cause) => toValidationError(path, cause),
     });
   }
@@ -155,10 +168,12 @@ const normalizeTimestampField = ({
   if (Option.isSome(localDateTime)) {
     return Effect.try({
       try: () =>
-        Temporal.PlainDateTime.from(localDateTime.value)
-          .toZonedDateTime(timeZone)
-          .toInstant()
-          .toString(),
+        decodeInstantString(
+          Temporal.PlainDateTime.from(localDateTime.value)
+            .toZonedDateTime(timeZone)
+            .toInstant()
+            .toString()
+        ),
       catch: (cause) => toValidationError(path, cause),
     });
   }
@@ -166,7 +181,8 @@ const normalizeTimestampField = ({
   const instant = decodeInstant(value);
   if (Option.isSome(instant)) {
     return Effect.try({
-      try: () => Temporal.Instant.from(instant.value).toString(),
+      try: () =>
+        decodeInstantString(Temporal.Instant.from(instant.value).toString()),
       catch: (cause) => toValidationError(path, cause),
     });
   }

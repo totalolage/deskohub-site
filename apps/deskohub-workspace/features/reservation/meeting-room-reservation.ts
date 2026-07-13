@@ -12,13 +12,13 @@ import {
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   getReservationDurationMinutes,
-  getReservationIntervalValidationIssue,
+  getReservationIntervalNormalization,
   getReservationPragueDateRange,
   meetingRoomReservationDurationMinutesEffectSchema,
-  unsafeNormalizeReservationInterval,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/reservation-interval";
 import { isFuturePlainDateTime } from "@/shared/utils";
+import { instantStringEffectSchema } from "@/shared/utils/temporal";
 
 export const meetingRoomReservationOrderObjectEffectSchema = Schema.Struct({
   ...reservationCustomerEffectFields,
@@ -33,8 +33,8 @@ export const normalizedMeetingRoomReservationOrderEffectSchema = Schema.Struct({
   phone: Schema.String,
   message: Schema.optional(Schema.String),
   entryTier: Schema.Literal("meeting-room"),
-  startsAt: Schema.String,
-  endsAt: Schema.String,
+  startsAt: instantStringEffectSchema,
+  endsAt: instantStringEffectSchema,
 });
 
 export type MeetingRoomReservationOrderObject =
@@ -45,17 +45,17 @@ export type NormalizedMeetingRoomReservationOrder =
 export const getMeetingRoomReservationIssues = (
   reservation: MeetingRoomReservationOrderObject
 ): readonly Schema.FilterIssue[] => {
-  const intervalIssue = getReservationIntervalValidationIssue(reservation);
-  if (intervalIssue) {
+  const normalization = getReservationIntervalNormalization(reservation);
+  if (normalization._tag === "Failure") {
     return [
       {
-        path: [intervalIssue.path],
-        issue: intervalIssue.message,
+        path: [normalization.issue.path],
+        issue: normalization.issue.message,
       },
     ];
   }
 
-  const interval = unsafeNormalizeReservationInterval(reservation);
+  const interval = normalization.interval;
   if (!Schema.is(wholeHourReservationInstantEffectSchema)(interval.startsAt)) {
     return [
       {
@@ -78,7 +78,7 @@ export const getMeetingRoomReservationIssues = (
     ];
   }
 
-  const range = Effect.runSync(getReservationPragueDateRange(reservation));
+  const range = Effect.runSync(getReservationPragueDateRange(interval));
   if (range.startMs < Date.now()) {
     return [
       {

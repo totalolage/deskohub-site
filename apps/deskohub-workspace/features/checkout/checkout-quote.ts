@@ -23,13 +23,16 @@ import {
   coworkReservationIntervalEffectSchema,
   getReservationDurationMinutes,
   meetingRoomReservationIntervalEffectSchema,
+  type ReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import {
-  makeWorkspaceReservationDetailsWithFieldsEffectSchema,
+  storedBasicReservationDetailsEffectSchema,
+  storedPlusReservationDetailsEffectSchema,
+  storedProfiReservationDetailsEffectSchema,
   workspaceProductMonitorOptionEffectSchema,
 } from "@/features/reservation/stored-reservation-details";
-import { isoDateTimeWithOffsetStringEffectSchema } from "@/shared/utils/effect-schema";
+import { instantStringEffectSchema } from "@/shared/utils/temporal";
 
 export type {
   CheckoutSummary,
@@ -37,14 +40,20 @@ export type {
   CheckoutSummarySection,
 } from "@/features/checkout/checkout-summary";
 
-export const workspaceCheckoutOrderEffectSchema =
-  makeWorkspaceReservationDetailsWithFieldsEffectSchema({
-    cowork: {},
-    meetingRoom: {
-      startsAt: isoDateTimeWithOffsetStringEffectSchema,
-      endsAt: isoDateTimeWithOffsetStringEffectSchema,
-    },
-  });
+const workspaceCheckoutMeetingRoomOrderEffectSchema = Schema.TaggedStruct(
+  "meeting-room",
+  {
+    startsAt: instantStringEffectSchema,
+    endsAt: instantStringEffectSchema,
+  }
+);
+
+export const workspaceCheckoutOrderEffectSchema = Schema.Union([
+  storedBasicReservationDetailsEffectSchema,
+  storedPlusReservationDetailsEffectSchema,
+  storedProfiReservationDetailsEffectSchema,
+  workspaceCheckoutMeetingRoomOrderEffectSchema,
+]);
 
 export type WorkspaceCheckoutOrder =
   typeof workspaceCheckoutOrderEffectSchema.Type;
@@ -73,8 +82,8 @@ const workspaceCheckoutProfiOrderInputEffectSchema = Schema.Struct({
 
 const workspaceCheckoutMeetingRoomOrderInputEffectSchema = Schema.Struct({
   kind: Schema.Literal("meeting-room"),
-  startsAt: isoDateTimeWithOffsetStringEffectSchema,
-  endsAt: isoDateTimeWithOffsetStringEffectSchema,
+  startsAt: instantStringEffectSchema,
+  endsAt: instantStringEffectSchema,
 });
 
 export const workspaceCheckoutOrderInputEffectSchema = Schema.Union([
@@ -85,7 +94,11 @@ export const workspaceCheckoutOrderInputEffectSchema = Schema.Union([
 ]);
 
 export type WorkspaceCheckoutOrderInput =
-  typeof workspaceCheckoutOrderInputEffectSchema.Type;
+  typeof workspaceCheckoutOrderInputEffectSchema.Encoded;
+
+const decodeWorkspaceCheckoutOrder = Schema.decodeUnknownSync(
+  workspaceCheckoutOrderEffectSchema
+);
 
 export type WorkspaceCheckoutQuote = {
   readonly order: WorkspaceCheckoutOrder;
@@ -141,31 +154,34 @@ export const toWorkspaceCheckoutOrderInput = (
   );
 
 export const toWorkspaceCheckoutOrder = (
-  order: WorkspaceCheckoutOrderInput
+  order: WorkspaceCheckoutOrderInput,
+  interval: ReservationInterval
 ): WorkspaceCheckoutOrder =>
-  Match.value(order).pipe(
-    Match.when({ kind: "meeting-room" }, (meetingRoomOrder) => ({
-      _tag: "meeting-room" as const,
-      startsAt: meetingRoomOrder.startsAt,
-      endsAt: meetingRoomOrder.endsAt,
-    })),
-    Match.when({ kind: "cowork", tier: "basic" }, (basicOrder) => ({
-      _tag: "cowork" as const,
-      tier: "basic" as const,
-      coffee: basicOrder.coffee,
-    })),
-    Match.when({ kind: "cowork", tier: "plus" }, () => ({
-      _tag: "cowork" as const,
-      tier: "plus" as const,
-      coffee: true as const,
-    })),
-    Match.when({ kind: "cowork", tier: "profi" }, (profiOrder) => ({
-      _tag: "cowork" as const,
-      tier: "profi" as const,
-      coffee: true as const,
-      monitorOption: profiOrder.monitorOption,
-    })),
-    Match.exhaustive
+  decodeWorkspaceCheckoutOrder(
+    Match.value(order).pipe(
+      Match.when({ kind: "meeting-room" }, () => ({
+        _tag: "meeting-room" as const,
+        startsAt: interval.startsAt,
+        endsAt: interval.endsAt,
+      })),
+      Match.when({ kind: "cowork", tier: "basic" }, (basicOrder) => ({
+        _tag: "cowork" as const,
+        tier: "basic" as const,
+        coffee: basicOrder.coffee,
+      })),
+      Match.when({ kind: "cowork", tier: "plus" }, () => ({
+        _tag: "cowork" as const,
+        tier: "plus" as const,
+        coffee: true as const,
+      })),
+      Match.when({ kind: "cowork", tier: "profi" }, (profiOrder) => ({
+        _tag: "cowork" as const,
+        tier: "profi" as const,
+        coffee: true as const,
+        monitorOption: profiOrder.monitorOption,
+      })),
+      Match.exhaustive
+    )
   );
 
 export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
@@ -189,39 +205,7 @@ export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
         })
     )
   );
-  const order = toWorkspaceCheckoutOrder(input);
-
-  const normalizedOrder: WorkspaceCheckoutOrder = Match.value(order).pipe(
-    Match.tag("meeting-room", () => ({
-      _tag: "meeting-room" as const,
-      startsAt: interval.startsAt,
-      endsAt: interval.endsAt,
-    })),
-    Match.tag("cowork", (coworkOrder) =>
-      Match.value(coworkOrder).pipe(
-        Match.when({ tier: "basic" }, (basicOrder) => ({
-          _tag: "cowork" as const,
-          tier: "basic" as const,
-          coffee: basicOrder.coffee,
-        })),
-        Match.when({ tier: "plus" }, () => ({
-          _tag: "cowork" as const,
-          tier: "plus" as const,
-          coffee: true as const,
-        })),
-        Match.when({ tier: "profi" }, (profiOrder) => ({
-          _tag: "cowork" as const,
-          tier: "profi" as const,
-          coffee: true as const,
-          monitorOption: profiOrder.monitorOption,
-        })),
-        Match.exhaustive
-      )
-    ),
-    Match.exhaustive
-  );
-
-  return normalizedOrder;
+  return toWorkspaceCheckoutOrder(input, interval);
 });
 
 const getWorkspaceCheckoutOrderProductPrice = (

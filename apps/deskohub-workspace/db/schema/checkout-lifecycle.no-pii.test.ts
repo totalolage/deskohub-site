@@ -51,8 +51,10 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/reservation/actions/prepare-pay-state.ts"
     );
 
-    expect(source).toContain('schema: "workspace-reservation-intent-key"');
+    expect(source).not.toContain('schema: "workspace-reservation-intent-key"');
     expect(source).toContain("reservationIntentId");
+    expect(source).toContain("normalizePhoneNumber(input.reservation.phone)");
+    expect(source).not.toContain("phone.replaceAll");
     expect(source).toContain(".update(JSON.stringify(payload))");
     expect(source).not.toContain('.join("\\u001f")');
     expect(source).not.toContain("Effect.annotateLogs(input)");

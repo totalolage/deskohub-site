@@ -7,7 +7,7 @@ import {
   getReservationIntervalValidationIssue,
   getReservationPragueDateRange,
   isDefaultReservationInterval,
-  unsafeNormalizeReservationInterval,
+  normalizeReservationInterval,
 } from "./reservation-interval";
 import { normalizeReservationIntervalFields } from "./reservation-interval-normalization";
 
@@ -24,11 +24,13 @@ describe("reservation intervals", () => {
 
   test("normalizes local overnight times to canonical instants", () => {
     expect(
-      unsafeNormalizeReservationInterval({
-        date: "2099-06-10",
-        startsAt: "22:00",
-        endsAt: "02:00",
-      })
+      Effect.runSync(
+        normalizeReservationInterval({
+          date: "2099-06-10",
+          startsAt: "22:00",
+          endsAt: "02:00",
+        })
+      )
     ).toMatchObject({
       startsAt: "2099-06-10T20:00:00Z",
       endsAt: "2099-06-11T00:00:00Z",

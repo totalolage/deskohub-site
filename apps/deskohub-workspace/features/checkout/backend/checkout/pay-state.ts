@@ -26,7 +26,10 @@ import {
 } from "@/features/checkout/checkout-summary";
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
 import { type Locale, locales } from "@/features/i18n";
-import { getReservationIntervalValidationIssue } from "@/features/reservation/reservation-interval";
+import {
+  getReservationIntervalNormalization,
+  getReservationIntervalValidationIssue,
+} from "@/features/reservation/reservation-interval";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
 
@@ -121,6 +124,8 @@ export const signedPayStateSchema = makeEffectSchemaParser(
 );
 
 export type SignedPayState = typeof signedPayStateEffectSchema.Type;
+
+type EncodedSignedPayState = typeof signedPayStateEffectSchema.Encoded;
 
 export type PayStateKey = {
   readonly kid: string;
@@ -267,15 +272,27 @@ export const buildSignedPayState = (
 
   const nowMilliseconds = getNowMilliseconds(options);
   const checkoutOrder = toWorkspaceCheckoutOrderInput(input.reservation);
-  const reservation = getCheckoutReturnStateReservation({
-    ...checkoutOrder,
-    name: input.reservation.name,
-    email: input.reservation.email,
-    phone: input.reservation.phone,
-    ...(input.reservation.message !== undefined && {
-      message: input.reservation.message,
-    }),
-  });
+  const intervalNormalization = getReservationIntervalNormalization(
+    input.reservation
+  );
+  if (intervalNormalization._tag === "Failure") {
+    throw new PayStateTokenError({
+      code: "invalid-token",
+      message: intervalNormalization.issue.message,
+    });
+  }
+  const reservation = getCheckoutReturnStateReservation(
+    {
+      ...checkoutOrder,
+      name: input.reservation.name,
+      email: input.reservation.email,
+      phone: input.reservation.phone,
+      ...(input.reservation.message !== undefined && {
+        message: input.reservation.message,
+      }),
+    },
+    intervalNormalization.interval
+  );
   const iat = Math.floor(nowMilliseconds / 1000);
   const exp = Math.floor(
     (nowMilliseconds +
@@ -315,7 +332,7 @@ const payStateSchemaIssue = (actual: unknown, message: string) =>
   new SchemaIssue.InvalidValue(Option.some(actual), { message });
 
 const sealPayStateRaw = (
-  state: SignedPayState,
+  state: EncodedSignedPayState,
   options: PayStateCryptoOptions = {}
 ) => {
   const key = getPayStateKeyByKid(state.kid, options);
@@ -452,7 +469,7 @@ export const makePayStateTokenSchema = (
             ),
         })
       ),
-      encode: SchemaGetter.transformOrFail((state: SignedPayState) =>
+      encode: SchemaGetter.transformOrFail((state) =>
         Effect.try({
           try: () => sealPayStateRaw(state, options),
           catch: (error) =>

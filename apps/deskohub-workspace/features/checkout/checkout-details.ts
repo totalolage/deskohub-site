@@ -1,12 +1,4 @@
-import {
-  Data,
-  Effect,
-  Schema as EffectSchema,
-  Match,
-  Option,
-  SchemaGetter,
-  SchemaIssue,
-} from "effect";
+import { Data, Schema as EffectSchema, Match } from "effect";
 import { checkoutSummarySectionEffectSchema } from "@/features/checkout/checkout-summary";
 import { legalEvidenceMapEffectSchema } from "@/features/checkout/legal-evidence";
 import { nonNegativeWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
@@ -16,18 +8,17 @@ import {
   getReservationIntervalValidationIssue,
   isDefaultReservationInterval,
   meetingRoomReservationDurationMinutesEffectSchema,
-  normalizeReservationInterval,
   type ReservationInterval,
-  unsafeNormalizeReservationInterval,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/reservation-interval";
 import {
-  makeWorkspaceReservationDetailsEffectSchema,
   type StoredCoworkReservationDetails,
   type StoredMeetingRoomReservationDetails,
+  workspaceProductMonitorOptionEffectSchema,
 } from "@/features/reservation/stored-reservation-details";
 import { urlStringEffectSchema } from "@/shared/utils/effect-schema";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import { instantStringEffectSchema } from "@/shared/utils/temporal";
 
 export class CheckoutDetailsError extends Data.TaggedError(
   "CheckoutDetailsError"
@@ -36,11 +27,31 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-const CheckoutDetailsReservationShapeSchema =
-  makeWorkspaceReservationDetailsEffectSchema({
-    startsAt: EffectSchema.NonEmptyString,
-    endsAt: EffectSchema.NonEmptyString,
-  });
+const CheckoutDetailsReservationShapeSchema = EffectSchema.Union([
+  EffectSchema.TaggedStruct("cowork", {
+    tier: EffectSchema.Literal("basic"),
+    coffee: EffectSchema.Boolean,
+    startsAt: instantStringEffectSchema,
+    endsAt: instantStringEffectSchema,
+  }),
+  EffectSchema.TaggedStruct("cowork", {
+    tier: EffectSchema.Literal("plus"),
+    coffee: EffectSchema.Literal(true),
+    startsAt: instantStringEffectSchema,
+    endsAt: instantStringEffectSchema,
+  }),
+  EffectSchema.TaggedStruct("cowork", {
+    tier: EffectSchema.Literal("profi"),
+    coffee: EffectSchema.Literal(true),
+    monitorOption: workspaceProductMonitorOptionEffectSchema,
+    startsAt: instantStringEffectSchema,
+    endsAt: instantStringEffectSchema,
+  }),
+  EffectSchema.TaggedStruct("meeting-room", {
+    startsAt: instantStringEffectSchema,
+    endsAt: instantStringEffectSchema,
+  }),
+]);
 
 type CheckoutDetailsReservationDraft =
   typeof CheckoutDetailsReservationShapeSchema.Type;
@@ -65,9 +76,7 @@ const isWholeHourReservationInstant = EffectSchema.is(
 const getCheckoutDetailsCoworkReservationIssue = (
   reservation: CheckoutDetailsCoworkReservationDraft
 ): EffectSchema.FilterIssue | undefined => {
-  const interval = unsafeNormalizeReservationInterval(reservation);
-
-  return isDefaultReservationInterval(interval)
+  return isDefaultReservationInterval(reservation)
     ? undefined
     : {
         path: ["endsAt"],
@@ -78,9 +87,7 @@ const getCheckoutDetailsCoworkReservationIssue = (
 const getCheckoutDetailsMeetingRoomReservationIssue = (
   reservation: CheckoutDetailsMeetingRoomReservationDraft
 ): EffectSchema.FilterIssue | undefined => {
-  const interval = unsafeNormalizeReservationInterval(reservation);
-
-  if (!isWholeHourReservationInstant(interval.startsAt)) {
+  if (!isWholeHourReservationInstant(reservation.startsAt)) {
     return {
       path: ["startsAt"],
       issue: "Meeting room reservations must start on a whole hour.",
@@ -88,7 +95,9 @@ const getCheckoutDetailsMeetingRoomReservationIssue = (
   }
 
   if (
-    !isMeetingRoomReservationDuration(getReservationDurationMinutes(interval))
+    !isMeetingRoomReservationDuration(
+      getReservationDurationMinutes(reservation)
+    )
   ) {
     return {
       path: ["endsAt"],
@@ -124,39 +133,9 @@ const getCheckoutDetailsReservationIssues = (
   return issue ? [issue] : [];
 };
 
-const normalizeCheckoutDetailsReservation = (
-  reservation: CheckoutDetailsReservationDraft
-) =>
-  normalizeReservationInterval(reservation).pipe(
-    Effect.map((normalized) => ({
-      ...reservation,
-      startsAt: normalized.startsAt,
-      endsAt: normalized.endsAt,
-    }))
-  );
-
-const checkoutDetailsReservationDraftEffectSchema =
+const checkoutDetailsReservationEffectSchema =
   CheckoutDetailsReservationShapeSchema.check(
     EffectSchema.makeFilter(getCheckoutDetailsReservationIssues)
-  );
-
-const checkoutDetailsReservationEffectSchema =
-  checkoutDetailsReservationDraftEffectSchema.pipe(
-    EffectSchema.decodeTo(CheckoutDetailsReservationShapeSchema, {
-      decode: SchemaGetter.transformOrFail((reservation) =>
-        normalizeCheckoutDetailsReservation(reservation).pipe(
-          Effect.mapError(
-            (error) =>
-              new SchemaIssue.InvalidValue(Option.some(reservation), {
-                message: error.message,
-              })
-          )
-        )
-      ),
-      encode: SchemaGetter.transform(
-        (reservation): CheckoutDetailsReservationDraft => reservation
-      ),
-    })
   );
 
 export const checkoutDetailsReservationSchema = makeEffectSchemaParser(

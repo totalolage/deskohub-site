@@ -4,6 +4,7 @@ import { createHmac } from "node:crypto";
 import {
   DotyposService,
   ValidationError as DotyposValidationError,
+  normalizePhoneNumber,
 } from "@deskohub/dotypos";
 import {
   Data,
@@ -66,7 +67,8 @@ import {
 import {
   getReservationDate,
   isDefaultReservationInterval,
-  unsafeNormalizeReservationInterval,
+  normalizeReservationInterval,
+  type ReservationInterval,
 } from "@/features/reservation/reservation-interval";
 import {
   getReservationProductCoffee,
@@ -97,32 +99,31 @@ const normalizeIdempotencyPart = (value: string) =>
 const deriveReservationIntentKey = (input: {
   readonly reservationIntentId: string;
   readonly reservation: ReservationOrderData;
+  readonly reservationInterval: ReservationInterval;
 }) => {
-  const interval = unsafeNormalizeReservationInterval(input.reservation);
   const productCoffee = getReservationProductCoffee(input.reservation);
   const productMonitorOption = getReservationProductMonitorOption(
     input.reservation
   );
   const basePayload = {
-    schema: "workspace-reservation-intent-key",
     reservationIntentId: input.reservationIntentId,
     name: normalizeIdempotencyPart(input.reservation.name),
     email: normalizeIdempotencyPart(input.reservation.email),
-    phone: input.reservation.phone.replaceAll(/\s+/g, ""),
+    phone: normalizePhoneNumber(input.reservation.phone),
     date: getReservationDate({
-      interval,
+      interval: input.reservationInterval,
       timeZone: workspaceSiteConstants.location.timeZone,
     }),
     entryTier: input.reservation.entryTier,
     coffee: productCoffee,
     monitorOption: productMonitorOption ?? null,
   };
-  const payload = isDefaultReservationInterval(interval)
+  const payload = isDefaultReservationInterval(input.reservationInterval)
     ? basePayload
     : {
         ...basePayload,
-        startsAt: interval.startsAt,
-        endsAt: interval.endsAt,
+        startsAt: input.reservationInterval.startsAt,
+        endsAt: input.reservationInterval.endsAt,
       };
 
   return createHmac("sha256", env.CHECKOUT_PAY_STATE_KEYS)
@@ -166,15 +167,15 @@ const getDotyposCustomerId = Effect.fn(
 const buildReservationCheckoutDetails = (input: {
   readonly locale: Locale;
   readonly reservation: ReservationOrderData;
+  readonly reservationInterval: ReservationInterval;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
-  const reservation = unsafeNormalizeReservationInterval(input.reservation);
   const baseCheckoutPrice =
     input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
   const checkoutReservation = parseCheckoutDetailsReservation(
     input.quote.order,
-    reservation
+    input.reservationInterval
   );
 
   return {
@@ -361,9 +362,13 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
 )(
   function* (input) {
+    const reservationInterval = yield* normalizeReservationInterval(
+      input.reservation
+    );
     const reservationIntentKey = deriveReservationIntentKey({
       reservationIntentId: input.reservationIntentId,
       reservation: input.reservation,
+      reservationInterval,
     });
     yield* Effect.annotateLogsScoped({
       locale: input.locale,
@@ -537,9 +542,6 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     );
 
     const availability = yield* WorkspaceAvailabilityService;
-    const reservationInterval = unsafeNormalizeReservationInterval(
-      input.reservation
-    );
     const reservationDate = getReservationDate({
       interval: reservationInterval,
       timeZone: workspaceSiteConstants.location.timeZone,
@@ -648,6 +650,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
     const checkoutDetails = buildReservationCheckoutDetails({
       locale: input.locale,
       reservation: input.reservation,
+      reservationInterval,
       quote,
       legalEvidence: privacyEvidence,
     });

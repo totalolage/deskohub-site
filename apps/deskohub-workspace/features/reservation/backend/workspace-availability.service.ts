@@ -36,6 +36,7 @@ import {
   normalizeReservationInterval,
   type ReservationInterval,
   type ReservationIntervalError,
+  type ReservationIntervalInput,
 } from "../reservation-interval";
 import type {
   WorkspaceAvailability,
@@ -529,7 +530,7 @@ const getAvailabilityReservation = (
   );
 
 const normalizeMeetingRoomAvailabilityInterval = (
-  interval: ReservationInterval
+  interval: ReservationIntervalInput
 ) =>
   normalizeReservationInterval(interval).pipe(
     Effect.mapError(toAvailabilityIntervalError)
