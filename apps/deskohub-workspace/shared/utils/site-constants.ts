@@ -18,7 +18,20 @@ export const workspaceSiteConstants = {
     },
   },
   location: {
+    address: {
+      street: "Turnovská 430/10",
+      cityDistrict: "Libeň",
+      city: "Praha 8",
+      postalCode: "180 00",
+    },
+    coordinates: {
+      lat: 50.103277,
+      lng: 14.479023,
+    },
     timeZone: "Europe/Prague",
+  },
+  reservation: {
+    defaultStartTime: "10:00",
   },
   company: {
     identificationNumber: "24531596",
