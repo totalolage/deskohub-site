@@ -82,14 +82,16 @@ export const fillBrowserField = (
   value: string,
   options: { readonly timeoutMs?: number } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("fill browser field", run, session, [
-    "fill",
-    selector,
-    value,
-  ], {
-    logOutput: false,
-    timeoutMs: options.timeoutMs ?? 60_000,
-  }).pipe(Effect.asVoid);
+  runBrowserCommand(
+    "fill browser field",
+    run,
+    session,
+    ["fill", selector, value],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
 
 export const clickBrowserElement = (
   run: Runner,
@@ -97,13 +99,16 @@ export const clickBrowserElement = (
   selector: string,
   options: { readonly timeoutMs?: number } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand("click browser element", run, session, [
-    "click",
-    selector,
-  ], {
-    logOutput: false,
-    timeoutMs: options.timeoutMs ?? 60_000,
-  }).pipe(Effect.asVoid);
+  runBrowserCommand(
+    "click browser element",
+    run,
+    session,
+    ["click", selector],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
 
 export const readInteractiveSnapshot = (
   run: Runner,

@@ -44,3 +44,4 @@ export class FooService extends Context.Service<
 - Do not hoist simple one-use literals or lookup objects to module scope; inline them where they are consumed.
 - Keep Workspace production releases on the intentionally simple sequence: build a staged Vercel production deployment without assigning domains, run pending migrations against the production Neon branch, then promote the ready deployment. Do not introduce expand/contract migrations or database branch swapping unless explicitly requested.
 - Cloudinary credentials in sibling app env files can target a different product environment; when an exact public ID returns 404, verify the full account tuple before changing image-rendering code.
+- Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
