@@ -15,7 +15,8 @@ import {
   getReservationDurationMinutes,
   getReservationIntervalNormalization,
   meetingRoomReservationDurationMinutesEffectSchema,
-  reservationIntervalFieldSchemas,
+  reservationEndsAtEffectSchema,
+  reservationStartsAtEffectSchema,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/reservation-interval";
 import {
@@ -26,8 +27,8 @@ import {
 export const meetingRoomReservationOrderObjectEffectSchema = Schema.Struct({
   ...reservationCustomerEffectFields,
   entryTier: Schema.Literal("meeting-room"),
-  startsAt: reservationIntervalFieldSchemas.startsAt,
-  endsAt: reservationIntervalFieldSchemas.endsAt,
+  startsAt: reservationStartsAtEffectSchema,
+  endsAt: reservationEndsAtEffectSchema,
 });
 
 export const normalizedMeetingRoomReservationOrderEffectSchema = Schema.Struct({

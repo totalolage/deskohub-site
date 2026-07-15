@@ -39,37 +39,43 @@ export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
 )<{ readonly message: string; readonly cause?: unknown }> {}
 
-export const reservationIntervalInputEffectSchema = Schema.Struct({
-  startsAt: Schema.Union([
-    localDateTimeEffectSchema,
-    instantStringEffectSchema,
-  ]),
-  endsAt: Schema.Union([localDateTimeEffectSchema, instantStringEffectSchema]),
-});
+export const reservationStartsAtEffectSchema = Schema.Union([
+  localDateTimeEffectSchema,
+  instantStringEffectSchema,
+]);
+export const reservationEndsAtEffectSchema = Schema.Union([
+  localDateTimeEffectSchema,
+  instantStringEffectSchema,
+]);
+
+const reservationIntervalInputEffectFields = {
+  startsAt: reservationStartsAtEffectSchema,
+  endsAt: reservationEndsAtEffectSchema,
+} as const;
+
+export const reservationIntervalInputEffectSchema = Schema.Struct(
+  reservationIntervalInputEffectFields
+);
 const decodeReservationIntervalInput = Schema.decodeUnknownSync(
   reservationIntervalInputEffectSchema
 );
 
-export const reservationIntervalFieldSchemas = {
-  startsAt: reservationIntervalInputEffectSchema.fields.startsAt,
-  endsAt: reservationIntervalInputEffectSchema.fields.endsAt,
-} as const;
-
-export const reservationIntervalEffectSchema = Schema.Struct({
-  startsAt: instantStringEffectSchema,
-  endsAt: instantStringEffectSchema,
-});
-
-export const normalizedReservationIntervalEffectSchema =
+export const reservationIntervalEffectSchema =
   reservationIntervalInputEffectSchema.pipe(
-    Schema.decodeTo(reservationIntervalEffectSchema, {
-      decode: SchemaGetter.transformOrFail((input) =>
-        normalizeReservationIntervalFields(input, reservationTimeZone).pipe(
-          Effect.mapError((issue) => toSchemaIssue(input, issue))
-        )
-      ),
-      encode: SchemaGetter.transform(decodeReservationIntervalInput),
-    })
+    Schema.decodeTo(
+      Schema.Struct({
+        startsAt: instantStringEffectSchema,
+        endsAt: instantStringEffectSchema,
+      }),
+      {
+        decode: SchemaGetter.transformOrFail((input) =>
+          normalizeReservationIntervalFields(input, reservationTimeZone).pipe(
+            Effect.mapError((issue) => toSchemaIssue(input, issue))
+          )
+        ),
+        encode: SchemaGetter.transform(decodeReservationIntervalInput),
+      }
+    )
   );
 
 export const isSingleDayReservationInterval = (
@@ -120,14 +126,14 @@ const isMeetingRoomReservationDuration = Schema.is(
 );
 
 export const coworkReservationIntervalEffectSchema =
-  normalizedReservationIntervalEffectSchema.check(
+  reservationIntervalEffectSchema.check(
     Schema.makeFilter(isSingleDayReservationInterval, {
       message: "Cowork reservations must use the full-day duration.",
     })
   );
 
 export const meetingRoomReservationIntervalEffectSchema =
-  normalizedReservationIntervalEffectSchema.check(
+  reservationIntervalEffectSchema.check(
     Schema.makeFilter(
       (interval) =>
         isMeetingRoomReservationDuration(getDurationMinutes(interval)),
