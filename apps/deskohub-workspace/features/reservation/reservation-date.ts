@@ -1,5 +1,16 @@
 import type { Locale } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
+import {
+  dateToTemporalPlainDate,
+  type TemporalInstant,
+  type TemporalPlainDate,
+  temporalInstantToDate,
+  temporalPlainDateToDate,
+  toTemporalInstant,
+} from "@/shared/utils/temporal";
+
+type ReservationDisplayDate = Date | TemporalInstant | TemporalPlainDate;
+type ReservationDisplayInstant = Date | TemporalInstant;
 
 export const reservationTimeZone = workspaceSiteConstants.location.timeZone;
 
@@ -9,60 +20,109 @@ const getCurrentPragueDate = () =>
 export const isTodayOrFuturePragueDate = (date: string) =>
   date >= getCurrentPragueDate();
 
-const reservationDisplayDateFormatOptions = {
+const reservationDisplayDateFormatOptions: Intl.DateTimeFormatOptions = {
   dateStyle: "full",
   timeZone: reservationTimeZone,
-} satisfies Intl.DateTimeFormatOptions;
+};
 
-const reservationDisplayTimeFormatOptions = {
+const reservationDisplayTimeFormatOptions: Intl.DateTimeFormatOptions = {
   timeStyle: "short",
   timeZone: reservationTimeZone,
-} satisfies Intl.DateTimeFormatOptions;
+};
 
-export const parseReservationInputDate = (date: Date | string) => {
-  if (date instanceof Date) {
-    return Number.isNaN(date.getTime()) ? undefined : date;
-  }
+const reservationDisplayDateTimeFormatOptions: Intl.DateTimeFormatOptions = {
+  dateStyle: "medium",
+  timeStyle: "short",
+  timeZone: reservationTimeZone,
+};
 
-  if (!date) {
+const toReservationPlainDate = (date: ReservationDisplayDate) => {
+  const instant =
+    date instanceof Temporal.PlainDate ? undefined : toTemporalInstant(date);
+
+  return date instanceof Temporal.PlainDate
+    ? date
+    : instant?.toZonedDateTimeISO(reservationTimeZone).toPlainDate();
+};
+
+export const parseReservationInputDate = (date: string) => {
+  try {
+    return Temporal.PlainDate.from(date);
+  } catch {
     return undefined;
   }
+};
 
-  const parsedDate = new Date(`${date}T12:00:00`);
+export const formatReservationInputDate = (date: Temporal.PlainDate) =>
+  date.toString();
 
-  return Number.isNaN(parsedDate.getTime()) ? undefined : parsedDate;
+export const reservationPlainDateToCalendarDate = (date: Temporal.PlainDate) =>
+  temporalPlainDateToDate({
+    date,
+    plainTime: Temporal.PlainTime.from("12:00"),
+    timeZone: reservationTimeZone,
+  });
+
+export const calendarDateToReservationPlainDate = (date: Date) =>
+  dateToTemporalPlainDate({ date, timeZone: reservationTimeZone });
+
+export const reservationInputDateToCalendarDate = (date: string) => {
+  const plainDate = parseReservationInputDate(date);
+  return plainDate ? reservationPlainDateToCalendarDate(plainDate) : undefined;
 };
 
 export const formatReservationDisplayDate = (
-  date: Date | string,
-  locale: Locale,
-  fallback = typeof date === "string" ? date : ""
-) => {
-  const parsedDate = parseReservationInputDate(date);
-
-  if (!parsedDate) {
-    return fallback;
-  }
-
-  return parsedDate.toLocaleDateString(
-    locale,
-    reservationDisplayDateFormatOptions
-  );
-};
-
-export const formatReservationDisplayTimeRange = (
-  start: Date,
-  end: Date,
+  date: ReservationDisplayDate,
   locale: Locale,
   fallback = ""
 ) => {
-  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
-    return fallback;
+  const plainDate = toReservationPlainDate(date);
+
+  if (!plainDate) return fallback;
+
+  return plainDate.toLocaleString(locale, reservationDisplayDateFormatOptions);
+};
+
+export const formatReservationInputDisplayDate = (
+  date: string,
+  locale: Locale,
+  fallback = ""
+) => {
+  const plainDate = parseReservationInputDate(date);
+  return plainDate
+    ? formatReservationDisplayDate(plainDate, locale, fallback)
+    : fallback;
+};
+
+export const formatReservationDisplayTimeRange = (
+  start: ReservationDisplayInstant,
+  end: ReservationDisplayInstant,
+  locale: Locale,
+  fallback = ""
+) => {
+  const startInstant = toTemporalInstant(start);
+  const endInstant = toTemporalInstant(end);
+
+  if (!startInstant || !endInstant) return fallback;
+
+  const startDateTime = startInstant.toZonedDateTimeISO(reservationTimeZone);
+  const endDateTime = endInstant.toZonedDateTimeISO(reservationTimeZone);
+  const parsedStart = temporalInstantToDate(startInstant);
+  const parsedEnd = temporalInstantToDate(endInstant);
+
+  if (startDateTime.toPlainDate().equals(endDateTime.toPlainDate())) {
+    const timeFormat = new Intl.DateTimeFormat(
+      locale,
+      reservationDisplayTimeFormatOptions
+    );
+
+    return `${timeFormat.format(parsedStart)} - ${timeFormat.format(parsedEnd)}`;
   }
 
-  const formatter = new Intl.DateTimeFormat(
+  const dateTimeFormat = new Intl.DateTimeFormat(
     locale,
-    reservationDisplayTimeFormatOptions
+    reservationDisplayDateTimeFormatOptions
   );
-  return `${formatter.format(start)} - ${formatter.format(end)}`;
+
+  return `${dateTimeFormat.format(parsedStart)} - ${dateTimeFormat.format(parsedEnd)}`;
 };
