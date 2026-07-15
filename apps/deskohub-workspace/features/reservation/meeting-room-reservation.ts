@@ -43,20 +43,10 @@ export type MeetingRoomReservationOrderObject =
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderEffectSchema.Type;
 
-export const getMeetingRoomReservationIssues = (
-  reservation: MeetingRoomReservationOrderObject
-): readonly Schema.FilterIssue[] => {
-  const normalization = getReservationIntervalNormalization(reservation);
-  if (normalization._tag === "Failure") {
-    return [
-      {
-        path: [normalization.issue.path],
-        issue: normalization.issue.message,
-      },
-    ];
-  }
-
-  const interval = normalization.interval;
+export const getMeetingRoomReservationIssues = Effect.fn(
+  "getMeetingRoomReservationIssues"
+)(function* (reservation: MeetingRoomReservationOrderObject) {
+  const interval = yield* getReservationIntervalNormalization(reservation);
   if (!Schema.is(wholeHourReservationInstantEffectSchema)(interval.startsAt)) {
     return [
       {
@@ -79,7 +69,7 @@ export const getMeetingRoomReservationIssues = (
     ];
   }
 
-  const range = Effect.runSync(getReservationPragueDateRange(interval));
+  const range = yield* getReservationPragueDateRange(interval);
   if (range.startMs < Date.now()) {
     return [
       {
@@ -90,7 +80,7 @@ export const getMeetingRoomReservationIssues = (
   }
 
   return [];
-};
+});
 
 const meetingRoomStartDateTimeEffectSchema = Schema.String.check(
   Schema.isNonEmpty({

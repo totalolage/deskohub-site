@@ -17,11 +17,13 @@ const decodeInterval = Schema.decodeUnknownSync(
 describe("reservation intervals", () => {
   test("accepts overnight intervals", () => {
     expect(
-      getReservationIntervalValidationIssue(
-        decodeInterval({
-          startsAt: "2099-06-10T22:00",
-          endsAt: "2099-06-11T02:00",
-        })
+      Effect.runSync(
+        getReservationIntervalValidationIssue(
+          decodeInterval({
+            startsAt: "2099-06-10T22:00",
+            endsAt: "2099-06-11T02:00",
+          })
+        )
       )
     ).toBeNull();
   });
@@ -67,11 +69,13 @@ describe("reservation intervals", () => {
 
   test("accepts explicit instant intervals", () => {
     expect(
-      getReservationIntervalValidationIssue(
-        decodeInterval({
-          startsAt: "2099-06-10T07:00:00Z",
-          endsAt: "2099-06-10T08:00:00Z",
-        })
+      Effect.runSync(
+        getReservationIntervalValidationIssue(
+          decodeInterval({
+            startsAt: "2099-06-10T07:00:00Z",
+            endsAt: "2099-06-10T08:00:00Z",
+          })
+        )
       )
     ).toBeNull();
   });

@@ -138,30 +138,20 @@ export const meetingRoomReservationIntervalEffectSchema =
 
 export const getReservationIntervalValidationIssue = (
   interval: ReservationIntervalInput
-) => {
-  const normalization = getReservationIntervalNormalization(interval);
-  return normalization._tag === "Failure"
-    ? {
-        path: normalization.issue.path,
-        message: normalization.issue.message,
-      }
-    : null;
-};
+) =>
+  getReservationIntervalNormalization(interval).pipe(
+    Effect.as(null),
+    Effect.catch((issue) =>
+      Effect.succeed({
+        path: issue.path,
+        message: issue.message,
+      })
+    )
+  );
 
 export const getReservationIntervalNormalization = (
   interval: ReservationIntervalInput
-) =>
-  Effect.runSync(
-    normalizeReservationIntervalFields(interval, reservationTimeZone).pipe(
-      Effect.map((normalized) => ({
-        _tag: "Success" as const,
-        interval: normalized,
-      })),
-      Effect.catch((issue) =>
-        Effect.succeed({ _tag: "Failure" as const, issue })
-      )
-    )
-  );
+) => normalizeReservationIntervalFields(interval, reservationTimeZone);
 
 type NormalizedReservationInterval<T extends ReservationIntervalInput> = Omit<
   T,
