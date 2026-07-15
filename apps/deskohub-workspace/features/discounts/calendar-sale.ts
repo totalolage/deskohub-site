@@ -1,18 +1,19 @@
 import type { GoogleCalendarEvent } from "@deskohub/google-calendar";
 import { Data, Effect, Option, Schema } from "effect";
-import { parse } from "smol-toml";
 import {
   plainDateStringEffectSchema,
   temporalInstantToIsoString,
   workspaceSiteConstants,
 } from "@/shared/utils";
 import {
-  type DiscountProductIdentity,
-  discountBasisPointsEffectSchema,
-  discountProductIdentityEffectSchema,
-} from "./contracts";
+  type StoredDiscountId,
+  storedDiscountIdSchema,
+} from "./persistence-contracts";
 
-const saleMarker = "[deskohub:sale]";
+const uuidPattern =
+  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+const exactUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const calendarEventReferenceSchema = Schema.NonEmptyString.pipe(
   Schema.brand("CalendarEventReference")
@@ -31,7 +32,7 @@ const calendarSaleOccurrenceReferenceSchema = Schema.NonEmptyString.pipe(
 
 const calendarSaleEventMetadataSchema = Schema.Struct({
   eventReference: calendarEventReferenceSchema,
-  label: Schema.NonEmptyString,
+  title: Schema.Trim.check(Schema.isNonEmpty()),
   startDate: plainDateStringEffectSchema,
   endDate: plainDateStringEffectSchema,
   isAllDay: Schema.Literal(true),
@@ -45,16 +46,6 @@ const calendarSaleEventMetadataSchema = Schema.Struct({
   )
 );
 
-const calendarSaleConfigurationSchema = Schema.Struct({
-  adjustment: Schema.Struct({
-    kind: Schema.Literal("percentage"),
-    basisPoints: discountBasisPointsEffectSchema,
-  }),
-  products: Schema.NonEmptyArray(discountProductIdentityEffectSchema).check(
-    Schema.isUnique()
-  ),
-});
-
 type CalendarEventReference = Schema.Schema.Type<
   typeof calendarEventReferenceSchema
 >;
@@ -66,8 +57,7 @@ type CalendarSaleOccurrenceReference = Schema.Schema.Type<
 type CalendarSaleConfigurationFailureReason =
   | "invalid_event"
   | "invalid_occurrence_reference"
-  | "invalid_toml"
-  | "invalid_sale_configuration";
+  | "invalid_discount_reference";
 
 export class CalendarSaleConfigurationError extends Data.TaggedError(
   "CalendarSaleConfigurationError"
@@ -83,9 +73,7 @@ export type CalendarSale = {
   readonly eventReference: CalendarEventReference;
   readonly occurrenceReference: CalendarSaleOccurrenceReference;
   readonly occurrenceDate: string;
-  readonly label: string;
-  readonly basisPoints: number;
-  readonly products: readonly DiscountProductIdentity[];
+  readonly discountId: StoredDiscountId;
   readonly expiresAt: string;
   readonly countdownStartsAt: string;
 };
@@ -114,19 +102,66 @@ const normalizeCalendarSale = (input: {
   Option.Option<CalendarSale>,
   CalendarSaleConfigurationError
 > => {
-  if (input.event.status === "cancelled" || !hasSaleMarker(input.event)) {
+  if (input.event.status === "cancelled") {
     return Effect.succeed(Option.none());
   }
 
-  return Effect.succeed(input).pipe(
-    Effect.bind("metadata", decodeCalendarSaleEventMetadata),
-    Effect.bind("configuration", decodeCalendarSaleConfiguration),
-    Effect.bind("occurrence", getCalendarSaleOccurrence),
-    Effect.let("sale", toCalendarSale),
-    Effect.map(({ metadata, reservationDate, sale }) =>
-      isReservationDateCovered({ metadata, reservationDate })
-        ? Option.some(sale)
-        : Option.none()
+  return extractStoredDiscountId(input.event).pipe(
+    Effect.flatMap(
+      Option.match({
+        onNone: () => Effect.succeed(Option.none()),
+        onSome: (discountId) =>
+          Effect.succeed({ ...input, discountId }).pipe(
+            Effect.bind("metadata", decodeCalendarSaleEventMetadata),
+            Effect.bind("occurrence", getCalendarSaleOccurrence),
+            Effect.let("sale", toCalendarSale),
+            Effect.map(({ metadata, reservationDate, sale }) =>
+              isReservationDateCovered({ metadata, reservationDate })
+                ? Option.some(sale)
+                : Option.none()
+            )
+          ),
+      })
+    )
+  );
+};
+
+const extractStoredDiscountId = (
+  event: GoogleCalendarEvent
+): Effect.Effect<
+  Option.Option<StoredDiscountId>,
+  CalendarSaleConfigurationError
+> => {
+  const description = event.description?.trim() ?? "";
+
+  if (!uuidPattern.test(description)) {
+    return Effect.succeed(Option.none());
+  }
+
+  if (!exactUuidPattern.test(description)) {
+    return Effect.fail(
+      new CalendarSaleConfigurationError({
+        reason: "invalid_discount_reference",
+        message:
+          "Calendar sale description must contain exactly one discount UUID and no other content.",
+        ...getErrorEventReference(event),
+      })
+    );
+  }
+
+  return Schema.decodeUnknownEffect(storedDiscountIdSchema)(
+    description.toLowerCase()
+  ).pipe(
+    Effect.map(Option.some),
+    Effect.mapError(
+      (cause) =>
+        new CalendarSaleConfigurationError({
+          reason: "invalid_discount_reference",
+          message:
+            "Calendar sale description contains an invalid discount UUID.",
+          ...getErrorEventReference(event),
+          cause,
+        })
     )
   );
 };
@@ -138,7 +173,7 @@ const decodeCalendarSaleEventMetadata = (input: {
     errors: "all",
   })({
     eventReference: input.event.id ?? input.event.iCalUID ?? "",
-    label: input.event.summary?.trim() ?? "",
+    title: input.event.summary ?? "",
     startDate: input.event.start?.date ?? "",
     endDate: input.event.end?.date ?? "",
     isAllDay:
@@ -156,51 +191,6 @@ const decodeCalendarSaleEventMetadata = (input: {
         })
     )
   );
-
-const decodeCalendarSaleConfiguration = (input: {
-  readonly event: GoogleCalendarEvent;
-  readonly metadata: {
-    readonly eventReference: CalendarEventReference;
-  };
-}) =>
-  Effect.succeed(input).pipe(
-    Effect.bind("toml", parseCalendarSaleToml),
-    Effect.bind("configuration", ({ toml }) =>
-      Schema.decodeUnknownEffect(calendarSaleConfigurationSchema, {
-        errors: "all",
-        onExcessProperty: "error",
-      })(toml).pipe(
-        Effect.mapError(
-          (cause) =>
-            new CalendarSaleConfigurationError({
-              reason: "invalid_sale_configuration",
-              message:
-                "Calendar sale TOML does not match the required adjustment and product schema.",
-              eventReference: input.metadata.eventReference,
-              cause,
-            })
-        )
-      )
-    ),
-    Effect.map(({ configuration }) => configuration)
-  );
-
-const parseCalendarSaleToml = (input: {
-  readonly event: GoogleCalendarEvent;
-  readonly metadata: {
-    readonly eventReference: CalendarEventReference;
-  };
-}) =>
-  Effect.try({
-    try: () => parse(getSaleToml(input.event)),
-    catch: (cause) =>
-      new CalendarSaleConfigurationError({
-        reason: "invalid_toml",
-        message: "Calendar sale description contains invalid TOML.",
-        eventReference: input.metadata.eventReference,
-        cause,
-      }),
-  });
 
 const getCalendarSaleOccurrence = (input: {
   readonly calendarId: string;
@@ -248,9 +238,7 @@ const getCalendarSaleOccurrence = (input: {
 
 const toCalendarSale = (input: {
   readonly calendarId: string;
-  readonly configuration: Schema.Schema.Type<
-    typeof calendarSaleConfigurationSchema
-  >;
+  readonly discountId: StoredDiscountId;
   readonly metadata: Schema.Schema.Type<typeof calendarSaleEventMetadataSchema>;
   readonly occurrence: {
     readonly occurrenceDate: string;
@@ -266,21 +254,13 @@ const toCalendarSale = (input: {
     eventReference: input.metadata.eventReference,
     occurrenceReference: input.occurrence.occurrenceReference,
     occurrenceDate: input.occurrence.occurrenceDate,
-    label: input.metadata.label,
-    basisPoints: input.configuration.adjustment.basisPoints,
-    products: input.configuration.products,
+    discountId: input.discountId,
     expiresAt: temporalInstantToIsoString(expiresAt),
     countdownStartsAt: temporalInstantToIsoString(
       expiresAt.subtract({ hours: 24 })
     ),
   };
 };
-
-const hasSaleMarker = (event: GoogleCalendarEvent) =>
-  event.description?.trim().split(/\r?\n/, 1)[0] === saleMarker;
-
-const getSaleToml = (event: GoogleCalendarEvent) =>
-  event.description?.trim().split(/\r?\n/).slice(1).join("\n").trim() ?? "";
 
 const isReservationDateCovered = (input: {
   readonly metadata: Schema.Schema.Type<typeof calendarSaleEventMetadataSchema>;
@@ -300,13 +280,7 @@ const decodeCalendarSaleOccurrenceReference = Schema.decodeUnknownSync(
 const getErrorEventReference = (event: GoogleCalendarEvent) => {
   const value = event.id ?? event.iCalUID;
 
-  if (!value) {
-    return {};
-  }
-
-  try {
-    return { eventReference: decodeCalendarEventReference(value) };
-  } catch {
-    return {};
-  }
+  return value && Schema.is(calendarEventReferenceSchema)(value)
+    ? { eventReference: decodeCalendarEventReference(value) }
+    : {};
 };
