@@ -6,6 +6,7 @@
       "main": false
     }
   },
+  "ignoreCommand": "bun scripts/vercel-ignore-build.ts",
   "crons": [
     {
       "path": "/api/cron/workspace/reservation-holds",
