@@ -67,7 +67,7 @@ describe("meetingRoomReservationEffectSchema", () => {
     const issues = Effect.runSync(
       getMeetingRoomReservationIssues(
         decodeOrder({
-          entryTier: "meeting-room",
+          _tag: "meeting-room",
           startsAt: "2099-06-10T10:00:00Z",
           endsAt: "2099-06-10T11:00:00Z",
           name: "Ada Lovelace",
