@@ -23,7 +23,8 @@ interface PostHogFeatureFlagContractTemplateView {
   readonly featureFlags: readonly {
     readonly keyLiteral: string;
     readonly payloadType: string;
-    readonly valueType: string;
+    readonly hasVariants: boolean;
+    readonly variantLiterals: readonly string[];
   }[];
 }
 
@@ -61,18 +62,13 @@ export const renderPostHogFeatureFlagContract = Effect.fn(
     featureFlags: sortedDefinitions.map((definition) => ({
       keyLiteral: JSON.stringify(definition.key),
       payloadType: renderPayloadTypeForFlag(definition),
-      valueType: renderValueType(definition),
+      hasVariants: definition.variants.length > 0,
+      variantLiterals: definition.variants.map((variant) =>
+        JSON.stringify(variant)
+      ),
     })),
   } satisfies PostHogFeatureFlagContractTemplateView);
 });
-
-const renderValueType = (definition: PostHogFeatureFlagDefinition) =>
-  definition.variants.length === 0
-    ? "boolean"
-    : [
-        "false",
-        ...definition.variants.map((variant) => JSON.stringify(variant)),
-      ].join(" | ");
 
 const renderPayloadTypeForFlag = (definition: PostHogFeatureFlagDefinition) =>
   renderPayloadTypeUnion([

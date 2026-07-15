@@ -14,7 +14,7 @@ export type PostHogFeatureFlagKey =
 export interface PostHogFeatureFlagDefinitions {
 {{#featureFlags}}
   readonly {{{keyLiteral}}}: {
-    readonly value: {{{valueType}}};
+    readonly value: {{^hasVariants}}boolean{{/hasVariants}}{{#hasVariants}}false{{/hasVariants}}{{#variantLiterals}} | {{{.}}}{{/variantLiterals}};
     readonly payload: {{{payloadType}}};
   };
 {{/featureFlags}}
