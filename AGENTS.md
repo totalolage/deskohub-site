@@ -82,3 +82,4 @@ Effect.Do.pipe(
 - In named Effect operations, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 - Reuse the Workspace timezone and Temporal schemas/formatters from `shared/utils/site-constants.ts` and `shared/utils/temporal.ts`; do not redeclare them inside feature modules.
 - Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
+- For the Workspace checkout route rename, do not add compatibility routes for removed checkout paths or preserve the old retry/result flow. Only the `/reservation` QR-code redirect with its UTM parameters is retained.

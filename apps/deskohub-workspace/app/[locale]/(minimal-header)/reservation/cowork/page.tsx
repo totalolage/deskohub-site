@@ -1,27 +1,36 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { CheckoutOrderPage } from "@/features/checkout/components/checkout-order-page";
+import { coworkReservationPath } from "@/features/checkout/routes";
 import { isLocale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
+import type { LocalizedRoutePageProps } from "@/features/i18n/server/route-params";
+import {
+  ReservationForm,
+  ReservationFormFallback,
+} from "@/features/reservation/components/reservation-form";
+import {
+  coworkReservationDefaultValues,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
 import {
   getWorkspaceLocalizedCanonicalUrl,
   workspaceSiteConstants,
 } from "@/shared/utils";
 
-type LocalizedCheckoutOrderPageProps = {
-  params: Promise<{ locale: string }>;
-};
-
 export async function generateMetadata({
   params,
-}: LocalizedCheckoutOrderPageProps): Promise<Metadata> {
+}: LocalizedRoutePageProps): Promise<Metadata> {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
   return runWithRequestLocale(locale, () => {
     const title = m.checkoutOrderMetadataTitle({}, { locale });
     const description = m.checkoutOrderMetadataDescription({}, { locale });
-    const url = getWorkspaceLocalizedCanonicalUrl(locale, "/checkout/order");
+    const url = getWorkspaceLocalizedCanonicalUrl(
+      locale,
+      coworkReservationPath
+    );
 
     return {
       title,
@@ -31,7 +40,10 @@ export async function generateMetadata({
         languages: Object.fromEntries(
           locales.map((itemLocale) => [
             itemLocale,
-            getWorkspaceLocalizedCanonicalUrl(itemLocale, "/checkout/order"),
+            getWorkspaceLocalizedCanonicalUrl(
+              itemLocale,
+              coworkReservationPath
+            ),
           ])
         ),
       },
@@ -47,13 +59,27 @@ export async function generateMetadata({
   });
 }
 
-export default async function LocalizedCheckoutOrderPage({
+export default async function LocalizedCoworkReservationPage({
   params,
-}: LocalizedCheckoutOrderPageProps) {
+}: LocalizedRoutePageProps) {
   const { locale } = await params;
   if (!isLocale(locale)) notFound();
 
+  const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
+    coworkReservationDefaultValues.entryTier
+  );
+
   return runWithRequestLocale(locale, () => (
-    <CheckoutOrderPage locale={locale} />
+    <CheckoutOrderPage
+      fallback={
+        <ReservationFormFallback
+          locale={locale}
+          showMonitorOption={showMonitorOptionFallback}
+        />
+      }
+      locale={locale}
+    >
+      <ReservationForm locale={locale} />
+    </CheckoutOrderPage>
   ));
 }

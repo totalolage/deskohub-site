@@ -1,37 +1,22 @@
-import { Suspense } from "react";
+import { type ReactNode, Suspense } from "react";
 import type { Locale } from "@/features/i18n";
-import {
-  ReservationForm,
-  ReservationFormFallback,
-} from "@/features/reservation/components/reservation-form";
-import {
-  reservationDefaultValues,
-  tierRequiresMonitorOption,
-} from "@/features/reservation/schemas/reservation";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
 type CheckoutOrderPageProps = {
+  children: ReactNode;
+  fallback: ReactNode;
   locale: Locale;
 };
 
-export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
-  const showMonitorOptionFallback = tierRequiresMonitorOption(
-    reservationDefaultValues.entryTier
-  );
-
+export function CheckoutOrderPage({
+  children,
+  fallback,
+  locale,
+}: CheckoutOrderPageProps) {
   return (
     <CheckoutFlowLayout activeStepKey="order" locale={locale}>
       {/* Suspense isolates useSearchParams() hydration, not data fetching or lazy loading. */}
-      <Suspense
-        fallback={
-          <ReservationFormFallback
-            locale={locale}
-            showMonitorOption={showMonitorOptionFallback}
-          />
-        }
-      >
-        <ReservationForm locale={locale} />
-      </Suspense>
+      <Suspense fallback={fallback}>{children}</Suspense>
     </CheckoutFlowLayout>
   );
 }
