@@ -1,5 +1,8 @@
 import { Effect, Schema } from "effect";
-import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
+import {
+  type WorkspaceProductMonitorOption,
+  workspaceMeetingRoomDurationOptions,
+} from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { reservationLegalConsentEffectSchema } from "@/features/reservation/reservation-consent";
@@ -44,6 +47,20 @@ export type MeetingRoomReservationOrderObject =
   typeof meetingRoomReservationOrderObjectEffectSchema.Type;
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderEffectSchema.Type;
+
+export type MeetingRoomReservationProductInput = {
+  readonly entryTier: "meeting-room";
+  readonly coffee?: boolean;
+  readonly monitorOption?: WorkspaceProductMonitorOption | "";
+};
+
+export const getMeetingRoomReservationProductCoffee = (
+  _reservation: MeetingRoomReservationProductInput
+) => false;
+
+export const getMeetingRoomReservationProductMonitorOption = (
+  _reservation: MeetingRoomReservationProductInput
+) => undefined;
 
 export const getMeetingRoomReservationIssues = Effect.fn(
   "getMeetingRoomReservationIssues"

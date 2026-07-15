@@ -72,6 +72,7 @@ Effect.Do.pipe(
 - Reservation hold cleanup must happen only through the per-reservation scheduled queue task, with the daily cron job as the recovery path; do not add inline cleanup, sweep, or terminal-payment cancellation fallbacks.
 - Generate Drizzle migrations, journals, and snapshots with Drizzle tooling; do not hand-write migration metadata or journal entries.
 - For conditional rendering with no else branch, use `{condition && <Component />}` instead of `{condition ? <Component /> : null}`.
+- Match discriminated unions with explicit cases and an exhaustive terminator; do not use fallback branches that would silently accept a newly added variant.
 - Define functions implemented with an Effect generator as `Effect.fn("descriptor")(function* (...) { ... })`; do not wrap `Effect.gen(function* (...) { ... })` in an arrow function.
 - When mapping a small variant union to copy, icons, or similar values, use an inline object lookup instead of ternaries; keep one-use lookup objects inline.
 - Do not hoist JSX `className` strings into local variables when they are used only once; inline them at the usage site.

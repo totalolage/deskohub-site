@@ -6,8 +6,8 @@ import {
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import type { WorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
+  type CoworkReservationOrderObject,
   type CoworkReservationProductInput,
   coworkReservationOrderObjectEffectSchema,
   getCoworkReservationIssues,
@@ -18,7 +18,10 @@ import {
 } from "@/features/reservation/cowork-reservation";
 import {
   getMeetingRoomReservationIssues,
+  getMeetingRoomReservationProductCoffee,
+  getMeetingRoomReservationProductMonitorOption,
   type MeetingRoomReservationOrderObject,
+  type MeetingRoomReservationProductInput,
   meetingRoomReservationOrderObjectEffectSchema,
   normalizedMeetingRoomReservationOrderEffectSchema,
 } from "@/features/reservation/meeting-room-reservation";
@@ -72,6 +75,8 @@ const toReservationFilterSchemaIssue = (
 
 const validateReservationOrder = Effect.fn("validateReservationOrder")(
   function* (data: ReservationOrderObject) {
+    const getCoworkIssues = (reservation: CoworkReservationOrderObject) =>
+      Effect.succeed(getCoworkReservationIssues(reservation));
     const issues = yield* Match.value(data).pipe(
       Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) =>
         getMeetingRoomReservationIssues(meetingRoomReservation).pipe(
@@ -80,9 +85,10 @@ const validateReservationOrder = Effect.fn("validateReservationOrder")(
           )
         )
       ),
-      Match.orElse((coworkReservation) =>
-        Effect.succeed(getCoworkReservationIssues(coworkReservation))
-      )
+      Match.when({ entryTier: "basic" }, getCoworkIssues),
+      Match.when({ entryTier: "plus" }, getCoworkIssues),
+      Match.when({ entryTier: "profi" }, getCoworkIssues),
+      Match.exhaustive
     );
     const issue = issues[0];
 
@@ -112,29 +118,33 @@ const normalizeReservationOrder = (data: ReservationOrderObject) =>
       { entryTier: "meeting-room" },
       normalizeMeetingRoomReservationOrder
     ),
-    Match.orElse((coworkReservation) =>
+    Match.when({ entryTier: "basic" }, (coworkReservation) =>
       Effect.succeed(normalizeCoworkReservationOrder(coworkReservation))
+    ),
+    Match.when({ entryTier: "plus" }, (coworkReservation) =>
+      Effect.succeed(normalizeCoworkReservationOrder(coworkReservation))
+    ),
+    Match.when({ entryTier: "profi" }, (coworkReservation) =>
+      Effect.succeed(normalizeCoworkReservationOrder(coworkReservation))
+    ),
+    Match.exhaustive
+  );
+
+const decodeReservationOrder = Effect.fn("decodeReservationOrder")(function* (
+  reservation: ReservationOrderObject
+) {
+  yield* validateReservationOrder(reservation);
+  return yield* normalizeReservationOrder(reservation).pipe(
+    Effect.mapError((error) =>
+      toReservationSchemaIssue(reservation, [error.path], error.message)
     )
   );
+});
 
 export const reservationOrderEffectSchema =
   reservationOrderObjectEffectSchema.pipe(
     Schema.decodeTo(normalizedReservationOrderEffectSchema, {
-      decode: SchemaGetter.transformOrFail((reservation) =>
-        validateReservationOrder(reservation).pipe(
-          Effect.andThen(
-            normalizeReservationOrder(reservation).pipe(
-              Effect.mapError((error) =>
-                toReservationSchemaIssue(
-                  reservation,
-                  [error.path],
-                  error.message
-                )
-              )
-            )
-          )
-        )
-      ),
+      decode: SchemaGetter.transformOrFail(decodeReservationOrder),
       encode: SchemaGetter.transform(decodeReservationOrderObject),
     })
   );
@@ -144,24 +154,38 @@ export type ReservationOrderData = typeof reservationOrderEffectSchema.Type;
 
 export type ReservationProductProjectionInput =
   | CoworkReservationProductInput
-  | {
-      readonly entryTier: "meeting-room";
-      readonly coffee?: boolean;
-      readonly monitorOption?: WorkspaceProductMonitorOption | "";
-    };
+  | MeetingRoomReservationProductInput;
 
 export const getReservationProductCoffee = (
   reservation: ReservationProductProjectionInput
 ) =>
   Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, () => false),
-    Match.orElse(getCoworkReservationProductCoffee)
+    Match.when(
+      { entryTier: "meeting-room" },
+      getMeetingRoomReservationProductCoffee
+    ),
+    Match.when({ entryTier: "basic" }, getCoworkReservationProductCoffee),
+    Match.when({ entryTier: "plus" }, getCoworkReservationProductCoffee),
+    Match.when({ entryTier: "profi" }, getCoworkReservationProductCoffee),
+    Match.exhaustive
   );
 
 export const getReservationProductMonitorOption = (
   reservation: ReservationProductProjectionInput
 ) =>
   Match.value(reservation).pipe(
-    Match.when({ entryTier: "meeting-room" }, () => undefined),
-    Match.orElse(getCoworkReservationProductMonitorOption)
+    Match.when(
+      { entryTier: "meeting-room" },
+      getMeetingRoomReservationProductMonitorOption
+    ),
+    Match.when(
+      { entryTier: "basic" },
+      getCoworkReservationProductMonitorOption
+    ),
+    Match.when({ entryTier: "plus" }, getCoworkReservationProductMonitorOption),
+    Match.when(
+      { entryTier: "profi" },
+      getCoworkReservationProductMonitorOption
+    ),
+    Match.exhaustive
   );
