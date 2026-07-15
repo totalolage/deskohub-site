@@ -3,9 +3,9 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import {
+  getReservationDateRange,
   getReservationIntervalValidationIssue,
-  getReservationPragueDateRange,
-  isDefaultReservationInterval,
+  isSingleDayReservationInterval,
   normalizeReservationInterval,
   reservationIntervalInputEffectSchema,
 } from "./reservation-interval";
@@ -61,7 +61,7 @@ describe("reservation intervals", () => {
           startsAt: "2099-06-10T15:00",
           endsAt: "2099-06-11T15:00",
         })
-      ).pipe(Effect.flatMap(getReservationPragueDateRange))
+      ).pipe(Effect.flatMap(getReservationDateRange))
     );
 
     expect(range.endMs - range.startMs).toBe(24 * 60 * 60 * 1000);
@@ -82,11 +82,15 @@ describe("reservation intervals", () => {
 
   test("treats local midnight-to-midnight as full-day across DST changes", () => {
     expect(
-      isDefaultReservationInterval(
-        decodeInterval({
-          startsAt: "2026-03-29T00:00",
-          endsAt: "2026-03-30T00:00",
-        })
+      isSingleDayReservationInterval(
+        Effect.runSync(
+          normalizeReservationInterval(
+            decodeInterval({
+              startsAt: "2026-03-29T00:00",
+              endsAt: "2026-03-30T00:00",
+            })
+          )
+        )
       )
     ).toBeTrue();
   });

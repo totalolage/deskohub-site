@@ -1,10 +1,19 @@
-import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
+import { Effect, Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
-import { meetingRoomReservationEffectSchema } from "./meeting-room-reservation";
+import {
+  getMeetingRoomReservationIssues,
+  meetingRoomReservationEffectSchema,
+  meetingRoomReservationOrderObjectEffectSchema,
+} from "./meeting-room-reservation";
 
 const schema = makeEffectSchemaParser(meetingRoomReservationEffectSchema);
+const decodeOrder = Schema.decodeUnknownSync(
+  meetingRoomReservationOrderObjectEffectSchema
+);
+
+afterEach(() => setSystemTime());
 
 describe("meetingRoomReservationEffectSchema", () => {
   test("rejects an empty meeting-room start without throwing", () => {
@@ -40,5 +49,35 @@ describe("meetingRoomReservationEffectSchema", () => {
         message: "Project workshop",
       });
     }
+  });
+
+  test("allows a reservation that has started but not ended", () => {
+    setSystemTime(new Date("2099-06-10T10:30:00Z"));
+
+    const formResult = schema.safeParse({
+      startDateTime: "2099-06-10T12:00",
+      durationMinutes: 60,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+      message: "",
+      legalConsent: true,
+    });
+
+    const issues = Effect.runSync(
+      getMeetingRoomReservationIssues(
+        decodeOrder({
+          entryTier: "meeting-room",
+          startsAt: "2099-06-10T10:00:00Z",
+          endsAt: "2099-06-10T11:00:00Z",
+          name: "Ada Lovelace",
+          email: "ada@example.com",
+          phone: "+420777777777",
+        })
+      )
+    );
+
+    expect(Result.isSuccess(formResult)).toBe(true);
+    expect(issues).toEqual([]);
   });
 });

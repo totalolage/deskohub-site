@@ -1,12 +1,18 @@
 import {
   Data,
   Effect,
+  Match,
   Option,
   Schema,
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import { isWorkspaceMeetingRoomDuration } from "@/features/checkout/product-catalog";
+import {
+  isWorkspaceMeetingRoomDuration,
+  type WorkspaceMeetingRoomDurationMinutes,
+  workspaceMeetingRoomDurationOptions,
+} from "@/features/checkout/product-catalog";
+import { m } from "@/features/i18n";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import type {
   ReservationInterval,
@@ -75,25 +81,35 @@ export const normalizedReservationIntervalEffectSchema =
     })
   );
 
-export const isDefaultReservationInterval = (
-  interval: ReservationIntervalInput
+export const isSingleDayReservationInterval = (
+  interval: ReservationInterval
 ) => {
-  return Effect.runSync(
-    normalizeReservationIntervalFields(interval, reservationTimeZone).pipe(
-      Effect.map((normalized) => {
-        const start = toPlainDateTime(normalized.startsAt, reservationTimeZone);
-        const end = toPlainDateTime(normalized.endsAt, reservationTimeZone);
+  const start = toPlainDateTime(interval.startsAt, reservationTimeZone);
+  const end = toPlainDateTime(interval.endsAt, reservationTimeZone);
 
-        return (
-          isMidnight(start) &&
-          isMidnight(end) &&
-          end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
-        );
-      }),
-      Effect.catch(() => Effect.succeed(false))
-    )
+  return (
+    isMidnight(start) &&
+    isMidnight(end) &&
+    end.toPlainDate().equals(start.toPlainDate().add({ days: 1 }))
   );
 };
+
+const getMeetingRoomDurationMessage = (
+  duration: WorkspaceMeetingRoomDurationMinutes
+) =>
+  Match.value(duration).pipe(
+    Match.when(60, () => m.reservationMeetingRoomDurationOneHour()),
+    Match.when(240, () => m.reservationMeetingRoomDurationFourHours()),
+    Match.when(1440, () => m.reservationMeetingRoomDurationTwentyFourHours()),
+    Match.exhaustive
+  );
+
+export const getMeetingRoomDurationValidationMessage = () =>
+  m.reservationValidationMeetingRoomDuration({
+    durations: workspaceMeetingRoomDurationOptions
+      .map(getMeetingRoomDurationMessage)
+      .join(", "),
+  });
 
 export const wholeHourReservationInstantEffectSchema =
   makeWholeHourInstantStringEffectSchema(reservationTimeZone);
@@ -101,7 +117,7 @@ export const wholeHourReservationInstantEffectSchema =
 export const meetingRoomReservationDurationMinutesEffectSchema =
   Schema.Number.check(
     Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
-      message: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+      message: getMeetingRoomDurationValidationMessage(),
     })
   );
 
@@ -114,7 +130,7 @@ const isMeetingRoomReservationDuration = Schema.is(
 
 export const coworkReservationIntervalEffectSchema =
   normalizedReservationIntervalEffectSchema.check(
-    Schema.makeFilter(isDefaultReservationInterval, {
+    Schema.makeFilter(isSingleDayReservationInterval, {
       message: "Cowork reservations must use the full-day duration.",
     })
   );
@@ -125,13 +141,13 @@ export const meetingRoomReservationIntervalEffectSchema =
       (interval) =>
         isMeetingRoomReservationDuration(getDurationMinutes(interval)),
       {
-        message: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+        message: getMeetingRoomDurationValidationMessage(),
       }
     ),
     Schema.makeFilter(
       (interval) => isWholeHourReservationInstant(interval.startsAt),
       {
-        message: "Meeting room reservations must start on a whole hour.",
+        message: m.reservationValidationMeetingRoomStartWholeHour(),
       }
     )
   );
@@ -166,7 +182,7 @@ export const normalizeReservationInterval = Effect.fn(
   );
 });
 
-export const getReservationPragueDateRange = (
+export const getReservationDateRange = (
   reservation: ReservationInterval
 ): Effect.Effect<ReservationDateRange, ReservationIntervalError> =>
   normalizeReservationInterval(reservation).pipe(

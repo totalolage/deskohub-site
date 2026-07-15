@@ -1,12 +1,13 @@
 import { Option, Schema } from "effect";
-import { isWorkspaceMeetingRoomDuration } from "@/features/checkout/product-catalog";
+import {
+  isWorkspaceMeetingRoomDuration,
+  type WorkspaceMeetingRoomDurationMinutes,
+} from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
-import "@/shared/polyfills/temporal";
 import {
   type Instant,
   instantStringEffectSchema,
   localDateTimeEffectSchema,
-  temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
 
 const decodeInstant = Schema.decodeUnknownOption(instantStringEffectSchema);
@@ -21,26 +22,31 @@ const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
 );
 
 export type MeetingRoomReservationInterval = {
-  readonly date: string;
   readonly startsAt: Instant;
   readonly endsAt: Instant;
 };
 
 export const getEarliestMeetingRoomStartDateTime = (
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
   now = Temporal.Now.instant()
-) =>
-  now
-    .toZonedDateTimeISO(reservationTimeZone)
-    .with({
-      minute: 0,
-      second: 0,
-      millisecond: 0,
-      microsecond: 0,
-      nanosecond: 0,
-    })
-    .add({ hours: 1 })
+) => {
+  const earliestStart = now
+    .subtract({ minutes: durationMinutes })
+    .toZonedDateTimeISO(reservationTimeZone);
+  const wholeHour = earliestStart.with({
+    minute: 0,
+    second: 0,
+    millisecond: 0,
+    microsecond: 0,
+    nanosecond: 0,
+  });
+
+  return (
+    earliestStart.equals(wholeHour) ? wholeHour : wholeHour.add({ hours: 1 })
+  )
     .toPlainDateTime()
     .toString({ smallestUnit: "minute" });
+};
 
 export const getMeetingRoomReservationInterval = (
   startDateTime: string,
@@ -56,16 +62,7 @@ export const getMeetingRoomReservationInterval = (
       return Option.all({
         startsAt: decodeInstant(startInstant.toString()),
         endsAt: decodeInstant(endInstant.toString()),
-      }).pipe(
-        Option.map(({ startsAt, endsAt }) => ({
-          date: temporalInstantToPlainDate({
-            instant: startInstant,
-            timeZone: reservationTimeZone,
-          }).toString(),
-          startsAt,
-          endsAt,
-        }))
-      );
+      }).pipe(Option.map(({ startsAt, endsAt }) => ({ startsAt, endsAt })));
     }),
     Option.getOrNull
   );

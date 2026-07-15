@@ -1,6 +1,7 @@
 import { Effect, Schema } from "effect";
 import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
+import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { reservationLegalConsentEffectSchema } from "@/features/reservation/reservation-consent";
 import {
   reservationCustomerEffectFields,
@@ -9,17 +10,19 @@ import {
   reservationCustomerNameEffectSchema,
   reservationCustomerPhoneEffectSchema,
 } from "@/features/reservation/reservation-contact";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
+  getMeetingRoomDurationValidationMessage,
+  getReservationDateRange,
   getReservationDurationMinutes,
   getReservationIntervalNormalization,
-  getReservationPragueDateRange,
   meetingRoomReservationDurationMinutesEffectSchema,
   reservationIntervalFieldSchemas,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/reservation-interval";
-import { isFuturePlainDateTime } from "@/shared/utils";
-import { instantStringEffectSchema } from "@/shared/utils/temporal";
+import {
+  instantStringEffectSchema,
+  localDateTimeEffectSchema,
+} from "@/shared/utils/temporal";
 
 export const meetingRoomReservationOrderObjectEffectSchema = Schema.Struct({
   ...reservationCustomerEffectFields,
@@ -51,7 +54,7 @@ export const getMeetingRoomReservationIssues = Effect.fn(
     return [
       {
         path: ["startsAt"],
-        issue: "Meeting room reservations must start on a whole hour.",
+        issue: m.reservationValidationMeetingRoomStartWholeHour(),
       },
     ];
   }
@@ -64,17 +67,17 @@ export const getMeetingRoomReservationIssues = Effect.fn(
     return [
       {
         path: ["endsAt"],
-        issue: "Meeting room duration must be 1 hour, 4 hours, or 24 hours.",
+        issue: getMeetingRoomDurationValidationMessage(),
       },
     ];
   }
 
-  const range = yield* getReservationPragueDateRange(interval);
-  if (range.startMs < Date.now()) {
+  const range = yield* getReservationDateRange(interval);
+  if (range.endMs < Date.now()) {
     return [
       {
-        path: ["startsAt"],
-        issue: m.reservationValidationDatePast(),
+        path: ["endsAt"],
+        issue: m.reservationValidationMeetingRoomEnded(),
       },
     ];
   }
@@ -90,13 +93,8 @@ const meetingRoomStartDateTimeEffectSchema = Schema.String.check(
     message: m.reservationValidationMeetingRoomStartWholeHour(),
   }),
   Schema.makeFilter(
-    (value) =>
-      value === "" ||
-      isFuturePlainDateTime({
-        dateTime: Temporal.PlainDateTime.from(value),
-        timeZone: reservationTimeZone,
-      }),
-    { message: m.reservationValidationDatePast() }
+    (value) => value === "" || Schema.is(localDateTimeEffectSchema)(value),
+    { message: m.reservationValidationMeetingRoomStartRequired() }
   )
 );
 
@@ -108,7 +106,25 @@ export const meetingRoomReservationEffectSchema = Schema.Struct({
   phone: reservationCustomerPhoneEffectSchema,
   message: Schema.optional(reservationCustomerMessageEffectSchema),
   legalConsent: reservationLegalConsentEffectSchema,
-});
+}).check(
+  Schema.makeFilter((reservation) => {
+    const interval = getMeetingRoomReservationInterval(
+      reservation.startDateTime,
+      reservation.durationMinutes
+    );
+
+    return (
+      interval === null ||
+      Temporal.Instant.compare(
+        Temporal.Instant.from(interval.endsAt),
+        Temporal.Now.instant()
+      ) >= 0 || {
+        path: ["startDateTime"],
+        issue: m.reservationValidationMeetingRoomEnded(),
+      }
+    );
+  })
+);
 
 export type MeetingRoomReservationInput =
   typeof meetingRoomReservationEffectSchema.Encoded;

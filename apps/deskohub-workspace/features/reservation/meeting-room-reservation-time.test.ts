@@ -7,20 +7,31 @@ import {
 } from "./meeting-room-reservation-time";
 
 describe("meeting room reservation time helpers", () => {
-  test("uses the next whole Prague hour as the earliest selectable start", () => {
+  test("uses the earliest whole-hour start allowed by the duration", () => {
     expect(
       getEarliestMeetingRoomStartDateTime(
+        60,
         Temporal.Instant.from("2026-07-12T12:37:00Z")
       )
-    ).toBe("2026-07-12T15:00");
+    ).toBe("2026-07-12T14:00");
   });
 
-  test("skips nonexistent local hours when finding the earliest start", () => {
+  test("finds the earliest start across a spring DST transition", () => {
     expect(
       getEarliestMeetingRoomStartDateTime(
+        60,
         Temporal.Instant.from("2026-03-29T00:30:00Z")
       )
-    ).toBe("2026-03-29T03:00");
+    ).toBe("2026-03-29T01:00");
+  });
+
+  test("accounts for the selected duration when finding the earliest start", () => {
+    expect(
+      getEarliestMeetingRoomStartDateTime(
+        240,
+        Temporal.Instant.from("2026-07-12T12:37:00Z")
+      )
+    ).toBe("2026-07-12T11:00");
   });
 
   test("adds selected durations as absolute Prague instants across DST changes", () => {
@@ -30,7 +41,6 @@ describe("meeting room reservation time helpers", () => {
     );
 
     expect(interval).toEqual({
-      date: "2026-03-29",
       startsAt: "2026-03-28T23:00:00Z",
       endsAt: "2026-03-29T23:00:00Z",
     });
