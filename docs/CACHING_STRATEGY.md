@@ -75,39 +75,17 @@ the remote cache even though the Next.js build still runs.
 This boundary is intentional: do not exclude deployment-specific variables
 from the Workspace `build` task to obtain a full Next.js cache hit.
 
-## Non-Runtime Preview Changes
-
-`apps/deskohub-workspace/vercel.json` runs a repository-owned ignored-build
-classifier before Git preview builds. It cancels a preview only when every
-changed path since the previous successful deployment is one of the following:
-
-- root agent metadata or a `README.md`
-- a file in a `docs` directory
-- GitHub CI configuration under `.github`
-- a JavaScript or TypeScript `*.test.*` or `*.spec.*` file
-- the Workspace E2E harness
-- the Workspace test TypeScript configuration
-
-The classifier always permits production and fresh E2E deployments. It also
-permits the build when the previous deployment SHA is missing, the Git diff
-cannot be read, no changed paths are reported, or any path is not explicitly
-allowed. Runtime source, migrations, dependency files, build configuration, and
-deployment scripts therefore continue to produce previews.
-
-## Expected Compute Impact
+## Expected Build Impact
 
 Necessary runtime-changing deployments should take approximately the same time
 because the Next.js build and production PostHog source-map processing remain
-enabled. The optimization reduces total compute by avoiding unnecessary Git
-preview builds and by restoring the independent i18n output when possible; it
-does not promise a large reduction in per-build latency.
+enabled. Restoring the independent i18n output avoids a small amount of repeated
+work, but does not promise a large reduction in per-build latency.
 
 Recent production builds also created a Vercel build-cache archive of roughly
 370 MB. That archive and PostHog source-map upload remain known costs for actual
-builds and should be measured separately from the number of previews avoided.
+builds and should be measured separately from Turbo task caching.
 
-For live verification, inspect the ignored-build decision before comparing
-Turbo task counts. A non-runtime Git preview should end immediately after the
-classifier reports that every changed path is non-runtime. A runtime-changing
-preview should continue into Turbo, where unchanged i18n inputs should restore
-the `i18n:compile` output while the deployment-specific Next.js build runs.
+For live verification, compare Turbo task counts across deployments. Unchanged
+i18n inputs should restore the `i18n:compile` output while the
+deployment-specific Next.js build runs.
