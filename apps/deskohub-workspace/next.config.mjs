@@ -2,6 +2,7 @@ import { withPostHogConfig } from "@posthog/nextjs-config";
 import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
+import { withBotId } from "botid/next/config";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
 
@@ -78,6 +79,8 @@ const nextConfig = {
   },
 };
 
+const botIdConfig = withBotId(nextConfig);
+
 export default postHogSourceMapConfig
-  ? withPostHogConfig(nextConfig, postHogSourceMapConfig)
-  : nextConfig;
+  ? withPostHogConfig(botIdConfig, postHogSourceMapConfig)
+  : botIdConfig;
