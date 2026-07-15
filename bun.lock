@@ -304,6 +304,17 @@
         "typescript": "^5",
       },
     },
+    "packages/posthog": {
+      "name": "@deskohub/posthog",
+      "version": "0.1.0",
+      "dependencies": {
+        "effect": "4.0.0-beta.85",
+      },
+      "devDependencies": {
+        "@effect/openapi-generator": "4.0.0-beta.85",
+        "typescript": "^5",
+      },
+    },
     "packages/qr-code": {
       "name": "@deskohub/qr-code",
       "version": "0.1.0",
@@ -443,6 +454,8 @@
     "@deskohub/nexi": ["@deskohub/nexi@workspace:packages/nexi"],
 
     "@deskohub/next-effect": ["@deskohub/next-effect@workspace:packages/next-effect"],
+
+    "@deskohub/posthog": ["@deskohub/posthog@workspace:packages/posthog"],
 
     "@deskohub/qr-code": ["@deskohub/qr-code@workspace:packages/qr-code"],
 
