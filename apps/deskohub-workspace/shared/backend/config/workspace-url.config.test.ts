@@ -1,36 +1,76 @@
-import { expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import "@/shared/testing/workspace-test-env";
 
-const runtimeEnv: {
-  VERCEL_ENV: "development" | "preview" | "production";
-  VERCEL_PROJECT_PRODUCTION_URL: string;
-  VERCEL_URL: string;
-  WORKSPACE_CALLBACK_ORIGIN?: string;
-} = {
-  VERCEL_ENV: "preview",
-  VERCEL_PROJECT_PRODUCTION_URL: "workspace.deskohub.cz",
-  VERCEL_URL: "preview-a.vercel.app",
+import { expect, test } from "bun:test";
+
+type CallbackEnvironmentName =
+  | "VERCEL_ENV"
+  | "VERCEL_PROJECT_PRODUCTION_URL"
+  | "VERCEL_URL"
+  | "WORKSPACE_CALLBACK_ORIGIN";
+
+const getOrigin = (
+  overrides: Partial<Record<CallbackEnvironmentName, string | undefined>>
+) => {
+  const environment = { ...process.env };
+
+  for (const [name, value] of Object.entries(overrides)) {
+    if (value === undefined) delete environment[name];
+    else environment[name] = value;
+  }
+
+  const result = Bun.spawnSync({
+    cmd: [
+      process.execPath,
+      "--eval",
+      `
+        import { Effect } from "effect";
+        const { getWorkspaceRuntimeCallbackOrigin } = await import(
+          "./shared/backend/config/workspace-url.config.ts"
+        );
+        console.log(
+          (await Effect.runPromise(getWorkspaceRuntimeCallbackOrigin)).origin
+        );
+      `,
+    ],
+    cwd: process.cwd(),
+    env: environment,
+  });
+
+  expect(result.exitCode).toBe(0);
+  return result.stdout.toString().trim();
 };
 
-mock.module("@/env", () => ({ env: runtimeEnv }));
+test("selects the callback origin from the runtime environment", () => {
+  expect(
+    getOrigin({
+      VERCEL_ENV: "preview",
+      VERCEL_URL: "preview-a.vercel.app",
+      WORKSPACE_CALLBACK_ORIGIN: undefined,
+    })
+  ).toBe("https://preview-a.vercel.app");
 
-test("selects the callback origin when the Effect runs", async () => {
-  const { getWorkspaceRuntimeCallbackOrigin } = await import(
-    "./workspace-url.config"
-  );
-  const getOrigin = () =>
-    Effect.runPromise(getWorkspaceRuntimeCallbackOrigin).then(
-      (url) => url.origin
-    );
+  expect(
+    getOrigin({
+      VERCEL_ENV: "preview",
+      VERCEL_URL: "preview-b.vercel.app",
+      WORKSPACE_CALLBACK_ORIGIN: undefined,
+    })
+  ).toBe("https://preview-b.vercel.app");
 
-  expect(await getOrigin()).toBe("https://preview-a.vercel.app");
+  expect(
+    getOrigin({
+      VERCEL_ENV: "preview",
+      VERCEL_URL: "preview-b.vercel.app",
+      WORKSPACE_CALLBACK_ORIGIN: "https://new.workspace.deskohub.cz",
+    })
+  ).toBe("https://new.workspace.deskohub.cz");
 
-  runtimeEnv.VERCEL_URL = "preview-b.vercel.app";
-  expect(await getOrigin()).toBe("https://preview-b.vercel.app");
-
-  runtimeEnv.WORKSPACE_CALLBACK_ORIGIN = "https://new.workspace.deskohub.cz";
-  expect(await getOrigin()).toBe("https://new.workspace.deskohub.cz");
-
-  runtimeEnv.VERCEL_ENV = "production";
-  expect(await getOrigin()).toBe("https://workspace.deskohub.cz");
+  expect(
+    getOrigin({
+      VERCEL_ENV: "production",
+      VERCEL_PROJECT_PRODUCTION_URL: "workspace.deskohub.cz",
+      VERCEL_URL: "ignored.vercel.app",
+      WORKSPACE_CALLBACK_ORIGIN: "https://ignored.example",
+    })
+  ).toBe("https://workspace.deskohub.cz");
 });
