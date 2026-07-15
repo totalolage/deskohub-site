@@ -1,0 +1,1590 @@
+{
+  "id": "94f7c84e-12da-4aea-ba2b-9822e995d381",
+  "prevId": "6fbc75da-ffbe-4fa6-8ad3-9f1aef7d03cc",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.discount_applications": {
+      "name": "discount_applications",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "payment_attempt_id": {
+          "name": "payment_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workspace_reservation_id": {
+          "name": "workspace_reservation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sequence": {
+          "name": "sequence",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "public_discount_id": {
+          "name": "public_discount_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "adjustment": {
+          "name": "adjustment",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_identity": {
+          "name": "product_identity",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_before_value": {
+          "name": "subtotal_before_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_before_exponent": {
+          "name": "subtotal_before_exponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_before_currency": {
+          "name": "subtotal_before_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applied_amount_value": {
+          "name": "applied_amount_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applied_amount_exponent": {
+          "name": "applied_amount_exponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "applied_amount_currency": {
+          "name": "applied_amount_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_after_value": {
+          "name": "subtotal_after_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_after_exponent": {
+          "name": "subtotal_after_exponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "subtotal_after_currency": {
+          "name": "subtotal_after_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "expires_at": {
+          "name": "expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "countdown_starts_at": {
+          "name": "countdown_starts_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provenance": {
+          "name": "provenance",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "discount_applications_attempt_sequence_unique_idx": {
+          "name": "discount_applications_attempt_sequence_unique_idx",
+          "columns": [
+            {
+              "expression": "payment_attempt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sequence",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_applications_id_attempt_unique_idx": {
+          "name": "discount_applications_id_attempt_unique_idx",
+          "columns": [
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payment_attempt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_applications_reservation_idx": {
+          "name": "discount_applications_reservation_idx",
+          "columns": [
+            {
+              "expression": "workspace_reservation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "discount_applications_payment_attempt_id_payment_attempts_id_fk": {
+          "name": "discount_applications_payment_attempt_id_payment_attempts_id_fk",
+          "tableFrom": "discount_applications",
+          "tableTo": "payment_attempts",
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "discount_applications_workspace_reservation_id_workspace_reservations_id_fk": {
+          "name": "discount_applications_workspace_reservation_id_workspace_reservations_id_fk",
+          "tableFrom": "discount_applications",
+          "tableTo": "workspace_reservations",
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "discount_applications_sequence_check": {
+          "name": "discount_applications_sequence_check",
+          "value": "\"discount_applications\".\"sequence\" >= 0"
+        },
+        "discount_applications_identity_check": {
+          "name": "discount_applications_identity_check",
+          "value": "btrim(\"discount_applications\".\"public_discount_id\") <> '' and btrim(\"discount_applications\".\"label\") <> ''"
+        },
+        "discount_applications_money_values_check": {
+          "name": "discount_applications_money_values_check",
+          "value": "\"discount_applications\".\"subtotal_before_value\" > 0\n        and \"discount_applications\".\"applied_amount_value\" > 0\n        and \"discount_applications\".\"subtotal_after_value\" >= 0\n        and \"discount_applications\".\"subtotal_before_value\" - \"discount_applications\".\"applied_amount_value\" = \"discount_applications\".\"subtotal_after_value\""
+        },
+        "discount_applications_money_exponents_check": {
+          "name": "discount_applications_money_exponents_check",
+          "value": "\"discount_applications\".\"subtotal_before_exponent\" >= 0\n        and \"discount_applications\".\"subtotal_before_exponent\" = \"discount_applications\".\"applied_amount_exponent\"\n        and \"discount_applications\".\"subtotal_before_exponent\" = \"discount_applications\".\"subtotal_after_exponent\""
+        },
+        "discount_applications_money_currencies_check": {
+          "name": "discount_applications_money_currencies_check",
+          "value": "\"discount_applications\".\"subtotal_before_currency\" ~ '^[A-Z]{3}$'\n        and \"discount_applications\".\"subtotal_before_currency\" = \"discount_applications\".\"applied_amount_currency\"\n        and \"discount_applications\".\"subtotal_before_currency\" = \"discount_applications\".\"subtotal_after_currency\""
+        },
+        "discount_applications_countdown_check": {
+          "name": "discount_applications_countdown_check",
+          "value": "\"discount_applications\".\"countdown_starts_at\" is null or (\n        \"discount_applications\".\"expires_at\" is not null and \"discount_applications\".\"countdown_starts_at\" < \"discount_applications\".\"expires_at\"\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.discount_code_redemptions": {
+      "name": "discount_code_redemptions",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "code_id": {
+          "name": "code_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "application_id": {
+          "name": "application_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment_attempt_id": {
+          "name": "payment_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dotypos_customer_id": {
+          "name": "dotypos_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reservation_expires_at": {
+          "name": "reservation_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reserved_at": {
+          "name": "reserved_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "redeemed_at": {
+          "name": "redeemed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "released_at": {
+          "name": "released_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "release_reason": {
+          "name": "release_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "discount_code_redemptions_application_unique_idx": {
+          "name": "discount_code_redemptions_application_unique_idx",
+          "columns": [
+            {
+              "expression": "application_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_code_redemptions_attempt_unique_idx": {
+          "name": "discount_code_redemptions_attempt_unique_idx",
+          "columns": [
+            {
+              "expression": "payment_attempt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_code_redemptions_active_customer_unique_idx": {
+          "name": "discount_code_redemptions_active_customer_unique_idx",
+          "columns": [
+            {
+              "expression": "code_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "dotypos_customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"discount_code_redemptions\".\"state\" in ('reserved', 'redeemed')",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_code_redemptions_code_state_idx": {
+          "name": "discount_code_redemptions_code_state_idx",
+          "columns": [
+            {
+              "expression": "code_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_code_redemptions_stale_reserved_idx": {
+          "name": "discount_code_redemptions_stale_reserved_idx",
+          "columns": [
+            {
+              "expression": "reservation_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"discount_code_redemptions\".\"state\" = 'reserved'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "discount_code_redemptions_code_id_discount_codes_id_fk": {
+          "name": "discount_code_redemptions_code_id_discount_codes_id_fk",
+          "tableFrom": "discount_code_redemptions",
+          "tableTo": "discount_codes",
+          "columnsFrom": ["code_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "discount_code_redemptions_application_id_discount_applications_id_fk": {
+          "name": "discount_code_redemptions_application_id_discount_applications_id_fk",
+          "tableFrom": "discount_code_redemptions",
+          "tableTo": "discount_applications",
+          "columnsFrom": ["application_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "discount_code_redemptions_payment_attempt_id_payment_attempts_id_fk": {
+          "name": "discount_code_redemptions_payment_attempt_id_payment_attempts_id_fk",
+          "tableFrom": "discount_code_redemptions",
+          "tableTo": "payment_attempts",
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        },
+        "discount_code_redemptions_application_attempt_fk": {
+          "name": "discount_code_redemptions_application_attempt_fk",
+          "tableFrom": "discount_code_redemptions",
+          "tableTo": "discount_applications",
+          "columnsFrom": ["application_id", "payment_attempt_id"],
+          "columnsTo": ["id", "payment_attempt_id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "discount_code_redemptions_customer_check": {
+          "name": "discount_code_redemptions_customer_check",
+          "value": "btrim(\"discount_code_redemptions\".\"dotypos_customer_id\") <> ''"
+        },
+        "discount_code_redemptions_state_check": {
+          "name": "discount_code_redemptions_state_check",
+          "value": "\"discount_code_redemptions\".\"state\" in ('reserved', 'redeemed', 'released')"
+        },
+        "discount_code_redemptions_expiration_check": {
+          "name": "discount_code_redemptions_expiration_check",
+          "value": "\"discount_code_redemptions\".\"reservation_expires_at\" > \"discount_code_redemptions\".\"reserved_at\""
+        },
+        "discount_code_redemptions_lifecycle_check": {
+          "name": "discount_code_redemptions_lifecycle_check",
+          "value": "(\n        \"discount_code_redemptions\".\"state\" = 'reserved'\n        and \"discount_code_redemptions\".\"redeemed_at\" is null\n        and \"discount_code_redemptions\".\"released_at\" is null\n        and \"discount_code_redemptions\".\"release_reason\" is null\n      ) or (\n        \"discount_code_redemptions\".\"state\" = 'redeemed'\n        and \"discount_code_redemptions\".\"redeemed_at\" is not null\n        and \"discount_code_redemptions\".\"released_at\" is null\n        and \"discount_code_redemptions\".\"release_reason\" is null\n      ) or (\n        \"discount_code_redemptions\".\"state\" = 'released'\n        and \"discount_code_redemptions\".\"redeemed_at\" is null\n        and \"discount_code_redemptions\".\"released_at\" is not null\n        and \"discount_code_redemptions\".\"release_reason\" is not null\n        and btrim(\"discount_code_redemptions\".\"release_reason\") <> ''\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.discount_code_customers": {
+      "name": "discount_code_customers",
+      "schema": "",
+      "columns": {
+        "code_id": {
+          "name": "code_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dotypos_customer_id": {
+          "name": "dotypos_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "discount_code_customers_code_id_discount_codes_id_fk": {
+          "name": "discount_code_customers_code_id_discount_codes_id_fk",
+          "tableFrom": "discount_code_customers",
+          "tableTo": "discount_codes",
+          "columnsFrom": ["code_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "discount_code_customers_pk": {
+          "name": "discount_code_customers_pk",
+          "columns": ["code_id", "dotypos_customer_id"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "discount_code_customers_customer_check": {
+          "name": "discount_code_customers_customer_check",
+          "value": "btrim(\"discount_code_customers\".\"dotypos_customer_id\") <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.discount_codes": {
+      "name": "discount_codes",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "discount_id": {
+          "name": "discount_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "valid_from": {
+          "name": "valid_from",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "valid_until": {
+          "name": "valid_until",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "max_uses": {
+          "name": "max_uses",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "discount_codes_code_unique_idx": {
+          "name": "discount_codes_code_unique_idx",
+          "columns": [
+            {
+              "expression": "code",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "discount_codes_discount_idx": {
+          "name": "discount_codes_discount_idx",
+          "columns": [
+            {
+              "expression": "discount_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "discount_codes_discount_id_discounts_id_fk": {
+          "name": "discount_codes_discount_id_discounts_id_fk",
+          "tableFrom": "discount_codes",
+          "tableTo": "discounts",
+          "columnsFrom": ["discount_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "discount_codes_code_check": {
+          "name": "discount_codes_code_check",
+          "value": "\"discount_codes\".\"code\" ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$'"
+        },
+        "discount_codes_valid_window_check": {
+          "name": "discount_codes_valid_window_check",
+          "value": "\"discount_codes\".\"valid_from\" is null or \"discount_codes\".\"valid_until\" is null or \"discount_codes\".\"valid_until\" > \"discount_codes\".\"valid_from\""
+        },
+        "discount_codes_max_uses_check": {
+          "name": "discount_codes_max_uses_check",
+          "value": "\"discount_codes\".\"max_uses\" is null or \"discount_codes\".\"max_uses\" > 0"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.discount_product_targets": {
+      "name": "discount_product_targets",
+      "schema": "",
+      "columns": {
+        "discount_id": {
+          "name": "discount_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_key": {
+          "name": "product_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_identity": {
+          "name": "product_identity",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "discount_product_targets_discount_id_discounts_id_fk": {
+          "name": "discount_product_targets_discount_id_discounts_id_fk",
+          "tableFrom": "discount_product_targets",
+          "tableTo": "discounts",
+          "columnsFrom": ["discount_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "discount_product_targets_pk": {
+          "name": "discount_product_targets_pk",
+          "columns": ["discount_id", "product_key"]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "discount_product_targets_product_key_check": {
+          "name": "discount_product_targets_product_key_check",
+          "value": "btrim(\"discount_product_targets\".\"product_key\") <> ''"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.discounts": {
+      "name": "discounts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "percentage_basis_points": {
+          "name": "percentage_basis_points",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fixed_amount_value": {
+          "name": "fixed_amount_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fixed_amount_exponent": {
+          "name": "fixed_amount_exponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fixed_amount_currency": {
+          "name": "fixed_amount_currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "discounts_label_check": {
+          "name": "discounts_label_check",
+          "value": "btrim(\"discounts\".\"label\") <> ''"
+        },
+        "discounts_adjustment_variant_check": {
+          "name": "discounts_adjustment_variant_check",
+          "value": "(\n        \"discounts\".\"percentage_basis_points\" is not null\n        and \"discounts\".\"fixed_amount_value\" is null\n        and \"discounts\".\"fixed_amount_exponent\" is null\n        and \"discounts\".\"fixed_amount_currency\" is null\n      ) or (\n        \"discounts\".\"percentage_basis_points\" is null\n        and \"discounts\".\"fixed_amount_value\" is not null\n        and \"discounts\".\"fixed_amount_exponent\" is not null\n        and \"discounts\".\"fixed_amount_currency\" is not null\n      )"
+        },
+        "discounts_percentage_basis_points_check": {
+          "name": "discounts_percentage_basis_points_check",
+          "value": "\"discounts\".\"percentage_basis_points\" is null or \"discounts\".\"percentage_basis_points\" between 1 and 10000"
+        },
+        "discounts_fixed_amount_check": {
+          "name": "discounts_fixed_amount_check",
+          "value": "\"discounts\".\"fixed_amount_value\" is null or (\n        \"discounts\".\"fixed_amount_value\" > 0\n        and \"discounts\".\"fixed_amount_exponent\" >= 0\n        and \"discounts\".\"fixed_amount_currency\" ~ '^[A-Z]{3}$'\n      )"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.legal_evidence_events": {
+      "name": "legal_evidence_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "workspace_reservation_id": {
+          "name": "workspace_reservation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "document_key": {
+          "name": "document_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_path": {
+          "name": "document_path",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "document_hash": {
+          "name": "document_hash",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "hash_algorithm": {
+          "name": "hash_algorithm",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accepted": {
+          "name": "accepted",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "accepted_at": {
+          "name": "accepted_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "legal_evidence_events_workspace_reservation_idx": {
+          "name": "legal_evidence_events_workspace_reservation_idx",
+          "columns": [
+            {
+              "expression": "workspace_reservation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "legal_evidence_events_workspace_reservation_id_workspace_reservations_id_fk": {
+          "name": "legal_evidence_events_workspace_reservation_id_workspace_reservations_id_fk",
+          "tableFrom": "legal_evidence_events",
+          "tableTo": "workspace_reservations",
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "legal_evidence_events_hash_algorithm_check": {
+          "name": "legal_evidence_events_hash_algorithm_check",
+          "value": "\"legal_evidence_events\".\"hash_algorithm\" = 'sha256'"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.payment_attempts": {
+      "name": "payment_attempts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "workspace_reservation_id": {
+          "name": "workspace_reservation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_order_id": {
+          "name": "provider_order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "security_token": {
+          "name": "security_token",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_value": {
+          "name": "amount_value",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount_exponent": {
+          "name": "amount_exponent",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "currency": {
+          "name": "currency",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "provider_redirect_url": {
+          "name": "provider_redirect_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_webhook_event_id": {
+          "name": "last_webhook_event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_provider_operation_id": {
+          "name": "last_provider_operation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "last_provider_status": {
+          "name": "last_provider_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "payment_attempts_provider_order_unique_idx": {
+          "name": "payment_attempts_provider_order_unique_idx",
+          "columns": [
+            {
+              "expression": "provider",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "provider_order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payment_attempts_workspace_reservation_idx": {
+          "name": "payment_attempts_workspace_reservation_idx",
+          "columns": [
+            {
+              "expression": "workspace_reservation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "payment_attempts_state_created_idx": {
+          "name": "payment_attempts_state_created_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "payment_attempts_workspace_reservation_id_workspace_reservations_id_fk": {
+          "name": "payment_attempts_workspace_reservation_id_workspace_reservations_id_fk",
+          "tableFrom": "payment_attempts",
+          "tableTo": "workspace_reservations",
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "payment_attempts_provider_check": {
+          "name": "payment_attempts_provider_check",
+          "value": "\"payment_attempts\".\"provider\" in ('nexi')"
+        },
+        "payment_attempts_state_check": {
+          "name": "payment_attempts_state_check",
+          "value": "\"payment_attempts\".\"state\" in ('created', 'pending', 'paid', 'failed', 'cancelled', 'expired')"
+        },
+        "payment_attempts_currency_check": {
+          "name": "payment_attempts_currency_check",
+          "value": "\"payment_attempts\".\"currency\" ~ '^[A-Z]{3}$'"
+        },
+        "payment_attempts_failure_code_check": {
+          "name": "payment_attempts_failure_code_check",
+          "value": "\"payment_attempts\".\"state\" not in ('failed', 'cancelled', 'expired') or \"payment_attempts\".\"failure_code\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.webhook_events": {
+      "name": "webhook_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "provider": {
+          "name": "provider",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event_id": {
+          "name": "event_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment_attempt_id": {
+          "name": "payment_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "provider_order_id": {
+          "name": "provider_order_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "received_at": {
+          "name": "received_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "processed_at": {
+          "name": "processed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "error_code": {
+          "name": "error_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "webhook_events_payment_attempt_idx": {
+          "name": "webhook_events_payment_attempt_idx",
+          "columns": [
+            {
+              "expression": "payment_attempt_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"webhook_events\".\"payment_attempt_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_events_provider_order_idx": {
+          "name": "webhook_events_provider_order_idx",
+          "columns": [
+            {
+              "expression": "provider_order_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"webhook_events\".\"provider_order_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "webhook_events_state_received_idx": {
+          "name": "webhook_events_state_received_idx",
+          "columns": [
+            {
+              "expression": "state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "received_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "webhook_events_payment_attempt_id_payment_attempts_id_fk": {
+          "name": "webhook_events_payment_attempt_id_payment_attempts_id_fk",
+          "tableFrom": "webhook_events",
+          "tableTo": "payment_attempts",
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "webhook_events_event_id_unique": {
+          "name": "webhook_events_event_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["event_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "webhook_events_provider_check": {
+          "name": "webhook_events_provider_check",
+          "value": "\"webhook_events\".\"provider\" in ('nexi')"
+        },
+        "webhook_events_state_check": {
+          "name": "webhook_events_state_check",
+          "value": "\"webhook_events\".\"state\" in ('received', 'processed', 'failed')"
+        },
+        "webhook_events_processed_check": {
+          "name": "webhook_events_processed_check",
+          "value": "\"webhook_events\".\"state\" <> 'processed' or \"webhook_events\".\"processed_at\" is not null"
+        },
+        "webhook_events_failed_check": {
+          "name": "webhook_events_failed_check",
+          "value": "\"webhook_events\".\"state\" <> 'failed' or \"webhook_events\".\"error_code\" is not null"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.workspace_reservations": {
+      "name": "workspace_reservations",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "reservation_intent_key": {
+          "name": "reservation_intent_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "correlation_id": {
+          "name": "correlation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "uuid_generate_v7()::text"
+        },
+        "dotypos_customer_id": {
+          "name": "dotypos_customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "dotypos_reservation_id": {
+          "name": "dotypos_reservation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "customer_access_code": {
+          "name": "customer_access_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reservation_state": {
+          "name": "reservation_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payment_state": {
+          "name": "payment_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "fulfillment_state": {
+          "name": "fulfillment_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "active_payment_attempt_id": {
+          "name": "active_payment_attempt_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "product_tier": {
+          "name": "product_tier",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_coffee": {
+          "name": "product_coffee",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "product_monitor_option": {
+          "name": "product_monitor_option",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "locale": {
+          "name": "locale",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reservation_hold_expires_at": {
+          "name": "reservation_hold_expires_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reservation_hold_expired_at": {
+          "name": "reservation_hold_expired_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reservation_created_at": {
+          "name": "reservation_created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reservation_confirmed_at": {
+          "name": "reservation_confirmed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "reservation_cancelled_at": {
+          "name": "reservation_cancelled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "paid_at": {
+          "name": "paid_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fulfilled_at": {
+          "name": "fulfilled_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fulfillment_failed_at": {
+          "name": "fulfillment_failed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "failure_code": {
+          "name": "failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fulfillment_failure_code": {
+          "name": "fulfillment_failure_code",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "workspace_reservations_intent_key_unique_idx": {
+          "name": "workspace_reservations_intent_key_unique_idx",
+          "columns": [
+            {
+              "expression": "reservation_intent_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_reservations_dotypos_reservation_unique_idx": {
+          "name": "workspace_reservations_dotypos_reservation_unique_idx",
+          "columns": [
+            {
+              "expression": "dotypos_reservation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"workspace_reservations\".\"dotypos_reservation_id\" is not null",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_reservations_states_idx": {
+          "name": "workspace_reservations_states_idx",
+          "columns": [
+            {
+              "expression": "reservation_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "payment_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "fulfillment_state",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_reservations_expired_holds_idx": {
+          "name": "workspace_reservations_expired_holds_idx",
+          "columns": [
+            {
+              "expression": "reservation_hold_expires_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"workspace_reservations\".\"reservation_state\" = 'held'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "workspace_reservations_dotypos_customer_idx": {
+          "name": "workspace_reservations_dotypos_customer_idx",
+          "columns": [
+            {
+              "expression": "dotypos_customer_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "workspace_reservations_correlation_id_unique": {
+          "name": "workspace_reservations_correlation_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["correlation_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "workspace_reservations_reservation_state_check": {
+          "name": "workspace_reservations_reservation_state_check",
+          "value": "\"workspace_reservations\".\"reservation_state\" in ('draft', 'creating_hold', 'held', 'hold_expired', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed')"
+        },
+        "workspace_reservations_payment_state_check": {
+          "name": "workspace_reservations_payment_state_check",
+          "value": "\"workspace_reservations\".\"payment_state\" in ('not_started', 'pending', 'paid', 'failed', 'cancelled', 'expired')"
+        },
+        "workspace_reservations_fulfillment_state_check": {
+          "name": "workspace_reservations_fulfillment_state_check",
+          "value": "\"workspace_reservations\".\"fulfillment_state\" in ('not_started', 'processing', 'fulfilled', 'failed')"
+        },
+        "workspace_reservations_product_tier_check": {
+          "name": "workspace_reservations_product_tier_check",
+          "value": "\"workspace_reservations\".\"product_tier\" in ('basic', 'plus', 'profi')"
+        },
+        "workspace_reservations_product_monitor_option_check": {
+          "name": "workspace_reservations_product_monitor_option_check",
+          "value": "\"workspace_reservations\".\"product_monitor_option\" is null or \"workspace_reservations\".\"product_monitor_option\" in ('2x27-qhd', '2x32-qhd', '2x27-4k', '2x32-4k')"
+        },
+        "workspace_reservations_locale_check": {
+          "name": "workspace_reservations_locale_check",
+          "value": "\"workspace_reservations\".\"locale\" in ('en-US', 'cs-CZ')"
+        },
+        "workspace_reservations_hold_id_check": {
+          "name": "workspace_reservations_hold_id_check",
+          "value": "\"workspace_reservations\".\"reservation_state\" not in ('held', 'confirming', 'confirmed', 'cancelling', 'cancelled', 'cancellation_failed') or \"workspace_reservations\".\"dotypos_reservation_id\" is not null"
+        },
+        "workspace_reservations_paid_at_check": {
+          "name": "workspace_reservations_paid_at_check",
+          "value": "\"workspace_reservations\".\"payment_state\" <> 'paid' or \"workspace_reservations\".\"paid_at\" is not null"
+        },
+        "workspace_reservations_fulfilled_check": {
+          "name": "workspace_reservations_fulfilled_check",
+          "value": "\"workspace_reservations\".\"fulfillment_state\" <> 'fulfilled' or \"workspace_reservations\".\"fulfilled_at\" is not null"
+        },
+        "workspace_reservations_fulfillment_failed_check": {
+          "name": "workspace_reservations_fulfillment_failed_check",
+          "value": "\"workspace_reservations\".\"fulfillment_state\" <> 'failed' or (\"workspace_reservations\".\"fulfillment_failed_at\" is not null and \"workspace_reservations\".\"fulfillment_failure_code\" is not null)"
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}
