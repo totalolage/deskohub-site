@@ -1,6 +1,7 @@
 export type {
   CustomerLookupField,
   DotyposCustomerDiscount,
+  DotyposCustomerDiscountGroup,
   DotyposCustomerLookupData,
   FindCustomerOptions,
 } from "./backend/service";
@@ -17,5 +18,6 @@ export type { Reservation } from "./generated";
 export type {
   CreateDotyposReservationInput,
   DotyposReservationStatus,
+  UpdateDotyposReservationInput,
 } from "./types";
 export { normalizePhoneNumber } from "./utils/phone-formatting";

@@ -17,9 +17,7 @@ import {
 } from "../generated/effect.gen";
 
 const DiscountGroup = Schema.Struct({
-  discountPercent: Schema.optionalKey(
-    Schema.Union([Schema.Number, Schema.String, Schema.Null])
-  ),
+  discountPercent: Schema.optionalKey(Schema.Unknown),
 });
 
 interface IDotyposAccessToken {

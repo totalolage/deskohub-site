@@ -701,6 +701,114 @@ describe("DotyposService reservations", () => {
     expect(getHeader(patchCall, "Authorization")).toBe("Bearer access-token");
     expect(await readJsonBody(patchCall)).toEqual({ status: "CONFIRMED" });
   });
+
+  test("updates a reservation note with an ETag-protected patch", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(reservation(), {
+          headers: { etag: '"reservation-etag"' },
+        });
+      }
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "PATCH"
+      ) {
+        return Response.json(reservation({ note: "accepted quote" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.updateReservation({
+          reservationId: " reservation-id ",
+          note: " accepted quote ",
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result.note).toBe("accepted quote");
+    const patchCall = fetchMock.mock.calls.find(
+      (call) => getMethod(call as FetchCall) === "PATCH"
+    ) as FetchCall;
+    expect(getHeader(patchCall, "If-Match")).toBe('"reservation-etag"');
+    expect(await readJsonBody(patchCall)).toEqual({ note: "accepted quote" });
+  });
+
+  test("rejects empty reservation update inputs before calling Dotypos", async () => {
+    const fetchMock = mockDotyposFetch(() => {
+      throw new Error("unused");
+    });
+
+    const errors = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* Effect.all([
+          dotypos
+            .updateReservation({ reservationId: " ", note: "note" })
+            .pipe(Effect.flip),
+          dotypos
+            .updateReservation({
+              reservationId: "reservation-id",
+              note: " ",
+            })
+            .pipe(Effect.flip),
+        ]);
+      }),
+      fetchMock
+    );
+
+    expect(errors.map((error) => error._tag)).toEqual([
+      "ValidationError",
+      "ValidationError",
+    ]);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  test("fails without patching when the reservation ETag is missing", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(reservation());
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const error = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos
+          .updateReservation({
+            reservationId: "reservation-id",
+            note: "accepted quote",
+          })
+          .pipe(Effect.flip);
+      }),
+      fetchMock
+    );
+
+    expect(error).toMatchObject({
+      _tag: "ExternalAPIError",
+      operation: "getReservation",
+      message: "Reservation ETag header was missing.",
+    });
+    expect(
+      fetchMock.mock.calls.some(
+        (call) => getMethod(call as FetchCall) === "PATCH"
+      )
+    ).toBe(false);
+  });
 });
 
 describe("DotyposService categories", () => {
@@ -727,6 +835,35 @@ describe("DotyposService categories", () => {
 });
 
 describe("DotyposService customer discounts", () => {
+  test("loads a customer's raw discount group by customer ID", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (url.pathname === "/clouds/cloud-id/customers/customer-id") {
+        return Response.json(customer({ _discountGroupId: "group-id" }));
+      }
+      if (url.pathname === "/clouds/cloud-id/discount-groups/group-id") {
+        return Response.json({ discountPercent: { malformed: true } });
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const result = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getCustomerDiscountGroup({
+          customerId: "customer-id",
+        });
+      }),
+      fetchMock
+    );
+
+    expect(result).toEqual({
+      discountGroupId: "group-id",
+      discountPercent: { malformed: true },
+    });
+  });
+
   test('accepts "10" and ignores out-of-range discounts', async () => {
     const discounts: Record<string, string | number> = {
       ten: "10",
