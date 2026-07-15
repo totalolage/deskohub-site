@@ -153,16 +153,10 @@ export const getReservationIntervalNormalization = (
   interval: ReservationIntervalInput
 ) => normalizeReservationIntervalFields(interval, reservationTimeZone);
 
-type NormalizedReservationInterval<T extends ReservationIntervalInput> = Omit<
-  T,
-  "startsAt" | "endsAt"
-> &
-  ReservationInterval;
-
 export const normalizeReservationInterval = Effect.fn(
   "normalizeReservationInterval"
-)(function* <T extends ReservationIntervalInput>(value: T) {
-  const interval = yield* normalizeReservationIntervalFields(
+)(function* (value: ReservationIntervalInput) {
+  return yield* normalizeReservationIntervalFields(
     value,
     reservationTimeZone
   ).pipe(
@@ -170,9 +164,6 @@ export const normalizeReservationInterval = Effect.fn(
       (cause) => new ReservationIntervalError({ message: cause.message, cause })
     )
   );
-  const { startsAt: _startsAt, endsAt: _endsAt, ...rest } = value;
-
-  return { ...rest, ...interval } as NormalizedReservationInterval<T>;
 });
 
 export const getReservationPragueDateRange = (
