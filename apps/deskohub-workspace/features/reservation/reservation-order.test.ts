@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Result } from "effect";
 import "@/shared/polyfills/temporal";
 import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
@@ -7,8 +7,6 @@ import { reservationOrderEffectSchema } from "./reservation-order";
 const reservationOrderSchema = makeEffectSchemaParser(
   reservationOrderEffectSchema
 );
-
-const originalDateNow = Date.now;
 
 const validMeetingRoomReservation = {
   entryTier: "meeting-room",
@@ -33,11 +31,11 @@ describe("reservation schema", () => {
   });
 
   afterEach(() => {
-    Date.now = originalDateNow;
+    setSystemTime();
   });
 
-  test("rejects meeting room start times in the past", () => {
-    Date.now = () => new Date("2099-06-10T08:00:00.000Z").getTime();
+  test("rejects meeting room reservations whose end has passed", () => {
+    setSystemTime(new Date("2099-06-10T08:01:00.000Z"));
 
     const result = reservationOrderSchema.safeParse(
       validMeetingRoomReservation
@@ -45,12 +43,12 @@ describe("reservation schema", () => {
 
     expect(Result.isFailure(result)).toBe(true);
     if (Result.isFailure(result)) {
-      expect(String(result.failure)).toContain('at ["startsAt"]');
+      expect(String(result.failure)).toContain('at ["endsAt"]');
     }
   });
 
-  test("accepts meeting room start times in the future", () => {
-    Date.now = () => new Date("2099-06-10T06:00:00.000Z").getTime();
+  test("accepts meeting room reservations that have started but not ended", () => {
+    setSystemTime(new Date("2099-06-10T07:30:00.000Z"));
 
     expect(
       Result.isSuccess(
@@ -59,8 +57,27 @@ describe("reservation schema", () => {
     ).toBe(true);
   });
 
+  test("normalizes meeting room timestamps without dropping order fields", () => {
+    setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
+
+    const result = reservationOrderSchema.safeParse({
+      ...validMeetingRoomReservation,
+      startsAt: "2099-06-10T09:00",
+      endsAt: "2099-06-10T10:00",
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).toEqual({
+        ...validMeetingRoomReservation,
+        startsAt: "2099-06-10T07:00:00Z",
+        endsAt: "2099-06-10T08:00:00Z",
+      });
+    }
+  });
+
   test("drops cowork-only fields from meeting-room orders", () => {
-    Date.now = () => new Date("2099-06-10T06:00:00.000Z").getTime();
+    setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
     const result = reservationOrderSchema.safeParse({
       ...validMeetingRoomReservation,

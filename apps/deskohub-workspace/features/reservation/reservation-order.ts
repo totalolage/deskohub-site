@@ -22,10 +22,7 @@ import {
   meetingRoomReservationOrderObjectEffectSchema,
   normalizedMeetingRoomReservationOrderEffectSchema,
 } from "@/features/reservation/meeting-room-reservation";
-import {
-  getReservationIntervalValidationIssue,
-  normalizeReservationInterval,
-} from "@/features/reservation/reservation-interval";
+import { getReservationIntervalNormalization } from "@/features/reservation/reservation-interval";
 
 const reservationOrderObjectEffectSchema = Schema.Union([
   coworkReservationOrderObjectEffectSchema,
@@ -42,37 +39,72 @@ const normalizedReservationOrderEffectSchema = Schema.Union([
   normalizedMeetingRoomReservationOrderEffectSchema,
 ]);
 
-const toReservationIssue = (
+const toReservationSchemaIssue = (
+  input: ReservationOrderObject,
   path: readonly PropertyKey[],
   message: string
-): Schema.FilterIssue => ({
-  path,
-  issue: message,
-});
+) =>
+  new SchemaIssue.Pointer(
+    path,
+    new SchemaIssue.InvalidValue(Option.some(input), { message })
+  );
 
-const getReservationIssues = (
-  data: ReservationOrderObject
-): readonly Schema.FilterIssue[] => {
-  if (data.entryTier === "meeting-room") {
-    const intervalIssue = getReservationIntervalValidationIssue(data);
-    if (intervalIssue) {
-      return [toReservationIssue([intervalIssue.path], intervalIssue.message)];
-    }
-
-    return getMeetingRoomReservationIssues(data);
+const toReservationFilterSchemaIssue = (
+  input: ReservationOrderObject,
+  issue: Schema.FilterIssue
+): SchemaIssue.Issue => {
+  if (typeof issue === "string") {
+    return toReservationSchemaIssue(input, [], issue);
+  }
+  if (SchemaIssue.isIssue(issue)) {
+    return issue;
   }
 
-  return getCoworkReservationIssues(data);
+  return new SchemaIssue.Pointer(
+    issue.path,
+    typeof issue.issue === "string"
+      ? new SchemaIssue.InvalidValue(Option.some(input), {
+          message: issue.issue,
+        })
+      : issue.issue
+  );
 };
 
-const reservationOrderDraftEffectSchema =
-  reservationOrderObjectEffectSchema.check(
-    Schema.makeFilter(getReservationIssues)
-  );
+const validateReservationOrder = Effect.fn("validateReservationOrder")(
+  function* (data: ReservationOrderObject) {
+    const issues = yield* Match.value(data).pipe(
+      Match.when({ entryTier: "meeting-room" }, (meetingRoomReservation) =>
+        getMeetingRoomReservationIssues(meetingRoomReservation).pipe(
+          Effect.mapError((error) =>
+            toReservationSchemaIssue(data, [error.path], error.message)
+          )
+        )
+      ),
+      Match.orElse((coworkReservation) =>
+        Effect.succeed(getCoworkReservationIssues(coworkReservation))
+      )
+    );
+    const issue = issues[0];
+
+    if (issue) {
+      return yield* Effect.fail(toReservationFilterSchemaIssue(data, issue));
+    }
+  }
+);
 
 const normalizeMeetingRoomReservationOrder = (
   data: MeetingRoomReservationOrderObject
-) => normalizeReservationInterval(data);
+) =>
+  getReservationIntervalNormalization(data).pipe(
+    Effect.map((interval) => ({
+      name: data.name,
+      email: data.email,
+      phone: data.phone,
+      ...(data.message !== undefined && { message: data.message }),
+      entryTier: "meeting-room" as const,
+      ...interval,
+    }))
+  );
 
 const normalizeReservationOrder = (data: ReservationOrderObject) =>
   Match.value(data).pipe(
@@ -86,15 +118,20 @@ const normalizeReservationOrder = (data: ReservationOrderObject) =>
   );
 
 export const reservationOrderEffectSchema =
-  reservationOrderDraftEffectSchema.pipe(
+  reservationOrderObjectEffectSchema.pipe(
     Schema.decodeTo(normalizedReservationOrderEffectSchema, {
       decode: SchemaGetter.transformOrFail((reservation) =>
-        normalizeReservationOrder(reservation).pipe(
-          Effect.mapError(
-            (error) =>
-              new SchemaIssue.InvalidValue(Option.some(reservation), {
-                message: error.message,
-              })
+        validateReservationOrder(reservation).pipe(
+          Effect.andThen(
+            normalizeReservationOrder(reservation).pipe(
+              Effect.mapError((error) =>
+                toReservationSchemaIssue(
+                  reservation,
+                  [error.path],
+                  error.message
+                )
+              )
+            )
           )
         )
       ),
