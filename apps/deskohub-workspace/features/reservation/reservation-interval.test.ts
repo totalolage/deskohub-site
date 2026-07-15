@@ -3,7 +3,7 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import {
-  getReservationDateRange,
+  getReservationDurationMinutes,
   getReservationIntervalValidationIssue,
   isSingleDayReservationInterval,
   normalizeReservationInterval,
@@ -54,17 +54,21 @@ describe("reservation intervals", () => {
     ).toBeFalse();
   });
 
-  test("converts rolling 24-hour reservations to a next-day range", () => {
-    const range = Effect.runSync(
+  test("normalizes rolling 24-hour reservations", () => {
+    const interval = Effect.runSync(
       normalizeReservationInterval(
         decodeInterval({
           startsAt: "2099-06-10T15:00",
           endsAt: "2099-06-11T15:00",
         })
-      ).pipe(Effect.flatMap(getReservationDateRange))
+      )
     );
 
-    expect(range.endMs - range.startMs).toBe(24 * 60 * 60 * 1000);
+    expect(interval).toEqual({
+      startsAt: "2099-06-10T13:00:00Z",
+      endsAt: "2099-06-11T13:00:00Z",
+    });
+    expect(getReservationDurationMinutes(interval)).toBe(24 * 60);
   });
 
   test("accepts explicit instant intervals", () => {

@@ -22,10 +22,7 @@ import {
   getDurationMinutes,
   normalizeReservationIntervalFields,
 } from "@/features/reservation/reservation-interval-normalization";
-import {
-  toInstantMilliseconds,
-  toPlainDateTime,
-} from "@/features/reservation/reservation-interval-parser";
+import { toPlainDateTime } from "@/features/reservation/reservation-interval-parser";
 import {
   instantStringEffectSchema,
   localDateTimeEffectSchema,
@@ -37,12 +34,6 @@ export type {
   ReservationInterval,
   ReservationIntervalInput,
 } from "@/features/reservation/reservation-interval-domain";
-export type ReservationDateRange = {
-  readonly startDate: Date;
-  readonly endDate: Date;
-  readonly startMs: number;
-  readonly endMs: number;
-};
 
 export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
@@ -182,23 +173,6 @@ export const normalizeReservationInterval = Effect.fn(
   );
 });
 
-export const getReservationDateRange = (
-  reservation: ReservationInterval
-): Effect.Effect<ReservationDateRange, ReservationIntervalError> =>
-  normalizeReservationInterval(reservation).pipe(
-    Effect.map((interval) => {
-      const startMs = toInstantMilliseconds(interval.startsAt);
-      const endMs = toInstantMilliseconds(interval.endsAt);
-
-      return {
-        startDate: new Date(startMs),
-        endDate: new Date(endMs),
-        startMs,
-        endMs,
-      };
-    })
-  );
-
 export const getReservationDurationMinutes = getDurationMinutes;
 
 export const getReservationDate = ({
@@ -212,11 +186,6 @@ export const getReservationDate = ({
     instant: Temporal.Instant.from(interval.startsAt),
     timeZone,
   }).toString();
-
-export const reservationDateRangesOverlap = (
-  left: Pick<ReservationDateRange, "startMs" | "endMs">,
-  right: Pick<ReservationDateRange, "startMs" | "endMs">
-) => left.startMs < right.endMs && left.endMs > right.startMs;
 
 const isMidnight = (dateTime: ReturnType<typeof toPlainDateTime>) =>
   dateTime.hour === 0 &&

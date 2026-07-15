@@ -4,8 +4,8 @@ import {
   type WorkspaceMeetingRoomDurationMinutes,
 } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
+import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
-  type Instant,
   instantStringEffectSchema,
   localDateTimeEffectSchema,
 } from "@/shared/utils/temporal";
@@ -20,11 +20,6 @@ const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
       .toZonedDateTime(reservationTimeZone, { disambiguation: "reject" })
       .toInstant()
 );
-
-export type MeetingRoomReservationInterval = {
-  readonly startsAt: Instant;
-  readonly endsAt: Instant;
-};
 
 export const getEarliestMeetingRoomStartDateTime = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
@@ -51,7 +46,7 @@ export const getEarliestMeetingRoomStartDateTime = (
 export const getMeetingRoomReservationInterval = (
   startDateTime: string,
   durationMinutes: number
-): MeetingRoomReservationInterval | null => {
+): ReservationInterval | null => {
   if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
 
   return decodeLocalDateTime(startDateTime).pipe(
@@ -70,7 +65,7 @@ export const getMeetingRoomReservationInterval = (
 
 export const getMeetingRoomAvailabilityToDate = ({
   endsAt,
-}: Pick<MeetingRoomReservationInterval, "endsAt">) => {
+}: Pick<ReservationInterval, "endsAt">) => {
   const lastTouchedInstant = Temporal.Instant.fromEpochMilliseconds(
     Temporal.Instant.from(endsAt).epochMilliseconds - 1
   );

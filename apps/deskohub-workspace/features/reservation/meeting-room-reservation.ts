@@ -12,7 +12,6 @@ import {
 } from "@/features/reservation/reservation-contact";
 import {
   getMeetingRoomDurationValidationMessage,
-  getReservationDateRange,
   getReservationDurationMinutes,
   getReservationIntervalNormalization,
   meetingRoomReservationDurationMinutesEffectSchema,
@@ -72,8 +71,12 @@ export const getMeetingRoomReservationIssues = Effect.fn(
     ];
   }
 
-  const range = yield* getReservationDateRange(interval);
-  if (range.endMs < Date.now()) {
+  if (
+    Temporal.Instant.compare(
+      Temporal.Instant.from(interval.endsAt),
+      Temporal.Now.instant()
+    ) < 0
+  ) {
     return [
       {
         path: ["endsAt"],
