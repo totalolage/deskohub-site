@@ -105,3 +105,9 @@ does not promise a large reduction in per-build latency.
 Recent production builds also created a Vercel build-cache archive of roughly
 370 MB. That archive and PostHog source-map upload remain known costs for actual
 builds and should be measured separately from the number of previews avoided.
+
+For live verification, inspect the ignored-build decision before comparing
+Turbo task counts. A non-runtime Git preview should end immediately after the
+classifier reports that every changed path is non-runtime. A runtime-changing
+preview should continue into Turbo, where unchanged i18n inputs should restore
+the `i18n:compile` output while the deployment-specific Next.js build runs.
