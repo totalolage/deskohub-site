@@ -1,6 +1,7 @@
 import type {
+  WorkspaceCoworkProductTier,
+  WorkspaceMeetingRoomDurationMinutes,
   WorkspaceProductMonitorOption,
-  WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import { type Locale, m } from "@/features/i18n";
 
@@ -21,7 +22,7 @@ type WorkspaceProductTierBulletMessages = {
 };
 
 export const workspaceProductTierMessages: Record<
-  WorkspaceProductTier,
+  WorkspaceCoworkProductTier,
   {
     readonly title: WorkspaceProductMessage;
     readonly description: WorkspaceProductMessage;
@@ -42,7 +43,7 @@ export const workspaceProductTierMessages: Record<
 };
 
 export const workspaceProductTierBulletMessages: Record<
-  WorkspaceProductTier,
+  WorkspaceCoworkProductTier,
   WorkspaceProductTierBulletMessages
 > = {
   basic: {
@@ -102,10 +103,13 @@ export const getWorkspaceProductMessage = (
 ) => message({}, { locale });
 
 export const getWorkspaceProductTierTitle = (
-  tier: WorkspaceProductTier,
+  tier: WorkspaceCoworkProductTier,
   locale: Locale
 ) =>
   getWorkspaceProductMessage(workspaceProductTierMessages[tier].title, locale);
+
+export const getWorkspaceMeetingRoomProductTitle = (locale: Locale) =>
+  getWorkspaceProductMessage(m.reservationTierMeetingRoomTitle, locale);
 
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,
@@ -115,3 +119,29 @@ export const getWorkspaceProductMonitorTitle = (
     workspaceProductMonitorMessages[option].title,
     locale
   );
+
+const workspaceMeetingRoomDurationMessages: Record<
+  WorkspaceMeetingRoomDurationMinutes,
+  WorkspaceProductMessage
+> = {
+  60: m.reservationMeetingRoomDurationOneHour,
+  240: m.reservationMeetingRoomDurationFourHours,
+  1440: m.reservationMeetingRoomDurationTwentyFourHours,
+};
+
+export const getWorkspaceMeetingRoomDurationTitle = (
+  durationMinutes: WorkspaceMeetingRoomDurationMinutes,
+  locale: Locale
+) => {
+  const durationMessage = workspaceMeetingRoomDurationMessages[durationMinutes];
+  if (!durationMessage) {
+    throw new Error(`Unknown meeting room duration: ${durationMinutes}`);
+  }
+
+  return m.checkoutSummaryItemMeetingRoom(
+    {
+      duration: getWorkspaceProductMessage(durationMessage, locale),
+    },
+    { locale }
+  );
+};
