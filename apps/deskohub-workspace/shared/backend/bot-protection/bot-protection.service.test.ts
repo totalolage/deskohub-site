@@ -3,6 +3,10 @@ import { Effect, Logger } from "effect";
 
 mock.module("server-only", () => ({}));
 
+mock.module("./bot-protection.runtime", () => ({
+  getBotIdCheckOptions: () => undefined,
+}));
+
 const checkBotId = mock(() =>
   Promise.resolve({
     isHuman: true,
@@ -23,6 +27,37 @@ beforeEach(() => {
       bypassed: false,
     })
   );
+});
+
+test("uses the supported human bypass only for the E2E preview", async () => {
+  const { getBotIdCheckOptionsForEnvironment } = await import(
+    "./bot-protection.options"
+  );
+
+  expect(
+    getBotIdCheckOptionsForEnvironment({
+      e2eBypass: "HUMAN",
+      vercelEnvironment: "preview",
+    })
+  ).toEqual({
+    developmentOptions: {
+      bypass: "HUMAN",
+      isDevelopment: true,
+    },
+  });
+});
+
+test("never enables the E2E bypass in production", async () => {
+  const { getBotIdCheckOptionsForEnvironment } = await import(
+    "./bot-protection.options"
+  );
+
+  expect(
+    getBotIdCheckOptionsForEnvironment({
+      e2eBypass: "HUMAN",
+      vercelEnvironment: "production",
+    })
+  ).toBeUndefined();
 });
 
 const getVerificationEffect = async (

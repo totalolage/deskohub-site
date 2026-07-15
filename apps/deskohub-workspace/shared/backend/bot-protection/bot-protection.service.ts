@@ -2,6 +2,7 @@ import "server-only";
 
 import { checkBotId } from "botid/server";
 import { Context, Data, Effect, Layer } from "effect";
+import { getBotIdCheckOptions } from "./bot-protection.runtime";
 
 export interface VerifyHumanInput {
   readonly verificationFailurePolicy: "allow" | "deny";
@@ -35,7 +36,7 @@ export class BotVerificationError extends Data.TaggedError(
 const verifyHuman = Effect.fn("BotProtectionService.verifyHuman")(
   (input: VerifyHumanInput) =>
     Effect.tryPromise({
-      try: () => checkBotId(),
+      try: () => checkBotId(getBotIdCheckOptions()),
       catch: (cause) => new BotVerificationError({ cause }),
     }).pipe(
       Effect.catchTag("BotVerificationError", (error) =>

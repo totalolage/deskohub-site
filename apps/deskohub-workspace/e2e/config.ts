@@ -91,6 +91,7 @@ export const getVercelDeployEnvArgs = (
     NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
     WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
+    WORKSPACE_E2E_BOTID_BYPASS: "HUMAN",
     ...(config.bypassSecret
       ? { VERCEL_AUTOMATION_BYPASS_SECRET: config.bypassSecret }
       : {}),

@@ -19,7 +19,8 @@
         "POSTHOG_PROJECT_ID",
         "VERCEL_PROJECT_PRODUCTION_URL",
         "VERCEL_URL",
-        "WORKSPACE_CALLBACK_ORIGIN"
+        "WORKSPACE_CALLBACK_ORIGIN",
+        "WORKSPACE_E2E_BOTID_BYPASS"
       ]
     },
     "db:migrate": {
