@@ -61,6 +61,23 @@ describe("renderPostHogFeatureFlagContract", () => {
     expect(contract).toContain("readonly payload: unknown;");
   });
 
+  test("renders TypeScript literals without HTML escaping", async () => {
+    const contract = await Effect.runPromise(
+      renderPostHogFeatureFlagContract([
+        {
+          key: "room<&",
+          payloads: {},
+          variants: ["control<&"],
+        },
+      ])
+    );
+
+    expect(contract).toContain('readonly "room<&": {');
+    expect(contract).toContain('readonly value: false | "control<&";');
+    expect(contract).not.toContain("&lt;");
+    expect(contract).not.toContain("&amp;");
+  });
+
   test("rejects duplicate keys through the Effect error channel", async () => {
     const result = await Effect.runPromiseExit(
       renderPostHogFeatureFlagContract([
