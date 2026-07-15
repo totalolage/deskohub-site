@@ -18,7 +18,8 @@
         "POSTHOG_HOST",
         "POSTHOG_PROJECT_ID",
         "VERCEL_PROJECT_PRODUCTION_URL",
-        "WORKSPACE_CALLBACK_ORIGIN"
+        "WORKSPACE_CALLBACK_ORIGIN",
+        "WORKSPACE_E2E_BOTID_BYPASS"
       ]
     },
     "i18n:compile": {

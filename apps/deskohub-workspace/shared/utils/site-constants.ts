@@ -17,6 +17,9 @@ export const workspaceSiteConstants = {
       lng: 14.479023,
     },
   },
+  location: {
+    timeZone: "Europe/Prague",
+  },
   company: {
     identificationNumber: "24531596",
     establishmentId: "1016069146",
