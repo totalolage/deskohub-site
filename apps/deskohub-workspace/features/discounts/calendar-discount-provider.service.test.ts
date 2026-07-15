@@ -7,59 +7,74 @@ import {
   type IGoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
+import { DatabaseError } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
+import type { DiscountDefinition } from "./discount-definition";
+import {
+  DiscountDefinitionNotFoundError,
+  type IDiscountDefinitionRepository,
+} from "./discount-definition.repository";
+import { DiscountDefinitionRepositoryMock } from "./discount-definition.repository.mock";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
+import {
+  type StoredDiscountId,
+  storedDiscountIdSchema,
+} from "./persistence-contracts";
 
 const salesCalendarId = "sales-calendar";
 const providerNamespace = "google-calendar-sales";
 const basicProduct = { kind: "cowork", tier: "basic" } as const;
+
+const discountIdA = Schema.decodeUnknownSync(storedDiscountIdSchema)(
+  "019bfe6e-8ef0-7def-8b16-55cfbc82edb7"
+);
+const discountIdB = Schema.decodeUnknownSync(storedDiscountIdSchema)(
+  "019bfe6e-8ef0-7def-8b16-55cfbc82edb8"
+);
 
 const resourceConfigLayer = Layer.succeed(CalendarResourceConfig, {
   workspaceLimitationsCalendarId: "workspace-limitations-calendar",
   salesCalendarId,
 });
 
-const saleDescription = (input?: {
-  readonly basisPoints?: number;
-  readonly products?: readonly ("basic" | "plus" | "profi")[];
-  readonly suffix?: string;
-}) =>
-  [
-    "[deskohub:sale]",
-    "",
-    "[adjustment]",
-    'kind = "percentage"',
-    `basisPoints = ${input?.basisPoints ?? 2000}`,
-    ...(input?.products ?? ["basic"]).flatMap((tier) => [
-      "",
-      "[[products]]",
-      'kind = "cowork"',
-      `tier = "${tier}"`,
-    ]),
-    ...(input?.suffix ? ["", input.suffix] : []),
-  ].join("\n");
+const definition = (
+  id: StoredDiscountId,
+  overrides: Partial<DiscountDefinition> = {}
+): DiscountDefinition => ({
+  id,
+  label: "Database sale",
+  adjustment: { kind: "percentage", basisPoints: 2000 },
+  products: [basicProduct],
+  ...overrides,
+});
 
 const saleEvent = (
   input: Partial<GoogleCalendarEvent> = {}
 ): GoogleCalendarEvent => ({
   id: "sale-event",
-  summary: " Summer Sale ",
-  description: saleDescription(),
+  summary: "Operator calendar title",
+  description: discountIdA,
   start: { date: "2026-07-14" },
   end: { date: "2026-08-02" },
   ...input,
 });
 
+const defaultLoadById: IDiscountDefinitionRepository["loadById"] = ({
+  discountId,
+}) => Effect.succeed(definition(discountId));
+
 const runWithProvider = <A, E>(
   effect: Effect.Effect<A, E, CalendarDiscountProvider>,
-  listEvents: IGoogleCalendarService["listEvents"]
+  listEvents: IGoogleCalendarService["listEvents"],
+  loadById: IDiscountDefinitionRepository["loadById"] = defaultLoadById
 ) =>
   effect.pipe(
     Effect.provide(CalendarDiscountProvider.Live),
     Effect.provide(GoogleCalendarServiceMock({ listEvents })),
+    Effect.provide(DiscountDefinitionRepositoryMock({ loadById })),
     Effect.provide(resourceConfigLayer),
     Effect.provide(TestClock.layer()),
     Effect.runPromise
@@ -72,41 +87,6 @@ const quote = Effect.gen(function* () {
     reservationDate: "2026-07-14",
   });
 });
-
-const malformedConfigurationCases = [
-  ["invalid TOML", "[deskohub:sale]\n[adjustment", "invalid_toml"],
-  [
-    "unknown root field",
-    saleDescription({ suffix: 'unknown = "field"' }),
-    "invalid_sale_configuration",
-  ],
-  [
-    "invalid percentage",
-    saleDescription({ basisPoints: 10_001 }),
-    "invalid_sale_configuration",
-  ],
-  [
-    "empty products",
-    [
-      "[deskohub:sale]",
-      "products = []",
-      "[adjustment]",
-      'kind = "percentage"',
-      "basisPoints = 1000",
-    ].join("\n"),
-    "invalid_sale_configuration",
-  ],
-  [
-    "duplicate products",
-    saleDescription({ products: ["basic", "basic"] }),
-    "invalid_sale_configuration",
-  ],
-  [
-    "invalid product",
-    saleDescription().replace('tier = "basic"', 'tier = "enterprise"'),
-    "invalid_sale_configuration",
-  ],
-] as const;
 
 const invalidEventCases = [
   ["missing title", { summary: " " }],
@@ -131,23 +111,47 @@ const invalidEventCases = [
 ] as const;
 
 describe("CalendarDiscountProvider", () => {
-  test("loads the sales resource and returns ordered source-neutral candidates", async () => {
+  test("loads database definitions and returns ordered source-neutral candidates", async () => {
     const listEvents = mock(() =>
       Effect.succeed([
         saleEvent({
           id: "sale-b",
-          summary: " All tiers ",
-          description: saleDescription({
-            basisPoints: 2500,
-            products: ["basic", "plus", "profi"],
-          }),
+          summary: "Title that is not public B",
+          description: discountIdB,
         }),
         saleEvent({
           id: "sale-a",
-          summary: "Basic only",
-          description: saleDescription({ basisPoints: 1000 }),
+          summary: "Title that is not public A",
+          description: discountIdA,
         }),
       ])
+    );
+    const definitions = new Map<StoredDiscountId, DiscountDefinition>([
+      [
+        discountIdA,
+        definition(discountIdA, {
+          label: "Basic database sale",
+          adjustment: { kind: "percentage", basisPoints: 1000 },
+        }),
+      ],
+      [
+        discountIdB,
+        definition(discountIdB, {
+          label: "All-tier fixed sale",
+          adjustment: {
+            kind: "fixed",
+            amount: { value: 5000, exponent: 2, currency: "CZK" },
+          },
+          products: [
+            basicProduct,
+            { kind: "cowork", tier: "plus" },
+            { kind: "cowork", tier: "profi" },
+          ],
+        }),
+      ],
+    ]);
+    const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
+      ({ discountId }) => Effect.succeed(definitions.get(discountId)!)
     );
 
     const result = await runWithProvider(
@@ -161,10 +165,10 @@ describe("CalendarDiscountProvider", () => {
           product: { kind: "cowork", tier: "plus" },
           reservationDate: "2026-07-20",
         });
-
         return { basic, plus };
       }),
-      listEvents
+      listEvents,
+      loadById
     );
 
     const expectedIds = ["sale-a", "sale-b"]
@@ -182,94 +186,144 @@ describe("CalendarDiscountProvider", () => {
       from: "2026-07-20",
       to: "2026-07-20",
     });
-    expect(listEvents.mock.calls[0]?.[0].calendarId).not.toBe(
-      "workspace-limitations-calendar"
-    );
     expect(result.basic.map(({ discount }) => discount.id)).toEqual(
       expectedIds
     );
     expect(
       result.basic.map(({ discount }) => discount.label).toSorted()
-    ).toEqual(["All tiers", "Basic only"]);
+    ).toEqual(["All-tier fixed sale", "Basic database sale"]);
     expect(result.basic.map(({ discount }) => discount.adjustment)).toEqual(
-      expectedIds.map((id) =>
-        id ===
-        deriveOpaqueDiscountId({
-          providerNamespace,
-          providerReference: `${salesCalendarId}:sale-a`,
-        })
-          ? { kind: "percentage", basisPoints: 1000 }
-          : { kind: "percentage", basisPoints: 2500 }
-      )
+      expect.arrayContaining([
+        { kind: "percentage", basisPoints: 1000 },
+        {
+          kind: "fixed",
+          amount: { value: 5000, exponent: 2, currency: "CZK" },
+        },
+      ])
     );
+    expect(result.plus).toHaveLength(1);
+    expect(result.plus[0]?.discount.label).toBe("All-tier fixed sale");
     expect(result.basic[0]?.discount.expiresAt).toBe(
       "2026-08-01T22:00:00.000Z"
     );
     expect(result.basic[0]?.discount.countdownStartsAt).toBe(
       "2026-07-31T22:00:00.000Z"
     );
-    expect(result.plus).toHaveLength(1);
-    expect(result.plus[0]?.discount.label).toBe("All tiers");
+    expect(loadById).toHaveBeenCalledTimes(2);
     expect(
       JSON.stringify(result.basic.map(({ discount }) => discount))
-    ).not.toContain("google-calendar-sales");
+    ).not.toContain(discountIdA);
+    expect(
+      JSON.stringify(result.basic.map(({ discount }) => discount))
+    ).not.toContain(discountIdB);
   });
 
-  test("ignores cancelled and unmarked events", async () => {
-    const result = await runWithProvider(quote, () =>
-      Effect.succeed([
-        saleEvent({ status: "cancelled" }),
-        saleEvent({ description: "ordinary calendar event" }),
-        saleEvent({
-          description: `Internal note\n${saleDescription()}`,
-        }),
-        saleEvent({
-          description:
-            '[deskohub:sale] { adjustment = { kind = "percentage" } }',
-        }),
-      ])
+  test("ignores cancelled events and events without a description", async () => {
+    const loadById = mock(defaultLoadById);
+    const result = await runWithProvider(
+      quote,
+      () =>
+        Effect.succeed([
+          saleEvent({ status: "cancelled" }),
+          saleEvent({ description: undefined }),
+          saleEvent({ description: " " }),
+        ]),
+      loadById
     );
 
     expect(result).toEqual([]);
+    expect(loadById).not.toHaveBeenCalled();
   });
 
-  for (const [label, description, innerReason] of malformedConfigurationCases) {
-    test(`fails closed for ${label}`, async () => {
-      const result = await runWithProvider(quote.pipe(Effect.result), () =>
-        Effect.succeed([saleEvent({ description })])
-      );
+  test.each([
+    ["non-UUID description", "ordinary calendar note"],
+    ["UUID with prose", `Sale ${discountIdA}`],
+    ["multiple UUIDs", `${discountIdA}\n${discountIdB}`],
+  ])("fails closed for %s", async (_label, description) => {
+    const result = await runWithProvider(quote.pipe(Effect.result), () =>
+      Effect.succeed([saleEvent({ description })])
+    );
 
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure).toMatchObject({
-          _tag: "DiscountProviderError",
-          reason: "malformed_configuration",
-          cause: {
-            _tag: "CalendarSaleConfigurationError",
-            reason: innerReason,
-            eventReference: "sale-event",
-          },
-        });
-        expect(result.failure.cause).toHaveProperty("cause");
-      }
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        reason: "malformed_configuration",
+        cause: {
+          _tag: "CalendarSaleConfigurationError",
+          reason: "invalid_discount_reference",
+        },
+      },
     });
-  }
+  });
+
+  test("accepts an uppercase UUID and normalizes it before lookup", async () => {
+    const loadById = mock(defaultLoadById);
+
+    await runWithProvider(
+      quote,
+      () =>
+        Effect.succeed([saleEvent({ description: discountIdA.toUpperCase() })]),
+      loadById
+    );
+
+    expect(loadById).toHaveBeenCalledWith({ discountId: discountIdA });
+  });
 
   for (const [label, event] of invalidEventCases) {
-    test(`rejects a marked ${label}`, async () => {
+    test(`rejects a referenced ${label}`, async () => {
       const result = await runWithProvider(quote.pipe(Effect.result), () =>
         Effect.succeed([saleEvent(event)])
       );
 
-      expect(result._tag).toBe("Failure");
-      if (result._tag === "Failure") {
-        expect(result.failure).toMatchObject({
+      expect(result).toMatchObject({
+        _tag: "Failure",
+        failure: {
           reason: "malformed_configuration",
           cause: { _tag: "CalendarSaleConfigurationError" },
-        });
-      }
+        },
+      });
     });
   }
+
+  test("fails closed when the referenced definition does not exist", async () => {
+    const cause = new DiscountDefinitionNotFoundError({
+      discountId: discountIdA,
+      message: "Not found",
+    });
+    const result = await runWithProvider(
+      quote.pipe(Effect.result),
+      () => Effect.succeed([saleEvent()]),
+      () => Effect.fail(cause)
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        reason: "malformed_configuration",
+        cause,
+      },
+    });
+  });
+
+  test("maps database failures while preserving the cause", async () => {
+    const cause = new DatabaseError({
+      operation: "discountDefinitions.loadById",
+      cause: new Error("database unavailable"),
+    });
+    const result = await runWithProvider(
+      quote.pipe(Effect.result),
+      () => Effect.succeed([saleEvent()]),
+      () => Effect.fail(cause)
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        reason: "provider_failure",
+        cause,
+      },
+    });
+  });
 
   test("maps Google Calendar failures while preserving the cause", async () => {
     const cause = new GoogleCalendarAPIError({
@@ -286,7 +340,6 @@ describe("CalendarDiscountProvider", () => {
     expect(result).toMatchObject({
       _tag: "Failure",
       failure: {
-        _tag: "DiscountProviderError",
         reason: "provider_failure",
         cause,
       },
@@ -324,19 +377,16 @@ describe("CalendarDiscountProvider", () => {
           product: basicProduct,
           reservationDate: "2026-10-25",
         });
-
         return { autumn, spring, springExclusiveEnd };
       }),
       listEvents
     );
 
-    expect(result.spring).toHaveLength(1);
     expect(result.spring[0]?.discount).toMatchObject({
       expiresAt: "2026-03-29T22:00:00.000Z",
       countdownStartsAt: "2026-03-28T22:00:00.000Z",
     });
     expect(result.springExclusiveEnd).toEqual([]);
-    expect(result.autumn).toHaveLength(1);
     expect(result.autumn[0]?.discount).toMatchObject({
       expiresAt: "2026-10-25T23:00:00.000Z",
       countdownStartsAt: "2026-10-24T23:00:00.000Z",
@@ -380,7 +430,6 @@ describe("CalendarDiscountProvider", () => {
           product: basicProduct,
           reservationDate: displayedDate,
         });
-
         return { first, moved, nextOccurrence };
       }),
       listEvents
@@ -401,7 +450,6 @@ describe("CalendarDiscountProvider", () => {
         }),
       ])
     );
-
     const providerReference = `${salesCalendarId}:ical-sale:2026-07-14`;
 
     expect(result[0]).toMatchObject({
@@ -418,15 +466,34 @@ describe("CalendarDiscountProvider", () => {
           calendarId: salesCalendarId,
           eventReference: "ical-sale",
           occurrenceDate: "2026-07-14",
+          storedDiscountId: discountIdA,
         },
       },
     });
   });
 
-  test("caches quotes for 60 seconds while revalidation is always fresh", async () => {
-    let label = "Initial sale";
-    const listEvents = mock(() =>
-      Effect.succeed([saleEvent({ summary: label })])
+  test("loads one definition for overlapping occurrences that share it", async () => {
+    const loadById = mock(defaultLoadById);
+    const result = await runWithProvider(
+      quote,
+      () =>
+        Effect.succeed([
+          saleEvent({ id: "sale-a" }),
+          saleEvent({ id: "sale-b" }),
+        ]),
+      loadById
+    );
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.discount.id).not.toBe(result[1]?.discount.id);
+    expect(loadById).toHaveBeenCalledTimes(1);
+  });
+
+  test("caches resolved definitions for 60 seconds while revalidation is fresh", async () => {
+    let label = "Initial database sale";
+    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+    const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
+      ({ discountId }) => Effect.succeed(definition(discountId, { label }))
     );
 
     const result = await runWithProvider(
@@ -436,7 +503,7 @@ describe("CalendarDiscountProvider", () => {
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-        label = "Edited sale";
+        label = "Edited database sale";
         const cached = yield* provider.quote({
           product: basicProduct,
           reservationDate: "2026-07-20",
@@ -450,31 +517,34 @@ describe("CalendarDiscountProvider", () => {
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-
         return { afterTtl, cached, first, fresh };
       }),
-      listEvents
+      listEvents,
+      loadById
     );
 
-    expect(result.first[0]?.discount.label).toBe("Initial sale");
-    expect(result.cached[0]?.discount.label).toBe("Initial sale");
-    expect(result.fresh[0]?.discount.label).toBe("Edited sale");
-    expect(result.afterTtl[0]?.discount.label).toBe("Edited sale");
+    expect(result.first[0]?.discount.label).toBe("Initial database sale");
+    expect(result.cached[0]?.discount.label).toBe("Initial database sale");
+    expect(result.fresh[0]?.discount.label).toBe("Edited database sale");
+    expect(result.afterTtl[0]?.discount.label).toBe("Edited database sale");
     expect(listEvents).toHaveBeenCalledTimes(3);
+    expect(loadById).toHaveBeenCalledTimes(3);
   });
 
-  test("does not cache provider failures", async () => {
-    const cause = new GoogleCalendarAPIError({
-      operation: "events.list",
-      message: "Temporary failure",
+  test("does not cache definition-provider failures", async () => {
+    const cause = new DatabaseError({
+      operation: "discountDefinitions.loadById",
+      cause: new Error("temporary failure"),
     });
     let calls = 0;
-    const listEvents = mock(() => {
-      calls += 1;
-      return calls === 1
-        ? Effect.fail(cause)
-        : Effect.succeed([saleEvent({ summary: "Recovered sale" })]);
-    });
+    const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
+      ({ discountId }) => {
+        calls += 1;
+        return calls === 1
+          ? Effect.fail(cause)
+          : Effect.succeed(definition(discountId, { label: "Recovered sale" }));
+      }
+    );
 
     const result = await runWithProvider(
       Effect.gen(function* () {
@@ -489,14 +559,14 @@ describe("CalendarDiscountProvider", () => {
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-
         return { first, second };
       }),
-      listEvents
+      () => Effect.succeed([saleEvent()]),
+      loadById
     );
 
     expect(result.first._tag).toBe("Failure");
     expect(result.second[0]?.discount.label).toBe("Recovered sale");
-    expect(listEvents).toHaveBeenCalledTimes(2);
+    expect(loadById).toHaveBeenCalledTimes(2);
   });
 });

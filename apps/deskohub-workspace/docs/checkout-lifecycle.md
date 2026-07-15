@@ -4,9 +4,9 @@ This document is the Phase 1 contract for the Workspace checkout database rewrit
 
 The local database is a Deskohub workflow, payment, legal, and recovery ledger. Dotypos remains the source of truth for customer facts and reservation facts. Nexi remains the source of truth for payment processing facts. The local database must not become a customer profile store, a reservation fact store, a raw provider payload archive, or a return-state token store.
 
-## Final Tables
+## Core lifecycle tables
 
-The target schema has exactly these checkout lifecycle tables:
+The core checkout lifecycle uses these tables:
 
 - `workspace_reservations`
 - `payment_attempts`
@@ -14,6 +14,8 @@ The target schema has exactly these checkout lifecycle tables:
 - `legal_evidence_events`
 
 Do not recreate `checkout_return_state_tokens` as a state table. Return pages must derive enough context from signed URL state, route parameters, Nexi verification, and the durable rows above.
+
+Discount configuration and audit history extend this lifecycle through `discounts`, `discount_product_targets`, `discount_codes`, `discount_code_customers`, `discount_applications`, and `discount_code_redemptions`. These tables store only source-neutral benefit configuration, Dotypos customer IDs, generic application snapshots, and claim state. They must not store customer contact data, Workspace access codes, or raw provider payloads. See [Workspace discount-code operations](./discount-codes.md).
 
 ## Ownership
 
