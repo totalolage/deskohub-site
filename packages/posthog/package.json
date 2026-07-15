@@ -1,0 +1,21 @@
+{
+  "name": "@deskohub/posthog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./generated": "./src/generated/index.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.ts",
+    "test": "bun test",
+    "typecheck": "bun run generate && tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "effect": "4.0.0-beta.85"
+  },
+  "devDependencies": {
+    "typescript": "^5"
+  }
+}
