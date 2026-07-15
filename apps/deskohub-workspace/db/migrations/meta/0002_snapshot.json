@@ -1,5 +1,5 @@
 {
-  "id": "94f7c84e-12da-4aea-ba2b-9822e995d381",
+  "id": "c6cdebf4-fd2a-466c-abd8-99005503728e",
   "prevId": "6fbc75da-ffbe-4fa6-8ad3-9f1aef7d03cc",
   "version": "7",
   "dialect": "postgresql",
@@ -149,27 +149,6 @@
             },
             {
               "expression": "sequence",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "discount_applications_id_attempt_unique_idx": {
-          "name": "discount_applications_id_attempt_unique_idx",
-          "columns": [
-            {
-              "expression": "id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "payment_attempt_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -450,15 +429,6 @@
           "tableTo": "payment_attempts",
           "columnsFrom": ["payment_attempt_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        },
-        "discount_code_redemptions_application_attempt_fk": {
-          "name": "discount_code_redemptions_application_attempt_fk",
-          "tableFrom": "discount_code_redemptions",
-          "tableTo": "discount_applications",
-          "columnsFrom": ["application_id", "payment_attempt_id"],
-          "columnsTo": ["id", "payment_attempt_id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }

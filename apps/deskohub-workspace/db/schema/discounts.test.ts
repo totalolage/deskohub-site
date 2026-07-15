@@ -41,8 +41,8 @@ describe("discount persistence contracts", () => {
     expect(migration).toContain(
       `CREATE UNIQUE INDEX "discount_code_redemptions_active_customer_unique_idx" ON "discount_code_redemptions" USING btree ("code_id","dotypos_customer_id") WHERE "discount_code_redemptions"."state" in ('reserved', 'redeemed')`
     );
-    expect(migration).toContain(
-      `CONSTRAINT "discount_code_redemptions_application_attempt_fk" FOREIGN KEY ("application_id","payment_attempt_id") REFERENCES "public"."discount_applications"("id","payment_attempt_id")`
+    expect(migration).not.toContain(
+      "discount_code_redemptions_application_attempt_fk"
     );
     expect(migration).toContain(
       `CONSTRAINT "discount_codes_code_check" CHECK ("discount_codes"."code" ~ '^[A-Z0-9][A-Z0-9_-]{2,63}$')`
@@ -144,7 +144,12 @@ describe("discount persistence contracts", () => {
     });
     expect(
       config.foreignKeys.map((foreignKey) => foreignKey.getName())
-    ).toContain("discount_code_redemptions_application_attempt_fk");
+    ).toEqual(
+      expect.arrayContaining([
+        "discount_code_redemptions_application_id_discount_applications_id_fk",
+        "discount_code_redemptions_payment_attempt_id_payment_attempts_id_fk",
+      ])
+    );
     expect(namesOf(config.checks)).toContain(
       "discount_code_redemptions_lifecycle_check"
     );

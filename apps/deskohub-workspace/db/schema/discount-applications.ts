@@ -1,7 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
   check,
-  foreignKey,
   index,
   integer,
   jsonb,
@@ -74,10 +73,6 @@ export const discountApplications = pgTable(
     uniqueIndex("discount_applications_attempt_sequence_unique_idx").on(
       t.paymentAttemptId,
       t.sequence
-    ),
-    uniqueIndex("discount_applications_id_attempt_unique_idx").on(
-      t.id,
-      t.paymentAttemptId
     ),
     index("discount_applications_reservation_idx").on(t.workspaceReservationId),
     check("discount_applications_sequence_check", sql`${t.sequence} >= 0`),
@@ -160,14 +155,6 @@ export const discountCodeRedemptions = pgTable(
       .defaultNow(),
   },
   (t) => [
-    foreignKey({
-      name: "discount_code_redemptions_application_attempt_fk",
-      columns: [t.applicationId, t.paymentAttemptId],
-      foreignColumns: [
-        discountApplications.id,
-        discountApplications.paymentAttemptId,
-      ],
-    }),
     uniqueIndex("discount_code_redemptions_application_unique_idx").on(
       t.applicationId
     ),
