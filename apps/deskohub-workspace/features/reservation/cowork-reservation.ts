@@ -8,7 +8,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { reservationLegalConsentEffectSchema } from "@/features/reservation/reservation-consent";
-import { reservationCustomerEffectFields } from "@/features/reservation/reservation-contact";
+import {
+  normalizedReservationCustomerEffectSchema,
+  reservationCustomerEffectSchema,
+} from "@/features/reservation/reservation-contact";
 import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
 import type { ReservationIntervalInput } from "@/features/reservation/reservation-interval-domain";
 import {
@@ -44,7 +47,7 @@ const monitorOptionEffectSchema = Schema.optional(
 );
 
 const coworkReservationOrderBaseEffectSchema = Schema.Struct({
-  ...reservationCustomerEffectFields,
+  ...reservationCustomerEffectSchema.fields,
   entryTier: Schema.Literals(workspaceCoworkProductTiers),
   date: dateEffectSchema,
   coffee: Schema.Boolean,
@@ -67,29 +70,22 @@ export type CoworkReservationOrderObject =
 export type CoworkReservationFormObject =
   typeof coworkReservationFormObjectEffectSchema.Type;
 
-const normalizedReservationBaseEffectFields = {
-  name: Schema.String,
-  email: Schema.String,
-  phone: Schema.String,
-  message: Schema.optional(Schema.String),
-};
-
 export const normalizedBasicCoworkReservationOrderEffectSchema = Schema.Struct({
-  ...normalizedReservationBaseEffectFields,
+  ...normalizedReservationCustomerEffectSchema.fields,
   entryTier: Schema.Literal("basic"),
   date: Schema.String,
   coffee: Schema.Boolean,
 });
 
 export const normalizedPlusCoworkReservationOrderEffectSchema = Schema.Struct({
-  ...normalizedReservationBaseEffectFields,
+  ...normalizedReservationCustomerEffectSchema.fields,
   entryTier: Schema.Literal("plus"),
   date: Schema.String,
   coffee: Schema.Literal(true),
 });
 
 export const normalizedProfiCoworkReservationOrderEffectSchema = Schema.Struct({
-  ...normalizedReservationBaseEffectFields,
+  ...normalizedReservationCustomerEffectSchema.fields,
   entryTier: Schema.Literal("profi"),
   date: Schema.String,
   coffee: Schema.Literal(true),

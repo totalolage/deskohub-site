@@ -11,11 +11,8 @@ import { m } from "@/features/i18n";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
 import { reservationLegalConsentEffectSchema } from "@/features/reservation/reservation-consent";
 import {
-  reservationCustomerEffectFields,
-  reservationCustomerEmailEffectSchema,
-  reservationCustomerMessageEffectSchema,
-  reservationCustomerNameEffectSchema,
-  reservationCustomerPhoneEffectSchema,
+  normalizedReservationCustomerEffectSchema,
+  reservationCustomerEffectSchema,
 } from "@/features/reservation/reservation-contact";
 import {
   getMeetingRoomDurationValidationMessage,
@@ -30,19 +27,21 @@ import {
   localDateTimeEffectSchema,
 } from "@/shared/utils/temporal";
 
+const meetingRoomReservationOrderBaseEffectSchema = Schema.Struct({
+  ...reservationCustomerEffectSchema.fields,
+  startsAt: reservationTimestampInputEffectSchema,
+  endsAt: reservationTimestampInputEffectSchema,
+});
+
 export const meetingRoomReservationOrderObjectEffectSchema =
-  Schema.TaggedStruct("meeting-room", {
-    ...reservationCustomerEffectFields,
-    startsAt: reservationTimestampInputEffectSchema,
-    endsAt: reservationTimestampInputEffectSchema,
-  });
+  Schema.TaggedStruct(
+    "meeting-room",
+    meetingRoomReservationOrderBaseEffectSchema.fields
+  );
 
 export const normalizedMeetingRoomReservationOrderEffectSchema =
   Schema.TaggedStruct("meeting-room", {
-    name: Schema.String,
-    email: Schema.String,
-    phone: Schema.String,
-    message: Schema.optional(Schema.String),
+    ...normalizedReservationCustomerEffectSchema.fields,
     startsAt: instantStringEffectSchema,
     endsAt: instantStringEffectSchema,
   });
@@ -195,33 +194,33 @@ const meetingRoomStartDateTimeEffectSchema = Schema.String.check(
   )
 );
 
-export const meetingRoomReservationEffectSchema = Schema.Struct({
+const meetingRoomReservationBaseEffectSchema = Schema.Struct({
+  ...reservationCustomerEffectSchema.fields,
   startDateTime: meetingRoomStartDateTimeEffectSchema,
   durationMinutes: Schema.Literals(workspaceMeetingRoomDurationOptions),
-  name: reservationCustomerNameEffectSchema,
-  email: reservationCustomerEmailEffectSchema,
-  phone: reservationCustomerPhoneEffectSchema,
-  message: Schema.optional(reservationCustomerMessageEffectSchema),
   legalConsent: reservationLegalConsentEffectSchema,
-}).check(
-  Schema.makeFilter((reservation) => {
-    const interval = getMeetingRoomReservationInterval(
-      reservation.startDateTime,
-      reservation.durationMinutes
-    );
+});
 
-    return (
-      interval === null ||
-      Temporal.Instant.compare(
-        Temporal.Instant.from(interval.endsAt),
-        Temporal.Now.instant()
-      ) >= 0 || {
-        path: ["startDateTime"],
-        issue: m.reservationValidationMeetingRoomEnded(),
-      }
-    );
-  })
-);
+export const meetingRoomReservationEffectSchema =
+  meetingRoomReservationBaseEffectSchema.check(
+    Schema.makeFilter((reservation) => {
+      const interval = getMeetingRoomReservationInterval(
+        reservation.startDateTime,
+        reservation.durationMinutes
+      );
+
+      return (
+        interval === null ||
+        Temporal.Instant.compare(
+          Temporal.Instant.from(interval.endsAt),
+          Temporal.Now.instant()
+        ) >= 0 || {
+          path: ["startDateTime"],
+          issue: m.reservationValidationMeetingRoomEnded(),
+        }
+      );
+    })
+  );
 
 export type MeetingRoomReservationInput =
   typeof meetingRoomReservationEffectSchema.Encoded;
