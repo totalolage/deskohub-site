@@ -26,7 +26,7 @@ POSTHOG_PROJECT_ID=12345 \
 bun turbo run feature-flags:sync --filter=@deskohub/posthog
 ```
 
-`POSTHOG_HOST` defaults to `https://us.posthog.com`. The API key must be a
+`POSTHOG_HOST` defaults to `https://eu.posthog.com`. The API key must be a
 PostHog personal API key restricted to reading feature flags. The generated
 file contains payload shapes, but never payload values. Inactive flags are
 included so code can be prepared before rollout; archived and deleted flags are

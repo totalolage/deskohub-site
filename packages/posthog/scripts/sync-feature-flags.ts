@@ -13,7 +13,7 @@ const mode = process.argv.includes("--check") ? "check" : "sync";
 const loadConfig = Config.all({
   apiKey: Config.redacted("POSTHOG_FEATURE_FLAGS_API_KEY"),
   host: Config.url("POSTHOG_HOST").pipe(
-    Config.withDefault(new URL("https://us.posthog.com"))
+    Config.withDefault(new URL("https://eu.posthog.com"))
   ),
   projectId: Config.nonEmptyString("POSTHOG_PROJECT_ID"),
 });
@@ -22,14 +22,11 @@ const program = Effect.gen(function* () {
   const config = yield* loadConfig;
   const featureFlagServiceLive = PostHogFeatureFlagService.Live.pipe(
     Layer.provide(
-      Layer.succeed(
-        PostHogFeatureFlagConfig,
-        PostHogFeatureFlagConfig.of({
-          apiKey: Redacted.value(config.apiKey),
-          host: config.host,
-          projectId: config.projectId,
-        })
-      )
+      PostHogFeatureFlagConfig.from({
+        apiKey: Redacted.value(config.apiKey),
+        host: config.host,
+        projectId: config.projectId,
+      })
     ),
     Layer.provide(FetchHttpClient.layer)
   );

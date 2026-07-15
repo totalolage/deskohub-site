@@ -1,4 +1,4 @@
-import { Context } from "effect";
+import { Context, Layer } from "effect";
 
 interface IPostHogFeatureFlagConfig {
   readonly apiKey: string;
@@ -9,4 +9,7 @@ interface IPostHogFeatureFlagConfig {
 export class PostHogFeatureFlagConfig extends Context.Service<
   PostHogFeatureFlagConfig,
   IPostHogFeatureFlagConfig
->()("@deskohub/posthog/PostHogFeatureFlagConfig") {}
+>()("@deskohub/posthog/PostHogFeatureFlagConfig") {
+  static from = (config: IPostHogFeatureFlagConfig) =>
+    Layer.succeed(this, this.of(config));
+}
