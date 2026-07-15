@@ -27,16 +27,16 @@ const runWithProvider = <A, E>(
     Effect.runPromise
   );
 
-const quote = (overrides: Partial<typeof input> = {}) =>
+const resolve = (overrides: Partial<typeof input> = {}) =>
   Effect.gen(function* () {
     const provider = yield* CustomerDiscountProvider;
-    return yield* provider.quote({ ...input, ...overrides });
+    return yield* provider.resolve({ ...input, ...overrides });
   });
 
 describe("CustomerDiscountProvider", () => {
   test("returns no candidate when the customer has no discount group", async () => {
     const result = await runWithProvider(
-      quote(),
+      resolve(),
       mock(() => Effect.succeed(undefined))
     );
 
@@ -51,7 +51,7 @@ describe("CustomerDiscountProvider", () => {
     ["100.000", 10_000],
   ] as const)("converts an exact percentage %p to %i basis points", async (discountPercent, basisPoints) => {
     const result = await runWithProvider(
-      quote(),
+      resolve(),
       mock(() => Effect.succeed(group(discountPercent)))
     );
 
@@ -71,7 +71,7 @@ describe("CustomerDiscountProvider", () => {
     "12.345",
   ])("fails closed for malformed percentage %p", async (discountPercent) => {
     const error = await runWithProvider(
-      quote().pipe(Effect.flip),
+      resolve().pipe(Effect.flip),
       mock(() => Effect.succeed(group(discountPercent)))
     );
 
@@ -93,7 +93,7 @@ describe("CustomerDiscountProvider", () => {
       message: "Unavailable",
     });
     const error = await runWithProvider(
-      quote().pipe(Effect.flip),
+      resolve().pipe(Effect.flip),
       mock(() => Effect.fail(cause))
     );
 
@@ -109,8 +109,8 @@ describe("CustomerDiscountProvider", () => {
       Effect.gen(function* () {
         const provider = yield* CustomerDiscountProvider;
         return yield* Effect.all([
-          provider.quote(input),
-          provider.quote({ ...input, locale: "cs-CZ" }),
+          provider.resolve(input),
+          provider.resolve({ ...input, locale: "cs-CZ" }),
         ]);
       }),
       getCustomerDiscountGroup
@@ -128,7 +128,7 @@ describe("CustomerDiscountProvider", () => {
     });
   });
 
-  test("derives stable opaque IDs and revalidates current group state", async () => {
+  test("derives stable opaque IDs and loads current group state on every call", async () => {
     let call = 0;
     const getCustomerDiscountGroup = mock(() => {
       call += 1;
@@ -139,22 +139,22 @@ describe("CustomerDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CustomerDiscountProvider;
-        const quoted = yield* provider.quote(input);
-        const revalidated = yield* provider.revalidate(input);
-        const repeated = yield* provider.revalidate(input);
-        return { quoted, revalidated, repeated };
+        const first = yield* provider.resolve(input);
+        const updated = yield* provider.resolve(input);
+        const repeated = yield* provider.resolve(input);
+        return { first, updated, repeated };
       }),
       getCustomerDiscountGroup
     );
 
     expect(getCustomerDiscountGroup).toHaveBeenCalledTimes(3);
-    expect(result.quoted[0]?.discount.id).not.toBe(
-      result.revalidated[0]?.discount.id
+    expect(result.first[0]?.discount.id).not.toBe(
+      result.updated[0]?.discount.id
     );
-    expect(result.revalidated[0]?.discount.id).toBe(
+    expect(result.updated[0]?.discount.id).toBe(
       result.repeated[0]?.discount.id
     );
-    expect(result.revalidated[0]?.discount.adjustment).toEqual({
+    expect(result.updated[0]?.discount.adjustment).toEqual({
       kind: "percentage",
       basisPoints: 2000,
     });
@@ -162,7 +162,7 @@ describe("CustomerDiscountProvider", () => {
 
   test("discounts only the cowork subtotal and leaves paid coffee outside", async () => {
     const candidates = await runWithProvider(
-      quote(),
+      resolve(),
       mock(() => Effect.succeed(group(50)))
     );
     const result = await Effect.runPromise(

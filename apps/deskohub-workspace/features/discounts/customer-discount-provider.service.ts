@@ -14,10 +14,7 @@ export type CustomerDiscountProviderInput = Pick<
 >;
 
 export interface ICustomerDiscountProvider {
-  readonly quote: (
-    input: CustomerDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
-  readonly revalidate: (
+  readonly resolve: (
     input: CustomerDiscountProviderInput
   ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderError>;
 }
@@ -39,37 +36,32 @@ export class CustomerDiscountProvider extends Context.Service<
     Effect.gen(function* () {
       const dotypos = yield* DotyposService;
 
-      const loadCustomerDiscount = (input: CustomerDiscountProviderInput) =>
-        Effect.succeed(input).pipe(
-          Effect.bind("discountGroup", ({ dotyposCustomerId }) =>
-            dotypos
-              .getCustomerDiscountGroup({
-                customerId: dotyposCustomerId,
-              })
-              .pipe(
-                Effect.mapError(
-                  (cause) =>
-                    new DiscountProviderError({
-                      reason: "provider_failure",
-                      message:
-                        "The Dotypos customer discount could not be loaded.",
-                      cause,
-                    })
+      const resolve = Effect.fn("CustomerDiscountProvider.resolve")(
+        (input: CustomerDiscountProviderInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("discountGroup", ({ dotyposCustomerId }) =>
+              dotypos
+                .getCustomerDiscountGroup({
+                  customerId: dotyposCustomerId,
+                })
+                .pipe(
+                  Effect.mapError(
+                    (cause) =>
+                      new DiscountProviderError({
+                        reason: "provider_failure",
+                        message:
+                          "The Dotypos customer discount could not be loaded.",
+                        cause,
+                      })
+                  )
                 )
-              )
-          ),
-          Effect.bind("candidate", toCustomerDiscountCandidate),
-          Effect.map(({ candidate }) => Option.toArray(candidate))
-        );
-
-      const quote = Effect.fn("CustomerDiscountProvider.quote")(
-        loadCustomerDiscount
-      );
-      const revalidate = Effect.fn("CustomerDiscountProvider.revalidate")(
-        loadCustomerDiscount
+            ),
+            Effect.bind("candidate", toCustomerDiscountCandidate),
+            Effect.map(({ candidate }) => Option.toArray(candidate))
+          )
       );
 
-      return { quote, revalidate } satisfies ICustomerDiscountProvider;
+      return { resolve } satisfies ICustomerDiscountProvider;
     })
   );
 }
