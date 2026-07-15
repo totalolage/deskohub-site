@@ -55,9 +55,16 @@ export const reservationCustomerMessageEffectSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerEffectFields = {
+export const reservationCustomerEffectSchema = Schema.Struct({
   name: reservationCustomerNameEffectSchema,
   email: reservationCustomerEmailEffectSchema,
   phone: reservationCustomerPhoneEffectSchema,
   message: Schema.optional(reservationCustomerMessageEffectSchema),
-} as const;
+});
+
+export const normalizedReservationCustomerEffectSchema = Schema.Struct({
+  name: Schema.String,
+  email: Schema.String,
+  phone: Schema.String,
+  message: Schema.optional(Schema.String),
+});
