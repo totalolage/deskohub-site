@@ -10,4 +10,5 @@ test("preserves the environment validation failure as the error cause", async ()
 
   expect(error).toBeInstanceOf(PostHogFeatureFlagError);
   expect(error.cause).toBeInstanceOf(Error);
+  expect((error.cause as Error & { cause?: unknown }).cause).toBeArray();
 });

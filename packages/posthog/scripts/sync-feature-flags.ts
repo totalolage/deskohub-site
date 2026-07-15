@@ -34,8 +34,10 @@ export const loadPostHogFeatureFlagEnv = (runtimeEnv: {
           POSTHOG_PROJECT_ID: runtimeEnv.POSTHOG_PROJECT_ID,
         },
         emptyStringAsUndefined: true,
-        onValidationError: () => {
-          throw new Error("Invalid PostHog feature flag sync environment.");
+        onValidationError: (issues) => {
+          throw new Error("Invalid PostHog feature flag sync environment.", {
+            cause: issues,
+          });
         },
       }),
     catch: (cause) =>
