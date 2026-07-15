@@ -17,14 +17,18 @@ import type {
   CreateCustomerRequest,
   CreateReservationRequest,
   Customer,
+  DiscountGroup,
   UpdateCustomerRequest,
+  UpdateReservationRequest,
 } from "../generated/effect.gen";
-import type { CreateDotyposReservationInput } from "../types";
+import type {
+  CreateDotyposReservationInput,
+  UpdateDotyposReservationInput,
+} from "../types";
 import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
   DotyposAccessToken,
   DotyposGeneratedClient,
-  getDiscountGroup,
   mapDotyposClientError,
 } from "./api";
 
@@ -87,6 +91,11 @@ export type DotyposCustomerDiscount = {
   readonly source: "dotypos-discount-group";
   readonly discountGroupId: string;
   readonly percent: number;
+};
+
+export type DotyposCustomerDiscountGroup = {
+  readonly discountGroupId: string;
+  readonly discountPercent: DiscountGroup["discountPercent"];
 };
 
 export type FindCustomerOptions = {
@@ -190,7 +199,7 @@ const hasAtLeastTwoCustomers = (
 
 const makeDotyposService = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
-  const { client, httpClient } = yield* DotyposGeneratedClient;
+  const { client } = yield* DotyposGeneratedClient;
 
   const runDotyposRequest = <A, E>(
     effect: Effect.Effect<A, E>,
@@ -397,6 +406,46 @@ const makeDotyposService = Effect.gen(function* () {
       effect.pipe(Effect.annotateLogs({ reservationId }), Effect.scoped)
   );
 
+  const patchReservation = Effect.fn("DotyposService.patchReservation")(
+    (input: {
+      readonly reservationId: string;
+      readonly payload: UpdateReservationRequest;
+    }) =>
+      Effect.succeed(input).pipe(
+        Effect.bind("response", ({ reservationId }) =>
+          runDotyposRequest(
+            client.getReservation(config.cloudId, reservationId, {
+              config: { includeResponse: true },
+            }),
+            "getReservation"
+          ).pipe(Effect.retry(retryPolicy))
+        ),
+        Effect.bind("etag", ({ response: [, response] }) => {
+          const etag = response.headers.etag ?? response.headers.ETag;
+
+          return etag
+            ? Effect.succeed(etag)
+            : Effect.fail(
+                new ExternalAPIError({
+                  service: "Dotypos",
+                  operation: "getReservation",
+                  message: "Reservation ETag header was missing.",
+                })
+              );
+        }),
+        Effect.bind("reservation", ({ etag, payload, reservationId }) =>
+          runDotyposRequest(
+            client.patchReservation(config.cloudId, reservationId, {
+              params: { "If-Match": etag },
+              payload,
+            }),
+            "patchReservation"
+          ).pipe(Effect.retry(retryPolicy))
+        ),
+        Effect.map(({ reservation }) => reservation)
+      )
+  );
+
   const confirmReservation = Effect.fn("confirmReservation")(
     function* (reservationId: string) {
       const id = reservationId.trim();
@@ -407,48 +456,12 @@ const makeDotyposService = Effect.gen(function* () {
         );
       }
 
-      yield* Effect.logInfo("Dotypos reservation ETag load started");
-
-      const [, response] = yield* runDotyposRequest(
-        client.getReservation(config.cloudId, id, {
-          config: { includeResponse: true },
-        }),
-        "Get reservation"
-      ).pipe(
-        Effect.withSpan("dotyposService.confirmReservation.getEtag"),
-        Effect.retry(retryPolicy)
-      );
-      const etag = response.headers.etag ?? response.headers.ETag;
-
-      yield* Effect.logDebug("Dotypos reservation ETag load succeeded", {
-        etag,
-      });
-
-      if (!etag) {
-        yield* Effect.logWarning(
-          "Dotypos reservation ETag missing before confirmation failure"
-        );
-
-        return yield* Effect.fail(
-          new ExternalAPIError({
-            service: "Dotypos",
-            operation: "Get reservation",
-            message: "Reservation ETag header was missing.",
-          })
-        );
-      }
-
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
 
-      const reservation = yield* runDotyposRequest(
-        client.patchReservation(config.cloudId, id, {
-          params: { "If-Match": etag },
-          payload: { status: "CONFIRMED" },
-        }),
-        "patchReservation"
-      ).pipe(
-        Effect.withSpan("dotyposService.confirmReservation"),
-        Effect.retry(retryPolicy),
+      const reservation = yield* patchReservation({
+        reservationId: id,
+        payload: { status: "CONFIRMED" },
+      }).pipe(
         Effect.tapError((error) =>
           Effect.logError("Dotypos reservation confirmation failed", {
             error,
@@ -462,6 +475,45 @@ const makeDotyposService = Effect.gen(function* () {
     },
     (effect, reservationId) =>
       effect.pipe(Effect.annotateLogs({ reservationId }))
+  );
+
+  const updateReservation = Effect.fn("DotyposService.updateReservation")(
+    function* (input: UpdateDotyposReservationInput) {
+      const reservationId = input.reservationId.trim();
+      const note = input.note.trim();
+
+      if (!reservationId) {
+        return yield* Effect.fail(
+          new ValidationError({ message: "Reservation ID is required" })
+        );
+      }
+
+      if (!note) {
+        return yield* Effect.fail(
+          new ValidationError({ message: "Reservation note is required" })
+        );
+      }
+
+      yield* Effect.logInfo("Dotypos reservation update started");
+
+      const reservation = yield* patchReservation({
+        reservationId,
+        payload: { note },
+      }).pipe(
+        Effect.tapError((error) =>
+          Effect.logError("Dotypos reservation update failed", { error })
+        )
+      );
+
+      yield* Effect.logInfo("Dotypos reservation update succeeded");
+
+      return reservation;
+    },
+    (effect, input) =>
+      effect.pipe(
+        Effect.annotateLogs({ reservationId: input.reservationId }),
+        Effect.scoped
+      )
   );
 
   const getCustomer = Effect.fn("getCustomer")(
@@ -812,26 +864,61 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
+  const loadCustomerDiscountGroup = (customer: Customer) => {
+    const discountGroupId = customer._discountGroupId?.toString().trim();
+    if (!discountGroupId) return Effect.succeed(undefined);
+
+    return runDotyposRequest(
+      client.getDiscountGroup(config.cloudId, discountGroupId, undefined),
+      "getDiscountGroup"
+    ).pipe(
+      Effect.retry(retryPolicy),
+      Effect.map(
+        (discountGroup) =>
+          ({
+            discountGroupId,
+            discountPercent: discountGroup.discountPercent,
+          }) satisfies DotyposCustomerDiscountGroup
+      )
+    );
+  };
+
+  const getCustomerDiscountGroup = Effect.fn(
+    "DotyposService.getCustomerDiscountGroup"
+  )(
+    (input: { readonly customerId: string }) =>
+      Effect.succeed(input).pipe(
+        Effect.let("normalizedCustomerId", ({ customerId }) =>
+          customerId.trim()
+        ),
+        Effect.filterOrFail(
+          ({ normalizedCustomerId }) => Boolean(normalizedCustomerId),
+          () => new ValidationError({ message: "Customer ID is required" })
+        ),
+        Effect.bind("customer", ({ normalizedCustomerId }) =>
+          getCustomer(normalizedCustomerId)
+        ),
+        Effect.bind("discountGroup", ({ customer }) =>
+          loadCustomerDiscountGroup(customer)
+        ),
+        Effect.map(({ discountGroup }) => discountGroup)
+      ),
+    (effect, input) =>
+      effect.pipe(Effect.annotateLogs({ customerId: input.customerId }))
+  );
+
   const getCustomerDiscount = Effect.fn("getCustomerDiscount")(
     function* (customer: Customer) {
-      const discountGroupId = customer._discountGroupId?.toString().trim();
-      if (!discountGroupId) return undefined;
+      const discountGroup = yield* loadCustomerDiscountGroup(customer);
+      if (!discountGroup) return undefined;
 
-      const discountGroup = yield* runDotyposRequest(
-        getDiscountGroup({
-          config,
-          discountGroupId,
-          httpClient,
-        }),
-        "getDiscountGroup"
-      ).pipe(Effect.retry(retryPolicy));
       const percent = parseDiscountPercent(discountGroup.discountPercent);
 
       if (percent === undefined) return undefined;
 
       return {
         source: "dotypos-discount-group",
-        discountGroupId,
+        discountGroupId: discountGroup.discountGroupId,
         percent,
       } satisfies DotyposCustomerDiscount;
     },
@@ -905,10 +992,12 @@ const makeDotyposService = Effect.gen(function* () {
 
   return {
     createReservation,
+    updateReservation,
     cancelReservation,
     confirmReservation,
     getReservation,
     getCustomer,
+    getCustomerDiscountGroup,
     getCustomerDiscount,
     findCustomer,
     findOrCreateCustomer,

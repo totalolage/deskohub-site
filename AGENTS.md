@@ -83,3 +83,7 @@ Effect.Do.pipe(
 - In named Effect operations, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 - Reuse the Workspace timezone and Temporal schemas/formatters from `shared/utils/site-constants.ts` and `shared/utils/temporal.ts`; do not redeclare them inside feature modules.
 - Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
+- When a planned PR stopping point is ready for user review, publish the PR as ready for review rather than leaving it in draft state.
+- For Dotypos resources, consult the official API documentation and send an authenticated `OPTIONS` request to the resource or item URL to verify its supported operations. Verify the live response shape, model the endpoint in the OpenAPI spec, and regenerate the client; do not add a parallel hand-written response decoder when the contract can be generated.
+- Parse external decimal percentages with Effect Schema and `BigDecimal` exact arithmetic; do not hand-slice decimal strings or convert through floating-point math.
+- Keep declarative `Effect.bind`, `Effect.let`, and `Effect.tap` callbacks small. Extract non-trivial work into named record-input operations and pass those operations directly to the pipeline.
