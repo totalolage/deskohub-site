@@ -4,11 +4,12 @@ import {
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type {
-  AppliedDiscount,
-  Discount,
-  DiscountProductIdentity,
-  DiscountQuote,
+import {
+  type AppliedDiscount,
+  type Discount,
+  type DiscountProductIdentity,
+  type DiscountQuote,
+  discountBasisPointsEffectSchema,
 } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
@@ -109,11 +110,7 @@ const getAppliedValue = (input: {
   const { adjustment } = input.candidate.discount;
 
   if (adjustment.kind === "percentage") {
-    if (
-      !Number.isInteger(adjustment.basisPoints) ||
-      adjustment.basisPoints < 1 ||
-      adjustment.basisPoints > 10_000
-    ) {
+    if (!Schema.is(discountBasisPointsEffectSchema)(adjustment.basisPoints)) {
       return Effect.fail(
         calculationError(
           "invalid_percentage_adjustment",

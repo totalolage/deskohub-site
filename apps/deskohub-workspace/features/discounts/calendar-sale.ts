@@ -8,6 +8,7 @@ import {
 } from "@/shared/utils";
 import {
   type DiscountProductIdentity,
+  discountBasisPointsEffectSchema,
   discountProductIdentityEffectSchema,
 } from "./contracts";
 
@@ -47,9 +48,7 @@ const calendarSaleEventMetadataSchema = Schema.Struct({
 const calendarSaleConfigurationSchema = Schema.Struct({
   adjustment: Schema.Struct({
     kind: Schema.Literal("percentage"),
-    basisPoints: Schema.Int.check(
-      Schema.isBetween({ minimum: 1, maximum: 10_000 })
-    ),
+    basisPoints: discountBasisPointsEffectSchema,
   }),
   products: Schema.NonEmptyArray(discountProductIdentityEffectSchema).check(
     Schema.isUnique()

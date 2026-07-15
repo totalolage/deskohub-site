@@ -50,6 +50,7 @@ describe("CustomerDiscountProvider", () => {
     ["10", 1000],
     ["12.5", 1250],
     ["12.34", 1234],
+    ["12.340", 1234],
     ["0.07", 7],
     ["100.000", 10_000],
   ] as const)("converts an exact percentage %p to %i basis points", async (discountPercent, basisPoints) => {
@@ -68,6 +69,7 @@ describe("CustomerDiscountProvider", () => {
     "0",
     "-1",
     "101",
+    "1e2",
     "not-a-percentage",
     null,
     "12.345",

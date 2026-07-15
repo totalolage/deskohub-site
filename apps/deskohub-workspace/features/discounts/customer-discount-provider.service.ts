@@ -1,13 +1,71 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { DiscountGroup } from "@deskohub/dotypos/generated";
-import { Context, Data, Effect, Layer, Option } from "effect";
+import {
+  BigDecimal,
+  Context,
+  Data,
+  Effect,
+  Layer,
+  Option,
+  Schema,
+  SchemaGetter,
+} from "effect";
 import { type Locale, m } from "@/features/i18n";
-import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
+import {
+  type DiscountProductIdentity,
+  type DiscountQuoteInput,
+  discountBasisPointsEffectSchema,
+} from "./contracts";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type { DiscountCandidate } from "./provider";
 
 const providerNamespace = "dotypos-customer-discount";
+
+const dotyposDiscountBasisPointsSchema = Schema.String.check(
+  Schema.isPattern(/^\d+(?:\.\d+)?$/)
+)
+  .pipe(
+    Schema.decodeTo(
+      Schema.BigDecimalFromString.check(
+        Schema.isBetweenBigDecimal({
+          minimum: BigDecimal.fromBigInt(BigInt(0)),
+          maximum: BigDecimal.fromBigInt(BigInt(100)),
+          exclusiveMinimum: true,
+        }),
+        Schema.makeFilter(
+          (percentage) =>
+            BigDecimal.isInteger(
+              BigDecimal.multiply(
+                percentage,
+                BigDecimal.fromBigInt(BigInt(100))
+              )
+            ),
+          { message: "must convert exactly to whole basis points" }
+        )
+      )
+    )
+  )
+  .pipe(
+    Schema.decodeTo(discountBasisPointsEffectSchema, {
+      decode: SchemaGetter.transform((percentage) =>
+        Number(
+          BigDecimal.scale(
+            BigDecimal.multiply(percentage, BigDecimal.fromBigInt(BigInt(100))),
+            0
+          ).value
+        )
+      ),
+      encode: SchemaGetter.transform((basisPoints) =>
+        BigDecimal.make(BigInt(basisPoints), 2)
+      ),
+    })
+  )
+  .annotate({
+    identifier: "DotyposDiscountBasisPoints",
+    description:
+      "A Dotypos decimal percentage decoded exactly into whole basis points.",
+  });
 
 export type CustomerDiscountProviderInput = Pick<
   DiscountQuoteInput,
@@ -132,23 +190,11 @@ const toCustomerDiscountCandidate = (input: {
 };
 
 const toBasisPoints = (input: DiscountGroup["discountPercent"]) => {
-  const decimal = input?.trim();
-  const match = decimal?.match(/^(\d+)(?:\.(\d+))?$/);
-
-  if (!match) {
-    return undefined;
-  }
-
-  const [, whole = "0", fraction = ""] = match;
-  if (/[^0]/.test(fraction.slice(2))) {
-    return undefined;
-  }
-
-  const basisPoints = Number(whole) * 100 + Number(`${fraction}00`.slice(0, 2));
-
-  return Number.isInteger(basisPoints) &&
-    basisPoints >= 1 &&
-    basisPoints <= 10_000
-    ? basisPoints
-    : undefined;
+  return Option.fromNullishOr(input).pipe(
+    Option.map((percentage) => percentage.trim()),
+    Option.flatMap(
+      Schema.decodeUnknownOption(dotyposDiscountBasisPointsSchema)
+    ),
+    Option.getOrUndefined
+  );
 };

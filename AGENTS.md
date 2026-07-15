@@ -85,3 +85,4 @@ Effect.Do.pipe(
 - Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
 - When a planned PR stopping point is ready for user review, publish the PR as ready for review rather than leaving it in draft state.
 - For Dotypos endpoints, verify the live response shape, model the endpoint in the OpenAPI spec, and regenerate the client; do not add a parallel hand-written response decoder when the contract can be generated.
+- Parse external decimal percentages with Effect Schema and `BigDecimal` exact arithmetic; do not hand-slice decimal strings or convert through floating-point math.
