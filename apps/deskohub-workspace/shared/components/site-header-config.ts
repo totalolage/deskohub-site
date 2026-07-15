@@ -11,7 +11,9 @@ const siteHeaderSectionIds = {
   faqContact: "faq-contact",
 } as const;
 
-export const getSiteHeaderLanguageLabels = (locale: Locale) => ({
+export const getSiteHeaderLanguageLabels = (
+  locale: Locale
+): Record<Locale, string> => ({
   "cs-CZ": m.languageCzech({}, { locale }),
   "en-US": m.languageEnglish({}, { locale }),
 });
