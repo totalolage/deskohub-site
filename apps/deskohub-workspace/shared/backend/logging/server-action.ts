@@ -1,14 +1,14 @@
 import { Effect } from "effect";
 import { headers } from "next/headers";
 import { after } from "next/server";
-import { runWorkspaceEffect } from "./censorship";
+import { runWorkspace } from "./censorship";
 import {
   getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics,
   logUnexpectedConsentCookieReasons,
 } from "./posthog-log-annotations";
 import { schedulePostHogLogsFlush } from "./posthog-otel";
 
-export async function runWorkspaceServerActionEffect<A, E>(
+export async function runWorkspaceServerAction<A, E>(
   effect: Effect.Effect<A, E, never>
 ) {
   schedulePostHogLogsFlush(after);
@@ -17,7 +17,7 @@ export async function runWorkspaceServerActionEffect<A, E>(
   const { annotations, unexpectedConsentCookieReasons } =
     getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics(requestHeaders);
 
-  return runWorkspaceEffect(
+  return runWorkspace(
     Effect.gen(function* () {
       yield* logUnexpectedConsentCookieReasons(unexpectedConsentCookieReasons);
       return yield* effect;

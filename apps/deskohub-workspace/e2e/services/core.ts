@@ -12,8 +12,8 @@ import {
   type WorkspaceE2EConfig,
 } from "../config";
 import {
-  effectifyPromise,
-  effectifySync,
+  tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
 import {
@@ -121,7 +121,7 @@ export class WorkspaceE2EConfigService extends Context.Service<
 >()("WorkspaceE2EConfigService") {
   static Live = Layer.succeed(this, {
     assertDatasourceSafety: (config) =>
-      effectifySync("assert datasource safety", () => {
+      tryWorkspaceE2ESync("assert datasource safety", () => {
         assertSafeDatabaseUrl(config.databaseUrl, "DATABASE_URL");
         assertSafeDatabaseUrl(
           config.databaseUrlUnpooled,
@@ -129,12 +129,12 @@ export class WorkspaceE2EConfigService extends Context.Service<
         );
       }),
     assertNexiSandbox: (origin) =>
-      effectifySync("assert Nexi sandbox configuration", () =>
+      tryWorkspaceE2ESync("assert Nexi sandbox configuration", () =>
         assertNexiSandboxConfig(origin)
       ),
     getCheckoutTimeoutMs,
-    getConfig: effectifySync("read workspace e2e config", getConfig),
-    getDatasourceConfig: effectifySync(
+    getConfig: tryWorkspaceE2ESync("read workspace e2e config", getConfig),
+    getDatasourceConfig: tryWorkspaceE2ESync(
       "read workspace e2e datasource config",
       getDatasourceConfig
     ),
@@ -168,7 +168,7 @@ export class WorkspaceE2ECommandRunnerService extends Context.Service<
         run: (command, args, options) =>
           Effect.gen(function* () {
             const runner = yield* getRunner;
-            return yield* effectifyPromise(`run command ${command}`, () =>
+            return yield* tryWorkspaceE2EPromise(`run command ${command}`, () =>
               runner(command, args, options)
             );
           }),

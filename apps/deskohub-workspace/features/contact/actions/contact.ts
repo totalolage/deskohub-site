@@ -11,7 +11,7 @@ import { getContactSchema } from "@/features/contact/schemas/contact";
 import { getLocale, type Locale, m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
+import { runWorkspaceServerAction } from "@/shared/backend/logging/server-action";
 
 export type ContactFormValues = {
   name: string;
@@ -51,7 +51,7 @@ interface SubmitContactFormInput {
   readonly submittedValues: ContactFormValues;
 }
 
-export const submitContactFormEffect = Effect.fn("submitContactForm")(
+export const submitContactForm = Effect.fn("submitContactForm")(
   function* ({ locale, submittedValues }: SubmitContactFormInput) {
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
@@ -128,7 +128,7 @@ export async function submitContactForm(
   const locale = getLocale();
   const submittedValues = getSubmittedContactValues(formData);
 
-  const program = submitContactFormEffect({ locale, submittedValues }).pipe(
+  const program = submitContactForm({ locale, submittedValues }).pipe(
     Effect.provide(
       Layer.merge(
         Layer.provideMerge(
@@ -140,5 +140,5 @@ export async function submitContactForm(
     )
   );
 
-  return await runWorkspaceServerActionEffect(program);
+  return await runWorkspaceServerAction(program);
 }

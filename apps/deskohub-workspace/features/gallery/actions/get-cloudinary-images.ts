@@ -7,7 +7,7 @@ import {
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { env } from "@/env";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import {
   type CloudinaryAsset,
   CloudinaryServiceLive,
@@ -37,6 +37,6 @@ export async function getCloudinaryImages({
     Effect.tapError((error) =>
       Effect.logError("Workspace Cloudinary gallery search failed", error)
     ),
-    runWorkspaceEffect
+    runWorkspace
   );
 }

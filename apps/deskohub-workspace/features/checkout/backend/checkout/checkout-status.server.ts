@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect } from "effect";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import {
   type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
@@ -16,7 +16,7 @@ const runCheckoutStatusService = <A, E>(
     return yield* useService(service);
   }).pipe(
     Effect.provide(CheckoutStatusServiceLiveWithDependencies),
-    runWorkspaceEffect
+    runWorkspace
   );
 
 export const getCheckoutStatus = (input: {

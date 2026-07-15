@@ -1,7 +1,7 @@
 import "server-only";
 
 import { Effect } from "effect";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import type { WorkspaceAvailabilityQuery } from "../schemas/workspace-availability";
 import {
   WorkspaceAvailabilityService,
@@ -14,5 +14,5 @@ export const loadWorkspaceAvailability = (query: WorkspaceAvailabilityQuery) =>
     return yield* service.getAvailability(query);
   }).pipe(
     Effect.provide(WorkspaceAvailabilityServiceLiveWithDependencies),
-    runWorkspaceEffect
+    runWorkspace
   );

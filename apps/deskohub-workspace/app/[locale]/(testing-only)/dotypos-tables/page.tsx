@@ -3,7 +3,7 @@ import { Effect, Layer } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import { DotyposTablesPreview } from "./dotypos-tables-preview";
 
 const DotyposLive = Layer.provide(
@@ -20,7 +20,7 @@ const loadTables = () =>
     Effect.tapError((error) =>
       Effect.logError("Workspace Dotypos table preview load failed", error)
     ),
-    runWorkspaceEffect
+    runWorkspace
   );
 
 export default function DotyposTablesPreviewPage() {

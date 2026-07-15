@@ -6,7 +6,7 @@ import {
   NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/payment";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequest } from "@/shared/backend/logging/censorship";
 
 const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_parse_failed: 400,
@@ -63,7 +63,7 @@ const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(
  * Receives Nexi payment notifications and verifies payment state server-side.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceRequestEffect(
+  return runWorkspaceRequest(
     request,
     processWebhookRequest(request).pipe(
       Effect.provide(
