@@ -5,11 +5,7 @@ import {
   runDb,
   WorkspaceDatabase,
 } from "@/db/database.service";
-import {
-  type WorkspaceReservation,
-  type WorkspaceReservationRow,
-  workspaceReservations,
-} from "@/db/schema";
+import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import type { StoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 
@@ -130,25 +126,6 @@ export const WorkspaceReservationRepository =
     "WorkspaceReservationRepository"
   );
 
-const withLegacyProductFields = (
-  reservation: WorkspaceReservationRow
-): WorkspaceReservation => ({
-  ...reservation,
-  productTier:
-    reservation.reservationDetails._tag === "cowork"
-      ? reservation.reservationDetails.tier
-      : "meeting-room",
-  productCoffee:
-    reservation.reservationDetails._tag === "cowork"
-      ? reservation.reservationDetails.coffee
-      : false,
-  productMonitorOption:
-    reservation.reservationDetails._tag === "cowork" &&
-    reservation.reservationDetails.tier === "profi"
-      ? reservation.reservationDetails.monitorOption
-      : null,
-});
-
 const ensureUpdated = (
   updated: readonly Pick<WorkspaceReservation, "id">[],
   operation: string,
@@ -178,7 +155,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .from(workspaceReservations)
             .where(eq(workspaceReservations.id, id))
             .limit(1);
-          return reservation ? withLegacyProductFields(reservation) : null;
+          return reservation ?? null;
         });
       },
       (effect, reservationId) =>
@@ -209,7 +186,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .onConflictDoNothing()
               .returning();
 
-            if (inserted) return withLegacyProductFields(inserted);
+            if (inserted) return inserted;
 
             const [existing] = await db
               .select()
@@ -224,7 +201,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
 
             if (!existing)
               throw new Error("Workspace reservation insert returned no row");
-            return withLegacyProductFields(existing);
+            return existing;
           });
         },
         (effect, input) =>
@@ -251,7 +228,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   )
                 )
                 .limit(1);
-              return reservation ? withLegacyProductFields(reservation) : null;
+              return reservation ?? null;
             }
           );
         },
@@ -292,7 +269,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             })
           );
         }
-        return withLegacyProductFields(updated[0]);
+        return updated[0];
       }),
       claimHoldCreation: Effect.fn("workspaceReservations.claimHoldCreation")(
         function* (id) {
@@ -422,7 +399,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                   )
                 )
                 .returning();
-              return claimed ? withLegacyProductFields(claimed) : null;
+              return claimed ?? null;
             }
           );
         }
@@ -616,7 +593,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
                 )
               )
               .returning();
-            return claimed ? withLegacyProductFields(claimed) : null;
+            return claimed ?? null;
           }
         );
       }),
@@ -745,30 +722,23 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       selectExpiredHolds: Effect.fn("workspaceReservations.selectExpiredHolds")(
         function* (input) {
-          return yield* runDb(
-            "workspaceReservations.selectExpiredHolds",
-            async () => {
-              const reservations = await db
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  and(
-                    eq(workspaceReservations.reservationState, "held"),
-                    sql`${workspaceReservations.paymentState} <> 'paid'`,
-                    lte(
-                      workspaceReservations.reservationHoldExpiresAt,
-                      input.now
-                    )
-                  )
+          return yield* runDb("workspaceReservations.selectExpiredHolds", () =>
+            db
+              .select()
+              .from(workspaceReservations)
+              .where(
+                and(
+                  eq(workspaceReservations.reservationState, "held"),
+                  sql`${workspaceReservations.paymentState} <> 'paid'`,
+                  lte(workspaceReservations.reservationHoldExpiresAt, input.now)
                 )
-                .orderBy(
-                  sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, ${workspaceReservations.reservationHoldExpiresAt})`,
-                  asc(workspaceReservations.reservationHoldExpiresAt),
-                  asc(workspaceReservations.id)
-                )
-                .limit(input.limit);
-              return reservations.map(withLegacyProductFields);
-            }
+              )
+              .orderBy(
+                sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, ${workspaceReservations.reservationHoldExpiresAt})`,
+                asc(workspaceReservations.reservationHoldExpiresAt),
+                asc(workspaceReservations.id)
+              )
+              .limit(input.limit)
           );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))

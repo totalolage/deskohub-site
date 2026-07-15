@@ -169,10 +169,5 @@ export const workspaceReservations = pgTable(
   ]
 );
 
-export type WorkspaceReservationRow = typeof workspaceReservations.$inferSelect;
-export type WorkspaceReservation = WorkspaceReservationRow & {
-  readonly productTier: string;
-  readonly productCoffee: boolean;
-  readonly productMonitorOption: string | null;
-};
+export type WorkspaceReservation = typeof workspaceReservations.$inferSelect;
 export type NewWorkspaceReservation = typeof workspaceReservations.$inferInsert;

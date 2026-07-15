@@ -416,9 +416,11 @@ describe("ResendWebhookService", () => {
         reservation: {
           id: "reservation-id",
           locale: "en-US",
-          productTier: "test-tier",
-          productCoffee: false,
-          productMonitorOption: null,
+          reservationDetails: {
+            _tag: "cowork",
+            tier: "basic",
+            coffee: false,
+          },
           dotyposReservationId: "dotypos-reservation-id",
           dotyposCustomerId: "dotypos-customer-id",
           customerAccessCode: "ACCESS-123",
