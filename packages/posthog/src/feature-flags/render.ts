@@ -45,19 +45,7 @@ export const renderPostHogFeatureFlagContract = Effect.fn(
     });
   }
 
-  const template = yield* readPostHogFeatureFlagContractTemplate();
-
-  return Mustache.render(template, {
-    featureFlags: sortedDefinitions.map((definition) => ({
-      keyLiteral: JSON.stringify(definition.key),
-      payloadType: renderPayloadTypeForFlag(definition),
-      valueType: renderValueType(definition),
-    })),
-  } satisfies PostHogFeatureFlagContractTemplateView);
-});
-
-function readPostHogFeatureFlagContractTemplate() {
-  return Effect.tryPromise({
+  const template = yield* Effect.tryPromise({
     try: () =>
       Bun.file(
         new URL("./feature-flag-contract.ts.mustache", import.meta.url)
@@ -68,7 +56,15 @@ function readPostHogFeatureFlagContractTemplate() {
         cause,
       }),
   });
-}
+
+  return Mustache.render(template, {
+    featureFlags: sortedDefinitions.map((definition) => ({
+      keyLiteral: JSON.stringify(definition.key),
+      payloadType: renderPayloadTypeForFlag(definition),
+      valueType: renderValueType(definition),
+    })),
+  } satisfies PostHogFeatureFlagContractTemplateView);
+});
 
 const renderValueType = (definition: PostHogFeatureFlagDefinition) =>
   definition.variants.length === 0
@@ -126,12 +122,9 @@ const inferJsonPayloadType = (
         };
       }
 
-      const entries = Object.entries(value);
-      if (entries.length > 50) return { kind: "unknown" };
-
       return {
         kind: "object",
-        properties: entries
+        properties: Object.entries(value)
           .map(([key, property]) => ({
             key,
             value: inferJsonPayloadType(property, depth + 1),
