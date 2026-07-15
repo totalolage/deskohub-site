@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getMeetingRoomReservationPath } from "@/features/checkout/routes";
 import { getCloudinaryImages } from "@/features/gallery/actions/get-cloudinary-images";
 import type { CloudinaryAsset } from "@/features/gallery/backend/cloudinary.service";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
@@ -77,7 +78,6 @@ function TtrpgRoomPage({
   barImages: readonly CloudinaryAsset[];
   workspaceImages: readonly CloudinaryAsset[];
 }) {
-  const localePath = `/${locale}`;
   const rooms = [
     {
       eyebrow: m.ttrpgRoomBarRoomLabel({}, { locale }),
@@ -95,10 +95,7 @@ function TtrpgRoomPage({
       title: m.ttrpgRoomWorkspaceChoiceTitle({}, { locale }),
       seats: m.ttrpgRoomWorkspaceCapacity({}, { locale }),
       images: workspaceImages,
-      href: getContactHref(
-        `${localePath}/contact`,
-        m.ttrpgRoomWorkspacePrefillMessage({}, { locale })
-      ),
+      href: getMeetingRoomReservationPath(locale),
       cta: m.ttrpgRoomWorkspaceCta({}, { locale }),
     },
   ];
