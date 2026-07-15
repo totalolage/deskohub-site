@@ -76,3 +76,5 @@ Effect.Do.pipe(
 - Keep Workspace production releases on the intentionally simple sequence: build a staged Vercel production deployment without assigning domains, run pending migrations against the production Neon branch, then promote the ready deployment. Do not introduce expand/contract migrations or database branch swapping unless explicitly requested.
 - Cloudinary credentials in sibling app env files can target a different product environment; when an exact public ID returns 404, verify the full account tuple before changing image-rendering code.
 - In this secondary worktree, `main` may already be checked out in the primary repository. After fetching, create the next feature branch directly from `origin/main` instead of trying to switch this worktree to `main`.
+- In named Effect operations, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
+- Reuse the Workspace timezone and Temporal schemas/formatters from `shared/utils/site-constants.ts` and `shared/utils/temporal.ts`; do not redeclare them inside feature modules.

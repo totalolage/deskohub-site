@@ -36,7 +36,6 @@ export class GoogleCalendarService extends Context.Service<
       const listEvents = Effect.fn("GoogleCalendarService.listEvents")(
         (input: GoogleCalendarListEventsInput) =>
           Effect.succeed(input).pipe(
-            Effect.tap(() => Effect.annotateLogsScoped({ input })),
             Effect.tap(() =>
               Effect.logInfo("Google Calendar events load started")
             ),
@@ -143,11 +142,15 @@ const toGoogleCalendarEvent = (
 ): GoogleCalendarEvent => ({
   ...(event.id && { id: event.id }),
   ...(event.iCalUID && { iCalUID: event.iCalUID }),
+  ...(event.recurringEventId && { recurringEventId: event.recurringEventId }),
   ...(event.status && { status: event.status }),
   ...(event.summary && { summary: event.summary }),
   ...(event.description && { description: event.description }),
   ...(event.start && { start: toGoogleCalendarEventDateTime(event.start) }),
   ...(event.end && { end: toGoogleCalendarEventDateTime(event.end) }),
+  ...(event.originalStartTime && {
+    originalStartTime: toGoogleCalendarEventDateTime(event.originalStartTime),
+  }),
 });
 
 const toGoogleCalendarEventDateTime = (
