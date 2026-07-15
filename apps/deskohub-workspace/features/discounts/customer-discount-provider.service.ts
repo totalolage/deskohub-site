@@ -51,25 +51,28 @@ export class CustomerDiscountProvider extends Context.Service<
       const resolve = Effect.fn("CustomerDiscountProvider.resolve")(
         (input: CustomerDiscountProviderInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("discountGroup", ({ dotyposCustomerId }) =>
-              dotypos
-                .getCustomerDiscountGroup({
-                  customerId: dotyposCustomerId,
-                })
-                .pipe(
-                  Effect.mapError(
-                    (cause) =>
-                      new DiscountProviderError({
-                        reason: "provider_failure",
-                        message:
-                          "The Dotypos customer discount could not be loaded.",
-                        cause,
-                      })
-                  )
-                )
-            ),
+            Effect.bind("discountGroup", loadCustomerDiscountGroup),
             Effect.bind("candidate", toCustomerDiscountCandidate),
             Effect.map(({ candidate }) => Option.toArray(candidate))
+          )
+      );
+
+      const loadCustomerDiscountGroup = Effect.fn(
+        "CustomerDiscountProvider.loadCustomerDiscountGroup"
+      )((input: Pick<CustomerDiscountProviderInput, "dotyposCustomerId">) =>
+        dotypos
+          .getCustomerDiscountGroup({
+            customerId: input.dotyposCustomerId,
+          })
+          .pipe(
+            Effect.mapError(
+              (cause) =>
+                new DiscountProviderError({
+                  reason: "provider_failure",
+                  message: "The Dotypos customer discount could not be loaded.",
+                  cause,
+                })
+            )
           )
       );
 
