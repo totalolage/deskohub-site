@@ -21,6 +21,9 @@ describe("renderPostHogFeatureFlagContract", () => {
       renderPostHogFeatureFlagContract([...definitions].reverse())
     );
 
+    expect(contract).toStartWith(
+      "// biome-ignore-all format: generated file\n\n"
+    );
     expect(contract).toContain(
       'import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";'
     );
