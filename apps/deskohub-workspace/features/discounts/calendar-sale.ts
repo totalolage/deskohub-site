@@ -107,22 +107,22 @@ const normalizeCalendarSale = (input: {
   }
 
   return extractStoredDiscountId(input.event).pipe(
-    Effect.flatMap(
-      Option.match({
-        onNone: () => Effect.succeed(Option.none()),
-        onSome: (discountId) =>
-          Effect.succeed({ ...input, discountId }).pipe(
-            Effect.bind("metadata", decodeCalendarSaleEventMetadata),
-            Effect.bind("occurrence", getCalendarSaleOccurrence),
-            Effect.let("sale", toCalendarSale),
-            Effect.map(({ metadata, reservationDate, sale }) =>
-              isReservationDateCovered({ metadata, reservationDate })
-                ? Option.some(sale)
-                : Option.none()
-            )
-          ),
-      })
-    )
+    Effect.map(
+      Option.map((discountId) =>
+        Effect.succeed({ ...input, discountId }).pipe(
+          Effect.bind("metadata", decodeCalendarSaleEventMetadata),
+          Effect.bind("occurrence", getCalendarSaleOccurrence),
+          Effect.let("sale", toCalendarSale),
+          Effect.map(({ metadata, reservationDate, sale }) =>
+            isReservationDateCovered({ metadata, reservationDate })
+              ? Option.some(sale)
+              : Option.none()
+          )
+        )
+      )
+    ),
+    Effect.flatMap(Effect.transposeOption),
+    Effect.map(Option.flatten)
   );
 };
 
