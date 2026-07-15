@@ -5,17 +5,34 @@
   "type": "module",
   "exports": {
     ".": "./src/generated/effect.gen.ts",
+    "./feature-flags": "./src/generated/feature-flags.ts",
+    "./feature-flags/management": "./src/feature-flags/management.ts",
+    "./feature-flags/react": "./src/feature-flags/react.ts",
     "./generated": "./src/generated/effect.gen.ts"
   },
   "scripts": {
+    "feature-flags:check": "bun scripts/sync-feature-flags.ts --check",
+    "feature-flags:sync": "bun scripts/sync-feature-flags.ts",
     "generate": "bun scripts/generate.ts",
+    "test": "bun test",
     "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
-    "effect": "4.0.0-beta.85"
+    "@posthog/react": "1.10.3",
+    "effect": "4.0.0-beta.85",
+    "mustache": "^4.2.0"
+  },
+  "peerDependencies": {
+    "posthog-js": ">=1.257.2",
+    "react": ">=16.8.0"
   },
   "devDependencies": {
     "@effect/openapi-generator": "4.0.0-beta.85",
+    "@t3-oss/env-core": "^0.13.10",
+    "@types/mustache": "^4.2.6",
+    "@types/react": "^19.2.17",
+    "posthog-js": "^1.388.1",
+    "react": "19.2.7",
     "typescript": "^5"
   }
 }
