@@ -1,8 +1,5 @@
 import { Schema } from "effect";
-import {
-  discountIdSchema,
-  discountProductIdentityEffectSchema,
-} from "./contracts";
+import { discountIdSchema, discountProductIdentityCodec } from "./contracts";
 
 export const storedDiscountIdSchema = discountIdSchema
   .check(
@@ -21,9 +18,9 @@ export type StoredDiscountId = Schema.Schema.Type<
 >;
 
 export const discountProductKeySchema = Schema.TemplateLiteral([
-  discountProductIdentityEffectSchema.fields.kind,
+  discountProductIdentityCodec.fields.kind,
   ":",
-  discountProductIdentityEffectSchema.fields.tier,
+  discountProductIdentityCodec.fields.tier,
 ])
   .pipe(Schema.brand("DiscountProductKey"))
   .annotate({

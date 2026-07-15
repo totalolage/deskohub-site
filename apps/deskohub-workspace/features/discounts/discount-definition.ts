@@ -2,8 +2,8 @@ import { Data, Effect, Schema } from "effect";
 import type { DiscountProductTarget, StoredDiscount } from "@/db/schema";
 import type { DiscountAdjustment, DiscountProductIdentity } from "./contracts";
 import {
-  discountAdjustmentEffectSchema,
-  discountProductIdentityEffectSchema,
+  discountAdjustmentSchema,
+  discountProductIdentityCodec,
 } from "./contracts";
 import {
   discountProductKeySchema,
@@ -56,7 +56,7 @@ const definitionLabelSchema = Schema.Trim.check(Schema.isNonEmpty());
 
 const discountTargetSchema = Schema.Struct({
   productKey: discountProductKeySchema,
-  productIdentity: discountProductIdentityEffectSchema,
+  productIdentity: discountProductIdentityCodec,
 }).check(
   Schema.makeFilter(
     ({ productIdentity, productKey }) =>
@@ -85,7 +85,7 @@ const decodeDefinitionLabel = (input: {
 const decodeDefinitionAdjustment = (input: {
   readonly row: DiscountDefinitionRow;
 }) =>
-  Schema.decodeUnknownEffect(discountAdjustmentEffectSchema, {
+  Schema.decodeUnknownEffect(discountAdjustmentSchema, {
     errors: "all",
     onExcessProperty: "error",
   })(

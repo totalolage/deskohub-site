@@ -5,7 +5,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import { positiveWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
+import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 
 export type DiscountProductIdentity = {
@@ -53,14 +53,14 @@ export type DiscountAdjustment =
       readonly amount: WorkspaceMoney;
     };
 
-export const discountAdjustmentEffectSchema = Schema.Union([
+export const discountAdjustmentSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("percentage"),
-    basisPoints: discountBasisPointsEffectSchema,
+    basisPoints: discountBasisPointsSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("fixed"),
-    amount: positiveWorkspaceMoneyEffectSchema,
+    amount: positiveWorkspaceMoneyCodec,
   }),
 ]).annotate({
   identifier: "DiscountAdjustment",
