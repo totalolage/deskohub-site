@@ -15,6 +15,7 @@ import {
 import { CheckoutStatusPage } from "./checkout-status-page";
 
 const baseStatus = {
+  _tag: "unknown",
   orderId: "reservation-status-page",
   returnOutcome: "success",
   status: "fulfilled",
@@ -41,11 +42,14 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          _tag: "cowork",
           summary: {
+            _tag: "cowork",
             tier: "profi",
-            date: "2026-06-20",
             coffee: false,
             monitorOption: "2x27-qhd",
+            reservedFrom: new Date("2026-06-19T22:00:00.000Z"),
+            reservedUntil: new Date("2026-06-20T22:00:00.000Z"),
             price: { value: 55_000, exponent: 2, currency: "CZK" },
           },
         }}
@@ -74,11 +78,37 @@ describe("CheckoutStatusPage", () => {
     ).toBeDefined();
   });
 
+  test("links meeting room statuses back to meeting room reservation", () => {
+    const view = render(
+      <CheckoutStatusPage
+        locale="en-US"
+        status={{
+          ...baseStatus,
+          _tag: "meeting-room",
+          summary: {
+            _tag: "meeting-room",
+            reservedFrom: new Date("2026-06-20T07:00:00.000Z"),
+            reservedUntil: new Date("2026-06-20T11:00:00.000Z"),
+            price: { value: 60_000, exponent: 2, currency: "CZK" },
+          },
+        }}
+      />
+    );
+
+    expect(view.getByText("9:00 AM - 1:00 PM")).toBeDefined();
+    expect(
+      view
+        .getByRole("link", { name: "Start a new reservation" })
+        .getAttribute("href")
+    ).toBe("/en-US/ttrpg-room");
+  });
+
   test("renders not found without reservation summary copy", () => {
     const view = render(
       <CheckoutStatusPage
         locale="en-US"
         status={{
+          _tag: "unknown",
           orderId: "test-order",
           returnOutcome: "unknown",
           status: "not_found",
@@ -129,6 +159,7 @@ describe("CheckoutStatusPage", () => {
         locale="en-US"
         status={{
           ...baseStatus,
+          _tag: "cowork",
           status: "fulfillment_failed",
           fulfillmentStatus: "failed",
           supportContactPrefill: {
@@ -137,9 +168,11 @@ describe("CheckoutStatusPage", () => {
             phone: "+420777777777",
           },
           summary: {
+            _tag: "cowork",
             tier: "basic",
-            date: "2026-06-20",
             coffee: false,
+            reservedFrom: new Date("2026-06-19T22:00:00.000Z"),
+            reservedUntil: new Date("2026-06-20T22:00:00.000Z"),
             price: { value: 35_000, exponent: 2, currency: "CZK" },
           },
         }}
