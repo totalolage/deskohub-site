@@ -4,12 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./generated": "./src/generated/index.ts"
+    ".": "./src/generated/effect.gen.ts",
+    "./generated": "./src/generated/effect.gen.ts"
   },
   "scripts": {
     "generate": "bun scripts/generate.ts",
-    "test": "bun test",
     "typecheck": "bun run generate && tsc --project tsconfig.json"
   },
   "dependencies": {

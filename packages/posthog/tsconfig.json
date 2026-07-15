@@ -4,7 +4,9 @@
   "compilerOptions": {
     "rootDir": ".",
     "composite": false,
-    "noEmit": true
+    "incremental": false,
+    "noEmit": true,
+    "plugins": []
   },
   "include": ["scripts/**/*.ts", "src/**/*.ts"]
 }
