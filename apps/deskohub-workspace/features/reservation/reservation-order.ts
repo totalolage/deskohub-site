@@ -28,11 +28,8 @@ export const getReservationProductCoffee = (
   reservation: ReservationProductProjectionInput
 ) =>
   Match.value(reservation).pipe(
-    Match.when({ _tag: "cowork" }, getCoworkReservationProductCoffee),
-    Match.when(
-      { _tag: "meeting-room" },
-      getMeetingRoomReservationProductCoffee
-    ),
+    Match.tag("cowork", getCoworkReservationProductCoffee),
+    Match.tag("meeting-room", getMeetingRoomReservationProductCoffee),
     Match.exhaustive
   );
 
@@ -40,10 +37,7 @@ export const getReservationProductMonitorOption = (
   reservation: ReservationProductProjectionInput
 ) =>
   Match.value(reservation).pipe(
-    Match.when({ _tag: "cowork" }, getCoworkReservationProductMonitorOption),
-    Match.when(
-      { _tag: "meeting-room" },
-      getMeetingRoomReservationProductMonitorOption
-    ),
+    Match.tag("cowork", getCoworkReservationProductMonitorOption),
+    Match.tag("meeting-room", getMeetingRoomReservationProductMonitorOption),
     Match.exhaustive
   );

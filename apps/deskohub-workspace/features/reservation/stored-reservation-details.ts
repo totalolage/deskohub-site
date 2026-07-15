@@ -62,24 +62,32 @@ export const getStoredWorkspaceReservationDetails = (
   input: StoredWorkspaceReservationDetails
 ): StoredWorkspaceReservationDetails =>
   Match.value(input).pipe(
-    Match.when({ _tag: "cowork", tier: "basic" }, (basicInput) => ({
-      _tag: "cowork" as const,
-      tier: "basic" as const,
-      coffee: basicInput.coffee,
-    })),
-    Match.when({ _tag: "cowork", tier: "plus" }, () => ({
-      _tag: "cowork" as const,
-      tier: "plus" as const,
-      coffee: true as const,
-    })),
-    Match.when({ _tag: "cowork", tier: "profi" }, (profiInput) => ({
-      _tag: "cowork" as const,
-      tier: "profi" as const,
-      coffee: true as const,
-      monitorOption: profiInput.monitorOption,
-    })),
-    Match.when({ _tag: "meeting-room" }, () => ({
-      _tag: "meeting-room" as const,
-    })),
+    Match.tag("cowork", (coworkInput) =>
+      Match.value(coworkInput).pipe(
+        Match.when({ tier: "basic" }, (basicInput) =>
+          storedBasicReservationDetailsEffectSchema.make({
+            tier: "basic",
+            coffee: basicInput.coffee,
+          })
+        ),
+        Match.when({ tier: "plus" }, () =>
+          storedPlusReservationDetailsEffectSchema.make({
+            tier: "plus",
+            coffee: true,
+          })
+        ),
+        Match.when({ tier: "profi" }, (profiInput) =>
+          storedProfiReservationDetailsEffectSchema.make({
+            tier: "profi",
+            coffee: true,
+            monitorOption: profiInput.monitorOption,
+          })
+        ),
+        Match.exhaustive
+      )
+    ),
+    Match.tag("meeting-room", () =>
+      storedMeetingRoomReservationDetailsEffectSchema.make({})
+    ),
     Match.exhaustive
   );

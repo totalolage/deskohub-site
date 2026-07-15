@@ -1,4 +1,11 @@
-import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
+import {
+  type Data,
+  Effect,
+  Option,
+  Schema,
+  SchemaGetter,
+  SchemaIssue,
+} from "effect";
 import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
@@ -45,9 +52,9 @@ export type MeetingRoomReservationOrderObject =
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderEffectSchema.Type;
 
-export type MeetingRoomReservationProductInput = {
-  readonly _tag: "meeting-room";
-};
+export type MeetingRoomReservationProductInput = Data.TaggedEnum<{
+  "meeting-room": Record<never, never>;
+}>;
 
 export const getMeetingRoomReservationProductCoffee = (
   _reservation: MeetingRoomReservationProductInput
@@ -135,16 +142,17 @@ export const normalizeMeetingRoomReservationOrder = (
   reservation: MeetingRoomReservationOrderObject
 ) =>
   getReservationIntervalNormalization(reservation).pipe(
-    Effect.map((interval) => ({
-      _tag: "meeting-room" as const,
-      name: reservation.name,
-      email: reservation.email,
-      phone: reservation.phone,
-      ...(reservation.message !== undefined && {
-        message: reservation.message,
-      }),
-      ...interval,
-    }))
+    Effect.map((interval) =>
+      normalizedMeetingRoomReservationOrderEffectSchema.make({
+        name: reservation.name,
+        email: reservation.email,
+        phone: reservation.phone,
+        ...(reservation.message !== undefined && {
+          message: reservation.message,
+        }),
+        ...interval,
+      })
+    )
   );
 
 const decodeMeetingRoomReservationOrder = Effect.fn(
