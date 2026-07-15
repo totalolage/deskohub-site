@@ -310,11 +310,19 @@
       "name": "@deskohub/posthog",
       "version": "0.1.0",
       "dependencies": {
+        "@posthog/react": "1.10.3",
         "effect": "4.0.0-beta.85",
       },
       "devDependencies": {
         "@effect/openapi-generator": "4.0.0-beta.85",
+        "@types/react": "^19.2.17",
+        "posthog-js": "^1.388.1",
+        "react": "19.2.7",
         "typescript": "^5",
+      },
+      "peerDependencies": {
+        "posthog-js": ">=1.257.2",
+        "react": ">=16.8.0",
       },
     },
     "packages/qr-code": {
@@ -744,6 +752,8 @@
     "@posthog/nextjs-config": ["@posthog/nextjs-config@1.9.68", "", { "dependencies": { "@posthog/cli": "~0.7.21", "@posthog/plugin-utils": "^1.1.2", "@posthog/webpack-plugin": "^1.5.24", "semver": "^7.7.2" }, "peerDependencies": { "next": ">12.1.0" } }, "sha512-MmzSrompIThnnrDArCKIOBZuD/b3RErH48ZJyzAuX+WfJTiHBjjTMvGWzr+qlIn8jCyJoglSygAwYVG8lJXybg=="],
 
     "@posthog/plugin-utils": ["@posthog/plugin-utils@1.1.2", "", { "dependencies": { "cross-spawn": "^7.0.6" } }, "sha512-CS/14cMmny9NN/LHAb4QZdW3TfxhbKzsfyVYMCjsRdE0IKMTrXMr0cPRZxwczsN6VnWvVoy2Dd5wcG6RrIjlYA=="],
+
+    "@posthog/react": ["@posthog/react@1.10.3", "", { "peerDependencies": { "@types/react": ">=16.8.0", "posthog-js": ">=1.257.2", "react": ">=16.8.0" }, "optionalPeers": ["@types/react"] }, "sha512-Qu//fGQmVlX0B9kTA3LLg67e7AYLEmeuA0Bf1qSyUM0uUILcRQGjQezhNQPLYSTakOqvXEnl6fM2iQBF6Toxrw=="],
 
     "@posthog/types": ["@posthog/types@1.388.0", "", {}, "sha512-BQO7e9ESdjOyKsCnoPoeHtq78ologEkPiemibsUlaAWC/Gk538jdTqyd0E1oSAlXnQqEANwjMn/A26vF2jljeQ=="],
 
