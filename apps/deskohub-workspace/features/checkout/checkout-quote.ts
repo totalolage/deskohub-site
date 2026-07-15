@@ -160,7 +160,7 @@ export const getCheckoutQuoteFingerprint = (canonicalPayload: string) =>
     )
     .toString(16);
 
-export const buildWorkspaceCheckoutQuoteProgram = Effect.fn(
+export const calculateWorkspaceCheckoutQuote = Effect.fn(
   "buildWorkspaceCheckoutQuote"
 )(function* (
   order: WorkspaceCheckoutOrder,
@@ -278,7 +278,7 @@ export const buildWorkspaceCheckoutQuote = (
     readonly currencyOverride?: string;
   } = {}
 ): WorkspaceCheckoutQuote =>
-  Effect.runSync(buildWorkspaceCheckoutQuoteProgram(order, options));
+  Effect.runSync(calculateWorkspaceCheckoutQuote(order, options));
 
 const getSummarySectionMap = (summary: CheckoutSummary) =>
   new Map(summary.sections.map((section) => [section.key, section]));

@@ -5,10 +5,10 @@ import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getReservationProductCoffee,
   getReservationProductMonitorOption,
-  reservationOrderSchema,
+  reservationOrderSchema as reservationOrderDefinition,
 } from "./reservation-order";
 
-const reservationOrderParser = makeSchemaParser(reservationOrderSchema);
+const reservationOrderSchema = makeSchemaParser(reservationOrderDefinition);
 
 const validMeetingRoomReservation = {
   _tag: "meeting-room",
@@ -22,7 +22,7 @@ const validMeetingRoomReservation = {
 
 describe("reservation schema", () => {
   test("rejects a meeting-room order without an interval", () => {
-    const result = reservationOrderParser.safeParse({
+    const result = reservationOrderSchema.safeParse({
       _tag: "meeting-room",
       name: "Ada Lovelace",
       email: "ada@example.com",
@@ -35,7 +35,7 @@ describe("reservation schema", () => {
   test("discriminates meeting-room orders independently from cowork tiers", () => {
     setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
-    const result = reservationOrderParser.safeParse(
+    const result = reservationOrderSchema.safeParse(
       validMeetingRoomReservation
     );
 
@@ -51,7 +51,7 @@ describe("reservation schema", () => {
 
     expect(
       Result.isFailure(
-        reservationOrderParser.safeParse({
+        reservationOrderSchema.safeParse({
           ...validMeetingRoomReservation,
           _tag: "cowork",
           entryTier: "meeting-room",
@@ -61,7 +61,7 @@ describe("reservation schema", () => {
   });
 
   test("discriminates cowork orders before refining their tier", () => {
-    const result = reservationOrderParser.safeParse({
+    const result = reservationOrderSchema.safeParse({
       _tag: "cowork",
       entryTier: "basic",
       date: "2099-06-10",
@@ -100,7 +100,7 @@ describe("reservation schema", () => {
   test("rejects meeting room reservations whose end has passed", () => {
     setSystemTime(new Date("2099-06-10T08:01:00.000Z"));
 
-    const result = reservationOrderParser.safeParse(
+    const result = reservationOrderSchema.safeParse(
       validMeetingRoomReservation
     );
 
@@ -115,7 +115,7 @@ describe("reservation schema", () => {
 
     expect(
       Result.isSuccess(
-        reservationOrderParser.safeParse(validMeetingRoomReservation)
+        reservationOrderSchema.safeParse(validMeetingRoomReservation)
       )
     ).toBe(true);
   });
@@ -123,7 +123,7 @@ describe("reservation schema", () => {
   test("normalizes meeting room timestamps without dropping order fields", () => {
     setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
-    const result = reservationOrderParser.safeParse({
+    const result = reservationOrderSchema.safeParse({
       ...validMeetingRoomReservation,
       startsAt: "2099-06-10T09:00",
       endsAt: "2099-06-10T10:00",
@@ -142,7 +142,7 @@ describe("reservation schema", () => {
   test("drops cowork-only fields from meeting-room orders", () => {
     setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
-    const result = reservationOrderParser.safeParse({
+    const result = reservationOrderSchema.safeParse({
       ...validMeetingRoomReservation,
       coffee: true,
       monitorOption: "2x27-qhd",

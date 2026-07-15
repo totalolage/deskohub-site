@@ -26,7 +26,7 @@ export async function getCloudinaryImages(options: {
 
   const normalizedTags = normalizeExpression(tags);
 
-  const getImagesProgram = Effect.provide(
+  const imageSearch = Effect.provide(
     Effect.gen(function* () {
       yield* Effect.annotateLogsScoped({ options, normalizedTags });
       yield* Effect.logInfo(
@@ -71,5 +71,5 @@ export async function getCloudinaryImages(options: {
     )
   );
 
-  return Effect.runPromise(getImagesProgram);
+  return Effect.runPromise(imageSearch);
 }

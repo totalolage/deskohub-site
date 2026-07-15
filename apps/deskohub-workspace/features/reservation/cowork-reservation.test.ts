@@ -3,11 +3,11 @@ import { Result } from "effect";
 import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
-  coworkReservationSchema,
+  coworkReservationSchema as coworkReservationDefinition,
   getCoworkReservationIntervalInput,
 } from "./cowork-reservation";
 
-const coworkReservationParser = makeSchemaParser(coworkReservationSchema);
+const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
 
 describe("cowork reservation schema", () => {
   test("owns the cowork full-day interval policy", () => {
@@ -18,7 +18,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("represents cowork reservations by date without an interval", () => {
-    const result = coworkReservationParser.safeParse({
+    const result = coworkReservationSchema.safeParse({
       entryTier: "plus",
       date: "2099-06-10",
       coffee: false,
@@ -44,7 +44,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("rejects monitor setup for non-profi cowork tiers", () => {
-    const result = coworkReservationParser.safeParse({
+    const result = coworkReservationSchema.safeParse({
       entryTier: "basic",
       date: "2099-06-10",
       startsAt: "00:00",
@@ -65,7 +65,7 @@ describe("cowork reservation schema", () => {
   });
 
   test("requires a monitor setup for profi cowork reservations", () => {
-    const result = coworkReservationParser.safeParse({
+    const result = coworkReservationSchema.safeParse({
       entryTier: "profi",
       date: "2099-06-10",
       startsAt: "00:00",

@@ -84,7 +84,7 @@ type NexiWebhookTestServices = {
   readonly fulfillment: WorkspacePaidFulfillmentServiceType;
 };
 
-const buildWebhookProgram = async (services: NexiWebhookTestServices) => {
+const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
   const { NexiService } = await import("@deskohub/nexi");
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
@@ -154,7 +154,7 @@ describe("NexiWebhookService", () => {
     const fulfillPaidOrder = mock(() => Effect.void);
 
     const result = await Effect.runPromise(
-      await buildWebhookProgram({
+      await buildWebhookEffect({
         webhookEvents: {
           insertReceived: mock(() =>
             Effect.succeed({ status: "inserted", event: receivedEvent })
@@ -220,7 +220,7 @@ describe("NexiWebhookService", () => {
 
     const result = await Effect.runPromise(
       Effect.result(
-        await buildWebhookProgram({
+        await buildWebhookEffect({
           webhookEvents: {
             insertReceived: mock(() =>
               Effect.succeed({ status: "inserted", event: receivedEvent })

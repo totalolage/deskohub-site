@@ -73,7 +73,7 @@ const makeTable = (overrides: Partial<Table> = {}): Table => ({
   ...overrides,
 });
 
-const getReservationDetailsProgram = (input: {
+const detailsEffect = (input: {
   readonly workspaceReservation?: TestWorkspaceReservation | null;
   readonly dotyposReservation?: Reservation;
   readonly tables?: readonly Table[];
@@ -110,7 +110,7 @@ const getReservationDetailsProgram = (input: {
 describe("WorkspaceReservationService", () => {
   test("builds details from Dotypos reservation dates and table", async () => {
     const details = await Effect.runPromise(
-      getReservationDetailsProgram({
+      detailsEffect({
         tables: [
           makeTable(),
           makeTable({ id: "neighbor-table", name: "11" }),
@@ -147,7 +147,7 @@ describe("WorkspaceReservationService", () => {
   test("fails when Dotypos reservation date is invalid", async () => {
     const error = await Effect.runPromise(
       Effect.flip(
-        getReservationDetailsProgram({
+        detailsEffect({
           dotyposReservation: makeDotyposReservation({ startDate: "nope" }),
         })
       )
@@ -162,7 +162,7 @@ describe("WorkspaceReservationService", () => {
 
   test("accepts Dotypos millisecond timestamp strings", async () => {
     const details = await Effect.runPromise(
-      getReservationDetailsProgram({
+      detailsEffect({
         dotyposReservation: makeDotyposReservation({
           startDate: String(Date.UTC(2026, 5, 15, 6)),
           endDate: String(Date.UTC(2026, 5, 16, 6)),

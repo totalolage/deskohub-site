@@ -122,7 +122,7 @@ const processWebhook = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly config?: ResendWebhookRuntimeConfigObj;
 }) => {
-  const effect = await processWebhookProgram(input);
+  const effect = await processWebhookEffect(input);
   return Effect.runPromise(effect);
 };
 
@@ -130,11 +130,11 @@ const processWebhookError = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly config?: ResendWebhookRuntimeConfigObj;
 }) => {
-  const effect = await processWebhookProgram(input);
+  const effect = await processWebhookEffect(input);
   return Effect.runPromise(Effect.flip(effect));
 };
 
-const processWebhookProgram = async (input: {
+const processWebhookEffect = async (input: {
   readonly reservations: WorkspaceReservationRepositoryType;
   readonly config?: ResendWebhookRuntimeConfigObj;
 }) => {
