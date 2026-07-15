@@ -13,12 +13,14 @@ import {
   type SubmitReservationInput,
 } from "@/features/reservation/actions/submit-reservation-input";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import { getReservationDate } from "@/features/reservation/reservation-interval";
 import {
   BotDetectedError,
   BotProtectionService,
 } from "@/shared/backend/bot-protection/bot-protection.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 const getSubmitReservationErrorMessage = (
   error: { readonly message: string },
@@ -36,9 +38,12 @@ const getSubmitReservationErrorMessage = (
     const payState = openPayState(input.payStateToken);
 
     return getReservationAvailabilityUnavailableMessage({
-      date: payState.reservation.date,
+      date: getReservationDate({
+        interval: payState.reservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
       locale: input.locale,
-      tier: payState.reservation.entryTier,
+      reservation: payState.reservation,
     });
   } catch {
     return m.reservationErrorMessage({}, { locale: input.locale });

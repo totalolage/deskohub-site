@@ -4,7 +4,7 @@ import {
   buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutOrderInput,
-} from "./checkout-quote-v2";
+} from "./checkout-quote";
 
 const coworkReservationDate = { date: "2099-06-10" } as const;
 

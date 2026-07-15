@@ -2,7 +2,7 @@ import { Schema as EffectSchema } from "effect";
 import {
   toWorkspaceCheckoutOrder,
   type WorkspaceCheckoutOrderInput,
-} from "@/features/checkout/checkout-quote-v2";
+} from "@/features/checkout/checkout-quote";
 import {
   reservationCustomerEmailEffectSchema,
   reservationCustomerMessageEffectSchema,

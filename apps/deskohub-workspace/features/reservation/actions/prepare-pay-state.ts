@@ -20,13 +20,13 @@ import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
-import { buildCheckoutPayPath } from "@/features/checkout/backend/checkout";
 import {
+  buildAuthoritativeWorkspaceCheckoutQuoteEffect,
+  buildCheckoutPayPath,
   buildSignedPayState,
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
-} from "@/features/checkout/backend/checkout/pay-state-v2";
-import { buildAuthoritativeWorkspaceCheckoutQuoteEffect } from "@/features/checkout/backend/checkout/workspace-checkout-quote-v2.server";
+} from "@/features/checkout/backend/checkout";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
@@ -41,7 +41,7 @@ import {
 } from "@/features/checkout/backend/reservation";
 import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
 import { parseCheckoutDetailsReservation } from "@/features/checkout/checkout-details";
-import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote-v2";
+import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   checkoutSummarySchema,
   toCheckoutDetailsPaymentSummary,

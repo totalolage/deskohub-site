@@ -3,7 +3,7 @@ import type {
   CheckoutSummaryChangedKeys,
   CheckoutSummary as CheckoutSummaryData,
   CheckoutSummaryItem,
-} from "@/features/checkout/checkout-quote-v2";
+} from "@/features/checkout/checkout-quote";
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceMeetingRoomDurationTitle,

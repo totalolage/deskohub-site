@@ -4,20 +4,23 @@ import { NexiService } from "@deskohub/nexi";
 import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
+import type { CheckoutDetailsJson } from "@/features/checkout/checkout-details";
+import { parseCheckoutDetailsReservation } from "@/features/checkout/checkout-details";
 import {
   buildWorkspaceCheckoutQuoteEffect,
   getCheckoutSummaryChangedKeys,
+  toWorkspaceCheckoutOrderInput,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
+  checkoutSummarySchema,
+  toCheckoutDetailsPaymentSummary,
+} from "@/features/checkout/checkout-summary";
+import type { LegalEvidenceMap } from "@/features/checkout/legal-evidence";
+import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
-import type {
-  CheckoutDetailsJson,
-  LegalEvidenceMap,
-} from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/legal-evidence";
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
@@ -26,7 +29,14 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import {
+  getReservationDate,
+  normalizeReservationInterval,
+  type ReservationIntervalInput,
+} from "@/features/reservation/reservation-interval";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
+import { getStoredWorkspaceReservationDetails } from "@/features/reservation/stored-reservation-details";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -37,6 +47,7 @@ import {
   getWorkspaceRuntimeCallbackOrigin,
   type WorkspaceUrlConfigError,
 } from "@/shared/backend/config/workspace-url.config";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   capturePaymentFailed,
   capturePaymentStarted,
@@ -94,11 +105,11 @@ const generateNexiOrderId = () =>
 const toCheckoutUrlError = (cause: WorkspaceUrlConfigError) =>
   Effect.fail(new CheckoutError({ message: cause.message, cause }));
 
-const getCheckoutOrderReturnUrl: (
+const getCheckoutPayReturnUrl: (
   locale: Locale,
   workspaceReservationId: string
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
-  "getCheckoutOrderReturnUrl"
+  "getCheckoutPayReturnUrl"
 )((locale, workspaceReservationId) =>
   Effect.gen(function* () {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
@@ -106,7 +117,7 @@ const getCheckoutOrderReturnUrl: (
     return yield* Effect.try({
       try: () => {
         const url = new URL(
-          `/${locale}/checkout/result/${workspaceReservationId}`,
+          `/${locale}/checkout/pay/return/${workspaceReservationId}`,
           origin
         );
         appendVercelPreviewProtectionBypass(url);
@@ -121,12 +132,12 @@ const getCheckoutOrderReturnUrl: (
   }).pipe(Effect.catchTag("WorkspaceUrlConfigError", toCheckoutUrlError))
 );
 
-const getCheckoutPaymentRetryUrl: (
+const getCheckoutPayCancelReturnUrl: (
   locale: Locale,
   workspaceReservationId: string,
   outcome: "cancelled"
 ) => Effect.Effect<string, CheckoutError> = Effect.fn(
-  "getCheckoutPaymentRetryUrl"
+  "getCheckoutPayCancelReturnUrl"
 )((locale, workspaceReservationId, outcome) =>
   Effect.gen(function* () {
     const origin = yield* getWorkspaceRuntimeCallbackOrigin;
@@ -134,7 +145,7 @@ const getCheckoutPaymentRetryUrl: (
     return yield* Effect.try({
       try: () => {
         const url = new URL(
-          `/${locale}/checkout/payment/${workspaceReservationId}`,
+          `/${locale}/checkout/pay/return/${workspaceReservationId}`,
           origin
         );
         url.searchParams.set("outcome", outcome);
@@ -242,32 +253,44 @@ const getCheckoutLegalEvidence = (input: {
   });
 };
 
-const buildCheckoutDetailsForPayment = (input: {
+const buildCheckoutDetailsForPayment = Effect.fn(
+  "checkout.buildCheckoutDetailsForPayment"
+)(function* (input: {
   readonly locale: Locale;
   readonly data: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: LegalEvidenceMap;
-}): Omit<CheckoutDetailsJson, "fulfillment"> => ({
-  schema: "workspace-checkout-details",
-  schemaVersion: 1,
-  locale: input.locale,
-  reservation: {
-    tier: input.data.entryTier,
-    date: input.data.date,
-    coffee: input.data.coffee,
-    monitorOption: input.data.monitorOption,
-  },
-  payment: {
-    expectedPrice: input.quote.payment.expectedPrice,
-    summary: checkoutSummarySchema.parse(input.quote.summary),
-    ...(input.quote.payment.customerDiscount && {
-      undiscountedPrice:
-        input.quote.payment.undiscountedPrice ??
-        input.quote.payment.expectedPrice,
-      customerDiscount: input.quote.payment.customerDiscount,
-    }),
-  },
-  legal: input.legalEvidence,
+}) {
+  const intervalInput: ReservationIntervalInput =
+    input.data.entryTier === "meeting-room"
+      ? {
+          startsAt: input.data.startsAt,
+          endsAt: input.data.endsAt,
+        }
+      : getCoworkReservationIntervalInput(input.data.date);
+  const interval = yield* normalizeReservationInterval(intervalInput);
+  const reservation = parseCheckoutDetailsReservation(
+    input.quote.order,
+    interval
+  );
+
+  return {
+    locale: input.locale,
+    reservation,
+    payment: {
+      expectedPrice: input.quote.payment.expectedPrice,
+      summary: toCheckoutDetailsPaymentSummary(
+        checkoutSummarySchema.parse(input.quote.summary)
+      ),
+      ...(input.quote.payment.customerDiscount && {
+        undiscountedPrice:
+          input.quote.payment.undiscountedPrice ??
+          input.quote.payment.expectedPrice,
+        customerDiscount: input.quote.payment.customerDiscount,
+      }),
+    },
+    legal: input.legalEvidence,
+  } satisfies Omit<CheckoutDetailsJson, "fulfillment">;
 });
 
 const openFinalPayState: (
@@ -296,6 +319,67 @@ const openFinalPayState: (
 
   return state;
 });
+
+const toReservationOrderData = (
+  reservation: SignedPayState["reservation"]
+): ReservationOrderData =>
+  Match.value(reservation).pipe(
+    Match.tag("meeting-room", (meetingRoomReservation) => ({
+      entryTier: "meeting-room" as const,
+      startsAt: meetingRoomReservation.startsAt,
+      endsAt: meetingRoomReservation.endsAt,
+      name: meetingRoomReservation.name,
+      email: meetingRoomReservation.email,
+      phone: meetingRoomReservation.phone,
+      ...(meetingRoomReservation.message !== undefined && {
+        message: meetingRoomReservation.message,
+      }),
+    })),
+    Match.when({ _tag: "cowork", tier: "basic" }, (coworkReservation) => ({
+      entryTier: "basic" as const,
+      date: getReservationDate({
+        interval: coworkReservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
+      name: coworkReservation.name,
+      email: coworkReservation.email,
+      phone: coworkReservation.phone,
+      ...(coworkReservation.message !== undefined && {
+        message: coworkReservation.message,
+      }),
+      coffee: coworkReservation.coffee,
+    })),
+    Match.when({ _tag: "cowork", tier: "plus" }, (coworkReservation) => ({
+      entryTier: "plus" as const,
+      date: getReservationDate({
+        interval: coworkReservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
+      name: coworkReservation.name,
+      email: coworkReservation.email,
+      phone: coworkReservation.phone,
+      ...(coworkReservation.message !== undefined && {
+        message: coworkReservation.message,
+      }),
+      coffee: true as const,
+    })),
+    Match.when({ _tag: "cowork", tier: "profi" }, (coworkReservation) => ({
+      entryTier: "profi" as const,
+      date: getReservationDate({
+        interval: coworkReservation,
+        timeZone: workspaceSiteConstants.location.timeZone,
+      }),
+      name: coworkReservation.name,
+      email: coworkReservation.email,
+      phone: coworkReservation.phone,
+      ...(coworkReservation.message !== undefined && {
+        message: coworkReservation.message,
+      }),
+      coffee: true as const,
+      monitorOption: coworkReservation.monitorOption,
+    })),
+    Match.exhaustive
+  );
 
 const getFreshPayUrl: (input: {
   readonly locale: Locale;
@@ -401,11 +485,11 @@ export const CheckoutServiceLive = Layer.effect(
             currency: nexiAmount.currency,
             locale: input.locale,
             notificationUrl: yield* getNotificationUrl,
-            resultUrl: yield* getCheckoutOrderReturnUrl(
+            resultUrl: yield* getCheckoutPayReturnUrl(
               input.locale,
               input.workspaceReservationId
             ),
-            cancelUrl: yield* getCheckoutPaymentRetryUrl(
+            cancelUrl: yield* getCheckoutPayCancelReturnUrl(
               input.locale,
               input.workspaceReservationId,
               "cancelled"
@@ -508,7 +592,7 @@ export const CheckoutServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ payState: state });
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
 
-          const data = state.reservation;
+          const data = toReservationOrderData(state.reservation);
           yield* Effect.logDebug(
             "Hosted payment checkout reservation lookup started",
             {
@@ -591,10 +675,13 @@ export const CheckoutServiceLive = Layer.effect(
           const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
             data
           ).pipe(Effect.provideService(DotyposService, dotypos));
-          const quote = yield* buildWorkspaceCheckoutQuoteEffect(data, {
-            customerDiscount,
-            currencyOverride: getNexiCheckoutCurrencyOverride(),
-          });
+          const quote = yield* buildWorkspaceCheckoutQuoteEffect(
+            toWorkspaceCheckoutOrderInput(data),
+            {
+              customerDiscount,
+              currencyOverride: getNexiCheckoutCurrencyOverride(),
+            }
+          );
           yield* Effect.annotateLogsScoped({ quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");
           yield* Effect.logDebug(
@@ -636,11 +723,11 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout quote comparison passed"
           );
 
-          yield* reservations.updateProductIntent({
+          yield* reservations.updateReservationDetails({
             id: reservation.id,
-            productTier: data.entryTier,
-            productCoffee: data.coffee,
-            productMonitorOption: data.monitorOption,
+            reservationDetails: getStoredWorkspaceReservationDetails(
+              quote.order
+            ),
             locale,
           });
 
@@ -652,7 +739,7 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
             legalDocuments,
           });
-          const checkoutDetails = buildCheckoutDetailsForPayment({
+          const checkoutDetails = yield* buildCheckoutDetailsForPayment({
             locale,
             data,
             quote,

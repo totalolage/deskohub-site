@@ -7,7 +7,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote-v2";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
