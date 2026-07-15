@@ -83,3 +83,4 @@ Effect.Do.pipe(
 - In named Effect operations, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 - Reuse the Workspace timezone and Temporal schemas/formatters from `shared/utils/site-constants.ts` and `shared/utils/temporal.ts`; do not redeclare them inside feature modules.
 - Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
+- When a planned PR stopping point is ready for user review, publish the PR as ready for review rather than leaving it in draft state.
