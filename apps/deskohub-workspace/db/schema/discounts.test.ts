@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Schema } from "effect";
+import { discountProductIdentityEffectSchema } from "@/features/discounts/contracts";
 import {
   canonicalDiscountCodeSchema,
   discountProductKeySchema,
@@ -56,7 +57,10 @@ describe("discount persistence contracts", () => {
     const decodeProductKey = Schema.decodeUnknownSync(discountProductKeySchema);
     const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
 
-    expect(decodeProductKey("cowork:basic")).toBe("cowork:basic");
+    for (const tier of discountProductIdentityEffectSchema.fields.tier
+      .literals) {
+      expect(decodeProductKey(`cowork:${tier}`)).toBe(`cowork:${tier}`);
+    }
     expect(decodeCode("LETNI_SLEVA-50")).toBe("LETNI_SLEVA-50");
     expect(() => decodeProductKey("cowork:enterprise")).toThrow();
     expect(() => decodeCode("lowercase")).toThrow();

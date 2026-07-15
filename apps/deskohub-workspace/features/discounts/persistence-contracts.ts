@@ -1,5 +1,8 @@
 import { Schema } from "effect";
-import { discountIdSchema } from "./contracts";
+import {
+  discountIdSchema,
+  discountProductIdentityEffectSchema,
+} from "./contracts";
 
 export const storedDiscountIdSchema = discountIdSchema
   .check(
@@ -17,13 +20,11 @@ export type StoredDiscountId = Schema.Schema.Type<
   typeof storedDiscountIdSchema
 >;
 
-export const discountProductKeys = [
-  "cowork:basic",
-  "cowork:plus",
-  "cowork:profi",
-] as const;
-
-export const discountProductKeySchema = Schema.Literals(discountProductKeys)
+export const discountProductKeySchema = Schema.TemplateLiteral([
+  discountProductIdentityEffectSchema.fields.kind,
+  ":",
+  discountProductIdentityEffectSchema.fields.tier,
+])
   .pipe(Schema.brand("DiscountProductKey"))
   .annotate({
     identifier: "DiscountProductKey",
