@@ -48,7 +48,6 @@ const reservationTimestampEffectSchema = Schema.Union([
 const decodeReservationTimestamp = Schema.decodeUnknownEffect(
   reservationTimestampEffectSchema
 );
-const decodeInstantString = Schema.decodeUnknownSync(instantStringEffectSchema);
 
 export const toPlainDateTime = (value: Instant, timeZone: string) =>
   Temporal.Instant.from(value).toZonedDateTimeISO(timeZone).toPlainDateTime();
@@ -103,10 +102,9 @@ const normalizeInstantString = (
   path: keyof ReservationInterval,
   normalize: () => string
 ) =>
-  Effect.try({
-    try: () => decodeInstantString(normalize()),
-    catch: (cause) => toValidationError(path, cause),
-  });
+  Effect.fromResult(
+    Schema.decodeUnknownResult(instantStringEffectSchema)(normalize())
+  ).pipe(Effect.mapError((cause) => toValidationError(path, cause)));
 
 const toValidationError = (path: keyof ReservationInterval, cause: unknown) =>
   new ReservationIntervalValidationError({
