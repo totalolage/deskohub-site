@@ -6,6 +6,9 @@
       "cache": false,
       "env": ["POSTHOG_OPENAPI_SCHEMA_URL"],
       "outputs": ["src/generated/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["generate"]
     }
   }
 }

@@ -9,12 +9,13 @@
   },
   "scripts": {
     "generate": "bun scripts/generate.ts",
-    "typecheck": "bun run generate && tsc --project tsconfig.json"
+    "typecheck": "tsc --project tsconfig.json"
   },
   "dependencies": {
     "effect": "4.0.0-beta.85"
   },
   "devDependencies": {
+    "@effect/openapi-generator": "4.0.0-beta.85",
     "typescript": "^5"
   }
 }
