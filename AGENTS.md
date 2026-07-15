@@ -72,6 +72,7 @@ Effect.Do.pipe(
 - Reservation hold cleanup must happen only through the per-reservation scheduled queue task, with the daily cron job as the recovery path; do not add inline cleanup, sweep, or terminal-payment cancellation fallbacks.
 - Generate Drizzle migrations, journals, and snapshots with Drizzle tooling; do not hand-write migration metadata or journal entries.
 - For conditional rendering with no else branch, use `{condition && <Component />}` instead of `{condition ? <Component /> : null}`.
+- Define functions implemented with an Effect generator as `Effect.fn("descriptor")(function* (...) { ... })`; do not wrap `Effect.gen(function* (...) { ... })` in an arrow function.
 - When mapping a small variant union to copy, icons, or similar values, use an inline object lookup instead of ternaries; keep one-use lookup objects inline.
 - Do not hoist JSX `className` strings into local variables when they are used only once; inline them at the usage site.
 - Do not hoist simple one-use literals or lookup objects to module scope; inline them where they are consumed.
@@ -80,3 +81,4 @@ Effect.Do.pipe(
 - In this secondary worktree, `main` may already be checked out in the primary repository. After fetching, create the next feature branch directly from `origin/main` instead of trying to switch this worktree to `main`.
 - In named Effect operations, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 - Reuse the Workspace timezone and Temporal schemas/formatters from `shared/utils/site-constants.ts` and `shared/utils/temporal.ts`; do not redeclare them inside feature modules.
+- Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
