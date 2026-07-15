@@ -259,9 +259,17 @@
   "reservationTierProfiDescription": "Vyhrazená pracovní stanice s monitorovým setupem a kávou v ceně.",
   "reservationTierMeetingRoomTitle": "Zasedací místnost",
   "reservationTierMeetingRoomDescription": "Soukromá místnost pro hovory, workshopy nebo soustředěné skupinové setkání.",
-  "reservationMeetingRoomDurationOneHour": "1 hodina",
-  "reservationMeetingRoomDurationFourHours": "4 hodiny",
-  "reservationMeetingRoomDurationTwentyFourHours": "24 hodin",
+  "reservationMeetingRoomDurationHours": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} hodina",
+        "countPlural=few": "{count} hodiny",
+        "countPlural=other": "{count} hodin"
+      }
+    }
+  ],
   "reservationTierProfiBulletDesk": "Vlastní pracovní stanice s monitorovým setupem",
   "reservationTierPerkAllBasic": "všechny výhody tarifu Basic",
   "reservationTierPerkAllCowork": "všechny výhody tarifu Cowork Plus",
@@ -477,7 +485,8 @@
   "reservationValidationDatePast": "Vyber dnešní nebo budoucí datum.",
   "reservationValidationMeetingRoomStartRequired": "Vyber datum a čas začátku rezervace zasedací místnosti.",
   "reservationValidationMeetingRoomStartWholeHour": "Rezervace zasedací místnosti musí začínat v celou hodinu.",
-  "reservationValidationMeetingRoomDuration": "Vyber délku rezervace zasedací místnosti.",
+  "reservationValidationMeetingRoomDuration": "Délka rezervace zasedací místnosti musí být jedna z těchto možností: {durations}.",
+  "reservationValidationMeetingRoomEnded": "Vyber čas zasedací místnosti, jehož rezervace ještě neskončila.",
   "reservationValidationMonitorRequired": "U Profi Workstation vyber monitorový setup.",
   "reservationValidationMonitorUnavailable": "Monitorový setup je dostupný jen u Profi Workstation.",
   "reservationValidationCoffeeRequired": "Káva je u tohoto tarifu zahrnutá a musí zůstat vybraná.",

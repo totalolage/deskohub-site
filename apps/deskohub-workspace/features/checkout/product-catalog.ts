@@ -8,7 +8,7 @@ export const workspaceCoworkTiers = ["basic", "plus", "profi"] as const;
 export const workspaceCoworkProductTiers = workspaceCoworkTiers;
 export const workspaceProductTiers = workspaceCoworkTiers;
 
-export const workspaceMeetingRoomDurationOptions = [60, 240, 24 * 60] as const;
+export const workspaceMeetingRoomDurationOptions = [60, 240, 1440] as const;
 
 export const workspaceProductMonitorOptions = [
   "2x27-qhd",

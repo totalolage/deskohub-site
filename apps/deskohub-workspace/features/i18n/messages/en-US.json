@@ -259,9 +259,16 @@
   "reservationTierProfiDescription": "Reserved workstation with monitor setup and courtesy coffee included.",
   "reservationTierMeetingRoomTitle": "Meeting Room",
   "reservationTierMeetingRoomDescription": "Private room for calls, workshops, or focused group sessions.",
-  "reservationMeetingRoomDurationOneHour": "1 hour",
-  "reservationMeetingRoomDurationFourHours": "4 hours",
-  "reservationMeetingRoomDurationTwentyFourHours": "24 hours",
+  "reservationMeetingRoomDurationHours": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} hour",
+        "countPlural=other": "{count} hours"
+      }
+    }
+  ],
   "reservationTierProfiBulletDesk": "Own workstation with monitor setup",
   "reservationTierPerkAllBasic": "all perks from Basic",
   "reservationTierPerkAllCowork": "all perks from Cowork Plus",
@@ -477,7 +484,8 @@
   "reservationValidationDatePast": "Choose today or a future date.",
   "reservationValidationMeetingRoomStartRequired": "Choose a meeting room start date and time.",
   "reservationValidationMeetingRoomStartWholeHour": "Meeting room reservations must start on a whole hour.",
-  "reservationValidationMeetingRoomDuration": "Choose a meeting room duration.",
+  "reservationValidationMeetingRoomDuration": "Meeting room duration must be one of: {durations}.",
+  "reservationValidationMeetingRoomEnded": "Choose a meeting room time whose reservation has not already ended.",
   "reservationValidationMonitorRequired": "Choose a monitor setup for Profi Workstation.",
   "reservationValidationMonitorUnavailable": "Monitor setup is available only with Profi Workstation.",
   "reservationValidationCoffeeRequired": "Coffee is included with this tier and must stay selected.",
