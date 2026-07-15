@@ -2,12 +2,16 @@ import type { GoogleCalendarEvent } from "@deskohub/google-calendar";
 import { Data, Effect, Option, Schema } from "effect";
 import { parse } from "smol-toml";
 import {
+  plainDateStringEffectSchema,
+  temporalInstantToIsoString,
+  workspaceSiteConstants,
+} from "@/shared/utils";
+import {
   type DiscountProductIdentity,
   discountProductIdentityEffectSchema,
 } from "./contracts";
 
 const saleMarker = "[deskohub:sale]";
-const workspaceTimeZone = "Europe/Prague";
 
 const calendarEventReferenceSchema = Schema.NonEmptyString.pipe(
   Schema.brand("CalendarEventReference")
@@ -24,29 +28,11 @@ const calendarSaleOccurrenceReferenceSchema = Schema.NonEmptyString.pipe(
     "Private stable reference of one Google Calendar sale occurrence.",
 });
 
-const calendarDateSchema = Schema.String.check(
-  Schema.makeFilter<string>(
-    (input) => {
-      try {
-        return Temporal.PlainDate.from(input).toString() === input;
-      } catch {
-        return false;
-      }
-    },
-    { expected: "a valid ISO calendar date in YYYY-MM-DD format" }
-  )
-)
-  .pipe(Schema.brand("CalendarDate"))
-  .annotate({
-    identifier: "CalendarDate",
-    description: "Valid ISO calendar date in YYYY-MM-DD format.",
-  });
-
 const calendarSaleEventMetadataSchema = Schema.Struct({
   eventReference: calendarEventReferenceSchema,
   label: Schema.NonEmptyString,
-  startDate: calendarDateSchema,
-  endDate: calendarDateSchema,
+  startDate: plainDateStringEffectSchema,
+  endDate: plainDateStringEffectSchema,
   isAllDay: Schema.Literal(true),
 }).check(
   Schema.makeFilter(
@@ -222,7 +208,7 @@ const getCalendarSaleOccurrence = (input: {
   readonly event: GoogleCalendarEvent;
   readonly metadata: {
     readonly eventReference: CalendarEventReference;
-    readonly startDate: Schema.Schema.Type<typeof calendarDateSchema>;
+    readonly startDate: Schema.Schema.Type<typeof plainDateStringEffectSchema>;
   };
 }) => {
   if (!input.event.recurringEventId) {
@@ -239,7 +225,7 @@ const getCalendarSaleOccurrence = (input: {
     });
   }
 
-  return Schema.decodeUnknownEffect(calendarDateSchema)(
+  return Schema.decodeUnknownEffect(plainDateStringEffectSchema)(
     input.event.originalStartTime?.date
   ).pipe(
     Effect.map((occurrenceDate) => ({
@@ -273,7 +259,7 @@ const toCalendarSale = (input: {
   };
 }): CalendarSale => {
   const expiresAt = Temporal.PlainDate.from(input.metadata.endDate)
-    .toZonedDateTime({ timeZone: workspaceTimeZone })
+    .toZonedDateTime({ timeZone: workspaceSiteConstants.location.timeZone })
     .toInstant();
 
   return {
@@ -284,8 +270,10 @@ const toCalendarSale = (input: {
     label: input.metadata.label,
     basisPoints: input.configuration.adjustment.basisPoints,
     products: input.configuration.products,
-    expiresAt: toIsoInstant(expiresAt),
-    countdownStartsAt: toIsoInstant(expiresAt.subtract({ hours: 24 })),
+    expiresAt: temporalInstantToIsoString(expiresAt),
+    countdownStartsAt: temporalInstantToIsoString(
+      expiresAt.subtract({ hours: 24 })
+    ),
   };
 };
 
@@ -323,6 +311,3 @@ const getErrorEventReference = (event: GoogleCalendarEvent) => {
     return {};
   }
 };
-
-const toIsoInstant = (instant: InstanceType<typeof Temporal.Instant>) =>
-  new Date(Number(instant.epochMilliseconds)).toISOString();
