@@ -9,39 +9,37 @@ import {
   toInstantMilliseconds,
 } from "./reservation-interval-parser";
 
-export const normalizeReservationIntervalFields = (
-  value: ReservationIntervalInput,
-  timeZone: string
-): Effect.Effect<ReservationInterval, ReservationIntervalValidationError> =>
-  Effect.gen(function* () {
-    const normalizedStartsAt = yield* normalizeTimestampField({
-      path: "startsAt",
-      timeZone,
-      value: value.startsAt,
-    });
-    const normalizedEndsAt = yield* normalizeTimestampField({
-      path: "endsAt",
-      timeZone,
-      value: value.endsAt,
-    });
-
-    const interval = {
-      startsAt: normalizedStartsAt,
-      endsAt: normalizedEndsAt,
-    };
-    const durationMinutes = getDurationMinutes(interval);
-
-    if (durationMinutes <= 0) {
-      return yield* Effect.fail(
-        new ReservationIntervalValidationError({
-          path: "endsAt",
-          message: "Reservation end time must be after start time.",
-        })
-      );
-    }
-
-    return interval;
+export const normalizeReservationIntervalFields = Effect.fn(
+  "normalizeReservationIntervalFields"
+)(function* (value: ReservationIntervalInput, timeZone: string) {
+  const normalizedStartsAt = yield* normalizeTimestampField({
+    path: "startsAt",
+    timeZone,
+    value: value.startsAt,
   });
+  const normalizedEndsAt = yield* normalizeTimestampField({
+    path: "endsAt",
+    timeZone,
+    value: value.endsAt,
+  });
+
+  const interval = {
+    startsAt: normalizedStartsAt,
+    endsAt: normalizedEndsAt,
+  };
+  const durationMinutes = getDurationMinutes(interval);
+
+  if (durationMinutes <= 0) {
+    return yield* Effect.fail(
+      new ReservationIntervalValidationError({
+        path: "endsAt",
+        message: "Reservation end time must be after start time.",
+      })
+    );
+  }
+
+  return interval;
+});
 
 export const getDurationMinutes = (interval: ReservationInterval) =>
   (toInstantMilliseconds(interval.endsAt) -
