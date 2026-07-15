@@ -8,7 +8,9 @@ permissions: {}
 
 jobs:
   delete-branch:
-    if: ${{ false }}
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - name: Validate branch name
@@ -25,7 +27,7 @@ jobs:
             exit 1
           fi
 
-      - uses: neondatabase/delete-branch-action@v3
+      - uses: neondatabase/delete-branch-action@4468d825d5a88ef4012f1705a82f02ec3072f776 # v3.2.1
         with:
           project_id: ${{ vars.NEON_PROJECT_ID }}
           branch: preview/${{ github.head_ref }}
