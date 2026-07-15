@@ -17,6 +17,7 @@ import type {
   CreateCustomerRequest,
   CreateReservationRequest,
   Customer,
+  DiscountGroup,
   UpdateCustomerRequest,
   UpdateReservationRequest,
 } from "../generated/effect.gen";
@@ -28,7 +29,6 @@ import { normalizePhoneNumber } from "../utils/phone-formatting";
 import {
   DotyposAccessToken,
   DotyposGeneratedClient,
-  getDiscountGroup,
   mapDotyposClientError,
 } from "./api";
 
@@ -95,7 +95,7 @@ export type DotyposCustomerDiscount = {
 
 export type DotyposCustomerDiscountGroup = {
   readonly discountGroupId: string;
-  readonly discountPercent: unknown;
+  readonly discountPercent: DiscountGroup["discountPercent"];
 };
 
 export type FindCustomerOptions = {
@@ -199,7 +199,7 @@ const hasAtLeastTwoCustomers = (
 
 const makeDotyposService = Effect.gen(function* () {
   const config = yield* DotyposRuntimeConfig;
-  const { client, httpClient } = yield* DotyposGeneratedClient;
+  const { client } = yield* DotyposGeneratedClient;
 
   const runDotyposRequest = <A, E>(
     effect: Effect.Effect<A, E>,
@@ -869,11 +869,7 @@ const makeDotyposService = Effect.gen(function* () {
     if (!discountGroupId) return Effect.succeed(undefined);
 
     return runDotyposRequest(
-      getDiscountGroup({
-        config,
-        discountGroupId,
-        httpClient,
-      }),
+      client.getDiscountGroup(config.cloudId, discountGroupId, undefined),
       "getDiscountGroup"
     ).pipe(
       Effect.retry(retryPolicy),

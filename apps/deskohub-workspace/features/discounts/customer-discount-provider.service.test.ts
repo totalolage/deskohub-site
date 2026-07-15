@@ -12,7 +12,10 @@ const input = {
   product: { kind: "cowork", tier: "basic" },
 } as const;
 
-const group = (discountPercent: unknown, discountGroupId = "group-id") => ({
+const group = (
+  discountPercent: string | null,
+  discountGroupId = "group-id"
+) => ({
   discountGroupId,
   discountPercent,
 });
@@ -44,10 +47,10 @@ describe("CustomerDiscountProvider", () => {
   });
 
   test.each([
-    [10, 1000],
+    ["10", 1000],
     ["12.5", 1250],
     ["12.34", 1234],
-    [0.07, 7],
+    ["0.07", 7],
     ["100.000", 10_000],
   ] as const)("converts an exact percentage %p to %i basis points", async (discountPercent, basisPoints) => {
     const result = await runWithProvider(
@@ -62,12 +65,11 @@ describe("CustomerDiscountProvider", () => {
   });
 
   test.each([
-    0,
-    -1,
-    101,
+    "0",
+    "-1",
+    "101",
     "not-a-percentage",
     null,
-    undefined,
     "12.345",
   ])("fails closed for malformed percentage %p", async (discountPercent) => {
     const error = await runWithProvider(
@@ -133,7 +135,7 @@ describe("CustomerDiscountProvider", () => {
     const getCustomerDiscountGroup = mock(() => {
       call += 1;
       return Effect.succeed(
-        call === 1 ? group(10, "first-group") : group(20, "second-group")
+        call === 1 ? group("10", "first-group") : group("20", "second-group")
       );
     });
     const result = await runWithProvider(
@@ -163,7 +165,7 @@ describe("CustomerDiscountProvider", () => {
   test("discounts only the cowork subtotal and leaves paid coffee outside", async () => {
     const candidates = await runWithProvider(
       resolve(),
-      mock(() => Effect.succeed(group(50)))
+      mock(() => Effect.succeed(group("50")))
     );
     const result = await Effect.runPromise(
       calculateDiscounts({

@@ -1,4 +1,5 @@
 import { DotyposService } from "@deskohub/dotypos";
+import type { DiscountGroup } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer, Option } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
@@ -24,7 +25,7 @@ export class CustomerDiscountConfigurationError extends Data.TaggedError(
 )<{
   readonly message: string;
   readonly discountGroupId: string;
-  readonly discountPercent: unknown;
+  readonly discountPercent: DiscountGroup["discountPercent"];
 }> {}
 
 export class CustomerDiscountProvider extends Context.Service<
@@ -70,7 +71,7 @@ const toCustomerDiscountCandidate = (input: {
   readonly discountGroup:
     | {
         readonly discountGroupId: string;
-        readonly discountPercent: unknown;
+        readonly discountPercent: DiscountGroup["discountPercent"];
       }
     | undefined;
   readonly dotyposCustomerId: string;
@@ -130,13 +131,8 @@ const toCustomerDiscountCandidate = (input: {
   );
 };
 
-const toBasisPoints = (input: unknown) => {
-  const decimal =
-    typeof input === "number" && Number.isFinite(input)
-      ? String(input)
-      : typeof input === "string"
-        ? input.trim()
-        : undefined;
+const toBasisPoints = (input: DiscountGroup["discountPercent"]) => {
+  const decimal = input?.trim();
   const match = decimal?.match(/^(\d+)(?:\.(\d+))?$/);
 
   if (!match) {

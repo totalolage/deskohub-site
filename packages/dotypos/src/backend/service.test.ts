@@ -835,7 +835,7 @@ describe("DotyposService categories", () => {
 });
 
 describe("DotyposService customer discounts", () => {
-  test("loads a customer's raw discount group by customer ID", async () => {
+  test("loads a customer's generated discount group by customer ID", async () => {
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
       if (url.pathname === "/signin/token") return tokenResponse();
@@ -843,7 +843,7 @@ describe("DotyposService customer discounts", () => {
         return Response.json(customer({ _discountGroupId: "group-id" }));
       }
       if (url.pathname === "/clouds/cloud-id/discount-groups/group-id") {
-        return Response.json({ discountPercent: { malformed: true } });
+        return Response.json({ discountPercent: "12.5" });
       }
       return new Response("Not found", { status: 404 });
     });
@@ -860,15 +860,15 @@ describe("DotyposService customer discounts", () => {
 
     expect(result).toEqual({
       discountGroupId: "group-id",
-      discountPercent: { malformed: true },
+      discountPercent: "12.5",
     });
   });
 
   test('accepts "10" and ignores out-of-range discounts', async () => {
-    const discounts: Record<string, string | number> = {
+    const discounts: Record<string, string> = {
       ten: "10",
-      zero: 0,
-      tooHigh: 101,
+      zero: "0",
+      tooHigh: "101",
     };
     const fetchMock = mockDotyposFetch((request) => {
       const url = new URL(request.url);
