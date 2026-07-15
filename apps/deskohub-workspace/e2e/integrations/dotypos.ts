@@ -2,8 +2,8 @@ import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { DatasourceConfig } from "../config";
 import {
-  tryWorkspaceE2ESync,
   toWorkspaceE2EError,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
 import { assert, log } from "../runtime";

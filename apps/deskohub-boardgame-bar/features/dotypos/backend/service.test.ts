@@ -28,7 +28,7 @@ type BoardgameDotyposService = import("./service").DotyposService;
 type BoardgameDotyposServiceTag = typeof import("./service").DotyposService;
 
 const runWithShared = async <A, E>(
-  makeEffect: (
+  makeServiceProgram: (
     service: BoardgameDotyposServiceTag
   ) => Effect.Effect<A, E, BoardgameDotyposService>,
   sharedDotypos: Pick<
@@ -41,7 +41,7 @@ const runWithShared = async <A, E>(
     await Promise.all([import("@deskohub/dotypos"), import("./service")]);
 
   return Effect.runPromise(
-    makeEffect(DotyposService).pipe(
+    makeServiceProgram(DotyposService).pipe(
       Effect.provide(DotyposService.DefaultWithoutDependencies),
       Effect.provide(
         Layer.succeed(

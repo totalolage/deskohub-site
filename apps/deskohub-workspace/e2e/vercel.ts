@@ -39,13 +39,16 @@ export const getDeployment = (
       "read Vercel deployment response",
       () => response.json()
     )) as { id?: unknown };
-    const id = yield* tryWorkspaceE2ESync("assert Vercel deployment response", () => {
-      assert(
-        typeof body.id === "string",
-        "Vercel deployment response did not include id"
-      );
-      return body.id;
-    });
+    const id = yield* tryWorkspaceE2ESync(
+      "assert Vercel deployment response",
+      () => {
+        assert(
+          typeof body.id === "string",
+          "Vercel deployment response did not include id"
+        );
+        return body.id;
+      }
+    );
     log(`Fresh Vercel deployment ${id} at ${previewUrl}`);
     return { id };
   });
@@ -112,8 +115,9 @@ export const verifyAlias = (
       config,
       `/v13/deployments/${config.alias}`
     );
-    const body = (yield* tryWorkspaceE2EPromise("read Vercel alias response", () =>
-      response.json()
+    const body = (yield* tryWorkspaceE2EPromise(
+      "read Vercel alias response",
+      () => response.json()
     )) as { id?: unknown };
     yield* tryWorkspaceE2ESync("assert Vercel alias target", () =>
       assert(
@@ -138,8 +142,9 @@ export const assertWebhookEndpoint = (
       yield* setSearchParams(url, {
         "x-vercel-protection-bypass": config.bypassSecret,
       });
-    const response = yield* tryWorkspaceE2EPromise(`check ${path} endpoint`, () =>
-      fetch(url)
+    const response = yield* tryWorkspaceE2EPromise(
+      `check ${path} endpoint`,
+      () => fetch(url)
     );
     yield* tryWorkspaceE2ESync(`assert ${path} endpoint`, () =>
       assert(response.ok, `${path} health check failed with ${response.status}`)
@@ -154,17 +159,19 @@ const vercelFetch = (
 ): Effect.Effect<Response, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const separator = path.includes("?") ? "&" : "?";
-    const response = yield* tryWorkspaceE2EPromise(`call Vercel API ${path}`, () =>
-      fetch(
-        `https://api.vercel.com${path}${separator}teamId=${config.vercelTeamId}`,
-        {
-          ...init,
-          headers: {
-            authorization: `Bearer ${config.vercelToken}`,
-            ...init.headers,
-          },
-        }
-      )
+    const response = yield* tryWorkspaceE2EPromise(
+      `call Vercel API ${path}`,
+      () =>
+        fetch(
+          `https://api.vercel.com${path}${separator}teamId=${config.vercelTeamId}`,
+          {
+            ...init,
+            headers: {
+              authorization: `Bearer ${config.vercelToken}`,
+              ...init.headers,
+            },
+          }
+        )
     );
     if (!response.ok && isTransientVercelApiStatus(response.status)) {
       return yield* Effect.fail(

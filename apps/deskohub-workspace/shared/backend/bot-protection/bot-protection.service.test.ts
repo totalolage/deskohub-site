@@ -60,7 +60,7 @@ test("never enables the E2E bypass in production", async () => {
   ).toBeUndefined();
 });
 
-const getVerificationEffect = async (
+const getVerificationProgram = async (
   verificationFailurePolicy: "allow" | "deny"
 ) => {
   const { BotProtectionService } = await import("./bot-protection.service");
@@ -73,7 +73,7 @@ const getVerificationEffect = async (
 
 for (const verificationFailurePolicy of ["allow", "deny"] as const) {
   test(`allows a human request with the ${verificationFailurePolicy} policy`, async () => {
-    const effect = await getVerificationEffect(verificationFailurePolicy);
+    const effect = await getVerificationProgram(verificationFailurePolicy);
 
     await expect(Effect.runPromise(effect)).resolves.toBeUndefined();
   });
@@ -88,7 +88,7 @@ for (const verificationFailurePolicy of ["allow", "deny"] as const) {
         bypassed: false,
       })
     );
-    const effect = await getVerificationEffect(verificationFailurePolicy);
+    const effect = await getVerificationProgram(verificationFailurePolicy);
 
     await expect(Effect.runPromise(effect)).resolves.toBeUndefined();
   });
@@ -103,7 +103,7 @@ for (const verificationFailurePolicy of ["allow", "deny"] as const) {
         bypassed: false,
       })
     );
-    const effect = await getVerificationEffect(verificationFailurePolicy);
+    const effect = await getVerificationProgram(verificationFailurePolicy);
 
     const error = await Effect.runPromise(Effect.flip(effect));
 
@@ -115,7 +115,7 @@ test("preserves the cause and rejects when verification fails under the deny pol
   const { BotVerificationError } = await import("./bot-protection.service");
   const cause = new Error("BotID unavailable");
   checkBotId.mockImplementation(() => Promise.reject(cause));
-  const effect = await getVerificationEffect("deny");
+  const effect = await getVerificationProgram("deny");
 
   const error = await Effect.runPromise(Effect.flip(effect));
 
@@ -130,7 +130,7 @@ test("logs the cause and allows the request when verification fails under the al
     messages.push(options.message);
   });
   checkBotId.mockImplementation(() => Promise.reject(cause));
-  const effect = await getVerificationEffect("allow");
+  const effect = await getVerificationProgram("allow");
 
   await expect(
     Effect.runPromise(effect.pipe(Effect.provide(Logger.layer([logger]))))

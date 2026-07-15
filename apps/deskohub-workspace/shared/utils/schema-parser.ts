@@ -1,6 +1,6 @@
 import { Schema, type SchemaAST } from "effect";
 
-export const makeEffectSchemaParser = <A>(
+export const makeSchemaParser = <A>(
   schema: Schema.Decoder<A>,
   options?: SchemaAST.ParseOptions
 ) => {

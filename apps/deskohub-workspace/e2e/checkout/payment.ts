@@ -18,13 +18,13 @@ import {
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
-import { pollUntil } from "../polling";
 import {
+  toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
-  toWorkspaceE2EError,
   type WorkspaceE2EError,
 } from "../errors";
+import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
 import { addRedaction, assert, log, parseUrl } from "../runtime";
 import type { CheckoutData } from "../types";
@@ -189,18 +189,21 @@ const submitReservationAndWaitForPayPage = ({
     const orderId = getSearchOrderId(result.url);
     if (orderId) yield* Effect.sync(() => onOrderId?.(orderId));
 
-    return yield* tryWorkspaceE2ESync("assert checkout pay page reached", () => {
-      throw new Error(
-        [
-          "Timed out waiting for checkout pay page",
-          result.diagnostics
-            ? `Browser diagnostics:\n${result.diagnostics}`
-            : undefined,
-        ]
-          .filter(Boolean)
-          .join("\n")
-      );
-    });
+    return yield* tryWorkspaceE2ESync(
+      "assert checkout pay page reached",
+      () => {
+        throw new Error(
+          [
+            "Timed out waiting for checkout pay page",
+            result.diagnostics
+              ? `Browser diagnostics:\n${result.diagnostics}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        );
+      }
+    );
   });
 
 type ReservationStartResult =

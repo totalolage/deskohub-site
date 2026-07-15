@@ -1,16 +1,14 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Result } from "effect";
 import "@/shared/polyfills/temporal";
-import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getReservationProductCoffee,
   getReservationProductMonitorOption,
-  reservationOrderEffectSchema,
+  reservationOrderSchema,
 } from "./reservation-order";
 
-const reservationOrderSchema = makeEffectSchemaParser(
-  reservationOrderEffectSchema
-);
+const reservationOrderParser = makeSchemaParser(reservationOrderSchema);
 
 const validMeetingRoomReservation = {
   _tag: "meeting-room",
@@ -24,7 +22,7 @@ const validMeetingRoomReservation = {
 
 describe("reservation schema", () => {
   test("rejects a meeting-room order without an interval", () => {
-    const result = reservationOrderSchema.safeParse({
+    const result = reservationOrderParser.safeParse({
       _tag: "meeting-room",
       name: "Ada Lovelace",
       email: "ada@example.com",
@@ -37,7 +35,7 @@ describe("reservation schema", () => {
   test("discriminates meeting-room orders independently from cowork tiers", () => {
     setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
-    const result = reservationOrderSchema.safeParse(
+    const result = reservationOrderParser.safeParse(
       validMeetingRoomReservation
     );
 
@@ -53,7 +51,7 @@ describe("reservation schema", () => {
 
     expect(
       Result.isFailure(
-        reservationOrderSchema.safeParse({
+        reservationOrderParser.safeParse({
           ...validMeetingRoomReservation,
           _tag: "cowork",
           entryTier: "meeting-room",
@@ -63,7 +61,7 @@ describe("reservation schema", () => {
   });
 
   test("discriminates cowork orders before refining their tier", () => {
-    const result = reservationOrderSchema.safeParse({
+    const result = reservationOrderParser.safeParse({
       _tag: "cowork",
       entryTier: "basic",
       date: "2099-06-10",
@@ -102,7 +100,7 @@ describe("reservation schema", () => {
   test("rejects meeting room reservations whose end has passed", () => {
     setSystemTime(new Date("2099-06-10T08:01:00.000Z"));
 
-    const result = reservationOrderSchema.safeParse(
+    const result = reservationOrderParser.safeParse(
       validMeetingRoomReservation
     );
 
@@ -117,7 +115,7 @@ describe("reservation schema", () => {
 
     expect(
       Result.isSuccess(
-        reservationOrderSchema.safeParse(validMeetingRoomReservation)
+        reservationOrderParser.safeParse(validMeetingRoomReservation)
       )
     ).toBe(true);
   });
@@ -125,7 +123,7 @@ describe("reservation schema", () => {
   test("normalizes meeting room timestamps without dropping order fields", () => {
     setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
-    const result = reservationOrderSchema.safeParse({
+    const result = reservationOrderParser.safeParse({
       ...validMeetingRoomReservation,
       startsAt: "2099-06-10T09:00",
       endsAt: "2099-06-10T10:00",
@@ -144,7 +142,7 @@ describe("reservation schema", () => {
   test("drops cowork-only fields from meeting-room orders", () => {
     setSystemTime(new Date("2099-06-10T06:00:00.000Z"));
 
-    const result = reservationOrderSchema.safeParse({
+    const result = reservationOrderParser.safeParse({
       ...validMeetingRoomReservation,
       coffee: true,
       monitorOption: "2x27-qhd",

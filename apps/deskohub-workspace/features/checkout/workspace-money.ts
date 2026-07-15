@@ -18,11 +18,11 @@ export const nonNegativeWorkspaceMoneySchema = workspaceMoneySchema.extend({
   value: z.int().nonnegative(),
 });
 
-const workspaceMoneyExponentEffectSchema = Schema.Int.check(
+const workspaceMoneyExponentSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0)
 );
 
-const workspaceMoneyCurrencyEffectSchema = Schema.String.pipe(
+const workspaceMoneyCurrencySchema = Schema.String.pipe(
   Schema.check(Schema.isPattern(/^[A-Z]{3}$/)),
   Schema.brand("WorkspaceMoneyCurrency")
 ).annotate({
@@ -30,38 +30,36 @@ const workspaceMoneyCurrencyEffectSchema = Schema.String.pipe(
   description: "ISO 4217 uppercase alphabetic currency code.",
 });
 
-export const workspaceMoneyEffectSchema: Schema.Codec<
-  WorkspaceMoney,
-  WorkspaceMoney
-> = Schema.Struct({
-  value: Schema.Int,
-  exponent: workspaceMoneyExponentEffectSchema,
-  currency: workspaceMoneyCurrencyEffectSchema,
-}).annotate({
-  identifier: "WorkspaceMoney",
-  description:
-    "Workspace money stored as a scaled integer value, decimal exponent, and ISO currency code.",
-});
+export const workspaceMoneyCodec: Schema.Codec<WorkspaceMoney, WorkspaceMoney> =
+  Schema.Struct({
+    value: Schema.Int,
+    exponent: workspaceMoneyExponentSchema,
+    currency: workspaceMoneyCurrencySchema,
+  }).annotate({
+    identifier: "WorkspaceMoney",
+    description:
+      "Workspace money stored as a scaled integer value, decimal exponent, and ISO currency code.",
+  });
 
-export const nonNegativeWorkspaceMoneyEffectSchema: Schema.Codec<
+export const nonNegativeWorkspaceMoneyCodec: Schema.Codec<
   WorkspaceMoney,
   WorkspaceMoney
 > = Schema.Struct({
   value: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
-  exponent: workspaceMoneyExponentEffectSchema,
-  currency: workspaceMoneyCurrencyEffectSchema,
+  exponent: workspaceMoneyExponentSchema,
+  currency: workspaceMoneyCurrencySchema,
 }).annotate({
   identifier: "NonNegativeWorkspaceMoney",
   description:
     "Non-negative workspace money stored as a scaled integer value, decimal exponent, and ISO currency code.",
 });
-export const positiveWorkspaceMoneyEffectSchema: Schema.Codec<
+export const positiveWorkspaceMoneyCodec: Schema.Codec<
   WorkspaceMoney,
   WorkspaceMoney
 > = Schema.Struct({
   value: Schema.Int.check(Schema.isGreaterThan(0)),
-  exponent: workspaceMoneyExponentEffectSchema,
-  currency: workspaceMoneyCurrencyEffectSchema,
+  exponent: workspaceMoneyExponentSchema,
+  currency: workspaceMoneyCurrencySchema,
 }).annotate({
   identifier: "PositiveWorkspaceMoney",
   description:
@@ -101,36 +99,36 @@ export class WorkspaceMoneyError extends Data.TaggedError(
   "WorkspaceMoneyError"
 )<{ readonly message: string }> {}
 
-export const addWorkspaceMoneyEffect = Effect.fn("addWorkspaceMoney")(
-  function* (amounts: readonly WorkspaceMoney[]) {
-    const [first, ...rest] = amounts;
-    if (!first) {
+export const addWorkspaceMoney = Effect.fn("addWorkspaceMoney")(function* (
+  amounts: readonly WorkspaceMoney[]
+) {
+  const [first, ...rest] = amounts;
+  if (!first) {
+    return yield* Effect.fail(
+      new WorkspaceMoneyError({
+        message: "Cannot total an empty list of workspace money amounts.",
+      })
+    );
+  }
+
+  let total = first;
+  for (const amount of rest) {
+    if (
+      total.currency !== amount.currency ||
+      total.exponent !== amount.exponent
+    ) {
       return yield* Effect.fail(
         new WorkspaceMoneyError({
-          message: "Cannot total an empty list of workspace money amounts.",
+          message: "Workspace quote cannot mix currencies or exponents.",
         })
       );
     }
 
-    let total = first;
-    for (const amount of rest) {
-      if (
-        total.currency !== amount.currency ||
-        total.exponent !== amount.exponent
-      ) {
-        return yield* Effect.fail(
-          new WorkspaceMoneyError({
-            message: "Workspace quote cannot mix currencies or exponents.",
-          })
-        );
-      }
-
-      total = workspaceMoneyWithValue(total.value + amount.value, total);
-    }
-
-    return total;
+    total = workspaceMoneyWithValue(total.value + amount.value, total);
   }
-);
+
+  return total;
+});
 
 export const workspaceMoneyEquals = (
   left: WorkspaceMoney | undefined,

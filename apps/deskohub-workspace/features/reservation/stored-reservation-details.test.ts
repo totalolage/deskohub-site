@@ -1,11 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "effect";
-import { storedWorkspaceReservationDetailsSchema } from "./stored-reservation-details";
+import { storedWorkspaceReservationDetailsParser } from "./stored-reservation-details";
 
 describe("stored workspace reservation details", () => {
   test("parses tagged cowork and meeting-room variants", () => {
     expect(
-      storedWorkspaceReservationDetailsSchema.parse({
+      storedWorkspaceReservationDetailsParser.parse({
         _tag: "cowork",
         tier: "basic",
         coffee: false,
@@ -16,7 +16,7 @@ describe("stored workspace reservation details", () => {
       coffee: false,
     });
     expect(
-      storedWorkspaceReservationDetailsSchema.parse({
+      storedWorkspaceReservationDetailsParser.parse({
         _tag: "meeting-room",
       })
     ).toEqual({
@@ -27,7 +27,7 @@ describe("stored workspace reservation details", () => {
   test("allows Basic coffee but rejects monitor options", () => {
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "basic",
           coffee: true,
@@ -36,7 +36,7 @@ describe("stored workspace reservation details", () => {
     ).toBe(true);
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "basic",
           coffee: true,
@@ -49,7 +49,7 @@ describe("stored workspace reservation details", () => {
   test("requires Plus coffee and rejects monitor options", () => {
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "plus",
           coffee: true,
@@ -58,7 +58,7 @@ describe("stored workspace reservation details", () => {
     ).toBe(true);
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "plus",
           coffee: false,
@@ -67,7 +67,7 @@ describe("stored workspace reservation details", () => {
     ).toBe(false);
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "plus",
           coffee: true,
@@ -80,7 +80,7 @@ describe("stored workspace reservation details", () => {
   test("requires Profi coffee and monitor option", () => {
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "profi",
           coffee: true,
@@ -90,7 +90,7 @@ describe("stored workspace reservation details", () => {
     ).toBe(true);
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "profi",
           coffee: true,
@@ -99,7 +99,7 @@ describe("stored workspace reservation details", () => {
     ).toBe(false);
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "cowork",
           tier: "profi",
           coffee: false,
@@ -112,14 +112,14 @@ describe("stored workspace reservation details", () => {
   test("stores meeting-room details as an exact tag only", () => {
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "meeting-room",
         })
       )
     ).toBe(true);
     expect(
       Result.isSuccess(
-        storedWorkspaceReservationDetailsSchema.safeParse({
+        storedWorkspaceReservationDetailsParser.safeParse({
           _tag: "meeting-room",
           startsAt: "2099-06-10T07:00:00Z",
         })

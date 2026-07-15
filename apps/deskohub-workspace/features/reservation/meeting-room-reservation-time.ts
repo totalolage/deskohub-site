@@ -6,16 +6,14 @@ import {
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
 import {
-  instantStringEffectSchema,
-  localDateTimeEffectSchema,
+  instantStringSchema,
+  localDateTimeSchema,
 } from "@/shared/utils/temporal";
 
-const decodeInstant = Schema.decodeUnknownOption(instantStringEffectSchema);
-const decodeLocalDateTime = Schema.decodeUnknownOption(
-  localDateTimeEffectSchema
-);
+const decodeInstant = Schema.decodeUnknownOption(instantStringSchema);
+const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
 const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
-  (startDateTime: typeof localDateTimeEffectSchema.Type) =>
+  (startDateTime: typeof localDateTimeSchema.Type) =>
     Temporal.PlainDateTime.from(startDateTime)
       .toZonedDateTime(reservationTimeZone, { disambiguation: "reject" })
       .toInstant()

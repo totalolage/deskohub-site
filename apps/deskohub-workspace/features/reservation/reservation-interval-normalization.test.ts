@@ -2,8 +2,8 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import {
-  instantStringEffectSchema,
-  localDateTimeEffectSchema,
+  instantStringSchema,
+  localDateTimeSchema,
 } from "@/shared/utils/temporal";
 import {
   getDurationMinutes,
@@ -12,8 +12,8 @@ import {
 
 const timeZone = "Europe/Prague";
 const date = "2026-07-01";
-const localDateTime = Schema.decodeUnknownSync(localDateTimeEffectSchema);
-const instant = Schema.decodeUnknownSync(instantStringEffectSchema);
+const localDateTime = Schema.decodeUnknownSync(localDateTimeSchema);
+const instant = Schema.decodeUnknownSync(instantStringSchema);
 
 const toInstant = (value: string) =>
   Temporal.PlainDateTime.from(value)

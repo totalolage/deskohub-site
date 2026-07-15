@@ -45,7 +45,7 @@ const getSubmitReservationErrorMessage = (
   }
 };
 
-export const submitWorkspaceReservationEffect = Effect.fn(
+export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
 )(
   function* (
@@ -88,7 +88,7 @@ export const submitWorkspaceReservationEffect = Effect.fn(
 
 const submitReservationAction = createEffectSafeAction(
   getSubmitReservationSchema(),
-  submitWorkspaceReservationEffect,
+  submitWorkspaceReservation,
   Layer.merge(CheckoutServiceLiveWithDependencies, BotProtectionService.Live)
 );
 

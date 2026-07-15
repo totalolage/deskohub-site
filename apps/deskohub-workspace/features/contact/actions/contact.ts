@@ -51,7 +51,7 @@ interface SubmitContactFormInput {
   readonly submittedValues: ContactFormValues;
 }
 
-export const submitContactForm = Effect.fn("submitContactForm")(
+export const submitContactFormProgram = Effect.fn("submitContactForm")(
   function* ({ locale, submittedValues }: SubmitContactFormInput) {
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
@@ -128,7 +128,7 @@ export async function submitContactForm(
   const locale = getLocale();
   const submittedValues = getSubmittedContactValues(formData);
 
-  const program = submitContactForm({ locale, submittedValues }).pipe(
+  const program = submitContactFormProgram({ locale, submittedValues }).pipe(
     Effect.provide(
       Layer.merge(
         Layer.provideMerge(

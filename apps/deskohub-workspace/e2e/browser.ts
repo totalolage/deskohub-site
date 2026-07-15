@@ -4,12 +4,12 @@ import { resolve } from "node:path";
 import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
 import type { WorkspaceE2EConfig } from "./config";
-import { pollUntil } from "./polling";
 import {
-  tryWorkspaceE2EPromise,
   toWorkspaceE2EError,
+  tryWorkspaceE2EPromise,
   type WorkspaceE2EError,
 } from "./errors";
+import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 
@@ -268,8 +268,9 @@ export const captureBrowserFailureArtifacts = ({
       harStopped = yield* stopBrowserHar(run, session, rawHarPath);
       yield* Effect.gen(function* () {
         if (!harStopped) return;
-        const har = yield* tryWorkspaceE2EPromise("read browser HAR artifact", () =>
-          readFile(rawHarPath, "utf8")
+        const har = yield* tryWorkspaceE2EPromise(
+          "read browser HAR artifact",
+          () => readFile(rawHarPath, "utf8")
         );
         yield* writeTextArtifact(
           artifactDir,
@@ -318,12 +319,14 @@ const writeCommandArtifact = (
   args: string[]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* tryWorkspaceE2EPromise(`write ${fileName} artifact`, () =>
-      run("agent-browser", args, {
-        allowFailure: true,
-        logOutput: false,
-        timeoutMs: 60_000,
-      })
+    const result = yield* tryWorkspaceE2EPromise(
+      `write ${fileName} artifact`,
+      () =>
+        run("agent-browser", args, {
+          allowFailure: true,
+          logOutput: false,
+          timeoutMs: 60_000,
+        })
     );
     const text = [
       `exitCode: ${result.exitCode}`,

@@ -3,12 +3,12 @@ import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { getDatasourceTimeoutMs } from "../config";
-import { pollUntil } from "../polling";
 import {
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
+import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
 import type {
   CheckoutData,
@@ -282,10 +282,13 @@ export const markPaymentTerminalForE2E = (
       );
 
       const row = yield* readCheckoutRow(pool, orderId);
-      return yield* tryWorkspaceE2ESync("assert terminal checkout row exists", () => {
-        assert(row, "terminal checkout row missing");
-        return row;
-      });
+      return yield* tryWorkspaceE2ESync(
+        "assert terminal checkout row exists",
+        () => {
+          assert(row, "terminal checkout row missing");
+          return row;
+        }
+      );
     })
   );
 

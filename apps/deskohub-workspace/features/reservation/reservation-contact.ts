@@ -10,7 +10,7 @@ export const RESERVATION_VALIDATION = {
   message: { max: 1000 },
 } as const;
 
-export const reservationCustomerNameEffectSchema = Schema.Trim.check(
+export const reservationCustomerNameSchema = Schema.Trim.check(
   Schema.isMinLength(RESERVATION_VALIDATION.name.min, {
     message: m.contactValidationNameMinimum({
       min: RESERVATION_VALIDATION.name.min,
@@ -23,7 +23,7 @@ export const reservationCustomerNameEffectSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerEmailEffectSchema = Schema.Trim.check(
+export const reservationCustomerEmailSchema = Schema.Trim.check(
   Schema.isNonEmpty({ message: m.contactValidationEmailRequired() }),
   Schema.isMaxLength(RESERVATION_VALIDATION.email.max, {
     message: m.contactValidationEmailMaximum({
@@ -35,7 +35,7 @@ export const reservationCustomerEmailEffectSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerPhoneEffectSchema = Schema.Trim.check(
+export const reservationCustomerPhoneSchema = Schema.Trim.check(
   Schema.isNonEmpty({ message: m.contactValidationPhoneRequired() }),
   Schema.isMaxLength(RESERVATION_VALIDATION.phone.max, {
     message: m.contactValidationPhoneMaximum({
@@ -47,7 +47,7 @@ export const reservationCustomerPhoneEffectSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerMessageEffectSchema = Schema.Trim.check(
+export const reservationCustomerMessageSchema = Schema.Trim.check(
   Schema.isMaxLength(RESERVATION_VALIDATION.message.max, {
     message: m.contactValidationMessageMaximum({
       max: RESERVATION_VALIDATION.message.max,
@@ -55,14 +55,14 @@ export const reservationCustomerMessageEffectSchema = Schema.Trim.check(
   })
 );
 
-export const reservationCustomerEffectSchema = Schema.Struct({
-  name: reservationCustomerNameEffectSchema,
-  email: reservationCustomerEmailEffectSchema,
-  phone: reservationCustomerPhoneEffectSchema,
-  message: Schema.optional(reservationCustomerMessageEffectSchema),
+export const reservationCustomerSchema = Schema.Struct({
+  name: reservationCustomerNameSchema,
+  email: reservationCustomerEmailSchema,
+  phone: reservationCustomerPhoneSchema,
+  message: Schema.optional(reservationCustomerMessageSchema),
 });
 
-export const normalizedReservationCustomerEffectSchema = Schema.Struct({
+export const normalizedReservationCustomerSchema = Schema.Struct({
   name: Schema.String,
   email: Schema.String,
   phone: Schema.String,

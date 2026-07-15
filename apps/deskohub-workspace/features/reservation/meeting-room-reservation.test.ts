@@ -1,21 +1,21 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Effect, Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
-import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getMeetingRoomReservationIssues,
-  meetingRoomReservationEffectSchema,
-  meetingRoomReservationOrderObjectEffectSchema,
+  meetingRoomReservationOrderInputSchema,
+  meetingRoomReservationSchema,
 } from "./meeting-room-reservation";
 
-const schema = makeEffectSchemaParser(meetingRoomReservationEffectSchema);
+const schema = makeSchemaParser(meetingRoomReservationSchema);
 const decodeOrder = Schema.decodeUnknownSync(
-  meetingRoomReservationOrderObjectEffectSchema
+  meetingRoomReservationOrderInputSchema
 );
 
 afterEach(() => setSystemTime());
 
-describe("meetingRoomReservationEffectSchema", () => {
+describe("meetingRoomReservationSchema", () => {
   test("rejects an empty meeting-room start without throwing", () => {
     const result = schema.safeParse({
       startDateTime: "",

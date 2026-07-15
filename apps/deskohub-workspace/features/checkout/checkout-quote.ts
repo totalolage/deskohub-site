@@ -8,7 +8,7 @@ import {
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import {
-  addWorkspaceMoneyEffect,
+  addWorkspaceMoney,
   type WorkspaceMoney,
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
@@ -65,7 +65,7 @@ export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
   readonly message: string;
 }> {}
 
-export const normalizeWorkspaceCheckoutOrderEffect = Effect.fn(
+export const normalizeWorkspaceCheckoutOrder = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
 )(function* (order: WorkspaceCheckoutOrder) {
   const product = getWorkspaceProductByTier(order.entryTier);
@@ -160,7 +160,7 @@ export const getCheckoutQuoteFingerprint = (canonicalPayload: string) =>
     )
     .toString(16);
 
-export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
+export const buildWorkspaceCheckoutQuoteProgram = Effect.fn(
   "buildWorkspaceCheckoutQuote"
 )(function* (
   order: WorkspaceCheckoutOrder,
@@ -169,7 +169,7 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
     readonly currencyOverride?: string;
   } = {}
 ) {
-  const normalizedOrder = yield* normalizeWorkspaceCheckoutOrderEffect(order);
+  const normalizedOrder = yield* normalizeWorkspaceCheckoutOrder(order);
   const product = getWorkspaceProductByTier(normalizedOrder.entryTier);
   const productPrice = withWorkspaceMoneyCurrency(
     product.price,
@@ -200,7 +200,7 @@ export const buildWorkspaceCheckoutQuoteEffect = Effect.fn(
     });
   }
 
-  const orderTotal = yield* addWorkspaceMoneyEffect(
+  const orderTotal = yield* addWorkspaceMoney(
     orderItems.map((item) => item.amount)
   );
   const pricing = applyWorkspaceCustomerDiscount(
@@ -278,7 +278,7 @@ export const buildWorkspaceCheckoutQuote = (
     readonly currencyOverride?: string;
   } = {}
 ): WorkspaceCheckoutQuote =>
-  Effect.runSync(buildWorkspaceCheckoutQuoteEffect(order, options));
+  Effect.runSync(buildWorkspaceCheckoutQuoteProgram(order, options));
 
 const getSummarySectionMap = (summary: CheckoutSummary) =>
   new Map(summary.sections.map((section) => [section.key, section]));

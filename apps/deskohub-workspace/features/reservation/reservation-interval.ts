@@ -23,9 +23,9 @@ import {
 } from "@/features/reservation/reservation-interval-normalization";
 import { toPlainDateTime } from "@/features/reservation/reservation-interval-parser";
 import {
-  instantStringEffectSchema,
-  localDateTimeEffectSchema,
-  makeWholeHourInstantStringEffectSchema,
+  instantStringSchema,
+  localDateTimeSchema,
+  makeWholeHourInstantStringSchema,
   temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
 
@@ -38,40 +38,39 @@ export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
 )<{ readonly message: string; readonly cause?: unknown }> {}
 
-export const reservationTimestampInputEffectSchema = Schema.Union([
-  localDateTimeEffectSchema,
-  instantStringEffectSchema,
+export const reservationTimestampInputSchema = Schema.Union([
+  localDateTimeSchema,
+  instantStringSchema,
 ]);
 
-const reservationIntervalInputEffectFields = {
-  startsAt: reservationTimestampInputEffectSchema,
-  endsAt: reservationTimestampInputEffectSchema,
+const reservationIntervalInputFields = {
+  startsAt: reservationTimestampInputSchema,
+  endsAt: reservationTimestampInputSchema,
 } as const;
 
-export const reservationIntervalInputEffectSchema = Schema.Struct(
-  reservationIntervalInputEffectFields
+export const reservationIntervalInputSchema = Schema.Struct(
+  reservationIntervalInputFields
 );
 const decodeReservationIntervalInput = Schema.decodeUnknownSync(
-  reservationIntervalInputEffectSchema
+  reservationIntervalInputSchema
 );
 
-export const reservationIntervalEffectSchema =
-  reservationIntervalInputEffectSchema.pipe(
-    Schema.decodeTo(
-      Schema.Struct({
-        startsAt: instantStringEffectSchema,
-        endsAt: instantStringEffectSchema,
-      }),
-      {
-        decode: SchemaGetter.transformOrFail((input) =>
-          normalizeReservationIntervalFields(input, reservationTimeZone).pipe(
-            Effect.mapError((issue) => toSchemaIssue(input, issue))
-          )
-        ),
-        encode: SchemaGetter.transform(decodeReservationIntervalInput),
-      }
-    )
-  );
+export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
+  Schema.decodeTo(
+    Schema.Struct({
+      startsAt: instantStringSchema,
+      endsAt: instantStringSchema,
+    }),
+    {
+      decode: SchemaGetter.transformOrFail((input) =>
+        normalizeReservationIntervalFields(input, reservationTimeZone).pipe(
+          Effect.mapError((issue) => toSchemaIssue(input, issue))
+        )
+      ),
+      encode: SchemaGetter.transform(decodeReservationIntervalInput),
+    }
+  )
+);
 
 export const isSingleDayReservationInterval = (
   interval: ReservationInterval
@@ -97,32 +96,30 @@ export const getMeetingRoomDurationValidationMessage = () =>
       .join(", "),
   });
 
-export const wholeHourReservationInstantEffectSchema =
-  makeWholeHourInstantStringEffectSchema(reservationTimeZone);
+export const wholeHourReservationInstantSchema =
+  makeWholeHourInstantStringSchema(reservationTimeZone);
 
-export const meetingRoomReservationDurationMinutesEffectSchema =
-  Schema.Number.check(
-    Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
-      message: getMeetingRoomDurationValidationMessage(),
-    })
-  );
+export const meetingRoomReservationDurationMinutesSchema = Schema.Number.check(
+  Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
+    message: getMeetingRoomDurationValidationMessage(),
+  })
+);
 
 const isWholeHourReservationInstant = Schema.is(
-  wholeHourReservationInstantEffectSchema
+  wholeHourReservationInstantSchema
 );
 const isMeetingRoomReservationDuration = Schema.is(
-  meetingRoomReservationDurationMinutesEffectSchema
+  meetingRoomReservationDurationMinutesSchema
 );
 
-export const coworkReservationIntervalEffectSchema =
-  reservationIntervalEffectSchema.check(
-    Schema.makeFilter(isSingleDayReservationInterval, {
-      message: "Cowork reservations must use the full-day duration.",
-    })
-  );
+export const coworkReservationIntervalSchema = reservationIntervalSchema.check(
+  Schema.makeFilter(isSingleDayReservationInterval, {
+    message: "Cowork reservations must use the full-day duration.",
+  })
+);
 
-export const meetingRoomReservationIntervalEffectSchema =
-  reservationIntervalEffectSchema.check(
+export const meetingRoomReservationIntervalSchema =
+  reservationIntervalSchema.check(
     Schema.makeFilter(
       (interval) =>
         isMeetingRoomReservationDuration(getDurationMinutes(interval)),

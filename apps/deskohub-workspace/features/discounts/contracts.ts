@@ -22,14 +22,14 @@ export const discountIdSchema = Schema.NonEmptyString.pipe(
 
 export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
 
-export const discountBasisPointsEffectSchema = Schema.Int.check(
+export const discountBasisPointsSchema = Schema.Int.check(
   Schema.isBetween({ minimum: 1, maximum: 10_000 })
 ).annotate({
   identifier: "DiscountBasisPoints",
   description: "An exact percentage discount measured in basis points.",
 });
 
-export const discountProductIdentityEffectSchema = Schema.Struct({
+export const discountProductIdentityCodec = Schema.Struct({
   kind: Schema.Literal("cowork"),
   tier: Schema.Literals(workspaceProductTiers),
 });
@@ -37,7 +37,7 @@ export const discountProductIdentityEffectSchema = Schema.Struct({
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
   DiscountProductIdentity
-> = Schema.toStandardSchemaV1(discountProductIdentityEffectSchema, {
+> = Schema.toStandardSchemaV1(discountProductIdentityCodec, {
   parseOptions: {
     onExcessProperty: "error",
   },

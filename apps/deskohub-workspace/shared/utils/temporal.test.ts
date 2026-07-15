@@ -2,15 +2,15 @@ import { describe, expect, test } from "bun:test";
 import "@/shared/polyfills/temporal";
 import { Schema } from "effect";
 import {
-  instantStringEffectSchema,
+  instantStringSchema,
   isFuturePlainDateTime,
   isPlainDateString,
-  makeWholeHourInstantStringEffectSchema,
+  makeWholeHourInstantStringSchema,
   temporalInstantToIsoString,
 } from "./temporal";
 
-describe("instantStringEffectSchema", () => {
-  const isInstantString = Schema.is(instantStringEffectSchema);
+describe("instantStringSchema", () => {
+  const isInstantString = Schema.is(instantStringSchema);
 
   test("accepts ISO timestamps with an offset", () => {
     expect(isInstantString("2026-07-10T08:00:00Z")).toBe(true);
@@ -37,9 +37,9 @@ describe("isFuturePlainDateTime", () => {
   });
 });
 
-describe("makeWholeHourInstantStringEffectSchema", () => {
+describe("makeWholeHourInstantStringSchema", () => {
   const isWholeHourInPrague = Schema.is(
-    makeWholeHourInstantStringEffectSchema("Europe/Prague")
+    makeWholeHourInstantStringSchema("Europe/Prague")
   );
 
   test("accepts instants that fall on a whole hour in the supplied time zone", () => {

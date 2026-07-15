@@ -19,7 +19,7 @@ const runContactSubmission = async (options?: {
   const { ContactService } = await import(
     "@/features/contact/backend/contact.service"
   );
-  const { submitContactFormEffect } = await import("./contact");
+  const { submitContactFormProgram } = await import("./contact");
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
@@ -34,7 +34,7 @@ const runContactSubmission = async (options?: {
         locale: "en-US" as const,
       })
     );
-  const effect = submitContactFormEffect({
+  const effect = submitContactFormProgram({
     locale: "en-US",
     submittedValues,
   }).pipe(
@@ -45,7 +45,7 @@ const runContactSubmission = async (options?: {
   return { effect, verifyHuman, submit };
 };
 
-describe("submitContactFormEffect", () => {
+describe("submitContactFormProgram", () => {
   test("verifies with the deny policy before submitting contact email", async () => {
     const eventOrder: string[] = [];
     const verifyHuman = mock(() =>

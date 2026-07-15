@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
 
-import { makeEffectSchemaParser } from "./effect-schema-parser";
+import { makeSchemaParser } from "./schema-parser";
 
-describe("makeEffectSchemaParser", () => {
-  const parser = makeEffectSchemaParser(
+describe("makeSchemaParser", () => {
+  const parser = makeSchemaParser(
     Schema.Struct({
       id: Schema.String,
       amount: Schema.Number,

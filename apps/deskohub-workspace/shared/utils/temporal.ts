@@ -31,7 +31,7 @@ export type TemporalInstant = typeof TemporalInstantSchema.Type;
 export type TemporalPlainDate = typeof TemporalPlainDateSchema.Type;
 export type TemporalPlainTime = typeof TemporalPlainTimeSchema.Type;
 
-export const localTimeEffectSchema = Schema.String.check(
+export const localTimeSchema = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
       return (
@@ -49,9 +49,9 @@ export const localTimeEffectSchema = Schema.String.check(
     description: "Canonical local time in HH:mm format.",
   });
 
-export type LocalTime = typeof localTimeEffectSchema.Type;
+export type LocalTime = typeof localTimeSchema.Type;
 
-export const localDateTimeEffectSchema = Schema.String.check(
+export const localDateTimeSchema = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
       const dateTime = Temporal.PlainDateTime.from(value);
@@ -71,9 +71,9 @@ export const localDateTimeEffectSchema = Schema.String.check(
     description: "Canonical local date-time without an offset.",
   });
 
-export type LocalDateTime = typeof localDateTimeEffectSchema.Type;
+export type LocalDateTime = typeof localDateTimeSchema.Type;
 
-export const instantStringEffectSchema = Schema.String.check(
+export const instantStringSchema = Schema.String.check(
   Schema.makeFilter((value) => {
     try {
       Temporal.Instant.from(value);
@@ -89,7 +89,7 @@ export const instantStringEffectSchema = Schema.String.check(
     description: "ISO instant string with an offset.",
   });
 
-export type Instant = typeof instantStringEffectSchema.Type;
+export type Instant = typeof instantStringSchema.Type;
 
 export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
   Schema.makeFilter<string>((value) => {
@@ -100,16 +100,14 @@ export const isPlainDateString = (annotations?: Schema.Annotations.Filter) =>
     }
   }, annotations);
 
-export const plainDateStringEffectSchema = Schema.String.check(
-  isPlainDateString()
-)
+export const plainDateStringSchema = Schema.String.check(isPlainDateString())
   .pipe(Schema.brand("PlainDate"))
   .annotate({
     identifier: "PlainDate",
     description: "Canonical calendar date in YYYY-MM-DD format.",
   });
 
-export type PlainDate = typeof plainDateStringEffectSchema.Type;
+export type PlainDate = typeof plainDateStringSchema.Type;
 
 export const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
 
@@ -170,8 +168,8 @@ export const isFuturePlainDateTime = ({
     now.toZonedDateTimeISO(timeZone).toPlainDateTime()
   ) > 0;
 
-export const makeWholeHourInstantStringEffectSchema = (timeZone: string) =>
-  instantStringEffectSchema.check(
+export const makeWholeHourInstantStringSchema = (timeZone: string) =>
+  instantStringSchema.check(
     Schema.makeFilter((value) => {
       try {
         const time = Temporal.Instant.from(value)
