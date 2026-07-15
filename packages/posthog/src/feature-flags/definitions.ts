@@ -1,9 +1,9 @@
-import { Context, Effect, Layer, Redacted, Schema } from "effect";
+import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import type { FeatureFlag } from "../generated/effect.gen";
-import { PostHogFeatureFlagRuntimeConfig } from "./config";
+import { PostHogFeatureFlagConfig } from "./config";
 import { PostHogFeatureFlagError } from "./errors";
 
 const pageSize = 100;
@@ -77,7 +77,7 @@ export class PostHogFeatureFlagService extends Context.Service<
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {
-      const config = yield* PostHogFeatureFlagRuntimeConfig;
+      const config = yield* PostHogFeatureFlagConfig;
       const httpClient = yield* HttpClient.HttpClient;
       const authenticatedClient = httpClient.pipe(
         HttpClient.mapRequestInput((request) =>
@@ -85,7 +85,7 @@ export class PostHogFeatureFlagService extends Context.Service<
             HttpClientRequest.prependUrl(config.host.origin),
             HttpClientRequest.setHeader(
               "Authorization",
-              `Bearer ${Redacted.value(config.apiKey)}`
+              `Bearer ${config.apiKey}`
             )
           )
         )

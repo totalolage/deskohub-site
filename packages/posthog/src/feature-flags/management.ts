@@ -1,8 +1,4 @@
-export {
-  makePostHogFeatureFlagConfigLayer,
-  type PostHogFeatureFlagConfig,
-  PostHogFeatureFlagRuntimeConfig,
-} from "./config";
+export { PostHogFeatureFlagConfig } from "./config";
 export {
   listPostHogFeatureFlagDefinitions,
   type PostHogFeatureFlagDefinition,
