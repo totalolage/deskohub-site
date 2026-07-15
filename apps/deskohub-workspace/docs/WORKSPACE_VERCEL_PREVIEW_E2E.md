@@ -74,13 +74,13 @@ Nexi sandbox notes:
 
 - Use the published CEE implicit-accounting direct API key for the normal hosted checkout happy path.
 - The public CEE OK cards have been verified with `EUR`. They can return provider-side `AUTHORIZATION FAILED` with `CZK`, even when HPP creation and callback handling are correct.
-- For Workspace catalog prices in `CZK`, use `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on sandbox preview when the goal is to validate the app payment/webhook path against the public Nexi test merchant. Seeing `EUR` on Nexi HPP, payment attempts, and checkout/status summaries in this sandbox setup is expected and is not a bug. The app only applies this override for non-production Nexi sandbox traffic; production Nexi traffic uses the real catalog currency.
+- For Workspace catalog prices in `CZK`, use `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on sandbox preview when the goal is to validate the app payment/webhook path against the public Nexi test merchant. Seeing `EUR` on Nexi HPP, payment attempts, and reservation status summaries in this sandbox setup is expected and is not a bug. The app only applies this override for non-production Nexi sandbox traffic; production Nexi traffic uses the real catalog currency.
 - A successful implicit-accounting CEE payment may verify as `operationType=AUTHORIZATION`, `operationResult=EXECUTED`, with both authorized and captured amounts set. This is a successful paid state for Workspace.
 
 Provider-owned HPP notes:
 
 - The Nexi hosted payment page is provider-owned. Validate that Workspace creates a correct HPP request, redirects to the provider URL, receives the provider return/webhook, and records the verified outcome. Do not treat Nexi HPP UI mechanics, wording, focus behavior, keyboard requirements, 3DS stub behavior, or the exact placement/availability of provider-side abort/cancel controls as Workspace bugs.
-- Workspace-owned behavior resumes when Nexi returns to a Workspace `/checkout/result/*`, `/checkout/payment/*`, or `/checkout/status/*` URL, or when Nexi calls the Workspace webhook. From that point, verify Workspace state transitions, retry/restart affordances, Dotypos reservation state, and no-PII/raw-payload rules.
+- Workspace-owned behavior resumes when Nexi returns to a Workspace `/checkout/pay/return/*` or `/reservation/status/*` URL, or when Nexi calls the Workspace webhook. From that point, verify Workspace state transitions, retry/restart affordances, Dotypos reservation state, and no-PII/raw-payload rules.
 
 Email notes:
 

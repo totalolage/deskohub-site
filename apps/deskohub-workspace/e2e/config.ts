@@ -90,6 +90,7 @@ export const getVercelDeployEnvArgs = (
     EMAIL_PROVIDER: "console",
     NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
     NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
+    WORKSPACE_E2E_ALLOW_NULL_SERVER_ACTION_ORIGIN: "1",
     WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
     WORKSPACE_E2E_BOTID_BYPASS: "HUMAN",
     ...(config.bypassSecret
