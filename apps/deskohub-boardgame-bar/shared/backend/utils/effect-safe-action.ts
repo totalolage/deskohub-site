@@ -2,7 +2,7 @@ import { EffectAction } from "@deskohub/next-effect/effect-action";
 import { Duration, Effect, type Layer } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/features/i18n";
-import { formatEffectError } from "@/shared/utils/error-formatting";
+import { formatError } from "@/shared/utils/error-formatting";
 import { actionClient } from "@/shared/utils/safe-action-client";
 
 export function createEffectSafeAction<I, O, E, R>(
@@ -13,7 +13,7 @@ export function createEffectSafeAction<I, O, E, R>(
   return EffectAction.fromClient(actionClient, {
     layer: layers,
     mapError: (error) => {
-      const formatted = formatEffectError(error);
+      const formatted = formatError(error);
 
       return new Error(formatted.message || "An unexpected error occurred");
     },
