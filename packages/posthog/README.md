@@ -10,10 +10,20 @@ bun turbo run generate --filter=@deskohub/posthog
 ```
 
 The generator downloads `https://eu.posthog.com/api/schema/?format=json` and
-runs Effect's OpenAPI generator directly against the complete, unmodified
-schema. Set `POSTHOG_OPENAPI_SCHEMA_URL` only when generation should target
-another PostHog installation. Turbo caching is disabled for this task so each
-generation uses the schema currently published by PostHog.
+runs Effect's OpenAPI generator against the complete schema. Set
+`POSTHOG_OPENAPI_SCHEMA_URL` only when generation should target another PostHog
+installation. Turbo caching is disabled for this task so each generation uses
+the schema currently published by PostHog.
+
+Before generation, nullable feature-flag fields are converted from OpenAPI 3.1's
+`type: [value, null]` notation to the equivalent `oneOf` notation because
+Effect's generator currently drops the null member of those unions. The patch
+covers the pagination links, `UserBasic.hedgehog_config`, and
+`FeatureFlag.last_called_at`. It also widens `FeatureFlag.surveys` and `features`
+because PostHog's live endpoint returns arrays while its published schema
+currently declares objects. The generated client itself remains untouched, and
+each compatibility patch can be removed independently when its upstream issue is
+fixed.
 
 ## Typed feature flags
 

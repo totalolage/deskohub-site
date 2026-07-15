@@ -1,8 +1,7 @@
 import { Context, Effect, Layer, Schema } from "effect";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
-import type { FeatureFlag } from "../generated/effect.gen";
+import { type FeatureFlag, make } from "../generated/effect.gen";
 import { PostHogFeatureFlagConfig } from "./config";
 import { PostHogFeatureFlagError } from "./errors";
 
@@ -20,24 +19,6 @@ const FeatureFlagFilters = Schema.Struct({
   payloads: Schema.optionalKey(
     Schema.Union([Schema.Record(Schema.String, Schema.Json), Schema.Null])
   ),
-});
-
-const FeatureFlagSummarySchema = Schema.Struct({
-  archived: Schema.optionalKey(Schema.Boolean),
-  deleted: Schema.optionalKey(Schema.Boolean),
-  filters: Schema.optionalKey(Schema.Record(Schema.String, Schema.Json)),
-  key: Schema.String,
-});
-
-// PostHog's live feature-flag list response currently disagrees with its
-// OpenAPI schema on nullable pagination and nested user fields. Decode only the
-// generated FeatureFlag fields needed by type generation until the spec is
-// corrected, rather than weakening the generated client globally.
-const FeatureFlagPage = Schema.Struct({
-  count: Schema.Number,
-  next: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  previous: Schema.optionalKey(Schema.Union([Schema.String, Schema.Null])),
-  results: Schema.Array(FeatureFlagSummarySchema),
 });
 
 type FeatureFlagSummary = Pick<
@@ -90,26 +71,20 @@ export class PostHogFeatureFlagService extends Context.Service<
           )
         )
       );
+      const client = make(authenticatedClient);
 
       return {
         listDefinitions: () =>
           listPostHogFeatureFlagDefinitions(
             config.projectId,
             ({ limit, offset, projectId }) =>
-              HttpClientRequest.get(
-                `/api/projects/${encodeURIComponent(projectId)}/feature_flags/`
-              ).pipe(
-                HttpClientRequest.setUrlParams({
+              client.featureFlagsList(projectId, {
+                params: {
                   archived: "false",
                   limit,
                   offset,
-                }),
-                authenticatedClient.execute,
-                Effect.flatMap(HttpClientResponse.filterStatusOk),
-                Effect.flatMap(
-                  HttpClientResponse.schemaBodyJson(FeatureFlagPage)
-                )
-              )
+                },
+              })
           ),
       } satisfies IPostHogFeatureFlagService;
     })

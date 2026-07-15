@@ -315,10 +315,12 @@
       },
       "devDependencies": {
         "@effect/openapi-generator": "4.0.0-beta.85",
+        "@t3-oss/env-core": "^0.13.10",
         "@types/react": "^19.2.17",
         "posthog-js": "^1.388.1",
         "react": "19.2.7",
         "typescript": "^5",
+        "zod": "^4.0.17",
       },
       "peerDependencies": {
         "posthog-js": ">=1.257.2",

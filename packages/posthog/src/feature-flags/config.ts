@@ -11,5 +11,5 @@ export class PostHogFeatureFlagConfig extends Context.Service<
   IPostHogFeatureFlagConfig
 >()("@deskohub/posthog/PostHogFeatureFlagConfig") {
   static from = (config: IPostHogFeatureFlagConfig) =>
-    Layer.succeed(this, this.of(config));
+    Layer.succeed(this, config);
 }

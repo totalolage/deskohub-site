@@ -1,7 +1,10 @@
-import { Config, Effect, Layer, Redacted } from "effect";
+import { createEnv } from "@t3-oss/env-core";
+import { Effect, Layer } from "effect";
 import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { z } from "zod";
 import { PostHogFeatureFlagConfig } from "../src/feature-flags/config";
 import { PostHogFeatureFlagService } from "../src/feature-flags/definitions";
+import { PostHogFeatureFlagError } from "../src/feature-flags/errors";
 import {
   PostHogFeatureFlagContractFile,
   PostHogFeatureFlagSync,
@@ -10,22 +13,34 @@ import {
 
 const mode = process.argv.includes("--check") ? "check" : "sync";
 
-const loadConfig = Config.all({
-  apiKey: Config.redacted("POSTHOG_FEATURE_FLAGS_API_KEY"),
-  host: Config.url("POSTHOG_HOST").pipe(
-    Config.withDefault(new URL("https://eu.posthog.com"))
-  ),
-  projectId: Config.nonEmptyString("POSTHOG_PROJECT_ID"),
+const loadEnv = Effect.try({
+  try: () =>
+    createEnv({
+      server: {
+        POSTHOG_FEATURE_FLAGS_API_KEY: z.string().min(1),
+        POSTHOG_HOST: z.url().default("https://eu.posthog.com"),
+        POSTHOG_PROJECT_ID: z.string().min(1),
+      },
+      runtimeEnv: process.env,
+      emptyStringAsUndefined: true,
+      onValidationError: () => {
+        throw new Error("Invalid PostHog feature flag sync environment.");
+      },
+    }),
+  catch: () =>
+    new PostHogFeatureFlagError({
+      message: "Invalid PostHog feature flag sync environment.",
+    }),
 });
 
 const program = Effect.gen(function* () {
-  const config = yield* loadConfig;
+  const env = yield* loadEnv;
   const featureFlagServiceLive = PostHogFeatureFlagService.Live.pipe(
     Layer.provide(
       PostHogFeatureFlagConfig.from({
-        apiKey: Redacted.value(config.apiKey),
-        host: config.host,
-        projectId: config.projectId,
+        apiKey: env.POSTHOG_FEATURE_FLAGS_API_KEY,
+        host: new URL(env.POSTHOG_HOST),
+        projectId: env.POSTHOG_PROJECT_ID,
       })
     ),
     Layer.provide(FetchHttpClient.layer)
