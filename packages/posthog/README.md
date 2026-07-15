@@ -42,7 +42,10 @@ import { Effect } from "effect";
 const program = generatePostHogFeatureFlagContract({
   apiKey: process.env.WORKSPACE_POSTHOG_FEATURE_FLAGS_API_KEY!,
   host: new URL(process.env.WORKSPACE_POSTHOG_HOST ?? "https://eu.posthog.com"),
-  outputFile: new URL("../features/feature-flags/generated.ts", import.meta.url),
+  outputFile: new URL(
+    "../features/feature-flags/generated/contract.ts",
+    import.meta.url
+  ),
   projectId: process.env.WORKSPACE_POSTHOG_PROJECT_ID!,
 });
 
@@ -62,7 +65,7 @@ Pass the generated contract to the runtime adapter needed by the application:
 "use client";
 
 import { createPostHogReactFeatureFlags } from "@deskohub/posthog/feature-flags/react";
-import { postHogFeatureFlags } from "./generated";
+import { postHogFeatureFlags } from "./generated/contract";
 
 export const { useFeatureFlagEnabled } =
   createPostHogReactFeatureFlags(postHogFeatureFlags);
