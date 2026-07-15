@@ -108,7 +108,7 @@ const inferJsonPayloadType = (
     case "string":
       return { kind: "string" };
     case "object": {
-      if (Array.isArray(value)) {
+      if (isJsonArray(value)) {
         return {
           kind: "array",
           items:
@@ -130,6 +130,9 @@ const inferJsonPayloadType = (
     }
   }
 };
+
+const isJsonArray = (value: Schema.Json): value is readonly Schema.Json[] =>
+  Array.isArray(value);
 
 const renderPayloadTypeUnion = (types: readonly PayloadType[]) => {
   const renderedTypes = [...new Set(types.map(renderPayloadType))].toSorted();
