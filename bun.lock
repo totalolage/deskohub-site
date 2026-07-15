@@ -320,7 +320,6 @@
         "posthog-js": "^1.388.1",
         "react": "19.2.7",
         "typescript": "^5",
-        "zod": "^4.0.17",
       },
       "peerDependencies": {
         "posthog-js": ">=1.257.2",
