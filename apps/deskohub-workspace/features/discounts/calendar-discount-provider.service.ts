@@ -1,5 +1,6 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
+import type { DatabaseError } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
   type CalendarSale,
@@ -7,6 +8,14 @@ import {
   normalizeCalendarSales,
 } from "./calendar-sale";
 import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
+import type {
+  DiscountDefinition,
+  DiscountDefinitionMalformedError,
+} from "./discount-definition";
+import {
+  type DiscountDefinitionNotFoundError,
+  DiscountDefinitionRepository,
+} from "./discount-definition.repository";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type { DiscountCandidate } from "./provider";
@@ -35,7 +44,33 @@ export class CalendarDiscountProvider extends Context.Service<
     this,
     Effect.gen(function* () {
       const calendar = yield* GoogleCalendarService;
+      const discountDefinitions = yield* DiscountDefinitionRepository;
       const { salesCalendarId } = yield* CalendarResourceConfig;
+
+      const loadDiscountDefinitions = Effect.fn(
+        "CalendarDiscountProvider.loadDiscountDefinitions"
+      )((input: { readonly sales: readonly CalendarSale[] }) =>
+        Effect.forEach(
+          [...new Set(input.sales.map(({ discountId }) => discountId))],
+          (discountId) =>
+            discountDefinitions.loadById({ discountId }).pipe(
+              Effect.tapError((cause) =>
+                Effect.logError(
+                  "Stored calendar discount definition could not be loaded",
+                  { cause, discountId }
+                )
+              ),
+              Effect.mapError(toDiscountDefinitionProviderError)
+            )
+        ).pipe(
+          Effect.map(
+            (definitions) =>
+              new Map(
+                definitions.map((definition) => [definition.id, definition])
+              )
+          )
+        )
+      );
 
       const loadCalendarSales = Effect.fn(
         "CalendarDiscountProvider.loadCalendarSales"
@@ -70,7 +105,13 @@ export class CalendarDiscountProvider extends Context.Service<
                 Effect.mapError(toMalformedConfigurationError)
               )
             ),
-            Effect.map(({ sales }) => sales)
+            Effect.bind("definitions", loadDiscountDefinitions),
+            Effect.map(({ definitions, sales }) =>
+              sales.map((sale) => ({
+                sale,
+                definition: definitions.get(sale.discountId)!,
+              }))
+            )
           ),
         (effect, key) =>
           effect.pipe(
@@ -144,11 +185,13 @@ class CalendarSalesCacheKey extends Data.Class<{
 
 const toEligibleCalendarCandidates = (input: {
   readonly product: DiscountProductIdentity;
-  readonly sales: readonly CalendarSale[];
+  readonly sales: readonly ResolvedCalendarSale[];
 }) =>
   input.sales
-    .filter(({ products }) =>
-      products.some((product) => isSameProduct(product, input.product))
+    .filter(({ definition }) =>
+      definition.products.some((product) =>
+        isSameProduct(product, input.product)
+      )
     )
     .map(toCalendarDiscountCandidate)
     .toSorted((left, right) =>
@@ -156,31 +199,34 @@ const toEligibleCalendarCandidates = (input: {
     );
 
 const toCalendarDiscountCandidate = (
-  sale: CalendarSale
+  resolvedSale: ResolvedCalendarSale
 ): DiscountCandidate => ({
   discount: {
     id: deriveOpaqueDiscountId({
       providerNamespace,
-      providerReference: sale.occurrenceReference,
+      providerReference: resolvedSale.sale.occurrenceReference,
     }),
-    label: sale.label,
-    adjustment: {
-      kind: "percentage",
-      basisPoints: sale.basisPoints,
-    },
-    expiresAt: sale.expiresAt,
-    countdownStartsAt: sale.countdownStartsAt,
+    label: resolvedSale.definition.label,
+    adjustment: resolvedSale.definition.adjustment,
+    expiresAt: resolvedSale.sale.expiresAt,
+    countdownStartsAt: resolvedSale.sale.countdownStartsAt,
   },
   provenance: {
     providerNamespace,
-    providerReference: sale.occurrenceReference,
+    providerReference: resolvedSale.sale.occurrenceReference,
     details: {
-      calendarId: sale.calendarId,
-      eventReference: sale.eventReference,
-      occurrenceDate: sale.occurrenceDate,
+      calendarId: resolvedSale.sale.calendarId,
+      eventReference: resolvedSale.sale.eventReference,
+      occurrenceDate: resolvedSale.sale.occurrenceDate,
+      storedDiscountId: resolvedSale.definition.id,
     },
   },
 });
+
+type ResolvedCalendarSale = {
+  readonly sale: CalendarSale;
+  readonly definition: DiscountDefinition;
+};
 
 const isSameProduct = (
   left: DiscountProductIdentity,
@@ -191,6 +237,24 @@ const toMalformedConfigurationError = (cause: CalendarSaleConfigurationError) =>
   new DiscountProviderError({
     reason: "malformed_configuration",
     message: "A marked Google Calendar sale is malformed.",
+    cause,
+  });
+
+const toDiscountDefinitionProviderError = (
+  cause:
+    | DatabaseError
+    | DiscountDefinitionNotFoundError
+    | DiscountDefinitionMalformedError
+) =>
+  new DiscountProviderError({
+    reason:
+      cause._tag === "DatabaseError"
+        ? "provider_failure"
+        : "malformed_configuration",
+    message:
+      cause._tag === "DatabaseError"
+        ? "Stored calendar discount definitions could not be loaded."
+        : "A calendar sale references an unavailable discount definition.",
     cause,
   });
 

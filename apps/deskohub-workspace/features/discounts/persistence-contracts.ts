@@ -1,4 +1,21 @@
 import { Schema } from "effect";
+import { discountIdSchema } from "./contracts";
+
+export const storedDiscountIdSchema = discountIdSchema
+  .check(
+    Schema.isPattern(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    )
+  )
+  .pipe(Schema.brand("StoredDiscountId"))
+  .annotate({
+    identifier: "StoredDiscountId",
+    description: "Opaque UUID identifier for a stored discount definition.",
+  });
+
+export type StoredDiscountId = Schema.Schema.Type<
+  typeof storedDiscountIdSchema
+>;
 
 export const discountProductKeys = [
   "cowork:basic",

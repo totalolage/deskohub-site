@@ -11,18 +11,22 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { DiscountId } from "@/features/discounts";
+import type { DiscountProductIdentity } from "@/features/discounts";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
   DiscountProductKey,
+  StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export const discounts = pgTable(
   "discounts",
   {
-    id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountId>(),
+    id: text("id")
+      .primaryKey()
+      .default(postgresUuidV7)
+      .$type<StoredDiscountId>(),
     label: text("label").notNull(),
     percentageBasisPoints: integer("percentage_basis_points"),
     fixedAmountValue: integer("fixed_amount_value"),
@@ -71,10 +75,12 @@ export const discountProductTargets = pgTable(
   {
     discountId: text("discount_id")
       .notNull()
-      .$type<DiscountId>()
+      .$type<StoredDiscountId>()
       .references(() => discounts.id, { onDelete: "cascade" }),
     productKey: text("product_key").notNull().$type<DiscountProductKey>(),
-    productIdentity: jsonb("product_identity").notNull().$type<unknown>(),
+    productIdentity: jsonb("product_identity")
+      .notNull()
+      .$type<DiscountProductIdentity>(),
   },
   (t) => [
     primaryKey({
@@ -94,7 +100,7 @@ export const discountCodes = pgTable(
     id: text("id").primaryKey().default(postgresUuidV7).$type<DiscountCodeId>(),
     discountId: text("discount_id")
       .notNull()
-      .$type<DiscountId>()
+      .$type<StoredDiscountId>()
       .references(() => discounts.id),
     code: text("code").notNull().$type<CanonicalDiscountCode>(),
     enabled: boolean("enabled").notNull(),
