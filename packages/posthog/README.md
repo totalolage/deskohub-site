@@ -28,28 +28,44 @@ fixed.
 ## Typed feature flags
 
 PostHog remains the source of truth for feature flag keys, variants, and
-payloads. Synchronize that definition into the checked-in TypeScript contract:
+payloads. Each application owns its generated contract because applications can
+use different PostHog projects and different sets of flags. The package exports
+an Effect-based generator, but does not read environment variables or choose an
+output location.
 
-```sh
-POSTHOG_FEATURE_FLAGS_API_KEY=phx_... \
-POSTHOG_PROJECT_ID=12345 \
-bun turbo run feature-flags:sync --filter=@deskohub/posthog
+Create a generator script in the consuming application:
+
+```ts
+import { generatePostHogFeatureFlagContract } from "@deskohub/posthog/feature-flags/codegen";
+import { Effect } from "effect";
+
+const program = generatePostHogFeatureFlagContract({
+  apiKey: process.env.WORKSPACE_POSTHOG_FEATURE_FLAGS_API_KEY!,
+  host: new URL(process.env.WORKSPACE_POSTHOG_HOST ?? "https://eu.posthog.com"),
+  outputFile: new URL("../features/feature-flags/generated.ts", import.meta.url),
+  projectId: process.env.WORKSPACE_POSTHOG_PROJECT_ID!,
+});
+
+if (import.meta.main) await Effect.runPromise(program);
 ```
 
-`POSTHOG_HOST` defaults to `https://eu.posthog.com`. The API key must be a
-PostHog personal API key restricted to reading feature flags. The generated
-file contains payload shapes, but never payload values. Inactive flags are
-included so code can be prepared before rollout; archived and deleted flags are
-excluded.
+The consumer should validate its environment before calling the generator. The
+API key must be a PostHog personal API key restricted to reading feature flags.
+The generated file contains payload shapes, but never payload values. Inactive
+flags are included so code can be prepared before rollout; archived and deleted
+flags are excluded. Commit the generated contract so normal builds do not need
+the management key or network access.
 
-Import keys and their generated value or payload types from
-`@deskohub/posthog/feature-flags`. Client components should consume flags
-through the wrappers around PostHog's official React package:
+Pass the generated contract to the runtime adapter needed by the application:
 
 ```tsx
 "use client";
 
-import { useFeatureFlagEnabled } from "@deskohub/posthog/feature-flags/react";
+import { createPostHogReactFeatureFlags } from "@deskohub/posthog/feature-flags/react";
+import { postHogFeatureFlags } from "./generated";
+
+export const { useFeatureFlagEnabled } =
+  createPostHogReactFeatureFlags(postHogFeatureFlags);
 
 export function MeetingRoomEntry() {
   const enabled = useFeatureFlagEnabled("meeting_room_page", false);
@@ -58,12 +74,13 @@ export function MeetingRoomEntry() {
 }
 ```
 
-Unknown keys fail TypeScript compilation. Multivariate values and payloads are
-typed from the PostHog definition. Prefer `useFeatureFlagResult` when value and
-payload need to come from the same evaluation. PostHog's payload-only hook does
-not send a `$feature_flag_called` exposure event, so pair
-`useFeatureFlagPayload` with the enabled or variant hook when using it directly.
+Server code can similarly call `createPostHogNodeFeatureFlags` with the generated
+contract and an official `posthog-node` client. Its `evaluateFlags` method is an
+Effect and returns a typed view over the SDK's evaluation snapshot. The adapter
+does not own client construction or shutdown because that lifecycle belongs to
+the consuming application.
 
-The management API under `@deskohub/posthog/feature-flags/management` exists for
-generation and tooling. It must not be used to evaluate a flag for an end user;
-the browser or server SDK performs that evaluation using the user's context.
+Unknown or cross-application keys fail TypeScript compilation. Multivariate
+values and payloads are typed from the owning application's PostHog definition.
+The management API is used only during generation; browser and server SDKs
+perform runtime evaluation using the end user's context.

@@ -6,12 +6,6 @@ import {
 import { PostHogFeatureFlagError } from "./errors";
 import { renderPostHogFeatureFlagContract } from "./render";
 
-const generatedContractPath = Bun.fileURLToPath(
-  new URL("../generated/feature-flags.ts", import.meta.url)
-);
-
-export type PostHogFeatureFlagSyncMode = "check" | "sync";
-
 export interface PostHogFeatureFlagSyncResult {
   readonly flagCount: number;
   readonly status: "unchanged" | "updated";
@@ -29,18 +23,25 @@ export class PostHogFeatureFlagContractFile extends Context.Service<
   PostHogFeatureFlagContractFile,
   IPostHogFeatureFlagContractFile
 >()("@deskohub/posthog/PostHogFeatureFlagContractFile") {
-  static Live = Layer.succeed(this, {
-    path: generatedContractPath,
-    read: readPostHogFeatureFlagContract(generatedContractPath),
-    write: (content) =>
-      writePostHogFeatureFlagContract(generatedContractPath, content),
-  });
+  static from = (outputFile: string | URL) => {
+    const path =
+      typeof outputFile === "string"
+        ? outputFile
+        : Bun.fileURLToPath(outputFile);
+
+    return Layer.succeed(this, {
+      path,
+      read: readPostHogFeatureFlagContract(path),
+      write: (content) => writePostHogFeatureFlagContract(path, content),
+    });
+  };
 }
 
 interface IPostHogFeatureFlagSync {
-  readonly run: (
-    mode: PostHogFeatureFlagSyncMode
-  ) => Effect.Effect<PostHogFeatureFlagSyncResult, PostHogFeatureFlagError>;
+  readonly run: () => Effect.Effect<
+    PostHogFeatureFlagSyncResult,
+    PostHogFeatureFlagError
+  >;
 }
 
 export class PostHogFeatureFlagSync extends Context.Service<
@@ -54,34 +55,31 @@ export class PostHogFeatureFlagSync extends Context.Service<
       const contractFile = yield* PostHogFeatureFlagContractFile;
 
       return {
-        run: (mode) =>
+        run: () =>
           syncPostHogFeatureFlagContract({
             contractFile,
             definitions: featureFlags.listDefinitions(),
-            mode,
           }),
       } satisfies IPostHogFeatureFlagSync;
     })
   );
 }
 
-export const runPostHogFeatureFlagSync = (mode: PostHogFeatureFlagSyncMode) =>
+export const runPostHogFeatureFlagSync = () =>
   Effect.gen(function* () {
     const sync = yield* PostHogFeatureFlagSync;
-    return yield* sync.run(mode);
+    return yield* sync.run();
   });
 
 export const syncPostHogFeatureFlagContract = ({
   contractFile,
   definitions,
-  mode,
 }: {
   readonly contractFile: IPostHogFeatureFlagContractFile;
   readonly definitions: Effect.Effect<
     readonly PostHogFeatureFlagDefinition[],
     PostHogFeatureFlagError
   >;
-  readonly mode: PostHogFeatureFlagSyncMode;
 }) =>
   Effect.gen(function* () {
     const featureFlags = yield* definitions;
@@ -93,13 +91,6 @@ export const syncPostHogFeatureFlagContract = ({
         flagCount: featureFlags.length,
         status: "unchanged" as const,
       };
-    }
-
-    if (mode === "check") {
-      return yield* new PostHogFeatureFlagError({
-        message:
-          "PostHog feature flag types are out of date. Run `bun run feature-flags:sync` in `@deskohub/posthog`.",
-      });
     }
 
     yield* contractFile.write(content);

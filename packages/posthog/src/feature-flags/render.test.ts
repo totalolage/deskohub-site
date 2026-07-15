@@ -21,6 +21,12 @@ describe("renderPostHogFeatureFlagContract", () => {
       renderPostHogFeatureFlagContract([...definitions].reverse())
     );
 
+    expect(contract).toContain(
+      'import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";'
+    );
+    expect(contract).toContain(
+      "export const postHogFeatureFlags = definePostHogFeatureFlags<"
+    );
     expect(contract).toContain('  "meeting_room_page",\n  "room_experience",');
     expect(contract).toContain(
       'readonly value: false | "control" | "treatment";'

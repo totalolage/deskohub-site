@@ -316,7 +316,6 @@
       },
       "devDependencies": {
         "@effect/openapi-generator": "4.0.0-beta.85",
-        "@t3-oss/env-core": "^0.13.10",
         "@types/mustache": "^4.2.6",
         "@types/react": "^19.2.17",
         "posthog-js": "^1.388.1",
