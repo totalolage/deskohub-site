@@ -1,6 +1,5 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
-import type { DatabaseError } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
   type CalendarSale,
@@ -8,14 +7,9 @@ import {
   normalizeCalendarSales,
 } from "./calendar-sale";
 import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
-import type {
-  DiscountDefinition,
-  DiscountDefinitionMalformedError,
-} from "./discount-definition";
-import {
-  type DiscountDefinitionNotFoundError,
-  DiscountDefinitionRepository,
-} from "./discount-definition.repository";
+import type { DiscountDefinition } from "./discount-definition";
+import { DiscountDefinitionRepository } from "./discount-definition.repository";
+import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type { DiscountCandidate } from "./provider";
@@ -237,24 +231,6 @@ const toMalformedConfigurationError = (cause: CalendarSaleConfigurationError) =>
   new DiscountProviderError({
     reason: "malformed_configuration",
     message: "A marked Google Calendar sale is malformed.",
-    cause,
-  });
-
-const toDiscountDefinitionProviderError = (
-  cause:
-    | DatabaseError
-    | DiscountDefinitionNotFoundError
-    | DiscountDefinitionMalformedError
-) =>
-  new DiscountProviderError({
-    reason:
-      cause._tag === "DatabaseError"
-        ? "provider_failure"
-        : "malformed_configuration",
-    message:
-      cause._tag === "DatabaseError"
-        ? "Stored calendar discount definitions could not be loaded."
-        : "A calendar sale references an unavailable discount definition.",
     cause,
   });
 
