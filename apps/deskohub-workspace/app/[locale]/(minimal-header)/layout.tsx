@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { MinimalSiteHeader } from "@/shared/components/minimal-site-header";
 import { PublicSiteFooter } from "@/shared/components/public-site-footer";
-import { getSiteHeaderConfig } from "@/shared/components/site-header-config";
+import { getSiteHeaderLanguageLabels } from "@/shared/components/site-header-config";
 
 type MinimalHeaderLayoutProps = {
   children: ReactNode;
@@ -14,7 +14,7 @@ export default async function MinimalHeaderLayout({
   params,
 }: MinimalHeaderLayoutProps) {
   const { locale } = await params;
-  const { languageLabels } = getSiteHeaderConfig(locale);
+  const languageLabels = getSiteHeaderLanguageLabels(locale);
 
   return (
     <>

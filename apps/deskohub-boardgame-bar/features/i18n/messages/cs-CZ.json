@@ -10,7 +10,7 @@
     "boardGames": "DESKOVÉ HRY",
     "gallery": "GALERIE",
     "menu": "MENU",
-    "trainingRoom": "SOUKROMÁ MÍSTNOST",
+    "trainingRoom": "TTRPG MÍSTNOST",
     "contact": "KONTAKT",
     "openMenu": "Otevřít menu"
   },
@@ -471,12 +471,13 @@
     "description": "Děkujeme za vaši rezervaci v Deskohub"
   },
   "training": {
-    "pageTitle": "Školící místnost či zasedačka",
-    "pageDescription": "Pronajměte si místnost až pro 20 osob. Vhodná pro školení, obchodní setkání, workshopy nebo týmové brainstormingy. Jen kousek od metra Palmovka.",
+    "pageTitle": "TTRPG místnost | Deskohub",
+    "pageDescription": "Rezervuj si soukromou místnost na Palmovce pro TTRPG kampaně, one-shoty a herní večery.",
     "hero": {
-      "title": "Pronajměte si místnost až pro 20 osob",
-      "subtitle": "Školící místnost či zasedačka",
-      "description": "V Deskohubu nabízíme k pronájmu školící místnost, která lze využít i pro obchodní setkání jako zasedací místnost. Vhodná je i pro workshopy nebo týmové brainstormingy. Nachází se jen kousek od stanice metra Palmovka, což zajišťuje snadný přístup pro všechny účastníky.",
+      "tag": "TTRPG místnost",
+      "title": "Místnost pro tvoje další dobrodružství",
+      "subtitle": "Soukromý prostor pro TTRPG",
+      "description": "Vezmi svou družinu na kampaň, one-shot nebo herní večer do soukromé místnosti vedle Deskohub Baru, s drinky a snacky hned po ruce.",
       "reserveButton": "Požádat o rezervaci",
       "galleryButton": "Zobrazit galerii"
     },
