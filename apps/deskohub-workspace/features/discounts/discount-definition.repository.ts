@@ -51,10 +51,7 @@ export class DiscountDefinitionRepository extends Context.Service<
             });
           }
 
-          return yield* decodeDiscountDefinition({
-            discountId: input.discountId,
-            row,
-          });
+          return yield* decodeDiscountDefinition({ row });
         }
       );
 

@@ -10,11 +10,6 @@ import {
   storedDiscountIdSchema,
 } from "./persistence-contracts";
 
-const uuidPattern =
-  /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
-const exactUuidPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 const calendarEventReferenceSchema = Schema.NonEmptyString.pipe(
   Schema.brand("CalendarEventReference")
 ).annotate({
@@ -132,37 +127,26 @@ const extractStoredDiscountId = (
   Option.Option<StoredDiscountId>,
   CalendarSaleConfigurationError
 > => {
-  const description = event.description?.trim() ?? "";
-
-  if (!uuidPattern.test(description)) {
-    return Effect.succeed(Option.none());
-  }
-
-  if (!exactUuidPattern.test(description)) {
-    return Effect.fail(
-      new CalendarSaleConfigurationError({
-        reason: "invalid_discount_reference",
-        message:
-          "Calendar sale description must contain exactly one discount UUID and no other content.",
-        ...getErrorEventReference(event),
-      })
-    );
-  }
-
-  return Schema.decodeUnknownEffect(storedDiscountIdSchema)(
-    description.toLowerCase()
-  ).pipe(
-    Effect.map(Option.some),
-    Effect.mapError(
-      (cause) =>
-        new CalendarSaleConfigurationError({
-          reason: "invalid_discount_reference",
-          message:
-            "Calendar sale description contains an invalid discount UUID.",
-          ...getErrorEventReference(event),
-          cause,
-        })
-    )
+  return Option.fromNullishOr(event.description).pipe(
+    Option.map((description) => description.trim()),
+    Option.filter((description) => description.length > 0),
+    Option.map((description) =>
+      Schema.decodeUnknownEffect(storedDiscountIdSchema)(
+        description.toLowerCase()
+      ).pipe(
+        Effect.mapError(
+          (cause) =>
+            new CalendarSaleConfigurationError({
+              reason: "invalid_discount_reference",
+              message:
+                "Calendar sale description must contain exactly one valid discount UUID and no other content.",
+              ...getErrorEventReference(event),
+              cause,
+            })
+        )
+      )
+    ),
+    Effect.transposeOption
   );
 };
 

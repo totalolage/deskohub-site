@@ -1,4 +1,5 @@
 import { Data, Effect, Schema } from "effect";
+import type { DiscountProductTarget, StoredDiscount } from "@/db/schema";
 import type { DiscountAdjustment, DiscountProductIdentity } from "./contracts";
 import {
   discountAdjustmentEffectSchema,
@@ -7,7 +8,6 @@ import {
 import {
   discountProductKeySchema,
   type StoredDiscountId,
-  storedDiscountIdSchema,
 } from "./persistence-contracts";
 
 export type DiscountDefinition = {
@@ -17,17 +17,8 @@ export type DiscountDefinition = {
   readonly products: readonly DiscountProductIdentity[];
 };
 
-export type DiscountDefinitionRow = {
-  readonly id: unknown;
-  readonly label: unknown;
-  readonly percentageBasisPoints: unknown;
-  readonly fixedAmountValue: unknown;
-  readonly fixedAmountExponent: unknown;
-  readonly fixedAmountCurrency: unknown;
-  readonly productTargets: readonly {
-    readonly productKey: unknown;
-    readonly productIdentity: unknown;
-  }[];
+export type DiscountDefinitionRow = StoredDiscount & {
+  readonly productTargets: readonly DiscountProductTarget[];
 };
 
 export class DiscountDefinitionMalformedError extends Data.TaggedError(
@@ -40,11 +31,10 @@ export class DiscountDefinitionMalformedError extends Data.TaggedError(
 
 export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
   (input: {
-    readonly discountId: StoredDiscountId;
     readonly row: DiscountDefinitionRow;
   }): Effect.Effect<DiscountDefinition, DiscountDefinitionMalformedError> =>
     Effect.succeed(input).pipe(
-      Effect.bind("id", decodeDefinitionId),
+      Effect.let("id", ({ row }) => row.id),
       Effect.bind("label", decodeDefinitionLabel),
       Effect.bind("adjustment", decodeDefinitionAdjustment),
       Effect.bind("targets", decodeDefinitionTargets),
@@ -54,7 +44,7 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
       Effect.mapError(
         (cause) =>
           new DiscountDefinitionMalformedError({
-            discountId: input.discountId,
+            discountId: input.row.id,
             message: "Stored discount definition is malformed.",
             cause,
           })
@@ -87,9 +77,6 @@ const discountTargetsSchema = Schema.NonEmptyArray(discountTargetSchema).check(
       }
   )
 );
-
-const decodeDefinitionId = (input: { readonly row: DiscountDefinitionRow }) =>
-  Schema.decodeUnknownEffect(storedDiscountIdSchema)(input.row.id);
 
 const decodeDefinitionLabel = (input: {
   readonly row: DiscountDefinitionRow;

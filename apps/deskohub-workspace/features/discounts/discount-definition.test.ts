@@ -19,6 +19,8 @@ const percentageRow = (
   fixedAmountValue: null,
   fixedAmountExponent: null,
   fixedAmountCurrency: null,
+  createdAt: new Date("2026-07-15T00:00:00.000Z"),
+  updatedAt: new Date("2026-07-15T00:00:00.000Z"),
   productTargets: [
     {
       productKey: "cowork:basic",
@@ -29,7 +31,7 @@ const percentageRow = (
 });
 
 const decode = (row: DiscountDefinitionRow) =>
-  decodeDiscountDefinition({ discountId, row });
+  decodeDiscountDefinition({ row });
 
 describe("stored discount definitions", () => {
   test("decodes and trims a percentage definition", async () => {

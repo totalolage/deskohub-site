@@ -218,7 +218,7 @@ describe("CalendarDiscountProvider", () => {
     ).not.toContain(discountIdB);
   });
 
-  test("ignores cancelled events and descriptions without a UUID", async () => {
+  test("ignores cancelled events and events without a description", async () => {
     const loadById = mock(defaultLoadById);
     const result = await runWithProvider(
       quote,
@@ -226,7 +226,7 @@ describe("CalendarDiscountProvider", () => {
         Effect.succeed([
           saleEvent({ status: "cancelled" }),
           saleEvent({ description: undefined }),
-          saleEvent({ description: "ordinary calendar note" }),
+          saleEvent({ description: " " }),
         ]),
       loadById
     );
@@ -236,6 +236,7 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test.each([
+    ["non-UUID description", "ordinary calendar note"],
     ["UUID with prose", `Sale ${discountIdA}`],
     ["multiple UUIDs", `${discountIdA}\n${discountIdB}`],
   ])("fails closed for %s", async (_label, description) => {
