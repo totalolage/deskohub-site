@@ -30,6 +30,15 @@
       ],
       "outputs": ["features/i18n/paraglide/**"]
     },
+    "feature-flags:sync": {
+      "cache": false,
+      "env": [
+        "POSTHOG_FEATURE_FLAGS_API_KEY",
+        "POSTHOG_HOST",
+        "POSTHOG_PROJECT_ID"
+      ],
+      "outputs": ["features/feature-flags/generated/contract.ts"]
+    },
     "db:migrate": {
       "cache": false,
       "env": ["DATABASE_URL", "DATABASE_URL_UNPOOLED"]

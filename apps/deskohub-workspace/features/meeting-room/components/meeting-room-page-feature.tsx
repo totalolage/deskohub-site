@@ -1,7 +1,7 @@
 "use client";
 
-import { useFeatureFlagEnabled } from "@deskohub/posthog/feature-flags/react";
 import type { ReactNode } from "react";
+import { useFeatureFlagEnabled } from "@/features/feature-flags/react";
 
 type MeetingRoomPageFeatureProps = {
   children: ReactNode;

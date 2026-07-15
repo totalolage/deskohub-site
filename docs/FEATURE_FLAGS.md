@@ -6,7 +6,13 @@ The Boardgame Bar uses static, code-level flags, while Workspace uses PostHog fo
 
 ## Workspace PostHog Flags
 
-PostHog is the source of truth for Workspace flag keys, variants, and payloads. The checked-in typed contract and React hooks live in `@deskohub/posthog`; run its `feature-flags:sync` task after changing flags in PostHog.
+PostHog is the source of truth for Workspace flag keys, variants, and payloads. Workspace owns its checked-in generated contract and constructs typed React and Node clients from it using `@deskohub/posthog`. Run the Workspace `feature-flags:sync` task after changing flags in PostHog:
+
+```sh
+bun turbo run feature-flags:sync --filter=deskohub-workspace
+```
+
+Generation uses `POSTHOG_FEATURE_FLAGS_API_KEY`, `POSTHOG_HOST`, and `POSTHOG_PROJECT_ID`. The management key is only needed for generation; normal builds consume the checked-in contract without calling PostHog's management API.
 
 Current runtime flags:
 

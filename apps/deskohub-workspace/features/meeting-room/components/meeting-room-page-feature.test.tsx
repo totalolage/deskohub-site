@@ -16,7 +16,7 @@ import {
 
 const useFeatureFlagEnabled = mock();
 
-mock.module("@deskohub/posthog/feature-flags/react", () => ({
+mock.module("@/features/feature-flags/react", () => ({
   useFeatureFlagEnabled,
 }));
 
