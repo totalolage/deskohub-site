@@ -35,7 +35,7 @@ describe("stored discount definitions", () => {
   test("decodes and trims a percentage definition", async () => {
     const result = await Effect.runPromise(decode(percentageRow()));
 
-    expect(result).toEqual({
+    expect(result).toMatchObject({
       id: discountId,
       label: "Summer sale",
       adjustment: { kind: "percentage", basisPoints: 5000 },

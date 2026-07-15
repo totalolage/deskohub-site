@@ -42,18 +42,15 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
   (input: {
     readonly discountId: StoredDiscountId;
     readonly row: DiscountDefinitionRow;
-  }) =>
+  }): Effect.Effect<DiscountDefinition, DiscountDefinitionMalformedError> =>
     Effect.succeed(input).pipe(
       Effect.bind("id", decodeDefinitionId),
       Effect.bind("label", decodeDefinitionLabel),
       Effect.bind("adjustment", decodeDefinitionAdjustment),
       Effect.bind("targets", decodeDefinitionTargets),
-      Effect.map(({ adjustment, id, label, targets }) => ({
-        id,
-        label,
-        adjustment,
-        products: targets.map(({ productIdentity }) => productIdentity),
-      })),
+      Effect.let("products", ({ targets }) =>
+        targets.map(({ productIdentity }) => productIdentity)
+      ),
       Effect.mapError(
         (cause) =>
           new DiscountDefinitionMalformedError({
