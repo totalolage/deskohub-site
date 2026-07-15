@@ -38,18 +38,14 @@ export class ReservationIntervalError extends Data.TaggedError(
   "ReservationIntervalError"
 )<{ readonly message: string; readonly cause?: unknown }> {}
 
-export const reservationStartsAtEffectSchema = Schema.Union([
-  localDateTimeEffectSchema,
-  instantStringEffectSchema,
-]);
-export const reservationEndsAtEffectSchema = Schema.Union([
+export const reservationTimestampInputEffectSchema = Schema.Union([
   localDateTimeEffectSchema,
   instantStringEffectSchema,
 ]);
 
 const reservationIntervalInputEffectFields = {
-  startsAt: reservationStartsAtEffectSchema,
-  endsAt: reservationEndsAtEffectSchema,
+  startsAt: reservationTimestampInputEffectSchema,
+  endsAt: reservationTimestampInputEffectSchema,
 } as const;
 
 export const reservationIntervalInputEffectSchema = Schema.Struct(
