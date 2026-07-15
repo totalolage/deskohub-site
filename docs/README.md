@@ -6,7 +6,7 @@ This directory contains project docs for architecture, integrations, and operati
 
 - [`PROJECT_STRUCTURE.md`](./PROJECT_STRUCTURE.md) - Current feature-based architecture, import conventions, and directory map.
 - [`BEST_PRACTICES.md`](./BEST_PRACTICES.md) - Coding standards for TypeScript, React, styling, i18n, validation, and accessibility.
-- [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) - How runtime feature toggles work in this codebase (static config in constants).
+- [`FEATURE_FLAGS.md`](./FEATURE_FLAGS.md) - Feature flag architecture for Workspace PostHog gates and Boardgame Bar static flags.
 - [`CACHING_STRATEGY.md`](./CACHING_STRATEGY.md) - Server caching/tag invalidation patterns and webhook revalidation behavior.
 
 ## Integration Guides

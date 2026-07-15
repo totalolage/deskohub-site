@@ -6,7 +6,7 @@ import { siteConstants } from "@/shared/utils/constants";
 
 export const TrainingHero = () => {
   return (
-    <Hero tags="Školící místnost" alignment="left">
+    <Hero tags={m["training.hero.tag"]()} alignment="left">
       <div>
         <h1 className="text-5xl md:text-7xl font-bold mb-6">
           <span className="text-green-400">{m["training.hero.title"]()}</span>

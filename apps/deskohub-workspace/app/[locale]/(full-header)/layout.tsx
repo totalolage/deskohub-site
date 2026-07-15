@@ -14,7 +14,7 @@ export default async function FullHeaderLayout({
   params,
 }: FullHeaderLayoutProps) {
   const { locale } = await params;
-  const siteHeaderConfig = getSiteHeaderConfig(locale);
+  const siteHeaderConfig = await getSiteHeaderConfig(locale);
 
   return (
     <>

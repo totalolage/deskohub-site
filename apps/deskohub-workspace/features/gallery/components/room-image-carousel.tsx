@@ -2,6 +2,7 @@
 
 import { CloudinaryImage } from "@deskohub/cloudinary-image";
 import { motion, type Transition } from "motion/react";
+import Image, { type StaticImageData } from "next/image";
 import { useMemo, useState } from "react";
 import Lightbox, { type SlideImage } from "yet-another-react-lightbox";
 import "yet-another-react-lightbox/styles.css";
@@ -11,12 +12,47 @@ import {
   wrapIndex,
 } from "@/features/gallery/hooks/use-motion-swipe-carousel";
 import { CarouselPositionIndicator } from "@/shared/components/carousel-position-indicator";
+import { cn } from "@/shared/utils";
 
-type TtrpgRoomImageCarouselProps = {
+type RoomImageCarouselProps = {
   images: readonly CloudinaryAsset[];
   emptyText: string;
   openLabel: string;
+  fallbackImages?: readonly RoomImageCarouselFallbackImage[];
+  fallbackImage?: StaticImageData;
+  fallbackImageAlt?: string;
+  className?: string;
+  stageClassName?: string;
+  imageSizes?: string;
 };
+
+export type RoomImageCarouselFallbackImage = {
+  alt: string;
+  caption?: string;
+  src: StaticImageData;
+};
+
+type RoomImageCarouselImage =
+  | {
+      alt: string;
+      caption?: string;
+      height: number;
+      id: string;
+      kind: "cloudinary";
+      source: CloudinaryAsset;
+      src: string;
+      width: number;
+    }
+  | {
+      alt: string;
+      caption?: string;
+      height: number;
+      id: string;
+      kind: "static";
+      source: StaticImageData;
+      src: string;
+      width: number;
+    };
 
 const slideOffsets = [-1, 0, 1] as const;
 
@@ -36,17 +72,53 @@ const getSlideMotion = (offset: number) => ({
   zIndex: Math.abs(offset) < 0.5 ? 2 : 1,
 });
 
-const getAssetLabel = (asset: CloudinaryAsset) =>
-  asset.context?.custom?.caption?.trim() ||
-  asset.context?.custom?.alt?.trim() ||
-  asset.public_id;
+const getImageLabel = (image: RoomImageCarouselImage) =>
+  image.caption?.trim() || image.alt.trim() || image.id;
 
-export function TtrpgRoomImageCarousel({
+export function RoomImageCarousel({
   images,
   emptyText,
   openLabel,
-}: TtrpgRoomImageCarouselProps) {
+  fallbackImages,
+  fallbackImage,
+  fallbackImageAlt,
+  className,
+  stageClassName,
+  imageSizes = "(min-width: 768px) 42vw, 100vw",
+}: RoomImageCarouselProps) {
   const [lightboxIndex, setLightboxIndex] = useState(-1);
+  const normalizedFallbackImages =
+    fallbackImages ??
+    (fallbackImage
+      ? [
+          {
+            alt: fallbackImageAlt ?? "",
+            src: fallbackImage,
+          },
+        ]
+      : []);
+  const carouselImages: readonly RoomImageCarouselImage[] =
+    images.length > 0
+      ? images.map((image) => ({
+          alt: image.context?.custom?.alt || image.public_id,
+          caption: image.context?.custom?.caption,
+          height: image.height,
+          id: image.public_id,
+          kind: "cloudinary",
+          source: image,
+          src: image.secure_url,
+          width: image.width,
+        }))
+      : normalizedFallbackImages.map((image) => ({
+          alt: image.alt,
+          caption: image.caption,
+          height: image.src.height,
+          id: image.src.src,
+          kind: "static",
+          source: image.src,
+          src: image.src.src,
+          width: image.src.width,
+        }));
   const {
     activeIndex,
     dragControls,
@@ -65,10 +137,9 @@ export function TtrpgRoomImageCarousel({
     virtualIndex: currentVirtualIndex,
     visibleVirtualIndex,
   } = useMotionSwipeCarousel({
-    count: images.length,
+    count: carouselImages.length,
     getSwipeDistance: (stageWidth) => stageWidth,
   });
-  const activeImage = images[activeIndex];
   const activeTransition = shouldReduceMotion
     ? instantTransition
     : isSwiping
@@ -79,31 +150,36 @@ export function TtrpgRoomImageCarousel({
     : undefined;
   const slides: SlideImage[] = useMemo(
     () =>
-      images.map((image) => ({
-        alt: image.context?.custom?.alt || image.public_id,
-        description: image.context?.custom?.caption,
+      carouselImages.map((image) => ({
+        alt: image.alt,
+        description: image.caption,
         height: image.height,
-        src: image.secure_url,
-        title: image.context?.custom?.caption,
+        src: image.src,
+        title: image.caption,
         width: image.width,
       })),
-    [images]
+    [carouselImages]
   );
 
-  if (!activeImage) {
+  if (carouselImages.length === 0) {
     return (
-      <div className="mb-7 grid aspect-[4/3] place-items-center rounded-[1.25rem] border border-dashed border-navy-blue/24 bg-white/36 px-6 text-center text-sm text-navy-blue/62">
+      <div
+        className={cn(
+          "mb-7 grid aspect-[4/3] place-items-center rounded-[1.25rem] border border-dashed border-navy-blue/24 bg-white/36 px-6 text-center text-sm text-navy-blue/62",
+          className
+        )}
+      >
         {emptyText}
       </div>
     );
   }
 
-  const visibleSlides = (images.length === 1 ? [0] : slideOffsets).map(
+  const visibleSlides = (carouselImages.length === 1 ? [0] : slideOffsets).map(
     (offset) => {
       const virtualIndex = currentVirtualIndex + offset;
 
       return {
-        image: images[wrapIndex(virtualIndex, images.length)]!,
+        image: carouselImages[wrapIndex(virtualIndex, carouselImages.length)]!,
         isCurrent: offset === 0,
         offset: virtualIndex - visibleVirtualIndex,
         virtualIndex,
@@ -114,7 +190,7 @@ export function TtrpgRoomImageCarousel({
   return (
     <section
       aria-label={openLabel}
-      className="mb-7 space-y-3"
+      className={cn("mb-7 space-y-3", className)}
       onBlur={(event) => {
         const nextTarget = event.relatedTarget;
 
@@ -130,7 +206,10 @@ export function TtrpgRoomImageCarousel({
       onPointerLeave={() => setIsPointerOver(false)}
     >
       <motion.div
-        className="relative aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-[1.25rem] bg-navy-blue"
+        className={cn(
+          "relative aspect-[4/3] w-full touch-pan-y overflow-hidden rounded-[1.25rem] bg-navy-blue",
+          stageClassName
+        )}
         onClickCapture={(event) => {
           if (!shouldSuppressClickAfterSwipe()) return;
 
@@ -153,7 +232,7 @@ export function TtrpgRoomImageCarousel({
           style={{ touchAction: "pan-y", x: dragX }}
         />
         {visibleSlides.map(({ image, isCurrent, offset, virtualIndex }) => {
-          const logicalIndex = wrapIndex(virtualIndex, images.length);
+          const logicalIndex = wrapIndex(virtualIndex, carouselImages.length);
 
           return (
             <motion.button
@@ -174,18 +253,30 @@ export function TtrpgRoomImageCarousel({
               transition={activeTransition}
               type="button"
             >
-              <CloudinaryImage
-                source={image}
-                className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
-                draggable={false}
-                preload={logicalIndex === activeIndex}
-                size={{ width: "fill", height: "fill" }}
-                sizes="(min-width: 768px) 42vw, 100vw"
-                variant="gallery"
-              />
-              {image.context?.custom?.caption && (
-                <span className="absolute inset-x-0 bottom-0 bg-linear-to-t from-navy-blue/78 to-transparent px-4 pb-3 pt-12 text-sm font-medium text-white">
-                  {image.context.custom.caption}
+              {image.kind === "cloudinary" ? (
+                <CloudinaryImage
+                  source={image.source}
+                  className="absolute inset-0 transition duration-300 group-hover:scale-[1.025]"
+                  draggable={false}
+                  preload={logicalIndex === activeIndex}
+                  size={{ width: "fill", height: "fill" }}
+                  sizes={imageSizes}
+                  variant="gallery"
+                />
+              ) : (
+                <Image
+                  alt={image.alt}
+                  className="object-cover transition duration-300 group-hover:scale-[1.025]"
+                  draggable={false}
+                  fill
+                  priority={logicalIndex === activeIndex}
+                  sizes={imageSizes}
+                  src={image.source}
+                />
+              )}
+              {image.caption && (
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 bg-linear-to-t from-navy-blue/78 to-transparent px-4 pb-3 pt-12 text-sm font-medium text-white">
+                  {image.caption}
                 </span>
               )}
             </motion.button>
@@ -196,9 +287,9 @@ export function TtrpgRoomImageCarousel({
       <div className="flex min-h-10 items-center justify-center">
         <CarouselPositionIndicator
           activeIndex={activeIndex}
-          count={images.length}
-          getKey={(dotIndex) => images[dotIndex]?.public_id ?? dotIndex}
-          getLabel={(dotIndex) => getAssetLabel(images[dotIndex]!)}
+          count={carouselImages.length}
+          getKey={(dotIndex) => carouselImages[dotIndex]?.id ?? dotIndex}
+          getLabel={(dotIndex) => getImageLabel(carouselImages[dotIndex]!)}
           onSelect={moveToIndex}
           variant="navy"
         />

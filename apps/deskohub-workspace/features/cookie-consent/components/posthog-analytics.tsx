@@ -1,7 +1,8 @@
 "use client";
 
+import { PostHogProvider } from "@posthog/react";
 import posthog, { type BeforeSendFn } from "posthog-js";
-import { useEffect } from "react";
+import { type ReactNode, useEffect } from "react";
 import { env } from "@/env";
 import {
   createPostHogSessionClearCookieStrings,
@@ -31,24 +32,29 @@ function sanitizePostHogEvent(
 
 type PostHogAnalyticsProps = {
   analyticsAccepted: boolean;
+  children: ReactNode;
   posthogEnvironment: string;
 };
 
 export function PostHogAnalytics({
   analyticsAccepted,
+  children,
   posthogEnvironment,
 }: PostHogAnalyticsProps) {
   const posthogProjectToken = env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN;
 
-  if (!posthogProjectToken) return null;
-
   return (
-    <PostHogClient
-      analyticsAccepted={analyticsAccepted}
-      posthogEnvironment={posthogEnvironment}
-      posthogHost={env.NEXT_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST}
-      posthogProjectToken={posthogProjectToken}
-    />
+    <PostHogProvider client={posthog}>
+      {posthogProjectToken && (
+        <PostHogClient
+          analyticsAccepted={analyticsAccepted}
+          posthogEnvironment={posthogEnvironment}
+          posthogHost={env.NEXT_PUBLIC_POSTHOG_HOST ?? DEFAULT_POSTHOG_HOST}
+          posthogProjectToken={posthogProjectToken}
+        />
+      )}
+      {children}
+    </PostHogProvider>
   );
 }
 
