@@ -259,9 +259,16 @@
   "reservationTierProfiDescription": "Reserved workstation with monitor setup and courtesy coffee included.",
   "reservationTierMeetingRoomTitle": "Meeting Room",
   "reservationTierMeetingRoomDescription": "Private room for calls, workshops, or focused group sessions.",
-  "reservationMeetingRoomDurationOneHour": "1 hour",
-  "reservationMeetingRoomDurationFourHours": "4 hours",
-  "reservationMeetingRoomDurationTwentyFourHours": "24 hours",
+  "reservationMeetingRoomDurationHours": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} hour",
+        "countPlural=other": "{count} hours"
+      }
+    }
+  ],
   "reservationTierProfiBulletDesk": "Own workstation with monitor setup",
   "reservationTierPerkAllBasic": "all perks from Basic",
   "reservationTierPerkAllCowork": "all perks from Cowork Plus",

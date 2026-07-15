@@ -8,6 +8,7 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductMonitorOptionTableTags,
 } from "./product-catalog";
+import { getWorkspaceMeetingRoomDurationTitle } from "./product-catalog.i18n";
 
 describe("workspace product catalog", () => {
   test("exposes static tier-card prices explicitly", () => {
@@ -39,6 +40,24 @@ describe("workspace product catalog", () => {
       exponent: 2,
       currency: "CZK",
     });
+  });
+
+  test("pluralizes meeting room duration titles by locale", () => {
+    expect(getWorkspaceMeetingRoomDurationTitle(60, "en-US")).toBe(
+      "Meeting room - 1 hour"
+    );
+    expect(getWorkspaceMeetingRoomDurationTitle(240, "en-US")).toBe(
+      "Meeting room - 4 hours"
+    );
+    expect(getWorkspaceMeetingRoomDurationTitle(60, "cs-CZ")).toBe(
+      "Zasedací místnost - 1 hodina"
+    );
+    expect(getWorkspaceMeetingRoomDurationTitle(240, "cs-CZ")).toBe(
+      "Zasedací místnost - 4 hodiny"
+    );
+    expect(getWorkspaceMeetingRoomDurationTitle(1440, "cs-CZ")).toBe(
+      "Zasedací místnost - 24 hodin"
+    );
   });
 
   test("uses the shared coffee line price contract", () => {

@@ -1,7 +1,6 @@
 import {
   Data,
   Effect,
-  Match,
   Option,
   Schema,
   SchemaGetter,
@@ -93,13 +92,7 @@ export const isSingleDayReservationInterval = (
 
 const getMeetingRoomDurationMessage = (
   duration: WorkspaceMeetingRoomDurationMinutes
-) =>
-  Match.value(duration).pipe(
-    Match.when(60, () => m.reservationMeetingRoomDurationOneHour()),
-    Match.when(240, () => m.reservationMeetingRoomDurationFourHours()),
-    Match.when(1440, () => m.reservationMeetingRoomDurationTwentyFourHours()),
-    Match.exhaustive
-  );
+) => m.reservationMeetingRoomDurationHours({ count: duration / 60 });
 
 export const getMeetingRoomDurationValidationMessage = () =>
   m.reservationValidationMeetingRoomDuration({
@@ -178,8 +171,6 @@ export const normalizeReservationInterval = Effect.fn(
     )
   );
 });
-
-export const getReservationDurationMinutes = getDurationMinutes;
 
 export const getReservationDate = ({
   interval,

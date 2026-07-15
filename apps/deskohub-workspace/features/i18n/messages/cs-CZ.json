@@ -259,9 +259,17 @@
   "reservationTierProfiDescription": "Vyhrazená pracovní stanice s monitorovým setupem a kávou v ceně.",
   "reservationTierMeetingRoomTitle": "Zasedací místnost",
   "reservationTierMeetingRoomDescription": "Soukromá místnost pro hovory, workshopy nebo soustředěné skupinové setkání.",
-  "reservationMeetingRoomDurationOneHour": "1 hodina",
-  "reservationMeetingRoomDurationFourHours": "4 hodiny",
-  "reservationMeetingRoomDurationTwentyFourHours": "24 hodin",
+  "reservationMeetingRoomDurationHours": [
+    {
+      "declarations": ["input count", "local countPlural = count: plural"],
+      "selectors": ["countPlural"],
+      "match": {
+        "countPlural=one": "{count} hodina",
+        "countPlural=few": "{count} hodiny",
+        "countPlural=other": "{count} hodin"
+      }
+    }
+  ],
   "reservationTierProfiBulletDesk": "Vlastní pracovní stanice s monitorovým setupem",
   "reservationTierPerkAllBasic": "všechny výhody tarifu Basic",
   "reservationTierPerkAllCowork": "všechny výhody tarifu Cowork Plus",

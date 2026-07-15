@@ -3,12 +3,12 @@ import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import {
-  getReservationDurationMinutes,
   getReservationIntervalValidationIssue,
   isSingleDayReservationInterval,
   normalizeReservationInterval,
   reservationIntervalInputEffectSchema,
 } from "./reservation-interval";
+import { getDurationMinutes } from "./reservation-interval-normalization";
 
 const decodeInterval = Schema.decodeUnknownSync(
   reservationIntervalInputEffectSchema
@@ -68,7 +68,7 @@ describe("reservation intervals", () => {
       startsAt: "2099-06-10T13:00:00Z",
       endsAt: "2099-06-11T13:00:00Z",
     });
-    expect(getReservationDurationMinutes(interval)).toBe(24 * 60);
+    expect(getDurationMinutes(interval)).toBe(24 * 60);
   });
 
   test("accepts explicit instant intervals", () => {

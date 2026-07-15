@@ -120,28 +120,16 @@ export const getWorkspaceProductMonitorTitle = (
     locale
   );
 
-const workspaceMeetingRoomDurationMessages: Record<
-  WorkspaceMeetingRoomDurationMinutes,
-  WorkspaceProductMessage
-> = {
-  60: m.reservationMeetingRoomDurationOneHour,
-  240: m.reservationMeetingRoomDurationFourHours,
-  1440: m.reservationMeetingRoomDurationTwentyFourHours,
-};
-
 export const getWorkspaceMeetingRoomDurationTitle = (
   durationMinutes: WorkspaceMeetingRoomDurationMinutes,
   locale: Locale
-) => {
-  const durationMessage = workspaceMeetingRoomDurationMessages[durationMinutes];
-  if (!durationMessage) {
-    throw new Error(`Unknown meeting room duration: ${durationMinutes}`);
-  }
-
-  return m.checkoutSummaryItemMeetingRoom(
+) =>
+  m.checkoutSummaryItemMeetingRoom(
     {
-      duration: getWorkspaceProductMessage(durationMessage, locale),
+      duration: m.reservationMeetingRoomDurationHours(
+        { count: durationMinutes / 60 },
+        { locale }
+      ),
     },
     { locale }
   );
-};

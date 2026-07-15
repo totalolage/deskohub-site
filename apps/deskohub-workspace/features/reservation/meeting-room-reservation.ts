@@ -12,13 +12,13 @@ import {
 } from "@/features/reservation/reservation-contact";
 import {
   getMeetingRoomDurationValidationMessage,
-  getReservationDurationMinutes,
   getReservationIntervalNormalization,
   meetingRoomReservationDurationMinutesEffectSchema,
   reservationEndsAtEffectSchema,
   reservationStartsAtEffectSchema,
   wholeHourReservationInstantEffectSchema,
 } from "@/features/reservation/reservation-interval";
+import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import {
   instantStringEffectSchema,
   localDateTimeEffectSchema,
@@ -61,7 +61,7 @@ export const getMeetingRoomReservationIssues = Effect.fn(
 
   if (
     !Schema.is(meetingRoomReservationDurationMinutesEffectSchema)(
-      getReservationDurationMinutes(interval)
+      getDurationMinutes(interval)
     )
   ) {
     return [
