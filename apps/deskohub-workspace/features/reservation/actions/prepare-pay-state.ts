@@ -58,6 +58,10 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
+import {
+  BotDetectedError,
+  BotProtectionService,
+} from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -340,6 +344,9 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
   "prepareWorkspacePayState"
 )(
   function* (input) {
+    const botProtection = yield* BotProtectionService;
+    yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
+
     const reservationIntentKey = deriveReservationIntentKey({
       reservationIntentId: input.reservationIntentId,
       reservation: input.reservation,
@@ -732,7 +739,10 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       Effect.mapError(
         (error) =>
           new PublicSafeActionError({
-            message: m.reservationErrorMessage({}, { locale: input.locale }),
+            message:
+              error instanceof BotDetectedError
+                ? m.reservationRateLimitMessage({}, { locale: input.locale })
+                : m.reservationErrorMessage({}, { locale: input.locale }),
             cause: error,
           })
       )
@@ -758,6 +768,7 @@ const preparePayStateAction = createEffectSafeAction(
     ),
     WorkspaceCheckoutAccessCodeServiceLive,
     ReservationHoldCleanupScheduleService.Live,
+    BotProtectionService.Live,
     PostHogEventServiceLive,
     DotyposServiceLive
   )

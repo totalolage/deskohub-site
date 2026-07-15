@@ -5,7 +5,15 @@ import { initBotId } from "botid/client/core";
 initBotId({
   protect: [
     {
-      path: "/*",
+      path: "/*/contact",
+      method: "POST",
+    },
+    {
+      path: "/*/checkout/order",
+      method: "POST",
+    },
+    {
+      path: "/*/checkout/pay",
       method: "POST",
     },
   ],
