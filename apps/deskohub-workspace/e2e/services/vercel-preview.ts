@@ -66,7 +66,6 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
                 "vercel@latest",
                 "deploy",
                 "--yes",
-                "--force",
                 "--archive=tgz",
                 "--cwd",
                 paths.repoRoot,
