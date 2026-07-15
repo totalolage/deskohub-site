@@ -82,6 +82,7 @@ Effect.Do.pipe(
 - In this secondary worktree, `main` may already be checked out in the primary repository. After fetching, create the next feature branch directly from `origin/main` instead of trying to switch this worktree to `main`.
 - In named Effect operations, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 - Reuse the Workspace timezone and Temporal schemas/formatters from `shared/utils/site-constants.ts` and `shared/utils/temporal.ts`; do not redeclare them inside feature modules.
+- Do not add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes; these changes are too infrequent to justify maintaining a classifier. Rely on Vercel's automatic affected-project skipping.
 - Before fixing a bug raised by review, add a regression test against the current implementation and confirm that it fails. Do not change production code for hypothetical states that the application cannot produce.
 - When a planned PR stopping point is ready for user review, publish the PR as ready for review rather than leaving it in draft state.
 - For Dotypos resources, consult the official API documentation and send an authenticated `OPTIONS` request to the resource or item URL to verify its supported operations. Verify the live response shape, model the endpoint in the OpenAPI spec, and regenerate the client; do not add a parallel hand-written response decoder when the contract can be generated.
