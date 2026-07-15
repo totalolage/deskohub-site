@@ -1,13 +1,24 @@
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import { isWorkspaceMeetingRoomDuration } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import "@/shared/polyfills/temporal";
 import {
   type Instant,
   instantStringEffectSchema,
+  localDateTimeEffectSchema,
+  temporalInstantToPlainDate,
 } from "@/shared/utils/temporal";
 
-const decodeInstant = Schema.decodeUnknownSync(instantStringEffectSchema);
+const decodeInstant = Schema.decodeUnknownOption(instantStringEffectSchema);
+const decodeLocalDateTime = Schema.decodeUnknownOption(
+  localDateTimeEffectSchema
+);
+const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
+  (startDateTime: typeof localDateTimeEffectSchema.Type) =>
+    Temporal.PlainDateTime.from(startDateTime)
+      .toZonedDateTime(reservationTimeZone, { disambiguation: "reject" })
+      .toInstant()
+);
 
 export type MeetingRoomReservationInterval = {
   readonly date: string;
@@ -37,21 +48,27 @@ export const getMeetingRoomReservationInterval = (
 ): MeetingRoomReservationInterval | null => {
   if (!isWorkspaceMeetingRoomDuration(durationMinutes)) return null;
 
-  try {
-    const startPlainDateTime = Temporal.PlainDateTime.from(startDateTime);
-    const startInstant = startPlainDateTime
-      .toZonedDateTime(reservationTimeZone, { disambiguation: "reject" })
-      .toInstant();
-    const endInstant = startInstant.add({ minutes: durationMinutes });
+  return decodeLocalDateTime(startDateTime).pipe(
+    Option.flatMap(localDateTimeToMeetingRoomStartInstant),
+    Option.flatMap((startInstant) => {
+      const endInstant = startInstant.add({ minutes: durationMinutes });
 
-    return {
-      date: startPlainDateTime.toPlainDate().toString(),
-      startsAt: decodeInstant(startInstant.toString()),
-      endsAt: decodeInstant(endInstant.toString()),
-    };
-  } catch {
-    return null;
-  }
+      return Option.all({
+        startsAt: decodeInstant(startInstant.toString()),
+        endsAt: decodeInstant(endInstant.toString()),
+      }).pipe(
+        Option.map(({ startsAt, endsAt }) => ({
+          date: temporalInstantToPlainDate({
+            instant: startInstant,
+            timeZone: reservationTimeZone,
+          }).toString(),
+          startsAt,
+          endsAt,
+        }))
+      );
+    }),
+    Option.getOrNull
+  );
 };
 
 export const getMeetingRoomAvailabilityToDate = ({
