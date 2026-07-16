@@ -30,7 +30,11 @@ featureFlags.evaluateFlags("public-site", { flagKeys: ["seasonal_menu"] });
 void program;
 
 const service = makePostHogNodeFeatureFlagService(contract, {
-  host: "https://posthog.example",
+  clientOptions: {
+    flushAt: 1,
+    host: "https://posthog.example",
+  },
+  defaultEvaluationOptions: { disableGeoip: true },
   projectToken: "phc_test",
 });
 

@@ -78,8 +78,9 @@ export function MeetingRoomEntry() {
 ```
 
 Server code creates an app-configured service from the generated contract. The
-service constructs the official Node SDK lazily, evaluates the requested flags,
-and closes the SDK client after each Effect completes:
+service constructs one official Node SDK client lazily and reuses it for the
+service lifetime. Client and evaluation options use the types exported by
+`posthog-node`:
 
 ```ts
 import { makePostHogNodeFeatureFlagService } from "@deskohub/posthog/feature-flags/node";
@@ -88,7 +89,12 @@ import { postHogFeatureFlags } from "./generated/contract";
 export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
   postHogFeatureFlags,
   {
-    host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+    clientOptions: {
+      host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+    },
+    defaultEvaluationOptions: {
+      disableGeoip: true,
+    },
     projectToken: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
   }
 );
@@ -101,6 +107,9 @@ const enabled = yield* nodeFeatureFlags.isEnabled({
   },
 });
 ```
+
+Call `nodeFeatureFlags.shutdown()` when a long-lived process shuts down. Normal
+evaluations do not close the shared client.
 
 The subject should use the same distinct ID as the browser SDK. If an
 application must use a shared fallback identity for a global release switch, it

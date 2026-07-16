@@ -9,13 +9,22 @@ const evaluateFlags = mock((_distinctId: string, _options?: unknown) =>
     isEnabled: () => true,
   })
 );
+const getFeatureFlagResult = mock(
+  (_key: string, _distinctId: string, _options?: unknown) =>
+    Promise.resolve({
+      enabled: true,
+      key: "meeting_room_page",
+      payload: undefined,
+      variant: undefined,
+    })
+);
 const shutdown = mock(() => Promise.resolve());
 const createClient = mock((_projectToken: string, _options: unknown) => {});
 
 mock.module("posthog-node", () => ({
   PostHog: function PostHog(projectToken: string, options: unknown) {
     createClient(projectToken, options);
-    return { evaluateFlags, shutdown };
+    return { evaluateFlags, getFeatureFlagResult, shutdown };
   },
 }));
 
@@ -86,21 +95,24 @@ describe("createPostHogNodeFeatureFlags", () => {
 });
 
 describe("makePostHogNodeFeatureFlagService", () => {
-  test("constructs the SDK lazily and evaluates a typed flag for its subject", async () => {
+  test("constructs one SDK client lazily and reuses it for the service lifetime", async () => {
     const { makePostHogNodeFeatureFlagService } = await import("./node");
     createClient.mockClear();
     evaluateFlags.mockClear();
+    getFeatureFlagResult.mockClear();
     shutdown.mockClear();
     const featureFlags = makePostHogNodeFeatureFlagService(contract, {
-      disableGeoip: true,
-      featureFlagsRequestTimeoutMs: 2_000,
-      host: "https://posthog.example",
+      clientOptions: {
+        featureFlagsRequestTimeoutMs: 2_000,
+        host: "https://posthog.example",
+      },
+      defaultEvaluationOptions: { disableGeoip: true },
       projectToken: "phc_test",
     });
 
     expect(createClient).not.toHaveBeenCalled();
 
-    const enabled = await Effect.runPromise(
+    const firstEvaluation = await Effect.runPromise(
       featureFlags.isEnabled({
         key: "meeting_room_page",
         subject: {
@@ -109,21 +121,45 @@ describe("makePostHogNodeFeatureFlagService", () => {
         },
       })
     );
+    const secondEvaluation = await Effect.runPromise(
+      featureFlags.isEnabled({
+        key: "meeting_room_page",
+        subject: {
+          distinctId: "another-visitor-id",
+          sendFeatureFlagEvents: false,
+        },
+      })
+    );
 
-    expect(enabled).toBeTrue();
+    expect(firstEvaluation).toBeTrue();
+    expect(secondEvaluation).toBeTrue();
+    expect(createClient).toHaveBeenCalledTimes(1);
     expect(createClient).toHaveBeenCalledWith("phc_test", {
       featureFlagsRequestTimeoutMs: 2_000,
       host: "https://posthog.example",
     });
-    expect(evaluateFlags).toHaveBeenCalledWith("visitor-id", {
-      disableGeoip: true,
-      flagKeys: ["meeting_room_page"],
-      groupProperties: undefined,
-      groups: undefined,
-      onlyEvaluateLocally: undefined,
-      personProperties: undefined,
-      sendFeatureFlagEvents: true,
-    });
+    expect(getFeatureFlagResult).toHaveBeenNthCalledWith(
+      1,
+      "meeting_room_page",
+      "visitor-id",
+      {
+        disableGeoip: true,
+        sendFeatureFlagEvents: true,
+      }
+    );
+    expect(getFeatureFlagResult).toHaveBeenNthCalledWith(
+      2,
+      "meeting_room_page",
+      "another-visitor-id",
+      {
+        disableGeoip: true,
+        sendFeatureFlagEvents: false,
+      }
+    );
+    expect(shutdown).not.toHaveBeenCalled();
+
+    await Effect.runPromise(featureFlags.shutdown());
+
     expect(shutdown).toHaveBeenCalledTimes(1);
   });
 
@@ -134,7 +170,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     } = await import("./node");
     createClient.mockClear();
     const featureFlags = makePostHogNodeFeatureFlagService(contract, {
-      host: "https://posthog.example",
+      clientOptions: { host: "https://posthog.example" },
     });
 
     const error = await Effect.runPromise(
