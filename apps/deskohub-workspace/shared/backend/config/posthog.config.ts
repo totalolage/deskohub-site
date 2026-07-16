@@ -16,13 +16,13 @@ export class PostHogRuntimeConfig extends Context.Service<
   PostHogRuntimeConfigObj
 >()("@deskohub-workspace/analytics/PostHogRuntimeConfig") {}
 
-export const postHogRuntimeConfig = {
+export const postHogRuntimeConfig: PostHogRuntimeConfigObj = {
   environment: env.VERCEL_ENV,
   host: env.NEXT_PUBLIC_POSTHOG_HOST ?? defaultPostHogHost,
   projectToken: env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
   serviceName: env.POSTHOG_SERVICE_NAME,
   serviceNamespace: env.POSTHOG_SERVICE_NAMESPACE,
-} satisfies PostHogRuntimeConfigObj;
+};
 
 export const PostHogRuntimeConfigLive = Layer.succeed(
   PostHogRuntimeConfig,
