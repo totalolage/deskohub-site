@@ -1,9 +1,5 @@
-import { Context, type Effect } from "effect";
-import type { Discount, DiscountQuoteInput } from "./contracts";
-import type {
-  DiscountCodeUnavailableError,
-  DiscountProviderError,
-} from "./errors";
+import type { Discount, DiscountProductIdentity } from "./contracts";
+import type { DiscountCodeId, StoredDiscountId } from "./persistence-contracts";
 
 export type DiscountProvenance = {
   readonly providerNamespace: string;
@@ -13,8 +9,10 @@ export type DiscountProvenance = {
 
 export type DiscountClaimInstruction = {
   readonly kind: "discount_code";
-  readonly codeId: string;
+  readonly codeId: DiscountCodeId;
+  readonly storedDiscountId: StoredDiscountId;
   readonly dotyposCustomerId: string;
+  readonly product: DiscountProductIdentity;
 };
 
 export type DiscountCandidate = {
@@ -22,26 +20,3 @@ export type DiscountCandidate = {
   readonly provenance: DiscountProvenance;
   readonly claim?: DiscountClaimInstruction;
 };
-
-type DiscountProviderErrorType =
-  | DiscountCodeUnavailableError
-  | DiscountProviderError;
-
-type CodeDiscountProviderInput = Pick<
-  DiscountQuoteInput,
-  "discountableSubtotal" | "dotyposCustomerId" | "product" | "submittedCode"
->;
-
-interface ICodeDiscountProvider {
-  readonly quote: (
-    input: CodeDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderErrorType>;
-  readonly revalidate: (
-    input: CodeDiscountProviderInput
-  ) => Effect.Effect<readonly DiscountCandidate[], DiscountProviderErrorType>;
-}
-
-export class CodeDiscountProvider extends Context.Service<
-  CodeDiscountProvider,
-  ICodeDiscountProvider
->()("@deskohub-workspace/discounts/CodeDiscountProvider") {}

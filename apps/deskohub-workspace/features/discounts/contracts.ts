@@ -96,5 +96,5 @@ export type DiscountQuoteInput = {
   readonly reservationDate: string;
   readonly dotyposCustomerId: string;
   readonly locale: Locale;
-  readonly submittedCode?: string;
+  readonly submittedCode: string | undefined;
 };
