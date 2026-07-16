@@ -1,23 +1,42 @@
-import {
-  useFeatureFlagEnabled,
-  useFeatureFlagPayload,
-  useFeatureFlagResult,
-  useFeatureFlagVariantKey,
-} from "./react";
+import { definePostHogFeatureFlags } from "./contract";
+import { createPostHogReactFeatureFlags } from "./react";
+
+const workspaceContract = definePostHogFeatureFlags<{
+  readonly meeting_room_page: {
+    readonly payload: undefined;
+    readonly value: boolean;
+  };
+}>(["meeting_room_page"]);
+
+const barContract = definePostHogFeatureFlags<{
+  readonly seasonal_menu: {
+    readonly payload: { readonly menuId: number } | undefined;
+    readonly value: false | "control" | "summer";
+  };
+}>(["seasonal_menu"]);
+
+const workspaceFlags = createPostHogReactFeatureFlags(workspaceContract);
+const barFlags = createPostHogReactFeatureFlags(barContract);
 
 function FeatureFlagTypeTest() {
-  const enabled: boolean = useFeatureFlagEnabled("meeting_room_page", false);
+  const enabled: boolean = workspaceFlags.useFeatureFlagEnabled(
+    "meeting_room_page",
+    false
+  );
   const enabledBeforeLoad: boolean | undefined =
-    useFeatureFlagEnabled("meeting_room_page");
-  const value: boolean | undefined =
-    useFeatureFlagVariantKey("meeting_room_page");
-  const payload: undefined = useFeatureFlagPayload("meeting_room_page");
-  const result = useFeatureFlagResult("meeting_room_page");
+    workspaceFlags.useFeatureFlagEnabled("meeting_room_page");
+  const value: false | "control" | "summer" | undefined =
+    barFlags.useFeatureFlagVariantKey("seasonal_menu");
+  const payload: { readonly menuId: number } | undefined =
+    barFlags.useFeatureFlagPayload("seasonal_menu");
 
-  void [enabled, enabledBeforeLoad, payload, result, value];
+  void [enabled, enabledBeforeLoad, payload, value];
 
-  // @ts-expect-error The generated contract rejects unknown flag keys.
-  useFeatureFlagEnabled("unknown_flag");
+  // @ts-expect-error Workspace cannot consume a Bar feature flag.
+  workspaceFlags.useFeatureFlagEnabled("seasonal_menu");
+
+  // @ts-expect-error Bar cannot consume a Workspace feature flag.
+  barFlags.useFeatureFlagEnabled("meeting_room_page");
 
   return null;
 }

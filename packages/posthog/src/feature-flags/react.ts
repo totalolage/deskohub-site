@@ -8,63 +8,78 @@ import {
 } from "@posthog/react";
 import type { FeatureFlagResult } from "posthog-js";
 import type {
+  PostHogFeatureFlagContract,
+  PostHogFeatureFlagDefinitionContract,
   PostHogFeatureFlagKey,
   PostHogFeatureFlagPayload,
   PostHogFeatureFlagValue,
-} from "../generated/feature-flags";
+} from "./contract";
 
-export type TypedPostHogFeatureFlagResult<Key extends PostHogFeatureFlagKey> =
-  Omit<FeatureFlagResult, "key" | "payload" | "variant"> & {
-    readonly key: Key;
-    readonly payload: PostHogFeatureFlagPayload<Key>;
-    readonly variant: Extract<PostHogFeatureFlagValue<Key>, string> | undefined;
+type ValidDefinitions<Definitions> = {
+  readonly [Key in keyof Definitions]: PostHogFeatureFlagDefinitionContract;
+};
+
+export type TypedPostHogFeatureFlagResult<
+  Definitions,
+  Key extends PostHogFeatureFlagKey<Definitions>,
+> = Omit<FeatureFlagResult, "key" | "payload" | "variant"> & {
+  readonly key: Key;
+  readonly payload: PostHogFeatureFlagPayload<Definitions, Key>;
+  readonly variant:
+    | Extract<PostHogFeatureFlagValue<Definitions, Key>, string>
+    | undefined;
+};
+
+export const createPostHogReactFeatureFlags = <
+  const Definitions extends ValidDefinitions<Definitions>,
+>(
+  _contract: PostHogFeatureFlagContract<Definitions>
+) => {
+  function useFeatureFlagEnabled<
+    Key extends PostHogFeatureFlagKey<Definitions>,
+  >(flag: Key): boolean | undefined;
+  function useFeatureFlagEnabled<
+    Key extends PostHogFeatureFlagKey<Definitions>,
+  >(flag: Key, defaultValue: boolean): boolean;
+  function useFeatureFlagEnabled<
+    Key extends PostHogFeatureFlagKey<Definitions>,
+  >(flag: Key, defaultValue?: boolean) {
+    const useEnabled = usePostHogFeatureFlagEnabled as (
+      flagKey: string,
+      fallback?: boolean
+    ) => boolean | undefined;
+    return useEnabled(flag, defaultValue);
+  }
+
+  function useFeatureFlagResult<Key extends PostHogFeatureFlagKey<Definitions>>(
+    flag: Key
+  ) {
+    return usePostHogFeatureFlagResult(flag) as
+      | TypedPostHogFeatureFlagResult<Definitions, Key>
+      | undefined;
+  }
+
+  function useFeatureFlagVariantKey<
+    Key extends PostHogFeatureFlagKey<Definitions>,
+  >(flag: Key) {
+    return usePostHogFeatureFlagVariantKey(flag) as
+      | PostHogFeatureFlagValue<Definitions, Key>
+      | undefined;
+  }
+
+  function useFeatureFlagPayload<
+    Key extends PostHogFeatureFlagKey<Definitions>,
+  >(flag: Key) {
+    return usePostHogFeatureFlagPayload(flag) as PostHogFeatureFlagPayload<
+      Definitions,
+      Key
+    >;
+  }
+
+  return {
+    useFeatureFlagEnabled,
+    useFeatureFlagPayload,
+    useFeatureFlagResult,
+    useFeatureFlagVariantKey,
   };
-
-export function useFeatureFlagEnabled<Key extends PostHogFeatureFlagKey>(
-  flag: Key
-): boolean | undefined;
-export function useFeatureFlagEnabled<Key extends PostHogFeatureFlagKey>(
-  flag: Key,
-  defaultValue: boolean
-): boolean;
-export function useFeatureFlagEnabled<Key extends PostHogFeatureFlagKey>(
-  flag: Key,
-  defaultValue?: boolean
-) {
-  const useEnabled = usePostHogFeatureFlagEnabled as (
-    flagKey: string,
-    fallback?: boolean
-  ) => boolean | undefined;
-  return useEnabled(flag, defaultValue);
-}
-
-/**
- * Returns the typed value and payload from one PostHog evaluation snapshot.
- * PostHog sends the `$feature_flag_called` exposure event by default.
- */
-export function useFeatureFlagResult<Key extends PostHogFeatureFlagKey>(
-  flag: Key
-) {
-  return usePostHogFeatureFlagResult(flag) as
-    | TypedPostHogFeatureFlagResult<Key>
-    | undefined;
-}
-
-export function useFeatureFlagVariantKey<Key extends PostHogFeatureFlagKey>(
-  flag: Key
-) {
-  return usePostHogFeatureFlagVariantKey(flag) as
-    | PostHogFeatureFlagValue<Key>
-    | undefined;
-}
-
-/**
- * PostHog's payload-only hook does not send an exposure event. Pair it with
- * `useFeatureFlagEnabled`, `useFeatureFlagVariantKey`, or use
- * `useFeatureFlagResult` when the payload controls rendered behavior.
- */
-export function useFeatureFlagPayload<Key extends PostHogFeatureFlagKey>(
-  flag: Key
-) {
-  return usePostHogFeatureFlagPayload(flag) as PostHogFeatureFlagPayload<Key>;
-}
+};
