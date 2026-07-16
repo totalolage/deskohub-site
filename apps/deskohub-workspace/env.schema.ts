@@ -44,15 +44,15 @@ export const workspaceServerEnvSchema = Schema.Struct({
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
     Schema.optional(Schema.Literal("EUR"))
   ),
-  POSTHOG_FEATURE_FLAGS_API_KEY: toEnvSchema(
-    Schema.optional(Schema.NonEmptyString)
-  ),
+  POSTHOG_FEATURE_FLAGS_API_KEY: nonEmptyStringSchema,
   POSTHOG_HOST: toEnvSchema(
-    urlStringSchema.pipe(
-      Schema.withDecodingDefaultType(Effect.succeed("https://eu.posthog.com"))
+    Schema.URLFromString.pipe(
+      Schema.withDecodingDefaultType(
+        Effect.succeed(new URL("https://eu.posthog.com"))
+      )
     )
   ),
-  POSTHOG_PROJECT_ID: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
+  POSTHOG_PROJECT_ID: nonEmptyStringSchema,
   POSTHOG_SERVICE_NAME: toEnvSchema(
     Schema.NonEmptyString.pipe(
       Schema.withDecodingDefaultType(Effect.succeed("deskohub-workspace"))
