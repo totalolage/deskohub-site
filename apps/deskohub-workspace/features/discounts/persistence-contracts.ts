@@ -1,5 +1,6 @@
 import { Schema } from "effect";
-import { discountIdSchema, discountProductIdentityCodec } from "./contracts";
+import { workspaceCoworkProductKeySchema } from "@/features/checkout/product-identity";
+import { discountIdSchema } from "./contracts";
 
 export {
   type CanonicalDiscountCode,
@@ -22,11 +23,7 @@ export type StoredDiscountId = Schema.Schema.Type<
   typeof storedDiscountIdSchema
 >;
 
-export const discountProductKeySchema = Schema.TemplateLiteral([
-  discountProductIdentityCodec.fields.kind,
-  ":",
-  discountProductIdentityCodec.fields.tier,
-])
+export const discountProductKeySchema = workspaceCoworkProductKeySchema
   .pipe(Schema.brand("DiscountProductKey"))
   .annotate({
     identifier: "DiscountProductKey",

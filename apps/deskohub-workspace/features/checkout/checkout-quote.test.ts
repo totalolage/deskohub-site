@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
@@ -64,7 +66,7 @@ describe("workspace checkout quotes", () => {
       "total",
     ]);
     expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
-      "product:basic",
+      "product:cowork:basic",
     ]);
     expect(quote).not.toHaveProperty("schema");
     expect(quote.summary).not.toHaveProperty("schema");
@@ -78,7 +80,8 @@ describe("workspace checkout quotes", () => {
 
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:basic",
+        key: "product:cowork:basic",
+        product: { kind: "cowork", tier: "basic" },
         amount: { value: 35_000, exponent: 2, currency: "CZK" },
       },
       {
@@ -98,7 +101,8 @@ describe("workspace checkout quotes", () => {
     expect(quote.order.coffee).toBe(true);
     expect(quote.summary.sections[0]?.items).toEqual([
       {
-        key: "product:plus",
+        key: "product:cowork:plus",
+        product: { kind: "cowork", tier: "plus" },
         amount: { value: 49_000, exponent: 2, currency: "CZK" },
       },
       {
@@ -138,16 +142,31 @@ describe("workspace checkout quotes", () => {
       }
     );
 
-    expect(quote.summary.sections[1]).toEqual({
-      key: "discount",
+    expect(quote.summary.sections.map((section) => section.key)).toEqual([
+      "order",
+      "total",
+    ]);
+    expect(quote.summary.sections[0]).toEqual({
+      key: "order",
       items: [
         {
-          key: "discount:calendar-sale",
-          label: "Summer sale",
-          amount: { value: -17_500, exponent: 2, currency: "CZK" },
+          key: "product:cowork:basic",
+          product: { kind: "cowork", tier: "basic" },
+          amount: { value: 17_500, exponent: 2, currency: "CZK" },
+          originalAmount: { value: 35_000, exponent: 2, currency: "CZK" },
+          discounts: [
+            {
+              discount: application.discount,
+              amount: application.amount,
+            },
+          ],
+        },
+        {
+          key: "addon:coffee",
+          amount: { value: 5000, exponent: 2, currency: "CZK" },
         },
       ],
-      total: { value: -17_500, exponent: 2, currency: "CZK" },
+      total: { value: 22_500, exponent: 2, currency: "CZK" },
     });
     expect(quote.payment.expectedPrice.value).toBe(22_500);
     expect(quote.payment.undiscountedPrice.value).toBe(40_000);
@@ -333,8 +352,17 @@ describe("workspace checkout quotes", () => {
       sections: quote.summary.sections.map((section) => ({
         ...section,
         items: section.items.map((item) =>
-          item.key === "discount:calendar-sale"
-            ? { ...item, label: "Renamed sale" }
+          "discounts" in item && item.discounts
+            ? {
+                ...item,
+                discounts: item.discounts.map((summaryDiscount) => ({
+                  ...summaryDiscount,
+                  discount: {
+                    ...summaryDiscount.discount,
+                    label: "Renamed sale",
+                  },
+                })) as typeof item.discounts,
+              }
             : item
         ),
       })),
@@ -344,7 +372,7 @@ describe("workspace checkout quotes", () => {
       getCheckoutSummaryChangedKeys(quote.summary, renamedSummary)
     ).toEqual({
       sectionKeys: [],
-      itemKeys: ["discount/discount:calendar-sale"],
+      itemKeys: ["order/product:cowork:basic"],
     });
   });
 
@@ -380,7 +408,7 @@ describe("workspace checkout quotes", () => {
 
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedCurrency).itemKeys
-    ).toContain("order/product:basic");
+    ).toContain("order/product:cowork:basic");
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedExponent).sectionKeys
     ).toContain("total");

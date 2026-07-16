@@ -4,10 +4,16 @@ import {
   getWorkspaceProductCoffeeLinePriceForTier,
 } from "@/features/checkout/product-catalog";
 import {
+  getWorkspaceProductKey,
+  workspaceCoworkProductIdentitySchema,
+  workspaceProductIdentitySchema,
+  workspaceProductKeySchema,
+} from "@/features/checkout/product-identity";
+import {
   addWorkspaceMoney,
   nonNegativeWorkspaceMoneyCodec,
+  positiveWorkspaceMoneyCodec,
   withWorkspaceMoneyCurrency,
-  workspaceMoneyCodec,
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
@@ -31,42 +37,97 @@ export type WorkspaceCheckoutOrderInput =
   typeof coworkReservationProductSchema.Encoded;
 export type WorkspaceCheckoutOrder = typeof workspaceCheckoutOrderSchema.Type;
 
-const checkoutSummaryItemBaseSchema = Schema.Struct({
-  key: Schema.NonEmptyString,
-  amount: workspaceMoneyCodec,
+export type CheckoutSummaryDiscount = Pick<
+  AppliedDiscount,
+  "discount" | "amount"
+>;
+
+export const checkoutSummaryDiscountSchema: Schema.Codec<
+  CheckoutSummaryDiscount,
+  Pick<typeof appliedDiscountCodec.Encoded, "discount" | "amount">
+> = Schema.Struct({
+  discount: appliedDiscountCodec.fields.discount,
+  amount: appliedDiscountCodec.fields.amount,
 });
 
-export const checkoutSummaryItemSchema = Schema.Struct({
-  ...checkoutSummaryItemBaseSchema.fields,
-  label: Schema.optional(Schema.NonEmptyString),
-});
+const checkoutSummaryProductItemKeySchema = Schema.TemplateLiteral([
+  "product:",
+  workspaceProductKeySchema,
+]);
 
-const nonNegativeCheckoutSummaryItemSchema = Schema.Struct({
-  ...checkoutSummaryItemSchema.fields,
+const checkoutSummaryProductItemBaseSchema = Schema.Struct({
+  key: checkoutSummaryProductItemKeySchema,
+  product: workspaceProductIdentitySchema,
   amount: nonNegativeWorkspaceMoneyCodec,
 });
 
+export const checkoutSummaryProductItemSchema = Schema.Struct({
+  ...checkoutSummaryProductItemBaseSchema.fields,
+  originalAmount: Schema.optionalKey(Schema.Never),
+  discounts: Schema.optionalKey(Schema.Never),
+}).check(
+  Schema.makeFilter(
+    ({ key, product }) =>
+      key === `product:${getWorkspaceProductKey(product)}` || {
+        path: ["key"],
+        issue: "product summary key must match the product identity",
+      }
+  )
+);
+
+export const checkoutSummaryDiscountedProductItemSchema = Schema.Struct({
+  ...checkoutSummaryProductItemBaseSchema.fields,
+  originalAmount: positiveWorkspaceMoneyCodec,
+  discounts: Schema.NonEmptyArray(checkoutSummaryDiscountSchema),
+}).check(
+  Schema.makeFilter(
+    ({ key, product }) =>
+      key === `product:${getWorkspaceProductKey(product)}` || {
+        path: ["key"],
+        issue: "product summary key must match the product identity",
+      }
+  )
+);
+
+export const checkoutSummaryAddOnItemSchema = Schema.Struct({
+  key: Schema.Union([
+    Schema.Literal("addon:coffee"),
+    Schema.TemplateLiteral(["monitor:", Schema.String]),
+  ]),
+  amount: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummaryOrderItemSchema = Schema.Union([
+  checkoutSummaryDiscountedProductItemSchema,
+  checkoutSummaryProductItemSchema,
+  checkoutSummaryAddOnItemSchema,
+]);
+
+export const checkoutSummaryTotalItemSchema = Schema.Struct({
+  key: Schema.Literal("total:final"),
+  amount: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummaryItemSchema = Schema.Union([
+  checkoutSummaryOrderItemSchema,
+  checkoutSummaryTotalItemSchema,
+]);
+
+export const checkoutSummaryOrderSectionSchema = Schema.Struct({
+  key: Schema.Literal("order"),
+  items: Schema.Array(checkoutSummaryOrderItemSchema),
+  total: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummaryTotalSectionSchema = Schema.Struct({
+  key: Schema.Literal("total"),
+  items: Schema.Array(checkoutSummaryTotalItemSchema),
+  total: nonNegativeWorkspaceMoneyCodec,
+});
+
 export const checkoutSummarySectionSchema = Schema.Union([
-  Schema.Struct({
-    key: Schema.Literal("order"),
-    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
-    total: nonNegativeWorkspaceMoneyCodec,
-  }),
-  Schema.Struct({
-    key: Schema.Literal("discount"),
-    items: Schema.Array(
-      Schema.Struct({
-        ...checkoutSummaryItemBaseSchema.fields,
-        label: Schema.NonEmptyString,
-      })
-    ),
-    total: workspaceMoneyCodec,
-  }),
-  Schema.Struct({
-    key: Schema.Literal("total"),
-    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
-    total: nonNegativeWorkspaceMoneyCodec,
-  }),
+  checkoutSummaryOrderSectionSchema,
+  checkoutSummaryTotalSectionSchema,
 ]);
 
 export const checkoutSummarySchema = Schema.Struct({
@@ -97,6 +158,8 @@ export const checkoutSummaryChangedKeysSchema = Schema.Struct({
 });
 
 export type CheckoutSummaryItem = typeof checkoutSummaryItemSchema.Type;
+export type CheckoutSummaryOrderItem =
+  typeof checkoutSummaryOrderItemSchema.Type;
 export type CheckoutSummarySection = typeof checkoutSummarySectionSchema.Type;
 export type CheckoutSummary = typeof checkoutSummarySchema.Type;
 export type WorkspaceCheckoutQuote = typeof workspaceCheckoutQuoteSchema.Type;
@@ -124,8 +187,12 @@ export const normalizeWorkspaceCheckoutOrder = Effect.fn(
 
 const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
-  label: item.label ?? null,
-  amount: item.amount.value,
+  amount: item.amount,
+  ...("product" in item && { product: item.product }),
+  ...("originalAmount" in item && {
+    originalAmount: item.originalAmount,
+    discounts: item.discounts,
+  }),
 });
 
 const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
@@ -209,11 +276,13 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     getWorkspaceProductCoffeeLinePriceForTier(normalizedOrder.entryTier),
     options.currencyOverride
   );
-  const productItem: CheckoutSummaryItem = {
-    key: `product:${normalizedOrder.entryTier}`,
-    amount: productPrice,
-  };
-  const addOnItems: CheckoutSummaryItem[] = [];
+  const productIdentity = workspaceCoworkProductIdentitySchema.make({
+    kind: "cowork",
+    tier: normalizedOrder.entryTier,
+  });
+  const productItemKey =
+    `product:${getWorkspaceProductKey(productIdentity)}` as const;
+  const addOnItems: CheckoutSummaryOrderItem[] = [];
 
   if (normalizedOrder.coffee) {
     addOnItems.push({
@@ -229,60 +298,60 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     });
   }
 
-  const orderItems = [productItem, ...addOnItems];
-  const orderTotal = yield* addWorkspaceMoney(
-    orderItems.map((item) => item.amount)
-  );
+  const orderTotal = yield* addWorkspaceMoney([
+    productPrice,
+    ...addOnItems.map((item) => item.amount),
+  ]);
   const discountQuote = options.discountQuote;
-
   const discounts = discountQuote?.discounts ?? [];
   const discountedProductPrice =
     discountQuote?.discountedSubtotal ?? productPrice;
+  const summaryDiscounts = discounts.map(({ amount, discount }) =>
+    checkoutSummaryDiscountSchema.make({ discount, amount })
+  );
+  const productItem =
+    summaryDiscounts.length > 0
+      ? checkoutSummaryDiscountedProductItemSchema.make({
+          key: productItemKey,
+          product: productIdentity,
+          amount: discountedProductPrice,
+          originalAmount: productPrice,
+          discounts: [summaryDiscounts[0]!, ...summaryDiscounts.slice(1)],
+        })
+      : checkoutSummaryProductItemSchema.make({
+          key: productItemKey,
+          product: productIdentity,
+          amount: productPrice,
+        });
+  const orderItems: CheckoutSummaryOrderItem[] = [productItem, ...addOnItems];
   const expectedPrice = yield* addWorkspaceMoney([
     discountedProductPrice,
     ...addOnItems.map(({ amount }) => amount),
   ]);
-  const orderSection: CheckoutSummarySection = {
+  const orderSection = checkoutSummaryOrderSectionSchema.make({
     key: "order",
     items: orderItems,
-    total: orderTotal,
-  };
-  const sections: CheckoutSummarySection[] = [orderSection];
-
-  if (discounts.length > 0) {
-    const discountItems = discounts.map((application) => ({
-      key: `discount:${application.discount.id}`,
-      label: application.discount.label,
-      amount: workspaceMoneyWithValue(
-        -application.amount.value,
-        application.amount
-      ),
-    }));
-    const discountTotal = yield* addWorkspaceMoney(
-      discountItems.map(({ amount }) => amount)
-    );
-    sections.push({
-      key: "discount",
-      items: discountItems,
-      total: discountTotal,
-    });
-  }
-
-  sections.push({
-    key: "total",
-    items: [
-      {
-        key: "total:final",
-        amount: expectedPrice,
-      },
-    ],
     total: expectedPrice,
   });
+  const sections: CheckoutSummarySection[] = [orderSection];
 
-  const summary: CheckoutSummary = {
+  sections.push(
+    checkoutSummaryTotalSectionSchema.make({
+      key: "total",
+      items: [
+        {
+          key: "total:final",
+          amount: expectedPrice,
+        },
+      ],
+      total: expectedPrice,
+    })
+  );
+
+  const summary = checkoutSummarySchema.make({
     sections,
     total: expectedPrice,
-  };
+  });
   const quoteWithoutFingerprint = {
     order: normalizedOrder,
     summary,
@@ -308,6 +377,13 @@ const getSummaryItemMap = (summary: CheckoutSummary) =>
     )
   );
 
+const hasCheckoutSummaryItemChanged = (
+  previousItem: CheckoutSummaryItem | undefined,
+  nextItem: CheckoutSummaryItem | undefined
+) =>
+  JSON.stringify(previousItem && getCanonicalSummaryItem(previousItem)) !==
+  JSON.stringify(nextItem && getCanonicalSummaryItem(nextItem));
+
 export const getCheckoutSummaryChangedKeys = (
   previous: CheckoutSummary,
   next: CheckoutSummary
@@ -331,10 +407,7 @@ export const getCheckoutSummaryChangedKeys = (
     .filter((key) => {
       const previousItem = previousItems.get(key);
       const nextItem = nextItems.get(key);
-      return (
-        previousItem?.label !== nextItem?.label ||
-        !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount)
-      );
+      return hasCheckoutSummaryItemChanged(previousItem, nextItem);
     })
     .sort();
 

@@ -4,6 +4,7 @@ import type {
   DiscountProductTarget,
   StoredDiscount,
 } from "@/db/schema";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { locales } from "@/features/i18n";
 import type { DiscountAdjustment, DiscountProductIdentity } from "./contracts";
 import {
@@ -73,7 +74,7 @@ const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
   }).check(
     Schema.makeFilter(
       ({ productIdentity, productKey }) =>
-        productKey === `cowork:${productIdentity.tier}` || {
+        productKey === getWorkspaceProductKey(productIdentity) || {
           path: ["productKey"],
           issue: "product key must match the product identity",
         }

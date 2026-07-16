@@ -1,9 +1,9 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Option, Schema } from "effect";
 import {
-  type WorkspaceProductTier,
-  workspaceProductTiers,
-} from "@/features/checkout/product-catalog";
+  type WorkspaceCoworkProductIdentity,
+  workspaceCoworkProductIdentitySchema,
+} from "@/features/checkout/product-identity";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   nonNegativeWorkspaceMoneyCodec,
@@ -12,10 +12,7 @@ import {
 import type { Locale } from "@/features/i18n";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
-export type DiscountProductIdentity = {
-  readonly kind: "cowork";
-  readonly tier: WorkspaceProductTier;
-};
+export type DiscountProductIdentity = WorkspaceCoworkProductIdentity;
 
 export const discountIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("DiscountId")
@@ -47,10 +44,8 @@ export const discountBasisPointsSchema = Schema.Int.check(
   description: "An exact percentage discount measured in basis points.",
 });
 
-export const discountProductIdentityCodec = Schema.Struct({
-  kind: Schema.Literal("cowork"),
-  tier: Schema.Literals(workspaceProductTiers),
-});
+export const discountProductIdentityCodec =
+  workspaceCoworkProductIdentitySchema;
 
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
