@@ -3,6 +3,7 @@ import {
   PostHogFeatureFlagError,
 } from "@deskohub/posthog/feature-flags/codegen";
 import { Effect, Schema } from "effect";
+import { env } from "@/env";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
 const PostHogFeatureFlagGenerationEnv = Schema.Struct({
@@ -14,9 +15,9 @@ const PostHogFeatureFlagGenerationEnv = Schema.Struct({
 const loadPostHogFeatureFlagGenerationEnv = Schema.decodeUnknownEffect(
   PostHogFeatureFlagGenerationEnv
 )({
-  POSTHOG_FEATURE_FLAGS_API_KEY: process.env.POSTHOG_FEATURE_FLAGS_API_KEY,
-  POSTHOG_HOST: process.env.POSTHOG_HOST ?? "https://eu.posthog.com",
-  POSTHOG_PROJECT_ID: process.env.POSTHOG_PROJECT_ID,
+  POSTHOG_FEATURE_FLAGS_API_KEY: env.POSTHOG_FEATURE_FLAGS_API_KEY,
+  POSTHOG_HOST: env.POSTHOG_HOST,
+  POSTHOG_PROJECT_ID: env.POSTHOG_PROJECT_ID,
 }).pipe(
   Effect.mapError(
     (cause) =>
@@ -29,16 +30,16 @@ const loadPostHogFeatureFlagGenerationEnv = Schema.decodeUnknownEffect(
 );
 
 const program = Effect.Do.pipe(
-  Effect.bind("env", () => loadPostHogFeatureFlagGenerationEnv),
-  Effect.bind("result", ({ env }) =>
+  Effect.bind("generationEnv", () => loadPostHogFeatureFlagGenerationEnv),
+  Effect.bind("result", ({ generationEnv }) =>
     generatePostHogFeatureFlagContract({
-      apiKey: env.POSTHOG_FEATURE_FLAGS_API_KEY,
-      host: env.POSTHOG_HOST,
+      apiKey: generationEnv.POSTHOG_FEATURE_FLAGS_API_KEY,
+      host: generationEnv.POSTHOG_HOST,
       outputFile: new URL(
         "../features/feature-flags/generated/contract.ts",
         import.meta.url
       ),
-      projectId: env.POSTHOG_PROJECT_ID,
+      projectId: generationEnv.POSTHOG_PROJECT_ID,
     })
   ),
   Effect.tap(({ result }) =>
