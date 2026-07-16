@@ -22,7 +22,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - Before trusting generated copy or changing assertions based on message text, run `bun turbo i18n:compile --filter=deskohub-workspace` from the repository root. Paraglide output can be stale relative to `features/i18n/messages/*.json`.
 - Treat email-provider secrets that exist only in Vercel as intentionally unavailable to local E2E. Validate delivery through Vercel runtime or webhook evidence, and validate email body content with the fake transport renderer.
 - For an automated run, let the checked-in runner deploy the fresh preview, assign and verify `new.workspace.deskohub.cz`, open cases on its selected preview URL, and use the alias as the callback origin. For a manual current-code webhook run, deploy a fresh preview from the current working tree, assign the alias to it, and run the checkout through the alias. Use the already-live alias without redeploying only when the user explicitly requests that target.
-- Keep `--force --archive=tgz` on the manual Vercel deploy. Stale Vercel build and file caches have produced TypeScript errors from older source.
+- Keep `--archive=tgz` on the manual Vercel deploy, but do not add `--force` to the documented manual command. Let the automated runner own its separate deploy flags. The archive upload avoids stale Vercel file-cache behavior.
 - Stop if the alias cannot be verified against the fresh deployment; do not silently run against its previous target.
 
 Before inspecting production or provider logs, read `../deskohub-workspace-operations/references/diagnostics.md` and apply its redaction and summarization rules.

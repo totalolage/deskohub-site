@@ -106,7 +106,7 @@ For E2E that validates current code, deploy a fresh preview from the current che
 git status --short
 vercel env pull .env.local --cwd apps/deskohub-workspace
 bun --cwd apps/deskohub-workspace run db:migrate
-vercel --cwd apps/deskohub-workspace --yes --force --archive=tgz
+vercel --cwd apps/deskohub-workspace --yes --archive=tgz
 vercel alias set <preview-url> new.workspace.deskohub.cz --cwd apps/deskohub-workspace
 ```
 
