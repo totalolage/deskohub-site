@@ -1,7 +1,7 @@
 import { Match, Schema } from "effect";
 import {
   type CoworkReservationProductInput,
-  coworkReservationOrderEffectSchema,
+  coworkReservationOrderSchema,
   getCoworkReservationProductCoffee,
   getCoworkReservationProductMonitorOption,
 } from "@/features/reservation/cowork-reservation";
@@ -9,16 +9,16 @@ import {
   getMeetingRoomReservationProductCoffee,
   getMeetingRoomReservationProductMonitorOption,
   type MeetingRoomReservationProductInput,
-  meetingRoomReservationOrderEffectSchema,
+  meetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
 
-export const reservationOrderEffectSchema = Schema.Union([
-  coworkReservationOrderEffectSchema,
-  meetingRoomReservationOrderEffectSchema,
+export const reservationOrderSchema = Schema.Union([
+  coworkReservationOrderSchema,
+  meetingRoomReservationOrderSchema,
 ]);
 
-export type ReservationOrderInput = typeof reservationOrderEffectSchema.Encoded;
-export type ReservationOrderData = typeof reservationOrderEffectSchema.Type;
+export type ReservationOrderInput = typeof reservationOrderSchema.Encoded;
+export type ReservationOrderData = typeof reservationOrderSchema.Type;
 
 export type ReservationProductProjectionInput =
   | CoworkReservationProductInput

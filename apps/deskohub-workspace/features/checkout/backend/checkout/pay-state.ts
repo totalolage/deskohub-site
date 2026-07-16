@@ -2,8 +2,8 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import {
   Data,
   Effect,
-  Schema as EffectSchema,
   Option,
+  Schema,
   SchemaGetter,
   SchemaIssue,
 } from "effect";
@@ -442,23 +442,21 @@ const openPayStateRaw = (
   return state.data;
 };
 
-const SignedPayStateEffectSchema: EffectSchema.Codec<
-  SignedPayState,
-  SignedPayState
-> = EffectSchema.declare(
-  (input: unknown): input is SignedPayState =>
-    signedPayStateSchema.safeParse(input).success,
-  {
-    identifier: "SignedPayState",
-    description: "Workspace checkout Pay state payload.",
-  }
-);
+const signedPayStateCodec: Schema.Codec<SignedPayState, SignedPayState> =
+  Schema.declare(
+    (input: unknown): input is SignedPayState =>
+      signedPayStateSchema.safeParse(input).success,
+    {
+      identifier: "SignedPayState",
+      description: "Workspace checkout Pay state payload.",
+    }
+  );
 
 export const makePayStateTokenSchema = (
   options: PayStateCryptoOptions = {}
-): EffectSchema.Codec<SignedPayState, string> =>
-  EffectSchema.String.pipe(
-    EffectSchema.decodeTo(SignedPayStateEffectSchema, {
+): Schema.Codec<SignedPayState, string> =>
+  Schema.String.pipe(
+    Schema.decodeTo(signedPayStateCodec, {
       decode: SchemaGetter.transformOrFail((token: string) =>
         Effect.try({
           try: () => openPayStateRaw(token, options),
@@ -493,13 +491,12 @@ export const makePayStateTokenSchema = (
 export const sealPayState = (
   state: SignedPayState,
   options: PayStateCryptoOptions = {}
-) => EffectSchema.encodeSync(makePayStateTokenSchema(options))(state);
+) => Schema.encodeSync(makePayStateTokenSchema(options))(state);
 
 export const openPayState = (
   token: string,
   options: PayStateCryptoOptions = {}
-): SignedPayState =>
-  EffectSchema.decodeSync(makePayStateTokenSchema(options))(token);
+): SignedPayState => Schema.decodeSync(makePayStateTokenSchema(options))(token);
 
 export const sealPayStateForUrl = (
   state: SignedPayState,

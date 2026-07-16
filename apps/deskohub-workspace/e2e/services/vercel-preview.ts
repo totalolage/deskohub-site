@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import { effectifySync, type WorkspaceE2EError } from "../errors";
+import { tryWorkspaceE2ESync, type WorkspaceE2EError } from "../errors";
 import { extractDeploymentUrl } from "../runtime";
 import {
   assertWebhookEndpoint,
@@ -78,7 +78,7 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
               ],
               { timeoutMs: configService.getVercelDeployTimeoutMs() }
             );
-            const previewUrl = yield* effectifySync(
+            const previewUrl = yield* tryWorkspaceE2ESync(
               "extract Vercel deployment URL",
               () => extractDeploymentUrl(deploy.stdout)
             );

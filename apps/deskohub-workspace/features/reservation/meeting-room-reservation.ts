@@ -9,47 +9,48 @@ import {
 import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
-import { reservationLegalConsentEffectSchema } from "@/features/reservation/reservation-consent";
+import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
 import {
-  normalizedReservationCustomerEffectSchema,
-  reservationCustomerEffectSchema,
+  normalizedReservationCustomerSchema,
+  reservationCustomerSchema,
 } from "@/features/reservation/reservation-contact";
 import {
   getMeetingRoomDurationValidationMessage,
   getReservationIntervalNormalization,
-  meetingRoomReservationDurationMinutesEffectSchema,
-  reservationTimestampInputEffectSchema,
-  wholeHourReservationInstantEffectSchema,
+  meetingRoomReservationDurationMinutesSchema,
+  reservationTimestampInputSchema,
+  wholeHourReservationInstantSchema,
 } from "@/features/reservation/reservation-interval";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import {
-  instantStringEffectSchema,
-  localDateTimeEffectSchema,
+  instantStringSchema,
+  localDateTimeSchema,
 } from "@/shared/utils/temporal";
 
-const meetingRoomReservationOrderBaseEffectSchema = Schema.Struct({
-  ...reservationCustomerEffectSchema.fields,
-  startsAt: reservationTimestampInputEffectSchema,
-  endsAt: reservationTimestampInputEffectSchema,
+const meetingRoomReservationOrderBaseSchema = Schema.Struct({
+  ...reservationCustomerSchema.fields,
+  startsAt: reservationTimestampInputSchema,
+  endsAt: reservationTimestampInputSchema,
 });
 
-export const meetingRoomReservationOrderObjectEffectSchema =
-  Schema.TaggedStruct(
-    "meeting-room",
-    meetingRoomReservationOrderBaseEffectSchema.fields
-  );
+export const meetingRoomReservationOrderInputSchema = Schema.TaggedStruct(
+  "meeting-room",
+  meetingRoomReservationOrderBaseSchema.fields
+);
 
-export const normalizedMeetingRoomReservationOrderEffectSchema =
-  Schema.TaggedStruct("meeting-room", {
-    ...normalizedReservationCustomerEffectSchema.fields,
-    startsAt: instantStringEffectSchema,
-    endsAt: instantStringEffectSchema,
-  });
+export const normalizedMeetingRoomReservationOrderSchema = Schema.TaggedStruct(
+  "meeting-room",
+  {
+    ...normalizedReservationCustomerSchema.fields,
+    startsAt: instantStringSchema,
+    endsAt: instantStringSchema,
+  }
+);
 
-export type MeetingRoomReservationOrderObject =
-  typeof meetingRoomReservationOrderObjectEffectSchema.Type;
+export type MeetingRoomReservationOrderInput =
+  typeof meetingRoomReservationOrderInputSchema.Type;
 export type NormalizedMeetingRoomReservationOrder =
-  typeof normalizedMeetingRoomReservationOrderEffectSchema.Type;
+  typeof normalizedMeetingRoomReservationOrderSchema.Type;
 
 export type MeetingRoomReservationProductInput = Data.TaggedEnum<{
   "meeting-room": Record<never, never>;
@@ -65,9 +66,9 @@ export const getMeetingRoomReservationProductMonitorOption = (
 
 export const getMeetingRoomReservationIssues = Effect.fn(
   "getMeetingRoomReservationIssues"
-)(function* (reservation: MeetingRoomReservationOrderObject) {
+)(function* (reservation: MeetingRoomReservationOrderInput) {
   const interval = yield* getReservationIntervalNormalization(reservation);
-  if (!Schema.is(wholeHourReservationInstantEffectSchema)(interval.startsAt)) {
+  if (!Schema.is(wholeHourReservationInstantSchema)(interval.startsAt)) {
     return [
       {
         path: ["startsAt"],
@@ -77,7 +78,7 @@ export const getMeetingRoomReservationIssues = Effect.fn(
   }
 
   if (
-    !Schema.is(meetingRoomReservationDurationMinutesEffectSchema)(
+    !Schema.is(meetingRoomReservationDurationMinutesSchema)(
       getDurationMinutes(interval)
     )
   ) {
@@ -107,7 +108,7 @@ export const getMeetingRoomReservationIssues = Effect.fn(
 });
 
 const toMeetingRoomReservationSchemaIssue = (
-  input: MeetingRoomReservationOrderObject,
+  input: MeetingRoomReservationOrderInput,
   path: readonly PropertyKey[],
   message: string
 ) =>
@@ -118,7 +119,7 @@ const toMeetingRoomReservationSchemaIssue = (
 
 const validateMeetingRoomReservationOrder = Effect.fn(
   "validateMeetingRoomReservationOrder"
-)(function* (reservation: MeetingRoomReservationOrderObject) {
+)(function* (reservation: MeetingRoomReservationOrderInput) {
   const issues = yield* getMeetingRoomReservationIssues(reservation).pipe(
     Effect.mapError((error) =>
       toMeetingRoomReservationSchemaIssue(
@@ -138,11 +139,11 @@ const validateMeetingRoomReservationOrder = Effect.fn(
 });
 
 export const normalizeMeetingRoomReservationOrder = (
-  reservation: MeetingRoomReservationOrderObject
+  reservation: MeetingRoomReservationOrderInput
 ) =>
   getReservationIntervalNormalization(reservation).pipe(
     Effect.map((interval) =>
-      normalizedMeetingRoomReservationOrderEffectSchema.make({
+      normalizedMeetingRoomReservationOrderSchema.make({
         name: reservation.name,
         email: reservation.email,
         phone: reservation.phone,
@@ -156,7 +157,7 @@ export const normalizeMeetingRoomReservationOrder = (
 
 const decodeMeetingRoomReservationOrder = Effect.fn(
   "decodeMeetingRoomReservationOrder"
-)(function* (reservation: MeetingRoomReservationOrderObject) {
+)(function* (reservation: MeetingRoomReservationOrderInput) {
   yield* validateMeetingRoomReservationOrder(reservation);
   return yield* normalizeMeetingRoomReservationOrder(reservation).pipe(
     Effect.mapError((error) =>
@@ -169,19 +170,19 @@ const decodeMeetingRoomReservationOrder = Effect.fn(
   );
 });
 
-const decodeMeetingRoomReservationOrderObject = Schema.decodeUnknownSync(
-  meetingRoomReservationOrderObjectEffectSchema
+const decodeMeetingRoomReservationOrderInput = Schema.decodeUnknownSync(
+  meetingRoomReservationOrderInputSchema
 );
 
-export const meetingRoomReservationOrderEffectSchema =
-  meetingRoomReservationOrderObjectEffectSchema.pipe(
-    Schema.decodeTo(normalizedMeetingRoomReservationOrderEffectSchema, {
+export const meetingRoomReservationOrderSchema =
+  meetingRoomReservationOrderInputSchema.pipe(
+    Schema.decodeTo(normalizedMeetingRoomReservationOrderSchema, {
       decode: SchemaGetter.transformOrFail(decodeMeetingRoomReservationOrder),
-      encode: SchemaGetter.transform(decodeMeetingRoomReservationOrderObject),
+      encode: SchemaGetter.transform(decodeMeetingRoomReservationOrderInput),
     })
   );
 
-const meetingRoomStartDateTimeEffectSchema = Schema.String.check(
+const meetingRoomStartDateTimeSchema = Schema.String.check(
   Schema.isNonEmpty({
     message: m.reservationValidationMeetingRoomStartRequired(),
   }),
@@ -189,20 +190,20 @@ const meetingRoomStartDateTimeEffectSchema = Schema.String.check(
     message: m.reservationValidationMeetingRoomStartWholeHour(),
   }),
   Schema.makeFilter(
-    (value) => value === "" || Schema.is(localDateTimeEffectSchema)(value),
+    (value) => value === "" || Schema.is(localDateTimeSchema)(value),
     { message: m.reservationValidationMeetingRoomStartRequired() }
   )
 );
 
-const meetingRoomReservationBaseEffectSchema = Schema.Struct({
-  ...reservationCustomerEffectSchema.fields,
-  startDateTime: meetingRoomStartDateTimeEffectSchema,
+const meetingRoomReservationBaseSchema = Schema.Struct({
+  ...reservationCustomerSchema.fields,
+  startDateTime: meetingRoomStartDateTimeSchema,
   durationMinutes: Schema.Literals(workspaceMeetingRoomDurationOptions),
-  legalConsent: reservationLegalConsentEffectSchema,
+  legalConsent: reservationLegalConsentSchema,
 });
 
-export const meetingRoomReservationEffectSchema =
-  meetingRoomReservationBaseEffectSchema.check(
+export const meetingRoomReservationSchema =
+  meetingRoomReservationBaseSchema.check(
     Schema.makeFilter((reservation) => {
       const interval = getMeetingRoomReservationInterval(
         reservation.startDateTime,
@@ -223,6 +224,6 @@ export const meetingRoomReservationEffectSchema =
   );
 
 export type MeetingRoomReservationInput =
-  typeof meetingRoomReservationEffectSchema.Encoded;
+  typeof meetingRoomReservationSchema.Encoded;
 export type MeetingRoomReservationData =
-  typeof meetingRoomReservationEffectSchema.Type;
+  typeof meetingRoomReservationSchema.Type;

@@ -82,9 +82,7 @@ const runReusableReservationScenario = async (input: {
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
 }) => {
-  const { prepareWorkspacePayStateEffect } = await import(
-    "./prepare-pay-state"
-  );
+  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
     "@/features/checkout/backend/reservation"
   );
@@ -114,7 +112,7 @@ const runReusableReservationScenario = async (input: {
     input.claimHoldCreation ?? mock(() => Effect.die("unused"));
   const findById = input.findById ?? mock(() => Effect.die("unused"));
 
-  const result = await prepareWorkspacePayStateEffect({
+  const result = await prepareWorkspacePayState({
     locale: "en-US",
     reservationIntentId: "intent-id",
     reservation,
@@ -178,11 +176,9 @@ const runReusableReservationScenario = async (input: {
   };
 };
 
-describe("prepareWorkspacePayStateEffect", () => {
+describe("prepareWorkspacePayState", () => {
   test("creates a held reservation and returns an openable pay state", async () => {
-    const { prepareWorkspacePayStateEffect } = await import(
-      "./prepare-pay-state"
-    );
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
@@ -254,7 +250,7 @@ describe("prepareWorkspacePayStateEffect", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const assignTableId = mock(() => Effect.succeed("table-id"));
-    const result = await prepareWorkspacePayStateEffect({
+    const result = await prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       reservation,
@@ -405,9 +401,7 @@ describe("prepareWorkspacePayStateEffect", () => {
   });
 
   test("rejects a classified bot before resolving downstream services", async () => {
-    const { prepareWorkspacePayStateEffect } = await import(
-      "./prepare-pay-state"
-    );
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { BotDetectedError } = await import(
       "@/shared/backend/bot-protection/bot-protection.service"
     );
@@ -420,7 +414,7 @@ describe("prepareWorkspacePayStateEffect", () => {
         new BotDetectedError({ message: "Automated request detected" })
       )
     );
-    const effect = prepareWorkspacePayStateEffect({
+    const effect = prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       reservation,

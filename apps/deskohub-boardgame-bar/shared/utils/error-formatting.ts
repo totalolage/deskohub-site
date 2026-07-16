@@ -31,7 +31,7 @@ function isErrorWithTag(error: unknown): error is ErrorWithTag {
 /**
  * Format Effect errors into a consistent structure
  */
-export function formatEffectError(error: unknown): {
+export function formatError(error: unknown): {
   code: string;
   message: string;
   details?: unknown;

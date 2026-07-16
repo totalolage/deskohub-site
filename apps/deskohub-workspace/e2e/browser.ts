@@ -4,12 +4,12 @@ import { resolve } from "node:path";
 import { Effect } from "effect";
 import { browserDiagnosticsScript, browserTextScript } from "./browser-scripts";
 import type { WorkspaceE2EConfig } from "./config";
-import { pollEffect } from "./effects";
 import {
-  effectifyPromise,
   toWorkspaceE2EError,
+  tryWorkspaceE2EPromise,
   type WorkspaceE2EError,
 } from "./errors";
+import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
 
@@ -20,7 +20,7 @@ const runBrowserCommand = (
   args: string[],
   options?: Parameters<Runner>[2]
 ) =>
-  effectifyPromise(operation, () =>
+  tryWorkspaceE2EPromise(operation, () =>
     run("agent-browser", ["--session", session, ...args], options)
   );
 
@@ -136,7 +136,7 @@ export const waitForInteractiveSnapshot = ({
   session: string;
   timeoutMs: number;
 }) =>
-  pollEffect(
+  pollUntil(
     readInteractiveSnapshot(run, session, true).pipe(
       Effect.map((snapshot) => (matches(snapshot) ? snapshot : undefined))
     ),
@@ -169,7 +169,7 @@ export const waitForBrowserText = ({
   session: string;
   timeoutMs: number;
 }) =>
-  pollEffect(
+  pollUntil(
     readBrowserText(run, session, true).pipe(
       Effect.map((text) => (matches(text) ? text : undefined))
     ),
@@ -228,7 +228,7 @@ export const captureBrowserFailureArtifacts = ({
   Effect.gen(function* () {
     let harStopped = false;
 
-    yield* effectifyPromise("create browser artifact directory", () =>
+    yield* tryWorkspaceE2EPromise("create browser artifact directory", () =>
       mkdir(artifactDir, { recursive: true })
     );
     yield* writeTextArtifact(
@@ -268,8 +268,9 @@ export const captureBrowserFailureArtifacts = ({
       harStopped = yield* stopBrowserHar(run, session, rawHarPath);
       yield* Effect.gen(function* () {
         if (!harStopped) return;
-        const har = yield* effectifyPromise("read browser HAR artifact", () =>
-          readFile(rawHarPath, "utf8")
+        const har = yield* tryWorkspaceE2EPromise(
+          "read browser HAR artifact",
+          () => readFile(rawHarPath, "utf8")
         );
         yield* writeTextArtifact(
           artifactDir,
@@ -278,7 +279,7 @@ export const captureBrowserFailureArtifacts = ({
         );
       }).pipe(
         Effect.ensuring(
-          effectifyPromise("remove raw browser HAR artifact", () =>
+          tryWorkspaceE2EPromise("remove raw browser HAR artifact", () =>
             rm(rawHarPath, { force: true })
           ).pipe(Effect.ignore)
         )
@@ -318,12 +319,14 @@ const writeCommandArtifact = (
   args: string[]
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const result = yield* effectifyPromise(`write ${fileName} artifact`, () =>
-      run("agent-browser", args, {
-        allowFailure: true,
-        logOutput: false,
-        timeoutMs: 60_000,
-      })
+    const result = yield* tryWorkspaceE2EPromise(
+      `write ${fileName} artifact`,
+      () =>
+        run("agent-browser", args, {
+          allowFailure: true,
+          logOutput: false,
+          timeoutMs: 60_000,
+        })
     );
     const text = [
       `exitCode: ${result.exitCode}`,
@@ -341,7 +344,7 @@ const writeTextArtifact = (
   fileName: string,
   text: string
 ): Effect.Effect<void, WorkspaceE2EError> =>
-  effectifyPromise(`write ${fileName} artifact`, () =>
+  tryWorkspaceE2EPromise(`write ${fileName} artifact`, () =>
     writeFile(
       resolve(artifactDir, fileName),
       `${sanitizeArtifactText(text.trim())}\n`
@@ -546,7 +549,7 @@ export const requireSnapshotRef = ({
   session: string;
   timeoutMs?: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
-  pollEffect(
+  pollUntil(
     readInteractiveSnapshot(run, session).pipe(
       Effect.map((snapshot) => findSnapshotRef(snapshot, labels))
     ),
@@ -580,7 +583,7 @@ export const requireEnabledSnapshotRef = ({
   session: string;
   timeoutMs?: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
-  pollEffect(
+  pollUntil(
     readInteractiveSnapshot(run, session).pipe(
       Effect.map((snapshot) => findEnabledSnapshotRef(snapshot, labels))
     ),
@@ -618,7 +621,7 @@ export const waitForBrowserUrl = ({
   session: string;
   timeoutMs: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
-  pollEffect(
+  pollUntil(
     readBrowserUrl(run, session).pipe(
       Effect.map((url) => (url && matches(url) ? url : undefined))
     ),

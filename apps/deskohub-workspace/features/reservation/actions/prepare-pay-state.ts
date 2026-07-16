@@ -20,7 +20,7 @@ import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
-  buildAuthoritativeWorkspaceCheckoutQuoteEffect,
+  buildAuthoritativeWorkspaceCheckoutQuote,
   buildCheckoutPayPath,
   buildSignedPayState,
   payStateDefaultTtlMilliseconds,
@@ -340,9 +340,7 @@ const waitForPendingHoldCreation = Effect.fn(
   );
 });
 
-export const prepareWorkspacePayStateEffect = Effect.fn(
-  "prepareWorkspacePayState"
-)(
+export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input) {
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
@@ -441,7 +439,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
       };
     }
 
-    const quote = yield* buildAuthoritativeWorkspaceCheckoutQuoteEffect(
+    const quote = yield* buildAuthoritativeWorkspaceCheckoutQuote(
       input.reservation
     );
     yield* Effect.annotateLogsScoped({ quote });
@@ -751,7 +749,7 @@ export const prepareWorkspacePayStateEffect = Effect.fn(
 
 const preparePayStateAction = createEffectSafeAction(
   getPreparePayStateSchema(),
-  prepareWorkspacePayStateEffect,
+  prepareWorkspacePayState,
   Layer.mergeAll(
     Layer.mergeAll(
       WorkspaceReservationRepositoryLive,

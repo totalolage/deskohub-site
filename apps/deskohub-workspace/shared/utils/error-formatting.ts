@@ -1,4 +1,4 @@
-export function formatEffectError(error: unknown): {
+export function formatError(error: unknown): {
   code: string;
   message: string;
   details?: unknown;

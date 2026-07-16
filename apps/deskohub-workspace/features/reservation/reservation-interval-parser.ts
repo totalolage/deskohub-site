@@ -1,19 +1,19 @@
 import { Effect, Match, Schema, SchemaGetter } from "effect";
 import {
   type Instant,
-  instantStringEffectSchema,
+  instantStringSchema,
   type LocalDateTime,
-  localDateTimeEffectSchema,
+  localDateTimeSchema,
 } from "@/shared/utils/temporal";
 import {
   type ReservationInterval,
   ReservationIntervalValidationError,
 } from "./reservation-interval-domain";
 
-const localDateTimeTimestampEffectSchema = localDateTimeEffectSchema.pipe(
+const localDateTimeTimestampSchema = localDateTimeSchema.pipe(
   Schema.decodeTo(
     Schema.TaggedStruct("LocalDateTime", {
-      value: localDateTimeEffectSchema,
+      value: localDateTimeSchema,
     }),
     {
       decode: SchemaGetter.transform((value) => ({
@@ -25,10 +25,10 @@ const localDateTimeTimestampEffectSchema = localDateTimeEffectSchema.pipe(
   )
 );
 
-const instantTimestampEffectSchema = instantStringEffectSchema.pipe(
+const instantTimestampSchema = instantStringSchema.pipe(
   Schema.decodeTo(
     Schema.TaggedStruct("Instant", {
-      value: instantStringEffectSchema,
+      value: instantStringSchema,
     }),
     {
       decode: SchemaGetter.transform((value) => ({
@@ -40,13 +40,13 @@ const instantTimestampEffectSchema = instantStringEffectSchema.pipe(
   )
 );
 
-const reservationTimestampEffectSchema = Schema.Union([
-  localDateTimeTimestampEffectSchema,
-  instantTimestampEffectSchema,
+const reservationTimestampSchema = Schema.Union([
+  localDateTimeTimestampSchema,
+  instantTimestampSchema,
 ]);
 
 const decodeReservationTimestamp = Schema.decodeUnknownEffect(
-  reservationTimestampEffectSchema
+  reservationTimestampSchema
 );
 
 export const toPlainDateTime = (value: Instant, timeZone: string) =>
@@ -103,7 +103,7 @@ const normalizeInstantString = (
   normalize: () => string
 ) =>
   Effect.fromResult(
-    Schema.decodeUnknownResult(instantStringEffectSchema)(normalize())
+    Schema.decodeUnknownResult(instantStringSchema)(normalize())
   ).pipe(Effect.mapError((cause) => toValidationError(path, cause)));
 
 const toValidationError = (path: keyof ReservationInterval, cause: unknown) =>

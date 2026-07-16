@@ -14,7 +14,7 @@ import { type Locale, m } from "@/features/i18n";
 import {
   type DiscountProductIdentity,
   type DiscountQuoteInput,
-  discountBasisPointsEffectSchema,
+  discountBasisPointsSchema,
 } from "./contracts";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
@@ -172,7 +172,7 @@ const dotyposDiscountBasisPointsSchema = Schema.String.check(
     )
   )
   .pipe(
-    Schema.decodeTo(discountBasisPointsEffectSchema, {
+    Schema.decodeTo(discountBasisPointsSchema, {
       decode: SchemaGetter.transform((percentage) =>
         Number(
           BigDecimal.scale(

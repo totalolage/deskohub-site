@@ -1,7 +1,7 @@
 import type { GoogleCalendarEvent } from "@deskohub/google-calendar";
 import { Data, Effect, Option, Schema } from "effect";
 import {
-  plainDateStringEffectSchema,
+  plainDateStringSchema,
   temporalInstantToIsoString,
   workspaceSiteConstants,
 } from "@/shared/utils";
@@ -28,8 +28,8 @@ const calendarSaleOccurrenceReferenceSchema = Schema.NonEmptyString.pipe(
 const calendarSaleEventMetadataSchema = Schema.Struct({
   eventReference: calendarEventReferenceSchema,
   title: Schema.Trim.check(Schema.isNonEmpty()),
-  startDate: plainDateStringEffectSchema,
-  endDate: plainDateStringEffectSchema,
+  startDate: plainDateStringSchema,
+  endDate: plainDateStringSchema,
   isAllDay: Schema.Literal(true),
 }).check(
   Schema.makeFilter(
@@ -181,7 +181,7 @@ const getCalendarSaleOccurrence = (input: {
   readonly event: GoogleCalendarEvent;
   readonly metadata: {
     readonly eventReference: CalendarEventReference;
-    readonly startDate: Schema.Schema.Type<typeof plainDateStringEffectSchema>;
+    readonly startDate: Schema.Schema.Type<typeof plainDateStringSchema>;
   };
 }) => {
   if (!input.event.recurringEventId) {
@@ -198,7 +198,7 @@ const getCalendarSaleOccurrence = (input: {
     });
   }
 
-  return Schema.decodeUnknownEffect(plainDateStringEffectSchema)(
+  return Schema.decodeUnknownEffect(plainDateStringSchema)(
     input.event.originalStartTime?.date
   ).pipe(
     Effect.map((occurrenceDate) => ({

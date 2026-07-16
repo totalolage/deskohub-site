@@ -19,9 +19,7 @@ const runSubmitReservation = async (options?: {
   const { CheckoutService } = await import(
     "@/features/checkout/backend/checkout"
   );
-  const { submitWorkspaceReservationEffect } = await import(
-    "./submit-reservation"
-  );
+  const { submitWorkspaceReservation } = await import("./submit-reservation");
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
@@ -36,7 +34,7 @@ const runSubmitReservation = async (options?: {
       })
     );
 
-  const effect = submitWorkspaceReservationEffect(input, {
+  const effect = submitWorkspaceReservation(input, {
     locale: "en-US",
   }).pipe(
     Effect.provide(BotProtectionServiceMock({ verifyHuman })),
@@ -54,7 +52,7 @@ const runSubmitReservation = async (options?: {
   };
 };
 
-describe("submitWorkspaceReservationEffect", () => {
+describe("submitWorkspaceReservation", () => {
   test("verifies with the allow policy before creating checkout", async () => {
     const eventOrder: string[] = [];
     const verifyHuman = mock(() =>

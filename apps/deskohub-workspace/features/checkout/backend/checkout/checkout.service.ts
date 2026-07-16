@@ -5,7 +5,7 @@ import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import {
-  buildWorkspaceCheckoutQuoteEffect,
+  calculateWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
@@ -591,7 +591,7 @@ export const CheckoutServiceLive = Layer.effect(
           const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
             data
           ).pipe(Effect.provideService(DotyposService, dotypos));
-          const quote = yield* buildWorkspaceCheckoutQuoteEffect(data, {
+          const quote = yield* calculateWorkspaceCheckoutQuote(data, {
             customerDiscount,
             currencyOverride: getNexiCheckoutCurrencyOverride(),
           });

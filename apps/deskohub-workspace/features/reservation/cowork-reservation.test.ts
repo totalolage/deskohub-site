@@ -1,15 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Result } from "effect";
 import "@/shared/polyfills/temporal";
-import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
-  coworkReservationEffectSchema,
+  coworkReservationSchema as coworkReservationDefinition,
   getCoworkReservationIntervalInput,
 } from "./cowork-reservation";
 
-const coworkReservationSchema = makeEffectSchemaParser(
-  coworkReservationEffectSchema
-);
+const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
 
 describe("cowork reservation schema", () => {
   test("owns the cowork full-day interval policy", () => {

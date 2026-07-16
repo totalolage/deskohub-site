@@ -5,7 +5,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import { positiveWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
+import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 
 export type DiscountProductIdentity = {
@@ -22,14 +22,14 @@ export const discountIdSchema = Schema.NonEmptyString.pipe(
 
 export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
 
-export const discountBasisPointsEffectSchema = Schema.Int.check(
+export const discountBasisPointsSchema = Schema.Int.check(
   Schema.isBetween({ minimum: 1, maximum: 10_000 })
 ).annotate({
   identifier: "DiscountBasisPoints",
   description: "An exact percentage discount measured in basis points.",
 });
 
-export const discountProductIdentityEffectSchema = Schema.Struct({
+export const discountProductIdentityCodec = Schema.Struct({
   kind: Schema.Literal("cowork"),
   tier: Schema.Literals(workspaceProductTiers),
 });
@@ -37,7 +37,7 @@ export const discountProductIdentityEffectSchema = Schema.Struct({
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
   DiscountProductIdentity
-> = Schema.toStandardSchemaV1(discountProductIdentityEffectSchema, {
+> = Schema.toStandardSchemaV1(discountProductIdentityCodec, {
   parseOptions: {
     onExcessProperty: "error",
   },
@@ -53,14 +53,14 @@ export type DiscountAdjustment =
       readonly amount: WorkspaceMoney;
     };
 
-export const discountAdjustmentEffectSchema = Schema.Union([
+export const discountAdjustmentSchema = Schema.Union([
   Schema.Struct({
     kind: Schema.Literal("percentage"),
-    basisPoints: discountBasisPointsEffectSchema,
+    basisPoints: discountBasisPointsSchema,
   }),
   Schema.Struct({
     kind: Schema.Literal("fixed"),
-    amount: positiveWorkspaceMoneyEffectSchema,
+    amount: positiveWorkspaceMoneyCodec,
   }),
 ]).annotate({
   identifier: "DiscountAdjustment",

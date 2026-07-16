@@ -6,13 +6,11 @@ import {
   getReservationIntervalValidationIssue,
   isSingleDayReservationInterval,
   normalizeReservationInterval,
-  reservationIntervalInputEffectSchema,
+  reservationIntervalInputSchema,
 } from "./reservation-interval";
 import { getDurationMinutes } from "./reservation-interval-normalization";
 
-const decodeInterval = Schema.decodeUnknownSync(
-  reservationIntervalInputEffectSchema
-);
+const decodeInterval = Schema.decodeUnknownSync(reservationIntervalInputSchema);
 
 describe("reservation intervals", () => {
   test("accepts overnight intervals", () => {
@@ -46,7 +44,7 @@ describe("reservation intervals", () => {
 
   test("rejects non-canonical timestamps at the schema boundary", () => {
     expect(
-      Schema.is(reservationIntervalInputEffectSchema)({
+      Schema.is(reservationIntervalInputSchema)({
         date: "2099-06-10",
         startsAt: "9:00",
         endsAt: "10:00",

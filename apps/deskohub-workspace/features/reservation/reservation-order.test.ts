@@ -1,16 +1,14 @@
 import { afterEach, describe, expect, setSystemTime, test } from "bun:test";
 import { Result } from "effect";
 import "@/shared/polyfills/temporal";
-import { makeEffectSchemaParser } from "@/shared/utils/effect-schema-parser";
+import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getReservationProductCoffee,
   getReservationProductMonitorOption,
-  reservationOrderEffectSchema,
+  reservationOrderSchema as reservationOrderDefinition,
 } from "./reservation-order";
 
-const reservationOrderSchema = makeEffectSchemaParser(
-  reservationOrderEffectSchema
-);
+const reservationOrderSchema = makeSchemaParser(reservationOrderDefinition);
 
 const validMeetingRoomReservation = {
   _tag: "meeting-room",
