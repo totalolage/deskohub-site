@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Dotypos"
+  short_description: "Evolve generated Dotypos API contracts safely"
+  default_prompt: "Use $deskohub-dotypos to verify and implement this Dotypos API operation."

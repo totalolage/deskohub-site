@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub React UI"
+  short_description: "Apply Deskohub React and JSX conventions"
+  default_prompt: "Use $deskohub-react-ui to create or refactor this Deskohub React component."
