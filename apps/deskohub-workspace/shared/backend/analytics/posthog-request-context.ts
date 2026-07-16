@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import { RequestCookies } from "next/dist/server/web/spec-extension/cookies";
+import { type CookieStore, cookieStoreFromHeader } from "posthog-node";
 import {
   getAcceptedConsentCategoriesFromCookieValue,
   getConsentCookieValuesFromCookie,
@@ -42,9 +42,7 @@ export function getPostHogRequestContextFromCookieHeader(
   cookieHeader: string | null | undefined
 ): PostHogRequestContext {
   return getPostHogRequestContextFromCookies(
-    new RequestCookies(
-      new Headers(cookieHeader ? { cookie: cookieHeader } : {})
-    )
+    cookieStoreFromHeader(cookieHeader ?? "")
   );
 }
 
@@ -59,7 +57,7 @@ export function getPostHogRequestContextFromRequestHeadersWithDiagnostics(
   headers: Headers
 ): PostHogRequestContextResult {
   const cookieHeader = headers.get("cookie");
-  const cookies = new RequestCookies(headers);
+  const cookies = cookieStoreFromHeader(cookieHeader ?? "");
   const unexpectedConsentCookieReasons: UnexpectedConsentCookieReason[] = [];
   if (!hasAnalyticsConsent(cookieHeader, unexpectedConsentCookieReasons)) {
     return { context: {}, unexpectedConsentCookieReasons };
@@ -95,7 +93,7 @@ export function logUnexpectedConsentCookieReasons(
     : Effect.void;
 }
 
-function getPostHogRequestContextFromCookies(cookies: RequestCookies) {
+function getPostHogRequestContextFromCookies(cookies: CookieStore) {
   return getPostHogRequestContextFromCookieValues({
     distinctId: cookies.get(POSTHOG_DISTINCT_ID_COOKIE)?.value,
     sessionId: cookies.get(POSTHOG_SESSION_ID_COOKIE)?.value,
