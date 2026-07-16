@@ -346,16 +346,10 @@ describe("Pay URL state", () => {
 
   test("rejects non-canonical submitted discount codes", () => {
     expect(() =>
-      buildSignedPayState(
-        {
-          locale: "en-US",
-          reservation: baseReservation,
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
-          orderId: "invalid-code-order-id",
-          submittedCode: " summer50 " as never,
-        },
-        { keys: [fixedKey], now: () => fixedNow }
-      )
+      decodeSignedPayState({
+        ...buildState(),
+        submittedCode: " summer50 ",
+      })
     ).toThrow('at ["submittedCode"]');
   });
 

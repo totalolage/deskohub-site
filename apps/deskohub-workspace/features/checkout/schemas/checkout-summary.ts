@@ -1,55 +1,69 @@
-import { z } from "zod/v4";
+import { Schema } from "effect";
+import type {
+  CheckoutSummary,
+  CheckoutSummaryItem,
+  CheckoutSummarySection,
+} from "@/features/checkout/checkout-quote";
 import {
-  nonNegativeWorkspaceMoneySchema,
-  workspaceMoneySchema,
+  nonNegativeWorkspaceMoneyCodec,
+  workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 
-export const checkoutSummaryItemSchema = z
-  .object({
-    key: z.string().min(1),
-    label: z.string().min(1).optional(),
-    amount: workspaceMoneySchema,
-  })
-  .strict();
+const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
 
-export const checkoutSummarySectionSchema = z.discriminatedUnion("key", [
-  z
-    .object({
-      key: z.literal("order"),
-      items: z.array(
-        checkoutSummaryItemSchema.extend({
-          amount: nonNegativeWorkspaceMoneySchema,
-        })
-      ),
-      total: nonNegativeWorkspaceMoneySchema,
-    })
-    .strict(),
-  z
-    .object({
-      key: z.literal("discount"),
-      items: z.array(
-        checkoutSummaryItemSchema.extend({ label: z.string().min(1) }).strict()
-      ),
-      total: workspaceMoneySchema,
-    })
-    .strict(),
-  z
-    .object({
-      key: z.literal("total"),
-      items: z.array(
-        checkoutSummaryItemSchema.extend({
-          amount: nonNegativeWorkspaceMoneySchema,
-        })
-      ),
-      total: nonNegativeWorkspaceMoneySchema,
-    })
-    .strict(),
+export const checkoutSummaryItemSchema: Schema.Codec<
+  CheckoutSummaryItem,
+  CheckoutSummaryItem
+> = Schema.Struct({
+  key: nonEmptyStringSchema,
+  label: Schema.optional(nonEmptyStringSchema),
+  amount: workspaceMoneyCodec,
+});
+
+const nonNegativeCheckoutSummaryItemSchema: Schema.Codec<
+  CheckoutSummaryItem,
+  CheckoutSummaryItem
+> = Schema.Struct({
+  key: nonEmptyStringSchema,
+  label: Schema.optional(nonEmptyStringSchema),
+  amount: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummarySectionSchema: Schema.Codec<
+  CheckoutSummarySection,
+  CheckoutSummarySection
+> = Schema.Union([
+  Schema.Struct({
+    key: Schema.Literal("order"),
+    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
+    total: nonNegativeWorkspaceMoneyCodec,
+  }),
+  Schema.Struct({
+    key: Schema.Literal("discount"),
+    items: Schema.Array(
+      Schema.Struct({
+        key: nonEmptyStringSchema,
+        label: nonEmptyStringSchema,
+        amount: workspaceMoneyCodec,
+      })
+    ),
+    total: workspaceMoneyCodec,
+  }),
+  Schema.Struct({
+    key: Schema.Literal("total"),
+    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
+    total: nonNegativeWorkspaceMoneyCodec,
+  }),
 ]);
 
-export const checkoutSummarySchema = z
-  .object({
-    schema: z.literal("workspace-checkout-summary"),
-    sections: z.array(checkoutSummarySectionSchema),
-    total: nonNegativeWorkspaceMoneySchema,
-  })
-  .strict();
+export const checkoutSummarySchema: Schema.Codec<
+  CheckoutSummary,
+  CheckoutSummary
+> = Schema.Struct({
+  schema: Schema.Literal("workspace-checkout-summary"),
+  sections: Schema.Array(checkoutSummarySectionSchema),
+  total: nonNegativeWorkspaceMoneyCodec,
+}).annotate({
+  identifier: "CheckoutSummary",
+  description: "Public Workspace checkout summary snapshot.",
+});

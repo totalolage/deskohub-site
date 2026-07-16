@@ -15,7 +15,6 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import type {
   CheckoutDetailsJson,
   LegalEvidenceMap,
@@ -269,7 +268,7 @@ const buildCheckoutDetailsForPayment = (input: {
     expectedPrice: input.quote.payment.expectedPrice,
     undiscountedPrice: input.quote.payment.undiscountedPrice,
     discounts: [...input.quote.payment.discounts],
-    summary: checkoutSummarySchema.parse(input.quote.summary),
+    summary: input.quote.summary,
   },
   legal: input.legalEvidence,
 });

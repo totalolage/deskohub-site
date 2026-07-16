@@ -1,5 +1,6 @@
-import { Data } from "effect";
+import { Data, Option, Schema } from "effect";
 import { z } from "zod/v4";
+import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
 import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
@@ -82,6 +83,13 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+const isCheckoutSummary = (value: unknown): value is CheckoutSummary =>
+  Option.isSome(
+    Schema.decodeUnknownOption(checkoutSummarySchema, {
+      onExcessProperty: "error",
+    })(value)
+  );
+
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
 // added here or as local database columns.
@@ -103,7 +111,9 @@ export const checkoutDetailsJsonSchema = z.object({
         error: "Invalid applied discount snapshot.",
       })
     ),
-    summary: checkoutSummarySchema,
+    summary: z.custom<CheckoutSummary>(isCheckoutSummary, {
+      error: "Invalid checkout summary snapshot.",
+    }),
     providerRedirectUrl: z.url().optional(),
   }),
   legal: legalEvidenceMapSchema,

@@ -13,10 +13,8 @@ import type {
   WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
-import {
-  nonNegativeWorkspaceMoneyCodec,
-  workspaceMoneyCodec,
-} from "@/features/checkout/workspace-money";
+import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
+import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import {
   appliedDiscountCodec,
   type CanonicalDiscountCode,
@@ -33,7 +31,6 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const strictParseOptions = { onExcessProperty: "error" } as const;
 const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
 const nonNegativeIntSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const positiveIntSchema = Schema.Int.check(Schema.isGreaterThan(0));
@@ -93,47 +90,6 @@ const checkoutOrderSchema = Schema.Union([
   description: "Normalized Workspace checkout order carried by Pay state.",
 });
 
-const checkoutSummaryItemFields = {
-  key: nonEmptyStringSchema,
-  amount: workspaceMoneyCodec,
-};
-const nonNegativeCheckoutSummaryItemSchema = Schema.Struct({
-  ...checkoutSummaryItemFields,
-  label: Schema.optional(nonEmptyStringSchema),
-  amount: nonNegativeWorkspaceMoneyCodec,
-});
-const checkoutSummarySchema = Schema.Struct({
-  schema: Schema.Literal("workspace-checkout-summary"),
-  sections: Schema.Array(
-    Schema.Union([
-      Schema.Struct({
-        key: Schema.Literal("order"),
-        items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
-        total: nonNegativeWorkspaceMoneyCodec,
-      }),
-      Schema.Struct({
-        key: Schema.Literal("discount"),
-        items: Schema.Array(
-          Schema.Struct({
-            ...checkoutSummaryItemFields,
-            label: nonEmptyStringSchema,
-          })
-        ),
-        total: workspaceMoneyCodec,
-      }),
-      Schema.Struct({
-        key: Schema.Literal("total"),
-        items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
-        total: nonNegativeWorkspaceMoneyCodec,
-      }),
-    ])
-  ),
-  total: nonNegativeWorkspaceMoneyCodec,
-}).annotate({
-  identifier: "PayStateCheckoutSummary",
-  description: "Public checkout summary snapshot carried by Pay state.",
-});
-
 const quoteSnapshotSchema = Schema.Struct({
   schema: Schema.Literal("workspace-checkout-quote"),
   fingerprint: nonEmptyStringSchema,
@@ -155,8 +111,6 @@ const changedKeysSchema = Schema.Struct({
 });
 
 export const signedPayStateSchema = Schema.Struct({
-  type: Schema.Literal("signedPayState"),
-  schema: Schema.Literal("workspace-pay-state"),
   kid: nonEmptyStringSchema,
   iat: nonNegativeIntSchema,
   exp: positiveIntSchema,
@@ -198,19 +152,33 @@ export const payStateSchema = Schema.Union([
   description: "Workspace checkout Pay state payload.",
 });
 
-export type SignedPayState = typeof signedPayStateSchema.Type;
+type DecodedSignedPayState = typeof signedPayStateSchema.Type;
 type EncodedSignedPayState = typeof signedPayStateSchema.Encoded;
 export type RetryPayState = typeof retryPayStateSchema.Type;
-export type PayState = typeof payStateSchema.Type;
 
-const decodeSignedPayState = Schema.decodeUnknownSync(
-  signedPayStateSchema,
-  strictParseOptions
-);
-const decodeRetryPayState = Schema.decodeUnknownSync(
-  retryPayStateSchema,
-  strictParseOptions
-);
+export type SignedPayState = {
+  readonly kid: string;
+  readonly iat: number;
+  readonly exp: number;
+  readonly locale: Locale;
+  readonly orderId: string;
+  readonly reservation: {
+    readonly entryTier: WorkspaceCheckoutOrder["entryTier"];
+    readonly date: string;
+    readonly coffee: boolean;
+    readonly monitorOption?: WorkspaceCheckoutOrder["monitorOption"];
+    readonly name: string;
+    readonly email: string;
+    readonly phone: string;
+    readonly message?: string;
+  };
+  readonly quote: WorkspaceCheckoutQuote;
+  readonly acceptedTotal: WorkspaceCheckoutQuote["summary"]["total"];
+  readonly submittedCode?: CanonicalDiscountCode;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
+};
+
+export type PayState = SignedPayState | RetryPayState;
 
 export type PayStateKey = {
   readonly kid: string;
@@ -346,8 +314,6 @@ export const parsePayStateKey = (
   return { kid, key };
 };
 
-const getProtectedHeader = (kid: string) => ({ kid });
-
 export const buildSignedPayState = (
   input: BuildSignedPayStateInput,
   options: PayStateCryptoOptions = {}
@@ -367,15 +333,18 @@ export const buildSignedPayState = (
       (input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds)) /
       1000
   );
-  const state = {
-    type: "signedPayState",
-    schema: "workspace-pay-state",
+  const state: SignedPayState = {
     kid: activeKey.kid,
     iat,
     exp,
     locale: input.locale,
     orderId: input.orderId,
-    reservation: input.reservation,
+    reservation: {
+      ...input.reservation,
+      entryTier: input.quote.order.entryTier,
+      coffee: input.quote.order.coffee,
+      monitorOption: input.quote.order.monitorOption,
+    },
     quote: {
       schema: input.quote.schema,
       fingerprint: input.quote.fingerprint,
@@ -396,27 +365,26 @@ export const buildSignedPayState = (
     }),
   };
 
-  return decodeSignedPayState(state);
+  return state;
 };
 
 export const buildRetryPayState = (input: {
   readonly paymentOrderId: string;
   readonly checkoutToken: string;
-}): RetryPayState =>
-  decodeRetryPayState({
-    type: "retryPayState",
-    schema: "workspace-pay-state",
-    paymentOrderId: input.paymentOrderId,
-    checkoutToken: input.checkoutToken,
-    stateSemantics: "checkout-return-state-token",
-    repositorySemantics: {
-      repository: "CheckoutReturnStateTokenRepository",
-      opaque: true,
-      singleUse: true,
-      ttlSeconds: 600,
-      boundToPaymentOrderId: true,
-    },
-  });
+}): RetryPayState => ({
+  type: "retryPayState",
+  schema: "workspace-pay-state",
+  paymentOrderId: input.paymentOrderId,
+  checkoutToken: input.checkoutToken,
+  stateSemantics: "checkout-return-state-token",
+  repositorySemantics: {
+    repository: "CheckoutReturnStateTokenRepository",
+    opaque: true,
+    singleUse: true,
+    ttlSeconds: 600,
+    boundToPaymentOrderId: true,
+  },
+});
 
 const payStateSchemaIssue = (actual: unknown, message: string) =>
   new SchemaIssue.InvalidValue(Option.some(actual), { message });
@@ -424,11 +392,11 @@ const payStateSchemaIssue = (actual: unknown, message: string) =>
 const protectedHeaderSchema = Schema.Struct({ kid: nonEmptyStringSchema });
 const decodeProtectedHeader = Schema.decodeUnknownOption(
   protectedHeaderSchema,
-  strictParseOptions
+  { onExcessProperty: "error" }
 );
 const decodeSignedPayStateOption = Schema.decodeUnknownOption(
   signedPayStateSchema,
-  strictParseOptions
+  { onExcessProperty: "error" }
 );
 
 const sealPayStateRaw = (
@@ -436,7 +404,7 @@ const sealPayStateRaw = (
   options: PayStateCryptoOptions = {}
 ) => {
   const key = getPayStateKeyByKid(state.kid, options);
-  const header = getProtectedHeader(key.kid);
+  const header = { kid: key.kid };
   const encodedHeader = base64UrlEncode(JSON.stringify(header));
   const iv = options.randomBytes?.(ivByteLength) ?? randomBytes(ivByteLength);
   const cipher = createCipheriv("aes-256-gcm", key.key, iv, {
@@ -461,7 +429,7 @@ const sealPayStateRaw = (
 const openPayStateRaw = (
   token: string,
   options: PayStateCryptoOptions = {}
-): SignedPayState => {
+): DecodedSignedPayState => {
   const tokenParts = token.split(".");
   const [encodedHeader, encodedIv, encodedCiphertext, encodedAuthTag] =
     tokenParts;
@@ -551,7 +519,7 @@ const openPayStateRaw = (
 
 export const makePayStateTokenSchema = (
   options: PayStateCryptoOptions = {}
-): Schema.Codec<SignedPayState, string> =>
+): Schema.Codec<DecodedSignedPayState, string> =>
   Schema.String.pipe(
     Schema.decodeTo(signedPayStateSchema, {
       decode: SchemaGetter.transformOrFail((token: string) =>
@@ -566,7 +534,7 @@ export const makePayStateTokenSchema = (
             ),
         })
       ),
-      encode: SchemaGetter.transformOrFail((state: EncodedSignedPayState) =>
+      encode: SchemaGetter.transformOrFail((state) =>
         Effect.try({
           try: () => sealPayStateRaw(state, options),
           catch: (error) =>
@@ -589,10 +557,9 @@ export const sealPayState = (
   state: SignedPayState,
   options: PayStateCryptoOptions = {}
 ) =>
-  Schema.encodeSync(
-    makePayStateTokenSchema(options),
-    strictParseOptions
-  )(decodeSignedPayState(state));
+  Schema.encodeUnknownSync(makePayStateTokenSchema(options), {
+    onExcessProperty: "error",
+  })(state);
 
 export const openPayState = (
   token: string,

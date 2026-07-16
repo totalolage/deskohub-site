@@ -10,6 +10,7 @@ import {
   Duration,
   Effect,
   Layer,
+  Match,
   Option,
   Predicate,
   Schedule,
@@ -45,11 +46,9 @@ import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import {
   type CanonicalDiscountCode,
-  DiscountCodeUnavailableError,
   normalizeSubmittedDiscountCode,
 } from "@/features/discounts";
 import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
@@ -62,10 +61,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
-import {
-  BotDetectedError,
-  BotProtectionService,
-} from "@/shared/backend/bot-protection/bot-protection.service";
+import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -81,6 +77,12 @@ const getPreparePayStateSchema = () =>
 
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
+
+class LegalAcceptanceSnapshotError extends Data.TaggedError(
+  "LegalAcceptanceSnapshotError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 const normalizeIdempotencyPart = (value: string) =>
   value.trim().toLocaleLowerCase("en-US");
@@ -172,7 +174,7 @@ const buildReservationCheckoutDetails = (input: {
       expectedPrice: input.quote.payment.expectedPrice,
       undiscountedPrice: input.quote.payment.undiscountedPrice,
       discounts: [...input.quote.payment.discounts],
-      summary: checkoutSummarySchema.parse(input.quote.summary),
+      summary: input.quote.summary,
     },
     legal: input.legalEvidence,
   };
@@ -187,8 +189,7 @@ const getReservationPrivacyEvidence = Effect.fn(
 }) {
   const documents = yield* Effect.tryPromise({
     try: () => getLegalAcceptanceSnapshot(input.locale),
-    catch: (cause) =>
-      new Error("Legal acceptance snapshot could not be created.", { cause }),
+    catch: (cause) => new LegalAcceptanceSnapshotError({ cause }),
   });
   return legalEvidenceMapSchema.parse({
     [documents.privacyPolicy.hash]: {
@@ -768,15 +769,63 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       Effect.mapError(
         (error) =>
           new PublicSafeActionError({
-            message:
-              error instanceof BotDetectedError
-                ? m.reservationRateLimitMessage({}, { locale: input.locale })
-                : error instanceof DiscountCodeUnavailableError
-                  ? m.reservationDiscountCodeUnavailable(
-                      {},
-                      { locale: input.locale }
-                    )
-                  : m.reservationErrorMessage({}, { locale: input.locale }),
+            message: Match.value(error).pipe(
+              Match.tag("BotDetectedError", () =>
+                m.reservationRateLimitMessage({}, { locale: input.locale })
+              ),
+              Match.tag("DiscountCodeUnavailableError", () =>
+                m.reservationDiscountCodeUnavailable(
+                  {},
+                  { locale: input.locale }
+                )
+              ),
+              Match.tag("WorkspaceMoneyError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("DiscountCalculationError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("DiscountProviderError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("CheckoutQuoteError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("WorkspaceReservationStateError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("DatabaseError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("ExternalAPIError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("NetworkError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("ValidationError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("GoogleCalendarAPIError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("GoogleCalendarConfigError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("WorkspaceTableUnavailableError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("LegalEvidenceEventInputError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("BotVerificationError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.tag("LegalAcceptanceSnapshotError", () =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              ),
+              Match.exhaustive
+            ),
             cause: error,
           })
       )

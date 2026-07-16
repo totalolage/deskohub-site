@@ -152,6 +152,25 @@ describe("workspace checkout quotes", () => {
     expect(quote.payment.discounts).toEqual([application]);
   });
 
+  test("disregards discount quotes for a different checkout product", () => {
+    const quote = buildWorkspaceCheckoutQuote(
+      {
+        entryTier: "plus",
+        coffee: true,
+      },
+      {
+        discountQuote: discountQuote([percentageApplication()]),
+      }
+    );
+
+    expect(quote.summary.sections.map(({ key }) => key)).toEqual([
+      "order",
+      "total",
+    ]);
+    expect(quote.payment.expectedPrice).toEqual(money(49_000));
+    expect(quote.payment.discounts).toEqual([]);
+  });
+
   test("fingerprint changes for different composition with the same total", () => {
     const accessOnly = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
@@ -318,6 +337,31 @@ describe("workspace checkout quotes", () => {
     ).toEqual({
       sectionKeys: ["order", "total"],
       itemKeys: ["order/addon:coffee", "total/total:final"],
+    });
+  });
+
+  test("detects a changed public item label when its amount is unchanged", () => {
+    const quote = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      { discountQuote: discountQuote([percentageApplication()]) }
+    );
+    const renamedSummary = {
+      ...quote.summary,
+      sections: quote.summary.sections.map((section) => ({
+        ...section,
+        items: section.items.map((item) =>
+          item.key === "discount:calendar-sale"
+            ? { ...item, label: "Renamed sale" }
+            : item
+        ),
+      })),
+    };
+
+    expect(
+      getCheckoutSummaryChangedKeys(quote.summary, renamedSummary)
+    ).toEqual({
+      sectionKeys: [],
+      itemKeys: ["discount/discount:calendar-sale"],
     });
   });
 

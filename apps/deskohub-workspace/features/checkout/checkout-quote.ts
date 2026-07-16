@@ -107,12 +107,6 @@ const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   amount: item.amount.value,
 });
 
-const getCanonicalMoney = (money: WorkspaceMoney) => ({
-  value: money.value,
-  exponent: money.exponent,
-  currency: money.currency,
-});
-
 const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
   discount: {
     id: application.discount.id,
@@ -125,14 +119,14 @@ const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
           }
         : {
             kind: application.discount.adjustment.kind,
-            amount: getCanonicalMoney(application.discount.adjustment.amount),
+            amount: application.discount.adjustment.amount,
           },
     expiresAt: application.discount.expiresAt ?? null,
     countdownStartsAt: application.discount.countdownStartsAt ?? null,
   },
-  subtotalBefore: getCanonicalMoney(application.subtotalBefore),
-  amount: getCanonicalMoney(application.amount),
-  subtotalAfter: getCanonicalMoney(application.subtotalAfter),
+  subtotalBefore: application.subtotalBefore,
+  amount: application.amount,
+  subtotalAfter: application.subtotalAfter,
 });
 
 const getCheckoutQuoteCanonicalPayload = (
@@ -153,8 +147,8 @@ const getCheckoutQuoteCanonicalPayload = (
     currency: quote.summary.total.currency,
     exponent: quote.summary.total.exponent,
     payment: {
-      expectedPrice: getCanonicalMoney(quote.payment.expectedPrice),
-      undiscountedPrice: getCanonicalMoney(quote.payment.undiscountedPrice),
+      expectedPrice: quote.payment.expectedPrice,
+      undiscountedPrice: quote.payment.undiscountedPrice,
       discounts: quote.payment.discounts.map(getCanonicalAppliedDiscount),
     },
     sections: quote.summary.sections.map((section) => ({
@@ -194,51 +188,44 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     getWorkspaceProductCoffeeLinePriceForTier(normalizedOrder.entryTier),
     options.currencyOverride
   );
-  const orderItems: CheckoutSummaryItem[] = [
-    {
-      key: `product:${normalizedOrder.entryTier}`,
-      amount: productPrice,
-    },
-  ];
+  const productItem: CheckoutSummaryItem = {
+    key: `product:${normalizedOrder.entryTier}`,
+    amount: productPrice,
+  };
+  const addOnItems: CheckoutSummaryItem[] = [];
 
   if (normalizedOrder.coffee) {
-    orderItems.push({
+    addOnItems.push({
       key: "addon:coffee",
       amount: coffeePrice,
     });
   }
 
   if (normalizedOrder.monitorOption) {
-    orderItems.push({
+    addOnItems.push({
       key: `monitor:${normalizedOrder.monitorOption}`,
       amount: workspaceMoneyWithValue(0, productPrice),
     });
   }
 
+  const orderItems = [productItem, ...addOnItems];
   const orderTotal = yield* addWorkspaceMoney(
     orderItems.map((item) => item.amount)
   );
   const discountQuote = options.discountQuote;
-
-  if (
-    discountQuote &&
-    (discountQuote.product.kind !== "cowork" ||
-      discountQuote.product.tier !== normalizedOrder.entryTier ||
-      !workspaceMoneyEquals(discountQuote.discountableSubtotal, productPrice))
-  ) {
-    return yield* Effect.fail(
-      new CheckoutQuoteError({
-        message: "Discount quote does not match the checkout product.",
-      })
-    );
-  }
-
-  const discounts = discountQuote?.discounts ?? [];
+  const isDiscountQuoteApplicable =
+    discountQuote?.product.kind === "cowork" &&
+    discountQuote.product.tier === normalizedOrder.entryTier &&
+    workspaceMoneyEquals(discountQuote.discountableSubtotal, productPrice);
+  const applicableDiscountQuote = isDiscountQuoteApplicable
+    ? discountQuote
+    : undefined;
+  const discounts = applicableDiscountQuote?.discounts ?? [];
   const discountedProductPrice =
-    discountQuote?.discountedSubtotal ?? productPrice;
+    applicableDiscountQuote?.discountedSubtotal ?? productPrice;
   const expectedPrice = yield* addWorkspaceMoney([
     discountedProductPrice,
-    ...orderItems.slice(1).map(({ amount }) => amount),
+    ...addOnItems.map(({ amount }) => amount),
   ]);
   const orderSection: CheckoutSummarySection = {
     key: "order",
@@ -321,6 +308,13 @@ const getSummaryItemMap = (summary: CheckoutSummary) =>
     )
   );
 
+const hasCheckoutSummaryItemChanged = (
+  previousItem: CheckoutSummaryItem | undefined,
+  nextItem: CheckoutSummaryItem | undefined
+) =>
+  previousItem?.label !== nextItem?.label ||
+  !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount);
+
 export const getCheckoutSummaryChangedKeys = (
   previous: CheckoutSummary,
   next: CheckoutSummary
@@ -344,10 +338,7 @@ export const getCheckoutSummaryChangedKeys = (
     .filter((key) => {
       const previousItem = previousItems.get(key);
       const nextItem = nextItems.get(key);
-      return (
-        previousItem?.label !== nextItem?.label ||
-        !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount)
-      );
+      return hasCheckoutSummaryItemChanged(previousItem, nextItem);
     })
     .sort();
 
