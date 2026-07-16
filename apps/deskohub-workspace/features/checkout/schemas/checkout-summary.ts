@@ -1,9 +1,4 @@
 import { Schema } from "effect";
-import type {
-  CheckoutSummary,
-  CheckoutSummaryItem,
-  CheckoutSummarySection,
-} from "@/features/checkout/checkout-quote";
 import {
   nonNegativeWorkspaceMoneyCodec,
   workspaceMoneyCodec,
@@ -11,35 +6,26 @@ import {
 
 const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
 
-export const checkoutSummaryItemSchema: Schema.Codec<
-  CheckoutSummaryItem,
-  CheckoutSummaryItem
-> = Schema.Struct({
+export const checkoutSummaryItemSchema = Schema.Struct({
   key: nonEmptyStringSchema,
   label: Schema.optional(nonEmptyStringSchema),
   amount: workspaceMoneyCodec,
 });
 
-const nonNegativeCheckoutSummaryItemSchema: Schema.Codec<
-  CheckoutSummaryItem,
-  CheckoutSummaryItem
-> = Schema.Struct({
+const nonNegativeCheckoutSummaryItemSchema = Schema.Struct({
   key: nonEmptyStringSchema,
   label: Schema.optional(nonEmptyStringSchema),
   amount: nonNegativeWorkspaceMoneyCodec,
 });
 
-export const checkoutSummarySectionSchema: Schema.Codec<
-  CheckoutSummarySection,
-  CheckoutSummarySection
-> = Schema.Union([
-  Schema.Struct({
-    key: Schema.Literal("order"),
-    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
-    total: nonNegativeWorkspaceMoneyCodec,
-  }),
-  Schema.Struct({
-    key: Schema.Literal("discount"),
+export const checkoutSummaryOrderSectionSchema = Schema.TaggedStruct("order", {
+  items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
+  total: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummaryDiscountSectionSchema = Schema.TaggedStruct(
+  "discount",
+  {
     items: Schema.Array(
       Schema.Struct({
         key: nonEmptyStringSchema,
@@ -48,18 +34,21 @@ export const checkoutSummarySectionSchema: Schema.Codec<
       })
     ),
     total: workspaceMoneyCodec,
-  }),
-  Schema.Struct({
-    key: Schema.Literal("total"),
-    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
-    total: nonNegativeWorkspaceMoneyCodec,
-  }),
+  }
+);
+
+export const checkoutSummaryTotalSectionSchema = Schema.TaggedStruct("total", {
+  items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
+  total: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummarySectionSchema = Schema.Union([
+  checkoutSummaryOrderSectionSchema,
+  checkoutSummaryDiscountSectionSchema,
+  checkoutSummaryTotalSectionSchema,
 ]);
 
-export const checkoutSummarySchema: Schema.Codec<
-  CheckoutSummary,
-  CheckoutSummary
-> = Schema.Struct({
+export const checkoutSummarySchema = Schema.Struct({
   schema: Schema.Literal("workspace-checkout-summary"),
   sections: Schema.Array(checkoutSummarySectionSchema),
   total: nonNegativeWorkspaceMoneyCodec,
@@ -67,3 +56,7 @@ export const checkoutSummarySchema: Schema.Codec<
   identifier: "CheckoutSummary",
   description: "Public Workspace checkout summary snapshot.",
 });
+
+export type CheckoutSummaryItem = typeof checkoutSummaryItemSchema.Type;
+export type CheckoutSummarySection = typeof checkoutSummarySectionSchema.Type;
+export type CheckoutSummary = typeof checkoutSummarySchema.Type;

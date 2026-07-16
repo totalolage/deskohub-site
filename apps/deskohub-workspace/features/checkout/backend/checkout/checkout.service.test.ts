@@ -33,7 +33,7 @@ mock.module("server-only", () => ({}));
 
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
-    Promise.resolve({
+    Effect.succeed({
       termsAndConditions: {
         path: "/legal/terms.md",
         hash: "terms-test-hash",

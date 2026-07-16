@@ -18,7 +18,7 @@ mock.module("server-only", () => ({}));
 
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
-    Promise.resolve({
+    Effect.succeed({
       privacyPolicy: {
         path: "/legal/privacy.md",
         hash: "privacy-hash",

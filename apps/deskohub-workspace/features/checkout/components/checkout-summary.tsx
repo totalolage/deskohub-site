@@ -18,7 +18,8 @@ type CheckoutSummaryProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 };
 
-type CheckoutSummarySectionKey = CheckoutSummaryData["sections"][number]["key"];
+type CheckoutSummarySectionKey =
+  CheckoutSummaryData["sections"][number]["_tag"];
 
 const productItemTiers = {
   "product:basic": "basic",
@@ -68,17 +69,17 @@ export function CheckoutSummary({
   return (
     <CheckoutSummarySections>
       {summary.sections.map((section) => {
-        const sectionChanged = changedKeys?.sectionKeys.includes(section.key);
+        const sectionChanged = changedKeys?.sectionKeys.includes(section._tag);
 
         return (
           <CheckoutSummarySection
-            key={section.key}
+            key={section._tag}
             changed={sectionChanged}
             locale={locale}
-            sectionKey={section.key}
+            sectionKey={section._tag}
           >
             {section.items.map((item) => {
-              const itemKey = `${section.key}/${item.key}`;
+              const itemKey = `${section._tag}/${item.key}`;
               const itemChanged = changedKeys?.itemKeys.includes(itemKey);
 
               return (

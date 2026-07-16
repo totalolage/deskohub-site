@@ -1,6 +1,7 @@
 "use server";
 
 import { createHash } from "node:crypto";
+import { Data, Effect } from "effect";
 import { Children, isValidElement, type ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils";
@@ -25,6 +26,12 @@ export type CheckoutLegalAcceptanceSnapshot = {
   readonly operatingRules: CheckoutLegalDocumentSnapshot;
   readonly privacyPolicy: CheckoutLegalDocumentSnapshot;
 };
+
+export class LegalAcceptanceSnapshotError extends Data.TaggedError(
+  "LegalAcceptanceSnapshotError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 function reactNodeToCanonicalText(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === "boolean") {
@@ -77,15 +84,18 @@ function createLegalDocumentSnapshot(
   };
 }
 
-export async function getLegalAcceptanceSnapshot(
-  locale: Locale
-): Promise<CheckoutLegalAcceptanceSnapshot> {
-  return {
-    termsAndConditions: createLegalDocumentSnapshot(
-      locale,
-      "terms-and-conditions"
-    ),
-    operatingRules: createLegalDocumentSnapshot(locale, "operating-rules"),
-    privacyPolicy: createLegalDocumentSnapshot(locale, "privacy-policy"),
-  };
-}
+export const getLegalAcceptanceSnapshot = Effect.fn(
+  "getLegalAcceptanceSnapshot"
+)((locale: Locale) =>
+  Effect.try({
+    try: (): CheckoutLegalAcceptanceSnapshot => ({
+      termsAndConditions: createLegalDocumentSnapshot(
+        locale,
+        "terms-and-conditions"
+      ),
+      operatingRules: createLegalDocumentSnapshot(locale, "operating-rules"),
+      privacyPolicy: createLegalDocumentSnapshot(locale, "privacy-policy"),
+    }),
+    catch: (cause) => new LegalAcceptanceSnapshotError({ cause }),
+  })
+);

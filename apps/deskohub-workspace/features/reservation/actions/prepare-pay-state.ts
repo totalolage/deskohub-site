@@ -78,12 +78,6 @@ const getPreparePayStateSchema = () =>
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
 
-class LegalAcceptanceSnapshotError extends Data.TaggedError(
-  "LegalAcceptanceSnapshotError"
-)<{
-  readonly cause: unknown;
-}> {}
-
 const normalizeIdempotencyPart = (value: string) =>
   value.trim().toLocaleLowerCase("en-US");
 
@@ -187,10 +181,7 @@ const getReservationPrivacyEvidence = Effect.fn(
   readonly accepted: boolean;
   readonly acceptedAt: string;
 }) {
-  const documents = yield* Effect.tryPromise({
-    try: () => getLegalAcceptanceSnapshot(input.locale),
-    catch: (cause) => new LegalAcceptanceSnapshotError({ cause }),
-  });
+  const documents = yield* getLegalAcceptanceSnapshot(input.locale);
   return legalEvidenceMapSchema.parse({
     [documents.privacyPolicy.hash]: {
       documentKey: "privacyPolicy",
@@ -779,52 +770,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                   { locale: input.locale }
                 )
               ),
-              Match.tag("WorkspaceMoneyError", () =>
+              Match.orElse(() =>
                 m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("DiscountCalculationError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("DiscountProviderError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("CheckoutQuoteError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("WorkspaceReservationStateError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("DatabaseError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("ExternalAPIError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("NetworkError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("ValidationError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("GoogleCalendarAPIError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("GoogleCalendarConfigError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("WorkspaceTableUnavailableError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("LegalEvidenceEventInputError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("BotVerificationError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.tag("LegalAcceptanceSnapshotError", () =>
-                m.reservationErrorMessage({}, { locale: input.locale })
-              ),
-              Match.exhaustive
+              )
             ),
             cause: error,
           })

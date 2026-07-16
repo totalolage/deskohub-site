@@ -30,7 +30,10 @@ import {
 } from "@/features/discounts";
 import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import type { Locale } from "@/features/i18n";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import {
+  type CheckoutLegalAcceptanceSnapshot,
+  getLegalAcceptanceSnapshot,
+} from "@/features/legal/acceptance-snapshot";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
@@ -188,22 +191,22 @@ export const getNexiCheckoutCurrencyOverride = () => {
 
 const getCheckoutLegalAcceptanceSnapshot: (
   locale: Locale
-) => Effect.Effect<
-  Awaited<ReturnType<typeof getLegalAcceptanceSnapshot>>,
-  CheckoutError
-> = Effect.fn("getCheckoutLegalAcceptanceSnapshot")(function* (locale) {
-  return yield* Effect.tryPromise({
-    try: () => getLegalAcceptanceSnapshot(locale),
-    catch: (cause) =>
-      new CheckoutError({
-        message: "Legal acceptance snapshot could not be created.",
-        cause,
-      }),
-  });
-});
+) => Effect.Effect<CheckoutLegalAcceptanceSnapshot, CheckoutError> = Effect.fn(
+  "getCheckoutLegalAcceptanceSnapshot"
+)((locale) =>
+  getLegalAcceptanceSnapshot(locale).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CheckoutError({
+          message: "Legal acceptance snapshot could not be created.",
+          cause,
+        })
+    )
+  )
+);
 
 const toCheckoutLegalDocuments = (
-  documents: Awaited<ReturnType<typeof getLegalAcceptanceSnapshot>>
+  documents: CheckoutLegalAcceptanceSnapshot
 ) => ({
   termsAndConditions: {
     path: documents.termsAndConditions.path,
@@ -220,9 +223,7 @@ const toCheckoutLegalDocuments = (
 const getCheckoutLegalEvidence = (input: {
   readonly acceptedAt: string;
   readonly locale: Locale;
-  readonly legalDocuments: Awaited<
-    ReturnType<typeof getLegalAcceptanceSnapshot>
-  >;
+  readonly legalDocuments: CheckoutLegalAcceptanceSnapshot;
 }): LegalEvidenceMap => {
   const documents = toCheckoutLegalDocuments(input.legalDocuments);
 

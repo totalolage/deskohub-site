@@ -1,10 +1,19 @@
-import { Data, Effect } from "effect";
+import { Data, Effect, Match } from "effect";
 import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
   type WorkspaceProductMonitorOption,
   type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
+import {
+  type CheckoutSummary,
+  type CheckoutSummaryItem,
+  type CheckoutSummarySection,
+  checkoutSummaryDiscountSectionSchema,
+  checkoutSummaryOrderSectionSchema,
+  checkoutSummarySchema,
+  checkoutSummaryTotalSectionSchema,
+} from "@/features/checkout/schemas/checkout-summary";
 import {
   addWorkspaceMoney,
   type WorkspaceMoney,
@@ -14,28 +23,16 @@ import {
 } from "@/features/checkout/workspace-money";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 
+export type {
+  CheckoutSummary,
+  CheckoutSummaryItem,
+  CheckoutSummarySection,
+} from "@/features/checkout/schemas/checkout-summary";
+
 export type WorkspaceCheckoutOrder = {
   readonly entryTier: WorkspaceProductTier;
   readonly coffee: boolean;
   readonly monitorOption?: WorkspaceProductMonitorOption;
-};
-
-export type CheckoutSummaryItem = {
-  readonly key: string;
-  readonly label?: string;
-  readonly amount: WorkspaceMoney;
-};
-
-export type CheckoutSummarySection = {
-  readonly key: "order" | "discount" | "total";
-  readonly items: readonly CheckoutSummaryItem[];
-  readonly total: WorkspaceMoney;
-};
-
-export type CheckoutSummary = {
-  readonly schema: "workspace-checkout-summary";
-  readonly sections: readonly CheckoutSummarySection[];
-  readonly total: WorkspaceMoney;
 };
 
 export type WorkspaceCheckoutQuote = {
@@ -111,16 +108,18 @@ const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
   discount: {
     id: application.discount.id,
     label: application.discount.label,
-    adjustment:
-      application.discount.adjustment.kind === "percentage"
-        ? {
-            kind: application.discount.adjustment.kind,
-            basisPoints: application.discount.adjustment.basisPoints,
-          }
-        : {
-            kind: application.discount.adjustment.kind,
-            amount: application.discount.adjustment.amount,
-          },
+    adjustment: Match.value(application.discount.adjustment).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        percentage: (adjustment) => ({
+          kind: adjustment.kind,
+          basisPoints: adjustment.basisPoints,
+        }),
+        fixed: (adjustment) => ({
+          kind: adjustment.kind,
+          amount: adjustment.amount,
+        }),
+      })
+    ),
     expiresAt: application.discount.expiresAt ?? null,
     countdownStartsAt: application.discount.countdownStartsAt ?? null,
   },
@@ -152,7 +151,7 @@ const getCheckoutQuoteCanonicalPayload = (
       discounts: quote.payment.discounts.map(getCanonicalAppliedDiscount),
     },
     sections: quote.summary.sections.map((section) => ({
-      key: section.key,
+      _tag: section._tag,
       items: section.items.map(getCanonicalSummaryItem),
       total: section.total.value,
     })),
@@ -227,11 +226,10 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     discountedProductPrice,
     ...addOnItems.map(({ amount }) => amount),
   ]);
-  const orderSection: CheckoutSummarySection = {
-    key: "order",
+  const orderSection = checkoutSummaryOrderSectionSchema.make({
     items: orderItems,
     total: orderTotal,
-  };
+  });
   const sections: CheckoutSummarySection[] = [orderSection];
 
   if (discounts.length > 0) {
@@ -246,29 +244,31 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     const discountTotal = yield* addWorkspaceMoney(
       discountItems.map(({ amount }) => amount)
     );
-    sections.push({
-      key: "discount",
-      items: discountItems,
-      total: discountTotal,
-    });
+    sections.push(
+      checkoutSummaryDiscountSectionSchema.make({
+        items: discountItems,
+        total: discountTotal,
+      })
+    );
   }
 
-  sections.push({
-    key: "total",
-    items: [
-      {
-        key: "total:final",
-        amount: expectedPrice,
-      },
-    ],
-    total: expectedPrice,
-  });
+  sections.push(
+    checkoutSummaryTotalSectionSchema.make({
+      items: [
+        {
+          key: "total:final",
+          amount: expectedPrice,
+        },
+      ],
+      total: expectedPrice,
+    })
+  );
 
-  const summary: CheckoutSummary = {
+  const summary = checkoutSummarySchema.make({
     schema: "workspace-checkout-summary",
     sections,
     total: expectedPrice,
-  };
+  });
   const quoteWithoutFingerprint = {
     schema: "workspace-checkout-quote" as const,
     order: normalizedOrder,
@@ -299,12 +299,14 @@ export const buildWorkspaceCheckoutQuote = (
   Effect.runSync(calculateWorkspaceCheckoutQuote(order, options));
 
 const getSummarySectionMap = (summary: CheckoutSummary) =>
-  new Map(summary.sections.map((section) => [section.key, section]));
+  new Map(summary.sections.map((section) => [section._tag, section]));
 
 const getSummaryItemMap = (summary: CheckoutSummary) =>
   new Map(
     summary.sections.flatMap((section) =>
-      section.items.map((item) => [`${section.key}/${item.key}`, item] as const)
+      section.items.map(
+        (item) => [`${section._tag}/${item.key}`, item] as const
+      )
     )
   );
 
