@@ -4,7 +4,6 @@ import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
-import { getDiscountCommitmentApplications } from "./commitment";
 import {
   type Discount,
   type DiscountProductIdentity,
@@ -168,8 +167,6 @@ describe("DiscountService", () => {
       }),
       providers
     );
-    const applications = getDiscountCommitmentApplications(result.commitment);
-
     expect(calendarRevalidate).toHaveBeenCalledWith(input);
     expect(customerResolve).toHaveBeenCalledWith(
       expect.objectContaining(input)
@@ -177,15 +174,15 @@ describe("DiscountService", () => {
     expect(codeRevalidate).toHaveBeenCalledWith(expect.objectContaining(input));
     expect(calendarQuote).not.toHaveBeenCalled();
     expect(codeQuote).not.toHaveBeenCalled();
-    expect(Object.keys(result.commitment)).toEqual([]);
-    expect(JSON.stringify(result.commitment)).toBe("{}");
-    expect(applications).toEqual([
-      {
-        application: result.quote.discounts[0],
-        provenance: codeCandidate.provenance,
-        claim: codeCandidate.claim,
-      },
-    ]);
+    expect(result.commitment).toEqual({
+      applications: [
+        {
+          application: result.quote.discounts[0],
+          provenance: codeCandidate.provenance,
+          claim: codeCandidate.claim,
+        },
+      ],
+    });
     expect(JSON.stringify(result.quote)).not.toContain(
       "database-discount-code"
     );
@@ -226,12 +223,16 @@ describe("DiscountService", () => {
     );
 
     expect(result.quote.discounts).toHaveLength(1);
-    expect(getDiscountCommitmentApplications(result.commitment)).toEqual([
-      {
-        application: result.quote.discounts[0],
-        provenance: expect.objectContaining({ providerNamespace: "calendar" }),
-      },
-    ]);
+    expect(result.commitment).toEqual({
+      applications: [
+        {
+          application: result.quote.discounts[0],
+          provenance: expect.objectContaining({
+            providerNamespace: "calendar",
+          }),
+        },
+      ],
+    });
   });
 
   test("preserves provider errors and stops resolving later providers", async () => {

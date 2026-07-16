@@ -7,11 +7,10 @@ import {
   type IGoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
-import { Effect, Layer, Schema } from "effect";
+import { Effect, Layer, Schema, Scope } from "effect";
 import { TestClock } from "effect/testing";
 import { DatabaseError } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
-import { processLifetimeLayer } from "@/shared/backend/utils/process-lifetime-layer";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { DiscountDefinition } from "./discount-definition";
 import {
@@ -538,15 +537,21 @@ describe("CalendarDiscountProvider", () => {
     const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
       ({ discountId }) => Effect.succeed(definition(discountId, { label }))
     );
-    const providerLayer = processLifetimeLayer(
-      CalendarDiscountProvider.Live.pipe(
-        Layer.provide(
-          Layer.mergeAll(
-            GoogleCalendarServiceMock({ listEvents }),
-            DiscountDefinitionRepositoryMock({ loadById }),
-            resourceConfigLayer
+    const processMemoMap = Layer.makeMemoMapUnsafe();
+    const processScope = Scope.makeUnsafe();
+    const providerLayer = Layer.fromBuild(() =>
+      Layer.buildWithMemoMap(
+        CalendarDiscountProvider.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              GoogleCalendarServiceMock({ listEvents }),
+              DiscountDefinitionRepositoryMock({ loadById }),
+              resourceConfigLayer
+            )
           )
-        )
+        ),
+        processMemoMap,
+        processScope
       )
     );
     const quoteForDate = Effect.gen(function* () {

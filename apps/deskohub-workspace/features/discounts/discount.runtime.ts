@@ -1,10 +1,9 @@
 import "server-only";
-import { Layer } from "effect";
+import { Layer, Scope } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
-import { processLifetimeLayer } from "@/shared/backend/utils/process-lifetime-layer";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
@@ -30,6 +29,13 @@ const discountProviders = Layer.mergeAll(
   CodeDiscountProvider.Live
 ).pipe(Layer.provide(providerDependencies));
 
-export const DiscountServiceLiveWithDependencies = processLifetimeLayer(
-  DiscountService.Live.pipe(Layer.provide(discountProviders))
+const processScope = Scope.makeUnsafe();
+const processMemoMap = Layer.makeMemoMapUnsafe();
+
+export const DiscountServiceLiveWithDependencies = Layer.fromBuild(() =>
+  Layer.buildWithMemoMap(
+    DiscountService.Live.pipe(Layer.provide(discountProviders)),
+    processMemoMap,
+    processScope
+  )
 );
