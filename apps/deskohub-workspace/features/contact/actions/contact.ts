@@ -1,7 +1,7 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { z } from "zod/v4";
 import {
   ContactService,
@@ -121,6 +121,13 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
     )
 );
 
+const ContactActionLive = ContactServiceLive.pipe(
+  Layer.provide(
+    StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
+  ),
+  Layer.merge(BotProtectionService.Live)
+);
+
 export async function submitContactForm(
   _previousState: ContactFormState,
   formData: FormData
@@ -129,10 +136,7 @@ export async function submitContactForm(
   const submittedValues = getSubmittedContactValues(formData);
 
   const program = processContactSubmission({ locale, submittedValues }).pipe(
-    Effect.provide(ContactServiceLive),
-    Effect.provide(StandaloneEmailServiceLayer),
-    Effect.provide(EmailConfigLayer),
-    Effect.provide(BotProtectionService.Live)
+    Effect.provide(ContactActionLive)
   );
 
   return await runWorkspaceServerActionEffect(program);
