@@ -11,6 +11,7 @@ import { Effect, Layer, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import { DatabaseError } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { processLifetimeLayer } from "@/shared/backend/utils/process-lifetime-layer";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { DiscountDefinition } from "./discount-definition";
 import {
@@ -529,6 +530,64 @@ describe("CalendarDiscountProvider", () => {
     expect(result.afterTtl[0]?.discount.label).toBe("Edited database sale");
     expect(listEvents).toHaveBeenCalledTimes(3);
     expect(loadById).toHaveBeenCalledTimes(3);
+  });
+
+  test("keeps the quote cache across separate process-lifetime layer builds", async () => {
+    let label = "Initial database sale";
+    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+    const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
+      ({ discountId }) => Effect.succeed(definition(discountId, { label }))
+    );
+    const providerLayer = processLifetimeLayer(
+      CalendarDiscountProvider.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            GoogleCalendarServiceMock({ listEvents }),
+            DiscountDefinitionRepositoryMock({ loadById }),
+            resourceConfigLayer
+          )
+        )
+      )
+    );
+    const quoteForDate = Effect.gen(function* () {
+      const provider = yield* CalendarDiscountProvider;
+      return yield* provider.quote({
+        product: basicProduct,
+        reservationDate: "2026-07-20",
+      });
+    });
+    const revalidateForDate = Effect.gen(function* () {
+      const provider = yield* CalendarDiscountProvider;
+      return yield* provider.revalidate({
+        product: basicProduct,
+        reservationDate: "2026-07-20",
+      });
+    });
+
+    const first = await quoteForDate.pipe(
+      Effect.provide(providerLayer),
+      Effect.runPromise
+    );
+    label = "Edited database sale";
+    const cached = await quoteForDate.pipe(
+      Effect.provide(providerLayer),
+      Effect.runPromise
+    );
+    const fresh = await revalidateForDate.pipe(
+      Effect.provide(providerLayer),
+      Effect.runPromise
+    );
+    const stillCached = await quoteForDate.pipe(
+      Effect.provide(providerLayer),
+      Effect.runPromise
+    );
+
+    expect(first[0]?.discount.label).toBe("Initial database sale");
+    expect(cached[0]?.discount.label).toBe("Initial database sale");
+    expect(fresh[0]?.discount.label).toBe("Edited database sale");
+    expect(stillCached[0]?.discount.label).toBe("Initial database sale");
+    expect(listEvents).toHaveBeenCalledTimes(2);
+    expect(loadById).toHaveBeenCalledTimes(2);
   });
 
   test("does not cache definition-provider failures", async () => {
