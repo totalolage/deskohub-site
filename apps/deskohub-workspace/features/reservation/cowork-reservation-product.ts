@@ -57,7 +57,7 @@ export type NormalizedCoworkReservationProduct =
 export type WorkspaceReservationProductColumns = {
   readonly productTier: WorkspaceCoworkProductTier;
   readonly productCoffee: boolean;
-  readonly productMonitorOption?: WorkspaceProductMonitorOption;
+  readonly productMonitorOption: WorkspaceProductMonitorOption | null;
 };
 
 const normalizeMonitorOption = (
@@ -157,10 +157,12 @@ export const getWorkspaceReservationProductColumns = (
     Match.when({ entryTier: "basic" }, (basicProduct) => ({
       productTier: basicProduct.entryTier,
       productCoffee: basicProduct.coffee,
+      productMonitorOption: null,
     })),
     Match.when({ entryTier: "plus" }, (plusProduct) => ({
       productTier: plusProduct.entryTier,
       productCoffee: plusProduct.coffee,
+      productMonitorOption: null,
     })),
     Match.when({ entryTier: "profi" }, (profiProduct) => ({
       productTier: profiProduct.entryTier,

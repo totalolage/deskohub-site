@@ -9,9 +9,10 @@ import {
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import { legalEvidenceSchema } from "@/features/checkout/schemas/checkout-details";
+import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 const legalEvidenceEventInputSchema = Schema.Struct({
-  workspaceReservationId: Schema.optional(Schema.NonEmptyString),
+  workspaceReservationId: Schema.optional(workspaceReservationIdSchema),
   evidence: legalEvidenceSchema,
 });
 

@@ -21,8 +21,6 @@ import {
   normalizedCoworkReservationProductSchema,
 } from "@/features/reservation/cowork-reservation-product";
 
-const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
-
 export const workspaceCheckoutOrderSchema =
   normalizedCoworkReservationProductSchema.annotate({
     identifier: "WorkspaceCheckoutOrder",
@@ -33,19 +31,18 @@ export type WorkspaceCheckoutOrderInput =
   typeof coworkReservationProductSchema.Encoded;
 export type WorkspaceCheckoutOrder = typeof workspaceCheckoutOrderSchema.Type;
 
-const checkoutSummaryItemFields = {
-  key: nonEmptyStringSchema,
+const checkoutSummaryItemBaseSchema = Schema.Struct({
+  key: Schema.NonEmptyString,
   amount: workspaceMoneyCodec,
-};
+});
 
 export const checkoutSummaryItemSchema = Schema.Struct({
-  ...checkoutSummaryItemFields,
-  label: Schema.optional(nonEmptyStringSchema),
+  ...checkoutSummaryItemBaseSchema.fields,
+  label: Schema.optional(Schema.NonEmptyString),
 });
 
 const nonNegativeCheckoutSummaryItemSchema = Schema.Struct({
-  ...checkoutSummaryItemFields,
-  label: Schema.optional(nonEmptyStringSchema),
+  ...checkoutSummaryItemSchema.fields,
   amount: nonNegativeWorkspaceMoneyCodec,
 });
 
@@ -59,8 +56,8 @@ export const checkoutSummarySectionSchema = Schema.Union([
     key: Schema.Literal("discount"),
     items: Schema.Array(
       Schema.Struct({
-        ...checkoutSummaryItemFields,
-        label: nonEmptyStringSchema,
+        ...checkoutSummaryItemBaseSchema.fields,
+        label: Schema.NonEmptyString,
       })
     ),
     total: workspaceMoneyCodec,
@@ -73,7 +70,6 @@ export const checkoutSummarySectionSchema = Schema.Union([
 ]);
 
 export const checkoutSummarySchema = Schema.Struct({
-  schema: Schema.Literal("workspace-checkout-summary"),
   sections: Schema.Array(checkoutSummarySectionSchema),
   total: nonNegativeWorkspaceMoneyCodec,
 }).annotate({
@@ -82,8 +78,7 @@ export const checkoutSummarySchema = Schema.Struct({
 });
 
 export const workspaceCheckoutQuoteSchema = Schema.Struct({
-  schema: Schema.Literal("workspace-checkout-quote"),
-  fingerprint: nonEmptyStringSchema,
+  fingerprint: Schema.NonEmptyString,
   order: workspaceCheckoutOrderSchema,
   summary: checkoutSummarySchema,
   payment: Schema.Struct({
@@ -165,7 +160,6 @@ const getQuoteFingerprint = (
   ).value;
 
   const canonicalPayload = JSON.stringify({
-    schema: quote.schema,
     order: {
       tier: quote.order.entryTier,
       coffee: quote.order.coffee,
@@ -286,12 +280,10 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
   });
 
   const summary: CheckoutSummary = {
-    schema: "workspace-checkout-summary",
     sections,
     total: expectedPrice,
   };
   const quoteWithoutFingerprint = {
-    schema: "workspace-checkout-quote" as const,
     order: normalizedOrder,
     summary,
     payment: {

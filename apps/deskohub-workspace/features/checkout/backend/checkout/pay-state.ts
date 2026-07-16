@@ -213,7 +213,6 @@ export const buildSignedPayState = (
       monitorOption: input.quote.order.monitorOption,
     },
     quote: {
-      schema: input.quote.schema,
       fingerprint: input.quote.fingerprint,
       order: input.quote.order,
       summary: input.quote.summary,

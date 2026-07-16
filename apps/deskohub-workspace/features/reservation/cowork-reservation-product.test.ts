@@ -95,4 +95,17 @@ describe("cowork reservation product", () => {
       productMonitorOption: "2x32-4k",
     });
   });
+
+  test("clears unsupported persistence columns inside the product projection", () => {
+    expect(
+      getWorkspaceReservationProductColumns({
+        entryTier: "basic",
+        coffee: false,
+      })
+    ).toEqual({
+      productTier: "basic",
+      productCoffee: false,
+      productMonitorOption: null,
+    });
+  });
 });

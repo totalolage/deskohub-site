@@ -66,6 +66,8 @@ describe("workspace checkout quotes", () => {
     expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
       "product:basic",
     ]);
+    expect(quote).not.toHaveProperty("schema");
+    expect(quote.summary).not.toHaveProperty("schema");
   });
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {

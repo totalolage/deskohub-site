@@ -30,11 +30,9 @@ export const legalEvidenceSources = [
 export const reservationSubmitLegalEvidenceSource = legalEvidenceSources[0];
 export const paymentSubmitLegalEvidenceSource = legalEvidenceSources[1];
 
-const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
-
 export const legalDocumentHashSchema = Schema.Struct({
-  path: nonEmptyStringSchema,
-  hash: nonEmptyStringSchema,
+  path: Schema.NonEmptyString,
+  hash: Schema.NonEmptyString,
   hashAlgorithm: Schema.Literal("sha256"),
 });
 
@@ -42,14 +40,14 @@ export type LegalDocumentHash = typeof legalDocumentHashSchema.Type;
 
 export const legalEvidenceSchema = Schema.Struct({
   documentKey: Schema.Literals(legalDocumentKeys),
-  documentHash: nonEmptyStringSchema,
+  documentHash: Schema.NonEmptyString,
   accepted: Schema.Boolean,
   acceptedAt: Schema.toEncoded(instantStringSchema),
   locale: Schema.Literals(locales),
-  source: nonEmptyStringSchema,
+  source: Schema.NonEmptyString,
   document: legalDocumentHashSchema,
   acknowledgements: Schema.optional(
-    Schema.Record(nonEmptyStringSchema, Schema.Boolean)
+    Schema.Record(Schema.NonEmptyString, Schema.Boolean)
   ),
 }).check(
   Schema.makeFilter((evidence) =>
@@ -65,7 +63,7 @@ export const legalEvidenceSchema = Schema.Struct({
 export type LegalEvidence = typeof legalEvidenceSchema.Type;
 
 export const legalEvidenceMapSchema = Schema.Record(
-  nonEmptyStringSchema,
+  Schema.NonEmptyString,
   legalEvidenceSchema
 ).check(
   Schema.makeFilter((evidenceMap) => {

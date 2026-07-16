@@ -251,8 +251,6 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               .update(workspaceReservations)
               .set({
                 ...productColumns,
-                productMonitorOption:
-                  productColumns.productMonitorOption ?? null,
                 locale: input.locale,
                 updatedAt: new Date(),
               })
