@@ -313,7 +313,7 @@ describe("prepareWorkspacePayState", () => {
     );
 
     expect(ensureAvailable).toHaveBeenCalledWith({
-      _tag: "cowork",
+      kind: "cowork",
       date: reservation.date,
       entryTier: reservation.entryTier,
       monitorOption: undefined,

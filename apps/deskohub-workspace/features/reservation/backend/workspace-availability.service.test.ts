@@ -148,7 +148,7 @@ const getAvailability = (input: {
   readonly startsAt?: string;
   readonly endsAt?: string;
   readonly to?: string;
-  readonly _tag?: "cowork" | "meeting-room";
+  readonly kind?: "cowork" | "meeting-room";
   readonly entryTier?: "basic" | "plus" | "profi";
   readonly monitorOption?: "2x27-qhd" | "2x32-qhd" | "2x27-4k" | "2x32-4k";
   readonly tables?: readonly Table[];
@@ -168,16 +168,16 @@ const getAvailability = (input: {
         to: input.to ?? testDate,
       };
 
-      return yield* input._tag === "meeting-room"
+      return yield* input.kind === "meeting-room"
         ? service.getAvailability({
             ...baseQuery,
-            _tag: "meeting-room",
+            kind: "meeting-room",
             startsAt: input.startsAt,
             endsAt: input.endsAt,
           })
         : service.getAvailability({
             ...baseQuery,
-            _tag: "cowork",
+            kind: "cowork",
             date: input.date,
             entryTier: input.entryTier,
             monitorOption: input.monitorOption,
@@ -315,7 +315,7 @@ describe("WorkspaceAvailabilityService", () => {
 
   test("marks a meeting room unavailable after any overlapping booking", async () => {
     const availability = await getAvailability({
-      _tag: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T08:00:00Z",
       endsAt: "2099-06-10T09:00:00Z",
       tables: [
@@ -356,7 +356,7 @@ describe("WorkspaceAvailabilityService", () => {
 
   test("uses half-open interval overlap for selected availability", async () => {
     const backToBack = await getAvailability({
-      _tag: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T12:00:00Z",
       endsAt: "2099-06-10T14:00:00Z",
       tables: [makeTable({ id: "room-1", tags: ["reservation:meeting-room"] })],
@@ -374,7 +374,7 @@ describe("WorkspaceAvailabilityService", () => {
     expect(backToBack.meetingRoomUnavailable).toBe(false);
 
     const overlapping = await getAvailability({
-      _tag: "meeting-room",
+      kind: "meeting-room",
       startsAt: "2099-06-10T12:00:00Z",
       endsAt: "2099-06-10T14:00:00Z",
       tables: [makeTable({ id: "room-1", tags: ["reservation:meeting-room"] })],
@@ -454,7 +454,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
-            _tag: "cowork",
+            kind: "cowork",
             date: testDate,
             entryTier: "profi",
             monitorOption: "2x27-qhd",
@@ -472,14 +472,14 @@ describe("WorkspaceAvailabilityService", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.reservation).toEqual({
-        _tag: "cowork",
+        kind: "cowork",
         tier: "profi",
         monitorOption: "2x27-qhd",
       });
     }
   });
 
-  test("describes an unavailable meeting-room reservation with its tag", async () => {
+  test("describes an unavailable meeting-room reservation with its kind", async () => {
     const result = await runWithInventory(
       Effect.result(
         Effect.gen(function* () {
@@ -488,7 +488,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
-            _tag: "meeting-room",
+            kind: "meeting-room",
             startsAt: "2099-06-10T08:00:00Z",
             endsAt: "2099-06-10T09:00:00Z",
           });
@@ -510,7 +510,7 @@ describe("WorkspaceAvailabilityService", () => {
 
     expect(result._tag).toBe("Failure");
     if (result._tag === "Failure") {
-      expect(result.failure.reservation).toEqual({ _tag: "meeting-room" });
+      expect(result.failure.reservation).toEqual({ kind: "meeting-room" });
     }
   });
 
@@ -523,7 +523,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
-            _tag: "cowork",
+            kind: "cowork",
             date: testDate,
             entryTier: "basic",
           });
@@ -543,7 +543,7 @@ describe("WorkspaceAvailabilityService", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.reservation).toEqual({
-        _tag: "cowork",
+        kind: "cowork",
         tier: "basic",
       });
     }
@@ -558,7 +558,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
-            _tag: "meeting-room",
+            kind: "meeting-room",
             startsAt: "2099-06-10T20:00:00Z",
             endsAt: "2099-06-11T00:00:00Z",
           });
@@ -581,7 +581,7 @@ describe("WorkspaceAvailabilityService", () => {
     if (result._tag === "Failure") {
       expect(result.failure._tag).toBe("WorkspaceTableUnavailableError");
       expect(result.failure.date).toBe(nextTestDate);
-      expect(result.failure.reservation).toEqual({ _tag: "meeting-room" });
+      expect(result.failure.reservation).toEqual({ kind: "meeting-room" });
     }
   });
 
@@ -594,7 +594,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
-            _tag: "meeting-room",
+            kind: "meeting-room",
             startsAt: "2099-06-10T20:00:00Z",
             endsAt: "2099-06-11T00:00:00Z",
           });
@@ -627,7 +627,7 @@ describe("WorkspaceAvailabilityService", () => {
           );
           const service = yield* availability.WorkspaceAvailabilityService;
           return yield* service.ensureAvailable({
-            _tag: "meeting-room",
+            kind: "meeting-room",
             startsAt: "2099-06-10T08:00:00Z",
             endsAt: "2099-06-11T08:00:00Z",
           });

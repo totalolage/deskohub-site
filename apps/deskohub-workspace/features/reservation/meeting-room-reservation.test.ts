@@ -67,7 +67,7 @@ describe("meetingRoomReservationSchema", () => {
     const issues = Effect.runSync(
       getMeetingRoomReservationIssues(
         decodeOrder({
-          _tag: "meeting-room",
+          kind: "meeting-room",
           startsAt: "2099-06-10T10:00:00Z",
           endsAt: "2099-06-10T11:00:00Z",
           name: "Ada Lovelace",
@@ -79,5 +79,19 @@ describe("meetingRoomReservationSchema", () => {
 
     expect(Result.isSuccess(formResult)).toBe(true);
     expect(issues).toEqual([]);
+  });
+
+  test("decodes meeting-room orders with the domain discriminator", () => {
+    const result = decodeOrder({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T10:00:00Z",
+      endsAt: "2099-06-10T11:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(result).toMatchObject({ kind: "meeting-room" });
+    expect(result).not.toHaveProperty("_tag");
   });
 });

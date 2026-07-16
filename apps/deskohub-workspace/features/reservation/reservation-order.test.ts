@@ -11,7 +11,7 @@ import {
 const reservationOrderSchema = makeSchemaParser(reservationOrderDefinition);
 
 const validMeetingRoomReservation = {
-  _tag: "meeting-room",
+  kind: "meeting-room",
   startsAt: "2099-06-10T07:00:00Z",
   endsAt: "2099-06-10T08:00:00Z",
   name: "Ada Lovelace",
@@ -23,7 +23,7 @@ const validMeetingRoomReservation = {
 describe("reservation schema", () => {
   test("rejects a meeting-room order without an interval", () => {
     const result = reservationOrderSchema.safeParse({
-      _tag: "meeting-room",
+      kind: "meeting-room",
       name: "Ada Lovelace",
       email: "ada@example.com",
       phone: "+420 777 777 777",
@@ -41,7 +41,8 @@ describe("reservation schema", () => {
 
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
-      expect(result.success).toMatchObject({ _tag: "meeting-room" });
+      expect(result.success).toMatchObject({ kind: "meeting-room" });
+      expect(result.success).not.toHaveProperty("_tag");
       expect(result.success).not.toHaveProperty("entryTier");
     }
   });
@@ -53,7 +54,7 @@ describe("reservation schema", () => {
       Result.isFailure(
         reservationOrderSchema.safeParse({
           ...validMeetingRoomReservation,
-          _tag: "cowork",
+          kind: "cowork",
           entryTier: "meeting-room",
         })
       )
@@ -62,7 +63,7 @@ describe("reservation schema", () => {
 
   test("discriminates cowork orders before refining their tier", () => {
     const result = reservationOrderSchema.safeParse({
-      _tag: "cowork",
+      kind: "cowork",
       entryTier: "basic",
       date: "2099-06-10",
       coffee: false,
@@ -74,7 +75,7 @@ describe("reservation schema", () => {
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
       expect(result.success).toMatchObject({
-        _tag: "cowork",
+        kind: "cowork",
         entryTier: "basic",
       });
     }
@@ -83,14 +84,39 @@ describe("reservation schema", () => {
   test("projects product options by reservation family", () => {
     expect(
       getReservationProductCoffee({
-        _tag: "cowork",
+        kind: "cowork",
         entryTier: "basic",
         coffee: true,
       })
     ).toBe(true);
+    expect(getReservationProductCoffee({ kind: "meeting-room" })).toBe(false);
     expect(
-      getReservationProductMonitorOption({ _tag: "meeting-room" })
+      getReservationProductMonitorOption({
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      })
+    ).toBe("2x27-qhd");
+    expect(
+      getReservationProductMonitorOption({ kind: "meeting-room" })
     ).toBeUndefined();
+  });
+
+  test("rejects missing and unknown reservation kinds", () => {
+    const { kind: _kind, ...withoutKind } = validMeetingRoomReservation;
+
+    expect(
+      Result.isFailure(reservationOrderSchema.safeParse(withoutKind))
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        reservationOrderSchema.safeParse({
+          ...validMeetingRoomReservation,
+          kind: "event-space",
+        })
+      )
+    ).toBe(true);
   });
 
   afterEach(() => {

@@ -28,16 +28,18 @@ export const getReservationProductCoffee = (
   reservation: ReservationProductProjectionInput
 ) =>
   Match.value(reservation).pipe(
-    Match.tag("cowork", getCoworkReservationProductCoffee),
-    Match.tag("meeting-room", getMeetingRoomReservationProductCoffee),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("kind")({
+      cowork: getCoworkReservationProductCoffee,
+      "meeting-room": getMeetingRoomReservationProductCoffee,
+    })
   );
 
 export const getReservationProductMonitorOption = (
   reservation: ReservationProductProjectionInput
 ) =>
   Match.value(reservation).pipe(
-    Match.tag("cowork", getCoworkReservationProductMonitorOption),
-    Match.tag("meeting-room", getMeetingRoomReservationProductMonitorOption),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("kind")({
+      cowork: getCoworkReservationProductMonitorOption,
+      "meeting-room": getMeetingRoomReservationProductMonitorOption,
+    })
   );

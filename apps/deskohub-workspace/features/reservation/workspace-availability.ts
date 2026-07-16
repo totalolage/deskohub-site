@@ -15,6 +15,10 @@ import {
   reservationIntervalSchema,
   reservationTimestampInputSchema,
 } from "@/features/reservation/reservation-interval";
+import {
+  coworkReservationKind,
+  meetingRoomReservationKind,
+} from "@/features/reservation/reservation-kind";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
 const workspaceAvailabilityQueryBaseFields = {
@@ -22,20 +26,26 @@ const workspaceAvailabilityQueryBaseFields = {
   to: Schema.String,
 };
 
+const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  ...workspaceAvailabilityQueryBaseFields,
+  date: Schema.optional(Schema.String),
+  entryTier: Schema.optional(Schema.Literals(workspaceCoworkTiers)),
+  monitorOption: Schema.optional(
+    Schema.Literals(workspaceProductMonitorOptions)
+  ),
+});
+
+const meetingRoomWorkspaceAvailabilityQuerySchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  ...workspaceAvailabilityQueryBaseFields,
+  startsAt: Schema.optional(reservationTimestampInputSchema),
+  endsAt: Schema.optional(reservationTimestampInputSchema),
+});
+
 export const workspaceAvailabilityQuerySchema = Schema.Union([
-  Schema.TaggedStruct("cowork", {
-    ...workspaceAvailabilityQueryBaseFields,
-    date: Schema.optional(Schema.String),
-    entryTier: Schema.optional(Schema.Literals(workspaceCoworkTiers)),
-    monitorOption: Schema.optional(
-      Schema.Literals(workspaceProductMonitorOptions)
-    ),
-  }),
-  Schema.TaggedStruct("meeting-room", {
-    ...workspaceAvailabilityQueryBaseFields,
-    startsAt: Schema.optional(reservationTimestampInputSchema),
-    endsAt: Schema.optional(reservationTimestampInputSchema),
-  }),
+  coworkWorkspaceAvailabilityQuerySchema,
+  meetingRoomWorkspaceAvailabilityQuerySchema,
 ]);
 
 export type WorkspaceAvailabilityQuery =
@@ -165,21 +175,25 @@ export const parseWorkspaceAvailabilityQuery = (
     reservationKind === "meeting-room" ? getIntervalParam(searchParams) : {};
 
   return Match.value(reservationKind).pipe(
-    Match.when("meeting-room", () => ({
-      _tag: "meeting-room" as const,
-      from,
-      to,
-      ...(interval.startsAt && { startsAt: interval.startsAt }),
-      ...(interval.endsAt && { endsAt: interval.endsAt }),
-    })),
-    Match.when("cowork", () => ({
-      _tag: "cowork" as const,
-      from,
-      to,
-      ...(date && { date }),
-      ...(entryTier && { entryTier }),
-      ...(monitorOption && { monitorOption }),
-    })),
+    Match.when("meeting-room", () =>
+      meetingRoomWorkspaceAvailabilityQuerySchema.make({
+        kind: meetingRoomReservationKind,
+        from,
+        to,
+        ...(interval.startsAt && { startsAt: interval.startsAt }),
+        ...(interval.endsAt && { endsAt: interval.endsAt }),
+      })
+    ),
+    Match.when("cowork", () =>
+      coworkWorkspaceAvailabilityQuerySchema.make({
+        kind: coworkReservationKind,
+        from,
+        to,
+        ...(date && { date }),
+        ...(entryTier && { entryTier }),
+        ...(monitorOption && { monitorOption }),
+      })
+    ),
     Match.exhaustive
   );
 };

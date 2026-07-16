@@ -3,24 +3,24 @@ import { Result } from "effect";
 import { storedWorkspaceReservationDetailsParser } from "./stored-reservation-details";
 
 describe("stored workspace reservation details", () => {
-  test("parses tagged cowork and meeting-room variants", () => {
+  test("parses canonical cowork and meeting-room variants", () => {
     expect(
       storedWorkspaceReservationDetailsParser.parse({
-        _tag: "cowork",
+        kind: "cowork",
         tier: "basic",
         coffee: false,
       })
     ).toEqual({
-      _tag: "cowork",
+      kind: "cowork",
       tier: "basic",
       coffee: false,
     });
     expect(
       storedWorkspaceReservationDetailsParser.parse({
-        _tag: "meeting-room",
+        kind: "meeting-room",
       })
     ).toEqual({
-      _tag: "meeting-room",
+      kind: "meeting-room",
     });
   });
 
@@ -28,7 +28,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "basic",
           coffee: true,
         })
@@ -37,7 +37,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "basic",
           coffee: true,
           monitorOption: "2x27-qhd",
@@ -50,7 +50,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "plus",
           coffee: true,
         })
@@ -59,7 +59,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "plus",
           coffee: false,
         })
@@ -68,7 +68,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "plus",
           coffee: true,
           monitorOption: "2x27-qhd",
@@ -81,7 +81,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "profi",
           coffee: true,
           monitorOption: "2x27-qhd",
@@ -91,7 +91,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "profi",
           coffee: true,
         })
@@ -100,7 +100,7 @@ describe("stored workspace reservation details", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "cowork",
+          kind: "cowork",
           tier: "profi",
           coffee: false,
           monitorOption: "2x27-qhd",
@@ -109,21 +109,50 @@ describe("stored workspace reservation details", () => {
     ).toBe(false);
   });
 
-  test("stores meeting-room details as an exact tag only", () => {
+  test("stores meeting-room details as an exact kind only", () => {
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "meeting-room",
+          kind: "meeting-room",
         })
       )
     ).toBe(true);
     expect(
       Result.isSuccess(
         storedWorkspaceReservationDetailsParser.safeParse({
-          _tag: "meeting-room",
+          kind: "meeting-room",
           startsAt: "2099-06-10T07:00:00Z",
         })
       )
     ).toBe(false);
+  });
+
+  test("rejects legacy tags and missing or unknown kinds", () => {
+    const legacyDiscriminator = `_${"tag"}`;
+
+    expect(
+      Result.isFailure(
+        storedWorkspaceReservationDetailsParser.safeParse({
+          [legacyDiscriminator]: "cowork",
+          tier: "basic",
+          coffee: false,
+        })
+      )
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        storedWorkspaceReservationDetailsParser.safeParse({
+          tier: "basic",
+          coffee: false,
+        })
+      )
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        storedWorkspaceReservationDetailsParser.safeParse({
+          kind: "event-space",
+        })
+      )
+    ).toBe(true);
   });
 });
