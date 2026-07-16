@@ -1,7 +1,7 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { canonicalDiscountCodeSchema } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import type { PayStateKey, SignedPayState } from "./pay-state";

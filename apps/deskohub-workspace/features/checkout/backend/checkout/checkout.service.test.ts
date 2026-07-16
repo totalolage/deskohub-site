@@ -8,7 +8,7 @@ import { Effect, Layer, Schema } from "effect";
 import {
   buildWorkspaceCheckoutQuote,
   type WorkspaceCheckoutQuote,
-} from "@/features/checkout/checkout-quote";
+} from "@/features/checkout/checkout-quote.test-utils";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
   CanonicalDiscountCode,

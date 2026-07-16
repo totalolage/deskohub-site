@@ -3,10 +3,10 @@ import { Schema } from "effect";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
-  buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutOrder,
 } from "./checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "./checkout-quote.test-utils";
 
 const money = (value: number) => ({
   value,

@@ -8,7 +8,7 @@ import {
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
 import { Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
