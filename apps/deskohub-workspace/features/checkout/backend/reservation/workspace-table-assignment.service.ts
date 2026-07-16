@@ -46,8 +46,8 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           yield* Effect.annotateLogsScoped({ reservation });
           yield* Effect.logInfo("Workspace table assignment started");
 
-          const product = getWorkspaceProductByTier(reservation.tier);
-          const requiredTags = [`tier:${reservation.tier}`];
+          const product = getWorkspaceProductByTier(reservation.entryTier);
+          const requiredTags = [`tier:${reservation.entryTier}`];
           yield* Effect.annotateLogsScoped({ product, requiredTags });
 
           if (product.requiresMonitorOption && !reservation.monitorOption) {
@@ -57,7 +57,7 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
 
             return yield* Effect.fail(
               new ValidationError({
-                message: `Workspace reservation tier ${reservation.tier} requires a monitor option for Dotypos table assignment`,
+                message: `Workspace reservation tier ${reservation.entryTier} requires a monitor option for Dotypos table assignment`,
               })
             );
           }
@@ -177,7 +177,7 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           effect.pipe(
             Effect.scoped,
             Effect.annotateLogs({
-              tier: reservation.tier,
+              tier: reservation.entryTier,
               date: reservation.date,
               coffee: reservation.coffee,
               monitorOption: reservation.monitorOption,

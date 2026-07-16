@@ -22,7 +22,7 @@ import { DiscountServiceMock } from "@/features/discounts/discount.service.mock"
 import { DiscountCodeUnavailableError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import {
   buildSignedPayState,
@@ -50,10 +50,11 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
   ),
 }));
 
-const reservationData: ReservationOrderData = {
+const reservationData: NormalizedCoworkReservationOrder = {
+  _tag: "cowork",
   entryTier: "profi",
   date: "2026-06-20",
-  coffee: false,
+  coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
   email: "ada@example.com",

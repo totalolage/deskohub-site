@@ -1,7 +1,10 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
-import { parseWorkspaceAvailabilityQuery } from "./workspace-availability";
+import {
+  parseWorkspaceAvailabilityQuery,
+  parseWorkspaceAvailabilityResponse,
+} from "./workspace-availability";
 
 describe("parseWorkspaceAvailabilityQuery", () => {
   test("keeps the public kind query param as the domain discriminator", () => {
@@ -55,5 +58,37 @@ describe("parseWorkspaceAvailabilityQuery", () => {
       from: "2099-06-10",
       to: "2099-06-10",
     });
+  });
+});
+
+describe("parseWorkspaceAvailabilityResponse", () => {
+  test("uses the cowork-specific tier field consumed by the reservation form", () => {
+    const response = parseWorkspaceAvailabilityResponse({
+      date: "2099-06-10",
+      from: "2099-06-10",
+      to: "2099-06-10",
+      unavailableDates: [],
+      unavailableCoworkTiers: ["plus"],
+      meetingRoomUnavailable: false,
+      unavailableMonitorOptions: [],
+      notices: [],
+    });
+
+    expect(response.unavailableCoworkTiers).toEqual(["plus"]);
+    expect(response.meetingRoomUnavailable).toBe(false);
+  });
+
+  test("rejects the obsolete generic unavailableTiers field", () => {
+    expect(() =>
+      parseWorkspaceAvailabilityResponse({
+        from: "2099-06-10",
+        to: "2099-06-10",
+        unavailableDates: [],
+        unavailableTiers: ["plus"],
+        meetingRoomUnavailable: false,
+        unavailableMonitorOptions: [],
+        notices: [],
+      })
+    ).toThrow("Invalid workspace availability response");
   });
 });

@@ -1,17 +1,18 @@
-import { Data, Option, Schema } from "effect";
-import { z } from "zod/v4";
-import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
-import {
-  workspaceProductMonitorOptions,
-  workspaceProductTiers,
-} from "@/features/checkout/product-catalog";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
-import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
-import {
-  type AppliedDiscount,
-  isAppliedDiscount,
-} from "@/features/discounts/contracts";
+import { Match, Schema } from "effect";
+import { checkoutSummarySchema } from "@/features/checkout/checkout-quote";
+import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
+import { appliedDiscountCodec } from "@/features/discounts/contracts";
 import { locales } from "@/features/i18n";
+import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
+import {
+  normalizedBasicCoworkReservationProductSchema,
+  normalizedPlusCoworkReservationProductSchema,
+  normalizedProfiCoworkReservationProductSchema,
+} from "@/features/reservation/cowork-reservation-product";
+import {
+  instantStringSchema,
+  plainDateStringSchema,
+} from "@/shared/utils/temporal";
 
 export const legalDocumentKeys = [
   "termsAndConditions",
@@ -29,97 +30,137 @@ export const legalEvidenceSources = [
 export const reservationSubmitLegalEvidenceSource = legalEvidenceSources[0];
 export const paymentSubmitLegalEvidenceSource = legalEvidenceSources[1];
 
-export const legalDocumentHashSchema = z.object({
-  path: z.string().min(1),
-  hash: z.string().min(1),
-  hashAlgorithm: z.literal("sha256"),
+const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
+
+export const legalDocumentHashSchema = Schema.Struct({
+  path: nonEmptyStringSchema,
+  hash: nonEmptyStringSchema,
+  hashAlgorithm: Schema.Literal("sha256"),
 });
 
-export type LegalDocumentHash = z.output<typeof legalDocumentHashSchema>;
+export type LegalDocumentHash = typeof legalDocumentHashSchema.Type;
 
-export const legalEvidenceSchema = z
-  .object({
-    documentKey: z.enum(legalDocumentKeys),
-    documentHash: z.string().min(1),
-    accepted: z.boolean(),
-    acceptedAt: z.iso.datetime({ offset: true }),
-    locale: z.enum(locales),
-    source: z.string().min(1),
-    document: legalDocumentHashSchema,
-    acknowledgements: z.record(z.string().min(1), z.boolean()).optional(),
-  })
-  .superRefine((evidence, ctx) => {
-    if (evidence.document.hash !== evidence.documentHash) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["documentHash"],
-        message: "Legal evidence documentHash must match document.hash.",
-      });
-    }
-  });
+export const legalEvidenceSchema = Schema.Struct({
+  documentKey: Schema.Literals(legalDocumentKeys),
+  documentHash: nonEmptyStringSchema,
+  accepted: Schema.Boolean,
+  acceptedAt: Schema.toEncoded(instantStringSchema),
+  locale: Schema.Literals(locales),
+  source: nonEmptyStringSchema,
+  document: legalDocumentHashSchema,
+  acknowledgements: Schema.optional(
+    Schema.Record(nonEmptyStringSchema, Schema.Boolean)
+  ),
+}).check(
+  Schema.makeFilter((evidence) =>
+    evidence.document.hash === evidence.documentHash
+      ? true
+      : {
+          path: ["documentHash"],
+          issue: "Legal evidence documentHash must match document.hash.",
+        }
+  )
+);
 
-export type LegalEvidence = z.output<typeof legalEvidenceSchema>;
+export type LegalEvidence = typeof legalEvidenceSchema.Type;
 
-export const legalEvidenceMapSchema = z
-  .record(z.string().min(1), legalEvidenceSchema)
-  .superRefine((evidenceMap, ctx) => {
+export const legalEvidenceMapSchema = Schema.Record(
+  nonEmptyStringSchema,
+  legalEvidenceSchema
+).check(
+  Schema.makeFilter((evidenceMap) => {
     for (const [documentHash, evidence] of Object.entries(evidenceMap)) {
       if (documentHash !== evidence.documentHash) {
-        ctx.addIssue({
-          code: "custom",
+        return {
           path: [documentHash, "documentHash"],
-          message: "Legal evidence map key must match evidence.documentHash.",
-        });
+          issue: "Legal evidence map key must match evidence.documentHash.",
+        };
       }
     }
-  });
 
-export type LegalEvidenceMap = z.output<typeof legalEvidenceMapSchema>;
+    return true;
+  })
+);
 
-export class CheckoutDetailsError extends Data.TaggedError(
-  "CheckoutDetailsError"
-)<{
-  readonly message: string;
-  readonly cause?: unknown;
-}> {}
+export type LegalEvidenceMap = typeof legalEvidenceMapSchema.Type;
 
-const isCheckoutSummary = (value: unknown): value is CheckoutSummary =>
-  Option.isSome(
-    Schema.decodeUnknownOption(checkoutSummarySchema, {
-      onExcessProperty: "error",
-    })(value)
-  );
+const checkoutReservationDateSchema = Schema.toEncoded(plainDateStringSchema);
 
-// This JSON is intentionally limited to booking, payment, legal, and fulfillment
-// state. Customer name, email, and phone remain owned by Dotypos and must not be
-// added here or as local database columns.
-export const checkoutDetailsJsonSchema = z.object({
-  schema: z.literal("workspace-checkout-details"),
-  schemaVersion: z.literal(1),
-  locale: z.enum(locales),
-  reservation: z.object({
-    tier: z.enum(workspaceProductTiers),
-    date: z.iso.date(),
-    coffee: z.boolean(),
-    monitorOption: z.enum(workspaceProductMonitorOptions).optional(),
-  }),
-  payment: z.object({
-    expectedPrice: nonNegativeWorkspaceMoneySchema,
-    undiscountedPrice: nonNegativeWorkspaceMoneySchema,
-    discounts: z.array(
-      z.custom<AppliedDiscount>(isAppliedDiscount, {
-        error: "Invalid applied discount snapshot.",
-      })
-    ),
-    summary: z.custom<CheckoutSummary>(isCheckoutSummary, {
-      error: "Invalid checkout summary snapshot.",
-    }),
-    providerRedirectUrl: z.url().optional(),
-  }),
-  legal: legalEvidenceMapSchema,
-  fulfillment: z.object({
-    accessCodePolicy: z.literal("workspace-static-v1"),
-  }),
+const basicCheckoutReservationDetailsSchema = Schema.Struct({
+  ...normalizedBasicCoworkReservationProductSchema.fields,
+  date: checkoutReservationDateSchema,
 });
 
-export type CheckoutDetailsJson = z.output<typeof checkoutDetailsJsonSchema>;
+const plusCheckoutReservationDetailsSchema = Schema.Struct({
+  ...normalizedPlusCoworkReservationProductSchema.fields,
+  date: checkoutReservationDateSchema,
+});
+
+const profiCheckoutReservationDetailsSchema = Schema.Struct({
+  ...normalizedProfiCoworkReservationProductSchema.fields,
+  date: checkoutReservationDateSchema,
+});
+
+export const checkoutReservationDetailsSchema = Schema.Union([
+  basicCheckoutReservationDetailsSchema,
+  plusCheckoutReservationDetailsSchema,
+  profiCheckoutReservationDetailsSchema,
+]).annotate({
+  identifier: "CheckoutReservationDetails",
+  description:
+    "PII-free cowork reservation projection used by checkout providers.",
+});
+
+export type CheckoutReservationDetails =
+  typeof checkoutReservationDetailsSchema.Type;
+
+export const getCheckoutReservationDetails = (
+  reservation: NormalizedCoworkReservationOrder
+): CheckoutReservationDetails =>
+  Match.value(reservation).pipe(
+    Match.when({ entryTier: "basic" }, (basicReservation) =>
+      basicCheckoutReservationDetailsSchema.make({
+        entryTier: "basic",
+        date: basicReservation.date,
+        coffee: basicReservation.coffee,
+      })
+    ),
+    Match.when({ entryTier: "plus" }, (plusReservation) =>
+      plusCheckoutReservationDetailsSchema.make({
+        entryTier: "plus",
+        date: plusReservation.date,
+        coffee: true,
+      })
+    ),
+    Match.when({ entryTier: "profi" }, (profiReservation) =>
+      profiCheckoutReservationDetailsSchema.make({
+        entryTier: "profi",
+        date: profiReservation.date,
+        coffee: true,
+        monitorOption: profiReservation.monitorOption,
+      })
+    ),
+    Match.exhaustive
+  );
+
+// This transient snapshot contains only the booking, payment, and legal data
+// required by provider adapters. Customer contact remains owned by Dotypos.
+export const checkoutDetailsJsonSchema = Schema.Struct({
+  schema: Schema.Literal("workspace-checkout-details"),
+  schemaVersion: Schema.Literal(1),
+  locale: Schema.Literals(locales),
+  reservation: checkoutReservationDetailsSchema,
+  payment: Schema.Struct({
+    expectedPrice: nonNegativeWorkspaceMoneyCodec,
+    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
+    discounts: Schema.Array(appliedDiscountCodec),
+    summary: checkoutSummarySchema,
+    providerRedirectUrl: Schema.optional(Schema.URL),
+  }),
+  legal: legalEvidenceMapSchema,
+}).annotate({
+  identifier: "CheckoutDetails",
+  description: "Transient PII-free checkout provider snapshot.",
+});
+
+export type CheckoutDetailsJson = typeof checkoutDetailsJsonSchema.Type;

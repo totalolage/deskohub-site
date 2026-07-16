@@ -76,7 +76,7 @@ export const createWorkspaceDotyposReservation: (
       Effect.annotateLogs({
         paymentOrderId: input.paymentOrderId,
         locale: input.checkoutDetails.locale,
-        entryTier: input.checkoutDetails.reservation.tier,
+        entryTier: input.checkoutDetails.reservation.entryTier,
         date: input.checkoutDetails.reservation.date,
         reservationStatus: input.status,
       })
@@ -114,7 +114,7 @@ export const formatWorkspaceReservationNote = (
 ) => {
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
-  const product = getWorkspaceProductByTier(reservation.tier);
+  const product = getWorkspaceProductByTier(reservation.entryTier);
   const lines = [
     "Deskohub workspace post-payment reservation",
     `Payment order: ${input.paymentOrderId}`,

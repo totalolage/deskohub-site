@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
@@ -18,6 +20,16 @@ const document = {
   hashAlgorithm: "sha256",
 } as const;
 
+const strictParseOptions = { onExcessProperty: "error" } as const;
+const decodeCheckoutDetails = Schema.decodeUnknownSync(
+  checkoutDetailsJsonSchema,
+  strictParseOptions
+);
+const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
+  legalEvidenceMapSchema,
+  strictParseOptions
+);
+
 const legalEvidence = ({
   accepted = true,
   documentHash = document.hash,
@@ -36,7 +48,7 @@ const legalEvidence = ({
   document: { ...document, hash: documentHash },
 });
 
-const legalEvidenceMap = legalEvidenceMapSchema.parse({
+const legalEvidenceMap = decodeLegalEvidenceMap({
   [document.hash]: legalEvidence(),
 });
 
@@ -67,15 +79,14 @@ describe("checkout details persistence", () => {
       entryTier: "basic",
       coffee: false,
     });
-    const details = checkoutDetailsJsonSchema.parse({
+    const details = decodeCheckoutDetails({
       schema: "workspace-checkout-details",
       schemaVersion: 1,
       locale: "en-US",
       reservation: {
-        tier: "basic",
+        entryTier: "basic",
         date: "2099-06-10",
         coffee: false,
-        message: "Please keep this private.",
       },
       payment: {
         expectedPrice: quote.payment.expectedPrice,
@@ -84,7 +95,6 @@ describe("checkout details persistence", () => {
         summary: quote.summary,
       },
       legal: legalEvidenceMap,
-      fulfillment: { accessCodePolicy: "workspace-static-v1" },
     });
 
     const serialized = JSON.stringify(details);
@@ -97,6 +107,15 @@ describe("checkout details persistence", () => {
     expect(serialized).not.toContain("ada@example.com");
     expect(serialized).not.toContain("+420777123456");
     expect(serialized).not.toContain("Please keep this private.");
+    expect(() =>
+      decodeCheckoutDetails({
+        ...details,
+        reservation: {
+          ...details.reservation,
+          message: "Please keep this private.",
+        },
+      })
+    ).toThrow('at ["reservation"]["message"]');
   });
 
   test("accepts negative discount rows but rejects negative expected totals", () => {
@@ -106,12 +125,12 @@ describe("checkout details persistence", () => {
     );
 
     expect(() =>
-      checkoutDetailsJsonSchema.parse({
+      decodeCheckoutDetails({
         schema: "workspace-checkout-details",
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
-          tier: "basic",
+          entryTier: "basic",
           date: "2099-06-10",
           coffee: false,
         },
@@ -122,17 +141,16 @@ describe("checkout details persistence", () => {
           summary: quote.summary,
         },
         legal: legalEvidenceMap,
-        fulfillment: { accessCodePolicy: "workspace-static-v1" },
       })
     ).not.toThrow();
 
     expect(() =>
-      checkoutDetailsJsonSchema.parse({
+      decodeCheckoutDetails({
         schema: "workspace-checkout-details",
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
-          tier: "basic",
+          entryTier: "basic",
           date: "2099-06-10",
           coffee: false,
         },
@@ -143,7 +161,6 @@ describe("checkout details persistence", () => {
           summary: quote.summary,
         },
         legal: legalEvidenceMap,
-        fulfillment: { accessCodePolicy: "workspace-static-v1" },
       })
     ).toThrow();
   });
@@ -155,12 +172,12 @@ describe("checkout details persistence", () => {
     );
 
     expect(() =>
-      checkoutDetailsJsonSchema.parse({
+      decodeCheckoutDetails({
         schema: "workspace-checkout-details",
         schemaVersion: 1,
         locale: "en-US",
         reservation: {
-          tier: "basic",
+          entryTier: "basic",
           date: "2099-06-10",
           coffee: false,
         },
@@ -176,13 +193,12 @@ describe("checkout details persistence", () => {
           summary: quote.summary,
         },
         legal: legalEvidenceMap,
-        fulfillment: { accessCodePolicy: "workspace-static-v1" },
       })
     ).toThrow();
   });
 
   test("accepts partial legal evidence maps and preserves accepted false", () => {
-    const parsed = legalEvidenceMapSchema.parse({
+    const parsed = decodeLegalEvidenceMap({
       [document.hash]: legalEvidence({
         accepted: false,
         source: reservationSubmitLegalEvidenceSource,
@@ -198,13 +214,13 @@ describe("checkout details persistence", () => {
 
   test("rejects legal evidence map key and document hash mismatches", () => {
     expect(() =>
-      legalEvidenceMapSchema.parse({
+      decodeLegalEvidenceMap({
         wrongHash: legalEvidence(),
       })
     ).toThrow();
 
     expect(() =>
-      legalEvidenceMapSchema.parse({
+      decodeLegalEvidenceMap({
         [document.hash]: {
           ...legalEvidence(),
           document: { ...document, hash: "different" },
@@ -214,7 +230,7 @@ describe("checkout details persistence", () => {
   });
 
   test("keeps source as free storage string while canonical constants construct known sources", () => {
-    const parsed = legalEvidenceMapSchema.parse({
+    const parsed = decodeLegalEvidenceMap({
       [document.hash]: legalEvidence({ source: "migration_backfill" }),
     });
 

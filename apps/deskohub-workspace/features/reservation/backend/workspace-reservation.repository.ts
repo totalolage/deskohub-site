@@ -7,6 +7,10 @@ import {
 } from "@/db/database.service";
 import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
+import {
+  getWorkspaceReservationProductColumns,
+  type NormalizedCoworkReservationProduct,
+} from "@/features/reservation/cowork-reservation-product";
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -20,9 +24,7 @@ export interface CreateWorkspaceReservationInput {
   readonly reservationIntentKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
-  readonly productTier: string;
-  readonly productCoffee: boolean;
-  readonly productMonitorOption?: string;
+  readonly product: NormalizedCoworkReservationProduct;
   readonly locale: string;
   readonly reservationHoldExpiresAt?: Date;
 }
@@ -39,9 +41,7 @@ export interface WorkspaceReservationRepository {
   ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
   readonly updateProductIntent: (input: {
     readonly id: string;
-    readonly productTier: string;
-    readonly productCoffee: boolean;
-    readonly productMonitorOption?: string;
+    readonly product: NormalizedCoworkReservationProduct;
     readonly locale: string;
   }) => Effect.Effect<
     WorkspaceReservation,
@@ -177,9 +177,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             reservationState: "draft" as const,
             paymentState: "not_started" as const,
             fulfillmentState: "not_started" as const,
-            productTier: input.productTier,
-            productCoffee: input.productCoffee,
-            productMonitorOption: input.productMonitorOption,
+            ...getWorkspaceReservationProductColumns(input.product),
             locale: input.locale,
             reservationHoldExpiresAt: input.reservationHoldExpiresAt,
           };
@@ -243,15 +241,18 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       updateProductIntent: Effect.fn(
         "workspaceReservations.updateProductIntent"
       )(function* (input) {
+        const productColumns = getWorkspaceReservationProductColumns(
+          input.product
+        );
         const updated = yield* runDb(
           "workspaceReservations.updateProductIntent",
           () =>
             db
               .update(workspaceReservations)
               .set({
-                productTier: input.productTier,
-                productCoffee: input.productCoffee,
-                productMonitorOption: input.productMonitorOption ?? null,
+                ...productColumns,
+                productMonitorOption:
+                  productColumns.productMonitorOption ?? null,
                 locale: input.locale,
                 updatedAt: new Date(),
               })

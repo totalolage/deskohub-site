@@ -1,102 +1,131 @@
-import { Data, Effect, Match } from "effect";
+import { Data, Effect, Match, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
-  type WorkspaceProductMonitorOption,
-  type WorkspaceProductTier,
 } from "@/features/checkout/product-catalog";
 import {
-  type CheckoutSummary,
-  type CheckoutSummaryItem,
-  type CheckoutSummarySection,
-  checkoutSummaryDiscountSectionSchema,
-  checkoutSummaryOrderSectionSchema,
-  checkoutSummarySchema,
-  checkoutSummaryTotalSectionSchema,
-} from "@/features/checkout/schemas/checkout-summary";
-import {
   addWorkspaceMoney,
-  type WorkspaceMoney,
+  nonNegativeWorkspaceMoneyCodec,
   withWorkspaceMoneyCurrency,
+  workspaceMoneyCodec,
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
+import {
+  type AppliedDiscount,
+  appliedDiscountCodec,
+  type DiscountQuote,
+} from "@/features/discounts/contracts";
+import {
+  coworkReservationProductSchema,
+  normalizedCoworkReservationProductSchema,
+} from "@/features/reservation/cowork-reservation-product";
 
-export type {
-  CheckoutSummary,
-  CheckoutSummaryItem,
-  CheckoutSummarySection,
-} from "@/features/checkout/schemas/checkout-summary";
+const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
 
-export type WorkspaceCheckoutOrder = {
-  readonly entryTier: WorkspaceProductTier;
-  readonly coffee: boolean;
-  readonly monitorOption?: WorkspaceProductMonitorOption;
+export const workspaceCheckoutOrderSchema =
+  normalizedCoworkReservationProductSchema.annotate({
+    identifier: "WorkspaceCheckoutOrder",
+    description: "Canonical normalized product selection for checkout.",
+  });
+
+export type WorkspaceCheckoutOrderInput =
+  typeof coworkReservationProductSchema.Encoded;
+export type WorkspaceCheckoutOrder = typeof workspaceCheckoutOrderSchema.Type;
+
+const checkoutSummaryItemFields = {
+  key: nonEmptyStringSchema,
+  amount: workspaceMoneyCodec,
 };
 
-export type WorkspaceCheckoutQuote = {
-  readonly schema: "workspace-checkout-quote";
-  readonly order: WorkspaceCheckoutOrder;
-  readonly summary: CheckoutSummary;
-  readonly fingerprint: string;
-  readonly payment: {
-    readonly expectedPrice: WorkspaceMoney;
-    readonly undiscountedPrice: WorkspaceMoney;
-    readonly discounts: readonly AppliedDiscount[];
-  };
-};
+export const checkoutSummaryItemSchema = Schema.Struct({
+  ...checkoutSummaryItemFields,
+  label: Schema.optional(nonEmptyStringSchema),
+});
 
-export type CheckoutSummaryChangedKeys = {
-  readonly sectionKeys: readonly string[];
-  readonly itemKeys: readonly string[];
-};
+const nonNegativeCheckoutSummaryItemSchema = Schema.Struct({
+  ...checkoutSummaryItemFields,
+  label: Schema.optional(nonEmptyStringSchema),
+  amount: nonNegativeWorkspaceMoneyCodec,
+});
+
+export const checkoutSummarySectionSchema = Schema.Union([
+  Schema.Struct({
+    key: Schema.Literal("order"),
+    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
+    total: nonNegativeWorkspaceMoneyCodec,
+  }),
+  Schema.Struct({
+    key: Schema.Literal("discount"),
+    items: Schema.Array(
+      Schema.Struct({
+        ...checkoutSummaryItemFields,
+        label: nonEmptyStringSchema,
+      })
+    ),
+    total: workspaceMoneyCodec,
+  }),
+  Schema.Struct({
+    key: Schema.Literal("total"),
+    items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
+    total: nonNegativeWorkspaceMoneyCodec,
+  }),
+]);
+
+export const checkoutSummarySchema = Schema.Struct({
+  schema: Schema.Literal("workspace-checkout-summary"),
+  sections: Schema.Array(checkoutSummarySectionSchema),
+  total: nonNegativeWorkspaceMoneyCodec,
+}).annotate({
+  identifier: "CheckoutSummary",
+  description: "Public itemized Workspace checkout summary.",
+});
+
+export const workspaceCheckoutQuoteSchema = Schema.Struct({
+  schema: Schema.Literal("workspace-checkout-quote"),
+  fingerprint: nonEmptyStringSchema,
+  order: workspaceCheckoutOrderSchema,
+  summary: checkoutSummarySchema,
+  payment: Schema.Struct({
+    expectedPrice: nonNegativeWorkspaceMoneyCodec,
+    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
+    discounts: Schema.Array(appliedDiscountCodec),
+  }),
+}).annotate({
+  identifier: "WorkspaceCheckoutQuote",
+  description: "Authoritative Workspace checkout quote snapshot.",
+});
+
+export const checkoutSummaryChangedKeysSchema = Schema.Struct({
+  sectionKeys: Schema.Array(Schema.String),
+  itemKeys: Schema.Array(Schema.String),
+});
+
+export type CheckoutSummaryItem = typeof checkoutSummaryItemSchema.Type;
+export type CheckoutSummarySection = typeof checkoutSummarySectionSchema.Type;
+export type CheckoutSummary = typeof checkoutSummarySchema.Type;
+export type WorkspaceCheckoutQuote = typeof workspaceCheckoutQuoteSchema.Type;
+export type CheckoutSummaryChangedKeys =
+  typeof checkoutSummaryChangedKeysSchema.Type;
 
 export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
   readonly message: string;
+  readonly cause?: unknown;
 }> {}
 
 export const normalizeWorkspaceCheckoutOrder = Effect.fn(
   "normalizeWorkspaceCheckoutOrder"
-)(function* (order: WorkspaceCheckoutOrder) {
-  const product = getWorkspaceProductByTier(order.entryTier);
-
-  if (product.requiresMonitorOption && !order.monitorOption) {
-    return yield* Effect.fail(
-      new CheckoutQuoteError({
-        message: "Monitor option is required for this entry tier.",
-      })
-    );
-  }
-
-  if (
-    product.requiresMonitorOption &&
-    order.monitorOption &&
-    !product.allowedMonitorOptions.includes(order.monitorOption)
-  ) {
-    return yield* Effect.fail(
-      new CheckoutQuoteError({
-        message: "Monitor option is unavailable for this entry tier.",
-      })
-    );
-  }
-
-  if (!product.requiresMonitorOption && order.monitorOption) {
-    return yield* Effect.fail(
-      new CheckoutQuoteError({
-        message: "Monitor option is unavailable for this entry tier.",
-      })
-    );
-  }
-
-  const normalizedOrder: WorkspaceCheckoutOrder = {
-    entryTier: order.entryTier,
-    coffee: product.requiresCoffee ? true : order.coffee,
-    ...(order.monitorOption && { monitorOption: order.monitorOption }),
-  };
-
-  return normalizedOrder;
-});
+)((order: WorkspaceCheckoutOrderInput) =>
+  Schema.decodeUnknownEffect(coworkReservationProductSchema)(order).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CheckoutQuoteError({
+          message: String(cause),
+          cause,
+        })
+    )
+  )
+);
 
 const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
@@ -170,7 +199,7 @@ const getQuoteFingerprint = (
 export const calculateWorkspaceCheckoutQuote = Effect.fn(
   "buildWorkspaceCheckoutQuote"
 )(function* (
-  order: WorkspaceCheckoutOrder,
+  order: WorkspaceCheckoutOrderInput,
   options: {
     readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
@@ -211,6 +240,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     orderItems.map((item) => item.amount)
   );
   const discountQuote = options.discountQuote;
+
   const discounts = discountQuote?.discounts ?? [];
   const discountedProductPrice =
     discountQuote?.discountedSubtotal ?? productPrice;
@@ -218,11 +248,11 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     discountedProductPrice,
     ...addOnItems.map(({ amount }) => amount),
   ]);
-  const orderSection = checkoutSummaryOrderSectionSchema.make({
+  const orderSection: CheckoutSummarySection = {
     key: "order",
     items: orderItems,
     total: orderTotal,
-  });
+  };
   const sections: CheckoutSummarySection[] = [orderSection];
 
   if (discounts.length > 0) {
@@ -237,33 +267,29 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     const discountTotal = yield* addWorkspaceMoney(
       discountItems.map(({ amount }) => amount)
     );
-    sections.push(
-      checkoutSummaryDiscountSectionSchema.make({
-        key: "discount",
-        items: discountItems,
-        total: discountTotal,
-      })
-    );
+    sections.push({
+      key: "discount",
+      items: discountItems,
+      total: discountTotal,
+    });
   }
 
-  sections.push(
-    checkoutSummaryTotalSectionSchema.make({
-      key: "total",
-      items: [
-        {
-          key: "total:final",
-          amount: expectedPrice,
-        },
-      ],
-      total: expectedPrice,
-    })
-  );
+  sections.push({
+    key: "total",
+    items: [
+      {
+        key: "total:final",
+        amount: expectedPrice,
+      },
+    ],
+    total: expectedPrice,
+  });
 
-  const summary = checkoutSummarySchema.make({
+  const summary: CheckoutSummary = {
     schema: "workspace-checkout-summary",
     sections,
     total: expectedPrice,
-  });
+  };
   const quoteWithoutFingerprint = {
     schema: "workspace-checkout-quote" as const,
     order: normalizedOrder,
@@ -274,7 +300,6 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
       discounts,
     },
   };
-
   return {
     ...quoteWithoutFingerprint,
     fingerprint: getQuoteFingerprint(quoteWithoutFingerprint),
@@ -282,7 +307,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
 });
 
 export const buildWorkspaceCheckoutQuote = (
-  order: WorkspaceCheckoutOrder,
+  order: WorkspaceCheckoutOrderInput,
   options: {
     readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
@@ -299,13 +324,6 @@ const getSummaryItemMap = (summary: CheckoutSummary) =>
       section.items.map((item) => [`${section.key}/${item.key}`, item] as const)
     )
   );
-
-const hasCheckoutSummaryItemChanged = (
-  previousItem: CheckoutSummaryItem | undefined,
-  nextItem: CheckoutSummaryItem | undefined
-) =>
-  previousItem?.label !== nextItem?.label ||
-  !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount);
 
 export const getCheckoutSummaryChangedKeys = (
   previous: CheckoutSummary,
@@ -330,7 +348,10 @@ export const getCheckoutSummaryChangedKeys = (
     .filter((key) => {
       const previousItem = previousItems.get(key);
       const nextItem = nextItems.get(key);
-      return hasCheckoutSummaryItemChanged(previousItem, nextItem);
+      return (
+        previousItem?.label !== nextItem?.label ||
+        !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount)
+      );
     })
     .sort();
 

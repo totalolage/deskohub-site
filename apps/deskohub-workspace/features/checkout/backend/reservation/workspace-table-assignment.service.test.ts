@@ -15,7 +15,7 @@ type DotyposAssignmentTestService = typeof DotyposService.Service;
 const makeReservation = (
   overrides: Partial<CheckoutDetailsJson["reservation"]> = {}
 ): CheckoutDetailsJson["reservation"] => ({
-  tier: "basic",
+  entryTier: "basic",
   date: "2099-06-10",
   coffee: false,
   ...overrides,
@@ -102,7 +102,7 @@ describe("WorkspaceTableAssignmentService", () => {
     await expect(
       assignTableId(
         makeReservation({
-          tier: "profi",
+          entryTier: "profi",
           monitorOption: "2x27-qhd",
         }),
         [
@@ -135,7 +135,7 @@ describe("WorkspaceTableAssignmentService", () => {
     await expect(
       assignTableId(
         makeReservation({
-          tier: "profi",
+          entryTier: "profi",
           monitorOption: "2x32-4k",
         }),
         [
@@ -166,7 +166,7 @@ describe("WorkspaceTableAssignmentService", () => {
 
   test("selects Basic and Plus matches deterministically by natural table name then id", async () => {
     await expect(
-      assignTableId(makeReservation({ tier: "basic" }), [
+      assignTableId(makeReservation({ entryTier: "basic" }), [
         makeTable({ id: "basic-10", name: "10", tags: ["tier:basic"] }),
         makeTable({ id: "basic-b", name: "2", tags: ["tier:basic"] }),
         makeTable({ id: "basic-a", name: "2", tags: ["tier:basic"] }),
@@ -174,7 +174,7 @@ describe("WorkspaceTableAssignmentService", () => {
     ).resolves.toBe("basic-a");
 
     await expect(
-      assignTableId(makeReservation({ tier: "plus" }), [
+      assignTableId(makeReservation({ entryTier: "plus" }), [
         makeTable({ id: "plus-7", name: "7", tags: ["tier:plus"] }),
         makeTable({ id: "plus-5", name: "5", tags: ["tier:plus"] }),
         makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
@@ -185,7 +185,7 @@ describe("WorkspaceTableAssignmentService", () => {
   test("skips an occupied matching table and assigns the next free matching table", async () => {
     await expect(
       assignTableId(
-        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        makeReservation({ entryTier: "basic", date: "2099-06-10" }),
         [
           makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
           makeTable({ id: "basic-2", name: "2", tags: ["tier:basic"] }),
@@ -198,7 +198,7 @@ describe("WorkspaceTableAssignmentService", () => {
   test("ignores expired local holds while assigning a table", async () => {
     await expect(
       assignTableId(
-        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        makeReservation({ entryTier: "basic", date: "2099-06-10" }),
         [
           makeTable({ id: "basic-1", name: "1", tags: ["tier:basic"] }),
           makeTable({ id: "basic-2", name: "2", tags: ["tier:basic"] }),
@@ -218,7 +218,7 @@ describe("WorkspaceTableAssignmentService", () => {
   test("assigns a matching table when existing reservations leave enough capacity", async () => {
     await expect(
       assignTableId(
-        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        makeReservation({ entryTier: "basic", date: "2099-06-10" }),
         [
           makeTable({
             id: "basic-1",
@@ -241,7 +241,7 @@ describe("WorkspaceTableAssignmentService", () => {
   test("chooses the highest-scoring matching table with capacity", async () => {
     await expect(
       assignTableId(
-        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        makeReservation({ entryTier: "basic", date: "2099-06-10" }),
         [
           makeTable({
             id: "occupied",
@@ -273,7 +273,7 @@ describe("WorkspaceTableAssignmentService", () => {
   test("scores against non-matching same-room workspace tables", async () => {
     await expect(
       assignTableId(
-        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        makeReservation({ entryTier: "basic", date: "2099-06-10" }),
         [
           makeTable({
             id: "occupied-plus",
@@ -313,7 +313,7 @@ describe("WorkspaceTableAssignmentService", () => {
   test("chooses an unoccupied table over a farther partially occupied table", async () => {
     await expect(
       assignTableId(
-        makeReservation({ tier: "basic", date: "2099-06-10" }),
+        makeReservation({ entryTier: "basic", date: "2099-06-10" }),
         [
           makeTable({
             id: "occupied-reference",
@@ -354,7 +354,7 @@ describe("WorkspaceTableAssignmentService", () => {
 
   test("ignores hidden, disabled, missing-id, inactive-flag, and unlabeled active visible virtual tables", async () => {
     await expect(
-      assignTableId(makeReservation({ tier: "basic" }), [
+      assignTableId(makeReservation({ entryTier: "basic" }), [
         makeTable({ id: "online", name: "Online reservation", tags: [] }),
         {
           _cloudId: "cloud",
@@ -383,14 +383,14 @@ describe("WorkspaceTableAssignmentService", () => {
 
   test("fails clearly when Profi is missing the required monitor option", async () => {
     await expect(
-      assignTableId(makeReservation({ tier: "profi" }), [])
+      assignTableId(makeReservation({ entryTier: "profi" }), [])
     ).rejects.toThrow("requires a monitor option");
   });
 
   test("fails clearly when Profi has an unsupported monitor option", async () => {
     const invalidReservation: CheckoutDetailsJson["reservation"] = JSON.parse(
       JSON.stringify({
-        ...makeReservation({ tier: "profi" }),
+        ...makeReservation({ entryTier: "profi" }),
         monitorOption: "2x27",
       })
     );
@@ -404,7 +404,7 @@ describe("WorkspaceTableAssignmentService", () => {
     await expect(
       assignTableId(
         makeReservation({
-          tier: "profi",
+          entryTier: "profi",
           monitorOption: "2x27-qhd",
         }),
         [

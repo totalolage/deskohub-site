@@ -6,6 +6,7 @@ import {
   coworkReservationSchema as coworkReservationDefinition,
   coworkReservationOrderSchema as coworkReservationOrderDefinition,
   getCoworkReservationIntervalInput,
+  getCoworkReservationOrder,
 } from "./cowork-reservation";
 
 const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
@@ -37,6 +38,7 @@ describe("cowork reservation schema", () => {
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
       expect(result.success).toMatchObject({
+        _tag: "cowork",
         entryTier: "plus",
         date: "2099-06-10",
         coffee: true,
@@ -44,6 +46,9 @@ describe("cowork reservation schema", () => {
       });
       expect(result.success).not.toHaveProperty("startsAt");
       expect(result.success).not.toHaveProperty("endsAt");
+      expect(getCoworkReservationOrder(result.success)).not.toHaveProperty(
+        "legalConsent"
+      );
     }
   });
 

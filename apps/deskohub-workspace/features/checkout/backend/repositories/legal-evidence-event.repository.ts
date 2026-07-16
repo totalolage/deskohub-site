@@ -1,7 +1,6 @@
 import "server-only";
 
-import { Context, Data, Effect, Layer } from "effect";
-import { z } from "zod/v4";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import {
   type DatabaseError,
   runDb,
@@ -11,8 +10,8 @@ import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import { legalEvidenceSchema } from "@/features/checkout/schemas/checkout-details";
 
-const legalEvidenceEventInputSchema = z.object({
-  workspaceReservationId: z.string().min(1).optional(),
+const legalEvidenceEventInputSchema = Schema.Struct({
+  workspaceReservationId: Schema.optional(Schema.NonEmptyString),
   evidence: legalEvidenceSchema,
 });
 
@@ -23,9 +22,8 @@ export class LegalEvidenceEventInputError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export type LegalEvidenceEventInput = z.input<
-  typeof legalEvidenceEventInputSchema
->;
+export type LegalEvidenceEventInput =
+  typeof legalEvidenceEventInputSchema.Encoded;
 
 export interface LegalEvidenceEventRepository {
   readonly record: (
@@ -45,20 +43,19 @@ export interface LegalEvidenceEventRepository {
 export const LegalEvidenceEventRepository =
   Context.Service<LegalEvidenceEventRepository>("LegalEvidenceEventRepository");
 
-const parseLegalEvidenceEventInput = (input: LegalEvidenceEventInput) => {
-  const parsed = legalEvidenceEventInputSchema.parse(input);
-  return {
-    workspaceReservationId: parsed.workspaceReservationId,
-    documentKey: parsed.evidence.documentKey,
-    documentPath: parsed.evidence.document.path,
-    documentHash: parsed.evidence.documentHash,
-    hashAlgorithm: parsed.evidence.document.hashAlgorithm,
-    accepted: parsed.evidence.accepted,
-    acceptedAt: new Date(parsed.evidence.acceptedAt),
-    locale: parsed.evidence.locale,
-    source: parsed.evidence.source,
-  };
-};
+const getLegalEvidenceEventRecord = (
+  parsed: typeof legalEvidenceEventInputSchema.Type
+) => ({
+  workspaceReservationId: parsed.workspaceReservationId,
+  documentKey: parsed.evidence.documentKey,
+  documentPath: parsed.evidence.document.path,
+  documentHash: parsed.evidence.documentHash,
+  hashAlgorithm: parsed.evidence.document.hashAlgorithm,
+  accepted: parsed.evidence.accepted,
+  acceptedAt: new Date(parsed.evidence.acceptedAt),
+  locale: parsed.evidence.locale,
+  source: parsed.evidence.source,
+});
 
 export const LegalEvidenceEventRepositoryLive = Layer.effect(
   LegalEvidenceEventRepository,
@@ -67,14 +64,19 @@ export const LegalEvidenceEventRepositoryLive = Layer.effect(
 
     const record = Effect.fn("legalEvidenceEvents.record")(
       function* (input: LegalEvidenceEventInput) {
-        const event = yield* Effect.try({
-          try: () => parseLegalEvidenceEventInput(input),
-          catch: (cause) =>
-            new LegalEvidenceEventInputError({
-              message: "Legal evidence event input is invalid.",
-              cause,
-            }),
-        });
+        const parsed = yield* Schema.decodeUnknownEffect(
+          legalEvidenceEventInputSchema,
+          { onExcessProperty: "error" }
+        )(input).pipe(
+          Effect.mapError(
+            (cause) =>
+              new LegalEvidenceEventInputError({
+                message: "Legal evidence event input is invalid.",
+                cause,
+              })
+          )
+        );
+        const event = getLegalEvidenceEventRecord(parsed);
 
         const [inserted] = yield* runDb("legalEvidenceEvents.record", () =>
           db

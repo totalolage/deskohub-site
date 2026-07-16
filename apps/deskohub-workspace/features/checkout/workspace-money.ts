@@ -1,5 +1,4 @@
 import { Data, Effect, Schema } from "effect";
-import { z } from "zod/v4";
 import type { Locale } from "@/features/i18n";
 
 export type WorkspaceMoney = {
@@ -7,16 +6,6 @@ export type WorkspaceMoney = {
   readonly exponent: number;
   readonly currency: string;
 };
-
-export const workspaceMoneySchema = z.object({
-  value: z.int(),
-  exponent: z.int().nonnegative(),
-  currency: z.string().regex(/^[A-Z]{3}$/),
-});
-
-export const nonNegativeWorkspaceMoneySchema = workspaceMoneySchema.extend({
-  value: z.int().nonnegative(),
-});
 
 const workspaceMoneyExponentSchema = Schema.Int.check(
   Schema.isGreaterThanOrEqualTo(0)

@@ -1,8 +1,9 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
+import { standardSchemaResolver } from "@hookform/resolvers/standard-schema";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { track } from "@vercel/analytics/react";
+import { Schema } from "effect";
 import {
   AlertTriangle,
   ArrowRight,
@@ -36,29 +37,30 @@ import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { useCookieConsent } from "@/features/cookie-consent";
 import { type Locale, m } from "@/features/i18n";
 import { preparePayState } from "@/features/reservation/actions/prepare-pay-state";
+import {
+  type CoworkReservationData,
+  type CoworkReservationInput,
+  coworkReservationSchema,
+  getAllowedMonitorOptionsForCoworkTier,
+  getCoworkReservationOrder,
+  getCoworkTierIncludesCourtesyCoffee,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
+import {
+  getReservationDefaultValuesFromSearchParams,
+  getWorkspaceAvailabilityQueryFromReservationSearchParams,
+} from "@/features/reservation/reservation-checkout-query";
 import {
   formatReservationDisplayDate,
   parseReservationInputDate,
 } from "@/features/reservation/reservation-date";
 import {
-  getAllowedMonitorOptionsForTier,
-  getReservationSchema,
-  type ReservationData,
-  type ReservationInput,
-  tierIncludesCourtesyCoffee,
-  tierRequiresMonitorOption,
-} from "@/features/reservation/schemas/reservation";
-import {
-  getReservationDefaultValuesFromSearchParams,
-  getWorkspaceAvailabilityQueryFromReservationSearchParams,
-} from "@/features/reservation/schemas/reservation-checkout-query";
-import {
   parseWorkspaceAvailabilityResponse,
   type WorkspaceAvailability,
   type WorkspaceAvailabilityQuery,
   workspaceAvailabilityKeys,
-} from "@/features/reservation/schemas/workspace-availability";
+} from "@/features/reservation/workspace-availability";
 import { Button } from "@/shared/components/ui/button";
 import { Calendar } from "@/shared/components/ui/calendar";
 import { Card, CardContent } from "@/shared/components/ui/card";
@@ -106,6 +108,15 @@ const utmKeys = [
 type UtmKey = (typeof utmKeys)[number];
 
 type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
+
+type CoworkAvailabilityQuery = Extract<
+  WorkspaceAvailabilityQuery,
+  { readonly _tag: "cowork" }
+>;
+
+const reservationFormSchema = Schema.toStandardSchemaV1(
+  coworkReservationSchema
+);
 
 const tierOptions: ReadonlyArray<{
   product: WorkspaceProductCatalogItem;
@@ -155,8 +166,9 @@ const getWorkspaceAvailabilityQuery = ({
   monitorOption?: string;
   tier: WorkspaceProductTier;
   to: string;
-}): WorkspaceAvailabilityQuery => {
+}): CoworkAvailabilityQuery => {
   return {
+    _tag: "cowork",
     from,
     to,
     ...(date && { date }),
@@ -165,7 +177,7 @@ const getWorkspaceAvailabilityQuery = ({
   };
 };
 
-const getWorkspaceAvailabilityUrl = (query: WorkspaceAvailabilityQuery) => {
+const getWorkspaceAvailabilityUrl = (query: CoworkAvailabilityQuery) => {
   const params = new URLSearchParams({
     from: query.from,
     to: query.to,
@@ -182,7 +194,7 @@ const loadWorkspaceAvailability = async ({
   query,
   signal,
 }: {
-  query: WorkspaceAvailabilityQuery;
+  query: CoworkAvailabilityQuery;
   signal: AbortSignal;
 }): Promise<WorkspaceAvailability> => {
   const response = await fetch(getWorkspaceAvailabilityUrl(query), { signal });
@@ -232,7 +244,6 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     () => getSanitizedUtmParams(searchParams),
     [searchParams]
   );
-  const schema = useMemo(() => getReservationSchema(), []);
   const defaultValues = useMemo(
     () => getReservationDefaultValuesFromSearchParams(searchParams),
     [searchParams]
@@ -242,8 +253,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       getWorkspaceAvailabilityQueryFromReservationSearchParams(searchParams),
     [searchParams]
   );
-  const form = useForm<ReservationInput, unknown, ReservationData>({
-    resolver: zodResolver(schema),
+  const form = useForm<CoworkReservationInput, unknown, CoworkReservationData>({
+    resolver: standardSchemaResolver(reservationFormSchema),
     defaultValues,
     mode: "onBlur",
     reValidateMode: "onChange",
@@ -252,11 +263,13 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     control: form.control,
     name: ["entryTier", "date", "monitorOption"],
   });
-  const courtesyCoffeeIncluded = tierIncludesCourtesyCoffee(selectedTier);
+  const courtesyCoffeeIncluded =
+    getCoworkTierIncludesCourtesyCoffee(selectedTier);
   const coffeePrice = getWorkspaceProductCoffeeLinePriceForTier(selectedTier);
   const coffeePriceLabel = formatWorkspaceMoney(coffeePrice, locale);
-  const shouldShowMonitors = tierRequiresMonitorOption(selectedTier);
-  const allowedMonitorOptions = getAllowedMonitorOptionsForTier(selectedTier);
+  const shouldShowMonitors = getCoworkTierRequiresMonitorOption(selectedTier);
+  const allowedMonitorOptions =
+    getAllowedMonitorOptionsForCoworkTier(selectedTier);
   const availabilityQuery = useMemo(
     () =>
       getWorkspaceAvailabilityQuery({
@@ -290,8 +303,8 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     () => new Set(availability?.unavailableDates ?? []),
     [availability]
   );
-  const unavailableTiers = useMemo(
-    () => new Set(availability?.unavailableTiers ?? []),
+  const unavailableCoworkTiers = useMemo(
+    () => new Set(availability?.unavailableCoworkTiers ?? []),
     [availability]
   );
   const unavailableMonitorOptions = useMemo(
@@ -305,7 +318,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       ),
     [availability, selectedDate]
   );
-  const isSelectedTierUnavailable = unavailableTiers.has(selectedTier);
+  const isSelectedTierUnavailable = unavailableCoworkTiers.has(selectedTier);
   const isSelectedMonitorUnavailable = Boolean(
     selectedMonitorOption &&
       unavailableMonitorOptions.has(selectedMonitorOption)
@@ -402,15 +415,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
         locale,
         reservationIntentId,
         legalConsent: data.legalConsent,
-        reservation: {
-          ...data,
-          coffee: tierIncludesCourtesyCoffee(data.entryTier)
-            ? true
-            : data.coffee,
-          monitorOption: tierRequiresMonitorOption(data.entryTier)
-            ? data.monitorOption
-            : undefined,
-        },
+        reservation: getCoworkReservationOrder(data),
       });
     })(event);
   };
@@ -447,7 +452,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                           option.title,
                           locale
                         );
-                        const isUnavailable = unavailableTiers.has(
+                        const isUnavailable = unavailableCoworkTiers.has(
                           option.value
                         );
 
@@ -869,7 +874,11 @@ function ReservationDateField({
   locale,
   unavailableDates,
 }: {
-  readonly control: Control<ReservationInput, unknown, ReservationData>;
+  readonly control: Control<
+    CoworkReservationInput,
+    unknown,
+    CoworkReservationData
+  >;
   readonly locale: Locale;
   readonly unavailableDates: ReadonlySet<string>;
 }) {
@@ -1042,7 +1051,7 @@ function SkeletonBlock({ className }: { className: string }) {
 }
 
 type TextFieldProps = {
-  control: Control<ReservationInput, unknown, ReservationData>;
+  control: Control<CoworkReservationInput, unknown, CoworkReservationData>;
   name: "name" | "email" | "phone";
   label: string;
   placeholder: string;

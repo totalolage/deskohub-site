@@ -9,12 +9,10 @@ mock.module("server-only", () => ({}));
 
 const {
   buildPayStateQueryParams,
-  buildRetryPayState,
   buildSignedPayState,
   openPayState,
   parsePayStateKey,
   payStateTokenQueryParam,
-  retryPayStateSchema,
   sealPayState,
   sealPayStateForUrl,
   signedPayStateSchema,
@@ -42,12 +40,8 @@ const decodeSignedPayState = Schema.decodeUnknownSync(
   signedPayStateSchema,
   strictParseOptions
 );
-const decodeRetryPayState = Schema.decodeUnknownSync(
-  retryPayStateSchema,
-  strictParseOptions
-);
-
 const baseReservation = {
+  _tag: "cowork" as const,
   entryTier: "profi" as const,
   date: "2026-06-20",
   coffee: true,
@@ -124,18 +118,18 @@ describe("Pay URL state", () => {
     expect(token.split(".")).toHaveLength(4);
   });
 
-  test("preserves required-coffee normalization in signed Pay state", () => {
-    const state = buildSignedPayState(
-      {
-        locale: "en-US",
-        reservation: { ...baseReservation, coffee: false },
-        quote: buildWorkspaceCheckoutQuote(baseReservation),
-        orderId: "required-coffee-order-id",
-      },
-      { keys: [fixedKey], now: () => fixedNow }
-    );
-
-    expect(state.reservation.coffee).toBe(true);
+  test("rejects noncanonical required coffee in signed Pay state", () => {
+    expect(() =>
+      buildSignedPayState(
+        {
+          locale: "en-US",
+          reservation: { ...baseReservation, coffee: false },
+          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          orderId: "required-coffee-order-id",
+        } as never,
+        { keys: [fixedKey], now: () => fixedNow }
+      )
+    ).toThrow('at ["reservation"]');
   });
 
   test("fails closed when no encryption key is configured", () => {
@@ -248,7 +242,7 @@ describe("Pay URL state", () => {
     ).toThrow("Invalid Pay state token header");
   });
 
-  test("rejects old versioned signed, quote, summary, and retry shapes", () => {
+  test("rejects old versioned signed, quote, and summary shapes", () => {
     const state = buildState();
     const oldSignedState = {
       ...state,
@@ -260,16 +254,7 @@ describe("Pay URL state", () => {
         summary: { ...state.quote.summary, schemaVersion: 1 },
       },
     };
-    const oldRetryState = {
-      ...buildRetryPayState({
-        paymentOrderId: "payment-order-id",
-        checkoutToken: "A".repeat(43),
-      }),
-      schemaVersion: 1,
-    };
-
     expect(() => decodeSignedPayState(oldSignedState)).toThrow();
-    expect(() => decodeRetryPayState(oldRetryState)).toThrow();
     expect(() =>
       sealPayState(oldSignedState as unknown as SignedPayState, {
         keys: [fixedKey],
@@ -372,23 +357,5 @@ describe("Pay URL state", () => {
 
     expect(result.type).toBe("sealedPayState");
     expect(searchParams.get(payStateTokenQueryParam)).toBe(result.token);
-  });
-
-  test("models retry state as CheckoutReturnStateTokenRepository semantics", () => {
-    expect(
-      buildRetryPayState({
-        paymentOrderId: "payment-order-id",
-        checkoutToken: "A".repeat(43),
-      })
-    ).toMatchObject({
-      type: "retryPayState",
-      stateSemantics: "checkout-return-state-token",
-      repositorySemantics: {
-        repository: "CheckoutReturnStateTokenRepository",
-        opaque: true,
-        singleUse: true,
-        boundToPaymentOrderId: true,
-      },
-    });
   });
 });

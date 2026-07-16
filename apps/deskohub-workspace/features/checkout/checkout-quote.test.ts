@@ -114,14 +114,14 @@ describe("workspace checkout quotes", () => {
         coffee: false,
         monitorOption: "2x27-qhd",
       })
-    ).toThrow("Monitor option is unavailable");
+    ).toThrow("monitorOption");
 
     expect(() =>
       buildWorkspaceCheckoutQuote({
         entryTier: "profi",
         coffee: true,
       })
-    ).toThrow("Monitor option is required");
+    ).toThrow("monitorOption");
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {
