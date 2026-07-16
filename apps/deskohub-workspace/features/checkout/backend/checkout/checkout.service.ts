@@ -189,22 +189,6 @@ export const getNexiCheckoutCurrencyOverride = () => {
   return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
 };
 
-const getCheckoutLegalAcceptanceSnapshot: (
-  locale: Locale
-) => Effect.Effect<CheckoutLegalAcceptanceSnapshot, CheckoutError> = Effect.fn(
-  "getCheckoutLegalAcceptanceSnapshot"
-)((locale) =>
-  getLegalAcceptanceSnapshot(locale).pipe(
-    Effect.mapError(
-      (cause) =>
-        new CheckoutError({
-          message: "Legal acceptance snapshot could not be created.",
-          cause,
-        })
-    )
-  )
-);
-
 const toCheckoutLegalDocuments = (
   documents: CheckoutLegalAcceptanceSnapshot
 ) => ({
@@ -668,8 +652,7 @@ export const CheckoutServiceLive = Layer.effect(
           });
 
           const acceptedAt = new Date().toISOString();
-          const legalDocuments =
-            yield* getCheckoutLegalAcceptanceSnapshot(locale);
+          const legalDocuments = yield* getLegalAcceptanceSnapshot(locale);
           const legalEvidence = getCheckoutLegalEvidence({
             acceptedAt,
             locale,

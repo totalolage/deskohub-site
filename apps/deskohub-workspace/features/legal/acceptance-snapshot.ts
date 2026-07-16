@@ -65,37 +65,61 @@ function getCanonicalLegalDocument(document: LegalDocumentContent): string {
   });
 }
 
-function createLegalDocumentSnapshot(
-  locale: Locale,
-  documentKey: CheckoutLegalDocumentKey
-): CheckoutLegalDocumentSnapshot {
-  const document = getLegalDocument(locale, documentKey);
-  const path = `/${locale}/${documentKey}`;
+const createLegalDocumentHash = Effect.fn("createLegalDocumentHash")(
+  (canonicalDocument: string) =>
+    Effect.try({
+      try: () => createHash("sha256").update(canonicalDocument).digest("hex"),
+      catch: (cause) => new LegalAcceptanceSnapshotError({ cause }),
+    })
+);
 
-  return {
-    path,
-    url: getWorkspaceCanonicalUrl(path),
-    title: document.title,
-    updatedAt: document.updatedAt,
-    hash: createHash("sha256")
-      .update(getCanonicalLegalDocument(document))
-      .digest("hex"),
-    hashAlgorithm: "sha256",
-  };
-}
+const createLegalDocumentSnapshot = Effect.fn("createLegalDocumentSnapshot")(
+  (input: {
+    readonly locale: Locale;
+    readonly documentKey: CheckoutLegalDocumentKey;
+  }) =>
+    Effect.succeed(input).pipe(
+      Effect.let("document", ({ documentKey, locale }) =>
+        getLegalDocument(locale, documentKey)
+      ),
+      Effect.let(
+        "path",
+        ({ documentKey, locale }) => `/${locale}/${documentKey}`
+      ),
+      Effect.let("canonicalDocument", ({ document }) =>
+        getCanonicalLegalDocument(document)
+      ),
+      Effect.bind("hash", ({ canonicalDocument }) =>
+        createLegalDocumentHash(canonicalDocument)
+      ),
+      Effect.map(
+        ({ document, hash, path }): CheckoutLegalDocumentSnapshot => ({
+          path,
+          url: getWorkspaceCanonicalUrl(path),
+          title: document.title,
+          updatedAt: document.updatedAt,
+          hash,
+          hashAlgorithm: "sha256",
+        })
+      )
+    )
+);
 
 export const getLegalAcceptanceSnapshot = Effect.fn(
   "getLegalAcceptanceSnapshot"
 )((locale: Locale) =>
-  Effect.try({
-    try: (): CheckoutLegalAcceptanceSnapshot => ({
-      termsAndConditions: createLegalDocumentSnapshot(
-        locale,
-        "terms-and-conditions"
-      ),
-      operatingRules: createLegalDocumentSnapshot(locale, "operating-rules"),
-      privacyPolicy: createLegalDocumentSnapshot(locale, "privacy-policy"),
+  Effect.all({
+    termsAndConditions: createLegalDocumentSnapshot({
+      locale,
+      documentKey: "terms-and-conditions",
     }),
-    catch: (cause) => new LegalAcceptanceSnapshotError({ cause }),
+    operatingRules: createLegalDocumentSnapshot({
+      locale,
+      documentKey: "operating-rules",
+    }),
+    privacyPolicy: createLegalDocumentSnapshot({
+      locale,
+      documentKey: "privacy-policy",
+    }),
   })
 );
