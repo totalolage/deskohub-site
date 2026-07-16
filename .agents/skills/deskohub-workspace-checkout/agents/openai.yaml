@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace Checkout"
+  short_description: "Preserve Workspace checkout invariants"
+  default_prompt: "Use $deskohub-workspace-checkout to change the Workspace checkout or reservation-hold lifecycle."

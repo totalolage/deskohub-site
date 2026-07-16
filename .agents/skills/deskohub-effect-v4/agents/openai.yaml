@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Effect V4"
+  short_description: "Build Effect V4 code with Deskohub conventions"
+  default_prompt: "Use $deskohub-effect-v4 to implement this Effect V4 change with the repository conventions."

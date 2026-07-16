@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace E2E"
+  short_description: "Run and maintain Workspace end-to-end tests"
+  default_prompt: "Use $deskohub-workspace-e2e to run or update the Workspace end-to-end test flow."

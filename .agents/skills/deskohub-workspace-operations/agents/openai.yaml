@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace Operations"
+  short_description: "Diagnose and release Workspace safely"
+  default_prompt: "Use $deskohub-workspace-operations to diagnose or release the Workspace application safely."
