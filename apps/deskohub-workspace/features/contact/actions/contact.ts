@@ -11,7 +11,7 @@ import { getContactSchema } from "@/features/contact/schemas/contact";
 import { getLocale, type Locale, m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { runWorkspaceServerAction } from "@/shared/backend/logging/server-action";
+import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
 
 export type ContactFormValues = {
   name: string;
@@ -140,5 +140,5 @@ export async function submitContactForm(
     )
   );
 
-  return await runWorkspaceServerAction(program);
+  return await runWorkspaceServerActionEffect(program);
 }

@@ -5,7 +5,7 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
-import { runWorkspaceRequest } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const cronBatchLimit = 25;
 
@@ -56,7 +56,7 @@ const handleReservationHoldCleanupCronError = Effect.fn(
 
 export async function GET(request: Request): Promise<NextResponse> {
   if (!isAuthorizedCronRequest(request)) {
-    await runWorkspaceRequest(
+    await runWorkspaceRequestEffect(
       request,
       Effect.logWarning("Unauthorized reservation hold cleanup cron request", {
         request: {
@@ -75,7 +75,7 @@ export async function GET(request: Request): Promise<NextResponse> {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  return runWorkspaceRequest(
+  return runWorkspaceRequestEffect(
     request,
     sweepExpiredReservationHolds().pipe(
       Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),

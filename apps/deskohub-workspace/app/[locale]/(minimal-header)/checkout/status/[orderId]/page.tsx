@@ -21,7 +21,7 @@ import {
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspace } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import { Container } from "@/shared/components/container";
 import {
   getSearchParam,
@@ -159,7 +159,7 @@ async function CheckoutStatusContent({
       orderId,
       returnOutcome,
       cause,
-    }).pipe(runWorkspace);
+    }).pipe(runWorkspaceEffect);
     throw cause;
   });
   const retryOutcome = getRetryOutcome(status.status);

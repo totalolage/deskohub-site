@@ -8,7 +8,7 @@ import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import { runWorkspaceRequest } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const CloudinaryWebhookVerifierLive = CloudinaryWebhookVerifier.Live.pipe(
@@ -80,7 +80,7 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
  * Receives webhooks from Cloudinary
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceRequest(
+  return runWorkspaceRequestEffect(
     request,
     processWebhookRequest(request).pipe(
       Effect.provide(CloudinaryWebhookVerifierLive),

@@ -8,7 +8,7 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspace } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import type { SearchParamsRecord } from "@/shared/utils";
 
 export const maxDuration = 45;
@@ -69,7 +69,7 @@ const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
     );
   }).pipe(
     Effect.provide(CheckoutStatusServiceLiveWithDependencies),
-    runWorkspace
+    runWorkspaceEffect
   );
 
   return status;

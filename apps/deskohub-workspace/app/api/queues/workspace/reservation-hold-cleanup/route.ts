@@ -6,7 +6,7 @@ import {
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
 import { WorkspaceReservationRepositoryLive } from "@/features/reservation/backend/workspace-reservation.repository";
-import { runWorkspace } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
 const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
   ReservationHoldCleanupServiceLiveWithDependencies,
@@ -14,7 +14,7 @@ const ReservationHoldCleanupScheduleConsumerLive = Layer.mergeAll(
 );
 
 export const POST = handleCallback(async (message) => {
-  await runWorkspace(
+  await runWorkspaceEffect(
     processReservationHoldCleanupScheduleMessage(message).pipe(
       Effect.provide(ReservationHoldCleanupScheduleConsumerLive),
       Effect.annotateLogs({ operation: "reservationHoldCleanupSchedule" })

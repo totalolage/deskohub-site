@@ -6,7 +6,7 @@ import {
   refreshCheckoutStatus,
 } from "@/features/checkout/backend/checkout";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspace } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 import {
   getSearchParamsDecoder,
   type SearchParamsRecord,
@@ -70,7 +70,7 @@ export async function GET(
       orderId,
       outcome,
       cause,
-    }).pipe(runWorkspace);
+    }).pipe(runWorkspaceEffect);
   });
 
   return NextResponse.redirect(

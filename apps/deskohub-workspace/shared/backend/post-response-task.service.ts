@@ -1,6 +1,6 @@
 import { Context, Effect, Layer } from "effect";
 import { after } from "next/server";
-import { runWorkspace } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
 interface IPostResponseTaskService {
   readonly run: (
@@ -16,7 +16,7 @@ export class PostResponseTaskService extends Context.Service<
     run: (task) =>
       Effect.try({
         try: () => {
-          after(() => runWorkspace(task));
+          after(() => runWorkspaceEffect(task));
         },
         catch: (cause) => cause,
       }).pipe(

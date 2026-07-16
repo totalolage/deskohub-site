@@ -419,7 +419,7 @@ export const createWorkspaceLoggerLive = (loggerProvider?: LoggerProvider) =>
 
 export const LoggerLive = createWorkspaceLoggerLive(postHogLoggerProvider);
 
-export const runWorkspaceWithLogAnnotations = <A, E>(
+export const runWorkspaceEffectWithLogAnnotations = <A, E>(
   effect: Effect.Effect<A, E, never>,
   annotations: Record<string, unknown>
 ) =>
@@ -427,10 +427,10 @@ export const runWorkspaceWithLogAnnotations = <A, E>(
     effect.pipe(Effect.annotateLogs(annotations), Effect.provide(LoggerLive))
   );
 
-export const runWorkspace = <A, E>(effect: Effect.Effect<A, E, never>) =>
-  runWorkspaceWithLogAnnotations(effect, {});
+export const runWorkspaceEffect = <A, E>(effect: Effect.Effect<A, E, never>) =>
+  runWorkspaceEffectWithLogAnnotations(effect, {});
 
-export const runWorkspaceRequest = <A, E>(
+export const runWorkspaceRequestEffect = <A, E>(
   request: Request,
   effect: Effect.Effect<A, E, never>
 ) => {
@@ -438,7 +438,7 @@ export const runWorkspaceRequest = <A, E>(
   const { annotations, unexpectedConsentCookieReasons } =
     getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics(request.headers);
 
-  return runWorkspaceWithLogAnnotations(
+  return runWorkspaceEffectWithLogAnnotations(
     Effect.gen(function* () {
       yield* logUnexpectedConsentCookieReasons(unexpectedConsentCookieReasons);
       return yield* effect;

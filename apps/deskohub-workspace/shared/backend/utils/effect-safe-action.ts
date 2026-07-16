@@ -2,7 +2,7 @@ import { EffectAction } from "@deskohub/next-effect/effect-action";
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Duration, Effect, type Layer, References } from "effect";
 import type { Locale } from "@/features/i18n";
-import { runWorkspaceServerAction } from "@/shared/backend/logging/server-action";
+import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
 import { formatError } from "@/shared/utils/error-formatting";
 import {
   actionClient,
@@ -27,7 +27,7 @@ function mapError(error: unknown) {
 }
 
 function run<A>(effect: Effect.Effect<A, unknown, never>) {
-  return runWorkspaceServerAction(
+  return runWorkspaceServerActionEffect(
     Effect.provideService(effect, References.MinimumLogLevel, "All")
   );
 }
