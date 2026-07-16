@@ -1,26 +1,58 @@
 import { Effect } from "effect";
-import { calculateWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import {
+  calculateWorkspaceCheckoutQuote,
+  normalizeWorkspaceCheckoutOrder,
+} from "@/features/checkout/checkout-quote";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import { withWorkspaceMoneyCurrency } from "@/features/checkout/workspace-money";
+import {
+  type CanonicalDiscountCode,
+  DiscountService,
+} from "@/features/discounts";
+import type { Locale } from "@/features/i18n";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
-import { getConfirmedDotyposCustomerDiscount } from "../reservation/dotypos-customer-policy";
 import { getNexiCheckoutCurrencyOverride } from "./checkout.service";
 
 export const buildAuthoritativeWorkspaceCheckoutQuote = Effect.fn(
   "buildAuthoritativeWorkspaceCheckoutQuote"
 )(
-  function* (reservation: ReservationOrderData) {
-    yield* Effect.annotateLogsScoped({ reservation });
+  function* (input: {
+    readonly reservation: ReservationOrderData;
+    readonly dotyposCustomerId: string;
+    readonly locale: Locale;
+    readonly submittedCode: CanonicalDiscountCode | undefined;
+  }) {
+    yield* Effect.annotateLogsScoped({
+      reservation: input.reservation,
+      dotyposCustomerId: input.dotyposCustomerId,
+      submittedCode: input.submittedCode,
+    });
     yield* Effect.logInfo(
       "Workspace checkout quote discount resolution started"
     );
 
-    const customerDiscount =
-      yield* getConfirmedDotyposCustomerDiscount(reservation);
-    yield* Effect.annotateLogsScoped({ customerDiscount });
+    const order = yield* normalizeWorkspaceCheckoutOrder(input.reservation);
+    const currencyOverride = getNexiCheckoutCurrencyOverride();
+    const product = getWorkspaceProductByTier(order.entryTier);
+    const discountableSubtotal = withWorkspaceMoneyCurrency(
+      product.price,
+      currencyOverride
+    );
+    const discounts = yield* DiscountService;
+    const discountQuote = yield* discounts.quote({
+      product: { kind: "cowork", tier: order.entryTier },
+      discountableSubtotal,
+      reservationDate: input.reservation.date,
+      dotyposCustomerId: input.dotyposCustomerId,
+      locale: input.locale,
+      submittedCode: input.submittedCode,
+    });
+    yield* Effect.annotateLogsScoped({ discountQuote });
     yield* Effect.logInfo("Workspace checkout quote discount resolved");
 
-    const quote = yield* calculateWorkspaceCheckoutQuote(reservation, {
-      customerDiscount,
-      currencyOverride: getNexiCheckoutCurrencyOverride(),
+    const quote = yield* calculateWorkspaceCheckoutQuote(order, {
+      discountQuote,
+      currencyOverride,
     });
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logInfo("Authoritative workspace checkout quote built");

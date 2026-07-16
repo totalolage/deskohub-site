@@ -1,6 +1,11 @@
 import { Schema } from "effect";
 import { discountIdSchema, discountProductIdentityCodec } from "./contracts";
 
+export {
+  type CanonicalDiscountCode,
+  canonicalDiscountCodeSchema,
+} from "./contracts";
+
 export const storedDiscountIdSchema = discountIdSchema
   .check(
     Schema.isPattern(
@@ -30,20 +35,6 @@ export const discountProductKeySchema = Schema.TemplateLiteral([
 
 export type DiscountProductKey = Schema.Schema.Type<
   typeof discountProductKeySchema
->;
-
-export const canonicalDiscountCodeSchema = Schema.String.check(
-  Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
-)
-  .pipe(Schema.brand("CanonicalDiscountCode"))
-  .annotate({
-    identifier: "CanonicalDiscountCode",
-    description:
-      "Canonical ASCII-uppercase discount code accepted by Workspace checkout.",
-  });
-
-export type CanonicalDiscountCode = Schema.Schema.Type<
-  typeof canonicalDiscountCodeSchema
 >;
 
 export const discountCodeIdSchema = Schema.NonEmptyString.pipe(

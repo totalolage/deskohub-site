@@ -8,6 +8,7 @@ import {
   CodeDiscountProvider,
   type CodeDiscountProviderInput,
 } from "./code-discount-provider.service";
+import { canonicalDiscountCodeSchema } from "./contracts";
 import {
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
@@ -22,7 +23,6 @@ import {
 } from "./discount-definition.repository";
 import { DiscountDefinitionRepositoryMock } from "./discount-definition.repository.mock";
 import {
-  canonicalDiscountCodeSchema,
   discountCodeIdSchema,
   storedDiscountIdSchema,
 } from "./persistence-contracts";
@@ -43,7 +43,7 @@ const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
 const product = { kind: "cowork", tier: "basic" } as const;
 
 const input: CodeDiscountProviderInput = {
-  submittedCode: " summer50 ",
+  submittedCode: canonicalCode,
   dotyposCustomerId: "customer-1",
   product,
   discountableSubtotal: { value: 35_000, exponent: 2, currency: "CZK" },
@@ -124,20 +124,19 @@ const resolve = (
   });
 
 describe("CodeDiscountProvider", () => {
-  test.each([
-    undefined,
-    "",
-    "  ",
-  ])("returns no candidates and performs no reads when no code is submitted", async (submittedCode) => {
+  test("returns no candidates and performs no reads when no code is submitted", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);
     const loadDefinition = mock(defaultLoadDefinition);
 
-    const result = await runWithProvider(resolve("quote", { submittedCode }), {
-      findByCode,
-      loadAvailability,
-      loadDefinition,
-    });
+    const result = await runWithProvider(
+      resolve("quote", { submittedCode: undefined }),
+      {
+        findByCode,
+        loadAvailability,
+        loadDefinition,
+      }
+    );
 
     expect(result).toEqual([]);
     expect(findByCode).not.toHaveBeenCalled();
@@ -145,21 +144,7 @@ describe("CodeDiscountProvider", () => {
     expect(loadDefinition).not.toHaveBeenCalled();
   });
 
-  test("rejects invalid syntax before performing repository reads", async () => {
-    const findByCode = mock(defaultFindByCode);
-    const result = await runWithProvider(
-      resolve("quote", { submittedCode: "not a code" }).pipe(Effect.result),
-      { findByCode }
-    );
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: { reason: "invalid_syntax" },
-    });
-    expect(findByCode).not.toHaveBeenCalled();
-  });
-
-  test("normalizes the code and returns a source-neutral candidate with a private claim", async () => {
+  test("resolves a canonical code to a source-neutral candidate with a private claim", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);
     const validUntil = new Date("2026-08-01T10:00:00.000Z");
@@ -314,7 +299,11 @@ describe("CodeDiscountProvider", () => {
     );
     const first = await runWithProvider(resolve(), { findByCode });
     const second = await runWithProvider(
-      resolve("quote", { submittedCode: "WINTER50" }),
+      resolve("quote", {
+        submittedCode: Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+          "WINTER50"
+        ),
+      }),
       { findByCode }
     );
 

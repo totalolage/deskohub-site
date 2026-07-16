@@ -1,6 +1,4 @@
-import type { DotyposCustomerDiscount } from "@deskohub/dotypos";
 import { Data, Effect } from "effect";
-import { applyWorkspaceCustomerDiscount } from "@/features/checkout/backend/checkout";
 import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
@@ -14,8 +12,7 @@ import {
   workspaceMoneyEquals,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-
-export const workspaceCheckoutQuoteSchemaVersion = 1 as const;
+import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 
 export type WorkspaceCheckoutOrder = {
   readonly entryTier: WorkspaceProductTier;
@@ -25,6 +22,7 @@ export type WorkspaceCheckoutOrder = {
 
 export type CheckoutSummaryItem = {
   readonly key: string;
+  readonly label?: string;
   readonly amount: WorkspaceMoney;
 };
 
@@ -36,23 +34,19 @@ export type CheckoutSummarySection = {
 
 export type CheckoutSummary = {
   readonly schema: "workspace-checkout-summary";
-  readonly schemaVersion: typeof workspaceCheckoutQuoteSchemaVersion;
   readonly sections: readonly CheckoutSummarySection[];
   readonly total: WorkspaceMoney;
 };
 
 export type WorkspaceCheckoutQuote = {
   readonly schema: "workspace-checkout-quote";
-  readonly schemaVersion: typeof workspaceCheckoutQuoteSchemaVersion;
   readonly order: WorkspaceCheckoutOrder;
   readonly summary: CheckoutSummary;
   readonly fingerprint: string;
   readonly payment: {
     readonly expectedPrice: WorkspaceMoney;
-    readonly undiscountedPrice?: WorkspaceMoney;
-    readonly customerDiscount?: ReturnType<
-      typeof applyWorkspaceCustomerDiscount
-    >["customerDiscount"];
+    readonly undiscountedPrice: WorkspaceMoney;
+    readonly discounts: readonly AppliedDiscount[];
   };
 };
 
@@ -109,7 +103,36 @@ export const normalizeWorkspaceCheckoutOrder = Effect.fn(
 
 const getCanonicalSummaryItem = (item: CheckoutSummaryItem) => ({
   key: item.key,
+  label: item.label ?? null,
   amount: item.amount.value,
+});
+
+const getCanonicalMoney = (money: WorkspaceMoney) => ({
+  value: money.value,
+  exponent: money.exponent,
+  currency: money.currency,
+});
+
+const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
+  discount: {
+    id: application.discount.id,
+    label: application.discount.label,
+    adjustment:
+      application.discount.adjustment.kind === "percentage"
+        ? {
+            kind: application.discount.adjustment.kind,
+            basisPoints: application.discount.adjustment.basisPoints,
+          }
+        : {
+            kind: application.discount.adjustment.kind,
+            amount: getCanonicalMoney(application.discount.adjustment.amount),
+          },
+    expiresAt: application.discount.expiresAt ?? null,
+    countdownStartsAt: application.discount.countdownStartsAt ?? null,
+  },
+  subtotalBefore: getCanonicalMoney(application.subtotalBefore),
+  amount: getCanonicalMoney(application.amount),
+  subtotalAfter: getCanonicalMoney(application.subtotalAfter),
 });
 
 const getCheckoutQuoteCanonicalPayload = (
@@ -121,7 +144,6 @@ const getCheckoutQuoteCanonicalPayload = (
 
   return JSON.stringify({
     schema: quote.schema,
-    schemaVersion: quote.schemaVersion,
     order: {
       tier: quote.order.entryTier,
       coffee: quote.order.coffee,
@@ -131,16 +153,9 @@ const getCheckoutQuoteCanonicalPayload = (
     currency: quote.summary.total.currency,
     exponent: quote.summary.total.exponent,
     payment: {
-      expectedAmount: quote.payment.expectedPrice.value,
-      undiscountedAmount: quote.payment.undiscountedPrice?.value ?? null,
-      customerDiscount: quote.payment.customerDiscount
-        ? {
-            source: quote.payment.customerDiscount.source,
-            discountGroupId: quote.payment.customerDiscount.discountGroupId,
-            percent: quote.payment.customerDiscount.percent,
-            amount: quote.payment.customerDiscount.amount.value,
-          }
-        : null,
+      expectedPrice: getCanonicalMoney(quote.payment.expectedPrice),
+      undiscountedPrice: getCanonicalMoney(quote.payment.undiscountedPrice),
+      discounts: quote.payment.discounts.map(getCanonicalAppliedDiscount),
     },
     sections: quote.summary.sections.map((section) => ({
       key: section.key,
@@ -165,7 +180,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
 )(function* (
   order: WorkspaceCheckoutOrder,
   options: {
-    readonly customerDiscount?: DotyposCustomerDiscount;
+    readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
   } = {}
 ) {
@@ -203,10 +218,28 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
   const orderTotal = yield* addWorkspaceMoney(
     orderItems.map((item) => item.amount)
   );
-  const pricing = applyWorkspaceCustomerDiscount(
-    orderTotal,
-    options.customerDiscount
-  );
+  const discountQuote = options.discountQuote;
+
+  if (
+    discountQuote &&
+    (discountQuote.product.kind !== "cowork" ||
+      discountQuote.product.tier !== normalizedOrder.entryTier ||
+      !workspaceMoneyEquals(discountQuote.discountableSubtotal, productPrice))
+  ) {
+    return yield* Effect.fail(
+      new CheckoutQuoteError({
+        message: "Discount quote does not match the checkout product.",
+      })
+    );
+  }
+
+  const discounts = discountQuote?.discounts ?? [];
+  const discountedProductPrice =
+    discountQuote?.discountedSubtotal ?? productPrice;
+  const expectedPrice = yield* addWorkspaceMoney([
+    discountedProductPrice,
+    ...orderItems.slice(1).map(({ amount }) => amount),
+  ]);
   const orderSection: CheckoutSummarySection = {
     key: "order",
     items: orderItems,
@@ -214,20 +247,22 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
   };
   const sections: CheckoutSummarySection[] = [orderSection];
 
-  if (pricing.customerDiscount) {
-    const discountAmount = workspaceMoneyWithValue(
-      -pricing.customerDiscount.amount.value,
-      pricing.customerDiscount.amount
+  if (discounts.length > 0) {
+    const discountItems = discounts.map((application) => ({
+      key: `discount:${application.discount.id}`,
+      label: application.discount.label,
+      amount: workspaceMoneyWithValue(
+        -application.amount.value,
+        application.amount
+      ),
+    }));
+    const discountTotal = yield* addWorkspaceMoney(
+      discountItems.map(({ amount }) => amount)
     );
     sections.push({
       key: "discount",
-      items: [
-        {
-          key: `customer-discount:${pricing.customerDiscount.source}:${pricing.customerDiscount.discountGroupId}`,
-          amount: discountAmount,
-        },
-      ],
-      total: discountAmount,
+      items: discountItems,
+      total: discountTotal,
     });
   }
 
@@ -236,29 +271,25 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     items: [
       {
         key: "total:final",
-        amount: pricing.expectedPrice,
+        amount: expectedPrice,
       },
     ],
-    total: pricing.expectedPrice,
+    total: expectedPrice,
   });
 
   const summary: CheckoutSummary = {
     schema: "workspace-checkout-summary",
-    schemaVersion: workspaceCheckoutQuoteSchemaVersion,
     sections,
-    total: pricing.expectedPrice,
+    total: expectedPrice,
   };
   const quoteWithoutFingerprint = {
     schema: "workspace-checkout-quote" as const,
-    schemaVersion: workspaceCheckoutQuoteSchemaVersion,
     order: normalizedOrder,
     summary,
     payment: {
-      expectedPrice: pricing.expectedPrice,
-      ...(pricing.customerDiscount && {
-        undiscountedPrice: orderTotal,
-        customerDiscount: pricing.customerDiscount,
-      }),
+      expectedPrice,
+      undiscountedPrice: orderTotal,
+      discounts,
     },
   };
   const canonicalFingerprintPayload = getCheckoutQuoteCanonicalPayload(
@@ -274,7 +305,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
 export const buildWorkspaceCheckoutQuote = (
   order: WorkspaceCheckoutOrder,
   options: {
-    readonly customerDiscount?: DotyposCustomerDiscount;
+    readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
   } = {}
 ): WorkspaceCheckoutQuote =>
@@ -313,7 +344,10 @@ export const getCheckoutSummaryChangedKeys = (
     .filter((key) => {
       const previousItem = previousItems.get(key);
       const nextItem = nextItems.get(key);
-      return !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount);
+      return (
+        previousItem?.label !== nextItem?.label ||
+        !workspaceMoneyEquals(previousItem?.amount, nextItem?.amount)
+      );
     })
     .sort();
 

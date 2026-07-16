@@ -1,9 +1,51 @@
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
+import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutOrder,
 } from "./checkout-quote";
+
+const money = (value: number) => ({
+  value,
+  exponent: 2,
+  currency: "CZK",
+});
+
+const discountId = Schema.decodeUnknownSync(discountIdSchema);
+
+const discountQuote = (
+  applications: readonly AppliedDiscount[]
+): DiscountQuote => ({
+  product: { kind: "cowork", tier: "basic" },
+  discountableSubtotal: money(35_000),
+  discounts: applications,
+  totalDiscount: money(
+    applications.reduce(
+      (total, application) => total + application.amount.value,
+      0
+    )
+  ),
+  discountedSubtotal: applications.at(-1)?.subtotalAfter ?? money(35_000),
+});
+
+const percentageApplication = (
+  overrides: Partial<AppliedDiscount> = {}
+): AppliedDiscount => ({
+  discount: {
+    id: discountId("calendar-sale"),
+    label: "Summer sale",
+    adjustment: { kind: "percentage", basisPoints: 5000 },
+    expiresAt: "2026-08-01T22:00:00.000Z",
+    countdownStartsAt: "2026-07-31T22:00:00.000Z",
+  },
+  subtotalBefore: money(35_000),
+  amount: money(17_500),
+  subtotalAfter: money(17_500),
+  ...overrides,
+});
 
 describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
@@ -82,18 +124,15 @@ describe("workspace checkout quotes", () => {
     ).toThrow("Monitor option is required");
   });
 
-  test("includes customer discount as a negative display item", () => {
+  test("applies generic cowork discounts without discounting paid coffee", () => {
+    const application = percentageApplication();
     const quote = buildWorkspaceCheckoutQuote(
       {
         entryTier: "basic",
         coffee: true,
       },
       {
-        customerDiscount: {
-          source: "dotypos-discount-group",
-          discountGroupId: "5",
-          percent: 5,
-        },
+        discountQuote: discountQuote([application]),
       }
     );
 
@@ -101,33 +140,16 @@ describe("workspace checkout quotes", () => {
       key: "discount",
       items: [
         {
-          key: "customer-discount:dotypos-discount-group:5",
-          amount: { value: -2000, exponent: 2, currency: "CZK" },
+          key: "discount:calendar-sale",
+          label: "Summer sale",
+          amount: { value: -17_500, exponent: 2, currency: "CZK" },
         },
       ],
-      total: { value: -2000, exponent: 2, currency: "CZK" },
+      total: { value: -17_500, exponent: 2, currency: "CZK" },
     });
-    expect(quote.payment.expectedPrice.value).toBe(38_000);
-    expect(quote.payment.customerDiscount?.amount.value).toBe(2000);
-  });
-
-  test("preserves minor-unit rounding behavior", () => {
-    const quote = buildWorkspaceCheckoutQuote(
-      {
-        entryTier: "basic",
-        coffee: false,
-      },
-      {
-        customerDiscount: {
-          source: "dotypos-discount-group",
-          discountGroupId: "12.5",
-          percent: 12.5,
-        },
-      }
-    );
-
-    expect(quote.payment.expectedPrice.value).toBe(30_625);
-    expect(quote.payment.customerDiscount?.amount.value).toBe(4375);
+    expect(quote.payment.expectedPrice.value).toBe(22_500);
+    expect(quote.payment.undiscountedPrice.value).toBe(40_000);
+    expect(quote.payment.discounts).toEqual([application]);
   });
 
   test("fingerprint changes for different composition with the same total", () => {
@@ -141,11 +163,18 @@ describe("workspace checkout quotes", () => {
         coffee: true,
       },
       {
-        customerDiscount: {
-          source: "dotypos-discount-group",
-          discountGroupId: "12.5",
-          percent: 12.5,
-        },
+        discountQuote: discountQuote([
+          {
+            discount: {
+              id: discountId("coffee-offset"),
+              label: "Coffee offset",
+              adjustment: { kind: "fixed", amount: money(5000) },
+            },
+            subtotalBefore: money(35_000),
+            amount: money(5000),
+            subtotalAfter: money(30_000),
+          },
+        ]),
       }
     );
 
@@ -155,6 +184,78 @@ describe("workspace checkout quotes", () => {
     expect(accessOnly.fingerprint).not.toBe(
       coffeeDiscountedToSameTotal.fingerprint
     );
+  });
+
+  test("fingerprint includes the complete generic discount snapshot", () => {
+    const application = percentageApplication();
+    const fingerprint = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      { discountQuote: discountQuote([application]) }
+    ).fingerprint;
+    const variants: readonly AppliedDiscount[] = [
+      {
+        ...application,
+        discount: { ...application.discount, label: "Renamed sale" },
+      },
+      {
+        ...application,
+        discount: {
+          ...application.discount,
+          adjustment: { kind: "percentage", basisPoints: 4000 },
+        },
+      },
+      {
+        ...application,
+        discount: {
+          ...application.discount,
+          expiresAt: "2026-08-02T22:00:00.000Z",
+        },
+      },
+      {
+        ...application,
+        discount: {
+          ...application.discount,
+          countdownStartsAt: "2026-08-01T22:00:00.000Z",
+        },
+      },
+      { ...application, subtotalBefore: money(34_999) },
+      { ...application, amount: money(17_499) },
+      { ...application, subtotalAfter: money(17_501) },
+    ];
+
+    for (const variant of variants) {
+      expect(
+        buildWorkspaceCheckoutQuote(
+          { entryTier: "basic", coffee: false },
+          { discountQuote: discountQuote([variant]) }
+        ).fingerprint
+      ).not.toBe(fingerprint);
+    }
+  });
+
+  test("fingerprint preserves generic discount application order", () => {
+    const first = percentageApplication();
+    const second: AppliedDiscount = {
+      discount: {
+        id: discountId("member-bonus"),
+        label: "Member bonus",
+        adjustment: { kind: "fixed", amount: money(2500) },
+      },
+      subtotalBefore: money(17_500),
+      amount: money(2500),
+      subtotalAfter: money(15_000),
+    };
+
+    const ordered = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      { discountQuote: discountQuote([first, second]) }
+    );
+    const reversed = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      { discountQuote: discountQuote([second, first]) }
+    );
+
+    expect(ordered.fingerprint).not.toBe(reversed.fingerprint);
   });
 
   test("sanitizes runtime contact and consent fields from quote output", () => {

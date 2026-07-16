@@ -1,12 +1,15 @@
 import { Clock, Context, Effect, Layer, Option } from "effect";
 import type { DatabaseError } from "@/db/database.service";
 import { temporalInstantToIsoString } from "@/shared/utils";
-import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
-import {
-  type DiscountCodeAvailability,
-  type DiscountCodeConfiguration,
-  type DiscountCodeConfigurationError,
-  normalizeSubmittedDiscountCode,
+import type {
+  CanonicalDiscountCode,
+  DiscountProductIdentity,
+  DiscountQuoteInput,
+} from "./contracts";
+import type {
+  DiscountCodeAvailability,
+  DiscountCodeConfiguration,
+  DiscountCodeConfigurationError,
 } from "./discount-code";
 import { DiscountCodeRepository } from "./discount-code.repository";
 import type { DiscountDefinition } from "./discount-definition";
@@ -17,7 +20,6 @@ import {
   DiscountCodeUnavailableError,
   DiscountProviderError,
 } from "./errors";
-import type { CanonicalDiscountCode } from "./persistence-contracts";
 import type { DiscountCandidate } from "./provider";
 
 export type CodeDiscountProviderInput = Pick<
@@ -126,7 +128,9 @@ export class CodeDiscountProvider extends Context.Service<
       const resolve = Effect.fn("CodeDiscountProvider.resolve")(
         (input: CodeDiscountProviderInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("code", normalizeSubmittedDiscountCode),
+            Effect.let("code", ({ submittedCode }) =>
+              Option.fromNullishOr(submittedCode)
+            ),
             Effect.bind("candidate", resolveSubmittedCode),
             Effect.map(({ candidate }) => Option.toArray(candidate)),
             Effect.tapError(logDiscountCodeError)

@@ -4,8 +4,12 @@ import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
-import { checkoutSummarySectionSchema } from "@/features/checkout/schemas/checkout-summary";
+import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
+import {
+  type AppliedDiscount,
+  isAppliedDiscount,
+} from "@/features/discounts/contracts";
 import { locales } from "@/features/i18n";
 
 export const legalDocumentKeys = [
@@ -93,20 +97,14 @@ export const checkoutDetailsJsonSchema = z.object({
   }),
   payment: z.object({
     expectedPrice: nonNegativeWorkspaceMoneySchema,
-    undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
-    summary: z.object({
-      sections: z.array(checkoutSummarySectionSchema),
-      total: nonNegativeWorkspaceMoneySchema,
-    }),
-    providerRedirectUrl: z.url().optional(),
-    customerDiscount: z
-      .object({
-        source: z.literal("dotypos-discount-group"),
-        discountGroupId: z.string().min(1),
-        percent: z.number().positive().max(100),
-        amount: nonNegativeWorkspaceMoneySchema,
+    undiscountedPrice: nonNegativeWorkspaceMoneySchema,
+    discounts: z.array(
+      z.custom<AppliedDiscount>(isAppliedDiscount, {
+        error: "Invalid applied discount snapshot.",
       })
-      .optional(),
+    ),
+    summary: checkoutSummarySchema,
+    providerRedirectUrl: z.url().optional(),
   }),
   legal: legalEvidenceMapSchema,
   fulfillment: z.object({

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
   checkoutDetailsJsonSchema,
@@ -6,6 +7,10 @@ import {
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
+import {
+  type DiscountQuote,
+  discountIdSchema,
+} from "@/features/discounts/contracts";
 
 const document = {
   path: "/en-US/terms-and-conditions",
@@ -35,6 +40,27 @@ const legalEvidenceMap = legalEvidenceMapSchema.parse({
   [document.hash]: legalEvidence(),
 });
 
+const money = (value: number) => ({ value, exponent: 2, currency: "CZK" });
+const discountId = Schema.decodeUnknownSync(discountIdSchema);
+const genericDiscountQuote: DiscountQuote = {
+  product: { kind: "cowork", tier: "basic" },
+  discountableSubtotal: money(35_000),
+  discounts: [
+    {
+      discount: {
+        id: discountId("discount-1"),
+        label: "Database sale",
+        adjustment: { kind: "percentage", basisPoints: 1000 },
+      },
+      subtotalBefore: money(35_000),
+      amount: money(3500),
+      subtotalAfter: money(31_500),
+    },
+  ],
+  totalDiscount: money(3500),
+  discountedSubtotal: money(31_500),
+};
+
 describe("checkout details persistence", () => {
   test("persists quote summary, legal evidence, and no contact PII", () => {
     const quote = buildWorkspaceCheckoutQuote({
@@ -53,6 +79,8 @@ describe("checkout details persistence", () => {
       },
       payment: {
         expectedPrice: quote.payment.expectedPrice,
+        undiscountedPrice: quote.payment.undiscountedPrice,
+        discounts: quote.payment.discounts,
         summary: quote.summary,
       },
       legal: legalEvidenceMap,
@@ -74,13 +102,7 @@ describe("checkout details persistence", () => {
   test("accepts negative discount rows but rejects negative expected totals", () => {
     const quote = buildWorkspaceCheckoutQuote(
       { entryTier: "basic", coffee: false },
-      {
-        customerDiscount: {
-          source: "dotypos-discount-group",
-          discountGroupId: "vip",
-          percent: 10,
-        },
-      }
+      { discountQuote: genericDiscountQuote }
     );
 
     expect(() =>
@@ -95,6 +117,8 @@ describe("checkout details persistence", () => {
         },
         payment: {
           expectedPrice: quote.payment.expectedPrice,
+          undiscountedPrice: quote.payment.undiscountedPrice,
+          discounts: quote.payment.discounts,
           summary: quote.summary,
         },
         legal: legalEvidenceMap,
@@ -114,6 +138,41 @@ describe("checkout details persistence", () => {
         },
         payment: {
           expectedPrice: { value: -1, exponent: 2, currency: "CZK" },
+          undiscountedPrice: quote.payment.undiscountedPrice,
+          discounts: quote.payment.discounts,
+          summary: quote.summary,
+        },
+        legal: legalEvidenceMap,
+        fulfillment: { accessCodePolicy: "workspace-static-v1" },
+      })
+    ).toThrow();
+  });
+
+  test("rejects provider-private fields in generic discount snapshots", () => {
+    const quote = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      { discountQuote: genericDiscountQuote }
+    );
+
+    expect(() =>
+      checkoutDetailsJsonSchema.parse({
+        schema: "workspace-checkout-details",
+        schemaVersion: 1,
+        locale: "en-US",
+        reservation: {
+          tier: "basic",
+          date: "2099-06-10",
+          coffee: false,
+        },
+        payment: {
+          expectedPrice: quote.payment.expectedPrice,
+          undiscountedPrice: quote.payment.undiscountedPrice,
+          discounts: [
+            {
+              ...quote.payment.discounts[0],
+              providerReference: "private-provider-reference",
+            },
+          ],
           summary: quote.summary,
         },
         legal: legalEvidenceMap,

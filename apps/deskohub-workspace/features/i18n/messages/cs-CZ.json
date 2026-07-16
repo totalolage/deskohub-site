@@ -310,6 +310,7 @@
   "reservationPrivacyNoteAfter": "a rozumíš tomu, že údaje použijeme pro vyřízení rezervace, zaslání potvrzení a ochranu před zneužitím.",
   "reservationSuccessMessage": "Rezervační poptávka je odeslaná. Brzy potvrdíme další krok.",
   "reservationErrorMessage": "Platbu se nepodařilo spustit. Zkontroluj prosím údaje a zkus to znovu.",
+  "reservationDiscountCodeUnavailable": "Tento slevový kód není dostupný. Odeber ho prosím nebo zkus jiný kód.",
   "reservationAlreadyPaidMessage": "Pro tyto údaje už existuje zaplacená rezervace. Změň prosím údaje rezervace nebo nás kontaktuj.",
   "reservationAvailabilityUnavailable": "Pro tarif {tier} už na {date} nemáme volné místo. Zkus prosím jiný tarif, datum nebo monitorový setup!",
   "reservationAvailabilityLoading": "Kontrolujeme dostupnost workspace...",
