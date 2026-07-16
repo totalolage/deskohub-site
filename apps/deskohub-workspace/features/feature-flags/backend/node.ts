@@ -7,9 +7,11 @@ import { postHogFeatureFlags } from "../generated/contract";
 export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
   postHogFeatureFlags,
   {
-    disableGeoip: true,
-    featureFlagsRequestTimeoutMs: 2_000,
-    host: postHogRuntimeConfig.host,
+    clientOptions: {
+      featureFlagsRequestTimeoutMs: 2_000,
+      host: postHogRuntimeConfig.host,
+    },
+    defaultEvaluationOptions: { disableGeoip: true },
     projectToken: postHogRuntimeConfig.projectToken,
   }
 );
