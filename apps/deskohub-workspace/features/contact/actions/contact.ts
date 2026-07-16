@@ -121,6 +121,13 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
     )
 );
 
+const ContactActionLive = ContactServiceLive.pipe(
+  Layer.provide(
+    StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
+  ),
+  Layer.merge(BotProtectionService.Live)
+);
+
 export async function submitContactForm(
   _previousState: ContactFormState,
   formData: FormData
@@ -129,15 +136,7 @@ export async function submitContactForm(
   const submittedValues = getSubmittedContactValues(formData);
 
   const program = processContactSubmission({ locale, submittedValues }).pipe(
-    Effect.provide(
-      Layer.merge(
-        Layer.provideMerge(
-          ContactServiceLive,
-          Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
-        ),
-        BotProtectionService.Live
-      )
-    )
+    Effect.provide(ContactActionLive)
   );
 
   return await runWorkspaceServerActionEffect(program);
