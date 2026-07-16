@@ -5,8 +5,8 @@ import {
 } from "./env.schema";
 
 export const env = createEnv({
-  server: workspaceServerEnvSchema.shape,
-  client: workspaceClientEnvSchema.shape,
+  server: workspaceServerEnvSchema.fields,
+  client: workspaceClientEnvSchema.fields,
   runtimeEnv: {
     CLOUDINARY_API_KEY: process.env.CLOUDINARY_API_KEY,
     CLOUDINARY_API_SECRET: process.env.CLOUDINARY_API_SECRET,
