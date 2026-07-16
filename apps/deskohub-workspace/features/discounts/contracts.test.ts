@@ -70,6 +70,7 @@ describe("discount contracts", () => {
       reservationDate: "2026-07-14",
       dotyposCustomerId: "customer-1",
       locale: "en-US",
+      submittedCode: undefined,
     };
 
     const result = await Effect.gen(function* () {

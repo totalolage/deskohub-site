@@ -162,7 +162,9 @@ describe("discount calculator", () => {
         claim: {
           kind: "discount_code",
           codeId: "private-code-id",
+          storedDiscountId: "private-stored-discount-id",
           dotyposCustomerId: "private-customer-id",
+          product,
         },
       }),
     ]);
@@ -186,7 +188,9 @@ describe("discount calculator", () => {
           claim: {
             kind: "discount_code",
             codeId: "rounded-zero-code-id",
+            storedDiscountId: "rounded-zero-stored-discount-id",
             dotyposCustomerId: "customer-id",
+            product,
           },
         }
       ),
@@ -207,7 +211,9 @@ describe("discount calculator", () => {
         claim: {
           kind: "discount_code",
           codeId: "private-code-id",
+          storedDiscountId: "private-stored-discount-id",
           dotyposCustomerId: "private-customer-id",
+          product,
         },
       }),
     ]);
@@ -215,7 +221,9 @@ describe("discount calculator", () => {
     expect(result.applications[0]?.candidate.claim).toEqual({
       kind: "discount_code",
       codeId: "private-code-id",
+      storedDiscountId: "private-stored-discount-id",
       dotyposCustomerId: "private-customer-id",
+      product,
     });
   });
 
@@ -329,7 +337,9 @@ describe("discount calculator", () => {
             claim: {
               kind: "discount_code",
               codeId: "private-code-id",
+              storedDiscountId: "private-stored-discount-id",
               dotyposCustomerId: "private-customer-id",
+              product,
             },
           }),
         ],
