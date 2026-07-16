@@ -151,7 +151,7 @@ const getQuoteFingerprint = (
       discounts: quote.payment.discounts.map(getCanonicalAppliedDiscount),
     },
     sections: quote.summary.sections.map((section) => ({
-      _tag: section._tag,
+      key: section.key,
       items: section.items.map(getCanonicalSummaryItem),
       total: section.total.value,
     })),
@@ -219,6 +219,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     ...addOnItems.map(({ amount }) => amount),
   ]);
   const orderSection = checkoutSummaryOrderSectionSchema.make({
+    key: "order",
     items: orderItems,
     total: orderTotal,
   });
@@ -238,6 +239,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     );
     sections.push(
       checkoutSummaryDiscountSectionSchema.make({
+        key: "discount",
         items: discountItems,
         total: discountTotal,
       })
@@ -246,6 +248,7 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
 
   sections.push(
     checkoutSummaryTotalSectionSchema.make({
+      key: "total",
       items: [
         {
           key: "total:final",
@@ -288,14 +291,12 @@ export const buildWorkspaceCheckoutQuote = (
   Effect.runSync(calculateWorkspaceCheckoutQuote(order, options));
 
 const getSummarySectionMap = (summary: CheckoutSummary) =>
-  new Map(summary.sections.map((section) => [section._tag, section]));
+  new Map(summary.sections.map((section) => [section.key, section]));
 
 const getSummaryItemMap = (summary: CheckoutSummary) =>
   new Map(
     summary.sections.flatMap((section) =>
-      section.items.map(
-        (item) => [`${section._tag}/${item.key}`, item] as const
-      )
+      section.items.map((item) => [`${section.key}/${item.key}`, item] as const)
     )
   );
 

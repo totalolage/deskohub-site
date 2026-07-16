@@ -1,4 +1,4 @@
-import { Clock, Context, Effect, Layer, Option } from "effect";
+import { Clock, Context, Effect, Layer, Match, Option } from "effect";
 import type { DatabaseError } from "@/db/database.service";
 import { temporalInstantToIsoString } from "@/shared/utils";
 import type {
@@ -234,32 +234,37 @@ const validateFixedAdjustmentCompatibility = (input: {
 }) => {
   const { adjustment } = input.definition;
 
-  if (adjustment.kind === "percentage") {
-    return Effect.void;
-  }
+  return Match.value(adjustment).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      percentage: () => Effect.void,
+      fixed: (fixedAdjustment) => {
+        const reason =
+          fixedAdjustment.amount.currency !==
+          input.discountableSubtotal.currency
+            ? "currency_mismatch"
+            : fixedAdjustment.amount.exponent !==
+                input.discountableSubtotal.exponent
+              ? "exponent_mismatch"
+              : undefined;
 
-  const reason =
-    adjustment.amount.currency !== input.discountableSubtotal.currency
-      ? "currency_mismatch"
-      : adjustment.amount.exponent !== input.discountableSubtotal.exponent
-        ? "exponent_mismatch"
-        : undefined;
-
-  return reason === undefined
-    ? Effect.void
-    : Effect.fail(
-        new DiscountProviderError({
-          reason: "malformed_configuration",
-          message:
-            "The discount code fixed adjustment is incompatible with the requested subtotal.",
-          cause: new DiscountCalculationError({
-            reason,
-            message:
-              "Fixed discount currency and exponent must match the discountable subtotal.",
-            discountId: input.definition.id,
-          }),
-        })
-      );
+        return reason === undefined
+          ? Effect.void
+          : Effect.fail(
+              new DiscountProviderError({
+                reason: "malformed_configuration",
+                message:
+                  "The discount code fixed adjustment is incompatible with the requested subtotal.",
+                cause: new DiscountCalculationError({
+                  reason,
+                  message:
+                    "Fixed discount currency and exponent must match the discountable subtotal.",
+                  discountId: input.definition.id,
+                }),
+              })
+            );
+      },
+    })
+  );
 };
 
 const toDiscountCodeCandidate = (input: {

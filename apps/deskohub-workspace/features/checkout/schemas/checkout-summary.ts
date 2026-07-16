@@ -18,26 +18,26 @@ const nonNegativeCheckoutSummaryItemSchema = Schema.Struct({
   amount: nonNegativeWorkspaceMoneyCodec,
 });
 
-export const checkoutSummaryOrderSectionSchema = Schema.TaggedStruct("order", {
+export const checkoutSummaryOrderSectionSchema = Schema.Struct({
+  key: Schema.Literal("order"),
   items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
   total: nonNegativeWorkspaceMoneyCodec,
 });
 
-export const checkoutSummaryDiscountSectionSchema = Schema.TaggedStruct(
-  "discount",
-  {
-    items: Schema.Array(
-      Schema.Struct({
-        key: nonEmptyStringSchema,
-        label: nonEmptyStringSchema,
-        amount: workspaceMoneyCodec,
-      })
-    ),
-    total: workspaceMoneyCodec,
-  }
-);
+export const checkoutSummaryDiscountSectionSchema = Schema.Struct({
+  key: Schema.Literal("discount"),
+  items: Schema.Array(
+    Schema.Struct({
+      key: nonEmptyStringSchema,
+      label: nonEmptyStringSchema,
+      amount: workspaceMoneyCodec,
+    })
+  ),
+  total: workspaceMoneyCodec,
+});
 
-export const checkoutSummaryTotalSectionSchema = Schema.TaggedStruct("total", {
+export const checkoutSummaryTotalSectionSchema = Schema.Struct({
+  key: Schema.Literal("total"),
   items: Schema.Array(nonNegativeCheckoutSummaryItemSchema),
   total: nonNegativeWorkspaceMoneyCodec,
 });

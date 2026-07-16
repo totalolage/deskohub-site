@@ -64,29 +64,27 @@ export const getStoredWorkspaceReservationDetails = (
     Match.discriminatorsExhaustive("kind")({
       cowork: (coworkInput) =>
         Match.value(coworkInput).pipe(
-          Match.when({ tier: "basic" }, (basicInput) =>
-            storedBasicReservationDetailsSchema.make({
-              kind: coworkReservationKind,
-              tier: "basic",
-              coffee: basicInput.coffee,
-            })
-          ),
-          Match.when({ tier: "plus" }, () =>
-            storedPlusReservationDetailsSchema.make({
-              kind: coworkReservationKind,
-              tier: "plus",
-              coffee: true,
-            })
-          ),
-          Match.when({ tier: "profi" }, (profiInput) =>
-            storedProfiReservationDetailsSchema.make({
-              kind: coworkReservationKind,
-              tier: "profi",
-              coffee: true,
-              monitorOption: profiInput.monitorOption,
-            })
-          ),
-          Match.exhaustive
+          Match.discriminatorsExhaustive("tier")({
+            basic: (basicInput) =>
+              storedBasicReservationDetailsSchema.make({
+                kind: coworkReservationKind,
+                tier: basicInput.tier,
+                coffee: basicInput.coffee,
+              }),
+            plus: (plusInput) =>
+              storedPlusReservationDetailsSchema.make({
+                kind: coworkReservationKind,
+                tier: plusInput.tier,
+                coffee: true,
+              }),
+            profi: (profiInput) =>
+              storedProfiReservationDetailsSchema.make({
+                kind: coworkReservationKind,
+                tier: profiInput.tier,
+                coffee: true,
+                monitorOption: profiInput.monitorOption,
+              }),
+          })
         ),
       "meeting-room": () =>
         storedMeetingRoomReservationDetailsSchema.make({

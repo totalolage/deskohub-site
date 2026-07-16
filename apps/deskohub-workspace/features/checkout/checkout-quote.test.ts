@@ -59,7 +59,7 @@ describe("workspace checkout quotes", () => {
       exponent: 2,
       currency: "CZK",
     });
-    expect(quote.summary.sections.map((section) => section._tag)).toEqual([
+    expect(quote.summary.sections.map((section) => section.key)).toEqual([
       "order",
       "total",
     ]);
@@ -137,7 +137,7 @@ describe("workspace checkout quotes", () => {
     );
 
     expect(quote.summary.sections[1]).toEqual({
-      _tag: "discount",
+      key: "discount",
       items: [
         {
           key: "discount:calendar-sale",
