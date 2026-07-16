@@ -1,4 +1,4 @@
-import { Data, Effect } from "effect";
+import { Context, Data, Effect, Layer, ManagedRuntime } from "effect";
 import {
   type AllFlagsOptions,
   type FeatureFlagEvaluations,
@@ -29,41 +29,33 @@ export interface PostHogFeatureFlagSubject {
   readonly sendFeatureFlagEvents: boolean;
 }
 
+interface IPostHogFeatureFlagClientService {
+  readonly client: PostHog;
+}
+
+class PostHogFeatureFlagClientService extends Context.Service<
+  PostHogFeatureFlagClientService,
+  IPostHogFeatureFlagClientService
+>()("@deskohub/posthog/PostHogFeatureFlagClientService") {
+  static from = (config: PostHogNodeFeatureFlagServiceConfig) =>
+    Layer.effect(this, acquirePostHogFeatureFlagClient({ config }));
+}
+
 export const makePostHogNodeFeatureFlagService = <
   const Definitions extends ValidDefinitions<Definitions>,
 >(
   contract: PostHogFeatureFlagContract<Definitions>,
   config: PostHogNodeFeatureFlagServiceConfig
 ) => {
-  let client: PostHog | undefined;
-
-  const getClient = Effect.fn("PostHogNodeFeatureFlags.getClient")(() => {
-    if (client) {
-      return Effect.succeed(client);
-    }
-    const { projectToken } = config;
-    if (!projectToken) {
-      const cause = new Error("PostHog project token is not configured.");
-      return Effect.fail(
-        new PostHogFeatureFlagEvaluationError({
-          message: "Could not initialize the PostHog feature flag client.",
-          cause,
-        })
-      );
-    }
-
-    return Effect.try({
-      try: () => {
-        client = new PostHog(projectToken, config.clientOptions);
-        return client;
-      },
-      catch: (cause) =>
-        new PostHogFeatureFlagEvaluationError({
-          message: "Could not initialize the PostHog feature flag client.",
-          cause,
-        }),
-    });
-  });
+  const runtime = ManagedRuntime.make(
+    PostHogFeatureFlagClientService.from(config)
+  );
+  const provideClient = <A, E>(
+    effect: Effect.Effect<A, E, PostHogFeatureFlagClientService>
+  ) =>
+    runtime.contextEffect.pipe(
+      Effect.flatMap((context) => Effect.provide(effect, context))
+    );
 
   const evaluateFlags = Effect.fn("PostHogNodeFeatureFlags.evaluateFlags")(
     (
@@ -74,9 +66,10 @@ export const makePostHogNodeFeatureFlagService = <
     > =>
       Effect.succeed({ config, contract, input }).pipe(
         Effect.let("evaluationInput", prepareFeatureFlagEvaluation),
-        Effect.bind("client", getClient),
+        Effect.bind("clientService", () => PostHogFeatureFlagClientService),
         Effect.bind("evaluation", evaluatePostHogFeatureFlags),
-        Effect.map(({ evaluation }) => evaluation)
+        Effect.map(({ evaluation }) => evaluation),
+        provideClient
       )
   );
 
@@ -86,19 +79,16 @@ export const makePostHogNodeFeatureFlagService = <
     ) =>
       Effect.succeed({ config, input }).pipe(
         Effect.let("checkInput", prepareFeatureFlagCheck),
-        Effect.bind("client", getClient),
+        Effect.bind("clientService", () => PostHogFeatureFlagClientService),
         Effect.bind("result", evaluatePostHogFeatureFlag),
-        Effect.map(({ result }) => result?.enabled ?? false)
+        Effect.map(({ result }) => result?.enabled ?? false),
+        provideClient
       )
   );
 
-  const shutdown = Effect.fn("PostHogNodeFeatureFlags.shutdown")(() => {
-    const currentClient = client;
-    client = undefined;
-    return currentClient
-      ? shutdownPostHogClient({ client: currentClient })
-      : Effect.void;
-  });
+  const shutdown = Effect.fn("PostHogNodeFeatureFlags.shutdown")(
+    () => runtime.disposeEffect
+  );
 
   return { evaluateFlags, isEnabled, shutdown };
 };
@@ -252,15 +242,15 @@ const evaluatePostHogFeatureFlags = Effect.fn(
   "PostHogNodeFeatureFlags.evaluateFlags"
 )(
   <Definitions extends ValidDefinitions<Definitions>>({
-    client,
+    clientService,
     contract,
     evaluationInput,
   }: {
-    readonly client: PostHogFeatureFlagEvaluationClient;
+    readonly clientService: IPostHogFeatureFlagClientService;
     readonly contract: PostHogFeatureFlagContract<Definitions>;
     readonly evaluationInput: PreparedPostHogFeatureFlagEvaluationInput<Definitions>;
   }) =>
-    createPostHogNodeFeatureFlags(contract, client).evaluateFlags(
+    createPostHogNodeFeatureFlags(contract, clientService.client).evaluateFlags(
       evaluationInput.distinctId,
       evaluationInput.options
     )
@@ -271,14 +261,14 @@ const evaluatePostHogFeatureFlag = Effect.fn(
 )(
   <Definitions, Key extends PostHogFeatureFlagKey<Definitions>>({
     checkInput,
-    client,
+    clientService,
   }: {
     readonly checkInput: PreparedPostHogFeatureFlagCheckInput<Definitions, Key>;
-    readonly client: PostHog;
+    readonly clientService: IPostHogFeatureFlagClientService;
   }) =>
     Effect.tryPromise({
       try: () =>
-        client.getFeatureFlagResult(
+        clientService.client.getFeatureFlagResult(
           checkInput.key,
           checkInput.subject.distinctId,
           checkInput.options
@@ -289,6 +279,44 @@ const evaluatePostHogFeatureFlag = Effect.fn(
           cause,
         }),
     })
+);
+
+const acquirePostHogFeatureFlagClient = Effect.fn(
+  "PostHogNodeFeatureFlags.acquireClient"
+)(({ config }: { readonly config: PostHogNodeFeatureFlagServiceConfig }) =>
+  Effect.acquireRelease(
+    createPostHogClient({ config }).pipe(Effect.map((client) => ({ client }))),
+    ({ client }) =>
+      shutdownPostHogClient({ client }).pipe(
+        Effect.catch((error) =>
+          Effect.logWarning(error.message, { cause: error.cause })
+        )
+      )
+  )
+);
+
+const createPostHogClient = Effect.fn("PostHogNodeFeatureFlags.createClient")(
+  ({ config }: { readonly config: PostHogNodeFeatureFlagServiceConfig }) => {
+    const { projectToken } = config;
+    if (!projectToken) {
+      const cause = new Error("PostHog project token is not configured.");
+      return Effect.fail(
+        new PostHogFeatureFlagEvaluationError({
+          message: "Could not initialize the PostHog feature flag client.",
+          cause,
+        })
+      );
+    }
+
+    return Effect.try({
+      try: () => new PostHog(projectToken, config.clientOptions),
+      catch: (cause) =>
+        new PostHogFeatureFlagEvaluationError({
+          message: "Could not initialize the PostHog feature flag client.",
+          cause,
+        }),
+    });
+  }
 );
 
 const shutdownPostHogClient = Effect.fn(

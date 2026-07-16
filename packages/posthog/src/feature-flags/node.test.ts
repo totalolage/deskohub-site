@@ -95,7 +95,7 @@ describe("createPostHogNodeFeatureFlags", () => {
 });
 
 describe("makePostHogNodeFeatureFlagService", () => {
-  test("constructs one SDK client lazily and reuses it for the service lifetime", async () => {
+  test("acquires one scoped SDK client for the service lifetime", async () => {
     const { makePostHogNodeFeatureFlagService } = await import("./node");
     createClient.mockClear();
     evaluateFlags.mockClear();

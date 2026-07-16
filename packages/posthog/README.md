@@ -78,9 +78,9 @@ export function MeetingRoomEntry() {
 ```
 
 Server code creates an app-configured service from the generated contract. The
-service constructs one official Node SDK client lazily and reuses it for the
-service lifetime. Client and evaluation options use the types exported by
-`posthog-node`:
+service owns an Effect scope that constructs one official Node SDK client and
+reuses it for the service lifetime. Closing the service scope shuts the client
+down. Client and evaluation options use the types exported by `posthog-node`:
 
 ```ts
 import { makePostHogNodeFeatureFlagService } from "@deskohub/posthog/feature-flags/node";
@@ -108,8 +108,9 @@ const enabled = yield* nodeFeatureFlags.isEnabled({
 });
 ```
 
-Call `nodeFeatureFlags.shutdown()` when a long-lived process shuts down. Normal
-evaluations do not close the shared client.
+Call `nodeFeatureFlags.shutdown()` when a long-lived process shuts down. This
+closes the service scope and its client finalizer; normal evaluations do not
+close the shared client.
 
 The subject should use the same distinct ID as the browser SDK. If an
 application must use a shared fallback identity for a global release switch, it
