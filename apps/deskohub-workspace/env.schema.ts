@@ -25,9 +25,12 @@ export const workspaceServerEnvSchema = z.object({
   NEXI_API_KEY: z.string().min(1),
   NEXI_API_ORIGIN: z.url(),
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: z.enum(["EUR"]).optional(),
-  POSTHOG_FEATURE_FLAGS_API_KEY: z.string().min(1).optional(),
-  POSTHOG_HOST: z.url().default("https://eu.posthog.com"),
-  POSTHOG_PROJECT_ID: z.string().min(1).optional(),
+  POSTHOG_FEATURE_FLAGS_API_KEY: z.string().min(1),
+  POSTHOG_HOST: z
+    .url()
+    .transform((value) => new URL(value))
+    .default(new URL("https://eu.posthog.com")),
+  POSTHOG_PROJECT_ID: z.string().min(1),
   POSTHOG_SERVICE_NAME: z.string().min(1).default("deskohub-workspace"),
   POSTHOG_SERVICE_NAMESPACE: z.string().min(1).default("deskohub"),
   VERCEL_ENV: z.enum(["production", "preview", "development"]),
