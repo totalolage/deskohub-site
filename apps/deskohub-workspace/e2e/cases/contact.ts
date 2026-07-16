@@ -1,11 +1,10 @@
 import { Effect } from "effect";
 import {
-  clickBrowserElement,
-  fillBrowserField,
+  evalBrowserScript,
   openBrowserPage,
-  requireEnabledSnapshotRef,
   waitForBrowserText,
 } from "../browser";
+import { getSubmitContactFormScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -40,28 +39,16 @@ export const assertContactForm = ({
     yield* openBrowserPage(config, run, session, url.toString(), {
       timeoutMs: getCheckoutTimeoutMs(),
     });
-    yield* fillBrowserField(run, session, "#contact-name", data.name, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* fillBrowserField(run, session, "#contact-phone", data.phone, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* fillBrowserField(run, session, "#contact-email", data.email, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* fillBrowserField(run, session, "#contact-message", data.message, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    const submitRef = yield* requireEnabledSnapshotRef({
-      description: "contact submit button",
-      labels: ["Send message"],
+    yield* evalBrowserScript(
+      "submit contact form",
       run,
       session,
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* clickBrowserElement(run, session, submitRef, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
+      getSubmitContactFormScript(data),
+      {
+        logOutput: false,
+        timeoutMs: getCheckoutTimeoutMs(),
+      }
+    );
     yield* waitForBrowserText({
       description: "contact form success",
       matches: (text) => /Your message has been sent\./i.test(text),

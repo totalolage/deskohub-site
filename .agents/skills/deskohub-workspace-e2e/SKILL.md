@@ -24,6 +24,7 @@ Distinguish automated-runner behavior from manual procedures before treating a d
 - For an automated run, let the checked-in runner deploy the fresh preview, assign and verify `new.workspace.deskohub.cz`, open cases on its selected preview URL, and use the alias as the callback origin. For a manual current-code webhook run, deploy a fresh preview from the current working tree, assign the alias to it, and run the checkout through the alias. Use the already-live alias without redeploying only when the user explicitly requests that target.
 - Keep `--archive=tgz` on manual and automated Vercel E2E deploys so the current working tree is uploaded as one archive. Do not add `--force`.
 - Stop if the alias cannot be verified against the fresh deployment; do not silently run against its previous target.
+- For dynamically rendered forms, locate, fill, and submit the form atomically in one browser DOM evaluation. Do not carry snapshot refs across commands because hydration can make a ref target a different element.
 
 For BotID-protected paths or automation rejection, read `../deskohub-workspace-botid/SKILL.md` before changing the test or protection boundary.
 
