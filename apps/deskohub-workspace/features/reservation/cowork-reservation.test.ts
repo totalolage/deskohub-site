@@ -4,10 +4,14 @@ import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationSchema as coworkReservationDefinition,
+  coworkReservationOrderSchema as coworkReservationOrderDefinition,
   getCoworkReservationIntervalInput,
 } from "./cowork-reservation";
 
 const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
+const coworkReservationOrderSchema = makeSchemaParser(
+  coworkReservationOrderDefinition
+);
 
 describe("cowork reservation schema", () => {
   test("owns the cowork full-day interval policy", () => {
@@ -40,6 +44,27 @@ describe("cowork reservation schema", () => {
       });
       expect(result.success).not.toHaveProperty("startsAt");
       expect(result.success).not.toHaveProperty("endsAt");
+    }
+  });
+
+  test("decodes cowork orders with the domain discriminator", () => {
+    const result = coworkReservationOrderSchema.safeParse({
+      kind: "cowork",
+      entryTier: "basic",
+      date: "2099-06-10",
+      coffee: false,
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420777777777",
+    });
+
+    expect(Result.isSuccess(result)).toBe(true);
+    if (Result.isSuccess(result)) {
+      expect(result.success).toMatchObject({
+        kind: "cowork",
+        entryTier: "basic",
+      });
+      expect(result.success).not.toHaveProperty("_tag");
     }
   });
 

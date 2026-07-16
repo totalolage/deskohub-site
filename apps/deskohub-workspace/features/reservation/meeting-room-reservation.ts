@@ -1,11 +1,4 @@
-import {
-  type Data,
-  Effect,
-  Option,
-  Schema,
-  SchemaGetter,
-  SchemaIssue,
-} from "effect";
+import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
 import { workspaceMeetingRoomDurationOptions } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
 import { getMeetingRoomReservationInterval } from "@/features/reservation/meeting-room-reservation-time";
@@ -22,6 +15,7 @@ import {
   wholeHourReservationInstantSchema,
 } from "@/features/reservation/reservation-interval";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
+import { meetingRoomReservationKind } from "@/features/reservation/reservation-kind";
 import {
   instantStringSchema,
   localDateTimeSchema,
@@ -33,28 +27,27 @@ const meetingRoomReservationOrderBaseSchema = Schema.Struct({
   endsAt: reservationTimestampInputSchema,
 });
 
-export const meetingRoomReservationOrderInputSchema = Schema.TaggedStruct(
-  "meeting-room",
-  meetingRoomReservationOrderBaseSchema.fields
-);
+export const meetingRoomReservationOrderInputSchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  ...meetingRoomReservationOrderBaseSchema.fields,
+});
 
-export const normalizedMeetingRoomReservationOrderSchema = Schema.TaggedStruct(
-  "meeting-room",
-  {
-    ...normalizedReservationCustomerSchema.fields,
-    startsAt: instantStringSchema,
-    endsAt: instantStringSchema,
-  }
-);
+export const normalizedMeetingRoomReservationOrderSchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  ...normalizedReservationCustomerSchema.fields,
+  startsAt: instantStringSchema,
+  endsAt: instantStringSchema,
+});
 
 export type MeetingRoomReservationOrderInput =
   typeof meetingRoomReservationOrderInputSchema.Type;
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderSchema.Type;
 
-export type MeetingRoomReservationProductInput = Data.TaggedEnum<{
-  "meeting-room": Record<never, never>;
-}>;
+export type MeetingRoomReservationProductInput = Pick<
+  MeetingRoomReservationOrderInput,
+  "kind"
+>;
 
 export const getMeetingRoomReservationProductCoffee = (
   _reservation: MeetingRoomReservationProductInput
@@ -144,6 +137,7 @@ export const normalizeMeetingRoomReservationOrder = (
   getReservationIntervalNormalization(reservation).pipe(
     Effect.map((interval) =>
       normalizedMeetingRoomReservationOrderSchema.make({
+        kind: meetingRoomReservationKind,
         name: reservation.name,
         email: reservation.email,
         phone: reservation.phone,

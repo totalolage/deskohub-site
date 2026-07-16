@@ -28,6 +28,10 @@ import {
 } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
+import {
+  coworkReservationKind,
+  meetingRoomReservationKind,
+} from "@/features/reservation/reservation-kind";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
@@ -60,16 +64,15 @@ type WorkspaceAvailabilityError =
   | NetworkError
   | ValidationError;
 
-type WorkspaceTableUnavailableReservation = Data.TaggedEnum<{
-  cowork: {
-    readonly tier: WorkspaceCoworkProductTier;
-    readonly monitorOption?: WorkspaceProductMonitorOption;
-  };
-  "meeting-room": object;
-}>;
-
-const WorkspaceTableUnavailableReservation =
-  Data.taggedEnum<WorkspaceTableUnavailableReservation>();
+type WorkspaceTableUnavailableReservation =
+  | {
+      readonly kind: typeof coworkReservationKind;
+      readonly tier: WorkspaceCoworkProductTier;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    }
+  | {
+      readonly kind: typeof meetingRoomReservationKind;
+    };
 
 export class WorkspaceTableUnavailableError extends Data.TaggedError(
   "WorkspaceTableUnavailableError"
@@ -78,14 +81,16 @@ export class WorkspaceTableUnavailableError extends Data.TaggedError(
   readonly reservation: WorkspaceTableUnavailableReservation;
 }> {}
 
-type WorkspaceAvailabilityEnsureQuery = Data.TaggedEnum<{
-  cowork: {
-    readonly date: string;
-    readonly entryTier: WorkspaceCoworkProductTier;
-    readonly monitorOption?: WorkspaceProductMonitorOption;
-  };
-  "meeting-room": ReservationInterval;
-}>;
+type WorkspaceAvailabilityEnsureQuery =
+  | {
+      readonly kind: typeof coworkReservationKind;
+      readonly date: string;
+      readonly entryTier: WorkspaceCoworkProductTier;
+      readonly monitorOption?: WorkspaceProductMonitorOption;
+    }
+  | ({
+      readonly kind: typeof meetingRoomReservationKind;
+    } & ReservationInterval);
 
 export interface IWorkspaceAvailabilityService {
   readonly getAvailability: (
@@ -252,15 +257,16 @@ const implementation = Effect.gen(function* () {
           from: query.from,
           to: query.to,
           ...Match.value(query).pipe(
-            Match.tag("meeting-room", (meetingRoomQuery) => ({
-              startsAt: meetingRoomQuery.startsAt,
-              endsAt: meetingRoomQuery.endsAt,
-            })),
-            Match.tag("cowork", (coworkQuery) => ({
-              entryTier: coworkQuery.entryTier,
-              monitorOption: coworkQuery.monitorOption,
-            })),
-            Match.exhaustive
+            Match.discriminatorsExhaustive("kind")({
+              "meeting-room": (meetingRoomQuery) => ({
+                startsAt: meetingRoomQuery.startsAt,
+                endsAt: meetingRoomQuery.endsAt,
+              }),
+              cowork: (coworkQuery) => ({
+                entryTier: coworkQuery.entryTier,
+                monitorOption: coworkQuery.monitorOption,
+              }),
+            })
           ),
         })
       )
@@ -272,13 +278,11 @@ const implementation = Effect.gen(function* () {
       yield* Effect.logInfo("Workspace availability assurance started");
 
       const reservationInterval = yield* Match.value(query).pipe(
-        Match.tag("meeting-room", ({ startsAt, endsAt }) =>
-          normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt })
-        ),
-        Match.tag("cowork", ({ date }) =>
-          normalizeCoworkAvailabilityInterval(date)
-        ),
-        Match.exhaustive
+        Match.discriminatorsExhaustive("kind")({
+          "meeting-room": ({ startsAt, endsAt }) =>
+            normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt }),
+          cowork: ({ date }) => normalizeCoworkAvailabilityInterval(date),
+        })
       );
       const availabilityRange =
         getAvailabilityTouchedDateRange(reservationInterval);
@@ -300,18 +304,18 @@ const implementation = Effect.gen(function* () {
       return yield* new WorkspaceTableUnavailableError({
         date: unavailableDate,
         reservation: Match.value(query).pipe(
-          Match.tag("meeting-room", () =>
-            WorkspaceTableUnavailableReservation["meeting-room"]()
-          ),
-          Match.tag("cowork", (coworkQuery) =>
-            WorkspaceTableUnavailableReservation.cowork({
+          Match.discriminatorsExhaustive("kind")({
+            "meeting-room": () => ({
+              kind: meetingRoomReservationKind,
+            }),
+            cowork: (coworkQuery) => ({
+              kind: coworkReservationKind,
               tier: coworkQuery.entryTier,
               ...(coworkQuery.monitorOption && {
                 monitorOption: coworkQuery.monitorOption,
               }),
-            })
-          ),
-          Match.exhaustive
+            }),
+          })
         ),
       });
     },
@@ -382,13 +386,16 @@ const isUnavailableForSelection = (
   query: WorkspaceAvailabilityQuery
 ) =>
   Match.value(query).pipe(
-    Match.tag("meeting-room", () =>
-      isMeetingRoomUnavailableForSelection(tables, occupancyByTableId)
-    ),
-    Match.tag("cowork", (coworkQuery) =>
-      isCoworkUnavailableForSelection(tables, occupancyByTableId, coworkQuery)
-    ),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("kind")({
+      "meeting-room": () =>
+        isMeetingRoomUnavailableForSelection(tables, occupancyByTableId),
+      cowork: (coworkQuery) =>
+        isCoworkUnavailableForSelection(
+          tables,
+          occupancyByTableId,
+          coworkQuery
+        ),
+    })
   );
 
 const isMeetingRoomUnavailableForSelection = (
@@ -399,7 +406,7 @@ const isMeetingRoomUnavailableForSelection = (
 const isCoworkUnavailableForSelection = (
   tables: readonly Table[],
   occupancyByTableId: ReadonlyMap<string, number>,
-  query: Extract<WorkspaceAvailabilityQuery, { readonly _tag: "cowork" }>
+  query: Extract<WorkspaceAvailabilityQuery, { readonly kind: "cowork" }>
 ) => {
   const { entryTier, monitorOption } = query;
 
@@ -508,17 +515,16 @@ const getAvailabilityReservation = (
   query: WorkspaceAvailabilityQuery
 ): Effect.Effect<ReservationInterval | undefined, ValidationError> =>
   Match.value(query).pipe(
-    Match.tag("meeting-room", ({ startsAt, endsAt }) =>
-      startsAt && endsAt
-        ? normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt })
-        : Effect.succeed(undefined)
-    ),
-    Match.tag("cowork", ({ date }) =>
-      date
-        ? normalizeCoworkAvailabilityInterval(date)
-        : Effect.succeed(undefined)
-    ),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("kind")({
+      "meeting-room": ({ startsAt, endsAt }) =>
+        startsAt && endsAt
+          ? normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt })
+          : Effect.succeed(undefined),
+      cowork: ({ date }) =>
+        date
+          ? normalizeCoworkAvailabilityInterval(date)
+          : Effect.succeed(undefined),
+    })
   );
 
 const normalizeMeetingRoomAvailabilityInterval = (

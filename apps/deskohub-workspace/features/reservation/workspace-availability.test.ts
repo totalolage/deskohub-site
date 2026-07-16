@@ -4,7 +4,7 @@ import { describe, expect, test } from "bun:test";
 import { parseWorkspaceAvailabilityQuery } from "./workspace-availability";
 
 describe("parseWorkspaceAvailabilityQuery", () => {
-  test("maps public kind query param to the internal reservation tag", () => {
+  test("keeps the public kind query param as the domain discriminator", () => {
     const query = parseWorkspaceAvailabilityQuery(
       new URLSearchParams({
         kind: "meeting-room",
@@ -14,7 +14,7 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     );
 
     expect(query).toMatchObject({
-      _tag: "meeting-room",
+      kind: "meeting-room",
       from: "2099-06-10",
       to: "2099-06-10",
     });
@@ -31,7 +31,7 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     );
 
     expect(query).toEqual({
-      _tag: "cowork",
+      kind: "cowork",
       from: "2099-06-10",
       to: "2099-06-10",
     });
@@ -50,7 +50,7 @@ describe("parseWorkspaceAvailabilityQuery", () => {
     );
 
     expect(query).toEqual({
-      _tag: "cowork",
+      kind: "cowork",
       date: "2099-06-10",
       from: "2099-06-10",
       to: "2099-06-10",
