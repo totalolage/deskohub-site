@@ -1,14 +1,15 @@
 import { Effect, Schema } from "effect";
 import {
-  nonNegativeWorkspaceMoneyEffectSchema,
+  nonNegativeWorkspaceMoneyCodec,
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type {
-  AppliedDiscount,
-  Discount,
-  DiscountProductIdentity,
-  DiscountQuote,
+import {
+  type AppliedDiscount,
+  type Discount,
+  type DiscountProductIdentity,
+  type DiscountQuote,
+  discountBasisPointsSchema,
 } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
@@ -48,7 +49,7 @@ export const calculateDiscounts = Effect.fn("DiscountCalculator.calculate")(
 const validateDiscountableSubtotal = (input: {
   readonly discountableSubtotal: WorkspaceMoney;
 }) =>
-  Schema.decodeEffect(nonNegativeWorkspaceMoneyEffectSchema)(
+  Schema.decodeEffect(nonNegativeWorkspaceMoneyCodec)(
     input.discountableSubtotal
   ).pipe(
     Effect.mapError(
@@ -109,11 +110,7 @@ const getAppliedValue = (input: {
   const { adjustment } = input.candidate.discount;
 
   if (adjustment.kind === "percentage") {
-    if (
-      !Number.isInteger(adjustment.basisPoints) ||
-      adjustment.basisPoints < 1 ||
-      adjustment.basisPoints > 10_000
-    ) {
+    if (!Schema.is(discountBasisPointsSchema)(adjustment.basisPoints)) {
       return Effect.fail(
         calculationError(
           "invalid_percentage_adjustment",

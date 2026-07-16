@@ -22,7 +22,7 @@ export type LegalDocumentContent = {
 
 const companyName = workspaceSiteConstants.brand.legalName;
 const contactEmail = workspaceSiteConstants.contact.infoEmail;
-const companyAddress = `${workspaceSiteConstants.contact.address.street}, ${workspaceSiteConstants.contact.address.postalCode} ${workspaceSiteConstants.contact.address.city} - ${workspaceSiteConstants.contact.address.cityDistrict}`;
+const companyAddress = `${workspaceSiteConstants.location.address.street}, ${workspaceSiteConstants.location.address.postalCode} ${workspaceSiteConstants.location.address.city} - ${workspaceSiteConstants.location.address.cityDistrict}`;
 const commercialRegisterDisclosure = {
   "en-US":
     "Commercial register details are available in the linked official company extract.",

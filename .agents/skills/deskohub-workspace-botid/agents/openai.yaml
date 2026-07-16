@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace BotID"
+  short_description: "Preserve Workspace BotID security boundaries"
+  default_prompt: "Use $deskohub-workspace-botid to implement or debug Workspace BotID protection safely."

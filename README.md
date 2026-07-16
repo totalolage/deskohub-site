@@ -144,7 +144,7 @@ Do not commit real env files or quote secret values in logs, issues, or PRs.
 - `.github/workflows/mirror-repository.yml` mirrors `main` to the configured
   mirror repository as a squashed commit.
 - `.github/workflows/cleanup-neon-preview-branch.yml` contains the Neon preview
-  branch cleanup job, currently guarded off with `if: ${{ false }}`.
+  branch cleanup job for merged same-repository pull requests.
 
 For the full Workspace preview checkout procedure, see
 [`apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md`](./apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md).

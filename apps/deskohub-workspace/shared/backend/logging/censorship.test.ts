@@ -102,6 +102,9 @@ describe("censorLogValue", () => {
         accessCode: "654321",
         oauthClientSecret: "secret-oauth-client-secret",
         requestAuthorization: "Bearer secret",
+        discountCode: "SUMMER50",
+        submittedCode: "SUMMER50",
+        discountCodeId: "safe-discount-code-id",
         name: "Ada Lovelace",
         message: "private form message",
         errorDescription: "provider echoed private payload",
@@ -130,6 +133,9 @@ describe("censorLogValue", () => {
         accessCode: CENSORED_LOG_VALUE,
         oauthClientSecret: CENSORED_LOG_VALUE,
         requestAuthorization: CENSORED_LOG_VALUE,
+        discountCode: CENSORED_LOG_VALUE,
+        submittedCode: CENSORED_LOG_VALUE,
+        discountCodeId: "safe-discount-code-id",
         name: CENSORED_LOG_VALUE,
         message: CENSORED_LOG_VALUE,
         errorDescription: CENSORED_LOG_VALUE,
@@ -215,10 +221,10 @@ describe("censorLogValue", () => {
   test("redacts sensitive relative URL query params", () => {
     expect(
       censorLogValue(
-        "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&visible=safe#summary"
+        "/en-US/checkout/pay?payState=secret&payStateRef=ref&checkoutToken=token&discountCode=SUMMER50&submittedCode=SUMMER50&visible=safe#summary"
       )
     ).toBe(
-      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
+      `/en-US/checkout/pay?payState=${encodeURIComponent(CENSORED_LOG_VALUE)}&payStateRef=${encodeURIComponent(CENSORED_LOG_VALUE)}&checkoutToken=${encodeURIComponent(CENSORED_LOG_VALUE)}&discountCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&submittedCode=${encodeURIComponent(CENSORED_LOG_VALUE)}&visible=safe#summary`
     );
   });
 

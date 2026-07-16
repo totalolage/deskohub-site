@@ -10,5 +10,6 @@ Read only the references relevant to the change:
 - For services, capabilities, Layers, module structure, mocks, tracing, barrels, and tests, read [references/services-and-layers.md](references/services-and-layers.md).
 - For multi-step Effect workflows and pipeline structure, read [references/declarative-workflows.md](references/declarative-workflows.md).
 - For validation, schemas, brands, public types, and error mapping, read [references/schemas-errors-and-boundaries.md](references/schemas-errors-and-boundaries.md).
+- For discriminated unions, `_tag` construction, and Effect Match, read [references/tagged-unions-and-match.md](references/tagged-unions-and-match.md).
 
-For a broad service or feature refactor, read all three before editing. Update the relevant reference when developer feedback changes a durable convention.
+For a broad service or feature refactor, read all relevant references before editing. Update the relevant reference when developer feedback changes a durable convention.

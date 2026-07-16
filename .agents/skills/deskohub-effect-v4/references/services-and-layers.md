@@ -41,6 +41,8 @@ Resolve capabilities while constructing the consuming service and close over the
 
 Name public service operations with `Effect.fn("Service.operation")`. Do not wrap the entire named operation in a redundant `Effect.withSpan`; add explicit spans only for meaningful nested trace boundaries.
 
+In a named Effect operation, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
+
 Omit Effect options that restate defaults, such as unbounded concurrency when it is already the default. Specify an option only when it changes behavior or communicates an important constraint.
 
 Expose each feature's public service API through its `index.ts` barrel. Keep providers, repositories, intermediate candidates, and other implementation modules private. In tests, import the declaration module under test directly rather than through the feature barrel.

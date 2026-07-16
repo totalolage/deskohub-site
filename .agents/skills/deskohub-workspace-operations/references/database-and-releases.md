@@ -13,3 +13,5 @@ Keep the production release sequence intentionally simple:
 3. Promote the ready deployment.
 
 Do not introduce expand/contract migrations or database branch swapping unless the user explicitly requests them.
+
+Do not add a custom Vercel Ignored Build Step for documentation-, test-, CI-, or E2E-only changes. These changes are too infrequent to justify maintaining a classifier; rely on Vercel's automatic affected-project skipping.

@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./backend/service.mock": "./src/backend/service.mock.ts",
     "./table-map": "./src/table-map.tsx",
     "./generated": "./src/generated/index.ts",
     "./generated/*": "./src/generated/*.ts"

@@ -1,5 +1,6 @@
 import { Data } from "effect";
 import type { DiscountId } from "./contracts";
+import type { DiscountCodeId } from "./persistence-contracts";
 
 export type DiscountCalculationFailureReason =
   | "invalid_discountable_subtotal"
@@ -33,6 +34,8 @@ export class DiscountCodeUnavailableError extends Data.TaggedError(
 )<{
   readonly reason: DiscountCodeUnavailableReason;
   readonly message: string;
+  readonly codeId?: DiscountCodeId;
+  readonly cause?: unknown;
 }> {}
 
 export type DiscountProviderFailureReason =

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub PR Review"
+  short_description: "Address review feedback with validated fixes"
+  default_prompt: "Use $deskohub-pr-review to address and close out this pull request review."

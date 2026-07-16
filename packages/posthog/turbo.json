@@ -1,0 +1,14 @@
+{
+  "$schema": "https://v2-9-14.turborepo.dev/schema.json",
+  "extends": ["//"],
+  "tasks": {
+    "generate": {
+      "cache": false,
+      "env": ["POSTHOG_OPENAPI_SCHEMA_URL"],
+      "outputs": ["src/generated/**"]
+    },
+    "typecheck": {
+      "dependsOn": ["generate"]
+    }
+  }
+}

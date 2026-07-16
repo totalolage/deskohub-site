@@ -2,8 +2,8 @@ import { Effect } from "effect";
 import { submitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
-  effectifyPromise,
-  effectifySync,
+  tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   workspaceE2EError,
 } from "../errors";
@@ -75,7 +75,7 @@ export const requireCheckoutDate = (
   dates: readonly string[],
   index: number
 ): Effect.Effect<string, WorkspaceE2EError> =>
-  effectifySync("select checkout date", () => {
+  tryWorkspaceE2ESync("select checkout date", () => {
     const date = dates[index];
     assert(date, `missing checkout date ${index + 1}`);
     return date;
@@ -89,7 +89,7 @@ export const selectAvailableCoworkDates = (
     const from = futureIsoDate(14);
     const to = futureIsoDate(90);
     const params = new URLSearchParams({ entryTier: "basic", from, to });
-    const response = yield* effectifyPromise(
+    const response = yield* tryWorkspaceE2EPromise(
       "fetch workspace availability dates",
       () =>
         fetch(`${config.browserUrl}/api/workspace/availability?${params}`, {
@@ -98,17 +98,17 @@ export const selectAvailableCoworkDates = (
             : undefined,
         })
     );
-    yield* effectifySync("assert availability response", () =>
+    yield* tryWorkspaceE2ESync("assert availability response", () =>
       assert(response.ok, `availability check failed with ${response.status}`)
     );
 
-    const availability = (yield* effectifyPromise(
+    const availability = (yield* tryWorkspaceE2EPromise(
       "read workspace availability response",
       () => response.json()
     )) as {
       readonly unavailableDates?: unknown;
     };
-    const unavailable = yield* effectifySync(
+    const unavailable = yield* tryWorkspaceE2ESync(
       "parse workspace availability dates",
       () => {
         assert(

@@ -1,11 +1,12 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { Effect } from "effect";
+import { type Duration, Effect, Schedule } from "effect";
 import type { WorkspaceE2EConfig } from "./config";
 import {
-  effectifyPromise,
-  effectifySync,
+  tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2EError,
 } from "./errors";
 import { assert, log, repoRoot } from "./runtime";
 import { makeUrl, setSearchParams } from "./urls";
@@ -15,10 +16,10 @@ export const writeVercelProjectLink = (
 ): Effect.Effect<void, WorkspaceE2EError> => {
   const file = resolve(repoRoot, ".vercel/project.json");
   return Effect.gen(function* () {
-    yield* effectifyPromise("create Vercel project link directory", () =>
+    yield* tryWorkspaceE2EPromise("create Vercel project link directory", () =>
       mkdir(dirname(file), { recursive: true })
     );
-    yield* effectifyPromise("write Vercel project link", () =>
+    yield* tryWorkspaceE2EPromise("write Vercel project link", () =>
       writeFile(
         file,
         `${JSON.stringify({ orgId: config.vercelTeamId, projectId: config.vercelProjectId }, null, 2)}\n`
@@ -34,17 +35,20 @@ export const getDeployment = (
   Effect.gen(function* () {
     const host = (yield* makeUrl("parse Vercel preview URL", previewUrl)).host;
     const response = yield* vercelFetch(config, `/v13/deployments/${host}`);
-    const body = (yield* effectifyPromise(
+    const body = (yield* tryWorkspaceE2EPromise(
       "read Vercel deployment response",
       () => response.json()
     )) as { id?: unknown };
-    const id = yield* effectifySync("assert Vercel deployment response", () => {
-      assert(
-        typeof body.id === "string",
-        "Vercel deployment response did not include id"
-      );
-      return body.id;
-    });
+    const id = yield* tryWorkspaceE2ESync(
+      "assert Vercel deployment response",
+      () => {
+        assert(
+          typeof body.id === "string",
+          "Vercel deployment response did not include id"
+        );
+        return body.id;
+      }
+    );
     log(`Fresh Vercel deployment ${id} at ${previewUrl}`);
     return { id };
   });
@@ -65,7 +69,7 @@ export const recordAliasPreflight = (
       return true;
     }
 
-    const body = (yield* effectifyPromise(
+    const body = (yield* tryWorkspaceE2EPromise(
       "read Vercel alias preflight response",
       () => response.json()
     )) as { id?: unknown };
@@ -96,7 +100,7 @@ export const assignAlias = (
         method: "POST",
       }
     );
-    yield* effectifySync("assert Vercel alias assignment", () =>
+    yield* tryWorkspaceE2ESync("assert Vercel alias assignment", () =>
       assert(response.ok, `Vercel alias assignment failed: ${response.status}`)
     );
     log(`Assigned ${config.aliasUrl} to fresh deployment`);
@@ -111,10 +115,11 @@ export const verifyAlias = (
       config,
       `/v13/deployments/${config.alias}`
     );
-    const body = (yield* effectifyPromise("read Vercel alias response", () =>
-      response.json()
+    const body = (yield* tryWorkspaceE2EPromise(
+      "read Vercel alias response",
+      () => response.json()
     )) as { id?: unknown };
-    yield* effectifySync("assert Vercel alias target", () =>
+    yield* tryWorkspaceE2ESync("assert Vercel alias target", () =>
       assert(
         body.id === deploymentId,
         `${config.alias} does not point at fresh deployment`
@@ -137,10 +142,11 @@ export const assertWebhookEndpoint = (
       yield* setSearchParams(url, {
         "x-vercel-protection-bypass": config.bypassSecret,
       });
-    const response = yield* effectifyPromise(`check ${path} endpoint`, () =>
-      fetch(url)
+    const response = yield* tryWorkspaceE2EPromise(
+      `check ${path} endpoint`,
+      () => fetch(url)
     );
-    yield* effectifySync(`assert ${path} endpoint`, () =>
+    yield* tryWorkspaceE2ESync(`assert ${path} endpoint`, () =>
       assert(response.ok, `${path} health check failed with ${response.status}`)
     );
   });
@@ -153,23 +159,65 @@ const vercelFetch = (
 ): Effect.Effect<Response, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const separator = path.includes("?") ? "&" : "?";
-    const response = yield* effectifyPromise(`call Vercel API ${path}`, () =>
-      fetch(
-        `https://api.vercel.com${path}${separator}teamId=${config.vercelTeamId}`,
-        {
-          ...init,
-          headers: {
-            authorization: `Bearer ${config.vercelToken}`,
-            ...init.headers,
-          },
-        }
-      )
+    const response = yield* tryWorkspaceE2EPromise(
+      `call Vercel API ${path}`,
+      () =>
+        fetch(
+          `https://api.vercel.com${path}${separator}teamId=${config.vercelTeamId}`,
+          {
+            ...init,
+            headers: {
+              authorization: `Bearer ${config.vercelToken}`,
+              ...init.headers,
+            },
+          }
+        )
     );
-    yield* effectifySync(`assert Vercel API ${path}`, () =>
+    if (!response.ok && isTransientVercelApiStatus(response.status)) {
+      return yield* Effect.fail(
+        workspaceE2EError(
+          `Vercel API ${path} failed with transient ${response.status}`,
+          {
+            cause: {
+              _tag: "TransientVercelApiResponse",
+              path,
+              status: response.status,
+            },
+            operation: `call Vercel API ${path}`,
+          }
+        )
+      );
+    }
+    yield* tryWorkspaceE2ESync(`assert Vercel API ${path}`, () =>
       assert(
         response.ok || options.allowFailure,
         `Vercel API ${path} failed with ${response.status}`
       )
     );
     return response;
-  });
+  }).pipe(Effect.retry(vercelApiRetryPolicy));
+
+const isTransientVercelApiStatus = (status: number) =>
+  status === 429 || status >= 500;
+
+const isTransientVercelApiFailure = (
+  cause: unknown
+): cause is {
+  readonly _tag: "TransientVercelApiResponse";
+  readonly path: string;
+  readonly status: number;
+} =>
+  Boolean(
+    cause &&
+      typeof cause === "object" &&
+      "_tag" in cause &&
+      cause._tag === "TransientVercelApiResponse"
+  );
+
+const vercelApiRetryPolicy = Schedule.exponential("1 second").pipe(
+  Schedule.jittered,
+  Schedule.while<WorkspaceE2EError, Duration.Duration>(({ input }) =>
+    isTransientVercelApiFailure(input.cause)
+  ),
+  Schedule.both(Schedule.recurs(3))
+);

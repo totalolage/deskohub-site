@@ -2,15 +2,15 @@ import { getLocale } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 
 type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
-type TimeObject = { hrs: number; mins: number };
-type DayHours = { open: TimeObject; close: TimeObject };
+type TimeOfDay = { hrs: number; mins: number };
+type DayHours = { open: TimeOfDay; close: TimeOfDay };
 
 /**
- * Format time object to string representation using Intl API
- * The TimeObject values represent the actual display time (already in Prague timezone)
+ * Format time of day to string representation using Intl API
+ * The TimeOfDay values represent the actual display time (already in Prague timezone)
  * We need to create a fixed reference date to avoid timezone conversion issues
  */
-export function formatTime(time: TimeObject): string {
+export function formatTime(time: TimeOfDay): string {
   // Create a fixed UTC date with our time values
   // Using UTC ensures no local timezone conversion happens
   // The year/month/day don't matter since we only format hours/minutes
@@ -99,17 +99,17 @@ export function getWeekendsList(): DayOfWeek[] {
 }
 
 /**
- * Convert time string to TimeObject
+ * Convert time string to TimeOfDay
  */
-export function parseTimeString(timeStr: string): TimeObject {
+export function parseTimeString(timeStr: string): TimeOfDay {
   const [hrs, mins] = timeStr.split(":").map(Number);
   return { hrs: hrs ?? 0, mins: mins ?? 0 };
 }
 
 /**
- * Convert TimeObject to minutes since midnight
+ * Convert TimeOfDay to minutes since midnight
  */
-export function timeToMinutes(time: TimeObject): number {
+export function timeToMinutes(time: TimeOfDay): number {
   return time.hrs * 60 + time.mins;
 }
 
@@ -118,7 +118,7 @@ export function timeToMinutes(time: TimeObject): number {
  */
 export function isTimeWithinWorkingHours(
   day: DayOfWeek,
-  time: TimeObject
+  time: TimeOfDay
 ): boolean {
   const dayHours = getWorkingHoursForDay(day);
   const timeInMinutes = timeToMinutes(time);

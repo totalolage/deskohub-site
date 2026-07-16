@@ -3,7 +3,7 @@ import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Duration, Effect, type Layer, References } from "effect";
 import type { Locale } from "@/features/i18n";
 import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
-import { formatEffectError } from "@/shared/utils/error-formatting";
+import { formatError } from "@/shared/utils/error-formatting";
 import {
   actionClient,
   getPublicSafeActionErrorMessage,
@@ -22,7 +22,7 @@ function mapError(error: unknown) {
     });
   }
 
-  const formatted = formatEffectError(error);
+  const formatted = formatError(error);
   return new Error(formatted.code || "INTERNAL_ACTION_ERROR");
 }
 

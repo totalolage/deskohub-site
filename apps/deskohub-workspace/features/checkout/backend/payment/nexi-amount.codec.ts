@@ -1,14 +1,14 @@
 import { NexiAmountSchema, nexiMinorUnitExponent } from "@deskohub/nexi";
 import { Effect, Option, Schema, SchemaGetter, SchemaIssue } from "effect";
-import { positiveWorkspaceMoneyEffectSchema } from "@/features/checkout/workspace-money";
+import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 
 const invalidValue = (actual: unknown, message: string) =>
   new SchemaIssue.InvalidValue(Option.some(actual), { message });
 
 export const NexiAmountFromWorkspaceMoney = NexiAmountSchema.pipe(
-  Schema.decodeTo(positiveWorkspaceMoneyEffectSchema, {
+  Schema.decodeTo(positiveWorkspaceMoneyCodec, {
     decode: SchemaGetter.transformOrFail((nexiAmount, options) =>
-      Schema.decodeUnknownEffect(positiveWorkspaceMoneyEffectSchema)(
+      Schema.decodeUnknownEffect(positiveWorkspaceMoneyCodec)(
         {
           value: Number(nexiAmount.amount),
           exponent: nexiMinorUnitExponent,
@@ -32,7 +32,7 @@ export const NexiAmountFromWorkspaceMoney = NexiAmountSchema.pipe(
       ).pipe(Effect.mapError((error) => invalidValue(money, error.message)))
     ) as SchemaGetter.Getter<
       typeof NexiAmountSchema.Encoded,
-      typeof positiveWorkspaceMoneyEffectSchema.Encoded
+      typeof positiveWorkspaceMoneyCodec.Encoded
     >,
   })
 ).annotate({

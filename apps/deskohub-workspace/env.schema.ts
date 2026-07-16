@@ -32,6 +32,7 @@ export const workspaceServerEnvSchema = z.object({
   VERCEL_PROJECT_PRODUCTION_URL: z.string().min(1),
   VERCEL_URL: z.string().min(1),
   WORKSPACE_CALLBACK_ORIGIN: z.url().optional(),
+  WORKSPACE_E2E_BOTID_BYPASS: z.enum(["HUMAN"]).optional(),
 });
 
 export const workspaceClientEnvSchema = z.object({

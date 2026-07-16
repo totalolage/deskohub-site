@@ -46,7 +46,11 @@ const sensitiveLogKeyFragments = [
   "last name",
 ] as const;
 
-const sensitiveLogExactKeys = new Set(["x-vercel-sc-headers"]);
+const sensitiveLogExactKeys = new Set([
+  "discountcode",
+  "submittedcode",
+  "x-vercel-sc-headers",
+]);
 
 const sensitiveLogUrlSearchParams = new Set([
   "checkouttoken",

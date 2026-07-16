@@ -6,6 +6,7 @@ permissions:
 on:
   pull_request:
     branches: [main]
+    types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
     paths:
       - .vercelignore
       - .github/workflows/workspace-tests.yml
@@ -22,6 +23,7 @@ concurrency:
 
 jobs:
   validate-workspace-migrations:
+    if: github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +40,7 @@ jobs:
         run: bun scripts/validate-migration-count.ts "${{ github.event.pull_request.base.sha }}"
 
   test-functional:
+    if: github.event.action != 'converted_to_draft'
     runs-on: ubuntu-latest
     env:
       TURBO_TOKEN: ${{ secrets.TURBO_TOKEN }}
@@ -58,7 +61,10 @@ jobs:
 
   test-e2e:
     needs: test-functional
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 50
     environment: workspace-checkout-e2e

@@ -8,7 +8,8 @@ import {
   ContactServiceLive,
 } from "@/features/contact/backend/contact.service";
 import { getContactSchema } from "@/features/contact/schemas/contact";
-import { getLocale, m } from "@/features/i18n";
+import { getLocale, type Locale, m } from "@/features/i18n";
+import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
 
@@ -45,14 +46,16 @@ function getSubmittedString(formData: FormData, name: keyof ContactFormValues) {
   return value;
 }
 
-export async function submitContactForm(
-  _previousState: ContactFormState,
-  formData: FormData
-): Promise<ContactFormState> {
-  const locale = getLocale();
-  const submittedValues = getSubmittedContactValues(formData);
+interface SubmitContactFormInput {
+  readonly locale: Locale;
+  readonly submittedValues: ContactFormValues;
+}
 
-  const program = Effect.gen(function* () {
+export const processContactSubmission = Effect.fn("submitContactForm")(
+  function* ({ locale, submittedValues }: SubmitContactFormInput) {
+    const botProtection = yield* BotProtectionService;
+    yield* botProtection.verifyHuman({ verificationFailurePolicy: "deny" });
+
     yield* Effect.annotateLogsScoped({ submittedValues, locale });
     yield* Effect.logInfo("Workspace contact form action received");
 
@@ -88,26 +91,52 @@ export async function submitContactForm(
       status: "success" as const,
       message: m.contactSuccessMessage({}, { locale }),
     };
-  }).pipe(
-    Effect.scoped,
-    Effect.provide(
-      Layer.provideMerge(
-        ContactServiceLive,
-        Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
-      )
-    ),
-    Effect.catch((error) =>
-      Effect.logError("Workspace contact form submission failed", {
-        error,
-        submittedValues,
-      }).pipe(
-        Effect.as({
-          status: "error" as const,
-          message: m.contactEmailSendError({}, { locale }),
-          values: submittedValues,
-        })
+  },
+  (effect, { locale, submittedValues }) =>
+    effect.pipe(
+      Effect.scoped,
+      Effect.catchTag("BotDetectedError", (error) =>
+        Effect.logWarning("Workspace contact form bot rejected", {
+          error,
+        }).pipe(
+          Effect.as({
+            status: "error" as const,
+            message: m.contactRateLimitMessage({}, { locale }),
+            values: submittedValues,
+          })
+        )
+      ),
+      Effect.catch((error) =>
+        Effect.logError("Workspace contact form submission failed", {
+          error,
+          submittedValues,
+        }).pipe(
+          Effect.as({
+            status: "error" as const,
+            message: m.contactEmailSendError({}, { locale }),
+            values: submittedValues,
+          })
+        )
       )
     )
+);
+
+const ContactActionLive = ContactServiceLive.pipe(
+  Layer.provide(
+    StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
+  ),
+  Layer.merge(BotProtectionService.Live)
+);
+
+export async function submitContactForm(
+  _previousState: ContactFormState,
+  formData: FormData
+): Promise<ContactFormState> {
+  const locale = getLocale();
+  const submittedValues = getSubmittedContactValues(formData);
+
+  const program = processContactSubmission({ locale, submittedValues }).pipe(
+    Effect.provide(ContactActionLive)
   );
 
   return await runWorkspaceServerActionEffect(program);
