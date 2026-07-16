@@ -2,6 +2,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
+import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -342,5 +343,6 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     Layer.provide(WorkspaceReservationService.Live),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive)
+    Layer.provide(DotyposServiceLive),
+    Layer.provide(SeatingMapFeatureFlagService.Live)
   );

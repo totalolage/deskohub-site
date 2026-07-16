@@ -6,6 +6,7 @@ import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
+import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
@@ -57,6 +58,7 @@ export class WorkspaceReservationService extends Context.Service<
     Effect.gen(function* () {
       const reservations = yield* WorkspaceReservationRepository;
       const dotypos = yield* DotyposService;
+      const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
 
       const loadReservation = Effect.fn("workspaceReservation.load")(function* (
         id: string
@@ -139,10 +141,13 @@ export class WorkspaceReservationService extends Context.Service<
             dotyposReservationDetails.reservation,
             tables
           );
-          const tableMap = getWorkspaceTableMap(
-            dotyposReservationDetails.reservation,
-            tables
-          );
+          const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled();
+          const tableMap = seatingMapEnabled
+            ? getWorkspaceTableMap(
+                dotyposReservationDetails.reservation,
+                tables
+              )
+            : undefined;
 
           return {
             id: reservation.id,

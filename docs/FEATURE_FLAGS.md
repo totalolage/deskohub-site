@@ -17,8 +17,9 @@ Generation uses `POSTHOG_FEATURE_FLAGS_API_KEY`, `POSTHOG_HOST`, and `POSTHOG_PR
 Current runtime flags:
 
 - `meeting_room_page` — controls the Workspace Meeting Room page and its header link.
+- `seating_map` — controls whether checkout status and paid-reservation emails include the assigned seating map.
 
-The server requests only `meeting_room_page` through the package-owned typed Node service. It uses the consented PostHog visitor identity from the request when available. Before PostHog initializes, or without analytics consent, it evaluates with an explicit global-release subject and suppresses feature-flag access events so the fallback does not pollute visitor analytics. An unavailable, absent, or disabled flag fails closed and returns a 404 before page content or metadata is rendered. The React UI consumes the generated typed hook so an already-open page stays aligned with PostHog after hydration.
+The server evaluates flags through the package-owned typed Node service. It uses the consented PostHog visitor identity from the request when available. Before PostHog initializes, or without analytics consent, it evaluates with an explicit global-release subject and suppresses feature-flag access events so the fallback does not pollute visitor analytics. Unavailable, absent, or disabled release flags fail closed at their feature boundaries. React consumers can use the generated typed hook to stay aligned with PostHog after hydration.
 
 The global fallback keeps release switches available on a visitor's first request. Targeted or percentage rollouts should account for the fact that a stable PostHog visitor identity is only available after consent and client initialization.
 
