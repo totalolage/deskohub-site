@@ -41,7 +41,6 @@ import {
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
-  getCheckoutReservationDetails,
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
@@ -59,6 +58,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
+  getCoworkReservationDetails,
   type NormalizedCoworkReservationOrder,
   normalizedCoworkReservationOrderSchema,
 } from "@/features/reservation/cowork-reservation";
@@ -165,7 +165,7 @@ const buildReservationCheckoutDetails = (input: {
     schema: "workspace-checkout-details",
     schemaVersion: 1,
     locale: input.locale,
-    reservation: getCheckoutReservationDetails(input.reservation),
+    reservation: getCoworkReservationDetails(input.reservation),
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
       undiscountedPrice: input.quote.payment.undiscountedPrice,

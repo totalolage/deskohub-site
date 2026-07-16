@@ -12,7 +12,6 @@ import {
 } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
-  getCheckoutReservationDetails,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
@@ -40,7 +39,10 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
+import {
+  getCoworkReservationDetails,
+  type NormalizedCoworkReservationOrder,
+} from "@/features/reservation/cowork-reservation";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -267,7 +269,7 @@ const buildCheckoutDetailsForPayment = (input: {
   schema: "workspace-checkout-details",
   schemaVersion: 1,
   locale: input.locale,
-  reservation: getCheckoutReservationDetails(input.data),
+  reservation: getCoworkReservationDetails(input.data),
   payment: {
     expectedPrice: input.quote.payment.expectedPrice,
     undiscountedPrice: input.quote.payment.undiscountedPrice,

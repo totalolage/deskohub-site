@@ -5,6 +5,7 @@ import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationSchema as coworkReservationDefinition,
   coworkReservationOrderSchema as coworkReservationOrderDefinition,
+  getCoworkReservationDetails,
   getCoworkReservationIntervalInput,
   getCoworkReservationOrder,
 } from "./cowork-reservation";
@@ -49,6 +50,13 @@ describe("cowork reservation schema", () => {
       expect(getCoworkReservationOrder(result.success)).not.toHaveProperty(
         "legalConsent"
       );
+      expect(
+        getCoworkReservationDetails(getCoworkReservationOrder(result.success))
+      ).toEqual({
+        entryTier: "plus",
+        date: "2099-06-10",
+        coffee: true,
+      });
     }
   });
 
