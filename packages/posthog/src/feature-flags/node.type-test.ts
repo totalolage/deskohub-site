@@ -1,5 +1,8 @@
 import { definePostHogFeatureFlags } from "./contract";
-import { createPostHogNodeFeatureFlags } from "./node";
+import {
+  createPostHogNodeFeatureFlags,
+  makePostHogNodeFeatureFlagService,
+} from "./node";
 
 const contract = definePostHogFeatureFlags<{
   readonly meeting_room_page: {
@@ -25,3 +28,18 @@ const program = featureFlags.evaluateFlags("public-site", {
 featureFlags.evaluateFlags("public-site", { flagKeys: ["seasonal_menu"] });
 
 void program;
+
+const service = makePostHogNodeFeatureFlagService(contract, {
+  host: "https://posthog.example",
+  projectToken: "phc_test",
+});
+
+const subject = {
+  distinctId: "visitor-id",
+  sendFeatureFlagEvents: true,
+} as const;
+
+service.isEnabled({ key: "meeting_room_page", subject });
+
+// @ts-expect-error The generated contract rejects unknown flag keys.
+service.isEnabled({ key: "seasonal_menu", subject });

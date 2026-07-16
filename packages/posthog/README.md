@@ -77,11 +77,35 @@ export function MeetingRoomEntry() {
 }
 ```
 
-Server code can similarly call `createPostHogNodeFeatureFlags` with the generated
-contract and an official `posthog-node` client. Its `evaluateFlags` method is an
-Effect and returns a typed view over the SDK's evaluation snapshot. The adapter
-does not own client construction or shutdown because that lifecycle belongs to
-the consuming application.
+Server code creates an app-configured service from the generated contract. The
+service constructs the official Node SDK lazily, evaluates the requested flags,
+and closes the SDK client after each Effect completes:
+
+```ts
+import { makePostHogNodeFeatureFlagService } from "@deskohub/posthog/feature-flags/node";
+import { postHogFeatureFlags } from "./generated/contract";
+
+export const nodeFeatureFlags = makePostHogNodeFeatureFlagService(
+  postHogFeatureFlags,
+  {
+    host: process.env.NEXT_PUBLIC_POSTHOG_HOST!,
+    projectToken: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
+  }
+);
+
+const enabled = yield* nodeFeatureFlags.isEnabled({
+  key: "meeting_room_page",
+  subject: {
+    distinctId: visitorId,
+    sendFeatureFlagEvents: true,
+  },
+});
+```
+
+The subject should use the same distinct ID as the browser SDK. If an
+application must use a shared fallback identity for a global release switch, it
+should set `sendFeatureFlagEvents` to `false` so fallback evaluations do not
+pollute per-user feature-flag analytics.
 
 Unknown or cross-application keys fail TypeScript compilation. Multivariate
 values and payloads are typed from the owning application's PostHog definition.

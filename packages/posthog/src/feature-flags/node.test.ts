@@ -1,10 +1,23 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
 import { definePostHogFeatureFlags } from "./contract";
-import {
-  createPostHogNodeFeatureFlags,
-  PostHogFeatureFlagEvaluationError,
-} from "./node";
+
+const evaluateFlags = mock((_distinctId: string, _options?: unknown) =>
+  Promise.resolve({
+    getFlag: () => true,
+    getFlagPayload: () => undefined,
+    isEnabled: () => true,
+  })
+);
+const shutdown = mock(() => Promise.resolve());
+const createClient = mock((_projectToken: string, _options: unknown) => {});
+
+mock.module("posthog-node", () => ({
+  PostHog: function PostHog(projectToken: string, options: unknown) {
+    createClient(projectToken, options);
+    return { evaluateFlags, shutdown };
+  },
+}));
 
 const contract = definePostHogFeatureFlags<{
   readonly meeting_room_page: {
@@ -19,6 +32,7 @@ const contract = definePostHogFeatureFlags<{
 
 describe("createPostHogNodeFeatureFlags", () => {
   test("returns a typed view over one evaluation snapshot", async () => {
+    const { createPostHogNodeFeatureFlags } = await import("./node");
     const calls: unknown[] = [];
     const raw = {
       getFlag: (key: string) =>
@@ -56,6 +70,8 @@ describe("createPostHogNodeFeatureFlags", () => {
   });
 
   test("reports SDK failures through the Effect error channel", async () => {
+    const { createPostHogNodeFeatureFlags, PostHogFeatureFlagEvaluationError } =
+      await import("./node");
     const featureFlags = createPostHogNodeFeatureFlags(contract, {
       evaluateFlags: () => Promise.reject(new Error("network unavailable")),
     });
@@ -66,5 +82,74 @@ describe("createPostHogNodeFeatureFlags", () => {
 
     expect(error).toBeInstanceOf(PostHogFeatureFlagEvaluationError);
     expect(error.cause).toBeInstanceOf(Error);
+  });
+});
+
+describe("makePostHogNodeFeatureFlagService", () => {
+  test("constructs the SDK lazily and evaluates a typed flag for its subject", async () => {
+    const { makePostHogNodeFeatureFlagService } = await import("./node");
+    createClient.mockClear();
+    evaluateFlags.mockClear();
+    shutdown.mockClear();
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      disableGeoip: true,
+      featureFlagsRequestTimeoutMs: 2_000,
+      host: "https://posthog.example",
+      projectToken: "phc_test",
+    });
+
+    expect(createClient).not.toHaveBeenCalled();
+
+    const enabled = await Effect.runPromise(
+      featureFlags.isEnabled({
+        key: "meeting_room_page",
+        subject: {
+          distinctId: "visitor-id",
+          sendFeatureFlagEvents: true,
+        },
+      })
+    );
+
+    expect(enabled).toBeTrue();
+    expect(createClient).toHaveBeenCalledWith("phc_test", {
+      featureFlagsRequestTimeoutMs: 2_000,
+      host: "https://posthog.example",
+    });
+    expect(evaluateFlags).toHaveBeenCalledWith("visitor-id", {
+      disableGeoip: true,
+      flagKeys: ["meeting_room_page"],
+      groupProperties: undefined,
+      groups: undefined,
+      onlyEvaluateLocally: undefined,
+      personProperties: undefined,
+      sendFeatureFlagEvents: true,
+    });
+    expect(shutdown).toHaveBeenCalledTimes(1);
+  });
+
+  test("reports missing runtime configuration through the Effect error channel", async () => {
+    const {
+      makePostHogNodeFeatureFlagService,
+      PostHogFeatureFlagEvaluationError,
+    } = await import("./node");
+    createClient.mockClear();
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      host: "https://posthog.example",
+    });
+
+    const error = await Effect.runPromise(
+      featureFlags
+        .isEnabled({
+          key: "meeting_room_page",
+          subject: {
+            distinctId: "visitor-id",
+            sendFeatureFlagEvents: true,
+          },
+        })
+        .pipe(Effect.flip)
+    );
+
+    expect(error).toBeInstanceOf(PostHogFeatureFlagEvaluationError);
+    expect(createClient).not.toHaveBeenCalled();
   });
 });
