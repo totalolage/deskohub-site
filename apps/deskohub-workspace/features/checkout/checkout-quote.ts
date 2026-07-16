@@ -212,16 +212,9 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
     orderItems.map((item) => item.amount)
   );
   const discountQuote = options.discountQuote;
-  const isDiscountQuoteApplicable =
-    discountQuote?.product.kind === "cowork" &&
-    discountQuote.product.tier === normalizedOrder.entryTier &&
-    workspaceMoneyEquals(discountQuote.discountableSubtotal, productPrice);
-  const applicableDiscountQuote = isDiscountQuoteApplicable
-    ? discountQuote
-    : undefined;
-  const discounts = applicableDiscountQuote?.discounts ?? [];
+  const discounts = discountQuote?.discounts ?? [];
   const discountedProductPrice =
-    applicableDiscountQuote?.discountedSubtotal ?? productPrice;
+    discountQuote?.discountedSubtotal ?? productPrice;
   const expectedPrice = yield* addWorkspaceMoney([
     discountedProductPrice,
     ...addOnItems.map(({ amount }) => amount),
