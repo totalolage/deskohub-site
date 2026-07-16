@@ -18,9 +18,9 @@ Current runtime flags:
 
 - `meeting_room_page` — controls the Workspace Meeting Room page and its header link.
 
-The server evaluates this flag once with PostHog's Node SDK and a fixed public-site distinct ID, requesting only `meeting_room_page`. An unavailable, absent, or disabled flag fails closed and returns a 404 before page content or metadata is rendered. The React UI consumes the generated typed hook so an already-open page stays aligned with PostHog after hydration.
+The server requests only `meeting_room_page` through the package-owned typed Node service. It uses the consented PostHog visitor identity from the request when available. Before PostHog initializes, or without analytics consent, it evaluates with an explicit global-release subject and suppresses feature-flag access events so the fallback does not pollute visitor analytics. An unavailable, absent, or disabled flag fails closed and returns a 404 before page content or metadata is rendered. The React UI consumes the generated typed hook so an already-open page stays aligned with PostHog after hydration.
 
-Configure these as global on/off release switches unless the implementation is updated to supply a stable visitor identity for targeted rollouts.
+The global fallback keeps release switches available on a visitor's first request. Targeted or percentage rollouts should account for the fact that a stable PostHog visitor identity is only available after consent and client initialization.
 
 ## Boardgame Bar Static Flags
 

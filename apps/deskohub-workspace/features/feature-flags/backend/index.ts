@@ -1,5 +1,2 @@
-export {
-  FeatureFlagService,
-  type IFeatureFlagService,
-  type IsFeatureFlagEnabledInput,
-} from "./feature-flag.service";
+export { nodeFeatureFlags } from "./node";
+export { getCurrentPostHogFeatureFlagSubject } from "./subject";
