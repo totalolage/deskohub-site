@@ -50,7 +50,9 @@ describe("discount code normalization", () => {
   });
 
   test("keeps an omitted code absent", async () => {
-    const result = await Effect.runPromise(normalizeSubmittedDiscountCode({}));
+    const result = await Effect.runPromise(
+      normalizeSubmittedDiscountCode({ submittedCode: undefined })
+    );
 
     expect(Option.isNone(result)).toBe(true);
   });

@@ -35,7 +35,7 @@ export class DiscountCodeConfigurationError extends Data.TaggedError(
 
 export const normalizeSubmittedDiscountCode = Effect.fn(
   "DiscountCode.normalizeSubmitted"
-)((input: { readonly submittedCode?: string }) =>
+)((input: { readonly submittedCode: string | undefined }) =>
   Option.fromNullishOr(input.submittedCode).pipe(
     Option.map((submittedCode) => uppercaseAscii(submittedCode.trim())),
     Option.filter((normalizedCode) => normalizedCode.length > 0),
