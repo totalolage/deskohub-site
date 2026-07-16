@@ -1,7 +1,7 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { z } from "zod/v4";
 import {
   ContactService,
@@ -90,12 +90,9 @@ export async function submitContactForm(
     };
   }).pipe(
     Effect.scoped,
-    Effect.provide(
-      Layer.provideMerge(
-        ContactServiceLive,
-        Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer)
-      )
-    ),
+    Effect.provide(ContactServiceLive),
+    Effect.provide(StandaloneEmailServiceLayer),
+    Effect.provide(EmailConfigLayer),
     Effect.catch((error) =>
       Effect.logError("Workspace contact form submission failed", {
         error,
