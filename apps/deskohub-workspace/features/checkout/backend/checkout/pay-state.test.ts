@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
@@ -35,6 +36,15 @@ const rotatedKey: PayStateKey = parsePayStateKey(
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
   "SUMMER50"
+);
+const strictParseOptions = { onExcessProperty: "error" } as const;
+const decodeSignedPayState = Schema.decodeUnknownSync(
+  signedPayStateSchema,
+  strictParseOptions
+);
+const decodeRetryPayState = Schema.decodeUnknownSync(
+  retryPayStateSchema,
+  strictParseOptions
 );
 
 const baseReservation = {
@@ -112,6 +122,20 @@ describe("Pay URL state", () => {
     expect(state.orderId).toBe("pay-state-test-order-id");
     expect(state.submittedCode).toBe(canonicalCode);
     expect(token.split(".")).toHaveLength(4);
+  });
+
+  test("preserves required-coffee normalization in signed Pay state", () => {
+    const state = buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation: { ...baseReservation, coffee: false },
+        quote: buildWorkspaceCheckoutQuote(baseReservation),
+        orderId: "required-coffee-order-id",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    );
+
+    expect(state.reservation.coffee).toBe(true);
   });
 
   test("fails closed when no encryption key is configured", () => {
@@ -244,13 +268,13 @@ describe("Pay URL state", () => {
       schemaVersion: 1,
     };
 
-    expect(signedPayStateSchema.safeParse(oldSignedState).success).toBe(false);
-    expect(retryPayStateSchema.safeParse(oldRetryState).success).toBe(false);
+    expect(() => decodeSignedPayState(oldSignedState)).toThrow();
+    expect(() => decodeRetryPayState(oldRetryState)).toThrow();
     expect(() =>
       sealPayState(oldSignedState as unknown as SignedPayState, {
         keys: [fixedKey],
       })
-    ).toThrow("Expected PayStateToken");
+    ).toThrow('at ["schemaVersion"]');
   });
 
   test("strictly validates generic applied-discount snapshots", () => {
@@ -315,15 +339,9 @@ describe("Pay URL state", () => {
       },
     };
 
-    expect(signedPayStateSchema.safeParse(stateWithDiscount).success).toBe(
-      true
-    );
-    expect(signedPayStateSchema.safeParse(invalidAmountState).success).toBe(
-      false
-    );
-    expect(signedPayStateSchema.safeParse(providerSpecificState).success).toBe(
-      false
-    );
+    expect(() => decodeSignedPayState(stateWithDiscount)).not.toThrow();
+    expect(() => decodeSignedPayState(invalidAmountState)).toThrow();
+    expect(() => decodeSignedPayState(providerSpecificState)).toThrow();
   });
 
   test("rejects non-canonical submitted discount codes", () => {
@@ -338,7 +356,7 @@ describe("Pay URL state", () => {
         },
         { keys: [fixedKey], now: () => fixedNow }
       )
-    ).toThrow("Invalid canonical submitted discount code");
+    ).toThrow('at ["submittedCode"]');
   });
 
   test("does not expose plaintext PII in the encrypted URL token", () => {
