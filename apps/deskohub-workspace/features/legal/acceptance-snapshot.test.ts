@@ -1,8 +1,11 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import { getLegalAcceptanceSnapshot } from "./acceptance-snapshot";
+
+mock.module("server-only", () => ({}));
+
+const { getLegalAcceptanceSnapshot } = await import("./acceptance-snapshot");
 
 describe("getLegalAcceptanceSnapshot", () => {
   test("returns the snapshot through the Effect success channel", async () => {
