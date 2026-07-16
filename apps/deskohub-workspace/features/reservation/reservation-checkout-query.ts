@@ -10,10 +10,10 @@ import {
   coworkReservationDefaultValues,
 } from "@/features/reservation/cowork-reservation";
 import {
-  reservationCustomerEmailEffectSchema,
-  reservationCustomerMessageEffectSchema,
-  reservationCustomerNameEffectSchema,
-  reservationCustomerPhoneEffectSchema,
+  reservationCustomerEmailSchema,
+  reservationCustomerMessageSchema,
+  reservationCustomerNameSchema,
+  reservationCustomerPhoneSchema,
 } from "@/features/reservation/reservation-contact";
 import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
 import {
@@ -56,16 +56,16 @@ const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceProductMonitorOptions)
 );
 const queryNameSchema = Schema.toStandardSchemaV1(
-  reservationCustomerNameEffectSchema
+  reservationCustomerNameSchema
 );
 const queryEmailSchema = Schema.toStandardSchemaV1(
-  reservationCustomerEmailEffectSchema
+  reservationCustomerEmailSchema
 );
 const queryPhoneSchema = Schema.toStandardSchemaV1(
-  reservationCustomerPhoneEffectSchema
+  reservationCustomerPhoneSchema
 );
 const queryMessageSchema = Schema.toStandardSchemaV1(
-  reservationCustomerMessageEffectSchema
+  reservationCustomerMessageSchema
 );
 
 const getTrimmedSearchParam = (

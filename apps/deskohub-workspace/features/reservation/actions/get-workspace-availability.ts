@@ -4,11 +4,11 @@ import { Schema } from "effect";
 import { loadWorkspaceAvailability } from "@/features/reservation/backend/workspace-availability.server";
 import {
   type WorkspaceAvailabilityQuery,
-  workspaceAvailabilityQueryEffectSchema,
+  workspaceAvailabilityQuerySchema,
 } from "@/features/reservation/workspace-availability";
 
 const parseWorkspaceAvailabilityQuery = Schema.decodeUnknownSync(
-  workspaceAvailabilityQueryEffectSchema
+  workspaceAvailabilityQuerySchema
 );
 
 export async function getWorkspaceAvailability(

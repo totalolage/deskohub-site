@@ -10,7 +10,7 @@ import type {
   WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
   WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType,
 } from "@/features/checkout/backend/reservation";
-import type { WorkspaceAvailabilityService as WorkspaceAvailabilityServiceType } from "@/features/reservation/backend/workspace-availability.service";
+import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
@@ -123,7 +123,7 @@ const runReusableReservationScenario = async (input: {
       Layer.succeed(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
         ensureAvailable,
-      } satisfies WorkspaceAvailabilityServiceType)
+      } satisfies IWorkspaceAvailabilityService)
     ),
     Effect.provide(
       Layer.succeed(WorkspaceReservationRepository, {
@@ -261,7 +261,7 @@ describe("prepareWorkspacePayState", () => {
         Layer.succeed(WorkspaceAvailabilityService, {
           getAvailability: mock(() => Effect.die("unused")),
           ensureAvailable,
-        } satisfies WorkspaceAvailabilityServiceType)
+        } satisfies IWorkspaceAvailabilityService)
       ),
       Effect.provide(
         Layer.succeed(WorkspaceReservationRepository, {
@@ -313,6 +313,7 @@ describe("prepareWorkspacePayState", () => {
     );
 
     expect(ensureAvailable).toHaveBeenCalledWith({
+      _tag: "cowork",
       date: reservation.date,
       entryTier: reservation.entryTier,
       monitorOption: undefined,

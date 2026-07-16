@@ -107,7 +107,7 @@ const runWithInventory = async <A>(
   const availability = await import("./workspace-availability.service");
 
   return effect.pipe(
-    Effect.provide(availability.WorkspaceAvailabilityServiceLive),
+    Effect.provide(availability.WorkspaceAvailabilityService.Live),
     Effect.provide(
       Layer.succeed(DotyposService, {
         getTables: mock(() =>

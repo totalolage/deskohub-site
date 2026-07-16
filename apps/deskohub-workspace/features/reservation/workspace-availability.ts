@@ -11,20 +11,20 @@ import {
 } from "@/features/checkout/product-catalog";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
-  getReservationIntervalNormalization,
   type ReservationInterval,
-  reservationIntervalFieldSchemas,
+  reservationIntervalSchema,
+  reservationTimestampInputSchema,
 } from "@/features/reservation/reservation-interval";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
-const workspaceAvailabilityQueryBaseEffectFields = {
+const workspaceAvailabilityQueryBaseFields = {
   from: Schema.String,
   to: Schema.String,
 };
 
-export const workspaceAvailabilityQueryEffectSchema = Schema.Union([
+export const workspaceAvailabilityQuerySchema = Schema.Union([
   Schema.TaggedStruct("cowork", {
-    ...workspaceAvailabilityQueryBaseEffectFields,
+    ...workspaceAvailabilityQueryBaseFields,
     date: Schema.optional(Schema.String),
     entryTier: Schema.optional(Schema.Literals(workspaceCoworkTiers)),
     monitorOption: Schema.optional(
@@ -32,28 +32,28 @@ export const workspaceAvailabilityQueryEffectSchema = Schema.Union([
     ),
   }),
   Schema.TaggedStruct("meeting-room", {
-    ...workspaceAvailabilityQueryBaseEffectFields,
-    startsAt: Schema.optional(reservationIntervalFieldSchemas.startsAt),
-    endsAt: Schema.optional(reservationIntervalFieldSchemas.endsAt),
+    ...workspaceAvailabilityQueryBaseFields,
+    startsAt: Schema.optional(reservationTimestampInputSchema),
+    endsAt: Schema.optional(reservationTimestampInputSchema),
   }),
 ]);
 
 export type WorkspaceAvailabilityQuery =
-  typeof workspaceAvailabilityQueryEffectSchema.Type;
+  typeof workspaceAvailabilityQuerySchema.Type;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
     ["workspace-availability", query] as const,
 };
 
-const workspaceAvailabilityNoticeEffectSchema = Schema.Struct({
+const workspaceAvailabilityNoticeSchema = Schema.Struct({
   date: Schema.String,
   startsAt: Schema.String,
   endsAt: Schema.String,
   summary: Schema.optional(Schema.String),
 });
 
-const workspaceAvailabilityResponseEffectSchema = Schema.Struct({
+const workspaceAvailabilityResponseSchema = Schema.Struct({
   date: Schema.optional(Schema.String),
   from: Schema.String,
   to: Schema.String,
@@ -63,17 +63,17 @@ const workspaceAvailabilityResponseEffectSchema = Schema.Struct({
   unavailableMonitorOptions: Schema.Array(
     Schema.Literals(workspaceProductMonitorOptions)
   ),
-  notices: Schema.Array(workspaceAvailabilityNoticeEffectSchema),
+  notices: Schema.Array(workspaceAvailabilityNoticeSchema),
 });
 
 export type WorkspaceAvailabilityNotice =
-  typeof workspaceAvailabilityNoticeEffectSchema.Type;
+  typeof workspaceAvailabilityNoticeSchema.Type;
 
 export type WorkspaceAvailability =
-  typeof workspaceAvailabilityResponseEffectSchema.Type;
+  typeof workspaceAvailabilityResponseSchema.Type;
 
 const workspaceAvailabilitySchema = Schema.toStandardSchemaV1(
-  workspaceAvailabilityResponseEffectSchema
+  workspaceAvailabilityResponseSchema
 );
 
 export const parseWorkspaceAvailabilityResponse = (
@@ -89,7 +89,7 @@ const isCanonicalPlainDate = Schema.is(
   Schema.String.check(isPlainDateString())
 );
 const workspaceAvailabilityIntervalSchema = Schema.toStandardSchemaV1(
-  Schema.Struct(reservationIntervalFieldSchemas)
+  reservationIntervalSchema
 );
 
 const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
@@ -144,9 +144,7 @@ const getIntervalParam = (
     endsAt,
   });
 
-  if (!parsed) return {};
-  const normalization = getReservationIntervalNormalization(parsed);
-  return normalization._tag === "Success" ? normalization.interval : {};
+  return parsed ?? {};
 };
 
 export const parseWorkspaceAvailabilityQuery = (

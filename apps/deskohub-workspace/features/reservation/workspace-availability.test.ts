@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { describe, expect, test } from "bun:test";
 import { parseWorkspaceAvailabilityQuery } from "./workspace-availability";
 
