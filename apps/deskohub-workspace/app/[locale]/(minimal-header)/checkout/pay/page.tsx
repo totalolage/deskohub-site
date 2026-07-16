@@ -13,7 +13,7 @@ import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-pag
 import { getCoworkReservationPath } from "@/features/checkout/routes";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import { Button } from "@/shared/components/ui/button";
 import {
   Card,
@@ -110,7 +110,7 @@ async function CheckoutPayContent({
         cause,
         payStateToken,
         reason: "openPayStateFailed",
-      }).pipe(runWorkspaceEffect);
+      }).pipe(runWorkspace);
       return undefined;
     });
 

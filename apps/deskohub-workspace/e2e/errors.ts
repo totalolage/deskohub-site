@@ -35,7 +35,7 @@ export const failWorkspaceE2E = (
   } = {}
 ) => Effect.fail(workspaceE2EError(message, options));
 
-export const effectifyPromise = <A>(
+export const tryWorkspaceE2EPromise = <A>(
   operation: string,
   try_: () => Promise<A>
 ) =>
@@ -44,7 +44,7 @@ export const effectifyPromise = <A>(
     try: try_,
   });
 
-export const effectifySync = <A>(operation: string, try_: () => A) =>
+export const tryWorkspaceE2ESync = <A>(operation: string, try_: () => A) =>
   Effect.try({
     catch: (cause) => toWorkspaceE2EError(operation, cause),
     try: try_,

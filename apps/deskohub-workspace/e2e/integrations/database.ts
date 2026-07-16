@@ -4,10 +4,10 @@ import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url
 import type { StoredWorkspaceReservationDetails } from "../../features/reservation/stored-reservation-details";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import { getDatasourceTimeoutMs } from "../config";
-import { pollEffect } from "../effects";
+import { pollUntil } from "../polling";
 import {
-  effectifyPromise,
-  effectifySync,
+  tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
 import { assert, log } from "../runtime";
@@ -24,7 +24,7 @@ export const waitForWebhookReplayRow = (
   onRow?: (row: CheckoutRow) => void
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
-    pollEffect(
+    pollUntil(
       readCheckoutRow(pool, orderId).pipe(
         Effect.tap((row) =>
           row ? Effect.sync(() => onRow?.(row)) : Effect.void
@@ -50,7 +50,7 @@ export const replayNexiWebhook = (
   row: CheckoutRow
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    yield* effectifySync("assert Nexi replay row", () => {
+    yield* tryWorkspaceE2ESync("assert Nexi replay row", () => {
       assert(row.provider_order_id, "provider order id missing before replay");
       assert(row.security_token, "security token missing before replay");
       assert(row.amount_value, "amount missing before replay");
@@ -62,7 +62,7 @@ export const replayNexiWebhook = (
       "/api/webhooks/nexi",
       config.aliasUrl
     );
-    const response = yield* effectifyPromise("replay Nexi webhook", () =>
+    const response = yield* tryWorkspaceE2EPromise("replay Nexi webhook", () =>
       fetch(webhookUrl, {
         body: JSON.stringify({
           eventId: `workspace-e2e-nexi-${row.reservation_id}`,
@@ -84,7 +84,7 @@ export const replayNexiWebhook = (
         method: "POST",
       })
     );
-    yield* effectifySync("assert Nexi webhook replay response", () =>
+    yield* tryWorkspaceE2ESync("assert Nexi webhook replay response", () =>
       assert(response.ok, `Nexi webhook replay failed with ${response.status}`)
     );
     log("Nexi webhook replay accepted");
@@ -105,7 +105,7 @@ export const validatePostgres = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const row = yield* pollEffect(
+      const row = yield* pollUntil(
         readCheckoutRow(pool, orderId).pipe(
           Effect.tap((row) =>
             row ? Effect.sync(() => onRow?.(row)) : Effect.void
@@ -224,7 +224,7 @@ export const markPaymentTerminalForE2E = (
   withPool(config, (pool) =>
     Effect.gen(function* () {
       const current = yield* readCheckoutRow(pool, orderId);
-      const paymentAttemptId = yield* effectifySync(
+      const paymentAttemptId = yield* tryWorkspaceE2ESync(
         "assert payment terminal checkout row",
         () => {
           assert(current?.payment_attempt_id, "payment attempt missing");
@@ -272,7 +272,7 @@ export const markPaymentTerminalForE2E = (
       );
 
       const row = yield* readCheckoutRow(pool, orderId);
-      return yield* effectifySync("assert terminal checkout row exists", () => {
+      return yield* tryWorkspaceE2ESync("assert terminal checkout row exists", () => {
         assert(row, "terminal checkout row missing");
         return row;
       });
@@ -301,7 +301,7 @@ export const markFulfillmentFailedForE2E = (
         [orderId]
       );
 
-      yield* effectifySync("assert fulfillment failed marker", () =>
+      yield* tryWorkspaceE2ESync("assert fulfillment failed marker", () =>
         assert(
           result.rows[0]?.id === orderId,
           "fulfilled checkout row could not be marked fulfillment_failed"
@@ -316,7 +316,7 @@ export const markConsoleFulfillmentDeliveredForE2E = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const row = yield* pollEffect(
+      const row = yield* pollUntil(
         Effect.gen(function* () {
           const result = yield* query<{ id: string }>(
             pool,
@@ -347,7 +347,7 @@ export const markConsoleFulfillmentDeliveredForE2E = (
         `console fulfillment marker for ${orderId}`
       );
 
-      yield* effectifySync("assert console fulfillment marker row", () =>
+      yield* tryWorkspaceE2ESync("assert console fulfillment marker row", () =>
         assert(row, "console fulfillment marker row missing")
       );
       log("Console fulfillment delivery marker applied");
@@ -366,7 +366,7 @@ export const assertPaymentTerminalRow = (
   row: CheckoutRow,
   scenario: PaymentTerminalScenario
 ): Effect.Effect<void, WorkspaceE2EError> =>
-  effectifySync("assert payment terminal row", () => {
+  tryWorkspaceE2ESync("assert payment terminal row", () => {
     assert(
       row.payment_state === scenario.state,
       `reservation payment state was not ${scenario.state}`
@@ -394,7 +394,7 @@ const assertPostgresRow = (
   data: CheckoutData,
   config: DatasourceConfig
 ): Effect.Effect<void, WorkspaceE2EError> =>
-  effectifySync("assert Postgres checkout row", () => {
+  tryWorkspaceE2ESync("assert Postgres checkout row", () => {
     assert(
       row.reservation_id === data.orderIdHint || row.reservation_id,
       "reservation id missing"
@@ -561,7 +561,7 @@ const assertLegalEvidence = (
       [orderId]
     );
 
-    yield* effectifySync("assert legal evidence rows", () => {
+    yield* tryWorkspaceE2ESync("assert legal evidence rows", () => {
       const expected = new Set([
         "privacyPolicy:reservation_submit",
         "termsAndConditions:payment_submit",
@@ -600,11 +600,11 @@ const withPool = <A>(
   config: DatasourceConfig,
   use: (pool: Pool) => Effect.Effect<A, WorkspaceE2EError>
 ): Effect.Effect<A, WorkspaceE2EError> =>
-  effectifySync("create Postgres pool", () => makePool(config)).pipe(
+  tryWorkspaceE2ESync("create Postgres pool", () => makePool(config)).pipe(
     Effect.flatMap((pool) =>
       use(pool).pipe(
         Effect.ensuring(
-          effectifyPromise("close Postgres pool", () => pool.end()).pipe(
+          tryWorkspaceE2EPromise("close Postgres pool", () => pool.end()).pipe(
             Effect.ignore
           )
         )
@@ -617,4 +617,4 @@ const query = <T extends QueryResultRow>(
   operation: string,
   text: string,
   values: readonly unknown[] = []
-) => effectifyPromise(operation, () => pool.query<T>(text, [...values]));
+) => tryWorkspaceE2EPromise(operation, () => pool.query<T>(text, [...values]));

@@ -18,7 +18,7 @@ import {
   getParamsDecoder,
   type LocalizedRoutePageWithSearchParamsProps,
 } from "@/features/i18n/server/route-params";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import { Container } from "@/shared/components/container";
 import {
   getSearchParam,
@@ -134,7 +134,7 @@ async function CheckoutStatusContent({
       orderId,
       returnOutcome,
       cause,
-    }).pipe(runWorkspaceEffect);
+    }).pipe(runWorkspace);
     throw cause;
   });
   return runWithRequestLocale(locale, () => (

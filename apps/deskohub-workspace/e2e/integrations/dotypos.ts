@@ -6,7 +6,7 @@ import {
 } from "../../features/checkout/backend/reservation/workspace-table-selection";
 import type { DatasourceConfig } from "../config";
 import {
-  effectifySync,
+  tryWorkspaceE2ESync,
   toWorkspaceE2EError,
   type WorkspaceE2EError,
 } from "../errors";
@@ -43,7 +43,7 @@ export const validateDotypos = (
   row: CheckoutRow
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const dotyposReservationId = yield* effectifySync(
+    const dotyposReservationId = yield* tryWorkspaceE2ESync(
       "assert Dotypos validation row",
       () => {
         assert(
@@ -68,7 +68,7 @@ export const validateDotypos = (
       )
     );
 
-    yield* effectifySync("assert Dotypos reservation state", () => {
+    yield* tryWorkspaceE2ESync("assert Dotypos reservation state", () => {
       assert(
         result.reservation.status === "CONFIRMED",
         "Dotypos reservation is not confirmed"

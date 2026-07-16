@@ -10,7 +10,7 @@ import {
 import { getContactSchema } from "@/features/contact/schemas/contact";
 import { getLocale, m } from "@/features/i18n";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
+import { runWorkspaceServerAction } from "@/shared/backend/logging/server-action";
 
 export type ContactFormValues = {
   name: string;
@@ -110,5 +110,5 @@ export async function submitContactForm(
     )
   );
 
-  return await runWorkspaceServerActionEffect(program);
+  return await runWorkspaceServerAction(program);
 }

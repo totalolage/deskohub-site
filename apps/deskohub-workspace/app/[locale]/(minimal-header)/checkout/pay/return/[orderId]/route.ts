@@ -7,7 +7,7 @@ import {
   CheckoutStatusServiceLiveWithDependencies,
 } from "@/features/checkout/backend/checkout";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspace } from "@/shared/backend/logging/censorship";
 import {
   getSearchParamsDecoder,
   type SearchParamsRecord,
@@ -89,7 +89,7 @@ const loadCheckoutStatusWithBriefRetry = async (
     );
   }).pipe(
     Effect.provide(CheckoutStatusServiceLiveWithDependencies),
-    runWorkspaceEffect
+    runWorkspace
   );
 
   return status;

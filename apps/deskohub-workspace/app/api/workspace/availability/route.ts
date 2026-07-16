@@ -6,7 +6,7 @@ import {
   WorkspaceAvailabilityServiceLiveWithDependencies,
 } from "@/features/reservation/backend/workspace-availability.service";
 import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceRequest } from "@/shared/backend/logging/censorship";
 
 const getAvailabilityRequest = (request: Request) => {
   const { searchParams } = new URL(request.url);
@@ -61,7 +61,7 @@ const handleAvailabilityRouteError = Effect.fn("handleAvailabilityRouteError")(
 );
 
 export async function GET(request: Request): Promise<NextResponse> {
-  return runWorkspaceRequestEffect(
+  return runWorkspaceRequest(
     request,
     loadWorkspaceAvailabilityRequest(request).pipe(
       Effect.provide(WorkspaceAvailabilityServiceLiveWithDependencies),
