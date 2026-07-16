@@ -1,32 +1,27 @@
 import { Effect, Schema } from "effect";
+import { urlStringSchema } from "./shared/utils/url-schema";
 
 const toEnvSchema = <S extends Schema.Decoder<unknown>>(schema: S) =>
   Schema.toStandardSchemaV1(schema);
 
 const stringSchema = toEnvSchema(Schema.String);
 const nonEmptyStringSchema = toEnvSchema(Schema.NonEmptyString);
-const urlStringSchema = toEnvSchema(
-  Schema.String.check(
-    Schema.makeFilter((value) => URL.canParse(value), {
-      expected: "a URL",
-    })
-  )
-);
+const urlEnvSchema = toEnvSchema(urlStringSchema);
 
 const optionalStringSchema = toEnvSchema(Schema.optional(Schema.String));
-const optionalUrlStringSchema = toEnvSchema(Schema.optional(urlStringSchema));
+const optionalUrlEnvSchema = toEnvSchema(Schema.optional(urlStringSchema));
 
 export const workspaceServerEnvSchema = Schema.Struct({
   CLOUDINARY_API_KEY: nonEmptyStringSchema,
   CLOUDINARY_API_SECRET: nonEmptyStringSchema,
-  DATABASE_URL: urlStringSchema,
-  DATABASE_URL_UNPOOLED: optionalUrlStringSchema,
+  DATABASE_URL: urlEnvSchema,
+  DATABASE_URL_UNPOOLED: optionalUrlEnvSchema,
   DOTYPOS_API_TIMEOUT: toEnvSchema(
     Schema.NumberFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))
       .pipe(Schema.withDecodingDefaultType(Effect.succeed(5_000)))
   ),
-  DOTYPOS_API_URL: urlStringSchema,
+  DOTYPOS_API_URL: urlEnvSchema,
   DOTYPOS_BRANCH_ID: nonEmptyStringSchema,
   DOTYPOS_CLIENT_ID: nonEmptyStringSchema,
   DOTYPOS_CLIENT_SECRET: nonEmptyStringSchema,
@@ -45,7 +40,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   ),
   CRON_SECRET: toEnvSchema(Schema.optional(Schema.NonEmptyString)),
   NEXI_API_KEY: nonEmptyStringSchema,
-  NEXI_API_ORIGIN: urlStringSchema,
+  NEXI_API_ORIGIN: urlEnvSchema,
   NEXI_CHECKOUT_CURRENCY_OVERRIDE: toEnvSchema(
     Schema.optional(Schema.Literal("EUR"))
   ),
@@ -65,7 +60,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
-  WORKSPACE_CALLBACK_ORIGIN: optionalUrlStringSchema,
+  WORKSPACE_CALLBACK_ORIGIN: optionalUrlEnvSchema,
   WORKSPACE_E2E_BOTID_BYPASS: toEnvSchema(
     Schema.optional(Schema.Literal("HUMAN"))
   ),
@@ -74,7 +69,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
 export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME: stringSchema,
   NEXT_PUBLIC_GTM_ID: optionalStringSchema,
-  NEXT_PUBLIC_POSTHOG_HOST: optionalUrlStringSchema,
+  NEXT_PUBLIC_POSTHOG_HOST: optionalUrlEnvSchema,
   NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: toEnvSchema(
     Schema.optional(Schema.NonEmptyString)
   ),
