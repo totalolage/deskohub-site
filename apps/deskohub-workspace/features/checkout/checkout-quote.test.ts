@@ -2,6 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
@@ -50,6 +51,22 @@ const percentageApplication = (
 });
 
 describe("workspace checkout quotes", () => {
+  test.each([
+    "basic",
+    "plus",
+    "profi",
+  ] as const)("uses the canonical full product identity for the %s summary key", (entryTier) => {
+    const quote = buildWorkspaceCheckoutQuote({
+      entryTier,
+      coffee: false,
+      ...(entryTier === "profi" && { monitorOption: "2x27-qhd" as const }),
+    });
+
+    expect(quote.summary.sections[0]?.items[0]?.key).toBe(
+      `product:${getWorkspaceProductKey({ kind: "cowork", tier: entryTier })}`
+    );
+  });
+
   test("builds an access-only quote without a discount section", () => {
     const quote = buildWorkspaceCheckoutQuote({
       entryTier: "basic",
@@ -216,6 +233,13 @@ describe("workspace checkout quotes", () => {
     const variants: readonly AppliedDiscount[] = [
       {
         ...application,
+        discount: {
+          ...application.discount,
+          id: discountId("replacement-sale"),
+        },
+      },
+      {
+        ...application,
         discount: { ...application.discount, label: "Renamed sale" },
       },
       {
@@ -374,6 +398,110 @@ describe("workspace checkout quotes", () => {
       sectionKeys: [],
       itemKeys: ["order/product:cowork:basic"],
     });
+  });
+
+  test("detects every inline discount composition change at an equal final price", () => {
+    const first = percentageApplication();
+    const second: AppliedDiscount = {
+      discount: {
+        id: discountId("member-bonus"),
+        label: "Member bonus",
+        adjustment: { kind: "fixed", amount: money(2500) },
+      },
+      subtotalBefore: money(17_500),
+      amount: money(2500),
+      subtotalAfter: money(15_000),
+    };
+    const quote = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      { discountQuote: discountQuote([first, second]) }
+    );
+    const productItem = quote.summary.sections[0]?.items[0];
+    if (!(productItem && "discounts" in productItem)) {
+      throw new Error("Expected a discounted product summary item");
+    }
+
+    const variants = [
+      {
+        ...productItem,
+        originalAmount: money(productItem.originalAmount.value + 1),
+      },
+      {
+        ...productItem,
+        discounts: productItem.discounts.map((summaryDiscount, index) =>
+          index === 0
+            ? {
+                ...summaryDiscount,
+                discount: {
+                  ...summaryDiscount.discount,
+                  id: discountId("replacement-sale"),
+                },
+              }
+            : summaryDiscount
+        ),
+      },
+      {
+        ...productItem,
+        discounts: [...productItem.discounts].reverse(),
+      },
+      {
+        ...productItem,
+        discounts: productItem.discounts.map((summaryDiscount, index) =>
+          index === 0
+            ? {
+                ...summaryDiscount,
+                discount: {
+                  ...summaryDiscount.discount,
+                  label: "Renamed sale",
+                },
+              }
+            : summaryDiscount
+        ),
+      },
+      {
+        ...productItem,
+        discounts: productItem.discounts.map((summaryDiscount, index) =>
+          index === 0
+            ? {
+                ...summaryDiscount,
+                discount: {
+                  ...summaryDiscount.discount,
+                  adjustment: {
+                    kind: "percentage" as const,
+                    basisPoints: 4999,
+                  },
+                },
+              }
+            : summaryDiscount
+        ),
+      },
+      {
+        ...productItem,
+        discounts: productItem.discounts.map((summaryDiscount, index) =>
+          index === 0
+            ? {
+                ...summaryDiscount,
+                amount: money(summaryDiscount.amount.value - 1),
+              }
+            : summaryDiscount
+        ),
+      },
+    ];
+
+    for (const variant of variants) {
+      const changedSummary = {
+        ...quote.summary,
+        sections: quote.summary.sections.map((section) =>
+          section.key === "order"
+            ? { ...section, items: [variant, ...section.items.slice(1)] }
+            : section
+        ),
+      };
+
+      expect(
+        getCheckoutSummaryChangedKeys(quote.summary, changedSummary).itemKeys
+      ).toContain("order/product:cowork:basic");
+    }
   });
 
   test("detects changed summary currency and exponent", () => {

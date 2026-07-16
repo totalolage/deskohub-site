@@ -55,7 +55,7 @@ const reservationData = Schema.decodeUnknownSync(
 )({
   kind: "cowork",
   entryTier: "profi",
-  date: "2026-06-20",
+  date: "2099-06-20",
   coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",

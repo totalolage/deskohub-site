@@ -56,6 +56,16 @@ describe("checkout summary schemas", () => {
         discounts: [discount],
       })
     ).toThrow();
+
+    expect(() =>
+      decodeOrderItem({
+        key: "product:cowork:basic",
+        product: { kind: "cowork", tier: "basic" },
+        originalAmount: money(35_000),
+        amount: money(17_500),
+        discounts: [],
+      })
+    ).toThrow();
   });
 
   test("rejects a product key that disagrees with its identity", () => {
@@ -64,6 +74,32 @@ describe("checkout summary schemas", () => {
         key: "product:cowork:plus",
         product: { kind: "cowork", tier: "basic" },
         amount: money(35_000),
+      })
+    ).toThrow();
+  });
+
+  test.each([
+    ["providerKind", "calendar"],
+    ["calendarEventId", "event-id"],
+    ["dotyposGroupId", "group-id"],
+    ["codeRecordId", "code-id"],
+    ["submittedCode", "SUMMER50"],
+  ] as const)("rejects provider-private inline field %s", (field, value) => {
+    expect(() =>
+      decodeOrderItem({
+        key: "product:cowork:basic",
+        product: { kind: "cowork", tier: "basic" },
+        originalAmount: money(35_000),
+        amount: money(17_500),
+        discounts: [
+          {
+            ...discount,
+            discount: {
+              ...discount.discount,
+              [field]: value,
+            },
+          },
+        ],
       })
     ).toThrow();
   });

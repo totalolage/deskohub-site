@@ -6,7 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -45,6 +45,7 @@ describe("CheckoutSummary", () => {
     expect(view.getByText("Coffee")).toBeDefined();
     expect(view.getAllByText(/CZK/).length).toBeGreaterThan(0);
     expect(view.queryByRole("button", { name: /discount/i })).toBeNull();
+    expect(view.container.querySelector("del")).toBeNull();
   });
 
   test("localizes product summary item keys", () => {
@@ -111,11 +112,54 @@ describe("CheckoutSummary", () => {
     fireEvent.click(detailsButton);
     expect(detailsButton.getAttribute("aria-expanded")).toBe("false");
 
-    fireEvent.focus(detailsButton);
+    act(() => detailsButton.focus());
+    expect(document.activeElement).toBe(detailsButton);
     expect(detailsButton.getAttribute("aria-expanded")).toBe("true");
 
     fireEvent.pointerEnter(detailsButton);
     expect(detailsButton.getAttribute("aria-expanded")).toBe("true");
+  });
+
+  test("keeps paid Basic coffee full price while discounting only the product", () => {
+    const money = (value: number) => ({
+      value,
+      exponent: 2,
+      currency: "CZK",
+    });
+    const quote = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: true },
+      {
+        discountQuote: {
+          product: { kind: "cowork", tier: "basic" },
+          discountableSubtotal: money(35_000),
+          discounts: [
+            {
+              discount: {
+                id: Schema.decodeUnknownSync(discountIdSchema)("half-price"),
+                label: "Half price",
+                adjustment: { kind: "percentage", basisPoints: 5000 },
+              },
+              subtotalBefore: money(35_000),
+              amount: money(17_500),
+              subtotalAfter: money(17_500),
+            },
+          ],
+          totalDiscount: money(17_500),
+          discountedSubtotal: money(17_500),
+        },
+      }
+    );
+
+    const view = render(
+      <CheckoutSummary locale="en-US" summary={quote.summary} />
+    );
+
+    expect(view.container.querySelectorAll("del")).toHaveLength(1);
+    const coffeeRow = view.getByText("Coffee").parentElement;
+    expect(coffeeRow?.textContent?.replaceAll("\u00a0", " ")).toContain(
+      "CZK 50"
+    );
+    expect(coffeeRow?.querySelector("del")).toBeNull();
   });
 
   test("shows stacked discounts in application order", () => {
@@ -146,15 +190,15 @@ describe("CheckoutSummary", () => {
               discount: {
                 id: discountId("member-bonus"),
                 label: "Member bonus",
-                adjustment: { kind: "fixed", amount: money(2500) },
+                adjustment: { kind: "fixed", amount: money(20_000) },
               },
               subtotalBefore: money(17_500),
-              amount: money(2500),
-              subtotalAfter: money(15_000),
+              amount: money(17_500),
+              subtotalAfter: money(0),
             },
           ],
-          totalDiscount: money(20_000),
-          discountedSubtotal: money(15_000),
+          totalDiscount: money(35_000),
+          discountedSubtotal: money(0),
         },
       }
     );
@@ -176,7 +220,15 @@ describe("CheckoutSummary", () => {
     expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain("Summer sale");
     expect(rows[0]?.textContent).toContain("50%");
+    expect(rows[0]?.textContent?.replaceAll("\u00a0", " ")).toContain(
+      "-CZK 175"
+    );
     expect(rows[1]?.textContent).toContain("Member bonus");
-    expect(rows[1]?.textContent).toContain("25");
+    expect(rows[1]?.textContent?.replaceAll("\u00a0", " ")).toContain(
+      "CZK 200"
+    );
+    expect(rows[1]?.textContent?.replaceAll("\u00a0", " ")).toContain(
+      "-CZK 175"
+    );
   });
 });
