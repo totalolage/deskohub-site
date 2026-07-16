@@ -5,11 +5,11 @@ import {
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
-const workspaceTimeZone = "Europe/Prague";
 
 export type WorkspaceCalendarLimitation = Data.TaggedEnum<{
   FullyOccupied: {
@@ -195,12 +195,12 @@ const getExclusiveMidnightEndDate = (event: GoogleCalendarEvent) => {
 const toWorkspaceZonedDateTime = (dateTime: string, timeZone?: string) => {
   try {
     return Temporal.Instant.from(dateTime).toZonedDateTimeISO(
-      workspaceTimeZone
+      reservationTimeZone
     );
   } catch {
     return Temporal.PlainDateTime.from(dateTime)
-      .toZonedDateTime(timeZone ?? workspaceTimeZone)
-      .withTimeZone(workspaceTimeZone);
+      .toZonedDateTime(timeZone ?? reservationTimeZone)
+      .withTimeZone(reservationTimeZone);
   }
 };
 

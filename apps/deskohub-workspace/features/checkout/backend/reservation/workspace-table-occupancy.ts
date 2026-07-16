@@ -1,13 +1,25 @@
 import type { Reservation } from "@deskohub/dotypos/generated";
+import type { ReservationInterval } from "@/features/reservation/reservation-interval";
 
 export const workspaceBookingGuestCount = 1;
 
 export const getWorkspaceTableOccupancyById = (
   reservations: readonly Reservation[],
-  day: Temporal.PlainDate
+  input: ReservationInterval | Temporal.PlainDate
 ) => {
   const occupancyByTableId = new Map<string, number>();
-  const dayRange = getPragueDayRange(day);
+  const startsAt =
+    input instanceof Temporal.PlainDate
+      ? input.toZonedDateTime({ timeZone: "Europe/Prague" }).toInstant()
+          .epochMilliseconds
+      : Temporal.Instant.from(input.startsAt).epochMilliseconds;
+  const endsAt =
+    input instanceof Temporal.PlainDate
+      ? input
+          .add({ days: 1 })
+          .toZonedDateTime({ timeZone: "Europe/Prague" })
+          .toInstant().epochMilliseconds
+      : Temporal.Instant.from(input.endsAt).epochMilliseconds;
 
   for (const reservation of reservations) {
     if (reservation.status !== "NEW" && reservation.status !== "CONFIRMED") {
@@ -25,10 +37,7 @@ export const getWorkspaceTableOccupancyById = (
       continue;
     }
 
-    if (
-      reservationStart < dayRange.endMs &&
-      reservationEnd > dayRange.startMs
-    ) {
+    if (reservationStart < endsAt && reservationEnd > startsAt) {
       occupancyByTableId.set(
         tableId,
         (occupancyByTableId.get(tableId) ?? 0) +
@@ -50,18 +59,6 @@ export const excludeExpiredLocalHolds = (
   return reservations.filter(
     (reservation) => !reservation.id || !expiredIds.has(reservation.id)
   );
-};
-
-const getPragueDayRange = (date: Temporal.PlainDate) => {
-  const startMs = date
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-  const endMs = date
-    .add({ days: 1 })
-    .toZonedDateTime({ timeZone: "Europe/Prague" })
-    .toInstant().epochMilliseconds;
-
-  return { startMs, endMs };
 };
 
 const parsePositiveNumber = (value: string | undefined) => {

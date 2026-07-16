@@ -48,10 +48,7 @@ import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summ
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
-import {
-  WorkspaceAvailabilityService,
-  WorkspaceAvailabilityServiceLiveWithDependencies,
-} from "@/features/reservation/backend/workspace-availability.service";
+import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -475,6 +472,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     const availability = yield* WorkspaceAvailabilityService;
     yield* availability.ensureAvailable({
+      _tag: "cowork",
       date: input.reservation.date,
       entryTier: input.reservation.entryTier,
       monitorOption: input.reservation.monitorOption,
@@ -755,7 +753,7 @@ const preparePayStateAction = createEffectSafeAction(
       WorkspaceReservationRepositoryLive,
       LegalEvidenceEventRepositoryLive
     ).pipe(Layer.provide(WorkspaceDatabaseLive)),
-    WorkspaceAvailabilityServiceLiveWithDependencies,
+    WorkspaceAvailabilityService.LiveWithDependencies,
     WorkspaceTableAssignmentServiceLive.pipe(
       Layer.provide(
         WorkspaceReservationRepositoryLive.pipe(

@@ -1,11 +1,8 @@
 import type { ValidationError } from "@deskohub/dotypos";
 import { Effect, Predicate } from "effect";
 import { NextResponse } from "next/server";
-import {
-  WorkspaceAvailabilityService,
-  WorkspaceAvailabilityServiceLiveWithDependencies,
-} from "@/features/reservation/backend/workspace-availability.service";
-import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/schemas/workspace-availability";
+import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
+import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
 import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
 
 const getAvailabilityRequest = (request: Request) => {
@@ -64,7 +61,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   return runWorkspaceRequestEffect(
     request,
     loadWorkspaceAvailabilityRequest(request).pipe(
-      Effect.provide(WorkspaceAvailabilityServiceLiveWithDependencies),
+      Effect.provide(WorkspaceAvailabilityService.LiveWithDependencies),
       Effect.tap((result) =>
         Effect.logInfo("Workspace availability response ready", { result })
       ),
