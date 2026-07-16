@@ -128,14 +128,14 @@ const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
   subtotalAfter: application.subtotalAfter,
 });
 
-const getCheckoutQuoteCanonicalPayload = (
+const getQuoteFingerprint = (
   quote: Omit<WorkspaceCheckoutQuote, "fingerprint">
 ) => {
   const coffeePriceAmount = getWorkspaceProductCoffeeLinePriceForTier(
     quote.order.entryTier
   ).value;
 
-  return JSON.stringify({
+  const canonicalPayload = JSON.stringify({
     schema: quote.schema,
     order: {
       tier: quote.order.entryTier,
@@ -157,16 +157,15 @@ const getCheckoutQuoteCanonicalPayload = (
     })),
     total: quote.summary.total.value,
   });
-};
 
-export const getCheckoutQuoteFingerprint = (canonicalPayload: string) =>
-  Array.from(canonicalPayload)
+  return Array.from(canonicalPayload)
     .reduce(
       (hash, character) =>
         Math.imul(hash ^ character.charCodeAt(0), 0x01000193) >>> 0,
       0x811c9dc5
     )
     .toString(16);
+};
 
 export const calculateWorkspaceCheckoutQuote = Effect.fn(
   "buildWorkspaceCheckoutQuote"
@@ -272,13 +271,10 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
       discounts,
     },
   };
-  const canonicalFingerprintPayload = getCheckoutQuoteCanonicalPayload(
-    quoteWithoutFingerprint
-  );
 
   return {
     ...quoteWithoutFingerprint,
-    fingerprint: getCheckoutQuoteFingerprint(canonicalFingerprintPayload),
+    fingerprint: getQuoteFingerprint(quoteWithoutFingerprint),
   };
 });
 
