@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer, Match } from "effect";
+import { Context, Effect, Layer, Match, Option } from "effect";
 import {
   type DatabaseError,
   WorkspaceDatabaseLive,
@@ -294,33 +294,23 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary Dotypos reservation loaded"
         );
 
-        const tableMap = yield* seatingMapFeatureFlag.isEnabled().pipe(
-          Effect.flatMap((enabled) =>
-            enabled
-              ? dotypos.getTables().pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logWarning("Checkout status table map load failed", {
-                      reservationId: reservation.id,
-                      dotyposReservationId: reservation.dotyposReservationId,
-                      cause,
-                    })
-                  ),
-                  Effect.option,
-                  Effect.map((tables) =>
-                    Match.value(tables).pipe(
-                      Match.tag("Some", ({ value }) =>
-                        getWorkspaceTableMap(
-                          dotyposReservationValue.reservation,
-                          value
-                        )
-                      ),
-                      Match.tag("None", () => undefined),
-                      Match.exhaustive
-                    )
-                  )
-                )
-              : Effect.succeed(undefined)
-          )
+        const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Checkout status table map load failed", {
+              reservationId: reservation.id,
+              dotyposReservationId: reservation.dotyposReservationId,
+              cause,
+            })
+          ),
+          Effect.option,
+          Effect.when(seatingMapFeatureFlag.isEnabled()),
+          Effect.map(Option.flatten),
+          Effect.map(
+            Option.map((tables) =>
+              getWorkspaceTableMap(dotyposReservationValue.reservation, tables)
+            )
+          ),
+          Effect.map(Option.getOrUndefined)
         );
 
         const date = toPragueReservationDate(
