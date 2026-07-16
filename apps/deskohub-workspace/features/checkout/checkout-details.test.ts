@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
   checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,

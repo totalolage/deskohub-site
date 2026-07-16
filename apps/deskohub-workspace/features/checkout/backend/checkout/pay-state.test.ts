@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));

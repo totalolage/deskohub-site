@@ -1,9 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import {
-  buildWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutOrder,
 } from "./checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "./checkout-quote.test-utils";
 
 describe("workspace checkout quotes", () => {
   test("builds an access-only quote without a discount section", () => {
