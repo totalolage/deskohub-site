@@ -96,9 +96,7 @@ const collectDiscountCandidates = (input: {
   readonly customerCandidates: readonly DiscountCandidate[];
   readonly codeCandidates: readonly DiscountCandidate[];
 }) => [
-  ...input.calendarCandidates.toSorted((left, right) =>
-    left.discount.id.localeCompare(right.discount.id)
-  ),
+  ...input.calendarCandidates,
   ...input.customerCandidates,
   ...input.codeCandidates,
 ];

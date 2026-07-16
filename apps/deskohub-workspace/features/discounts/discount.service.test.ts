@@ -126,11 +126,11 @@ describe("DiscountService", () => {
     ]);
   });
 
-  test("resolves providers in stable calendar, customer, and code order", async () => {
+  test("applies provider candidates in calendar, customer, and code order", async () => {
     const calendarQuote = mock(() =>
       Effect.succeed([
-        percentage("calendar-b", 2000, "calendar"),
         percentage("calendar-a", 1000, "calendar"),
+        percentage("calendar-b", 2000, "calendar"),
       ])
     );
     const customerResolve = mock(() =>
