@@ -5,6 +5,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
 
 export type DiscountProductIdentity = {
@@ -21,20 +22,26 @@ export const discountIdSchema = Schema.NonEmptyString.pipe(
 
 export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
 
+export const discountBasisPointsSchema = Schema.Int.check(
+  Schema.isBetween({ minimum: 1, maximum: 10_000 })
+).annotate({
+  identifier: "DiscountBasisPoints",
+  description: "An exact percentage discount measured in basis points.",
+});
+
+export const discountProductIdentityCodec = Schema.Struct({
+  kind: Schema.Literal("cowork"),
+  tier: Schema.Literals(workspaceProductTiers),
+});
+
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
   DiscountProductIdentity
-> = Schema.toStandardSchemaV1(
-  Schema.Struct({
-    kind: Schema.Literal("cowork"),
-    tier: Schema.Literals(workspaceProductTiers),
-  }),
-  {
-    parseOptions: {
-      onExcessProperty: "error",
-    },
-  }
-);
+> = Schema.toStandardSchemaV1(discountProductIdentityCodec, {
+  parseOptions: {
+    onExcessProperty: "error",
+  },
+});
 
 export type DiscountAdjustment =
   | {
@@ -45,6 +52,20 @@ export type DiscountAdjustment =
       readonly kind: "fixed";
       readonly amount: WorkspaceMoney;
     };
+
+export const discountAdjustmentSchema = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("percentage"),
+    basisPoints: discountBasisPointsSchema,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("fixed"),
+    amount: positiveWorkspaceMoneyCodec,
+  }),
+]).annotate({
+  identifier: "DiscountAdjustment",
+  description: "A valid percentage or fixed-money discount adjustment.",
+});
 
 export type Discount = {
   readonly id: DiscountId;
@@ -75,5 +96,5 @@ export type DiscountQuoteInput = {
   readonly reservationDate: string;
   readonly dotyposCustomerId: string;
   readonly locale: Locale;
-  readonly submittedCode?: string;
+  readonly submittedCode: string | undefined;
 };

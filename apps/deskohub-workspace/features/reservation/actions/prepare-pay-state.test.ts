@@ -13,6 +13,8 @@ import type {
 import type { WorkspaceAvailabilityService as WorkspaceAvailabilityServiceType } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
+mock.module("server-only", () => ({}));
+
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
     Promise.resolve({
@@ -80,9 +82,7 @@ const runReusableReservationScenario = async (input: {
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
 }) => {
-  const { prepareWorkspacePayStateEffect } = await import(
-    "./prepare-pay-state"
-  );
+  const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
     "@/features/checkout/backend/reservation"
   );
@@ -98,22 +98,27 @@ const runReusableReservationScenario = async (input: {
   const { WorkspaceReservationRepository } = await import(
     "@/features/reservation/backend/workspace-reservation.repository"
   );
+  const { BotProtectionServiceMock } = await import(
+    "@/shared/backend/bot-protection/bot-protection.service.mock"
+  );
 
   const enqueueCleanup = mock(() => Effect.void);
   const updateProductIntent = mock(() => Effect.void);
   const recordMany = mock((events) => Effect.succeed(events as never));
   const ensureAvailable = mock(() => Effect.void);
+  const verifyHuman = mock(() => Effect.void);
   const createDraft = input.createDraft ?? mock(() => Effect.die("unused"));
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.die("unused"));
   const findById = input.findById ?? mock(() => Effect.die("unused"));
 
-  const result = await prepareWorkspacePayStateEffect({
+  const result = await prepareWorkspacePayState({
     locale: "en-US",
     reservationIntentId: "intent-id",
     reservation,
     legalConsent: true,
   }).pipe(
+    Effect.provide(BotProtectionServiceMock({ verifyHuman })),
     Effect.provide(
       Layer.succeed(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
@@ -167,14 +172,13 @@ const runReusableReservationScenario = async (input: {
     createDraft,
     claimHoldCreation,
     findById,
+    verifyHuman,
   };
 };
 
-describe("prepareWorkspacePayStateEffect", () => {
+describe("prepareWorkspacePayState", () => {
   test("creates a held reservation and returns an openable pay state", async () => {
-    const { prepareWorkspacePayStateEffect } = await import(
-      "./prepare-pay-state"
-    );
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
     const { openPayState, payStateTokenQueryParam } = await import(
       "@/features/checkout/backend/checkout"
     );
@@ -199,8 +203,16 @@ describe("prepareWorkspacePayStateEffect", () => {
     const { PostHogEventService } = await import(
       "@/shared/backend/analytics/posthog-event.service"
     );
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
 
     const eventOrder: string[] = [];
+    const verifyHuman = mock(() =>
+      Effect.sync(() => {
+        eventOrder.push("bot-verification");
+      })
+    );
     const ensureAvailable = mock(() =>
       Effect.sync(() => {
         eventOrder.push("availability");
@@ -238,12 +250,13 @@ describe("prepareWorkspacePayStateEffect", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const assignTableId = mock(() => Effect.succeed("table-id"));
-    const result = await prepareWorkspacePayStateEffect({
+    const result = await prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       reservation,
       legalConsent: true,
     }).pipe(
+      Effect.provide(BotProtectionServiceMock({ verifyHuman })),
       Effect.provide(
         Layer.succeed(WorkspaceAvailabilityService, {
           getAvailability: mock(() => Effect.die("unused")),
@@ -323,7 +336,15 @@ describe("prepareWorkspacePayStateEffect", () => {
       orderId: "reservation-id",
       reservationHoldExpiresAt: expect.any(Date),
     });
-    expect(eventOrder).toEqual(["availability", "attach", "enqueue"]);
+    expect(eventOrder).toEqual([
+      "bot-verification",
+      "availability",
+      "attach",
+      "enqueue",
+    ]);
+    expect(verifyHuman).toHaveBeenCalledWith({
+      verificationFailurePolicy: "allow",
+    });
     expect(recordMany).toHaveBeenCalledWith([
       expect.objectContaining({
         workspaceReservationId: "reservation-id",
@@ -350,6 +371,9 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(result.result.status).toBe("ready");
     expect(result.ensureAvailable).not.toHaveBeenCalled();
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.verifyHuman).toHaveBeenCalledWith({
+      verificationFailurePolicy: "allow",
+    });
     expect(result.updateProductIntent).toHaveBeenCalledWith({
       id: existingReservation.id,
       productTier: "basic",
@@ -374,5 +398,39 @@ describe("prepareWorkspacePayStateEffect", () => {
     expect(result.claimHoldCreation).toHaveBeenCalledWith("draft-id");
     expect(result.findById).toHaveBeenCalledWith("draft-id");
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
+  });
+
+  test("rejects a classified bot before resolving downstream services", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotDetectedError } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service"
+    );
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const { m } = await import("@/features/i18n");
+    const verifyHuman = mock(() =>
+      Effect.fail(
+        new BotDetectedError({ message: "Automated request detected" })
+      )
+    );
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      reservationIntentId: "intent-id",
+      reservation,
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(BotProtectionServiceMock({ verifyHuman }))
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationRateLimitMessage({}, { locale: "en-US" }),
+    });
+    expect(verifyHuman).toHaveBeenCalledWith({
+      verificationFailurePolicy: "allow",
+    });
   });
 });

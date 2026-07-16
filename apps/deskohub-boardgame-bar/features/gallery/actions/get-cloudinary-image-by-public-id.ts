@@ -13,7 +13,7 @@ export async function getCloudinaryImageByPublicId(
 
   applyCacheTags(cloudinaryTags.all(), cloudinaryTags.image(publicId));
 
-  const getImageEffect = Effect.provide(
+  const imageLookup = Effect.provide(
     Effect.gen(function* () {
       const service = yield* CloudinaryService;
       return yield* service.getByPublicId(publicId);
@@ -27,5 +27,5 @@ export async function getCloudinaryImageByPublicId(
     )
   );
 
-  return Effect.runPromise(getImageEffect);
+  return Effect.runPromise(imageLookup);
 }

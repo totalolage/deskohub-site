@@ -1,7 +1,7 @@
 import { workspaceSiteConstants } from "./site-constants";
 
-const workspaceAddress = workspaceSiteConstants.contact.address;
-const workspaceCoordinates = workspaceSiteConstants.contact.coordinates;
+const workspaceAddress = workspaceSiteConstants.location.address;
+const workspaceCoordinates = workspaceSiteConstants.location.coordinates;
 
 export const workspaceFormattedAddress = `${workspaceAddress.street}, ${workspaceAddress.postalCode} ${workspaceAddress.city} - ${workspaceAddress.cityDistrict}`;
 

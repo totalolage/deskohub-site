@@ -1,0 +1,37 @@
+{
+  "name": "@deskohub/posthog",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/generated/effect.gen.ts",
+    "./feature-flags": "./src/feature-flags/contract.ts",
+    "./feature-flags/codegen": "./src/feature-flags/codegen.ts",
+    "./feature-flags/node": "./src/feature-flags/node.ts",
+    "./feature-flags/react": "./src/feature-flags/react.ts",
+    "./generated": "./src/generated/effect.gen.ts"
+  },
+  "scripts": {
+    "generate": "bun scripts/generate.ts",
+    "test": "bun test",
+    "typecheck": "tsc --project tsconfig.json"
+  },
+  "dependencies": {
+    "@posthog/react": "1.10.3",
+    "effect": "4.0.0-beta.85",
+    "mustache": "^4.2.0",
+    "posthog-node": "^5.38.0"
+  },
+  "peerDependencies": {
+    "posthog-js": ">=1.257.2",
+    "react": ">=16.8.0"
+  },
+  "devDependencies": {
+    "@effect/openapi-generator": "4.0.0-beta.85",
+    "@types/mustache": "^4.2.6",
+    "@types/react": "^19.2.17",
+    "posthog-js": "^1.388.1",
+    "react": "19.2.7",
+    "typescript": "^5"
+  }
+}

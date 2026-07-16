@@ -2,7 +2,7 @@ import { Context, Effect, Layer, Option, Predicate, Ref, Schema } from "effect";
 import * as HttpClient from "effect/unstable/http/HttpClient";
 import * as HttpClientError from "effect/unstable/http/HttpClientError";
 import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import type * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
 import { DotyposRuntimeConfig, type DotyposRuntimeConfigObj } from "../config";
 import {
   type DotyposProviderError,
@@ -16,19 +16,12 @@ import {
   make,
 } from "../generated/effect.gen";
 
-const DiscountGroup = Schema.Struct({
-  discountPercent: Schema.optionalKey(
-    Schema.Union([Schema.Number, Schema.String, Schema.Null])
-  ),
-});
-
 interface IDotyposAccessToken {
   readonly get: Effect.Effect<string, ExternalAPIError | NetworkError>;
 }
 
 interface IDotyposGeneratedClient {
   readonly client: DotyposClient;
-  readonly httpClient: HttpClient.HttpClient;
 }
 
 type AccessTokenCache = {
@@ -129,33 +122,10 @@ export class DotyposGeneratedClient extends Context.Service<
 
       return {
         client: make(authenticatedHttpClient),
-        httpClient: authenticatedHttpClient,
       };
     })
   );
 }
-
-export const getDiscountGroup = ({
-  config,
-  discountGroupId,
-  httpClient,
-}: {
-  config: DotyposRuntimeConfigObj;
-  discountGroupId: string;
-  httpClient: HttpClient.HttpClient;
-}) =>
-  // ponytail: endpoint is missing from Dotypos OpenAPI; delete this when the spec includes discount-groups.
-  HttpClientRequest.get(
-    `/clouds/${config.cloudId}/discount-groups/${discountGroupId}`
-  ).pipe(
-    httpClient.execute,
-    Effect.flatMap(
-      HttpClientResponse.matchStatus({
-        "2xx": HttpClientResponse.schemaBodyJson(DiscountGroup),
-        orElse: unexpectedStatus,
-      })
-    )
-  );
 
 export const mapDotyposClientError = (
   error: unknown,
@@ -244,23 +214,6 @@ export const mapDotyposClientError = (
     cause: error,
   });
 };
-
-const unexpectedStatus = (response: HttpClientResponse.HttpClientResponse) =>
-  Effect.flatMap(
-    Effect.orElseSucceed(response.json, () => "Unexpected status code"),
-    (description) =>
-      Effect.fail(
-        new HttpClientError.HttpClientError({
-          reason: new HttpClientError.StatusCodeError({
-            request: response.request,
-            response,
-            description: Predicate.isString(description)
-              ? description
-              : JSON.stringify(description),
-          }),
-        })
-      )
-  );
 
 const parseProviderError = (error: ProviderErrorInput) => {
   if (!error) return undefined;

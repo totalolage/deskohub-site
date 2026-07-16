@@ -60,7 +60,7 @@ const createPostHogCaptureClient = ({
   return new PostHog(projectToken, { host });
 };
 
-const collectEffectContextProperties = Effect.gen(function* () {
+const collectContextProperties = Effect.gen(function* () {
   const logAnnotations = yield* References.CurrentLogAnnotations;
   const spanAnnotations = yield* Effect.spanAnnotations;
 
@@ -100,16 +100,16 @@ export const makePostHogEventService = ({
     Effect.gen(function* () {
       if (!client) return;
 
-      const effectContext = yield* collectEffectContextProperties;
+      const contextProperties = yield* collectContextProperties;
       const censoredProperties = compactProperties(
         censorLogValue({
-          ...effectContext.properties,
+          ...contextProperties.properties,
           ...input.properties,
         }) as Record<string, unknown>
       );
       const properties = compactProperties({
         ...censoredProperties,
-        ...effectContext.spanMetadata,
+        ...contextProperties.spanMetadata,
         "deployment.environment.name": config.environment,
         "service.name": config.serviceName,
         "service.namespace": config.serviceNamespace,

@@ -2,8 +2,8 @@ import { DotyposRuntimeConfig, DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { DatasourceConfig } from "../config";
 import {
-  effectifySync,
   toWorkspaceE2EError,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
 import { assert, log } from "../runtime";
@@ -15,7 +15,7 @@ export const validateDotypos = (
   row: CheckoutRow
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const dotyposReservationId = yield* effectifySync(
+    const dotyposReservationId = yield* tryWorkspaceE2ESync(
       "assert Dotypos validation row",
       () => {
         assert(
@@ -40,7 +40,7 @@ export const validateDotypos = (
       )
     );
 
-    yield* effectifySync("assert Dotypos reservation state", () => {
+    yield* tryWorkspaceE2ESync("assert Dotypos reservation state", () => {
       assert(
         result.reservation.status === "CONFIRMED",
         "Dotypos reservation is not confirmed"

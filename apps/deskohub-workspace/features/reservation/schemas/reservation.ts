@@ -46,7 +46,7 @@ const requiredEmailSchema = z
   })
   .pipe(z.email({ error: m.contactValidationEmailInvalid() }));
 
-const reservationOrderObjectSchema = () =>
+const reservationOrderBaseSchema = () =>
   z.object({
     entryTier: z.enum(workspaceProductTiers, {
       error: m.reservationValidationTierRequired(),
@@ -100,9 +100,9 @@ const reservationOrderObjectSchema = () =>
   });
 
 const validateReservationOrder = (
-  data: z.output<ReturnType<typeof reservationOrderObjectSchema>>,
+  data: z.output<ReturnType<typeof reservationOrderBaseSchema>>,
   context: z.core.$RefinementCtx<
-    z.output<ReturnType<typeof reservationOrderObjectSchema>>
+    z.output<ReturnType<typeof reservationOrderBaseSchema>>
   >
 ) => {
   const product = getWorkspaceProductByTier(data.entryTier);
@@ -147,12 +147,12 @@ const normalizeReservationOrder = <
 };
 
 export const getReservationOrderSchema = () =>
-  reservationOrderObjectSchema()
+  reservationOrderBaseSchema()
     .superRefine(validateReservationOrder)
     .transform(normalizeReservationOrder);
 
 export const getReservationSchema = () =>
-  reservationOrderObjectSchema()
+  reservationOrderBaseSchema()
     .extend({
       legalConsent: z.boolean().refine(Boolean, {
         error: m.reservationValidationLegalConsentRequired(),

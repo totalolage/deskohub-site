@@ -11,3 +11,8 @@ export interface CreateDotyposReservationInput {
   readonly status: DotyposReservationStatus;
   readonly note?: string;
 }
+
+export interface UpdateDotyposReservationInput {
+  readonly reservationId: string;
+  readonly note: string;
+}

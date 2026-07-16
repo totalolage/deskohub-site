@@ -22,13 +22,15 @@ const piiColumnFragments = [
 ] as const;
 
 describe("workspace checkout lifecycle no-PII persistence contract", () => {
-  test("schema exports only target lifecycle tables", async () => {
+  test("schema exports the lifecycle and discount ledgers", async () => {
     const schemaIndex = await readAppFile("db/schema/index.ts");
 
     expect(schemaIndex).toContain("./workspace-reservations");
     expect(schemaIndex).toContain("./payment-attempts");
     expect(schemaIndex).toContain("./webhook-events");
     expect(schemaIndex).toContain("./legal-evidence-events");
+    expect(schemaIndex).toContain("./discounts");
+    expect(schemaIndex).toContain("./discount-applications");
     expect(schemaIndex).not.toContain("checkout-return-state-tokens");
     expect(schemaIndex).not.toContain("payment-orders");
   });

@@ -21,7 +21,7 @@ const decodeCheckoutResultParams = getParamsDecoder({
   orderId: Schema.NonEmptyString,
 });
 
-const loadCheckoutStatusEffect = (orderId: string) =>
+const loadCheckoutStatus = (orderId: string) =>
   Effect.gen(function* () {
     const service = yield* CheckoutStatusService;
     return yield* service.refreshStatus({
@@ -44,7 +44,7 @@ const loadCheckoutStatusAttempt = (
       yield* Effect.sleep("1500 millis");
     }
 
-    return yield* loadCheckoutStatusEffect(orderId).pipe(
+    return yield* loadCheckoutStatus(orderId).pipe(
       Effect.catchCause((cause) =>
         Effect.logWarning("Checkout status refresh retry failed", {
           orderId,

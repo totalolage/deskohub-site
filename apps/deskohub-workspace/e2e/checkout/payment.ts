@@ -18,13 +18,13 @@ import {
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import { getCheckoutTimeoutMs } from "../config";
-import { pollEffect } from "../effects";
 import {
-  effectifyPromise,
-  effectifySync,
   toWorkspaceE2EError,
+  tryWorkspaceE2EPromise,
+  tryWorkspaceE2ESync,
   type WorkspaceE2EError,
 } from "../errors";
+import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
 import { addRedaction, assert, log, parseUrl } from "../runtime";
 import type { CheckoutData } from "../types";
@@ -40,7 +40,7 @@ const runBrowserCommand = (
   args: string[],
   options?: Parameters<Runner>[2]
 ) =>
-  effectifyPromise(operation, () =>
+  tryWorkspaceE2EPromise(operation, () =>
     run("agent-browser", ["--session", session, ...args], options)
   );
 
@@ -94,7 +94,7 @@ export const completeCheckout = ({
       session,
       ["get", "url"]
     );
-    const orderId = yield* effectifySync(
+    const orderId = yield* tryWorkspaceE2ESync(
       "extract checkout status order id",
       () => extractOrderId(url.stdout)
     );
@@ -151,7 +151,7 @@ const readPayPageOrderId = (
         timeoutMs: 30_000,
       }
     );
-    return yield* effectifySync("assert pay page order id", () => {
+    return yield* tryWorkspaceE2ESync("assert pay page order id", () => {
       const orderId = result.stdout.trim();
       assert(orderId, "checkout pay page order id missing");
       return orderId;
@@ -189,18 +189,21 @@ const submitReservationAndWaitForPayPage = ({
     const orderId = getSearchOrderId(result.url);
     if (orderId) yield* Effect.sync(() => onOrderId?.(orderId));
 
-    return yield* effectifySync("assert checkout pay page reached", () => {
-      throw new Error(
-        [
-          "Timed out waiting for checkout pay page",
-          result.diagnostics
-            ? `Browser diagnostics:\n${result.diagnostics}`
-            : undefined,
-        ]
-          .filter(Boolean)
-          .join("\n")
-      );
-    });
+    return yield* tryWorkspaceE2ESync(
+      "assert checkout pay page reached",
+      () => {
+        throw new Error(
+          [
+            "Timed out waiting for checkout pay page",
+            result.diagnostics
+              ? `Browser diagnostics:\n${result.diagnostics}`
+              : undefined,
+          ]
+            .filter(Boolean)
+            .join("\n")
+        );
+      }
+    );
   });
 
 type ReservationStartResult =
@@ -223,7 +226,7 @@ const waitForReservationStart = (
     let latest: ReservationStartDiagnostics | undefined;
 
     const readyUrlExit = yield* Effect.exit(
-      pollEffect(
+      pollUntil(
         Effect.gen(function* () {
           const url = yield* readBrowserUrl(run, session);
           if (url?.includes("/checkout/pay")) return url;
@@ -519,7 +522,7 @@ const requireHostedPaymentRef = (
   frameLabels: readonly string[],
   timeoutMs = 60_000
 ): Effect.Effect<HostedPaymentRef, WorkspaceE2EError> =>
-  pollEffect(
+  pollUntil(
     findHostedPaymentRef(run, session, labels, frameLabels),
     timeoutMs,
     `Nexi target ${labels.join(" / ")}`
@@ -721,7 +724,7 @@ const waitForHostedPaymentClickTarget = (
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  pollEffect(
+  pollUntil(
     findHostedPaymentRef(run, session, labels, []),
     timeoutMs,
     `Nexi target ${labels.join(" / ")}`
@@ -734,7 +737,7 @@ const waitForHostedPaymentTargetToChange = (
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  pollEffect(
+  pollUntil(
     Effect.gen(function* () {
       const stillPresent = yield* findHostedPaymentRef(
         run,
