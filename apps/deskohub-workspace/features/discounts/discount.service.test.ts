@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect, Layer, Schema } from "effect";
+import { Deferred, Effect, Layer, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
@@ -78,6 +78,54 @@ const runWithProviders = <A, E>(
   );
 
 describe("DiscountService", () => {
+  test.each([
+    "quote",
+    "revalidate",
+  ] as const)("starts providers in parallel for %s", async (operation) => {
+    const allProvidersStarted = Deferred.makeUnsafe<void>();
+    const startedProviders: string[] = [];
+    const waitForEveryProvider = (provider: string) =>
+      Effect.sync(() => {
+        startedProviders.push(provider);
+        return startedProviders.length === 3;
+      }).pipe(
+        Effect.tap((allStarted) =>
+          allStarted
+            ? Deferred.succeed(allProvidersStarted, undefined)
+            : Effect.void
+        ),
+        Effect.andThen(Deferred.await(allProvidersStarted)),
+        Effect.as([])
+      );
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        quote: () => waitForEveryProvider("calendar"),
+        revalidate: () => waitForEveryProvider("calendar"),
+      }),
+      CustomerDiscountProviderMock({
+        resolve: () => waitForEveryProvider("customer"),
+      }),
+      CodeDiscountProviderMock({
+        quote: () => waitForEveryProvider("code"),
+        revalidate: () => waitForEveryProvider("code"),
+      })
+    );
+
+    await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts[operation](input);
+      }).pipe(Effect.timeout("1 second")),
+      providers
+    );
+
+    expect(startedProviders.toSorted()).toEqual([
+      "calendar",
+      "code",
+      "customer",
+    ]);
+  });
+
   test("resolves providers in stable calendar, customer, and code order", async () => {
     const calendarQuote = mock(() =>
       Effect.succeed([
@@ -235,7 +283,7 @@ describe("DiscountService", () => {
     });
   });
 
-  test("preserves provider errors and stops resolving later providers", async () => {
+  test("preserves provider errors while resolving concurrently", async () => {
     const cause = new Error("calendar unavailable");
     const failure = new DiscountProviderError({
       reason: "provider_failure",
@@ -260,7 +308,9 @@ describe("DiscountService", () => {
 
     expect(result).toBe(failure);
     expect(result.cause).toBe(cause);
-    expect(customerResolve).not.toHaveBeenCalled();
-    expect(codeQuote).not.toHaveBeenCalled();
+    expect(customerResolve).toHaveBeenCalledWith(
+      expect.objectContaining(input)
+    );
+    expect(codeQuote).toHaveBeenCalledWith(expect.objectContaining(input));
   });
 });

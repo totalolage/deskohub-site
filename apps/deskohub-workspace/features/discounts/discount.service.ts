@@ -33,13 +33,36 @@ export class DiscountService extends Context.Service<
       const customer = yield* CustomerDiscountProvider;
       const code = yield* CodeDiscountProvider;
 
+      const resolveQuoteCandidates = Effect.fn(
+        "DiscountService.resolveQuoteCandidates"
+      )((input: DiscountQuoteInput) =>
+        Effect.all(
+          {
+            calendarCandidates: calendar.quote(input),
+            customerCandidates: customer.resolve(input),
+            codeCandidates: code.quote(input),
+          },
+          { concurrency: "unbounded" }
+        ).pipe(Effect.map(collectDiscountCandidates))
+      );
+
+      const resolveRevalidatedCandidates = Effect.fn(
+        "DiscountService.resolveRevalidatedCandidates"
+      )((input: DiscountQuoteInput) =>
+        Effect.all(
+          {
+            calendarCandidates: calendar.revalidate(input),
+            customerCandidates: customer.resolve(input),
+            codeCandidates: code.revalidate(input),
+          },
+          { concurrency: "unbounded" }
+        ).pipe(Effect.map(collectDiscountCandidates))
+      );
+
       const quote = Effect.fn("DiscountService.quote")(
         (input: DiscountQuoteInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("calendarCandidates", calendar.quote),
-            Effect.bind("customerCandidates", customer.resolve),
-            Effect.bind("codeCandidates", code.quote),
-            Effect.let("candidates", collectDiscountCandidates),
+            Effect.bind("candidates", resolveQuoteCandidates),
             Effect.bind("calculation", calculateDiscounts),
             Effect.tap(logDiscountResolution),
             Effect.map(({ calculation }) => calculation.quote)
@@ -50,10 +73,7 @@ export class DiscountService extends Context.Service<
       const revalidate = Effect.fn("DiscountService.revalidate")(
         (input: DiscountQuoteInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("calendarCandidates", calendar.revalidate),
-            Effect.bind("customerCandidates", customer.resolve),
-            Effect.bind("codeCandidates", code.revalidate),
-            Effect.let("candidates", collectDiscountCandidates),
+            Effect.bind("candidates", resolveRevalidatedCandidates),
             Effect.bind("calculation", calculateDiscounts),
             Effect.tap(logDiscountResolution),
             Effect.map(({ calculation }) => ({
