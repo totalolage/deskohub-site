@@ -5,6 +5,7 @@ export const postHogFeatureFlags = definePostHogFeatureFlags<
   PostHogFeatureFlagDefinitions
 >([
   "meeting_room_page",
+  "seating_map",
 ] as const);
 
 export type PostHogFeatureFlagKey =
@@ -12,6 +13,10 @@ export type PostHogFeatureFlagKey =
 
 export interface PostHogFeatureFlagDefinitions {
   readonly "meeting_room_page": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
+  readonly "seating_map": {
     readonly value: boolean;
     readonly payload: undefined;
   };

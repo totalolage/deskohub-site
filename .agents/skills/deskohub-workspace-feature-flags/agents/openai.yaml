@@ -1,0 +1,4 @@
+interface:
+  display_name: "Deskohub Workspace Feature Flags"
+  short_description: "Implement typed Workspace feature flags"
+  default_prompt: "Use $deskohub-workspace-feature-flags to implement or review Workspace feature flags."
