@@ -5,7 +5,7 @@ export const workspaceBookingGuestCount = 1;
 
 export const getWorkspaceTableOccupancyById = (
   reservations: readonly Reservation[],
-  input: Pick<ReservationInterval, "startsAt" | "endsAt"> | Temporal.PlainDate
+  input: ReservationInterval | Temporal.PlainDate
 ) => {
   const occupancyByTableId = new Map<string, number>();
   const startsAt =
