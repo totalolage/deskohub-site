@@ -4,7 +4,10 @@ Discount codes are managed directly in the Workspace Postgres database until an 
 
 ## Data model and safety rules
 
-- `discounts` stores a source-neutral percentage or fixed-money benefit.
+- `discounts` stores a source-neutral percentage or fixed-money benefit. Its
+  `labels` JSONB value contains the complete customer-facing label map for every
+  supported locale. The legacy `label` column remains an internal/operator name
+  for deployment compatibility and must not be shown to customers.
 - `discount_product_targets` stores at least one product target for every usable benefit.
 - `discount_codes` stores scheduling, enabled state, and the optional global-use limit.
 - `discount_code_customers` is an allowlist. Zero rows for a code means every customer is eligible; one or more rows restrict eligibility to those Dotypos customer IDs.
@@ -18,7 +21,7 @@ Multiple codes may reference the same row in `discounts`. Their schedules, allow
 
 ## Schedule a sale in Google Calendar
 
-The dedicated sales calendar owns only when a sale is active. The referenced `discounts` row owns the customer-facing label, adjustment, and product targets.
+The dedicated sales calendar owns only when a sale is active. The referenced `discounts` row owns the complete customer-facing label map, adjustment, and product targets. Checkout resolves exactly `labels[locale]` after loading the definition; there is no cross-language fallback. Missing, blank, or unsupported translations make the definition invalid and checkout fails closed.
 
 Create the discount and all required targets first, then copy its UUID into the Calendar event description. The visible description content must be exactly the UUID, with no marker, TOML, prose, or second identifier:
 
@@ -32,20 +35,25 @@ The event must have a non-empty title for operators and must be an all-day event
 
 Cancelled events and events without a description are ignored. Any non-empty description that is not an accepted representation of exactly one valid UUID, or a UUID that does not resolve to a complete stored discount, is an operational configuration error and checkout fails closed. Cancel or delete the event to stop the sale; do not delete a definition while an active event references it.
 
-Interactive quotes may retain the resolved event and database definition for up to 60 seconds. Final payment revalidation always reads both Calendar and Postgres freshly. Editing a shared `discounts` row changes every calendar event and code that references it.
+Interactive quotes may retain the resolved event and complete, locale-independent database definition for up to 60 seconds. Locale selection happens only after that cache lookup, so one checkout locale cannot leak into another. Final payment revalidation always reads both Calendar and Postgres freshly. Editing a shared `discounts` row changes new quotes for every calendar event and code that references it, while existing checkout and application snapshots retain the resolved label the customer saw.
 
 ## Create a percentage code
 
 This `psql` example creates an initially disabled 50% Basic-tier code, adds its required target, and only then enables it. Use explicit timezone offsets for scheduled instants.
+The localized public labels must be approved customer copy. In the fixed-money
+example below, replace `<approved English label>` before executing it; never
+store the placeholder itself.
 
 ```sql
 BEGIN;
 
 INSERT INTO discounts (
   label,
+  labels,
   percentage_basis_points
 ) VALUES (
-  'Letní sleva 50 %',
+  'Summer 50% campaign',
+  '{"en-US":"50% summer discount","cs-CZ":"Letní sleva 50 %"}'::jsonb,
   5000
 )
 RETURNING id AS discount_id \gset
@@ -81,9 +89,17 @@ UPDATE discount_codes
 SET enabled = true, updated_at = now()
 WHERE id = :'code_id';
 
-SELECT id, code, enabled, valid_from, valid_until, max_uses
-FROM discount_codes
-WHERE id = :'code_id';
+SELECT
+  dc.id,
+  dc.code,
+  dc.enabled,
+  dc.valid_from,
+  dc.valid_until,
+  dc.max_uses,
+  d.labels
+FROM discount_codes AS dc
+JOIN discounts AS d ON d.id = dc.discount_id
+WHERE dc.id = :'code_id';
 
 COMMIT;
 ```
@@ -95,11 +111,13 @@ For a fixed-money benefit, leave `percentage_basis_points` null and set the comp
 ```sql
 INSERT INTO discounts (
   label,
+  labels,
   fixed_amount_value,
   fixed_amount_exponent,
   fixed_amount_currency
 ) VALUES (
-  'Sleva 100 Kč',
+  'Fixed CZK 100 campaign',
+  '{"en-US":"<approved English label>","cs-CZ":"Sleva 100 Kč"}'::jsonb,
   10000,
   2,
   'CZK'

@@ -13,11 +13,20 @@ const otherDiscountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82edb8"
 );
 
+const labels = {
+  "en-US": " Summer sale ",
+  "cs-CZ": " Letní sleva ",
+} as const;
+
+const untrustedLabels = (value: unknown): DiscountDefinitionRow["labels"] =>
+  value as DiscountDefinitionRow["labels"];
+
 const percentageRow = (
   overrides: Partial<DiscountDefinitionRow> = {}
 ): DiscountDefinitionRow => ({
   id: discountId,
-  label: " Summer sale ",
+  label: "Operator campaign",
+  labels,
   percentageBasisPoints: 5000,
   fixedAmountValue: null,
   fixedAmountExponent: null,
@@ -43,7 +52,10 @@ describe("stored discount definitions", () => {
 
     expect(result).toMatchObject({
       id: discountId,
-      label: "Summer sale",
+      labels: {
+        "en-US": "Summer sale",
+        "cs-CZ": "Letní sleva",
+      },
       adjustment: { kind: "percentage", basisPoints: 5000 },
       products: [{ kind: "cowork", tier: "basic" }],
     });
@@ -68,7 +80,31 @@ describe("stored discount definitions", () => {
   });
 
   test.each([
-    ["empty label", percentageRow({ label: " " })],
+    [
+      "missing locale label",
+      percentageRow({
+        labels: untrustedLabels({ "en-US": "Summer sale" }),
+      }),
+    ],
+    [
+      "blank locale label",
+      percentageRow({
+        labels: untrustedLabels({
+          "en-US": "Summer sale",
+          "cs-CZ": " ",
+        }),
+      }),
+    ],
+    [
+      "unknown locale label",
+      percentageRow({
+        labels: untrustedLabels({
+          "en-US": "Summer sale",
+          "cs-CZ": "Letní sleva",
+          "en-UK": "Misspelled locale",
+        }),
+      }),
+    ],
     ["invalid percentage", percentageRow({ percentageBasisPoints: 10_001 })],
     [
       "incomplete fixed amount",
@@ -130,5 +166,9 @@ describe("stored discount definitions", () => {
         discountId,
       },
     });
+    if (result._tag !== "Failure") {
+      throw new Error("Expected malformed discount definition");
+    }
+    expect(result.failure.cause).toMatchObject({ _tag: "SchemaError" });
   });
 });

@@ -1,4 +1,5 @@
 import "@/shared/testing/workspace-test-env";
+import "@/shared/polyfills/temporal";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
@@ -19,6 +20,7 @@ import {
 } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import { DiscountCodeUnavailableError } from "@/features/discounts/errors";
+import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
@@ -112,12 +114,13 @@ const privateCommitment = makeDiscountCommitment({
 
 const buildPayStateToken = (input: {
   readonly orderId: string;
+  readonly locale?: Locale;
   readonly quote?: WorkspaceCheckoutQuote;
   readonly submittedCode?: CanonicalDiscountCode;
 }) =>
   sealPayState(
     buildSignedPayState({
-      locale: "en-US",
+      locale: input.locale ?? "en-US",
       reservation: reservationData,
       quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
       orderId: input.orderId,
@@ -190,6 +193,7 @@ const makeReservation = (
 
 type CheckoutHarnessOptions = {
   readonly orderId: string;
+  readonly locale?: Locale;
   readonly acceptedQuote?: WorkspaceCheckoutQuote;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly reservationOverrides?: Record<string, unknown>;
@@ -199,6 +203,7 @@ type CheckoutHarnessOptions = {
 };
 
 const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
+  const locale = options.locale ?? "en-US";
   const { CheckoutService, CheckoutServiceLive } = await import(
     "./checkout.service"
   );
@@ -266,7 +271,10 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const reservations = {
     findById: mock(() =>
       Effect.succeed(
-        makeReservation(options.orderId, options.reservationOverrides)
+        makeReservation(options.orderId, {
+          locale,
+          ...options.reservationOverrides,
+        })
       )
     ),
     updateProductIntent,
@@ -309,12 +317,13 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       {
         payStateToken: buildPayStateToken({
           orderId: options.orderId,
+          locale,
           quote: options.acceptedQuote,
           submittedCode: options.submittedCode,
         }),
         legalConsent: true,
       },
-      "en-US"
+      locale
     );
   }).pipe(
     Effect.provide(CheckoutServiceLive),
@@ -379,7 +388,7 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
-  test("revalidates with the stored Dotypos customer and encrypted submitted code", async () => {
+  test("revalidates with the checkout locale, stored customer, and encrypted code", async () => {
     const submittedCode = canonicalCode("CANONICAL-SECRET-CODE");
     const orderId = "reservation-revalidates-code";
     const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData);
@@ -388,6 +397,7 @@ describe("CheckoutService", () => {
     );
     const harness = await createCheckoutHarness({
       orderId,
+      locale: "cs-CZ",
       acceptedQuote,
       submittedCode,
       revalidate,
@@ -408,9 +418,59 @@ describe("CheckoutService", () => {
       discountableSubtotal: money(55_000),
       reservationDate: reservationData.date,
       dotyposCustomerId: "stored-dotypos-customer-id",
-      locale: "en-US",
+      locale: "cs-CZ",
       submittedCode,
     });
+  });
+
+  test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {
+    const editedApplication = {
+      ...application,
+      discount: {
+        ...application.discount,
+        label: "Edited English summer label",
+      },
+    };
+    const editedQuote: DiscountQuote = {
+      ...discountedQuote,
+      discounts: [editedApplication],
+    };
+    const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData, {
+      discountQuote: discountedQuote,
+    });
+    const acceptedToken = buildPayStateToken({
+      orderId: "reservation-label-edited",
+      quote: acceptedQuote,
+    });
+    const revalidate = mock(() =>
+      Effect.succeed({ quote: editedQuote, commitment: emptyCommitment })
+    );
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-label-edited",
+      acceptedQuote,
+      revalidate,
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(
+      openPayState(acceptedToken).quote.payment.discounts[0]?.discount.label
+    ).toBe("Letni sleva 50 %");
+    expect(result.status).toBe("pricing_changed");
+    if (result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    expect(result.changedKeys).toEqual({
+      sectionKeys: [],
+      itemKeys: ["discount/discount:public-summer-sale"],
+    });
+    const freshToken = new URL(
+      result.freshPayUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    expect(
+      openPayState(freshToken ?? "").quote.payment.discounts[0]?.discount.label
+    ).toBe("Edited English summer label");
   });
 
   test("returns pricing_changed before updating the note or starting payment", async () => {

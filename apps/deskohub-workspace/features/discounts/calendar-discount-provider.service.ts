@@ -18,7 +18,7 @@ const providerNamespace = "google-calendar-sales";
 
 export type CalendarDiscountProviderInput = Pick<
   DiscountQuoteInput,
-  "product" | "reservationDate"
+  "locale" | "product" | "reservationDate"
 >;
 
 export interface ICalendarDiscountProvider {
@@ -178,6 +178,7 @@ class CalendarSalesCacheKey extends Data.Class<{
 }> {}
 
 const toEligibleCalendarCandidates = (input: {
+  readonly locale: CalendarDiscountProviderInput["locale"];
   readonly product: DiscountProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
 }) =>
@@ -187,32 +188,38 @@ const toEligibleCalendarCandidates = (input: {
         isSameProduct(product, input.product)
       )
     )
-    .map(toCalendarDiscountCandidate)
+    .map((resolvedSale) =>
+      toCalendarDiscountCandidate({
+        locale: input.locale,
+        resolvedSale,
+      })
+    )
     .toSorted((left, right) =>
       left.discount.id.localeCompare(right.discount.id)
     );
 
-const toCalendarDiscountCandidate = (
-  resolvedSale: ResolvedCalendarSale
-): DiscountCandidate => ({
+const toCalendarDiscountCandidate = (input: {
+  readonly locale: CalendarDiscountProviderInput["locale"];
+  readonly resolvedSale: ResolvedCalendarSale;
+}): DiscountCandidate => ({
   discount: {
     id: deriveOpaqueDiscountId({
       providerNamespace,
-      providerReference: resolvedSale.sale.occurrenceReference,
+      providerReference: input.resolvedSale.sale.occurrenceReference,
     }),
-    label: resolvedSale.definition.label,
-    adjustment: resolvedSale.definition.adjustment,
-    expiresAt: resolvedSale.sale.expiresAt,
-    countdownStartsAt: resolvedSale.sale.countdownStartsAt,
+    label: input.resolvedSale.definition.labels[input.locale],
+    adjustment: input.resolvedSale.definition.adjustment,
+    expiresAt: input.resolvedSale.sale.expiresAt,
+    countdownStartsAt: input.resolvedSale.sale.countdownStartsAt,
   },
   provenance: {
     providerNamespace,
-    providerReference: resolvedSale.sale.occurrenceReference,
+    providerReference: input.resolvedSale.sale.occurrenceReference,
     details: {
-      calendarId: resolvedSale.sale.calendarId,
-      eventReference: resolvedSale.sale.eventReference,
-      occurrenceDate: resolvedSale.sale.occurrenceDate,
-      storedDiscountId: resolvedSale.definition.id,
+      calendarId: input.resolvedSale.sale.calendarId,
+      eventReference: input.resolvedSale.sale.eventReference,
+      occurrenceDate: input.resolvedSale.sale.occurrenceDate,
+      storedDiscountId: input.resolvedSale.definition.id,
     },
   },
 });
