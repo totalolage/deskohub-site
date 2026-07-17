@@ -6,7 +6,7 @@ import {
   expect,
   test,
 } from "bun:test";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, render } from "@testing-library/react";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { discountIdSchema } from "@/features/discounts/contracts";
@@ -106,18 +106,10 @@ describe("CheckoutSummary", () => {
       name: /discount.*profi workstation/i,
     });
 
-    fireEvent.click(detailsButton);
-    expect(detailsButton.getAttribute("aria-expanded")).toBe("true");
-
-    fireEvent.click(detailsButton);
-    expect(detailsButton.getAttribute("aria-expanded")).toBe("false");
-
     act(() => detailsButton.focus());
     expect(document.activeElement).toBe(detailsButton);
-    expect(detailsButton.getAttribute("aria-expanded")).toBe("true");
-
-    fireEvent.pointerEnter(detailsButton);
-    expect(detailsButton.getAttribute("aria-expanded")).toBe("true");
+    expect(detailsButton.getAttribute("data-state")).toBe("instant-open");
+    expect(detailsButton.getAttribute("aria-describedby")).toMatch(/^radix-/);
   });
 
   test("keeps paid Basic coffee full price while discounting only the product", () => {

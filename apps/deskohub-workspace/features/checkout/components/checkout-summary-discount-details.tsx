@@ -2,7 +2,6 @@
 
 import { Match } from "effect";
 import { Info } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-quote";
 import {
   formatWorkspaceMoney,
@@ -11,12 +10,11 @@ import {
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/shared/components/ui/popover";
-
-const hoverCloseDelayMilliseconds = 120;
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/shared/components/ui/tooltip";
 
 const formatDiscountAdjustment = (
   discount: CheckoutSummaryDiscount["discount"],
@@ -42,89 +40,36 @@ export function CheckoutSummaryDiscountDetails({
   readonly locale: Locale;
   readonly productLabel: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const pinnedRef = useRef(false);
-  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
-
-  const cancelScheduledClose = () => {
-    if (closeTimeoutRef.current !== undefined) {
-      clearTimeout(closeTimeoutRef.current);
-      closeTimeoutRef.current = undefined;
-    }
-  };
-
-  const openForPreview = () => {
-    cancelScheduledClose();
-    setOpen(true);
-  };
-
-  const schedulePreviewClose = () => {
-    cancelScheduledClose();
-    if (pinnedRef.current) return;
-
-    closeTimeoutRef.current = setTimeout(() => {
-      setOpen(false);
-      closeTimeoutRef.current = undefined;
-    }, hoverCloseDelayMilliseconds);
-  };
-
-  useEffect(
-    () => () => {
-      if (closeTimeoutRef.current !== undefined) {
-        clearTimeout(closeTimeoutRef.current);
-      }
-    },
-    []
-  );
-
   return (
-    <Popover
-      open={open}
-      onOpenChange={(nextOpen) => {
-        if (!nextOpen) pinnedRef.current = false;
-        setOpen(nextOpen);
-      }}
-    >
-      <PopoverTrigger asChild>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={m.checkoutSummaryDiscountDetailsTrigger(
-            { product: productLabel },
-            { locale }
-          )}
-          aria-expanded={open}
-          className="h-8 w-8 shrink-0 rounded-full p-0 text-navy-blue/60"
-          onClick={(event) => {
-            event.preventDefault();
-            cancelScheduledClose();
-            pinnedRef.current = !pinnedRef.current;
-            setOpen(pinnedRef.current);
-          }}
-          onFocus={openForPreview}
-          onBlur={schedulePreviewClose}
-          onPointerEnter={openForPreview}
-          onPointerLeave={schedulePreviewClose}
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon"
+            aria-label={m.checkoutSummaryDiscountDetailsTrigger(
+              { product: productLabel },
+              { locale }
+            )}
+            className="h-8 w-8 shrink-0 rounded-full p-0 text-navy-blue/60"
+          >
+            <Info aria-hidden="true" className="size-4" />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent
+          align="end"
+          collisionPadding={16}
+          className="w-[min(20rem,calc(100vw-2rem))] p-4"
+          side="top"
         >
-          <Info aria-hidden="true" className="size-4" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent
-        align="end"
-        collisionPadding={16}
-        className="w-[min(20rem,calc(100vw-2rem))]"
-        onCloseAutoFocus={(event) => event.preventDefault()}
-        onOpenAutoFocus={(event) => event.preventDefault()}
-        onPointerEnter={cancelScheduledClose}
-        onPointerLeave={schedulePreviewClose}
-      >
-        <CheckoutSummaryDiscountDetailsContent
-          discounts={discounts}
-          locale={locale}
-        />
-      </PopoverContent>
-    </Popover>
+          <CheckoutSummaryDiscountDetailsContent
+            discounts={discounts}
+            locale={locale}
+          />
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 
