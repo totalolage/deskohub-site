@@ -1,6 +1,5 @@
 import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
-import "@/shared/polyfills/temporal";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
@@ -54,7 +53,7 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
 const reservationData = Schema.decodeUnknownSync(
   normalizedCoworkReservationOrderSchema
 )({
-  _tag: "cowork",
+  kind: "cowork",
   entryTier: "profi",
   date: "2026-06-20",
   coffee: true,

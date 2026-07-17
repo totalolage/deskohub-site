@@ -39,7 +39,7 @@ describe("cowork reservation schema", () => {
     expect(Result.isSuccess(result)).toBe(true);
     if (Result.isSuccess(result)) {
       expect(result.success).toMatchObject({
-        _tag: "cowork",
+        kind: "cowork",
         entryTier: "plus",
         date: "2099-06-10",
         coffee: true,

@@ -111,7 +111,7 @@ type SanitizedUtmParams = Partial<Record<UtmKey, string>>;
 
 type CoworkAvailabilityQuery = Extract<
   WorkspaceAvailabilityQuery,
-  { readonly _tag: "cowork" }
+  { readonly kind: "cowork" }
 >;
 
 const reservationFormSchema = Schema.toStandardSchemaV1(
@@ -168,7 +168,7 @@ const getWorkspaceAvailabilityQuery = ({
   to: string;
 }): CoworkAvailabilityQuery => {
   return {
-    _tag: "cowork",
+    kind: "cowork",
     from,
     to,
     ...(date && { date }),

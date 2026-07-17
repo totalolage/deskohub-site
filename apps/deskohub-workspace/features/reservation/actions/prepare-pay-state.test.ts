@@ -34,7 +34,7 @@ mock.module("next/headers", () => ({
 }));
 
 const reservation = {
-  _tag: "cowork" as const,
+  kind: "cowork" as const,
   entryTier: "basic" as const,
   date: "2026-07-01",
   coffee: false,

@@ -44,7 +44,7 @@ const decodeSignedPayState = Schema.decodeUnknownSync(
 const baseReservation = Schema.decodeUnknownSync(
   normalizedCoworkReservationOrderSchema
 )({
-  _tag: "cowork",
+  kind: "cowork",
   entryTier: "profi",
   date: "2026-06-20",
   coffee: true,
@@ -119,6 +119,13 @@ describe("Pay URL state", () => {
     expect(state.orderId).toBe("pay-state-test-order-id");
     expect(state.submittedCode).toBe(canonicalCode);
     expect(token.split(".")).toHaveLength(4);
+  });
+
+  test("omits redundant payload markers from signed Pay state", () => {
+    const state = buildState();
+
+    expect(state).not.toHaveProperty("type");
+    expect(state).not.toHaveProperty("schema");
   });
 
   test("preserves required-coffee normalization in signed Pay state", () => {

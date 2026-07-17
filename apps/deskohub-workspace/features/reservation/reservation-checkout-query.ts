@@ -168,7 +168,7 @@ export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
 
   const query = parseWorkspaceAvailabilityQuery(availabilitySearchParams);
 
-  if (query._tag !== "cowork") {
+  if (query.kind !== "cowork") {
     throw new Error("Cowork checkout query produced a non-cowork query.", {
       cause: query,
     });

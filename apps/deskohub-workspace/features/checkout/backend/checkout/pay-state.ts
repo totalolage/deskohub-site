@@ -29,14 +29,11 @@ const ivByteLength = 12;
 const authTagByteLength = 16;
 const keyByteLength = 32;
 
-const strictParseOptions = { onExcessProperty: "error" } as const;
 const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
 const nonNegativeIntSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const positiveIntSchema = Schema.Int.check(Schema.isGreaterThan(0));
 
 export const signedPayStateSchema = Schema.Struct({
-  type: Schema.Literal("signedPayState"),
-  schema: Schema.Literal("workspace-pay-state"),
   kid: nonEmptyStringSchema,
   iat: nonNegativeIntSchema,
   exp: positiveIntSchema,
@@ -200,7 +197,7 @@ export const buildSignedPayState = (
       1000
   );
   const reservationBase = {
-    _tag: "cowork" as const,
+    kind: "cowork" as const,
     date: input.reservation.date,
     name: input.reservation.name,
     email: input.reservation.email,
@@ -210,8 +207,6 @@ export const buildSignedPayState = (
     }),
   };
   const state: SignedPayState = {
-    type: "signedPayState",
-    schema: "workspace-pay-state",
     kid: activeKey.kid,
     iat,
     exp,
@@ -252,11 +247,11 @@ const payStateSchemaIssue = (actual: unknown, message: string) =>
 const protectedHeaderSchema = Schema.Struct({ kid: nonEmptyStringSchema });
 const decodeProtectedHeader = Schema.decodeUnknownOption(
   protectedHeaderSchema,
-  strictParseOptions
+  { onExcessProperty: "error" }
 );
 const decodeSignedPayStateOption = Schema.decodeUnknownOption(
   signedPayStateSchema,
-  strictParseOptions
+  { onExcessProperty: "error" }
 );
 
 const sealPayStateRaw = (
@@ -417,10 +412,9 @@ export const sealPayState = (
   state: SignedPayState,
   options: PayStateCryptoOptions = {}
 ) =>
-  Schema.encodeUnknownSync(
-    makePayStateTokenSchema(options),
-    strictParseOptions
-  )(state);
+  Schema.encodeUnknownSync(makePayStateTokenSchema(options), {
+    onExcessProperty: "error",
+  })(state);
 
 export const openPayState = (
   token: string,

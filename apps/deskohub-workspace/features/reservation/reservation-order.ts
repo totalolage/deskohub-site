@@ -1,5 +1,8 @@
-import { type Data, Match, Schema } from "effect";
-import { coworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { Match, Schema } from "effect";
+import {
+  type CoworkReservationOrderInput,
+  coworkReservationOrderSchema,
+} from "@/features/reservation/cowork-reservation";
 import {
   type CoworkReservationProductInput as CoworkProductInput,
   getCoworkReservationProductCoffee,
@@ -8,6 +11,7 @@ import {
 import {
   getMeetingRoomReservationProductCoffee,
   getMeetingRoomReservationProductMonitorOption,
+  type MeetingRoomReservationProductInput,
   meetingRoomReservationOrderSchema,
 } from "@/features/reservation/meeting-room-reservation";
 
@@ -19,10 +23,9 @@ export const reservationOrderSchema = Schema.Union([
 export type ReservationOrderInput = typeof reservationOrderSchema.Encoded;
 export type ReservationOrderData = typeof reservationOrderSchema.Type;
 
-export type ReservationProductProjectionInput = Data.TaggedEnum<{
-  cowork: CoworkProductInput;
-  "meeting-room": Record<never, never>;
-}>;
+export type ReservationProductProjectionInput =
+  | (CoworkProductInput & Pick<CoworkReservationOrderInput, "kind">)
+  | MeetingRoomReservationProductInput;
 
 export const getReservationProductCoffee = (
   reservation: ReservationProductProjectionInput
