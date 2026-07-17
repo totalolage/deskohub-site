@@ -2,7 +2,7 @@
 
 Model Workspace sales calendar events as references to stored discount definitions:
 
-- Treat the visible event-description content as exactly one discount UUID. Accept either the raw UUID or Google Calendar's canonical `<p><code>UUID</code></p>` storage wrapper; reject every other rich-text structure or additional content.
+- Treat the trimmed event description as exactly one discount UUID; reject rich-text wrappers, prose, or any additional content.
 - Let Calendar own occurrence timing.
 - Treat the Calendar title as operator-facing metadata only; never use it as a
   public label.

@@ -130,7 +130,6 @@ const extractStoredDiscountId = (
   return Option.fromNullishOr(event.description).pipe(
     Option.map((description) => description.trim()),
     Option.filter((description) => description.length > 0),
-    Option.map(normalizeCalendarDiscountReference),
     Option.map((description) =>
       Schema.decodeUnknownEffect(storedDiscountIdSchema)(
         description.toLowerCase()
@@ -140,7 +139,7 @@ const extractStoredDiscountId = (
             new CalendarSaleConfigurationError({
               reason: "invalid_discount_reference",
               message:
-                "Calendar sale description must contain exactly one valid discount UUID as plain text or a single Google Calendar code block, and no other content.",
+                "Calendar sale description must contain exactly one valid discount UUID and no other content.",
               ...getErrorEventReference(event),
               cause,
             })
@@ -150,11 +149,6 @@ const extractStoredDiscountId = (
     Effect.transposeOption
   );
 };
-
-const googleCalendarCodeDescriptionPattern = /^<p><code>([^<]+)<\/code><\/p>$/;
-
-const normalizeCalendarDiscountReference = (description: string) =>
-  googleCalendarCodeDescriptionPattern.exec(description)?.[1] ?? description;
 
 const decodeCalendarSaleEventMetadata = (input: {
   readonly event: GoogleCalendarEvent;
