@@ -68,8 +68,10 @@ describe("discount persistence contracts", () => {
 
   test("stores exactly one valid benefit adjustment", () => {
     const config = configOf(discounts);
+    const labelsColumn = config.columns.find(({ name }) => name === "labels");
 
     expect(config.name).toBe("discounts");
+    expect(labelsColumn?.notNull).toBe(true);
     expect(namesOf(config.checks)).toEqual([
       "discounts_label_check",
       "discounts_adjustment_variant_check",
@@ -110,9 +112,11 @@ describe("discount persistence contracts", () => {
     const columns = config.columns.map(({ name }) => name);
 
     expect(columns).toContain("public_discount_id");
+    expect(columns).toContain("label");
     expect(columns).toContain("adjustment");
     expect(columns).toContain("product_identity");
     expect(columns).toContain("provenance");
+    expect(columns).not.toContain("labels");
     expect(columns).not.toContain("updated_at");
     expect(namesOf(config.checks)).toEqual([
       "discount_applications_sequence_check",

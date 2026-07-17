@@ -18,7 +18,10 @@ import type {
   DiscountProductKey,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
+import type { Locale } from "@/features/i18n";
 import { postgresUuidV7 } from "../uuid-v7";
+
+export type DiscountLabels = Readonly<Record<Locale, string>>;
 
 export const discounts = pgTable(
   "discounts",
@@ -28,6 +31,7 @@ export const discounts = pgTable(
       .default(postgresUuidV7)
       .$type<StoredDiscountId>(),
     label: text("label").notNull(),
+    labels: jsonb("labels").notNull().$type<DiscountLabels>(),
     percentageBasisPoints: integer("percentage_basis_points"),
     fixedAmountValue: integer("fixed_amount_value"),
     fixedAmountExponent: integer("fixed_amount_exponent"),

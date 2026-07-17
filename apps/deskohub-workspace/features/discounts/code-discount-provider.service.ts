@@ -24,7 +24,11 @@ import type { DiscountCandidate } from "./provider";
 
 export type CodeDiscountProviderInput = Pick<
   DiscountQuoteInput,
-  "discountableSubtotal" | "dotyposCustomerId" | "product" | "submittedCode"
+  | "discountableSubtotal"
+  | "dotyposCustomerId"
+  | "locale"
+  | "product"
+  | "submittedCode"
 >;
 
 type CodeDiscountProviderError =
@@ -273,6 +277,7 @@ const toDiscountCodeCandidate = (input: {
   readonly configuration: DiscountCodeConfiguration;
   readonly definition: DiscountDefinition;
   readonly dotyposCustomerId: string;
+  readonly locale: CodeDiscountProviderInput["locale"];
   readonly product: DiscountProductIdentity;
 }): DiscountCandidate => {
   const timing = getDiscountCodeTiming(input.configuration.validUntil);
@@ -280,7 +285,7 @@ const toDiscountCodeCandidate = (input: {
   return {
     discount: {
       id: input.definition.id,
-      label: input.definition.label,
+      label: input.definition.labels[input.locale],
       adjustment: input.definition.adjustment,
       ...timing,
     },

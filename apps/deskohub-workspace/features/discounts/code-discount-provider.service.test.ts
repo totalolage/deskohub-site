@@ -45,6 +45,7 @@ const product = { kind: "cowork", tier: "basic" } as const;
 const input: CodeDiscountProviderInput = {
   submittedCode: canonicalCode,
   dotyposCustomerId: "customer-1",
+  locale: "en-US",
   product,
   discountableSubtotal: { value: 35_000, exponent: 2, currency: "CZK" },
 };
@@ -75,7 +76,10 @@ const definition = (
   overrides: Partial<DiscountDefinition> = {}
 ): DiscountDefinition => ({
   id: discountId,
-  label: "Summer database sale",
+  labels: {
+    "en-US": "Summer database sale",
+    "cs-CZ": "Letní databázová sleva",
+  },
   adjustment: { kind: "percentage", basisPoints: 5000 },
   products: [product],
   ...overrides,
@@ -193,6 +197,15 @@ describe("CodeDiscountProvider", () => {
     expect(timedResult[0]?.discount.countdownStartsAt).toBe(
       "2026-08-01T09:00:00.000Z"
     );
+  });
+
+  test.each([
+    ["en-US", "Summer database sale"],
+    ["cs-CZ", "Letní databázová sleva"],
+  ] as const)("resolves the stored label for %s", async (locale, label) => {
+    const result = await runWithProvider(resolve("quote", { locale }));
+
+    expect(result[0]?.discount.label).toBe(label);
   });
 
   test("supports fixed adjustments and omits timing without an end", async () => {

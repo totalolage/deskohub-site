@@ -45,7 +45,10 @@ const definition = (
   overrides: Partial<DiscountDefinition> = {}
 ): DiscountDefinition => ({
   id,
-  label: "Database sale",
+  labels: {
+    "en-US": "Database sale",
+    "cs-CZ": "Databázová sleva",
+  },
   adjustment: { kind: "percentage", basisPoints: 2000 },
   products: [basicProduct],
   ...overrides,
@@ -83,6 +86,7 @@ const runWithProvider = <A, E>(
 const quote = Effect.gen(function* () {
   const provider = yield* CalendarDiscountProvider;
   return yield* provider.quote({
+    locale: "en-US",
     product: basicProduct,
     reservationDate: "2026-07-14",
   });
@@ -130,14 +134,20 @@ describe("CalendarDiscountProvider", () => {
       [
         discountIdA,
         definition(discountIdA, {
-          label: "Basic database sale",
+          labels: {
+            "en-US": "Basic database sale",
+            "cs-CZ": "Základní databázová sleva",
+          },
           adjustment: { kind: "percentage", basisPoints: 1000 },
         }),
       ],
       [
         discountIdB,
         definition(discountIdB, {
-          label: "All-tier fixed sale",
+          labels: {
+            "en-US": "All-tier fixed sale",
+            "cs-CZ": "Pevná sleva pro všechny tarify",
+          },
           adjustment: {
             kind: "fixed",
             amount: { value: 5000, exponent: 2, currency: "CZK" },
@@ -158,10 +168,12 @@ describe("CalendarDiscountProvider", () => {
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
         const basic = yield* provider.quote({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
         const plus = yield* provider.quote({
+          locale: "en-US",
           product: { kind: "cowork", tier: "plus" },
           reservationDate: "2026-07-20",
         });
@@ -239,6 +251,13 @@ describe("CalendarDiscountProvider", () => {
     ["non-UUID description", "ordinary calendar note"],
     ["UUID with prose", `Sale ${discountIdA}`],
     ["multiple UUIDs", `${discountIdA}\n${discountIdB}`],
+    ["rich-text UUID", `<p><code>${discountIdA}</code></p>`],
+    ["rich-text UUID with prose", `<p><code>Sale ${discountIdA}</code></p>`],
+    [
+      "rich-text multiple UUIDs",
+      `<p><code>${discountIdA} ${discountIdB}</code></p>`,
+    ],
+    ["paragraph-wrapped UUID", `<p>${discountIdA}</p>`],
   ])("fails closed for %s", async (_label, description) => {
     const result = await runWithProvider(quote.pipe(Effect.result), () =>
       Effect.succeed([saleEvent({ description })])
@@ -267,44 +286,6 @@ describe("CalendarDiscountProvider", () => {
     );
 
     expect(loadById).toHaveBeenCalledWith({ discountId: discountIdA });
-  });
-
-  test("accepts the exact Google Calendar rich-text code wrapper around a UUID", async () => {
-    const loadById = mock(defaultLoadById);
-
-    await runWithProvider(
-      quote,
-      () =>
-        Effect.succeed([
-          saleEvent({
-            description: `<p><code>${discountIdA}</code></p>`,
-          }),
-        ]),
-      loadById
-    );
-
-    expect(loadById).toHaveBeenCalledWith({ discountId: discountIdA });
-  });
-
-  test.each([
-    [`<p><code>Sale ${discountIdA}</code></p>`],
-    [`<p><code>${discountIdA} ${discountIdB}</code></p>`],
-    [`<p>${discountIdA}</p>`],
-  ])("rejects unsupported rich-text description %s", async (description) => {
-    const result = await runWithProvider(quote.pipe(Effect.result), () =>
-      Effect.succeed([saleEvent({ description })])
-    );
-
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "malformed_configuration",
-        cause: {
-          _tag: "CalendarSaleConfigurationError",
-          reason: "invalid_discount_reference",
-        },
-      },
-    });
   });
 
   for (const [label, event] of invalidEventCases) {
@@ -404,14 +385,17 @@ describe("CalendarDiscountProvider", () => {
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
         const spring = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-03-29",
         });
         const springExclusiveEnd = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-03-30",
         });
         const autumn = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-10-25",
         });
@@ -454,17 +438,20 @@ describe("CalendarDiscountProvider", () => {
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
         const first = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: displayedDate,
         });
         displayedDate = "2026-07-16";
         const moved = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: displayedDate,
         });
         originalDate = "2026-07-21";
         displayedDate = "2026-07-21";
         const nextOccurrence = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: displayedDate,
         });
@@ -527,31 +514,101 @@ describe("CalendarDiscountProvider", () => {
     expect(loadById).toHaveBeenCalledTimes(1);
   });
 
+  test("resolves two locales from one locale-independent cache entry", async () => {
+    const listEvents = mock(() => Effect.succeed([saleEvent()]));
+    const loadById = mock(defaultLoadById);
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        const english = yield* provider.quote({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+        const czech = yield* provider.quote({
+          locale: "cs-CZ",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+        return { czech, english };
+      }),
+      listEvents,
+      loadById
+    );
+
+    expect(result.english[0]?.discount.label).toBe("Database sale");
+    expect(result.czech[0]?.discount.label).toBe("Databázová sleva");
+    expect(listEvents).toHaveBeenCalledTimes(1);
+    expect(loadById).toHaveBeenCalledTimes(1);
+  });
+
+  test("keeps the operator title out of the public label", async () => {
+    let title = "Initial operator title";
+    const listEvents = mock(() =>
+      Effect.succeed([saleEvent({ summary: title })])
+    );
+
+    const result = await runWithProvider(
+      Effect.gen(function* () {
+        const provider = yield* CalendarDiscountProvider;
+        const initial = yield* provider.revalidate({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+        title = "Edited operator title";
+        const afterTitleEdit = yield* provider.revalidate({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
+        return { afterTitleEdit, initial };
+      }),
+      listEvents
+    );
+
+    expect(result.initial[0]?.discount.label).toBe("Database sale");
+    expect(result.afterTitleEdit[0]?.discount.label).toBe("Database sale");
+    expect(JSON.stringify(result)).not.toContain("operator title");
+  });
+
   test("caches resolved definitions for 60 seconds while revalidation is fresh", async () => {
-    let label = "Initial database sale";
+    let currentLabels = {
+      "en-US": "Initial database sale",
+      "cs-CZ": "Počáteční databázová sleva",
+    };
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
     const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
-      ({ discountId }) => Effect.succeed(definition(discountId, { label }))
+      ({ discountId }) =>
+        Effect.succeed(definition(discountId, { labels: currentLabels }))
     );
 
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
         const first = yield* provider.quote({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
-        label = "Edited database sale";
+        currentLabels = {
+          "en-US": "Edited database sale",
+          "cs-CZ": "Upravená databázová sleva",
+        };
         const cached = yield* provider.quote({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
         const fresh = yield* provider.revalidate({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
         yield* TestClock.adjust("61 seconds");
         const afterTtl = yield* provider.quote({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
@@ -570,10 +627,14 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test("keeps the quote cache across separate process-lifetime layer builds", async () => {
-    let label = "Initial database sale";
+    let currentLabels = {
+      "en-US": "Initial database sale",
+      "cs-CZ": "Počáteční databázová sleva",
+    };
     const listEvents = mock(() => Effect.succeed([saleEvent()]));
     const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
-      ({ discountId }) => Effect.succeed(definition(discountId, { label }))
+      ({ discountId }) =>
+        Effect.succeed(definition(discountId, { labels: currentLabels }))
     );
     const processMemoMap = Layer.makeMemoMapUnsafe();
     const processScope = Scope.makeUnsafe();
@@ -595,6 +656,7 @@ describe("CalendarDiscountProvider", () => {
     const quoteForDate = Effect.gen(function* () {
       const provider = yield* CalendarDiscountProvider;
       return yield* provider.quote({
+        locale: "en-US",
         product: basicProduct,
         reservationDate: "2026-07-20",
       });
@@ -602,6 +664,7 @@ describe("CalendarDiscountProvider", () => {
     const revalidateForDate = Effect.gen(function* () {
       const provider = yield* CalendarDiscountProvider;
       return yield* provider.revalidate({
+        locale: "en-US",
         product: basicProduct,
         reservationDate: "2026-07-20",
       });
@@ -611,7 +674,10 @@ describe("CalendarDiscountProvider", () => {
       Effect.provide(providerLayer),
       Effect.runPromise
     );
-    label = "Edited database sale";
+    currentLabels = {
+      "en-US": "Edited database sale",
+      "cs-CZ": "Upravená databázová sleva",
+    };
     const cached = await quoteForDate.pipe(
       Effect.provide(providerLayer),
       Effect.runPromise
@@ -644,7 +710,14 @@ describe("CalendarDiscountProvider", () => {
         calls += 1;
         return calls === 1
           ? Effect.fail(cause)
-          : Effect.succeed(definition(discountId, { label: "Recovered sale" }));
+          : Effect.succeed(
+              definition(discountId, {
+                labels: {
+                  "en-US": "Recovered sale",
+                  "cs-CZ": "Obnovená sleva",
+                },
+              })
+            );
       }
     );
 
@@ -653,11 +726,13 @@ describe("CalendarDiscountProvider", () => {
         const provider = yield* CalendarDiscountProvider;
         const first = yield* provider
           .quote({
+            locale: "en-US",
             product: basicProduct,
             reservationDate: "2026-07-20",
           })
           .pipe(Effect.result);
         const second = yield* provider.quote({
+          locale: "en-US",
           product: basicProduct,
           reservationDate: "2026-07-20",
         });
