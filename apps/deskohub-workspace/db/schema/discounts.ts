@@ -11,14 +11,16 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { DiscountProductIdentity } from "@/features/discounts";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
 import type { Locale } from "@/features/i18n";
-import type { WorkspaceCoworkProductKey } from "@/features/reservation/cowork-reservation";
+import type {
+  WorkspaceCoworkProductIdentity,
+  WorkspaceCoworkProductKey,
+} from "@/features/reservation/cowork-reservation";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
@@ -86,7 +88,7 @@ export const discountProductTargets = pgTable(
       .$type<WorkspaceCoworkProductKey>(),
     productIdentity: jsonb("product_identity")
       .notNull()
-      .$type<DiscountProductIdentity>(),
+      .$type<WorkspaceCoworkProductIdentity>(),
   },
   (t) => [
     primaryKey({

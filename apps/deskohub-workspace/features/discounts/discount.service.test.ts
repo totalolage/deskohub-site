@@ -2,12 +2,12 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Deferred, Effect, Layer, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import {
   canonicalDiscountCodeSchema,
   type Discount,
-  type DiscountProductIdentity,
   type DiscountQuoteInput,
   discountIdSchema,
 } from "./contracts";
@@ -23,7 +23,7 @@ import type { DiscountCandidate } from "./provider";
 const product = {
   kind: "cowork",
   tier: "basic",
-} satisfies DiscountProductIdentity;
+} satisfies WorkspaceCoworkProductIdentity;
 
 const money = (value: number): WorkspaceMoney => ({
   value,

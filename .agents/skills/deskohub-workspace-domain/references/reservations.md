@@ -21,4 +21,6 @@ Define each identity schema, key schema, and key constructor in its reservation-
 
 Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
 
+Derive downstream schemas from the family identity schema fields instead of redeclaring the same literals. Import family identity types and codecs directly; do not introduce feature-specific aliases or re-exports for them.
+
 Construct keys through the family constructor or the cross-family dispatcher. Do not independently interpolate them in discount targeting, checkout quote construction, or rendering code, and do not create persistence-specific aliases for a family product key.

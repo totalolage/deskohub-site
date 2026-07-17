@@ -1,18 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
 import { calculateDiscounts } from "./calculator";
-import {
-  type Discount,
-  type DiscountProductIdentity,
-  discountIdSchema,
-} from "./contracts";
+import { type Discount, discountIdSchema } from "./contracts";
 import type { DiscountCandidate } from "./provider";
 
 const product = {
   kind: "cowork",
   tier: "basic",
-} satisfies DiscountProductIdentity;
+} satisfies WorkspaceCoworkProductIdentity;
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 
@@ -303,7 +300,7 @@ describe("discount calculator", () => {
         product: {
           ...product,
           source: "private-product-source",
-        } as DiscountProductIdentity,
+        } as WorkspaceCoworkProductIdentity,
         discountableSubtotal: {
           ...money(1000),
           source: "private-subtotal-source",

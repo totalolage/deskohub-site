@@ -1,11 +1,8 @@
 import { Clock, Context, Effect, Layer, Match, Option } from "effect";
 import type { DatabaseError } from "@/db/database.service";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
 import { temporalInstantToIsoString } from "@/shared/utils";
-import type {
-  CanonicalDiscountCode,
-  DiscountProductIdentity,
-  DiscountQuoteInput,
-} from "./contracts";
+import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import type {
   DiscountCodeAvailability,
   DiscountCodeConfiguration,
@@ -223,7 +220,7 @@ const validateCustomerAllowed = (input: {
 const validateDiscountCodeProduct = (input: {
   readonly configuration: DiscountCodeConfiguration;
   readonly definition: DiscountDefinition;
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
 }) =>
   input.definition.products.some((product) =>
     isSameProduct(product, input.product)
@@ -278,7 +275,7 @@ const toDiscountCodeCandidate = (input: {
   readonly definition: DiscountDefinition;
   readonly dotyposCustomerId: string;
   readonly locale: CodeDiscountProviderInput["locale"];
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
 }): DiscountCandidate => {
   const timing = getDiscountCodeTiming(input.configuration.validUntil);
 
@@ -327,8 +324,8 @@ const getDiscountCodeTiming = (
 };
 
 const isSameProduct = (
-  left: DiscountProductIdentity,
-  right: DiscountProductIdentity
+  left: WorkspaceCoworkProductIdentity,
+  right: WorkspaceCoworkProductIdentity
 ) => left.kind === right.kind && left.tier === right.tier;
 
 const unavailable = (

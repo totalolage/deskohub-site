@@ -4,17 +4,17 @@ import {
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
 import type {
   AppliedDiscount,
   Discount,
-  DiscountProductIdentity,
   DiscountQuote,
 } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
 
 type DiscountCalculationInput = {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly candidates: readonly DiscountCandidate[];
 };
@@ -187,7 +187,7 @@ const toNextCalculationState = (input: {
 };
 
 const toDiscountCalculation = (input: {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly validatedSubtotal: WorkspaceMoney;
   readonly calculation: Pick<
     DiscountCalculationState,

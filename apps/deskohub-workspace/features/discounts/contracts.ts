@@ -12,8 +12,6 @@ import {
 } from "@/features/reservation/cowork-reservation";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
-export type DiscountProductIdentity = WorkspaceCoworkProductIdentity;
-
 export const discountIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("DiscountId")
 ).annotate({
@@ -44,13 +42,10 @@ export const discountBasisPointsSchema = Schema.Int.check(
   description: "An exact percentage discount measured in basis points.",
 });
 
-export const discountProductIdentityCodec =
-  workspaceCoworkProductIdentitySchema;
-
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
-  DiscountProductIdentity
-> = Schema.toStandardSchemaV1(discountProductIdentityCodec, {
+  WorkspaceCoworkProductIdentity
+> = Schema.toStandardSchemaV1(workspaceCoworkProductIdentitySchema, {
   parseOptions: {
     onExcessProperty: "error",
   },
@@ -125,7 +120,7 @@ export const isAppliedDiscount = (value: unknown): value is AppliedDiscount =>
   );
 
 export type DiscountQuote = {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly discounts: readonly AppliedDiscount[];
   readonly totalDiscount: WorkspaceMoney;
@@ -133,7 +128,7 @@ export type DiscountQuote = {
 };
 
 export type DiscountQuoteInput = {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly reservationDate: string;
   readonly dotyposCustomerId: string;

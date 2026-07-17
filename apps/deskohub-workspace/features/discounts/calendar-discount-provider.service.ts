@@ -1,12 +1,13 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
   type CalendarSale,
   type CalendarSaleConfigurationError,
   normalizeCalendarSales,
 } from "./calendar-sale";
-import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
+import type { DiscountQuoteInput } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
@@ -179,7 +180,7 @@ class CalendarSalesCacheKey extends Data.Class<{
 
 const toEligibleCalendarCandidates = (input: {
   readonly locale: CalendarDiscountProviderInput["locale"];
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
 }) =>
   input.sales
@@ -230,8 +231,8 @@ type ResolvedCalendarSale = {
 };
 
 const isSameProduct = (
-  left: DiscountProductIdentity,
-  right: DiscountProductIdentity
+  left: WorkspaceCoworkProductIdentity,
+  right: WorkspaceCoworkProductIdentity
 ) => left.kind === right.kind && left.tier === right.tier;
 
 const toMalformedConfigurationError = (cause: CalendarSaleConfigurationError) =>

@@ -2,9 +2,11 @@ import { describe, expect, test } from "bun:test";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Schema } from "effect";
 import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
-import { discountProductIdentityCodec } from "@/features/discounts/contracts";
 import { canonicalDiscountCodeSchema } from "@/features/discounts/persistence-contracts";
-import { workspaceCoworkProductKeySchema } from "@/features/reservation/cowork-reservation";
+import {
+  workspaceCoworkProductIdentitySchema,
+  workspaceCoworkProductKeySchema,
+} from "@/features/reservation/cowork-reservation";
 import {
   discountApplications,
   discountCodeRedemptions,
@@ -58,7 +60,8 @@ describe("discount persistence contracts", () => {
     );
     const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
 
-    for (const tier of discountProductIdentityCodec.fields.tier.literals) {
+    for (const tier of workspaceCoworkProductIdentitySchema.fields.tier
+      .literals) {
       const productKey = getWorkspaceProductKey({ kind: "cowork", tier });
       expect(decodeProductKey(productKey)).toBe(productKey);
     }
