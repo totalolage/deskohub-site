@@ -76,7 +76,7 @@ export class WorkspaceE2EVercelPreviewService extends Context.Service<
                 "--token",
                 config.vercelToken,
               ],
-              { timeoutMs: configService.getVercelDeployTimeoutMs() }
+              { timeoutMs: configService.getTimeoutMs("deployment") }
             );
             const previewUrl = yield* tryWorkspaceE2ESync(
               "extract Vercel deployment URL",

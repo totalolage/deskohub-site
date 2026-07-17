@@ -12,6 +12,7 @@ import {
 import { pollUntil } from "./polling";
 import type { Runner } from "./runtime";
 import { log, redact } from "./runtime";
+import { workspaceE2EPollIntervalMs } from "./timeouts";
 
 const runBrowserCommand = (
   operation: string,
@@ -20,8 +21,11 @@ const runBrowserCommand = (
   args: string[],
   options?: Parameters<Runner>[2]
 ) =>
-  tryWorkspaceE2EPromise(operation, () =>
-    run("agent-browser", ["--session", session, ...args], options)
+  tryWorkspaceE2EPromise(operation, (signal) =>
+    run("agent-browser", ["--session", session, ...args], {
+      ...options,
+      signal,
+    })
   );
 
 export const readBrowserUrl = (
@@ -175,8 +179,11 @@ export const waitForInteractiveSnapshot = ({
     readInteractiveSnapshot(run, session, true).pipe(
       Effect.map((snapshot) => (matches(snapshot) ? snapshot : undefined))
     ),
-    timeoutMs,
-    description
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
   );
 
 export const readBrowserText = (
@@ -208,8 +215,11 @@ export const waitForBrowserText = ({
     readBrowserText(run, session, true).pipe(
       Effect.map((text) => (matches(text) ? text : undefined))
     ),
-    timeoutMs,
-    description
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
   );
 
 export const startBrowserDiagnostics = (
@@ -240,7 +250,7 @@ export const startBrowserDiagnostics = (
     );
 
     if (result.exitCode !== 0) {
-      log("Browser HAR capture unavailable; continuing checkout e2e");
+      log("Browser HAR capture unavailable; continuing workspace e2e");
       return false;
     }
 
@@ -321,13 +331,13 @@ export const captureBrowserFailureArtifacts = ({
       );
     }
 
-    log(`Checkout e2e failure artifacts saved to ${artifactDir}`);
+    log(`Workspace e2e failure artifacts saved to ${artifactDir}`);
     return harStopped;
   }).pipe(
     Effect.catch((error) =>
       Effect.sync(() => {
         log(
-          `Checkout e2e failure artifact capture failed: ${redact(String(error))}`
+          `Workspace e2e failure artifact capture failed: ${redact(String(error))}`
         );
         return false;
       })
@@ -356,10 +366,11 @@ const writeCommandArtifact = (
   Effect.gen(function* () {
     const result = yield* tryWorkspaceE2EPromise(
       `write ${fileName} artifact`,
-      () =>
+      (signal) =>
         run("agent-browser", args, {
           allowFailure: true,
           logOutput: false,
+          signal,
           timeoutMs: 60_000,
         })
     );
@@ -588,8 +599,11 @@ export const requireSnapshotRef = ({
     readInteractiveSnapshot(run, session).pipe(
       Effect.map((snapshot) => findSnapshotRef(snapshot, labels))
     ),
-    timeoutMs,
-    description
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
   ).pipe(
     Effect.catch((error) =>
       readInteractiveSnapshot(run, session, true).pipe(
@@ -622,8 +636,11 @@ export const requireEnabledSnapshotRef = ({
     readInteractiveSnapshot(run, session).pipe(
       Effect.map((snapshot) => findEnabledSnapshotRef(snapshot, labels))
     ),
-    timeoutMs,
-    description
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
   ).pipe(
     Effect.catch((error) =>
       readInteractiveSnapshot(run, session, true).pipe(
@@ -660,8 +677,11 @@ export const waitForBrowserUrl = ({
     readBrowserUrl(run, session).pipe(
       Effect.map((url) => (url && matches(url) ? url : undefined))
     ),
-    timeoutMs,
-    description
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: description,
+      timeoutMs,
+    }
   ).pipe(
     Effect.tap(() => Effect.sync(() => log(`Reached ${description}`))),
     Effect.catch((error) =>

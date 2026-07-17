@@ -4,8 +4,6 @@ import { fileURLToPath } from "node:url";
 import { Effect } from "effect";
 import { normalizePostgresConnectionUrl } from "../db/postgres-connection-url";
 
-export const POLL_INTERVAL_MS = 5_000;
-
 export const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const workspaceDir = resolve(scriptDir, "..");
 export const repoRoot = resolve(workspaceDir, "../..");
@@ -26,6 +24,7 @@ export const makeRunner =
       input?: string;
       logCommand?: boolean;
       logOutput?: boolean;
+      signal?: AbortSignal;
       timeoutMs?: number;
     } = {}
   ) => {
@@ -43,6 +42,7 @@ export const makeRunner =
       stderr: "pipe",
       stdin: options.input ? "pipe" : "ignore",
       stdout: "pipe",
+      signal: options.signal,
     });
 
     if (options.input) {

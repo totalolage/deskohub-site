@@ -37,7 +37,7 @@ export const failWorkspaceE2E = (
 
 export const tryWorkspaceE2EPromise = <A>(
   operation: string,
-  try_: () => Promise<A>
+  try_: (signal: AbortSignal) => Promise<A>
 ) =>
   Effect.tryPromise({
     catch: (cause) => toWorkspaceE2EError(operation, cause),

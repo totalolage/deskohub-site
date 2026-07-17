@@ -2,6 +2,7 @@ import { expect, test } from "bun:test";
 import { Effect } from "effect";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
+import type { WorkspaceE2EStepRunner } from "../types";
 import { assertContactForm } from "./contact";
 
 test("submits the hydrated contact form from a fresh semantic snapshot", async () => {
@@ -37,9 +38,10 @@ test("submits the hydrated contact form from a fresh semantic snapshot", async (
     vercelTeamId: "team",
     vercelToken: "token",
   } satisfies WorkspaceE2EConfig;
+  const runStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
 
   await Effect.runPromise(
-    assertContactForm({ config, run, session: "contact-test" })
+    assertContactForm({ config, run, runStep, session: "contact-test" })
   );
 
   expect(

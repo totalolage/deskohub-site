@@ -1,8 +1,9 @@
 import { Context, type Effect, Layer } from "effect";
-import { makeWorkspaceE2ECases, runWorkspaceE2ECases } from "../cases";
+import { makeWorkspaceE2ECases } from "../cases";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
+import { runWorkspaceE2ECases } from "../suite";
 import type { CheckoutFlowState, WorkspaceE2ECase } from "../types";
 
 interface IWorkspaceE2ECaseService {
