@@ -1,8 +1,8 @@
 import "server-only";
 
 import { checkBotId } from "botid/server";
-import { Context, Data, Effect, Layer } from "effect";
-import { getBotIdCheckOptions } from "./bot-protection.runtime";
+import { Context, Data, Effect, Layer, Match } from "effect";
+import { isWorkspaceBotIdEnforcedAtRuntime } from "./bot-protection.runtime";
 
 export interface VerifyHumanInput {
   readonly verificationFailurePolicy: "allow" | "deny";
@@ -36,26 +36,33 @@ export class BotVerificationError extends Data.TaggedError(
 const verifyHuman = Effect.fn("BotProtectionService.verifyHuman")(
   (input: VerifyHumanInput) =>
     Effect.tryPromise({
-      try: () => checkBotId(getBotIdCheckOptions()),
+      try: () => checkBotId(),
       catch: (cause) => new BotVerificationError({ cause }),
     }).pipe(
       Effect.catchTag("BotVerificationError", (error) =>
-        input.verificationFailurePolicy === "allow"
-          ? Effect.logWarning(
+        Match.value(input.verificationFailurePolicy).pipe(
+          Match.when("allow", () =>
+            Effect.logWarning(
               "Workspace BotID verification failed; allowing request",
               {
                 cause: error.cause,
                 verificationFailurePolicy: input.verificationFailurePolicy,
               }
             ).pipe(Effect.as(null))
-          : Effect.fail(error)
+          ),
+          Match.when("deny", () => Effect.fail(error)),
+          Match.exhaustive
+        )
       ),
-      Effect.flatMap((verification) =>
-        verification?.isBot
-          ? Effect.fail(
-              new BotDetectedError({ message: "Automated request detected" })
-            )
-          : Effect.void
-      )
+      Effect.filterOrFail(
+        (verification) => !verification?.isBot,
+        () =>
+          new BotDetectedError({
+            message: "Automated request detected",
+          })
+      ),
+      Effect.asVoid,
+      Effect.when(Effect.sync(isWorkspaceBotIdEnforcedAtRuntime)),
+      Effect.asVoid
     )
 );

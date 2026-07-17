@@ -29,7 +29,7 @@ export const assertLocaleSwitcher = ({
         config,
         run,
         session,
-        `${config.browserUrl}/en-US`,
+        `${config.baseUrl}/en-US`,
         { timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation") }
       ).pipe(Effect.asVoid),
       id: "open-home-page",

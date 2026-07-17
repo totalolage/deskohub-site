@@ -38,7 +38,7 @@ export const assertContactForm = ({
 
     const url = yield* makeUrl(
       "build contact form URL",
-      `${config.browserUrl}/en-US/contact`
+      `${config.baseUrl}/en-US/contact`
     );
     yield* setSearchParams(url, { e2eAt: runId });
 

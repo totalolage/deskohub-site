@@ -170,7 +170,7 @@ const assertTerminalStatusPage = ({
   Effect.gen(function* () {
     const url = yield* makeUrl(
       "build payment terminal checkout status URL",
-      `${config.browserUrl}/en-US/checkout/status/${orderId}`
+      `${config.baseUrl}/en-US/checkout/status/${orderId}`
     );
     yield* setSearchParams(url, { e2eAt: String(Date.now()) });
 

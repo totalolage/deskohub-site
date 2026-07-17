@@ -5,7 +5,6 @@ import {
   type DatasourceConfig,
   getConfig,
   getDatasourceConfig,
-  getVercelDeployEnvArgs,
   type WorkspaceE2EConfig,
 } from "../config";
 import {
@@ -68,10 +67,6 @@ interface IWorkspaceE2EEnvFileService {
     path: string
   ) => Effect.Effect<Map<string, string>, WorkspaceE2EError>;
   readonly loadLocalEnv: Effect.Effect<Map<string, string>, WorkspaceE2EError>;
-  readonly loadPreviewEnv: Effect.Effect<
-    Map<string, string>,
-    WorkspaceE2EError
-  >;
 }
 
 export class WorkspaceE2EEnvFileService extends Context.Service<
@@ -87,9 +82,6 @@ export class WorkspaceE2EEnvFileService extends Context.Service<
       return {
         load,
         loadLocalEnv: load(resolve(paths.workspaceDir, ".env.local")),
-        loadPreviewEnv: load(
-          resolve(paths.repoRoot, ".vercel/.env.preview.local")
-        ),
       };
     })
   );
@@ -108,10 +100,6 @@ interface IWorkspaceE2EConfigService {
     WorkspaceE2EError
   >;
   readonly getTimeoutMs: (timeout: WorkspaceE2ETimeout) => number;
-  readonly getVercelDeployEnvArgs: (
-    config: WorkspaceE2EConfig,
-    datasourceConfig: DatasourceConfig
-  ) => string[];
 }
 
 export class WorkspaceE2EConfigService extends Context.Service<
@@ -137,7 +125,6 @@ export class WorkspaceE2EConfigService extends Context.Service<
       getDatasourceConfig
     ),
     getTimeoutMs: getWorkspaceE2ETimeoutMs,
-    getVercelDeployEnvArgs,
   });
 }
 
@@ -154,23 +141,16 @@ export class WorkspaceE2ECommandRunnerService extends Context.Service<
   WorkspaceE2ECommandRunnerService,
   IWorkspaceE2ECommandRunnerService
 >()("WorkspaceE2ECommandRunnerService") {
-  static Live = Layer.effect(
-    this,
-    Effect.gen(function* () {
-      const configService = yield* WorkspaceE2EConfigService;
-      const getRunner = configService.getConfig.pipe(Effect.map(makeRunner));
+  static Live = Layer.succeed(this, makeCommandRunnerService());
+}
 
-      return {
-        getRunner,
-        run: (command, args, options) =>
-          Effect.gen(function* () {
-            const runner = yield* getRunner;
-            return yield* tryWorkspaceE2EPromise(
-              `run command ${command}`,
-              (signal) => runner(command, args, { ...options, signal })
-            );
-          }),
-      };
-    })
-  );
+function makeCommandRunnerService(): IWorkspaceE2ECommandRunnerService {
+  const runner = makeRunner();
+  return {
+    getRunner: Effect.succeed(runner),
+    run: (command, args, options) =>
+      tryWorkspaceE2EPromise(`run command ${command}`, (signal) =>
+        runner(command, args, { ...options, signal })
+      ),
+  };
 }

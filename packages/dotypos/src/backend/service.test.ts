@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Logger, Predicate, References } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import { makeDotyposRuntimeConfigLayer } from "../config";
 import type { Category, Customer, Reservation } from "../generated/effect.gen";
 import { DotyposService } from "./service";

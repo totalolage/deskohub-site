@@ -1,9 +1,11 @@
 import * as OpenApiGenerator from "@effect/openapi-generator/OpenApiGenerator";
 import * as OpenApiPatch from "@effect/openapi-generator/OpenApiPatch";
 import { Config, Data, Effect } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import {
+  FetchHttpClient,
+  HttpClient,
+  HttpClientResponse,
+} from "effect/unstable/http";
 import type { OpenAPISpec } from "effect/unstable/httpapi/OpenApi";
 
 const generatedClientPath = Bun.fileURLToPath(

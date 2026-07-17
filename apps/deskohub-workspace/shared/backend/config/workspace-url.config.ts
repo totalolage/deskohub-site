@@ -8,32 +8,44 @@ export class WorkspaceUrlConfigError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
-export const getWorkspaceRuntimeCallbackOrigin: Effect.Effect<
-  URL,
-  WorkspaceUrlConfigError
-> = Effect.gen(function* () {
-  const url =
-    env.VERCEL_ENV === "production"
-      ? env.VERCEL_PROJECT_PRODUCTION_URL
-      : (env.WORKSPACE_CALLBACK_ORIGIN ?? env.VERCEL_URL);
+interface WorkspaceCallbackEnvironment {
+  readonly deploymentEnvironment: "development" | "preview" | "production";
+  readonly deploymentUrl: string | undefined;
+  readonly productionUrl: string | undefined;
+}
 
-  if (!url) {
-    return yield* new WorkspaceUrlConfigError({
-      message: "Payment checkout callback URL is not configured.",
-    });
-  }
+export const getWorkspaceCallbackOrigin = ({
+  deploymentEnvironment,
+  deploymentUrl,
+  productionUrl,
+}: WorkspaceCallbackEnvironment): Effect.Effect<URL, WorkspaceUrlConfigError> =>
+  Effect.gen(function* () {
+    const url =
+      deploymentEnvironment === "production" ? productionUrl : deploymentUrl;
 
-  return yield* Effect.try({
-    try: () =>
-      new URL(
-        url.includes("://")
-          ? url
-          : `${env.VERCEL_ENV === "development" ? "http" : "https"}://${url}`
-      ),
-    catch: (cause) =>
-      new WorkspaceUrlConfigError({
+    if (!url) {
+      return yield* new WorkspaceUrlConfigError({
         message: "Payment checkout callback URL is not configured.",
-        cause,
-      }),
+      });
+    }
+
+    return yield* Effect.try({
+      try: () =>
+        new URL(
+          url.includes("://")
+            ? url
+            : `${deploymentEnvironment === "development" ? "http" : "https"}://${url}`
+        ),
+      catch: (cause) =>
+        new WorkspaceUrlConfigError({
+          message: "Payment checkout callback URL is not configured.",
+          cause,
+        }),
+    });
   });
+
+export const getWorkspaceRuntimeCallbackOrigin = getWorkspaceCallbackOrigin({
+  deploymentEnvironment: env.VERCEL_ENV,
+  deploymentUrl: env.VERCEL_URL,
+  productionUrl: env.VERCEL_PROJECT_PRODUCTION_URL,
 });

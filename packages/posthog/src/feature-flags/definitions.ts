@@ -1,6 +1,5 @@
 import { Context, Effect, Layer, Schema } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { type FeatureFlag, make } from "../generated/effect.gen";
 import { PostHogFeatureFlagConfig } from "./config";
 import { PostHogFeatureFlagError } from "./errors";

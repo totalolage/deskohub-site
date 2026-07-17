@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
+import { FetchHttpClient } from "effect/unstable/http";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -16,7 +17,7 @@ import {
   WorkspaceE2EPathService,
   WorkspaceE2ERedactionService,
 } from "./core";
-import { WorkspaceE2EVercelPreviewService } from "./vercel-preview";
+import { WorkspaceE2EPreviewReadinessService } from "./preview-readiness";
 
 interface IWorkspaceE2ERunnerService {
   readonly run: Effect.Effect<void, WorkspaceE2EError>;
@@ -35,7 +36,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
       const configService = yield* WorkspaceE2EConfigService;
       const envFiles = yield* WorkspaceE2EEnvFileService;
       const paths = yield* WorkspaceE2EPathService;
-      const vercel = yield* WorkspaceE2EVercelPreviewService;
+      const previewReadiness = yield* WorkspaceE2EPreviewReadinessService;
 
       return {
         run: Effect.gen(function* () {
@@ -53,25 +54,16 @@ export class WorkspaceE2ERunnerService extends Context.Service<
           let datasourceConfig: DatasourceConfig | undefined;
 
           const workflow = Effect.gen(function* () {
-            yield* vercel.pullPreviewEnv(config);
-
             datasourceConfig = yield* configService.getDatasourceConfig;
             yield* configService.assertDatasourceSafety(datasourceConfig);
             yield* configService.assertNexiSandbox(
               datasourceConfig.nexiApiOrigin
             );
-
-            const deployment = yield* vercel.deployFreshPreview(
-              config,
-              datasourceConfig
-            );
-            yield* vercel.prepareAlias(config, deployment.id);
-            yield* vercel.assertWebhookEndpoints(config);
+            yield* previewReadiness.assertWebhookEndpoints(config);
 
             const e2eCases = yield* cases.makeCases({
-              config: deployment.testConfig,
+              config,
               datasourceConfig,
-              deploymentId: deployment.id,
               flowStates,
               run,
             });
@@ -119,6 +111,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
 }
 
 const WorkspaceE2ECoreLive = Layer.mergeAll(
+  FetchHttpClient.layer,
   WorkspaceE2EPathService.Live,
   WorkspaceE2ERedactionService.Live,
   WorkspaceE2EConfigService.Live,
@@ -138,11 +131,11 @@ const WorkspaceE2ECommandRunnerLive =
     Layer.provideMerge(WorkspaceE2EEnvFileLive)
   );
 
-const WorkspaceE2EVercelPreviewLive =
-  WorkspaceE2EVercelPreviewService.Live.pipe(
+const WorkspaceE2EPreviewReadinessLive =
+  WorkspaceE2EPreviewReadinessService.Live.pipe(
     Layer.provideMerge(WorkspaceE2ECommandRunnerLive)
   );
 
 export const WorkspaceE2ELive = WorkspaceE2ERunnerService.Live.pipe(
-  Layer.provide(WorkspaceE2EVercelPreviewLive)
+  Layer.provide(WorkspaceE2EPreviewReadinessLive)
 );

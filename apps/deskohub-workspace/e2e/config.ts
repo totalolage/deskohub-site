@@ -1,35 +1,55 @@
 import { addRedaction, assert, env, parseUrl, requireEnv } from "./runtime";
 
-const WORKSPACE_PROJECT_ID = "prj_7FliQBcbBiBwGaO2JLrigicnXCRd";
-const WORKSPACE_TEAM_ID = "team_MgMQ4MEWijWnYa1R48C2JU5e";
-const DEFAULT_ALIAS = "new.workspace.deskohub.cz";
+const immutableWorkspaceDeploymentHost =
+  /^deskohub-workspace(?:-site)?-[a-z0-9]{9}-[a-z0-9-]+\.vercel\.app$/;
 
 export const getConfig = () => {
-  const vercelToken = requireEnv("VERCEL_TOKEN");
-  const vercelTeamId =
-    env("VERCEL_TEAM_ID") ?? env("VERCEL_ORG_ID") ?? WORKSPACE_TEAM_ID;
-  const vercelProjectId = env("VERCEL_PROJECT_ID") ?? WORKSPACE_PROJECT_ID;
-  const alias = env("WORKSPACE_E2E_ALIAS") ?? DEFAULT_ALIAS;
+  const target = parseWorkspaceE2EBaseUrl(env("WORKSPACE_E2E_BASE_URL"));
   const bypassSecret = env("VERCEL_AUTOMATION_BYPASS_SECRET");
 
-  addRedaction(vercelToken);
   addRedaction(bypassSecret);
 
   return {
-    alias,
-    aliasUrl: `https://${alias}`,
-    browserUrl: `https://${alias}`,
+    ...target,
     bypassSecret,
-    vercelProjectId,
-    vercelTeamId,
-    vercelToken,
+  };
+};
+
+export const parseWorkspaceE2EBaseUrl = (value: string | undefined) => {
+  assert(value, "WORKSPACE_E2E_BASE_URL is required for workspace e2e");
+  const url = parseUrl(value);
+  assert(url, "WORKSPACE_E2E_BASE_URL must be a valid URL");
+  assert(url.protocol === "https:", "WORKSPACE_E2E_BASE_URL must use HTTPS");
+  assert(
+    url.hostname.endsWith(".vercel.app"),
+    "WORKSPACE_E2E_BASE_URL must use a Vercel deployment host"
+  );
+  assert(
+    !url.hostname.includes("-git-"),
+    "WORKSPACE_E2E_BASE_URL must be an immutable deployment URL, not a branch alias"
+  );
+  assert(
+    immutableWorkspaceDeploymentHost.test(url.hostname),
+    "WORKSPACE_E2E_BASE_URL must be an immutable Vercel deployment URL"
+  );
+  assert(
+    !url.username && !url.password && !url.port,
+    "WORKSPACE_E2E_BASE_URL must not contain credentials or a custom port"
+  );
+  assert(
+    url.pathname === "/" && !url.search && !url.hash,
+    "WORKSPACE_E2E_BASE_URL must be an origin without a path, query, or hash"
+  );
+
+  return {
+    baseUrl: url.origin,
+    expectedHost: url.host,
   };
 };
 
 export const getDatasourceConfig = () => {
   const databaseUrl = requireEnv("DATABASE_URL");
-  const databaseUrlUnpooled =
-    env("WORKSPACE_E2E_DATABASE_URL_UNPOOLED") ?? databaseUrl;
+  const databaseUrlUnpooled = requireEnv("WORKSPACE_E2E_DATABASE_URL_UNPOOLED");
   addRedaction(databaseUrlUnpooled);
 
   return {
@@ -55,49 +75,6 @@ export const assertNexiSandbox = (origin: string) =>
     parseUrl(origin)?.hostname === "xpaysandbox.nexigroup.com",
     "NEXI_API_ORIGIN must point at Nexi sandbox for workspace checkout e2e"
   );
-
-export const getVercelDeployEnvArgs = (
-  config: ReturnType<typeof getConfig>,
-  datasourceConfig: ReturnType<typeof getDatasourceConfig>
-) => {
-  const values = {
-    DATABASE_URL: datasourceConfig.databaseUrl,
-    DATABASE_URL_UNPOOLED: datasourceConfig.databaseUrlUnpooled,
-    DOTYPOS_API_TIMEOUT: String(datasourceConfig.dotypos.apiTimeout),
-    DOTYPOS_API_URL: datasourceConfig.dotypos.apiUrl,
-    DOTYPOS_BRANCH_ID: datasourceConfig.dotypos.branchId,
-    DOTYPOS_CLIENT_ID: datasourceConfig.dotypos.clientId,
-    DOTYPOS_CLIENT_SECRET: datasourceConfig.dotypos.clientSecret,
-    DOTYPOS_CLOUD_ID: datasourceConfig.dotypos.cloudId,
-    DOTYPOS_EMPLOYEE_ID: datasourceConfig.dotypos.employeeId,
-    DOTYPOS_REFRESH_TOKEN: datasourceConfig.dotypos.refreshToken,
-    EMAIL_PROVIDER: "console",
-    NEXI_API_ORIGIN: datasourceConfig.nexiApiOrigin,
-    NEXI_CHECKOUT_CURRENCY_OVERRIDE: datasourceConfig.expectedCurrency,
-    WORKSPACE_CALLBACK_ORIGIN: config.aliasUrl,
-    WORKSPACE_E2E_BOTID_BYPASS: "HUMAN",
-    ...(config.bypassSecret
-      ? { VERCEL_AUTOMATION_BYPASS_SECRET: config.bypassSecret }
-      : {}),
-  };
-
-  const buildValues = Object.fromEntries(
-    Object.entries(values).filter(
-      ([key]) => key !== "VERCEL_AUTOMATION_BYPASS_SECRET"
-    )
-  );
-
-  return [
-    ...Object.entries(buildValues).flatMap(([key, value]) => [
-      "--build-env",
-      `${key}=${value}`,
-    ]),
-    ...Object.entries(values).flatMap(([key, value]) => [
-      "--env",
-      `${key}=${value}`,
-    ]),
-  ];
-};
 
 export type WorkspaceE2EConfig = ReturnType<typeof getConfig>;
 export type DatasourceConfig = ReturnType<typeof getDatasourceConfig>;

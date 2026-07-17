@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import {
   checkoutFlows,
   makeCoworkCheckoutData,
@@ -26,17 +27,20 @@ import {
 export const makeWorkspaceE2ECases = ({
   config,
   datasourceConfig,
-  deploymentId,
   flowStates,
   run,
 }: {
   config: WorkspaceE2EConfig;
   datasourceConfig: DatasourceConfig;
-  deploymentId: string;
   flowStates: CheckoutFlowState[];
   run: Runner;
-}): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
+}): Effect.Effect<
+  readonly WorkspaceE2ECase[],
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
   Effect.gen(function* () {
+    const httpClient = yield* HttpClient.HttpClient;
     const terminalScenarios = getPaymentTerminalScenarios();
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
@@ -69,7 +73,7 @@ export const makeWorkspaceE2ECases = ({
     for (const scenario of terminalScenarios) {
       const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
       const data = makeCoworkCheckoutData(
-        config.browserUrl,
+        config.baseUrl,
         date,
         `cowork-${scenario.state}`
       );
@@ -115,13 +119,13 @@ export const makeWorkspaceE2ECases = ({
             config,
             data,
             datasourceConfig,
-            deploymentId,
             flow,
             run,
             runStep,
             session,
             state,
           }).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
             Effect.mapError((cause) =>
               toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
             )

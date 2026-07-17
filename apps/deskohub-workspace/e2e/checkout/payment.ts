@@ -31,10 +31,16 @@ import {
   workspaceE2EPollIntervalMs,
 } from "../timeouts";
 import type { CheckoutData } from "../types";
+import { isExpectedCheckoutStatusUrl } from "../urls";
 
 const NEXI_TEST_CARD_NUMBER = "4509034543615006";
 const NEXI_TEST_CVV = "298";
 const NEXI_TEST_EXPIRY = "1028";
+const reservationStartRetryableErrorMessages = [
+  "Checkout could not be started.",
+  "Platbu se nepodařilo spustit.",
+] as const;
+const reservationSubmitAttemptCount = 2;
 
 const runBrowserCommand = (
   operation: string,
@@ -82,13 +88,7 @@ export const completeCheckout = ({
     yield* completeNexiHostedPayment({ data, run, session });
     yield* waitForBrowserUrl({
       description: "checkout status page",
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return (
-          parsed?.host === config.alias &&
-          parsed.pathname.includes("/checkout/status/")
-        );
-      },
+      matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
       run,
       session,
       timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
@@ -177,19 +177,36 @@ const submitReservationAndWaitForPayPage = ({
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const timeoutMs = getWorkspaceE2ETimeoutMs("checkoutStart");
+    const submitAttempt = (
+      attempt: number
+    ): Effect.Effect<ReservationStartResult, WorkspaceE2EError> =>
+      Effect.gen(function* () {
+        yield* runBrowserCommand(
+          "submit checkout reservation",
+          run,
+          session,
+          ["eval", "--stdin"],
+          {
+            input: submitReservationScript,
+            logOutput: false,
+          }
+        );
 
-    yield* runBrowserCommand(
-      "submit checkout reservation",
-      run,
-      session,
-      ["eval", "--stdin"],
-      {
-        input: submitReservationScript,
-        logOutput: false,
-      }
-    );
+        const result = yield* waitForReservationStart(run, session, timeoutMs);
+        if (
+          result.status !== "retryable_error" ||
+          attempt >= reservationSubmitAttemptCount
+        ) {
+          return result;
+        }
 
-    const result = yield* waitForReservationStart(run, session, timeoutMs);
+        log(
+          "Checkout reservation preparation returned a transient error; retrying once with the same reservation intent"
+        );
+        return yield* submitAttempt(attempt + 1);
+      });
+
+    const result = yield* submitAttempt(1);
     if (result.status === "ready") return result.url;
 
     const orderId = getSearchOrderId(result.url);
@@ -200,7 +217,9 @@ const submitReservationAndWaitForPayPage = ({
       () => {
         throw new Error(
           [
-            "Timed out waiting for checkout pay page",
+            result.status === "retryable_error"
+              ? "Checkout reservation preparation failed after one retry"
+              : "Timed out waiting for checkout pay page",
             result.diagnostics
               ? `Browser diagnostics:\n${result.diagnostics}`
               : undefined,
@@ -219,7 +238,7 @@ type ReservationStartResult =
     }
   | {
       readonly diagnostics: string | undefined;
-      readonly status: "not_ready";
+      readonly status: "not_ready" | "retryable_error";
       readonly url: string | undefined;
     };
 
@@ -231,13 +250,21 @@ const waitForReservationStart = (
   Effect.gen(function* () {
     let latest: ReservationStartDiagnostics | undefined;
 
-    const readyUrlExit = yield* Effect.exit(
+    const reservationStartExit = yield* Effect.exit(
       pollUntil(
         Effect.gen(function* () {
           const url = yield* readBrowserUrl(run, session);
-          if (url?.includes("/checkout/pay")) return url;
+          if (url?.includes("/checkout/pay"))
+            return { status: "ready" as const, url };
 
           latest = yield* readReservationStartDiagnostics(run, session);
+          if (isRetryableReservationStartError(latest)) {
+            return {
+              diagnostics: formatReservationStartDiagnostics(latest),
+              status: "retryable_error" as const,
+              url: latest?.url,
+            };
+          }
           return undefined;
         }),
         {
@@ -248,12 +275,11 @@ const waitForReservationStart = (
       )
     );
 
-    if (Exit.isSuccess(readyUrlExit))
-      return { status: "ready", url: readyUrlExit.value };
+    if (Exit.isSuccess(reservationStartExit)) return reservationStartExit.value;
 
     latest = addReservationStartTimeout(
       latest,
-      Cause.squash(readyUrlExit.cause)
+      Cause.squash(reservationStartExit.cause)
     );
     latest ??= yield* readReservationStartDiagnostics(run, session);
     return {
@@ -271,6 +297,13 @@ type ReservationStartDiagnostics = {
   readonly title?: string;
   readonly url?: string;
 };
+
+const isRetryableReservationStartError = (
+  diagnostics: ReservationStartDiagnostics | undefined
+) =>
+  reservationStartRetryableErrorMessages.some((message) =>
+    diagnostics?.body?.includes(message)
+  );
 
 const readReservationStartDiagnostics = (
   run: Runner,

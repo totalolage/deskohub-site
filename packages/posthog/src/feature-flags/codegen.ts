@@ -1,5 +1,5 @@
 import { Effect, Layer } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import { PostHogFeatureFlagConfig } from "./config";
 import { PostHogFeatureFlagService } from "./definitions";
 import type { PostHogFeatureFlagError } from "./errors";

@@ -36,10 +36,6 @@ const timeoutDefinitions = {
     env: "WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS",
     fallbackMs: 2 * MINUTE,
   },
-  deployment: {
-    env: "WORKSPACE_E2E_DEPLOY_TIMEOUT_MS",
-    fallbackMs: 30 * MINUTE,
-  },
   hostedPayment: {
     env: "WORKSPACE_E2E_HOSTED_PAYMENT_TIMEOUT_MS",
     fallbackMs: 3 * MINUTE,

@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import { HttpClient } from "effect/unstable/http";
 import {
   evalBrowserScript,
   openBrowserPage,
@@ -32,14 +33,12 @@ import type {
   CheckoutFlowState,
   WorkspaceE2EStepRunner,
 } from "../types";
-import { makeUrl, setSearchParams } from "../urls";
-import { verifyAlias } from "../vercel";
+import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 
 export const executeCheckoutFlow = ({
   config,
   data,
   datasourceConfig,
-  deploymentId,
   flow,
   run,
   runStep,
@@ -49,14 +48,14 @@ export const executeCheckoutFlow = ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
-  deploymentId: string;
   flow: CheckoutFlow;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
+    const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: startCheckoutPaymentAttempt({
@@ -94,7 +93,9 @@ export const executeCheckoutFlow = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
     });
     yield* runStep({
-      execute: replayNexiWebhook(config, replayRow),
+      execute: replayNexiWebhook(config, replayRow).pipe(
+        Effect.provideService(HttpClient.HttpClient, httpClient)
+      ),
       id: "replay-payment-webhook",
       timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
     });
@@ -111,11 +112,6 @@ export const executeCheckoutFlow = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
     });
     state.checkoutRow = checkoutRow;
-    yield* runStep({
-      execute: verifyAlias(config, deploymentId),
-      id: "verify-preview-alias",
-      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
-    });
     yield* runStep({
       execute: assertFulfilledStatusPage({
         config,
@@ -155,13 +151,7 @@ const waitForCheckoutStatusPage = (
 ) =>
   waitForBrowserUrl({
     description: "checkout status page",
-    matches: (url) => {
-      const parsed = parseUrl(url);
-      return (
-        parsed?.host === config.alias &&
-        parsed.pathname.includes("/checkout/status/")
-      );
-    },
+    matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
     run,
     session,
     timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
@@ -185,7 +175,7 @@ const assertFulfilledStatusPage = ({
       config,
       run,
       session,
-      `${config.browserUrl}/${locale}/checkout/status/${orderId}`,
+      `${config.baseUrl}/${locale}/checkout/status/${orderId}`,
       { timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation") }
     );
     yield* waitForBrowserText({
@@ -228,7 +218,7 @@ const assertFulfillmentFailedSupportPath = ({
     yield* markFulfillmentFailedForE2E(datasourceConfig, orderId);
     const statusUrl = yield* makeUrl(
       "build fulfillment failed checkout status URL",
-      `${config.browserUrl}/${data.locale}/checkout/status/${orderId}`
+      `${config.baseUrl}/${data.locale}/checkout/status/${orderId}`
     );
     yield* setSearchParams(statusUrl, {
       e2eAt: String(Date.now()),

@@ -8,11 +8,23 @@ description: Configure, debug, or review Deskohub Workspace BotID protection, pr
 Configure BotID end to end:
 
 - Register only the page paths that invoke protected Server Actions.
-- Keep the `withBotId` rewrites.
-- Call server-side `checkBotId()` before mutation side effects.
+- Initialize the BotID client, apply `withBotId` rewrites, and call server-side
+  `checkBotId()` only when `VERCEL_ENV === "production"`.
+- Use the shared production-enforcement policy across client, build, and server
+  contexts. Vercel preview builds use production-mode Next.js builds, so never
+  substitute `NODE_ENV` for `VERCEL_ENV`.
+- Read Vercel's standard `NEXT_PUBLIC_VERCEL_ENV` in client instrumentation and
+  `VERCEL_ENV` in build/server code. Do not create a custom public mirror of the
+  Vercel environment. Expose the public value through the Workspace typed `env`
+  module rather than reading `process.env` directly in client code.
+- Keep server-side `checkBotId()` before mutation side effects in production.
 - Do not use blanket `/*` client interception without matching server verification.
-- Do not remove BotID as the final security posture when fixing its transport integration.
+- Preserve production verification failure policies and error mapping.
 
-Treat Workspace browser E2E as automation that BotID correctly rejects. Set `WORKSPACE_E2E_BOTID_BYPASS=HUMAN` only on the dedicated E2E deployment, and honor it only outside Vercel production. Never configure this marker on a normal preview or production deployment.
+Every Workspace preview is protected by Vercel Deployment Protection. BotID is
+a separate, production-only application concern: do not initialize it, install
+its rewrites, or call its server verification in preview or development. Keep
+the Vercel automation bypass header/cookie/query flow for authorized preview
+automation; do not introduce an application-level BotID E2E bypass.
 
-Update this skill when developer feedback changes the protection boundary or the explicit E2E exception.
+Update this skill when developer feedback changes either protection boundary.

@@ -19,3 +19,17 @@ export const setSearchParams = (
       url.searchParams.set(key, value);
     return url;
   });
+
+export const isExpectedCheckoutStatusUrl = (
+  value: string,
+  expectedHost: string
+) => {
+  try {
+    const url = new URL(value);
+    return (
+      url.host === expectedHost && url.pathname.includes("/checkout/status/")
+    );
+  } catch {
+    return false;
+  }
+};
