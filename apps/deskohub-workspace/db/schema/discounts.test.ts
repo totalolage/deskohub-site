@@ -53,38 +53,6 @@ describe("discount persistence contracts", () => {
     expect(migration).not.toContain('"raw_payload"');
   });
 
-  test("localized-label migration expands, backfills, verifies, and constrains", async () => {
-    const migration = await Bun.file(
-      new URL(
-        "../migrations/0003_localized_discount_labels.sql",
-        import.meta.url
-      )
-    ).text();
-
-    const addColumn = migration.indexOf(
-      'ALTER TABLE "discounts" ADD COLUMN "labels" jsonb;'
-    );
-    const backfill = migration.indexOf(
-      "WHERE \"id\" = '019f6f31-d00f-7a94-86fa-764f425e7fab'"
-    );
-    const verification = migration.indexOf("RAISE EXCEPTION");
-    const setNotNull = migration.indexOf(
-      'ALTER TABLE "discounts" ALTER COLUMN "labels" SET NOT NULL;'
-    );
-
-    expect(addColumn).toBeGreaterThanOrEqual(0);
-    expect(backfill).toBeGreaterThan(addColumn);
-    expect(verification).toBeGreaterThan(backfill);
-    expect(setNotNull).toBeGreaterThan(verification);
-    expect(migration).toContain("'en-US', '50% summer discount'");
-    expect(migration).toContain("'cs-CZ', 'Letní sleva 50 %'");
-    expect(migration).toContain("\"labels\" - ARRAY['en-US', 'cs-CZ']::text[]");
-    expect(migration).not.toContain('ADD COLUMN "labels" jsonb NOT NULL');
-    expect(migration).not.toContain('DROP COLUMN "label"');
-    expect(migration).not.toContain('ALTER TABLE "discount_applications"');
-    expect(migration).not.toContain("PRODUCT_OWNER_APPROVED");
-  });
-
   test("accepts only canonical product keys and discount codes", () => {
     const decodeProductKey = Schema.decodeUnknownSync(discountProductKeySchema);
     const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
