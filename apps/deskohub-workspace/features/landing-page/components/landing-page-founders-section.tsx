@@ -3,6 +3,7 @@ import { m } from "@/features/i18n";
 import { Container } from "@/shared/components/container";
 import { CensoredFounderName } from "./censored-founder-name";
 import { FounderProfileImage } from "./founder-profile-image";
+import { LandingPageGlassCard } from "./landing-page-glass-card";
 
 type LandingPageFoundersSectionProps = {
   locale: Locale;
@@ -77,14 +78,14 @@ export function LandingPageFoundersSection({
                   </div>
                 </div>
 
-                <div className="relative -ml-14 min-w-0 flex-1 rounded-[1.5rem] border border-navy-blue/18 bg-white/90 px-5 pb-5 pl-18 pt-14 text-navy-blue shadow-[0_20px_40px_-28px_rgba(0,2,79,0.38)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
+                <LandingPageGlassCard className="relative -ml-14 min-w-0 flex-1 rounded-[1.5rem] border border-white/35 px-5 pb-5 pl-18 pt-14 text-white shadow-[0_20px_40px_-28px_rgba(0,0,0,0.5)] sm:-ml-20 sm:px-6 sm:pb-6 sm:pl-24 sm:pt-16">
                   <h3 className="text-2xl leading-tight sm:text-3xl">
                     {founder.role}
                   </h3>
-                  <p className="mt-2 text-sm leading-6 text-navy-blue/72 sm:mt-3 sm:leading-7">
+                  <p className="mt-2 text-sm leading-6 text-white/72 sm:mt-3 sm:leading-7">
                     {founder.description}
                   </p>
-                </div>
+                </LandingPageGlassCard>
               </div>
             </article>
           ))}

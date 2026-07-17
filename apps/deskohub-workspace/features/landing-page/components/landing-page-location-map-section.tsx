@@ -11,6 +11,7 @@ import {
   workspaceLocationMapImagePath,
 } from "@/shared/utils";
 import waveMask from "../images/wave-mask.svg";
+import { LandingPageGlassCard } from "./landing-page-glass-card";
 import { LandingPageLocationMapImage } from "./landing-page-location-map-image";
 import { LandingPagePhotoCarouselBackgroundNoise } from "./landing-page-photo-carousel-section";
 
@@ -58,7 +59,10 @@ export function LandingPageLocationMapSection({
         <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(244,241,234,0.8)_0%,rgba(244,241,234,0.84)_36%,rgba(244,241,234,0.14)_78%,rgba(244,241,234,0)_100%)] lg:bg-[linear-gradient(90deg,rgba(244,241,234,0.96)_0%,rgba(244,241,234,0.82)_38%,transparent_75%)]" />
 
         <Container className="relative z-10 flex min-h-184 items-start py-8 lg:min-h-136 lg:items-end lg:py-10">
-          <div className="max-w-xl rounded-4xl border border-navy-blue/10 bg-[#f4f1ea]/95 p-6 shadow-[0_34px_90px_-55px_rgba(0,2,79,0.75)] backdrop-blur sm:p-8">
+          <LandingPageGlassCard
+            className="w-full max-w-xl rounded-4xl border border-white/45 p-6 shadow-[0_34px_90px_-55px_rgba(0,2,79,0.75)] sm:p-8"
+            optics={{ frost: 3 }}
+          >
             <h2 className="text-4xl leading-tight text-balance sm:text-5xl">
               {m.landingLocationMapTitle({}, { locale })}
             </h2>
@@ -77,7 +81,7 @@ export function LandingPageLocationMapSection({
                 {m.landingLocationMapCta({}, { locale })}
               </a>
             </Button>
-          </div>
+          </LandingPageGlassCard>
         </Container>
       </div>
     </section>
