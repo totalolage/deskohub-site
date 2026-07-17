@@ -15,10 +15,10 @@ import type { DiscountProductIdentity } from "@/features/discounts";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
-  DiscountProductKey,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceCoworkProductKey } from "@/features/reservation/cowork-reservation";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
@@ -81,7 +81,9 @@ export const discountProductTargets = pgTable(
       .notNull()
       .$type<StoredDiscountId>()
       .references(() => discounts.id, { onDelete: "cascade" }),
-    productKey: text("product_key").notNull().$type<DiscountProductKey>(),
+    productKey: text("product_key")
+      .notNull()
+      .$type<WorkspaceCoworkProductKey>(),
     productIdentity: jsonb("product_identity")
       .notNull()
       .$type<DiscountProductIdentity>(),

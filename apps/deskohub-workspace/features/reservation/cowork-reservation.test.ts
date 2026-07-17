@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
@@ -8,6 +8,8 @@ import {
   getCoworkReservationDetails,
   getCoworkReservationIntervalInput,
   getCoworkReservationOrder,
+  getWorkspaceCoworkProductKey,
+  workspaceCoworkProductKeySchema,
 } from "./cowork-reservation";
 
 const coworkReservationSchema = makeSchemaParser(coworkReservationDefinition);
@@ -16,6 +18,23 @@ const coworkReservationOrderSchema = makeSchemaParser(
 );
 
 describe("cowork reservation schema", () => {
+  test("owns canonical cowork product keys", () => {
+    expect(
+      getWorkspaceCoworkProductKey({ kind: "cowork", tier: "basic" })
+    ).toBe("cowork:basic");
+    expect(getWorkspaceCoworkProductKey({ kind: "cowork", tier: "plus" })).toBe(
+      "cowork:plus"
+    );
+    expect(
+      getWorkspaceCoworkProductKey({ kind: "cowork", tier: "profi" })
+    ).toBe("cowork:profi");
+    expect(() =>
+      Schema.decodeUnknownSync(workspaceCoworkProductKeySchema)(
+        "cowork:enterprise"
+      )
+    ).toThrow();
+  });
+
   test("owns the cowork full-day interval policy", () => {
     expect(getCoworkReservationIntervalInput("2099-06-10")).toEqual({
       startsAt: "2099-06-10T00:00",

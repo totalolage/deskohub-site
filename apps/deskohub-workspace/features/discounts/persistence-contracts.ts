@@ -1,5 +1,4 @@
 import { Schema } from "effect";
-import { workspaceCoworkProductKeySchema } from "@/features/checkout/product-identity";
 import { discountIdSchema } from "./contracts";
 
 export {
@@ -21,17 +20,6 @@ export const storedDiscountIdSchema = discountIdSchema
 
 export type StoredDiscountId = Schema.Schema.Type<
   typeof storedDiscountIdSchema
->;
-
-export const discountProductKeySchema = workspaceCoworkProductKeySchema
-  .pipe(Schema.brand("DiscountProductKey"))
-  .annotate({
-    identifier: "DiscountProductKey",
-    description: "Canonical key for a product targeted by a stored discount.",
-  });
-
-export type DiscountProductKey = Schema.Schema.Type<
-  typeof discountProductKeySchema
 >;
 
 export const discountCodeIdSchema = Schema.NonEmptyString.pipe(

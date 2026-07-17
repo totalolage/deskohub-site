@@ -1,11 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Schema } from "effect";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { discountProductIdentityCodec } from "@/features/discounts/contracts";
-import {
-  canonicalDiscountCodeSchema,
-  discountProductKeySchema,
-} from "@/features/discounts/persistence-contracts";
+import { canonicalDiscountCodeSchema } from "@/features/discounts/persistence-contracts";
+import { workspaceCoworkProductKeySchema } from "@/features/reservation/cowork-reservation";
 import {
   discountApplications,
   discountCodeRedemptions,
@@ -54,11 +53,14 @@ describe("discount persistence contracts", () => {
   });
 
   test("accepts only canonical product keys and discount codes", () => {
-    const decodeProductKey = Schema.decodeUnknownSync(discountProductKeySchema);
+    const decodeProductKey = Schema.decodeUnknownSync(
+      workspaceCoworkProductKeySchema
+    );
     const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
 
     for (const tier of discountProductIdentityCodec.fields.tier.literals) {
-      expect(decodeProductKey(`cowork:${tier}`)).toBe(`cowork:${tier}`);
+      const productKey = getWorkspaceProductKey({ kind: "cowork", tier });
+      expect(decodeProductKey(productKey)).toBe(productKey);
     }
     expect(decodeCode("LETNI_SLEVA-50")).toBe("LETNI_SLEVA-50");
     expect(() => decodeProductKey("cowork:enterprise")).toThrow();

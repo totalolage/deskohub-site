@@ -1,15 +1,15 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Option, Schema } from "effect";
-import {
-  type WorkspaceCoworkProductIdentity,
-  workspaceCoworkProductIdentitySchema,
-} from "@/features/checkout/product-identity";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   nonNegativeWorkspaceMoneyCodec,
   positiveWorkspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
+import {
+  type WorkspaceCoworkProductIdentity,
+  workspaceCoworkProductIdentitySchema,
+} from "@/features/reservation/cowork-reservation";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 export type DiscountProductIdentity = WorkspaceCoworkProductIdentity;

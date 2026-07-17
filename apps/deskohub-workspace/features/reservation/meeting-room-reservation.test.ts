@@ -4,8 +4,10 @@ import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getMeetingRoomReservationIssues,
+  getWorkspaceMeetingRoomProductKey,
   meetingRoomReservationOrderInputSchema,
   meetingRoomReservationSchema,
+  workspaceMeetingRoomProductKeySchema,
 } from "./meeting-room-reservation";
 
 const schema = makeSchemaParser(meetingRoomReservationSchema);
@@ -16,6 +18,32 @@ const decodeOrder = Schema.decodeUnknownSync(
 afterEach(() => setSystemTime());
 
 describe("meetingRoomReservationSchema", () => {
+  test("owns canonical meeting-room product keys", () => {
+    expect(
+      getWorkspaceMeetingRoomProductKey({
+        kind: "meeting-room",
+        durationMinutes: 60,
+      })
+    ).toBe("meeting-room:60");
+    expect(
+      getWorkspaceMeetingRoomProductKey({
+        kind: "meeting-room",
+        durationMinutes: 240,
+      })
+    ).toBe("meeting-room:240");
+    expect(
+      getWorkspaceMeetingRoomProductKey({
+        kind: "meeting-room",
+        durationMinutes: 1440,
+      })
+    ).toBe("meeting-room:1440");
+    const decodeProductKey = Schema.decodeUnknownSync(
+      workspaceMeetingRoomProductKeySchema
+    );
+    expect(() => decodeProductKey("meeting-room:4")).toThrow();
+    expect(() => decodeProductKey("meeting-room:240-minutes")).toThrow();
+  });
+
   test("rejects an empty meeting-room start without throwing", () => {
     const result = schema.safeParse({
       startDateTime: "",

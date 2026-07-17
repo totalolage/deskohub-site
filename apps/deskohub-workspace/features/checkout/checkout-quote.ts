@@ -5,7 +5,6 @@ import {
 } from "@/features/checkout/product-catalog";
 import {
   getWorkspaceProductKey,
-  workspaceCoworkProductIdentitySchema,
   workspaceProductIdentitySchema,
   workspaceProductKeySchema,
 } from "@/features/checkout/product-identity";
@@ -26,6 +25,7 @@ import {
   coworkReservationProductSchema,
   normalizedCoworkReservationProductSchema,
 } from "@/features/reservation/cowork-reservation-product";
+import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation";
 
 export const workspaceCheckoutOrderSchema =
   normalizedCoworkReservationProductSchema.annotate({

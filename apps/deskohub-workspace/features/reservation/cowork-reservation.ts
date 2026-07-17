@@ -28,6 +28,29 @@ import {
   plainDateStringSchema,
 } from "@/shared/utils/temporal";
 
+export const workspaceCoworkProductIdentitySchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  tier: coworkReservationProductInputSchema.fields.entryTier,
+});
+
+export type WorkspaceCoworkProductIdentity =
+  typeof workspaceCoworkProductIdentitySchema.Type;
+
+export const workspaceCoworkProductKeySchema = Schema.TemplateLiteral([
+  workspaceCoworkProductIdentitySchema.fields.kind,
+  ":",
+  workspaceCoworkProductIdentitySchema.fields.tier,
+]);
+
+export type WorkspaceCoworkProductKey =
+  typeof workspaceCoworkProductKeySchema.Type;
+
+export const getWorkspaceCoworkProductKey = ({
+  kind,
+  tier,
+}: WorkspaceCoworkProductIdentity): WorkspaceCoworkProductKey =>
+  `${kind}:${tier}`;
+
 const decodeLocalDateTime = Schema.decodeUnknownSync(localDateTimeSchema);
 const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 

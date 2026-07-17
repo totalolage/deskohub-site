@@ -1,5 +1,6 @@
 "use client";
 
+import { Match } from "effect";
 import { Info } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import type { CheckoutSummaryDiscount } from "@/features/checkout/checkout-quote";
@@ -21,12 +22,16 @@ const formatDiscountAdjustment = (
   discount: CheckoutSummaryDiscount["discount"],
   locale: Locale
 ) =>
-  discount.adjustment.kind === "percentage"
-    ? new Intl.NumberFormat(locale, {
-        style: "percent",
-        maximumFractionDigits: 2,
-      }).format(discount.adjustment.basisPoints / 10_000)
-    : formatWorkspaceMoney(discount.adjustment.amount, locale);
+  Match.value(discount.adjustment).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      percentage: ({ basisPoints }) =>
+        new Intl.NumberFormat(locale, {
+          style: "percent",
+          maximumFractionDigits: 2,
+        }).format(basisPoints / 10_000),
+      fixed: ({ amount }) => formatWorkspaceMoney(amount, locale),
+    })
+  );
 
 export function CheckoutSummaryDiscountDetails({
   discounts,
