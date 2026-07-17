@@ -269,6 +269,44 @@ describe("CalendarDiscountProvider", () => {
     expect(loadById).toHaveBeenCalledWith({ discountId: discountIdA });
   });
 
+  test("accepts the exact Google Calendar rich-text code wrapper around a UUID", async () => {
+    const loadById = mock(defaultLoadById);
+
+    await runWithProvider(
+      quote,
+      () =>
+        Effect.succeed([
+          saleEvent({
+            description: `<p><code>${discountIdA}</code></p>`,
+          }),
+        ]),
+      loadById
+    );
+
+    expect(loadById).toHaveBeenCalledWith({ discountId: discountIdA });
+  });
+
+  test.each([
+    [`<p><code>Sale ${discountIdA}</code></p>`],
+    [`<p><code>${discountIdA} ${discountIdB}</code></p>`],
+    [`<p>${discountIdA}</p>`],
+  ])("rejects unsupported rich-text description %s", async (description) => {
+    const result = await runWithProvider(quote.pipe(Effect.result), () =>
+      Effect.succeed([saleEvent({ description })])
+    );
+
+    expect(result).toMatchObject({
+      _tag: "Failure",
+      failure: {
+        reason: "malformed_configuration",
+        cause: {
+          _tag: "CalendarSaleConfigurationError",
+          reason: "invalid_discount_reference",
+        },
+      },
+    });
+  });
+
   for (const [label, event] of invalidEventCases) {
     test(`rejects a referenced ${label}`, async () => {
       const result = await runWithProvider(quote.pipe(Effect.result), () =>

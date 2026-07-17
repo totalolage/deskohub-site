@@ -20,15 +20,17 @@ Multiple codes may reference the same row in `discounts`. Their schedules, allow
 
 The dedicated sales calendar owns only when a sale is active. The referenced `discounts` row owns the customer-facing label, adjustment, and product targets.
 
-Create the discount and all required targets first, then copy its UUID into the Calendar event description. The trimmed description must be exactly the UUID, with no marker, TOML, prose, or second identifier:
+Create the discount and all required targets first, then copy its UUID into the Calendar event description. The visible description content must be exactly the UUID, with no marker, TOML, prose, or second identifier:
 
 ```text
 019bfe6e-8ef0-7def-8b16-55cfbc82edb7
 ```
 
+Google Calendar may store text formatted with its code style as the exact rich-text wrapper `<p><code>UUID</code></p>`. Workspace accepts that canonical wrapper while still requiring its sole visible content to be the UUID. Other HTML or rich-text structures fail closed.
+
 The event must have a non-empty title for operators and must be an all-day event. Its title is not customer-facing. Google Calendar's end date is exclusive; an event displayed through 1 August ends at Prague midnight starting 2 August. Checkout exposes that instant as the sale expiry and begins the countdown exactly 24 hours earlier.
 
-Cancelled events and events without a description are ignored. Any non-empty description that is not exactly one valid UUID, or a UUID that does not resolve to a complete stored discount, is an operational configuration error and checkout fails closed. Cancel or delete the event to stop the sale; do not delete a definition while an active event references it.
+Cancelled events and events without a description are ignored. Any non-empty description that is not an accepted representation of exactly one valid UUID, or a UUID that does not resolve to a complete stored discount, is an operational configuration error and checkout fails closed. Cancel or delete the event to stop the sale; do not delete a definition while an active event references it.
 
 Interactive quotes may retain the resolved event and database definition for up to 60 seconds. Final payment revalidation always reads both Calendar and Postgres freshly. Editing a shared `discounts` row changes every calendar event and code that references it.
 
