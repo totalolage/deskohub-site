@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,

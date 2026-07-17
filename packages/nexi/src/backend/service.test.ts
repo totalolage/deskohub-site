@@ -1,6 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Predicate } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import { NexiRuntimeConfig } from "../config";
 import type { OrderResponse } from "../generated/effect.gen";
 import {

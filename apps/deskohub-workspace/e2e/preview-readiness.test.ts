@@ -1,20 +1,22 @@
 import { expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "./config";
 import { assertPreviewEndpointReady } from "./preview-readiness";
 
 test("checks webhook readiness on the exact protected preview origin", async () => {
   const requests: Array<{ headers: Headers; url: string }> = [];
-  const fetchMock = mock(async (input: URL | RequestInfo, init?: RequestInit) => {
-    const request =
-      input instanceof Request ? input : new Request(input, init);
-    requests.push({
-      headers: request.headers,
-      url: request.url,
-    });
-    return new Response(null, { status: 200 });
-  });
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        headers: request.headers,
+        url: request.url,
+      });
+      return new Response(null, { status: 200 });
+    }
+  );
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(
       Layer.succeed(

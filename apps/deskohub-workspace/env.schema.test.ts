@@ -43,4 +43,16 @@ describe("workspace environment schemas", () => {
 
     expect(result).toEqual({ value: 5_000 });
   });
+
+  test("validates Vercel's standard public environment", () => {
+    const decodeVercelEnvironment = Schema.decodeUnknownSync(
+      workspaceClientEnvSchema.fields.NEXT_PUBLIC_VERCEL_ENV
+    );
+
+    expect(decodeVercelEnvironment(undefined)).toBeUndefined();
+    expect(decodeVercelEnvironment("development")).toBe("development");
+    expect(decodeVercelEnvironment("preview")).toBe("preview");
+    expect(decodeVercelEnvironment("production")).toBe("production");
+    expect(() => decodeVercelEnvironment("staging")).toThrow();
+  });
 });

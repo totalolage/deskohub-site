@@ -1,5 +1,5 @@
 import { Context, Duration, Effect, Layer, Match, Schedule } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import type { ExternalAPIError, NetworkError } from "../errors";
 import type { CreateHostedPaymentPageRequest } from "../generated/effect.gen";
 import type {

@@ -1,8 +1,10 @@
 import { Context, Effect, Layer, Option, Predicate, Schema } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientError from "effect/unstable/http/HttpClientError";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
-import type * as HttpClientResponse from "effect/unstable/http/HttpClientResponse";
+import {
+  HttpClient,
+  HttpClientError,
+  HttpClientRequest,
+  type HttpClientResponse,
+} from "effect/unstable/http";
 import { NexiRuntimeConfig, type NexiRuntimeConfigObj } from "../config";
 import { ExternalAPIError, NetworkError } from "../errors";
 import {

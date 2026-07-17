@@ -10,8 +10,7 @@ test("parses an immutable HTTPS Vercel deployment origin", () => {
   ).toEqual({
     baseUrl:
       "https://deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
-    expectedHost:
-      "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+    expectedHost: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
   });
 });
 

@@ -1,8 +1,9 @@
 import { Effect } from "effect";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { submitCoworkReservationScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import {
-  tryWorkspaceE2EPromise,
+  toWorkspaceE2EError,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
   workspaceE2EError,
@@ -84,27 +85,38 @@ export const requireCheckoutDate = (
 export const selectAvailableCoworkDates = (
   config: WorkspaceE2EConfig,
   count: number
-): Effect.Effect<readonly string[], WorkspaceE2EError> =>
+): Effect.Effect<readonly string[], WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     const from = futureIsoDate(14);
     const to = futureIsoDate(90);
     const params = new URLSearchParams({ entryTier: "basic", from, to });
-    const response = yield* tryWorkspaceE2EPromise(
-      "fetch workspace availability dates",
-      () =>
-        fetch(`${config.baseUrl}/api/workspace/availability?${params}`, {
-          headers: config.bypassSecret
-            ? { "x-vercel-protection-bypass": config.bypassSecret }
-            : undefined,
-        })
+    const httpClient = yield* HttpClient.HttpClient;
+    const request = HttpClientRequest.get(
+      `${config.baseUrl}/api/workspace/availability?${params}`
+    ).pipe(
+      HttpClientRequest.setHeaders(
+        config.bypassSecret
+          ? { "x-vercel-protection-bypass": config.bypassSecret }
+          : {}
+      )
     );
-    yield* tryWorkspaceE2ESync("assert availability response", () =>
-      assert(response.ok, `availability check failed with ${response.status}`)
+    const response = yield* httpClient.execute(request).pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("fetch workspace availability dates", cause)
+      ),
+      Effect.filterOrFail(
+        ({ status }) => status >= 200 && status < 300,
+        ({ status }) =>
+          workspaceE2EError(`availability check failed with ${status}`, {
+            operation: "fetch workspace availability dates",
+          })
+      )
     );
 
-    const availability = (yield* tryWorkspaceE2EPromise(
-      "read workspace availability response",
-      () => response.json()
+    const availability = (yield* response.json.pipe(
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("read workspace availability response", cause)
+      )
     )) as {
       readonly unavailableDates?: unknown;
     };

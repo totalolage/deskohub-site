@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
+import { HttpClient } from "effect/unstable/http";
 import { makeWorkspaceE2ECases } from "../cases";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";

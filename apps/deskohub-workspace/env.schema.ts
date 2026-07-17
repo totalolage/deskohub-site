@@ -69,6 +69,9 @@ export const workspaceClientEnvSchema = Schema.Struct({
   NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN: toEnvSchema(
     Schema.optional(Schema.NonEmptyString)
   ),
+  NEXT_PUBLIC_VERCEL_ENV: toEnvSchema(
+    Schema.optional(Schema.Literals(["production", "preview", "development"]))
+  ),
 });
 
 export type WorkspaceServerEnv = Schema.Schema.Type<

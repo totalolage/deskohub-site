@@ -1,6 +1,5 @@
 import { Effect } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "./config";
 import {
   toWorkspaceE2EError,
@@ -27,11 +26,13 @@ export const assertPreviewEndpointReady = (
           : {}
       )
     );
-    const response = yield* httpClient.execute(request).pipe(
-      Effect.mapError((cause) =>
-        toWorkspaceE2EError(`check ${path} preview endpoint`, cause)
-      )
-    );
+    const response = yield* httpClient
+      .execute(request)
+      .pipe(
+        Effect.mapError((cause) =>
+          toWorkspaceE2EError(`check ${path} preview endpoint`, cause)
+        )
+      );
     yield* Effect.succeed(response).pipe(
       Effect.filterOrFail(
         ({ status }) => status >= 200 && status < 300,

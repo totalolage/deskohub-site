@@ -1,6 +1,5 @@
 import { Effect } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
-import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
+import { HttpClient, HttpClientRequest } from "effect/unstable/http";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";

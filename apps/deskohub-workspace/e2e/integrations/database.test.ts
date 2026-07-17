@@ -1,6 +1,6 @@
 import { expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import type { CheckoutRow } from "../types";
 import { replayNexiWebhook } from "./database";
@@ -12,17 +12,19 @@ test("replays Nexi notification against the exact protected preview", async () =
     method: string | undefined;
     url: string;
   }> = [];
-  const fetchMock = mock(async (input: URL | RequestInfo, init?: RequestInit) => {
-    const request =
-      input instanceof Request ? input : new Request(input, init);
-    requests.push({
-      body: await request.clone().text(),
-      headers: request.headers,
-      method: request.method,
-      url: request.url,
-    });
-    return new Response(null, { status: 200 });
-  });
+  const fetchMock = mock(
+    async (input: URL | RequestInfo, init?: RequestInit) => {
+      const request =
+        input instanceof Request ? input : new Request(input, init);
+      requests.push({
+        body: await request.clone().text(),
+        headers: request.headers,
+        method: request.method,
+        url: request.url,
+      });
+      return new Response(null, { status: 200 });
+    }
+  );
   const httpClientLayer = FetchHttpClient.layer.pipe(
     Layer.provide(
       Layer.succeed(

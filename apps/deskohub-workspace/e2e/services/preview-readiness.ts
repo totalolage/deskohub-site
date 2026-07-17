@@ -1,5 +1,5 @@
 import { Context, Effect, Layer } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
+import { HttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { assertPreviewEndpointReady } from "../preview-readiness";
@@ -21,14 +21,8 @@ export class WorkspaceE2EPreviewReadinessService extends Context.Service<
       return {
         assertWebhookEndpoints: (config) =>
           Effect.gen(function* () {
-            yield* assertPreviewEndpointReady(
-              config,
-              "/api/webhooks/nexi"
-            );
-            yield* assertPreviewEndpointReady(
-              config,
-              "/api/webhooks/resend"
-            );
+            yield* assertPreviewEndpointReady(config, "/api/webhooks/nexi");
+            yield* assertPreviewEndpointReady(config, "/api/webhooks/resend");
           }).pipe(Effect.provideService(HttpClient.HttpClient, httpClient)),
       };
     })

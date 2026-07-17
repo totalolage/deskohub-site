@@ -1,5 +1,5 @@
 import { Effect } from "effect";
-import * as HttpClient from "effect/unstable/http/HttpClient";
+import { HttpClient } from "effect/unstable/http";
 import {
   checkoutFlows,
   makeCoworkCheckoutData,

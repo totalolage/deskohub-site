@@ -15,7 +15,8 @@ Configure BotID end to end:
   substitute `NODE_ENV` for `VERCEL_ENV`.
 - Read Vercel's standard `NEXT_PUBLIC_VERCEL_ENV` in client instrumentation and
   `VERCEL_ENV` in build/server code. Do not create a custom public mirror of the
-  Vercel environment.
+  Vercel environment. Expose the public value through the Workspace typed `env`
+  module rather than reading `process.env` directly in client code.
 - Keep server-side `checkBotId()` before mutation side effects in production.
 - Do not use blanket `/*` client interception without matching server verification.
 - Preserve production verification failure policies and error mapping.

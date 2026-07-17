@@ -33,8 +33,7 @@ test("submits the hydrated contact form from a fresh semantic snapshot", async (
     baseUrl:
       "https://deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
     bypassSecret: undefined,
-    expectedHost:
-      "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
+    expectedHost: "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
   } satisfies WorkspaceE2EConfig;
   const runStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
 

@@ -10,7 +10,7 @@ import {
   Schedule,
   Schema,
 } from "effect";
-import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
+import { FetchHttpClient } from "effect/unstable/http";
 import { DotyposRuntimeConfig } from "../config";
 import { ExternalAPIError, NetworkError, ValidationError } from "../errors";
 import type {
