@@ -1,10 +1,13 @@
 import { Match, Schema } from "effect";
 import {
-  type CoworkReservationProductInput,
+  type CoworkReservationOrderInput,
   coworkReservationOrderSchema,
+} from "@/features/reservation/cowork-reservation";
+import {
+  type CoworkReservationProductInput as CoworkProductInput,
   getCoworkReservationProductCoffee,
   getCoworkReservationProductMonitorOption,
-} from "@/features/reservation/cowork-reservation";
+} from "@/features/reservation/cowork-reservation-product";
 import {
   getMeetingRoomReservationProductCoffee,
   getMeetingRoomReservationProductMonitorOption,
@@ -21,7 +24,7 @@ export type ReservationOrderInput = typeof reservationOrderSchema.Encoded;
 export type ReservationOrderData = typeof reservationOrderSchema.Type;
 
 export type ReservationProductProjectionInput =
-  | CoworkReservationProductInput
+  | (CoworkProductInput & Pick<CoworkReservationOrderInput, "kind">)
   | MeetingRoomReservationProductInput;
 
 export const getReservationProductCoffee = (

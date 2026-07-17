@@ -5,9 +5,9 @@ import {
   ReservationFormFallback,
 } from "@/features/reservation/components/reservation-form";
 import {
-  reservationDefaultValues,
-  tierRequiresMonitorOption,
-} from "@/features/reservation/schemas/reservation";
+  coworkReservationDefaultValues,
+  getCoworkTierRequiresMonitorOption,
+} from "@/features/reservation/cowork-reservation";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
 type CheckoutOrderPageProps = {
@@ -15,8 +15,8 @@ type CheckoutOrderPageProps = {
 };
 
 export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
-  const showMonitorOptionFallback = tierRequiresMonitorOption(
-    reservationDefaultValues.entryTier
+  const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
+    coworkReservationDefaultValues.entryTier
   );
 
   return (

@@ -26,7 +26,7 @@ const workspaceAvailabilityQueryBaseFields = {
   to: Schema.String,
 };
 
-const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
+export const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
   ...workspaceAvailabilityQueryBaseFields,
   date: Schema.optional(Schema.String),
@@ -36,7 +36,7 @@ const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
   ),
 });
 
-const meetingRoomWorkspaceAvailabilityQuerySchema = Schema.Struct({
+export const meetingRoomWorkspaceAvailabilityQuerySchema = Schema.Struct({
   kind: Schema.Literal(meetingRoomReservationKind),
   ...workspaceAvailabilityQueryBaseFields,
   startsAt: Schema.optional(reservationTimestampInputSchema),
@@ -50,6 +50,8 @@ export const workspaceAvailabilityQuerySchema = Schema.Union([
 
 export type WorkspaceAvailabilityQuery =
   typeof workspaceAvailabilityQuerySchema.Type;
+export type CoworkWorkspaceAvailabilityQuery =
+  typeof coworkWorkspaceAvailabilityQuerySchema.Type;
 
 export const workspaceAvailabilityKeys = {
   availability: (query: WorkspaceAvailabilityQuery) =>
@@ -175,25 +177,21 @@ export const parseWorkspaceAvailabilityQuery = (
     reservationKind === "meeting-room" ? getIntervalParam(searchParams) : {};
 
   return Match.value(reservationKind).pipe(
-    Match.when("meeting-room", () =>
-      meetingRoomWorkspaceAvailabilityQuerySchema.make({
-        kind: meetingRoomReservationKind,
-        from,
-        to,
-        ...(interval.startsAt && { startsAt: interval.startsAt }),
-        ...(interval.endsAt && { endsAt: interval.endsAt }),
-      })
-    ),
-    Match.when("cowork", () =>
-      coworkWorkspaceAvailabilityQuerySchema.make({
-        kind: coworkReservationKind,
-        from,
-        to,
-        ...(date && { date }),
-        ...(entryTier && { entryTier }),
-        ...(monitorOption && { monitorOption }),
-      })
-    ),
+    Match.when("meeting-room", () => ({
+      kind: meetingRoomReservationKind,
+      from,
+      to,
+      ...(interval.startsAt && { startsAt: interval.startsAt }),
+      ...(interval.endsAt && { endsAt: interval.endsAt }),
+    })),
+    Match.when("cowork", () => ({
+      kind: coworkReservationKind,
+      from,
+      to,
+      ...(date && { date }),
+      ...(entryTier && { entryTier }),
+      ...(monitorOption && { monitorOption }),
+    })),
     Match.exhaustive
   );
 };

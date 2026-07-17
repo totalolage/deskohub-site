@@ -39,7 +39,10 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import {
+  getCoworkReservationDetails,
+  type NormalizedCoworkReservationOrder,
+} from "@/features/reservation/cowork-reservation";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -67,6 +70,13 @@ import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservati
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { openPayState, type SignedPayState } from "./pay-state.server";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
+
+const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
+  legalEvidenceMapSchema,
+  {
+    onExcessProperty: "error",
+  }
+);
 
 export class CheckoutError extends Data.TaggedError("CheckoutError")<{
   readonly message: string;
@@ -189,6 +199,22 @@ export const getNexiCheckoutCurrencyOverride = () => {
   return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
 };
 
+const getCheckoutLegalAcceptanceSnapshot: (
+  locale: Locale
+) => Effect.Effect<CheckoutLegalAcceptanceSnapshot, CheckoutError> = Effect.fn(
+  "getCheckoutLegalAcceptanceSnapshot"
+)((locale) =>
+  getLegalAcceptanceSnapshot(locale).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CheckoutError({
+          message: "Legal acceptance snapshot could not be created.",
+          cause,
+        })
+    )
+  )
+);
+
 const toCheckoutLegalDocuments = (
   documents: CheckoutLegalAcceptanceSnapshot
 ) => ({
@@ -211,7 +237,7 @@ const getCheckoutLegalEvidence = (input: {
 }): LegalEvidenceMap => {
   const documents = toCheckoutLegalDocuments(input.legalDocuments);
 
-  return legalEvidenceMapSchema.parse({
+  return decodeLegalEvidenceMap({
     [documents.termsAndConditions.hash]: {
       documentKey: "termsAndConditions",
       documentHash: documents.termsAndConditions.hash,
@@ -236,19 +262,14 @@ const getCheckoutLegalEvidence = (input: {
 
 const buildCheckoutDetailsForPayment = (input: {
   readonly locale: Locale;
-  readonly data: ReservationOrderData;
+  readonly data: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: LegalEvidenceMap;
-}): Omit<CheckoutDetailsJson, "fulfillment"> => ({
+}): CheckoutDetailsJson => ({
   schema: "workspace-checkout-details",
   schemaVersion: 1,
   locale: input.locale,
-  reservation: {
-    tier: input.data.entryTier,
-    date: input.data.date,
-    coffee: input.data.coffee,
-    monitorOption: input.data.monitorOption,
-  },
+  reservation: getCoworkReservationDetails(input.data),
   payment: {
     expectedPrice: input.quote.payment.expectedPrice,
     undiscountedPrice: input.quote.payment.undiscountedPrice,
@@ -287,7 +308,7 @@ const openFinalPayState: (
 
 const getFreshPayUrl: (input: {
   readonly locale: Locale;
-  readonly reservation: ReservationOrderData;
+  readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly submittedCode: CanonicalDiscountCode | undefined;
@@ -645,14 +666,13 @@ export const CheckoutServiceLive = Layer.effect(
 
           yield* reservations.updateProductIntent({
             id: reservation.id,
-            productTier: data.entryTier,
-            productCoffee: data.coffee,
-            productMonitorOption: data.monitorOption,
+            product: data,
             locale,
           });
 
           const acceptedAt = new Date().toISOString();
-          const legalDocuments = yield* getLegalAcceptanceSnapshot(locale);
+          const legalDocuments =
+            yield* getCheckoutLegalAcceptanceSnapshot(locale);
           const legalEvidence = getCheckoutLegalEvidence({
             acceptedAt,
             locale,

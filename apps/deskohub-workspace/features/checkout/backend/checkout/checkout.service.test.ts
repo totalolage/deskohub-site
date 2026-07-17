@@ -1,5 +1,5 @@
-import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
+import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
@@ -22,7 +22,7 @@ import { DiscountServiceMock } from "@/features/discounts/discount.service.mock"
 import { DiscountCodeUnavailableError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import {
   buildSignedPayState,
@@ -50,15 +50,18 @@ mock.module("@/features/legal/acceptance-snapshot", () => ({
   ),
 }));
 
-const reservationData: ReservationOrderData = {
+const reservationData = Schema.decodeUnknownSync(
+  normalizedCoworkReservationOrderSchema
+)({
+  kind: "cowork",
   entryTier: "profi",
   date: "2026-06-20",
-  coffee: false,
+  coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
-};
+});
 
 const money = (value: number) => ({
   value,

@@ -2,27 +2,25 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import {
   Data,
   Effect,
+  Match,
   Option,
   Schema,
   SchemaGetter,
   SchemaIssue,
 } from "effect";
-import type {
-  CheckoutSummaryChangedKeys,
-  WorkspaceCheckoutOrder,
-  WorkspaceCheckoutQuote,
+import {
+  type CheckoutSummaryChangedKeys,
+  checkoutSummaryChangedKeysSchema,
+  type WorkspaceCheckoutQuote,
+  workspaceCheckoutQuoteSchema,
 } from "@/features/checkout/checkout-quote";
-import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
 import {
-  appliedDiscountCodec,
   type CanonicalDiscountCode,
   canonicalDiscountCodeSchema,
 } from "@/features/discounts/contracts";
 import { type Locale, locales } from "@/features/i18n";
-import { reservationCustomerSchema } from "@/features/reservation/reservation-contact";
-import { plainDateStringSchema } from "@/shared/utils/temporal";
+import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 
 export const payStateTokenQueryParam = "payState" as const;
 export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
@@ -34,81 +32,6 @@ const keyByteLength = 32;
 const nonEmptyStringSchema = Schema.String.check(Schema.isNonEmpty());
 const nonNegativeIntSchema = Schema.Int.check(Schema.isGreaterThanOrEqualTo(0));
 const positiveIntSchema = Schema.Int.check(Schema.isGreaterThan(0));
-const requiredCoffeeSchema = Schema.Boolean.pipe(
-  Schema.decodeTo(Schema.Literal(true), {
-    decode: SchemaGetter.transform(() => true as const),
-    encode: SchemaGetter.transform(() => true),
-  })
-);
-
-const reservationContactFields = reservationCustomerSchema.fields;
-const payStateReservationSchema = Schema.Union([
-  Schema.Struct({
-    entryTier: Schema.Literal("basic"),
-    date: plainDateStringSchema,
-    coffee: Schema.Boolean,
-    monitorOption: Schema.optional(Schema.Never),
-    ...reservationContactFields,
-  }),
-  Schema.Struct({
-    entryTier: Schema.Literal("plus"),
-    date: plainDateStringSchema,
-    coffee: requiredCoffeeSchema,
-    monitorOption: Schema.optional(Schema.Never),
-    ...reservationContactFields,
-  }),
-  Schema.Struct({
-    entryTier: Schema.Literal("profi"),
-    date: plainDateStringSchema,
-    coffee: requiredCoffeeSchema,
-    monitorOption: Schema.Literals(workspaceProductMonitorOptions),
-    ...reservationContactFields,
-  }),
-]).annotate({
-  identifier: "PayStateReservation",
-  description: "Normalized cowork reservation carried by Pay state.",
-});
-
-const checkoutOrderSchema = Schema.Union([
-  Schema.Struct({
-    entryTier: Schema.Literal("basic"),
-    coffee: Schema.Boolean,
-    monitorOption: Schema.optional(Schema.Never),
-  }),
-  Schema.Struct({
-    entryTier: Schema.Literal("plus"),
-    coffee: Schema.Literal(true),
-    monitorOption: Schema.optional(Schema.Never),
-  }),
-  Schema.Struct({
-    entryTier: Schema.Literal("profi"),
-    coffee: Schema.Literal(true),
-    monitorOption: Schema.Literals(workspaceProductMonitorOptions),
-  }),
-]).annotate({
-  identifier: "PayStateCheckoutOrder",
-  description: "Normalized Workspace checkout order carried by Pay state.",
-});
-
-const quoteSnapshotSchema = Schema.Struct({
-  schema: Schema.Literal("workspace-checkout-quote"),
-  fingerprint: nonEmptyStringSchema,
-  order: checkoutOrderSchema,
-  summary: checkoutSummarySchema,
-  payment: Schema.Struct({
-    expectedPrice: nonNegativeWorkspaceMoneyCodec,
-    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
-    discounts: Schema.Array(appliedDiscountCodec),
-  }),
-}).annotate({
-  identifier: "PayStateCheckoutQuote",
-  description: "Authoritative checkout quote snapshot carried by Pay state.",
-});
-
-const changedKeysSchema = Schema.Struct({
-  sectionKeys: Schema.Array(Schema.String),
-  itemKeys: Schema.Array(Schema.String),
-});
 
 export const signedPayStateSchema = Schema.Struct({
   kid: nonEmptyStringSchema,
@@ -116,69 +39,18 @@ export const signedPayStateSchema = Schema.Struct({
   exp: positiveIntSchema,
   locale: Schema.Literals(locales),
   orderId: nonEmptyStringSchema,
-  reservation: payStateReservationSchema,
-  quote: quoteSnapshotSchema,
+  reservation: normalizedCoworkReservationOrderSchema,
+  quote: workspaceCheckoutQuoteSchema,
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
   submittedCode: Schema.optional(canonicalDiscountCodeSchema),
-  changedKeys: Schema.optional(changedKeysSchema),
+  changedKeys: Schema.optional(checkoutSummaryChangedKeysSchema),
 }).annotate({
   identifier: "SignedPayState",
   description: "Workspace checkout Pay state payload.",
 });
 
-export const retryPayStateSchema = Schema.Struct({
-  type: Schema.Literal("retryPayState"),
-  schema: Schema.Literal("workspace-pay-state"),
-  checkoutToken: nonEmptyStringSchema,
-  paymentOrderId: nonEmptyStringSchema,
-  stateSemantics: Schema.Literal("checkout-return-state-token"),
-  repositorySemantics: Schema.Struct({
-    repository: Schema.Literal("CheckoutReturnStateTokenRepository"),
-    opaque: Schema.Literal(true),
-    singleUse: Schema.Literal(true),
-    ttlSeconds: Schema.Literal(600),
-    boundToPaymentOrderId: Schema.Literal(true),
-  }),
-}).annotate({
-  identifier: "RetryPayState",
-  description: "Opaque checkout retry state carried by Pay state.",
-});
-
-export const payStateSchema = Schema.Union([
-  signedPayStateSchema,
-  retryPayStateSchema,
-]).annotate({
-  identifier: "PayState",
-  description: "Workspace checkout Pay state payload.",
-});
-
-type DecodedSignedPayState = typeof signedPayStateSchema.Type;
+export type SignedPayState = typeof signedPayStateSchema.Type;
 type EncodedSignedPayState = typeof signedPayStateSchema.Encoded;
-export type RetryPayState = typeof retryPayStateSchema.Type;
-
-export type SignedPayState = {
-  readonly kid: string;
-  readonly iat: number;
-  readonly exp: number;
-  readonly locale: Locale;
-  readonly orderId: string;
-  readonly reservation: {
-    readonly entryTier: WorkspaceCheckoutOrder["entryTier"];
-    readonly date: string;
-    readonly coffee: boolean;
-    readonly monitorOption?: WorkspaceCheckoutOrder["monitorOption"];
-    readonly name: string;
-    readonly email: string;
-    readonly phone: string;
-    readonly message?: string;
-  };
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly acceptedTotal: WorkspaceCheckoutQuote["summary"]["total"];
-  readonly submittedCode?: CanonicalDiscountCode;
-  readonly changedKeys?: CheckoutSummaryChangedKeys;
-};
-
-export type PayState = SignedPayState | RetryPayState;
 
 export type PayStateKey = {
   readonly kid: string;
@@ -199,16 +71,7 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
-  readonly reservation: {
-    readonly entryTier: WorkspaceCheckoutOrder["entryTier"];
-    readonly date: string;
-    readonly coffee: boolean;
-    readonly monitorOption?: WorkspaceCheckoutOrder["monitorOption"];
-    readonly name: string;
-    readonly email: string;
-    readonly phone: string;
-    readonly message?: string;
-  };
+  readonly reservation: typeof normalizedCoworkReservationOrderSchema.Type;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly submittedCode?: CanonicalDiscountCode;
@@ -333,20 +196,30 @@ export const buildSignedPayState = (
       (input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds)) /
       1000
   );
+  const reservationBase = {
+    kind: "cowork" as const,
+    date: input.reservation.date,
+    name: input.reservation.name,
+    email: input.reservation.email,
+    phone: input.reservation.phone,
+    ...(input.reservation.message !== undefined && {
+      message: input.reservation.message,
+    }),
+  };
   const state: SignedPayState = {
     kid: activeKey.kid,
     iat,
     exp,
     locale: input.locale,
     orderId: input.orderId,
-    reservation: {
-      ...input.reservation,
-      entryTier: input.quote.order.entryTier,
-      coffee: input.quote.order.coffee,
-      monitorOption: input.quote.order.monitorOption,
-    },
+    reservation: Match.value(input.quote.order).pipe(
+      Match.discriminatorsExhaustive("entryTier")({
+        basic: (product) => ({ ...reservationBase, ...product }),
+        plus: (product) => ({ ...reservationBase, ...product }),
+        profi: (product) => ({ ...reservationBase, ...product }),
+      })
+    ),
     quote: {
-      schema: input.quote.schema,
       fingerprint: input.quote.fingerprint,
       order: input.quote.order,
       summary: input.quote.summary,
@@ -367,24 +240,6 @@ export const buildSignedPayState = (
 
   return state;
 };
-
-export const buildRetryPayState = (input: {
-  readonly paymentOrderId: string;
-  readonly checkoutToken: string;
-}): RetryPayState => ({
-  type: "retryPayState",
-  schema: "workspace-pay-state",
-  paymentOrderId: input.paymentOrderId,
-  checkoutToken: input.checkoutToken,
-  stateSemantics: "checkout-return-state-token",
-  repositorySemantics: {
-    repository: "CheckoutReturnStateTokenRepository",
-    opaque: true,
-    singleUse: true,
-    ttlSeconds: 600,
-    boundToPaymentOrderId: true,
-  },
-});
 
 const payStateSchemaIssue = (actual: unknown, message: string) =>
   new SchemaIssue.InvalidValue(Option.some(actual), { message });
@@ -429,7 +284,7 @@ const sealPayStateRaw = (
 const openPayStateRaw = (
   token: string,
   options: PayStateCryptoOptions = {}
-): DecodedSignedPayState => {
+): SignedPayState => {
   const tokenParts = token.split(".");
   const [encodedHeader, encodedIv, encodedCiphertext, encodedAuthTag] =
     tokenParts;
@@ -519,7 +374,7 @@ const openPayStateRaw = (
 
 export const makePayStateTokenSchema = (
   options: PayStateCryptoOptions = {}
-): Schema.Codec<DecodedSignedPayState, string> =>
+): Schema.Codec<SignedPayState, string> =>
   Schema.String.pipe(
     Schema.decodeTo(signedPayStateSchema, {
       decode: SchemaGetter.transformOrFail((token: string) =>
@@ -534,7 +389,7 @@ export const makePayStateTokenSchema = (
             ),
         })
       ),
-      encode: SchemaGetter.transformOrFail((state) =>
+      encode: SchemaGetter.transformOrFail((state: EncodedSignedPayState) =>
         Effect.try({
           try: () => sealPayStateRaw(state, options),
           catch: (error) =>

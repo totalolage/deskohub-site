@@ -34,6 +34,7 @@ mock.module("next/headers", () => ({
 }));
 
 const reservation = {
+  kind: "cowork" as const,
   entryTier: "basic" as const,
   date: "2026-07-01",
   coffee: false,
@@ -243,9 +244,9 @@ describe("prepareWorkspacePayState", () => {
         fulfillmentState: "not_started",
         dotyposCustomerId: input.dotyposCustomerId,
         customerAccessCode: input.customerAccessCode,
-        productTier: input.productTier,
-        productCoffee: input.productCoffee,
-        productMonitorOption: input.productMonitorOption,
+        productTier: input.product.entryTier,
+        productCoffee: input.product.coffee,
+        productMonitorOption: input.product.monitorOption,
         locale: input.locale,
         reservationHoldExpiresAt: input.reservationHoldExpiresAt,
       } as never)
@@ -353,10 +354,9 @@ describe("prepareWorkspacePayState", () => {
     expect(createDraft).toHaveBeenCalledTimes(1);
     expect(claimHoldCreation).toHaveBeenCalledWith("reservation-id");
     expect(assignTableId).toHaveBeenCalledWith({
-      tier: "basic",
+      entryTier: "basic",
       date: reservation.date,
       coffee: false,
-      monitorOption: undefined,
     });
     expect(createReservation).toHaveBeenCalledTimes(1);
     expect(attachHold).toHaveBeenCalledWith(
@@ -421,9 +421,7 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(result.updateProductIntent).toHaveBeenCalledWith({
       id: existingReservation.id,
-      productTier: "basic",
-      productCoffee: false,
-      productMonitorOption: undefined,
+      product: reservation,
       locale: "en-US",
     });
     expect(result.findOrCreateCustomer).not.toHaveBeenCalled();

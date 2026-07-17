@@ -10,14 +10,14 @@ import {
   DiscountService,
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
-import type { ReservationOrderData } from "@/features/reservation/schemas/reservation";
+import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
 import { getNexiCheckoutCurrencyOverride } from "./checkout.service";
 
 export const buildAuthoritativeWorkspaceCheckoutQuote = Effect.fn(
   "buildAuthoritativeWorkspaceCheckoutQuote"
 )(
   function* (input: {
-    readonly reservation: ReservationOrderData;
+    readonly reservation: NormalizedCoworkReservationOrder;
     readonly dotyposCustomerId: string;
     readonly locale: Locale;
     readonly submittedCode: CanonicalDiscountCode | undefined;

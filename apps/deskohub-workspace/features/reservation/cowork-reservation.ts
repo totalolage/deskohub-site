@@ -1,12 +1,19 @@
 import { Match, Schema, SchemaGetter } from "effect";
-import {
-  getWorkspaceProductByTier,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
-  workspaceCoworkProductTiers,
-  workspaceProductMonitorOptions,
-} from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
+import {
+  coworkReservationProductInputSchema,
+  getAllowedMonitorOptionsForCoworkTier,
+  getCoworkReservationProductCoffee,
+  getCoworkReservationProductIssues,
+  getCoworkReservationProductMonitorOption,
+  getCoworkTierIncludesCourtesyCoffee,
+  getCoworkTierRequiresMonitorOption,
+  normalizeCoworkReservationProduct,
+  normalizedBasicCoworkReservationProductSchema,
+  normalizedPlusCoworkReservationProductSchema,
+  normalizedProfiCoworkReservationProductSchema,
+  type WorkspaceCoworkProductTier,
+} from "@/features/reservation/cowork-reservation-product";
 import { reservationLegalConsentSchema } from "@/features/reservation/reservation-consent";
 import {
   normalizedReservationCustomerSchema,
@@ -18,9 +25,11 @@ import { coworkReservationKind } from "@/features/reservation/reservation-kind";
 import {
   isPlainDateString,
   localDateTimeSchema,
+  plainDateStringSchema,
 } from "@/shared/utils/temporal";
 
 const decodeLocalDateTime = Schema.decodeUnknownSync(localDateTimeSchema);
+const decodePlainDate = Schema.decodeUnknownSync(plainDateStringSchema);
 
 export const getCoworkReservationIntervalInput = (
   date: string
@@ -40,19 +49,10 @@ const dateSchema = Schema.String.check(
   })
 );
 
-const monitorOptionSchema = Schema.optional(
-  Schema.Union([
-    Schema.Literals(workspaceProductMonitorOptions),
-    Schema.Literal(""),
-  ])
-);
-
 const coworkReservationOrderBaseSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
-  entryTier: Schema.Literals(workspaceCoworkProductTiers),
+  ...coworkReservationProductInputSchema.fields,
   date: dateSchema,
-  coffee: Schema.Boolean,
-  monitorOption: monitorOptionSchema,
 });
 
 export const coworkReservationOrderInputSchema = Schema.Struct({
@@ -71,205 +71,158 @@ export type CoworkReservationOrderInput =
 export type CoworkReservationFormInput =
   typeof coworkReservationFormInputSchema.Type;
 
-const normalizedBasicCoworkReservationDetailsSchema = Schema.Struct({
-  ...normalizedReservationCustomerSchema.fields,
-  entryTier: Schema.Literal("basic"),
-  date: Schema.String,
-  coffee: Schema.Boolean,
-});
-
-const normalizedPlusCoworkReservationDetailsSchema = Schema.Struct({
-  ...normalizedReservationCustomerSchema.fields,
-  entryTier: Schema.Literal("plus"),
-  date: Schema.String,
-  coffee: Schema.Literal(true),
-});
-
-const normalizedProfiCoworkReservationDetailsSchema = Schema.Struct({
-  ...normalizedReservationCustomerSchema.fields,
-  entryTier: Schema.Literal("profi"),
-  date: Schema.String,
-  coffee: Schema.Literal(true),
-  monitorOption: Schema.Literals(workspaceProductMonitorOptions),
-});
-
-const normalizedCoworkReservationDetailsSchema = Schema.Union([
-  normalizedBasicCoworkReservationDetailsSchema,
-  normalizedPlusCoworkReservationDetailsSchema,
-  normalizedProfiCoworkReservationDetailsSchema,
-]);
-
-export const normalizedCoworkReservationFormSchema = Schema.Union([
-  Schema.Struct({
-    ...normalizedBasicCoworkReservationDetailsSchema.fields,
-    legalConsent: Schema.Boolean,
-  }),
-  Schema.Struct({
-    ...normalizedPlusCoworkReservationDetailsSchema.fields,
-    legalConsent: Schema.Boolean,
-  }),
-  Schema.Struct({
-    ...normalizedProfiCoworkReservationDetailsSchema.fields,
-    legalConsent: Schema.Boolean,
-  }),
-]);
-
-type NormalizedCoworkReservationDetails =
-  typeof normalizedCoworkReservationDetailsSchema.Type;
-export type NormalizedCoworkReservationForm =
-  typeof normalizedCoworkReservationFormSchema.Type;
-
-const normalizeMonitorOption = (
-  monitorOption: WorkspaceProductMonitorOption | "" | undefined
-) => monitorOption || undefined;
-
-export type CoworkReservationProductInput = Pick<
-  CoworkReservationOrderInput,
-  "kind" | "entryTier" | "coffee" | "monitorOption"
->;
-
-export const getCoworkReservationProductCoffee = (
-  reservation: CoworkReservationProductInput
-) => Boolean(reservation.coffee);
-
-export const getCoworkReservationProductMonitorOption = (
-  reservation: CoworkReservationProductInput
-) => normalizeMonitorOption(reservation.monitorOption);
-
-export const getCoworkTierIncludesCourtesyCoffee = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).includesCourtesyCoffee;
-
-export const getCoworkTierRequiresMonitorOption = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).requiresMonitorOption;
-
-export const getAllowedMonitorOptionsForCoworkTier = (
-  tier: WorkspaceCoworkProductTier
-) => getWorkspaceProductByTier(tier).allowedMonitorOptions;
-
-export const getCoworkReservationIssues = (
-  data: CoworkReservationOrderInput | CoworkReservationFormInput
-): readonly Schema.FilterIssue[] => {
-  const product = getWorkspaceProductByTier(data.entryTier);
-  const monitorOption = normalizeMonitorOption(data.monitorOption);
-
-  if (product.requiresMonitorOption && !monitorOption) {
-    return [
-      {
-        path: ["monitorOption"],
-        issue: m.reservationValidationMonitorRequired(),
-      },
-    ];
-  }
-
-  if (
-    product.requiresMonitorOption &&
-    monitorOption &&
-    !product.allowedMonitorOptions.includes(monitorOption)
-  ) {
-    return [
-      {
-        path: ["monitorOption"],
-        issue: m.reservationValidationMonitorUnavailable(),
-      },
-    ];
-  }
-
-  if (!product.requiresMonitorOption && monitorOption) {
-    return [
-      {
-        path: ["monitorOption"],
-        issue: m.reservationValidationMonitorUnavailable(),
-      },
-    ];
-  }
-
-  return [];
-};
-
-type NormalizedCoworkReservationBase = Omit<
-  CoworkReservationOrderInput,
-  "kind" | "entryTier" | "date" | "coffee" | "monitorOption"
->;
-
-const normalizeCoworkReservationDetails = (
-  data: CoworkReservationOrderInput | CoworkReservationFormInput
-): NormalizedCoworkReservationDetails => {
-  const base: NormalizedCoworkReservationBase = {
-    name: data.name,
-    email: data.email,
-    phone: data.phone,
-    ...(data.message !== undefined && { message: data.message }),
-  };
-
-  return Match.value(data).pipe(
-    Match.when({ entryTier: "basic" }, () => ({
-      ...base,
-      entryTier: "basic" as const,
-      date: data.date,
-      coffee: data.coffee,
-    })),
-    Match.when({ entryTier: "plus" }, () => ({
-      ...base,
-      entryTier: "plus" as const,
-      date: data.date,
-      coffee: true as const,
-    })),
-    Match.when({ entryTier: "profi" }, () => ({
-      ...base,
-      entryTier: "profi" as const,
-      date: data.date,
-      coffee: true as const,
-      monitorOption: normalizeMonitorOption(data.monitorOption)!,
-    })),
-    Match.exhaustive
-  );
-};
-
 export const normalizedBasicCoworkReservationOrderSchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
-  ...normalizedBasicCoworkReservationDetailsSchema.fields,
+  ...normalizedReservationCustomerSchema.fields,
+  ...normalizedBasicCoworkReservationProductSchema.fields,
+  date: plainDateStringSchema,
 });
+
 export const normalizedPlusCoworkReservationOrderSchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
-  ...normalizedPlusCoworkReservationDetailsSchema.fields,
+  ...normalizedReservationCustomerSchema.fields,
+  ...normalizedPlusCoworkReservationProductSchema.fields,
+  date: plainDateStringSchema,
 });
+
 export const normalizedProfiCoworkReservationOrderSchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
-  ...normalizedProfiCoworkReservationDetailsSchema.fields,
+  ...normalizedReservationCustomerSchema.fields,
+  ...normalizedProfiCoworkReservationProductSchema.fields,
+  date: plainDateStringSchema,
 });
+
 export const normalizedCoworkReservationOrderSchema = Schema.Union([
   normalizedBasicCoworkReservationOrderSchema,
   normalizedPlusCoworkReservationOrderSchema,
   normalizedProfiCoworkReservationOrderSchema,
 ]);
 
+export const normalizedCoworkReservationFormSchema = Schema.Union([
+  Schema.Struct({
+    ...normalizedBasicCoworkReservationOrderSchema.fields,
+    legalConsent: Schema.Boolean,
+  }),
+  Schema.Struct({
+    ...normalizedPlusCoworkReservationOrderSchema.fields,
+    legalConsent: Schema.Boolean,
+  }),
+  Schema.Struct({
+    ...normalizedProfiCoworkReservationOrderSchema.fields,
+    legalConsent: Schema.Boolean,
+  }),
+]);
+
 export type NormalizedCoworkReservationOrder =
   typeof normalizedCoworkReservationOrderSchema.Type;
+export type NormalizedCoworkReservationForm =
+  typeof normalizedCoworkReservationFormSchema.Type;
 
-const toCoworkReservationOrder = (
-  reservation: NormalizedCoworkReservationDetails
-) =>
+const coworkReservationDetailsDateSchema = Schema.toEncoded(
+  plainDateStringSchema
+);
+
+const basicCoworkReservationDetailsSchema = Schema.Struct({
+  ...normalizedBasicCoworkReservationProductSchema.fields,
+  date: coworkReservationDetailsDateSchema,
+});
+
+const plusCoworkReservationDetailsSchema = Schema.Struct({
+  ...normalizedPlusCoworkReservationProductSchema.fields,
+  date: coworkReservationDetailsDateSchema,
+});
+
+const profiCoworkReservationDetailsSchema = Schema.Struct({
+  ...normalizedProfiCoworkReservationProductSchema.fields,
+  date: coworkReservationDetailsDateSchema,
+});
+
+export const coworkReservationDetailsSchema = Schema.Union([
+  basicCoworkReservationDetailsSchema,
+  plusCoworkReservationDetailsSchema,
+  profiCoworkReservationDetailsSchema,
+]).annotate({
+  identifier: "CoworkReservationDetails",
+  description: "PII-free cowork reservation projection for external consumers.",
+});
+
+export type CoworkReservationDetails =
+  typeof coworkReservationDetailsSchema.Type;
+
+export const getCoworkReservationDetails = (
+  reservation: NormalizedCoworkReservationOrder
+): CoworkReservationDetails =>
   Match.value(reservation).pipe(
     Match.discriminatorsExhaustive("entryTier")({
       basic: (basicReservation) =>
-        normalizedBasicCoworkReservationOrderSchema.make({
-          ...basicReservation,
-          kind: coworkReservationKind,
+        basicCoworkReservationDetailsSchema.make({
+          entryTier: basicReservation.entryTier,
+          date: basicReservation.date,
+          coffee: basicReservation.coffee,
         }),
       plus: (plusReservation) =>
-        normalizedPlusCoworkReservationOrderSchema.make({
-          ...plusReservation,
-          kind: coworkReservationKind,
+        plusCoworkReservationDetailsSchema.make({
+          entryTier: plusReservation.entryTier,
+          date: plusReservation.date,
+          coffee: true,
         }),
       profi: (profiReservation) =>
-        normalizedProfiCoworkReservationOrderSchema.make({
-          ...profiReservation,
-          kind: coworkReservationKind,
+        profiCoworkReservationDetailsSchema.make({
+          entryTier: profiReservation.entryTier,
+          date: profiReservation.date,
+          coffee: true,
+          monitorOption: profiReservation.monitorOption,
         }),
     })
   );
+
+export const getCoworkReservationIssues = (
+  data: CoworkReservationOrderInput | CoworkReservationFormInput
+): readonly Schema.FilterIssue[] => getCoworkReservationProductIssues(data);
+
+type NormalizedCoworkReservationBase = Omit<
+  CoworkReservationOrderInput,
+  "kind" | "entryTier" | "date" | "coffee" | "monitorOption"
+>;
+
+export const normalizeCoworkReservationOrder = (
+  data: CoworkReservationOrderInput | CoworkReservationFormInput
+): NormalizedCoworkReservationOrder => {
+  const base: NormalizedCoworkReservationBase = {
+    name: data.name,
+    email: data.email,
+    phone: data.phone,
+    ...(data.message !== undefined && { message: data.message }),
+  };
+  const product = normalizeCoworkReservationProduct(data);
+  const date = decodePlainDate(data.date);
+
+  return Match.value(product).pipe(
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: (basicProduct) =>
+        normalizedBasicCoworkReservationOrderSchema.make({
+          kind: coworkReservationKind,
+          ...base,
+          ...basicProduct,
+          date,
+        }),
+      plus: (plusProduct) =>
+        normalizedPlusCoworkReservationOrderSchema.make({
+          kind: coworkReservationKind,
+          ...base,
+          ...plusProduct,
+          date,
+        }),
+      profi: (profiProduct) =>
+        normalizedProfiCoworkReservationOrderSchema.make({
+          kind: coworkReservationKind,
+          ...base,
+          ...profiProduct,
+          date,
+        }),
+    })
+  );
+};
 
 const decodeCoworkReservationOrder = Schema.decodeUnknownSync(
   coworkReservationOrderInputSchema
@@ -279,9 +232,7 @@ export const coworkReservationOrderSchema = coworkReservationOrderInputSchema
   .check(Schema.makeFilter(getCoworkReservationIssues))
   .pipe(
     Schema.decodeTo(normalizedCoworkReservationOrderSchema, {
-      decode: SchemaGetter.transform((reservation) =>
-        toCoworkReservationOrder(normalizeCoworkReservationDetails(reservation))
-      ),
+      decode: SchemaGetter.transform(normalizeCoworkReservationOrder),
       encode: SchemaGetter.transform(decodeCoworkReservationOrder),
     })
   );
@@ -289,9 +240,23 @@ export const coworkReservationOrderSchema = coworkReservationOrderInputSchema
 export const normalizeCoworkReservationForm = (
   data: CoworkReservationFormInput
 ): NormalizedCoworkReservationForm => ({
-  ...normalizeCoworkReservationDetails(data),
+  ...normalizeCoworkReservationOrder(data),
   legalConsent: data.legalConsent,
 });
+
+export const getCoworkReservationOrder = (
+  form: NormalizedCoworkReservationForm
+): NormalizedCoworkReservationOrder =>
+  Match.value(form).pipe(
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: ({ legalConsent: _, ...reservation }) =>
+        normalizedBasicCoworkReservationOrderSchema.make(reservation),
+      plus: ({ legalConsent: _, ...reservation }) =>
+        normalizedPlusCoworkReservationOrderSchema.make(reservation),
+      profi: ({ legalConsent: _, ...reservation }) =>
+        normalizedProfiCoworkReservationOrderSchema.make(reservation),
+    })
+  );
 
 const coworkReservationDraftSchema = coworkReservationFormInputSchema.check(
   Schema.makeFilter(getCoworkReservationIssues)
@@ -322,3 +287,10 @@ export const coworkReservationDefaultValues: CoworkReservationInput = {
 };
 
 export type { WorkspaceCoworkProductTier };
+export {
+  getAllowedMonitorOptionsForCoworkTier,
+  getCoworkReservationProductCoffee,
+  getCoworkReservationProductMonitorOption,
+  getCoworkTierIncludesCourtesyCoffee,
+  getCoworkTierRequiresMonitorOption,
+};

@@ -17,8 +17,8 @@ import {
 } from "@/features/reservation/reservation-contact";
 import { isTodayOrFuturePragueDate } from "@/features/reservation/reservation-date";
 import {
+  type CoworkWorkspaceAvailabilityQuery,
   parseWorkspaceAvailabilityQuery,
-  type WorkspaceAvailabilityQuery,
 } from "@/features/reservation/workspace-availability";
 import { getSearchParam, type SupportedSearchParams } from "@/shared/utils";
 
@@ -151,7 +151,7 @@ export const getReservationDefaultValuesFromSearchParams = (
 
 export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
   searchParams: SupportedSearchParams
-): WorkspaceAvailabilityQuery => {
+): CoworkWorkspaceAvailabilityQuery => {
   const defaultValues =
     getReservationDefaultValuesFromSearchParams(searchParams);
   const availabilitySearchParams = new URLSearchParams();
@@ -166,5 +166,13 @@ export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
     availabilitySearchParams.set("monitorOption", defaultValues.monitorOption);
   }
 
-  return parseWorkspaceAvailabilityQuery(availabilitySearchParams);
+  const query = parseWorkspaceAvailabilityQuery(availabilitySearchParams);
+
+  if (query.kind !== "cowork") {
+    throw new Error("Cowork checkout query produced a non-cowork query.", {
+      cause: query,
+    });
+  }
+
+  return query;
 };

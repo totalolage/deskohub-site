@@ -16,7 +16,6 @@ import {
   Schedule,
   Schema,
 } from "effect";
-import { z } from "zod/v4";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
@@ -41,7 +40,6 @@ import {
   WorkspaceTableAssignmentServiceLive,
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
@@ -59,21 +57,34 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
+import {
+  getCoworkReservationDetails,
+  type NormalizedCoworkReservationOrder,
+  normalizedCoworkReservationOrderSchema,
+} from "@/features/reservation/cowork-reservation";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
-const getPreparePayStateSchema = () =>
-  z.object({
-    locale: z.enum(locales),
-    reservationIntentId: z.string().min(1),
-    reservation: getReservationOrderSchema(),
-    submittedCode: z.string().optional(),
-    legalConsent: z.boolean().optional(),
-  });
+const preparePayStateSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({
+    locale: Schema.Literals(locales),
+    reservationIntentId: Schema.NonEmptyString,
+    reservation: normalizedCoworkReservationOrderSchema,
+    submittedCode: Schema.optional(Schema.String),
+    legalConsent: Schema.optional(Schema.Boolean),
+  }),
+  { parseOptions: { onExcessProperty: "error" } }
+);
+
+const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
+  legalEvidenceMapSchema,
+  {
+    onExcessProperty: "error",
+  }
+);
 
 const getReservationHoldExpiresAt = (now: Date) =>
   new Date(now.getTime() + payStateDefaultTtlMilliseconds);
@@ -146,24 +157,15 @@ const getDotyposCustomerId = Effect.fn(
 
 const buildReservationCheckoutDetails = (input: {
   readonly locale: Locale;
-  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly legalEvidence: CheckoutDetailsJson["legal"];
-}): Omit<CheckoutDetailsJson, "fulfillment"> => {
-  const product = getWorkspaceProductByTier(input.reservation.entryTier);
-
+}): CheckoutDetailsJson => {
   return {
     schema: "workspace-checkout-details",
     schemaVersion: 1,
     locale: input.locale,
-    reservation: {
-      tier: input.reservation.entryTier,
-      date: input.reservation.date,
-      coffee: input.reservation.coffee,
-      monitorOption: product.requiresMonitorOption
-        ? input.reservation.monitorOption
-        : undefined,
-    },
+    reservation: getCoworkReservationDetails(input.reservation),
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
       undiscountedPrice: input.quote.payment.undiscountedPrice,
@@ -182,7 +184,7 @@ const getReservationPrivacyEvidence = Effect.fn(
   readonly acceptedAt: string;
 }) {
   const documents = yield* getLegalAcceptanceSnapshot(input.locale);
-  return legalEvidenceMapSchema.parse({
+  return decodeLegalEvidenceMap({
     [documents.privacyPolicy.hash]: {
       documentKey: "privacyPolicy",
       documentHash: documents.privacyPolicy.hash,
@@ -201,7 +203,7 @@ const getReservationPrivacyEvidence = Effect.fn(
 
 const toReadyResult = (input: {
   readonly locale: Locale;
-  readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
+  readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
   readonly submittedCode: CanonicalDiscountCode | undefined;
@@ -455,9 +457,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
       yield* reservations.updateProductIntent({
         id: existingReservation.id,
-        productTier: input.reservation.entryTier,
-        productCoffee: input.reservation.coffee,
-        productMonitorOption: input.reservation.monitorOption,
+        product: input.reservation,
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
@@ -517,9 +517,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservationIntentKey,
       dotyposCustomerId,
       customerAccessCode,
-      productTier: input.reservation.entryTier,
-      productCoffee: input.reservation.coffee,
-      productMonitorOption: input.reservation.monitorOption,
+      product: input.reservation,
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
@@ -551,9 +549,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
         yield* reservations.updateProductIntent({
           id: claimConflictReservation.id,
-          productTier: input.reservation.entryTier,
-          productCoffee: input.reservation.coffee,
-          productMonitorOption: input.reservation.monitorOption,
+          product: input.reservation,
           locale: input.locale,
         });
         yield* legalEvents.recordMany(
@@ -594,7 +590,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const dotyposReservation = yield* createWorkspaceDotyposReservation({
       paymentOrderId: reservationDraft.id,
       dotyposCustomerId,
-      checkoutDetails: checkoutDetails as CheckoutDetailsJson,
+      checkoutDetails,
       status: "NEW",
     }).pipe(
       Effect.tapError(
@@ -781,7 +777,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 );
 
 const preparePayStateAction = createEffectSafeAction(
-  getPreparePayStateSchema(),
+  preparePayStateSchema,
   prepareWorkspacePayState,
   Layer.mergeAll(
     Layer.mergeAll(

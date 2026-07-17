@@ -63,8 +63,8 @@ export const reservationCustomerSchema = Schema.Struct({
 });
 
 export const normalizedReservationCustomerSchema = Schema.Struct({
-  name: Schema.String,
-  email: Schema.String,
-  phone: Schema.String,
-  message: Schema.optional(Schema.String),
+  name: Schema.toType(reservationCustomerNameSchema),
+  email: Schema.toType(reservationCustomerEmailSchema),
+  phone: Schema.toType(reservationCustomerPhoneSchema),
+  message: Schema.optional(Schema.toType(reservationCustomerMessageSchema)),
 });

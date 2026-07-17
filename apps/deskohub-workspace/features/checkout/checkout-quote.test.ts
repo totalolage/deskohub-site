@@ -66,6 +66,8 @@ describe("workspace checkout quotes", () => {
     expect(quote.summary.sections[0]?.items.map((item) => item.key)).toEqual([
       "product:basic",
     ]);
+    expect(quote).not.toHaveProperty("schema");
+    expect(quote.summary).not.toHaveProperty("schema");
   });
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
@@ -114,14 +116,14 @@ describe("workspace checkout quotes", () => {
         coffee: false,
         monitorOption: "2x27-qhd",
       })
-    ).toThrow("Monitor option is unavailable");
+    ).toThrow("monitorOption");
 
     expect(() =>
       buildWorkspaceCheckoutQuote({
         entryTier: "profi",
         coffee: true,
       })
-    ).toThrow("Monitor option is required");
+    ).toThrow("monitorOption");
   });
 
   test("applies generic cowork discounts without discounting paid coffee", () => {

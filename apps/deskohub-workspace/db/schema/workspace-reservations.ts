@@ -9,6 +9,8 @@ import {
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import {
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
@@ -77,9 +79,13 @@ export const workspaceReservations = pgTable(
       .notNull()
       .$type<FulfillmentState>(),
     activePaymentAttemptId: text("active_payment_attempt_id"),
-    productTier: text("product_tier").notNull(),
+    productTier: text("product_tier")
+      .notNull()
+      .$type<WorkspaceCoworkProductTier>(),
     productCoffee: boolean("product_coffee").notNull(),
-    productMonitorOption: text("product_monitor_option"),
+    productMonitorOption: text(
+      "product_monitor_option"
+    ).$type<WorkspaceProductMonitorOption>(),
     locale: text("locale").notNull(),
     reservationHoldExpiresAt: timestamp("reservation_hold_expires_at", {
       withTimezone: true,

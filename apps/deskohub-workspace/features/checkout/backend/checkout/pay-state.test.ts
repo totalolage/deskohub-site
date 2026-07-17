@@ -3,18 +3,17 @@ import { describe, expect, mock, test } from "bun:test";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import { canonicalDiscountCodeSchema } from "@/features/discounts/contracts";
+import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
 
 const {
   buildPayStateQueryParams,
-  buildRetryPayState,
   buildSignedPayState,
   openPayState,
   parsePayStateKey,
   payStateTokenQueryParam,
-  retryPayStateSchema,
   sealPayState,
   sealPayStateForUrl,
   signedPayStateSchema,
@@ -42,21 +41,19 @@ const decodeSignedPayState = Schema.decodeUnknownSync(
   signedPayStateSchema,
   strictParseOptions
 );
-const decodeRetryPayState = Schema.decodeUnknownSync(
-  retryPayStateSchema,
-  strictParseOptions
-);
-
-const baseReservation = {
-  entryTier: "profi" as const,
+const baseReservation = Schema.decodeUnknownSync(
+  normalizedCoworkReservationOrderSchema
+)({
+  kind: "cowork",
+  entryTier: "profi",
   date: "2026-06-20",
   coffee: true,
-  monitorOption: "2x27-qhd" as const,
+  monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
   message: "Private setup note.",
-};
+});
 
 const buildState = (overrides: Partial<SignedPayState> = {}) => ({
   ...buildSignedPayState(
@@ -124,11 +121,18 @@ describe("Pay URL state", () => {
     expect(token.split(".")).toHaveLength(4);
   });
 
+  test("omits redundant payload markers from signed Pay state", () => {
+    const state = buildState();
+
+    expect(state).not.toHaveProperty("type");
+    expect(state).not.toHaveProperty("schema");
+  });
+
   test("preserves required-coffee normalization in signed Pay state", () => {
     const state = buildSignedPayState(
       {
         locale: "en-US",
-        reservation: { ...baseReservation, coffee: false },
+        reservation: { ...baseReservation, coffee: false } as never,
         quote: buildWorkspaceCheckoutQuote(baseReservation),
         orderId: "required-coffee-order-id",
       },
@@ -248,7 +252,7 @@ describe("Pay URL state", () => {
     ).toThrow("Invalid Pay state token header");
   });
 
-  test("rejects old versioned signed, quote, summary, and retry shapes", () => {
+  test("rejects old versioned signed, quote, and summary shapes", () => {
     const state = buildState();
     const oldSignedState = {
       ...state,
@@ -260,16 +264,7 @@ describe("Pay URL state", () => {
         summary: { ...state.quote.summary, schemaVersion: 1 },
       },
     };
-    const oldRetryState = {
-      ...buildRetryPayState({
-        paymentOrderId: "payment-order-id",
-        checkoutToken: "A".repeat(43),
-      }),
-      schemaVersion: 1,
-    };
-
     expect(() => decodeSignedPayState(oldSignedState)).toThrow();
-    expect(() => decodeRetryPayState(oldRetryState)).toThrow();
     expect(() =>
       sealPayState(oldSignedState as unknown as SignedPayState, {
         keys: [fixedKey],
@@ -372,23 +367,5 @@ describe("Pay URL state", () => {
 
     expect(result.type).toBe("sealedPayState");
     expect(searchParams.get(payStateTokenQueryParam)).toBe(result.token);
-  });
-
-  test("models retry state as CheckoutReturnStateTokenRepository semantics", () => {
-    expect(
-      buildRetryPayState({
-        paymentOrderId: "payment-order-id",
-        checkoutToken: "A".repeat(43),
-      })
-    ).toMatchObject({
-      type: "retryPayState",
-      stateSemantics: "checkout-return-state-token",
-      repositorySemantics: {
-        repository: "CheckoutReturnStateTokenRepository",
-        opaque: true,
-        singleUse: true,
-        boundToPaymentOrderId: true,
-      },
-    });
   });
 });

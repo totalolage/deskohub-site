@@ -97,8 +97,8 @@ export const discountCodec = Schema.Struct({
   id: discountIdSchema,
   label: Schema.NonEmptyString,
   adjustment: discountAdjustmentSchema,
-  expiresAt: Schema.optionalKey(instantStringSchema),
-  countdownStartsAt: Schema.optionalKey(instantStringSchema),
+  expiresAt: Schema.optionalKey(Schema.toEncoded(instantStringSchema)),
+  countdownStartsAt: Schema.optionalKey(Schema.toEncoded(instantStringSchema)),
 }).annotate({
   identifier: "Discount",
   description: "A source-neutral discount exposed to checkout consumers.",
