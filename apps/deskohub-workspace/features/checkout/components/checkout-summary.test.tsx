@@ -207,7 +207,7 @@ describe("CheckoutSummary", () => {
       />
     );
 
-    expect(view.getByText("Applied discounts")).toBeDefined();
+    expect(view.queryByRole("heading")).toBeNull();
     const rows = view.getAllByRole("listitem");
     expect(rows).toHaveLength(2);
     expect(rows[0]?.textContent).toContain("Summer sale");

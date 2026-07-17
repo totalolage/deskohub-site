@@ -1,5 +1,5 @@
 {
-  "id": "ef8904b6-b48e-4003-8d4a-adf469436cad",
+  "id": "abe7916f-9e96-478a-9559-6b783960a80e",
   "prevId": "d6efaf50-a3a4-46d7-8e6e-80fbf9c7d978",
   "version": "7",
   "dialect": "postgresql",
@@ -180,12 +180,8 @@
           "name": "discount_applications_payment_attempt_id_payment_attempts_id_fk",
           "tableFrom": "discount_applications",
           "tableTo": "payment_attempts",
-          "columnsFrom": [
-            "payment_attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -193,12 +189,8 @@
           "name": "discount_applications_workspace_reservation_id_workspace_reservations_id_fk",
           "tableFrom": "discount_applications",
           "tableTo": "workspace_reservations",
-          "columnsFrom": [
-            "workspace_reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -417,12 +409,8 @@
           "name": "discount_code_redemptions_code_id_discount_codes_id_fk",
           "tableFrom": "discount_code_redemptions",
           "tableTo": "discount_codes",
-          "columnsFrom": [
-            "code_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["code_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -430,12 +418,8 @@
           "name": "discount_code_redemptions_application_id_discount_applications_id_fk",
           "tableFrom": "discount_code_redemptions",
           "tableTo": "discount_applications",
-          "columnsFrom": [
-            "application_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["application_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         },
@@ -443,12 +427,8 @@
           "name": "discount_code_redemptions_payment_attempt_id_payment_attempts_id_fk",
           "tableFrom": "discount_code_redemptions",
           "tableTo": "payment_attempts",
-          "columnsFrom": [
-            "payment_attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -499,12 +479,8 @@
           "name": "discount_code_customers_code_id_discount_codes_id_fk",
           "tableFrom": "discount_code_customers",
           "tableTo": "discount_codes",
-          "columnsFrom": [
-            "code_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["code_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -512,10 +488,7 @@
       "compositePrimaryKeys": {
         "discount_code_customers_pk": {
           "name": "discount_code_customers_pk",
-          "columns": [
-            "code_id",
-            "dotypos_customer_id"
-          ]
+          "columns": ["code_id", "dotypos_customer_id"]
         }
       },
       "uniqueConstraints": {},
@@ -627,12 +600,8 @@
           "name": "discount_codes_discount_id_discounts_id_fk",
           "tableFrom": "discount_codes",
           "tableTo": "discounts",
-          "columnsFrom": [
-            "discount_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["discount_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -679,12 +648,8 @@
           "name": "discount_product_targets_discount_id_discounts_id_fk",
           "tableFrom": "discount_product_targets",
           "tableTo": "discounts",
-          "columnsFrom": [
-            "discount_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["discount_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -692,10 +657,7 @@
       "compositePrimaryKeys": {
         "discount_product_targets_pk": {
           "name": "discount_product_targets_pk",
-          "columns": [
-            "discount_id",
-            "product_identity"
-          ]
+          "columns": ["discount_id", "product_identity"]
         }
       },
       "uniqueConstraints": {},
@@ -713,12 +675,6 @@
           "primaryKey": true,
           "notNull": true,
           "default": "uuid_generate_v7()::text"
-        },
-        "label": {
-          "name": "label",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
         },
         "labels": {
           "name": "labels",
@@ -771,10 +727,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "discounts_label_check": {
-          "name": "discounts_label_check",
-          "value": "btrim(\"discounts\".\"label\") <> ''"
-        },
         "discounts_adjustment_variant_check": {
           "name": "discounts_adjustment_variant_check",
           "value": "(\n        \"discounts\".\"percentage_basis_points\" is not null\n        and \"discounts\".\"fixed_amount_value\" is null\n        and \"discounts\".\"fixed_amount_exponent\" is null\n        and \"discounts\".\"fixed_amount_currency\" is null\n      ) or (\n        \"discounts\".\"percentage_basis_points\" is null\n        and \"discounts\".\"fixed_amount_value\" is not null\n        and \"discounts\".\"fixed_amount_exponent\" is not null\n        and \"discounts\".\"fixed_amount_currency\" is not null\n      )"
@@ -885,12 +837,8 @@
           "name": "legal_evidence_events_workspace_reservation_id_workspace_reservations_id_fk",
           "tableFrom": "legal_evidence_events",
           "tableTo": "workspace_reservations",
-          "columnsFrom": [
-            "workspace_reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -1074,12 +1022,8 @@
           "name": "payment_attempts_workspace_reservation_id_workspace_reservations_id_fk",
           "tableFrom": "payment_attempts",
           "tableTo": "workspace_reservations",
-          "columnsFrom": [
-            "workspace_reservation_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["workspace_reservation_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1241,12 +1185,8 @@
           "name": "webhook_events_payment_attempt_id_payment_attempts_id_fk",
           "tableFrom": "webhook_events",
           "tableTo": "payment_attempts",
-          "columnsFrom": [
-            "payment_attempt_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["payment_attempt_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -1256,9 +1196,7 @@
         "webhook_events_event_id_unique": {
           "name": "webhook_events_event_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "event_id"
-          ]
+          "columns": ["event_id"]
         }
       },
       "policies": {},
@@ -1544,9 +1482,7 @@
         "workspace_reservations_correlation_id_unique": {
           "name": "workspace_reservations_correlation_id_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "correlation_id"
-          ]
+          "columns": ["correlation_id"]
         }
       },
       "policies": {},

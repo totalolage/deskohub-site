@@ -339,7 +339,6 @@
   "checkoutPayTitle": "Order summary",
   "checkoutSummarySectionOrder": "Order",
   "checkoutSummarySectionTotal": "Total",
-  "checkoutSummaryDiscountDetailsTitle": "Applied discounts",
   "checkoutSummaryDiscountDetailsTrigger": "Show discounts applied to {product}",
   "checkoutSummaryOriginalPrice": "Original price: {price}",
   "checkoutSummaryDiscountedPrice": "Discounted price: {price}",

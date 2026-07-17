@@ -340,7 +340,6 @@
   "checkoutPayTitle": "Souhrn objednávky",
   "checkoutSummarySectionOrder": "Objednávka",
   "checkoutSummarySectionTotal": "Celkem",
-  "checkoutSummaryDiscountDetailsTitle": "Použité slevy",
   "checkoutSummaryDiscountDetailsTrigger": "Zobrazit slevy použité na {product}",
   "checkoutSummaryOriginalPrice": "Původní cena: {price}",
   "checkoutSummaryDiscountedPrice": "Cena po slevě: {price}",

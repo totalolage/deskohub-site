@@ -25,7 +25,6 @@ const percentageRow = (
   overrides: Partial<DiscountDefinitionRow> = {}
 ): DiscountDefinitionRow => ({
   id: discountId,
-  label: "Operator campaign",
   labels,
   percentageBasisPoints: 5000,
   fixedAmountValue: null,

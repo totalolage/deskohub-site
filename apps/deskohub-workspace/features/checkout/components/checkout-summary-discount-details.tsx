@@ -81,33 +81,26 @@ export function CheckoutSummaryDiscountDetailsContent({
   readonly locale: Locale;
 }) {
   return (
-    <>
-      <h3 className="text-sm font-semibold">
-        {m.checkoutSummaryDiscountDetailsTitle({}, { locale })}
-      </h3>
-      <ul className="mt-3 space-y-3">
-        {discounts.map(({ amount, discount }) => (
-          <li
-            key={discount.id}
-            className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-sm"
-          >
-            <span className="min-w-0">
-              <span className="block truncate font-medium">
-                {discount.label}
-              </span>
-              <span className="block text-xs text-navy-blue/55">
-                {formatDiscountAdjustment(discount, locale)}
-              </span>
+    <ul className="space-y-3">
+      {discounts.map(({ amount, discount }) => (
+        <li
+          key={discount.id}
+          className="grid grid-cols-[minmax(0,1fr)_auto] gap-4 text-sm"
+        >
+          <span className="min-w-0">
+            <span className="block truncate font-medium">{discount.label}</span>
+            <span className="block text-xs text-navy-blue/55">
+              {formatDiscountAdjustment(discount, locale)}
             </span>
-            <span className="font-semibold tabular-nums">
-              {formatWorkspaceMoney(
-                workspaceMoneyWithValue(-amount.value, amount),
-                locale
-              )}
-            </span>
-          </li>
-        ))}
-      </ul>
-    </>
+          </span>
+          <span className="font-semibold tabular-nums">
+            {formatWorkspaceMoney(
+              workspaceMoneyWithValue(-amount.value, amount),
+              locale
+            )}
+          </span>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -78,11 +78,11 @@ describe("discount persistence contracts", () => {
     expect(config.name).toBe("discounts");
     expect(labelsColumn?.notNull).toBe(true);
     expect(namesOf(config.checks)).toEqual([
-      "discounts_label_check",
       "discounts_adjustment_variant_check",
       "discounts_percentage_basis_points_check",
       "discounts_fixed_amount_check",
     ]);
+    expect(config.columns.map(({ name }) => name)).not.toContain("label");
     expect(config.columns.map(({ name }) => name)).not.toContain("source");
     expect(config.columns.map(({ name }) => name)).not.toContain("provider");
     expect(config.columns.map(({ name }) => name)).not.toContain(
@@ -119,6 +119,20 @@ describe("discount persistence contracts", () => {
     );
     expect(migration).toContain(
       'PRIMARY KEY("discount_id","product_identity")'
+    );
+  });
+
+  test("removes the superseded scalar discount label", async () => {
+    const migration = await Bun.file(
+      new URL("../migrations/0004_cloudy_nextwave.sql", import.meta.url)
+    ).text();
+    const dropLabelCheck = 'DROP CONSTRAINT "discounts_label_check"';
+    const dropLabel = 'DROP COLUMN "label"';
+
+    expect(migration).toContain(dropLabelCheck);
+    expect(migration).toContain(dropLabel);
+    expect(migration.indexOf(dropLabelCheck)).toBeLessThan(
+      migration.indexOf(dropLabel)
     );
   });
 
