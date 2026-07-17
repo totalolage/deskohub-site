@@ -35,6 +35,8 @@ Keep the interface, Context service declaration, and live layer in the `*.servic
 
 Treat services, providers, repositories, and external clients as Effect capabilities. Supply them through Context and compose implementations with Layers; do not pass them as ordinary function arguments or dependency objects.
 
+Use Effect's `HttpClient` capability for outbound HTTP. Provide the live transport with a `FetchHttpClient` Layer at the application boundary and replace it with a Layer-provided client or fetch implementation in tests. Do not thread `fetch` functions through operation parameters as an ad hoc mocking seam.
+
 Resolve capabilities while constructing the consuming service and close over them in its implementation so public methods accept domain input only. Let a service's `Live` layer require its dependencies from Context. Provide live dependency layers at the application composition boundary and replace them with test layers in tests.
 
 ## Name and expose operations

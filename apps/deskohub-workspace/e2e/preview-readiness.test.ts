@@ -1,24 +1,34 @@
-import { expect, test } from "bun:test";
-import { Effect } from "effect";
+import { expect, mock, test } from "bun:test";
+import { Effect, Layer } from "effect";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import type { WorkspaceE2EConfig } from "./config";
 import { assertPreviewEndpointReady } from "./preview-readiness";
 
 test("checks webhook readiness on the exact protected preview origin", async () => {
   const requests: Array<{ headers: Headers; url: string }> = [];
-  const fetch_ = (async (input: URL | RequestInfo, init?: RequestInit) => {
+  const fetchMock = mock(async (input: URL | RequestInfo, init?: RequestInit) => {
+    const request =
+      input instanceof Request ? input : new Request(input, init);
     requests.push({
-      headers: new Headers(init?.headers),
-      url: String(input),
+      headers: request.headers,
+      url: request.url,
     });
     return new Response(null, { status: 200 });
-  }) as typeof fetch;
+  });
+  const httpClientLayer = FetchHttpClient.layer.pipe(
+    Layer.provide(
+      Layer.succeed(
+        FetchHttpClient.Fetch,
+        fetchMock as unknown as typeof globalThis.fetch
+      )
+    )
+  );
 
   await Effect.runPromise(
     assertPreviewEndpointReady(
       makeConfig("test-protection-bypass"),
-      "/api/webhooks/nexi",
-      fetch_
-    )
+      "/api/webhooks/nexi"
+    ).pipe(Effect.provide(httpClientLayer))
   );
 
   expect(requests).toHaveLength(1);

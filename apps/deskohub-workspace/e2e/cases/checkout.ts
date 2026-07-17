@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import * as HttpClient from "effect/unstable/http/HttpClient";
 import {
   evalBrowserScript,
   openBrowserPage,
@@ -52,8 +53,9 @@ export const executeCheckoutFlow = ({
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-}): Effect.Effect<void, WorkspaceE2EError> =>
+}): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
+    const httpClient = yield* HttpClient.HttpClient;
     state.startedAt = new Date();
     const orderId = yield* runStep({
       execute: startCheckoutPaymentAttempt({
@@ -91,7 +93,9 @@ export const executeCheckoutFlow = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
     });
     yield* runStep({
-      execute: replayNexiWebhook(config, replayRow),
+      execute: replayNexiWebhook(config, replayRow).pipe(
+        Effect.provideService(HttpClient.HttpClient, httpClient)
+      ),
       id: "replay-payment-webhook",
       timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
     });

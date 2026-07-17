@@ -53,13 +53,14 @@ from `VERCEL_PROJECT_PRODUCTION_URL`.
 
 Workspace appends the protection-bypass query parameter to preview Nexi result
 and notification URLs when configured. Browser navigation establishes the
-bypass cookie, readiness checks use the bypass query, and direct Nexi webhook
+bypass cookie, readiness checks use the bypass header, and direct Nexi webhook
 replays send the `x-vercel-protection-bypass` header.
 
 ## Preview database identity and migration
 
-The Neon/Vercel integration owns the preview database branch for the PR
-lifecycle. Its validated mapping is `preview/<internal-head-ref>`. E2E waits for
+The Neon/Vercel integration owns the preview database branch for the Git branch
+and deployment lifecycle. Its validated mapping is
+`preview/<internal-head-ref>`. E2E waits for
 the successful Vercel preview event, resolves that exact non-primary Neon
 branch, obtains its direct and pooled connection strings with pinned
 `neonctl@2.30.1`, masks each immediately, and migrates with the direct URL.
@@ -114,8 +115,8 @@ Run from the repository root:
 bun turbo i18n:compile --filter=deskohub-workspace
 bun test apps/deskohub-workspace/e2e
 bun --cwd apps/deskohub-workspace test shared/backend/bot-protection
-bun run typecheck:workspace
-bun run lint:workspace
+bun --cwd apps/deskohub-workspace typecheck
+bun --cwd apps/deskohub-workspace lint
 git diff --check
 ```
 

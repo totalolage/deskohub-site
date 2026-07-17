@@ -30,10 +30,6 @@ const postHogSourceMapConfig =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   cacheComponents: false,
-  env: {
-    NEXT_PUBLIC_WORKSPACE_BOTID_VERCEL_ENV:
-      workspaceBotIdVercelEnvironment,
-  },
   reactCompiler: true,
   transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
   async redirects() {

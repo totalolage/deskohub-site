@@ -1,4 +1,5 @@
 import { Effect } from "effect";
+import * as HttpClient from "effect/unstable/http/HttpClient";
 import {
   checkoutFlows,
   makeCoworkCheckoutData,
@@ -33,8 +34,13 @@ export const makeWorkspaceE2ECases = ({
   datasourceConfig: DatasourceConfig;
   flowStates: CheckoutFlowState[];
   run: Runner;
-}): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
+}): Effect.Effect<
+  readonly WorkspaceE2ECase[],
+  WorkspaceE2EError,
+  HttpClient.HttpClient
+> =>
   Effect.gen(function* () {
+    const httpClient = yield* HttpClient.HttpClient;
     const terminalScenarios = getPaymentTerminalScenarios();
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
@@ -119,6 +125,7 @@ export const makeWorkspaceE2ECases = ({
             session,
             state,
           }).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient),
             Effect.mapError((cause) =>
               toWorkspaceE2EError(`run ${flow.id} checkout e2e case`, cause)
             )

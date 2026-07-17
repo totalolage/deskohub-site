@@ -13,6 +13,9 @@ Configure BotID end to end:
 - Use the shared production-enforcement policy across client, build, and server
   contexts. Vercel preview builds use production-mode Next.js builds, so never
   substitute `NODE_ENV` for `VERCEL_ENV`.
+- Read Vercel's standard `NEXT_PUBLIC_VERCEL_ENV` in client instrumentation and
+  `VERCEL_ENV` in build/server code. Do not create a custom public mirror of the
+  Vercel environment.
 - Keep server-side `checkBotId()` before mutation side effects in production.
 - Do not use blanket `/*` client interception without matching server verification.
 - Preserve production verification failure policies and error mapping.

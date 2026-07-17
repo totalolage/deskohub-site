@@ -1,4 +1,5 @@
-import { Context, type Effect, Layer } from "effect";
+import { Context, Effect, Layer } from "effect";
+import * as HttpClient from "effect/unstable/http/HttpClient";
 import { makeWorkspaceE2ECases } from "../cases";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -25,8 +26,17 @@ export class WorkspaceE2ECaseService extends Context.Service<
   WorkspaceE2ECaseService,
   IWorkspaceE2ECaseService
 >()("WorkspaceE2ECaseService") {
-  static Live = Layer.succeed(this, {
-    makeCases: makeWorkspaceE2ECases,
-    runCases: runWorkspaceE2ECases,
-  });
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const httpClient = yield* HttpClient.HttpClient;
+      return {
+        makeCases: (input) =>
+          makeWorkspaceE2ECases(input).pipe(
+            Effect.provideService(HttpClient.HttpClient, httpClient)
+          ),
+        runCases: runWorkspaceE2ECases,
+      };
+    })
+  );
 }

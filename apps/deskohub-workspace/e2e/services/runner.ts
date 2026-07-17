@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
+import * as FetchHttpClient from "effect/unstable/http/FetchHttpClient";
 import type { DatasourceConfig } from "../config";
 import {
   toWorkspaceE2EError,
@@ -110,6 +111,7 @@ export class WorkspaceE2ERunnerService extends Context.Service<
 }
 
 const WorkspaceE2ECoreLive = Layer.mergeAll(
+  FetchHttpClient.layer,
   WorkspaceE2EPathService.Live,
   WorkspaceE2ERedactionService.Live,
   WorkspaceE2EConfigService.Live,

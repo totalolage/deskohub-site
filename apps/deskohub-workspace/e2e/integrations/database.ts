@@ -1,11 +1,15 @@
 import { Effect } from "effect";
+import * as HttpClient from "effect/unstable/http/HttpClient";
+import * as HttpClientRequest from "effect/unstable/http/HttpClientRequest";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import {
+  toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
   type WorkspaceE2EError,
+  workspaceE2EError,
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
@@ -52,9 +56,8 @@ const isWebhookReplayReady = (row: CheckoutRow) =>
 
 export const replayNexiWebhook = (
   config: WorkspaceE2EConfig,
-  row: CheckoutRow,
-  fetch_: typeof fetch = fetch
-): Effect.Effect<void, WorkspaceE2EError> =>
+  row: CheckoutRow
+): Effect.Effect<void, WorkspaceE2EError, HttpClient.HttpClient> =>
   Effect.gen(function* () {
     yield* tryWorkspaceE2ESync("assert Nexi replay row", () => {
       assert(row.provider_order_id, "provider order id missing before replay");
@@ -68,33 +71,38 @@ export const replayNexiWebhook = (
       "/api/webhooks/nexi",
       config.baseUrl
     );
-    const response = yield* tryWorkspaceE2EPromise(
-      "replay Nexi webhook",
-      (signal) =>
-        fetch_(webhookUrl, {
-          body: JSON.stringify({
-            eventId: `workspace-e2e-nexi-${row.reservation_id}`,
-            eventTime: new Date().toISOString(),
-            securityToken: row.security_token,
-            operation: {
-              orderId: row.provider_order_id,
-              operationId:
-                row.last_provider_operation_id ??
-                `workspace-e2e-${row.reservation_id}`,
-              operationType: "CAPTURE",
-              operationResult: "EXECUTED",
-              operationTime: new Date().toISOString(),
-              operationAmount: String(row.amount_value),
-              operationCurrency: row.currency,
-            },
-          }),
-          headers: previewWebhookHeaders(config),
-          method: "POST",
-          signal,
-        })
+    const httpClient = yield* HttpClient.HttpClient;
+    const response = yield* HttpClientRequest.post(webhookUrl).pipe(
+      HttpClientRequest.setHeaders(previewWebhookHeaders(config)),
+      HttpClientRequest.bodyJson({
+        eventId: `workspace-e2e-nexi-${row.reservation_id}`,
+        eventTime: new Date().toISOString(),
+        securityToken: row.security_token,
+        operation: {
+          orderId: row.provider_order_id,
+          operationId:
+            row.last_provider_operation_id ??
+            `workspace-e2e-${row.reservation_id}`,
+          operationType: "CAPTURE",
+          operationResult: "EXECUTED",
+          operationTime: new Date().toISOString(),
+          operationAmount: String(row.amount_value),
+          operationCurrency: row.currency,
+        },
+      }),
+      Effect.flatMap(httpClient.execute),
+      Effect.mapError((cause) =>
+        toWorkspaceE2EError("replay Nexi webhook", cause)
+      )
     );
-    yield* tryWorkspaceE2ESync("assert Nexi webhook replay response", () =>
-      assert(response.ok, `Nexi webhook replay failed with ${response.status}`)
+    yield* Effect.succeed(response).pipe(
+      Effect.filterOrFail(
+        ({ status }) => status >= 200 && status < 300,
+        ({ status }) =>
+          workspaceE2EError(`Nexi webhook replay failed with ${status}`, {
+            operation: "replay Nexi webhook",
+          })
+      )
     );
     log("Nexi webhook replay accepted");
   });
