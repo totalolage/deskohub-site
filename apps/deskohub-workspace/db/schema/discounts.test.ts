@@ -91,12 +91,35 @@ describe("discount persistence contracts", () => {
   });
 
   test("uses composite identities for targets and allowlists", () => {
-    expect(namesOf(configOf(discountProductTargets).primaryKeys)).toEqual([
+    const targetConfig = configOf(discountProductTargets);
+
+    expect(namesOf(targetConfig.primaryKeys)).toEqual([
       "discount_product_targets_pk",
+    ]);
+    expect(targetConfig.columns.map(({ name }) => name)).toEqual([
+      "discount_id",
+      "product_identity",
     ]);
     expect(namesOf(configOf(discountCodeCustomers).primaryKeys)).toEqual([
       "discount_code_customers_pk",
     ]);
+  });
+
+  test("migrates product targets to identity-only storage", async () => {
+    const migration = await Bun.file(
+      new URL("../migrations/0004_cloudy_nextwave.sql", import.meta.url)
+    ).text();
+    const dropPrimaryKey = 'DROP CONSTRAINT "discount_product_targets_pk"';
+    const dropProductKey = 'DROP COLUMN "product_key"';
+
+    expect(migration).toContain(dropPrimaryKey);
+    expect(migration).toContain(dropProductKey);
+    expect(migration.indexOf(dropPrimaryKey)).toBeLessThan(
+      migration.indexOf(dropProductKey)
+    );
+    expect(migration).toContain(
+      'PRIMARY KEY("discount_id","product_identity")'
+    );
   });
 
   test("enforces canonical code configuration in the database schema", () => {

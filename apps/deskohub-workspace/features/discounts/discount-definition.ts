@@ -9,7 +9,6 @@ import { locales } from "@/features/i18n";
 import {
   type WorkspaceCoworkProductIdentity,
   workspaceCoworkProductIdentitySchema,
-  workspaceCoworkProductKeySchema,
 } from "@/features/reservation/cowork-reservation-product";
 import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
 import {
@@ -69,17 +68,8 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
 const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
   Schema.Struct({
     discountId: storedDiscountIdSchema,
-    productKey: workspaceCoworkProductKeySchema,
     productIdentity: workspaceCoworkProductIdentitySchema,
-  }).check(
-    Schema.makeFilter(
-      ({ productIdentity, productKey }) =>
-        productKey === getWorkspaceProductKey(productIdentity) || {
-          path: ["productKey"],
-          issue: "product key must match the product identity",
-        }
-    )
-  );
+  });
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
   Schema.NonEmptyArray(discountTargetSchema).check(
@@ -92,8 +82,11 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
     ),
     Schema.makeFilter(
       (targets) =>
-        new Set(targets.map(({ productKey }) => productKey)).size ===
-          targets.length || {
+        new Set(
+          targets.map(({ productIdentity }) =>
+            getWorkspaceProductKey(productIdentity)
+          )
+        ).size === targets.length || {
           path: [],
           issue: "product targets must be unique",
         }

@@ -36,7 +36,6 @@ const percentageRow = (
   productTargets: [
     {
       discountId,
-      productKey: "cowork:basic",
       productIdentity: { kind: "cowork", tier: "basic" },
     },
   ],
@@ -117,24 +116,11 @@ describe("stored discount definitions", () => {
     ],
     ["empty targets", percentageRow({ productTargets: [] })],
     [
-      "mismatched target key",
-      percentageRow({
-        productTargets: [
-          {
-            discountId,
-            productKey: "cowork:plus",
-            productIdentity: { kind: "cowork", tier: "basic" },
-          },
-        ],
-      }),
-    ],
-    [
       "target from another discount",
       percentageRow({
         productTargets: [
           {
             discountId: otherDiscountId,
-            productKey: "cowork:basic",
             productIdentity: { kind: "cowork", tier: "basic" },
           },
         ],
@@ -146,12 +132,26 @@ describe("stored discount definitions", () => {
         productTargets: [
           {
             discountId,
-            productKey: "cowork:basic",
             productIdentity: {
               kind: "cowork",
               tier: "basic",
               provider: "private",
             },
+          },
+        ],
+      }),
+    ],
+    [
+      "duplicate product identities",
+      percentageRow({
+        productTargets: [
+          {
+            discountId,
+            productIdentity: { kind: "cowork", tier: "basic" },
+          },
+          {
+            discountId,
+            productIdentity: { kind: "cowork", tier: "basic" },
           },
         ],
       }),
