@@ -7,8 +7,8 @@ import {
 import {
   type CoworkReservationInput,
   coworkReservationDefaultValues,
-  workspaceCoworkProductIdentitySchema,
 } from "@/features/reservation/cowork-reservation";
+import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
   reservationCustomerEmailSchema,
   reservationCustomerMessageSchema,

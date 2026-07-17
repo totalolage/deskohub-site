@@ -4,12 +4,8 @@ import {
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
-import type {
-  AppliedDiscount,
-  Discount,
-  DiscountQuote,
-} from "./contracts";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
 

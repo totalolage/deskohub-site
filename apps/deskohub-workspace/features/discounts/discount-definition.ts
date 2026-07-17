@@ -10,7 +10,7 @@ import {
   type WorkspaceCoworkProductIdentity,
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
-} from "@/features/reservation/cowork-reservation";
+} from "@/features/reservation/cowork-reservation-product";
 import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
 import {
   type StoredDiscountId,

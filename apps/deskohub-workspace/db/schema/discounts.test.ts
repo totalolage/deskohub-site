@@ -6,7 +6,7 @@ import { canonicalDiscountCodeSchema } from "@/features/discounts/persistence-co
 import {
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
-} from "@/features/reservation/cowork-reservation";
+} from "@/features/reservation/cowork-reservation-product";
 import {
   discountApplications,
   discountCodeRedemptions,

@@ -1,6 +1,6 @@
 import { Clock, Context, Effect, Layer, Match, Option } from "effect";
 import type { DatabaseError } from "@/db/database.service";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { temporalInstantToIsoString } from "@/shared/utils";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import type {

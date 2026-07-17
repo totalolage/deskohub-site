@@ -1,4 +1,4 @@
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import type { Discount } from "./contracts";
 import type { DiscountCodeId, StoredDiscountId } from "./persistence-contracts";
 

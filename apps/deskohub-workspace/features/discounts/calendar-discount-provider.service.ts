@@ -1,6 +1,6 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
 import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
   type CalendarSale,

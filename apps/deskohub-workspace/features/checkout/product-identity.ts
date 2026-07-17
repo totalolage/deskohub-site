@@ -3,7 +3,7 @@ import {
   getWorkspaceCoworkProductKey,
   workspaceCoworkProductIdentitySchema,
   workspaceCoworkProductKeySchema,
-} from "@/features/reservation/cowork-reservation";
+} from "@/features/reservation/cowork-reservation-product";
 import {
   getWorkspaceMeetingRoomProductKey,
   workspaceMeetingRoomProductIdentitySchema,

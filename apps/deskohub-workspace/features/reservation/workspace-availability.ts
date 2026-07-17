@@ -8,7 +8,7 @@ import {
   isWorkspaceProductMonitorOption,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
-import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation";
+import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
@@ -30,9 +30,7 @@ export const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
   ...workspaceAvailabilityQueryBaseFields,
   date: Schema.optional(Schema.String),
-  entryTier: Schema.optional(
-    workspaceCoworkProductIdentitySchema.fields.tier
-  ),
+  entryTier: Schema.optional(workspaceCoworkProductIdentitySchema.fields.tier),
   monitorOption: Schema.optional(
     Schema.Literals(workspaceProductMonitorOptions)
   ),

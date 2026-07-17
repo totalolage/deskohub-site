@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Deferred, Effect, Layer, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import {

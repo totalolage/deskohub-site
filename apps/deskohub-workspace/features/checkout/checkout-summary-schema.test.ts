@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { checkoutSummaryOrderItemSchema } from "../checkout-quote";
+import { checkoutSummaryOrderItemSchema } from "./checkout-quote";
 
 const money = (value: number) => ({ value, exponent: 2, currency: "CZK" });
 const discountId = Schema.decodeUnknownSync(discountIdSchema);

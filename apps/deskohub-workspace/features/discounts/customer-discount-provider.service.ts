@@ -11,7 +11,7 @@ import {
   SchemaGetter,
 } from "effect";
 import { type Locale, m } from "@/features/i18n";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import {
   type DiscountQuoteInput,
   discountBasisPointsSchema,

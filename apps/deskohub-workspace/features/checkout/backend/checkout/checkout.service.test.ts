@@ -465,7 +465,7 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: [],
-      itemKeys: ["discount/discount:public-summer-sale"],
+      itemKeys: ["order/product:cowork:profi"],
     });
     const freshToken = new URL(
       result.freshPayUrl,

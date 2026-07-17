@@ -20,7 +20,7 @@ import type { Locale } from "@/features/i18n";
 import type {
   WorkspaceCoworkProductIdentity,
   WorkspaceCoworkProductKey,
-} from "@/features/reservation/cowork-reservation";
+} from "@/features/reservation/cowork-reservation-product";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;

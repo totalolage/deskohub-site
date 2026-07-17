@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { calculateDiscounts } from "./calculator";
 import { type Discount, discountIdSchema } from "./contracts";
 import type { DiscountCandidate } from "./provider";

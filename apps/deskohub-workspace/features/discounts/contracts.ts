@@ -9,7 +9,7 @@ import type { Locale } from "@/features/i18n";
 import {
   type WorkspaceCoworkProductIdentity,
   workspaceCoworkProductIdentitySchema,
-} from "@/features/reservation/cowork-reservation";
+} from "@/features/reservation/cowork-reservation-product";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 export const discountIdSchema = Schema.NonEmptyString.pipe(
