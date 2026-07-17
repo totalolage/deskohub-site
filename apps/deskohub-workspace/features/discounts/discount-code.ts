@@ -1,8 +1,8 @@
 import { Data, Effect, Option, Schema } from "effect";
 import type { DiscountCode } from "@/db/schema";
+import { canonicalDiscountCodeSchema } from "./contracts";
 import { DiscountCodeUnavailableError } from "./errors";
 import {
-  canonicalDiscountCodeSchema,
   type DiscountCodeId,
   discountCodeIdSchema,
   type StoredDiscountId,

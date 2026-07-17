@@ -309,6 +309,7 @@
   "reservationPrivacyNoteAfter": "and understand that we use your details to process the reservation, send confirmation, and prevent abuse.",
   "reservationSuccessMessage": "Your reservation request has been sent. We will confirm the next step soon.",
   "reservationErrorMessage": "Checkout could not be started. Please check your details and try again.",
+  "reservationDiscountCodeUnavailable": "This discount code is unavailable. Please remove it or try another code.",
   "reservationAlreadyPaidMessage": "A paid reservation already exists for these details. Change the reservation details or contact us if you need help.",
   "reservationAvailabilityUnavailable": "We are all out of space for {tier} tier on {date}. Please try a different tier or date (or monitor setup)!",
   "reservationAvailabilityLoading": "Checking workspace availability...",

@@ -5,6 +5,7 @@ import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
 import {
+  canonicalDiscountCodeSchema,
   type Discount,
   type DiscountProductIdentity,
   type DiscountQuoteInput,
@@ -36,7 +37,9 @@ const input: DiscountQuoteInput = {
   reservationDate: "2026-07-20",
   dotyposCustomerId: "customer-1",
   locale: "en-US",
-  submittedCode: "SAVE20",
+  submittedCode: Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+    "SAVE20"
+  ),
 };
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);

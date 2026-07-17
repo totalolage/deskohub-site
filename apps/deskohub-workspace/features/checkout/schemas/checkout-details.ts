@@ -1,11 +1,16 @@
-import { Data } from "effect";
+import { Data, Option, Schema } from "effect";
 import { z } from "zod/v4";
+import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
 import {
   workspaceProductMonitorOptions,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
-import { checkoutSummarySectionSchema } from "@/features/checkout/schemas/checkout-summary";
+import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import { nonNegativeWorkspaceMoneySchema } from "@/features/checkout/workspace-money";
+import {
+  type AppliedDiscount,
+  isAppliedDiscount,
+} from "@/features/discounts/contracts";
 import { locales } from "@/features/i18n";
 
 export const legalDocumentKeys = [
@@ -78,6 +83,13 @@ export class CheckoutDetailsError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+const isCheckoutSummary = (value: unknown): value is CheckoutSummary =>
+  Option.isSome(
+    Schema.decodeUnknownOption(checkoutSummarySchema, {
+      onExcessProperty: "error",
+    })(value)
+  );
+
 // This JSON is intentionally limited to booking, payment, legal, and fulfillment
 // state. Customer name, email, and phone remain owned by Dotypos and must not be
 // added here or as local database columns.
@@ -93,20 +105,16 @@ export const checkoutDetailsJsonSchema = z.object({
   }),
   payment: z.object({
     expectedPrice: nonNegativeWorkspaceMoneySchema,
-    undiscountedPrice: nonNegativeWorkspaceMoneySchema.optional(),
-    summary: z.object({
-      sections: z.array(checkoutSummarySectionSchema),
-      total: nonNegativeWorkspaceMoneySchema,
+    undiscountedPrice: nonNegativeWorkspaceMoneySchema,
+    discounts: z.array(
+      z.custom<AppliedDiscount>(isAppliedDiscount, {
+        error: "Invalid applied discount snapshot.",
+      })
+    ),
+    summary: z.custom<CheckoutSummary>(isCheckoutSummary, {
+      error: "Invalid checkout summary snapshot.",
     }),
     providerRedirectUrl: z.url().optional(),
-    customerDiscount: z
-      .object({
-        source: z.literal("dotypos-discount-group"),
-        discountGroupId: z.string().min(1),
-        percent: z.number().positive().max(100),
-        amount: nonNegativeWorkspaceMoneySchema,
-      })
-      .optional(),
   }),
   legal: legalEvidenceMapSchema,
   fulfillment: z.object({

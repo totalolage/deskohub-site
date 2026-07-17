@@ -7,7 +7,9 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
@@ -55,5 +57,42 @@ describe("CheckoutSummary", () => {
 
     expect(view.getByText("Basic Day Pass")).toBeDefined();
     expect(view.queryByText("product:basic")).toBeNull();
+  });
+
+  test("renders the public label for generic discount rows", () => {
+    const money = (value: number) => ({
+      value,
+      exponent: 2,
+      currency: "CZK",
+    });
+    const application = {
+      discount: {
+        id: Schema.decodeUnknownSync(discountIdSchema)("opaque-sale"),
+        label: "Summer sale",
+        adjustment: { kind: "percentage" as const, basisPoints: 5000 },
+      },
+      subtotalBefore: money(35_000),
+      amount: money(17_500),
+      subtotalAfter: money(17_500),
+    };
+    const quote = buildWorkspaceCheckoutQuote(
+      { entryTier: "basic", coffee: false },
+      {
+        discountQuote: {
+          product: { kind: "cowork", tier: "basic" },
+          discountableSubtotal: money(35_000),
+          discounts: [application],
+          totalDiscount: money(17_500),
+          discountedSubtotal: money(17_500),
+        },
+      }
+    );
+
+    const view = render(
+      <CheckoutSummary locale="en-US" summary={quote.summary} />
+    );
+
+    expect(view.getByText("Summer sale")).toBeDefined();
+    expect(view.queryByText("discount:opaque-sale")).toBeNull();
   });
 });

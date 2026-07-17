@@ -1,12 +1,15 @@
-import { Clock, Context, Effect, Layer, Option } from "effect";
+import { Clock, Context, Effect, Layer, Match, Option } from "effect";
 import type { DatabaseError } from "@/db/database.service";
 import { temporalInstantToIsoString } from "@/shared/utils";
-import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
-import {
-  type DiscountCodeAvailability,
-  type DiscountCodeConfiguration,
-  type DiscountCodeConfigurationError,
-  normalizeSubmittedDiscountCode,
+import type {
+  CanonicalDiscountCode,
+  DiscountProductIdentity,
+  DiscountQuoteInput,
+} from "./contracts";
+import type {
+  DiscountCodeAvailability,
+  DiscountCodeConfiguration,
+  DiscountCodeConfigurationError,
 } from "./discount-code";
 import { DiscountCodeRepository } from "./discount-code.repository";
 import type { DiscountDefinition } from "./discount-definition";
@@ -17,7 +20,6 @@ import {
   DiscountCodeUnavailableError,
   DiscountProviderError,
 } from "./errors";
-import type { CanonicalDiscountCode } from "./persistence-contracts";
 import type { DiscountCandidate } from "./provider";
 
 export type CodeDiscountProviderInput = Pick<
@@ -126,7 +128,9 @@ export class CodeDiscountProvider extends Context.Service<
       const resolve = Effect.fn("CodeDiscountProvider.resolve")(
         (input: CodeDiscountProviderInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("code", normalizeSubmittedDiscountCode),
+            Effect.let("code", ({ submittedCode }) =>
+              Option.fromNullishOr(submittedCode)
+            ),
             Effect.bind("candidate", resolveSubmittedCode),
             Effect.map(({ candidate }) => Option.toArray(candidate)),
             Effect.tapError(logDiscountCodeError)
@@ -230,32 +234,39 @@ const validateFixedAdjustmentCompatibility = (input: {
 }) => {
   const { adjustment } = input.definition;
 
-  if (adjustment.kind === "percentage") {
-    return Effect.void;
-  }
-
-  const reason =
-    adjustment.amount.currency !== input.discountableSubtotal.currency
-      ? "currency_mismatch"
-      : adjustment.amount.exponent !== input.discountableSubtotal.exponent
-        ? "exponent_mismatch"
-        : undefined;
-
-  return reason === undefined
-    ? Effect.void
-    : Effect.fail(
-        new DiscountProviderError({
-          reason: "malformed_configuration",
-          message:
-            "The discount code fixed adjustment is incompatible with the requested subtotal.",
-          cause: new DiscountCalculationError({
-            reason,
-            message:
-              "Fixed discount currency and exponent must match the discountable subtotal.",
-            discountId: input.definition.id,
-          }),
-        })
-      );
+  return Match.value(adjustment).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      percentage: () => Effect.void,
+      fixed: (fixedAdjustment) =>
+        Option.liftPredicate(
+          fixedAdjustment.amount,
+          (amount) =>
+            amount.currency !== input.discountableSubtotal.currency ||
+            amount.exponent !== input.discountableSubtotal.exponent
+        ).pipe(
+          Option.map(
+            (amount) =>
+              new DiscountProviderError({
+                reason: "malformed_configuration",
+                message:
+                  "The discount code fixed adjustment is incompatible with the requested subtotal.",
+                cause: new DiscountCalculationError({
+                  reason:
+                    amount.currency !== input.discountableSubtotal.currency
+                      ? "currency_mismatch"
+                      : "exponent_mismatch",
+                  message:
+                    "Fixed discount currency and exponent must match the discountable subtotal.",
+                  discountId: input.definition.id,
+                }),
+              })
+          ),
+          Option.map(Effect.fail),
+          Effect.transposeOption,
+          Effect.asVoid
+        ),
+    })
+  );
 };
 
 const toDiscountCodeCandidate = (input: {

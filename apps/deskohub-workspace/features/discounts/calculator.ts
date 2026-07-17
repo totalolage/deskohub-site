@@ -1,15 +1,14 @@
-import { Effect, Schema } from "effect";
+import { Effect, Match, Schema } from "effect";
 import {
   nonNegativeWorkspaceMoneyCodec,
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import {
-  type AppliedDiscount,
-  type Discount,
-  type DiscountProductIdentity,
-  type DiscountQuote,
-  discountBasisPointsSchema,
+import type {
+  AppliedDiscount,
+  Discount,
+  DiscountProductIdentity,
+  DiscountQuote,
 } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
@@ -109,60 +108,44 @@ const getAppliedValue = (input: {
 }) => {
   const { adjustment } = input.candidate.discount;
 
-  if (adjustment.kind === "percentage") {
-    if (!Schema.is(discountBasisPointsSchema)(adjustment.basisPoints)) {
-      return Effect.fail(
-        calculationError(
-          "invalid_percentage_adjustment",
-          "Percentage discounts require integer basis points from 1 through 10,000.",
-          input.candidate.discount
-        )
-      );
-    }
+  return Match.value(adjustment).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      percentage: (percentageAdjustment) =>
+        Effect.succeed(
+          Math.min(
+            input.remaining.value,
+            applyBasisPoints(
+              input.remaining.value,
+              percentageAdjustment.basisPoints
+            )
+          )
+        ),
+      fixed: (fixedAdjustment) => {
+        if (fixedAdjustment.amount.currency !== input.remaining.currency) {
+          return Effect.fail(
+            calculationError(
+              "currency_mismatch",
+              "Fixed discount currency must match the discountable subtotal.",
+              input.candidate.discount
+            )
+          );
+        }
 
-    return Effect.succeed(
-      Math.min(
-        input.remaining.value,
-        applyBasisPoints(input.remaining.value, adjustment.basisPoints)
-      )
-    );
-  }
+        if (fixedAdjustment.amount.exponent !== input.remaining.exponent) {
+          return Effect.fail(
+            calculationError(
+              "exponent_mismatch",
+              "Fixed discount exponent must match the discountable subtotal.",
+              input.candidate.discount
+            )
+          );
+        }
 
-  if (
-    !Number.isSafeInteger(adjustment.amount.value) ||
-    adjustment.amount.value < 1
-  ) {
-    return Effect.fail(
-      calculationError(
-        "invalid_fixed_adjustment",
-        "Fixed discounts require a positive integer money amount.",
-        input.candidate.discount
-      )
-    );
-  }
-
-  if (adjustment.amount.currency !== input.remaining.currency) {
-    return Effect.fail(
-      calculationError(
-        "currency_mismatch",
-        "Fixed discount currency must match the discountable subtotal.",
-        input.candidate.discount
-      )
-    );
-  }
-
-  if (adjustment.amount.exponent !== input.remaining.exponent) {
-    return Effect.fail(
-      calculationError(
-        "exponent_mismatch",
-        "Fixed discount exponent must match the discountable subtotal.",
-        input.candidate.discount
-      )
-    );
-  }
-
-  return Effect.succeed(
-    Math.min(input.remaining.value, adjustment.amount.value)
+        return Effect.succeed(
+          Math.min(input.remaining.value, fixedAdjustment.amount.value)
+        );
+      },
+    })
   );
 };
 
@@ -240,20 +223,22 @@ const calculationError = (
 const toPublicDiscount = (discount: Discount): Discount => ({
   id: discount.id,
   label: discount.label,
-  adjustment:
-    discount.adjustment.kind === "percentage"
-      ? {
-          kind: "percentage",
-          basisPoints: discount.adjustment.basisPoints,
-        }
-      : {
-          kind: "fixed",
-          amount: {
-            value: discount.adjustment.amount.value,
-            exponent: discount.adjustment.amount.exponent,
-            currency: discount.adjustment.amount.currency,
-          },
+  adjustment: Match.value(discount.adjustment).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      percentage: (adjustment) => ({
+        kind: adjustment.kind,
+        basisPoints: adjustment.basisPoints,
+      }),
+      fixed: (adjustment) => ({
+        kind: adjustment.kind,
+        amount: {
+          value: adjustment.amount.value,
+          exponent: adjustment.amount.exponent,
+          currency: adjustment.amount.currency,
         },
+      }),
+    })
+  ),
   ...(discount.expiresAt !== undefined && { expiresAt: discount.expiresAt }),
   ...(discount.countdownStartsAt !== undefined && {
     countdownStartsAt: discount.countdownStartsAt,

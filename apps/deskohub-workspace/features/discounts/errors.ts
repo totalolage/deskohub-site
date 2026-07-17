@@ -4,8 +4,6 @@ import type { DiscountCodeId } from "./persistence-contracts";
 
 export type DiscountCalculationFailureReason =
   | "invalid_discountable_subtotal"
-  | "invalid_percentage_adjustment"
-  | "invalid_fixed_adjustment"
   | "currency_mismatch"
   | "exponent_mismatch";
 

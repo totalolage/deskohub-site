@@ -1,6 +1,9 @@
 export type { DiscountCommitment } from "./commitment";
 export {
   type AppliedDiscount,
+  appliedDiscountCodec,
+  type CanonicalDiscountCode,
+  canonicalDiscountCodeSchema,
   type Discount,
   type DiscountAdjustment,
   type DiscountId,
@@ -8,12 +11,14 @@ export {
   type DiscountQuote,
   type DiscountQuoteInput,
   discountProductIdentitySchema,
+  isAppliedDiscount,
 } from "./contracts";
 export {
   type DiscountRevalidation,
   DiscountService,
   type IDiscountService,
 } from "./discount.service";
+export { normalizeSubmittedDiscountCode } from "./discount-code";
 export {
   DiscountCalculationError,
   type DiscountCalculationFailureReason,

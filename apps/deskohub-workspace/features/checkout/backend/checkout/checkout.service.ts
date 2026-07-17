@@ -7,20 +7,33 @@ import { env } from "@/env";
 import {
   calculateWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
+  normalizeWorkspaceCheckoutOrder,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import type {
   CheckoutDetailsJson,
   LegalEvidenceMap,
 } from "@/features/checkout/types/checkout-details";
-import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
+import {
+  withWorkspaceMoneyCurrency,
+  workspaceMoneyEquals,
+} from "@/features/checkout/workspace-money";
+import {
+  type CanonicalDiscountCode,
+  type DiscountCodeUnavailableError,
+  DiscountService,
+} from "@/features/discounts";
+import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import type { Locale } from "@/features/i18n";
-import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
+import {
+  type CheckoutLegalAcceptanceSnapshot,
+  getLegalAcceptanceSnapshot,
+} from "@/features/legal/acceptance-snapshot";
 import type { WorkspaceTableUnavailableError } from "@/features/reservation/backend/workspace-availability.service";
 import {
   WorkspaceReservationRepository,
@@ -50,10 +63,7 @@ import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
-import {
-  type AmbiguousDotyposCustomerError,
-  getConfirmedDotyposCustomerDiscount,
-} from "../reservation/dotypos-customer-policy";
+import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { openPayState, type SignedPayState } from "./pay-state.server";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
@@ -179,24 +189,8 @@ export const getNexiCheckoutCurrencyOverride = () => {
   return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
 };
 
-const getCheckoutLegalAcceptanceSnapshot: (
-  locale: Locale
-) => Effect.Effect<
-  Awaited<ReturnType<typeof getLegalAcceptanceSnapshot>>,
-  CheckoutError
-> = Effect.fn("getCheckoutLegalAcceptanceSnapshot")(function* (locale) {
-  return yield* Effect.tryPromise({
-    try: () => getLegalAcceptanceSnapshot(locale),
-    catch: (cause) =>
-      new CheckoutError({
-        message: "Legal acceptance snapshot could not be created.",
-        cause,
-      }),
-  });
-});
-
 const toCheckoutLegalDocuments = (
-  documents: Awaited<ReturnType<typeof getLegalAcceptanceSnapshot>>
+  documents: CheckoutLegalAcceptanceSnapshot
 ) => ({
   termsAndConditions: {
     path: documents.termsAndConditions.path,
@@ -213,9 +207,7 @@ const toCheckoutLegalDocuments = (
 const getCheckoutLegalEvidence = (input: {
   readonly acceptedAt: string;
   readonly locale: Locale;
-  readonly legalDocuments: Awaited<
-    ReturnType<typeof getLegalAcceptanceSnapshot>
-  >;
+  readonly legalDocuments: CheckoutLegalAcceptanceSnapshot;
 }): LegalEvidenceMap => {
   const documents = toCheckoutLegalDocuments(input.legalDocuments);
 
@@ -259,13 +251,9 @@ const buildCheckoutDetailsForPayment = (input: {
   },
   payment: {
     expectedPrice: input.quote.payment.expectedPrice,
-    summary: checkoutSummarySchema.parse(input.quote.summary),
-    ...(input.quote.payment.customerDiscount && {
-      undiscountedPrice:
-        input.quote.payment.undiscountedPrice ??
-        input.quote.payment.expectedPrice,
-      customerDiscount: input.quote.payment.customerDiscount,
-    }),
+    undiscountedPrice: input.quote.payment.undiscountedPrice,
+    discounts: [...input.quote.payment.discounts],
+    summary: input.quote.summary,
   },
   legal: input.legalEvidence,
 });
@@ -302,6 +290,7 @@ const getFreshPayUrl: (input: {
   readonly reservation: ReservationOrderData;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
+  readonly submittedCode: CanonicalDiscountCode | undefined;
   readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
 }) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
   (input) => Effect.succeed(buildFreshCheckoutPayPath(input))
@@ -309,14 +298,14 @@ const getFreshPayUrl: (input: {
 
 type MappableCheckoutFailure =
   | CheckoutError
-  | AmbiguousDotyposCustomerError
+  | DiscountCodeUnavailableError
   | WorkspaceTableUnavailableError;
 
 const isMappableCheckoutFailure = (
   cause: unknown
 ): cause is MappableCheckoutFailure =>
   Predicate.isTagged(cause, "CheckoutError") ||
-  Predicate.isTagged(cause, "AmbiguousDotyposCustomerError") ||
+  Predicate.isTagged(cause, "DiscountCodeUnavailableError") ||
   Predicate.isTagged(cause, "WorkspaceTableUnavailableError");
 
 const mapCheckoutFailure = (cause: unknown) => {
@@ -324,8 +313,12 @@ const mapCheckoutFailure = (cause: unknown) => {
     return Match.value(cause).pipe(
       Match.tag("CheckoutError", (error) => error),
       Match.tag(
-        "AmbiguousDotyposCustomerError",
-        (error) => new CheckoutError({ message: error.message, cause: error })
+        "DiscountCodeUnavailableError",
+        (error) =>
+          new CheckoutError({
+            message: "discount_code_unavailable",
+            cause: error,
+          })
       ),
       Match.tag(
         "WorkspaceTableUnavailableError",
@@ -358,6 +351,7 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const posthogEvents = yield* PostHogEventService;
+    const discounts = yield* DiscountService;
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -588,12 +582,24 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
-          const customerDiscount = yield* getConfirmedDotyposCustomerDiscount(
-            data
-          ).pipe(Effect.provideService(DotyposService, dotypos));
+          const order = yield* normalizeWorkspaceCheckoutOrder(data);
+          const currencyOverride = getNexiCheckoutCurrencyOverride();
+          const product = getWorkspaceProductByTier(order.entryTier);
+          const discountableSubtotal = withWorkspaceMoneyCurrency(
+            product.price,
+            currencyOverride
+          );
+          const revalidation = yield* discounts.revalidate({
+            product: { kind: "cowork", tier: order.entryTier },
+            discountableSubtotal,
+            reservationDate: data.date,
+            dotyposCustomerId: reservation.dotyposCustomerId,
+            locale,
+            submittedCode: state.submittedCode,
+          });
           const quote = yield* calculateWorkspaceCheckoutQuote(data, {
-            customerDiscount,
-            currencyOverride: getNexiCheckoutCurrencyOverride(),
+            discountQuote: revalidation.quote,
+            currencyOverride,
           });
           yield* Effect.annotateLogsScoped({ quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");
@@ -623,6 +629,7 @@ export const CheckoutServiceLive = Layer.effect(
               reservation: data,
               quote,
               orderId: reservation.id,
+              submittedCode: state.submittedCode,
               changedKeys,
             });
             return {
@@ -645,8 +652,7 @@ export const CheckoutServiceLive = Layer.effect(
           });
 
           const acceptedAt = new Date().toISOString();
-          const legalDocuments =
-            yield* getCheckoutLegalAcceptanceSnapshot(locale);
+          const legalDocuments = yield* getLegalAcceptanceSnapshot(locale);
           const legalEvidence = getCheckoutLegalEvidence({
             acceptedAt,
             locale,
@@ -670,6 +676,26 @@ export const CheckoutServiceLive = Layer.effect(
           );
           yield* Effect.logInfo(
             "Hosted payment checkout legal evidence recorded"
+          );
+
+          if (!reservation.dotyposReservationId) {
+            return yield* Effect.fail(
+              new CheckoutError({
+                message:
+                  "Held reservation is missing its Dotypos reservation ID.",
+              })
+            );
+          }
+
+          yield* dotypos.updateReservation({
+            reservationId: reservation.dotyposReservationId,
+            note: formatWorkspaceReservationNote({
+              paymentOrderId: reservation.id,
+              checkoutDetails: checkoutDetails as CheckoutDetailsJson,
+            }),
+          });
+          yield* Effect.logInfo(
+            "Hosted payment checkout Dotypos reservation note updated"
           );
 
           return yield* startProviderSession({
@@ -701,5 +727,6 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(WorkspaceReservationRepositoryLive),
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(DotyposServiceLive),
-  Layer.provide(NexiServiceLive)
+  Layer.provide(NexiServiceLive),
+  Layer.provide(DiscountServiceLiveWithDependencies)
 );

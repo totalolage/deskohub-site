@@ -10,6 +10,8 @@ import {
   Duration,
   Effect,
   Layer,
+  Match,
+  Option,
   Predicate,
   Schedule,
   Schema,
@@ -44,8 +46,12 @@ import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/schemas/checkout-details";
-import { checkoutSummarySchema } from "@/features/checkout/schemas/checkout-summary";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import {
+  type CanonicalDiscountCode,
+  normalizeSubmittedDiscountCode,
+} from "@/features/discounts";
+import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
@@ -55,10 +61,7 @@ import {
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getReservationOrderSchema } from "@/features/reservation/schemas/reservation";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
-import {
-  BotDetectedError,
-  BotProtectionService,
-} from "@/shared/backend/bot-protection/bot-protection.service";
+import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
@@ -68,6 +71,7 @@ const getPreparePayStateSchema = () =>
     locale: z.enum(locales),
     reservationIntentId: z.string().min(1),
     reservation: getReservationOrderSchema(),
+    submittedCode: z.string().optional(),
     legalConsent: z.boolean().optional(),
   });
 
@@ -147,8 +151,6 @@ const buildReservationCheckoutDetails = (input: {
   readonly legalEvidence: CheckoutDetailsJson["legal"];
 }): Omit<CheckoutDetailsJson, "fulfillment"> => {
   const product = getWorkspaceProductByTier(input.reservation.entryTier);
-  const baseCheckoutPrice =
-    input.quote.payment.undiscountedPrice ?? input.quote.payment.expectedPrice;
 
   return {
     schema: "workspace-checkout-details",
@@ -164,11 +166,9 @@ const buildReservationCheckoutDetails = (input: {
     },
     payment: {
       expectedPrice: input.quote.payment.expectedPrice,
-      summary: checkoutSummarySchema.parse(input.quote.summary),
-      ...(input.quote.payment.customerDiscount && {
-        undiscountedPrice: baseCheckoutPrice,
-        customerDiscount: input.quote.payment.customerDiscount,
-      }),
+      undiscountedPrice: input.quote.payment.undiscountedPrice,
+      discounts: [...input.quote.payment.discounts],
+      summary: input.quote.summary,
     },
     legal: input.legalEvidence,
   };
@@ -181,11 +181,7 @@ const getReservationPrivacyEvidence = Effect.fn(
   readonly accepted: boolean;
   readonly acceptedAt: string;
 }) {
-  const documents = yield* Effect.tryPromise({
-    try: () => getLegalAcceptanceSnapshot(input.locale),
-    catch: (cause) =>
-      new Error("Legal acceptance snapshot could not be created.", { cause }),
-  });
+  const documents = yield* getLegalAcceptanceSnapshot(input.locale);
   return legalEvidenceMapSchema.parse({
     [documents.privacyPolicy.hash]: {
       documentKey: "privacyPolicy",
@@ -208,12 +204,14 @@ const toReadyResult = (input: {
   readonly reservation: z.infer<ReturnType<typeof getReservationOrderSchema>>;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
+  readonly submittedCode: CanonicalDiscountCode | undefined;
 }) => {
   const state = buildSignedPayState({
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
     orderId: input.reservationId,
+    submittedCode: input.submittedCode,
   });
   const sealedState = sealPayStateForUrl(state);
   const redirectUrl = new URL(
@@ -390,6 +388,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
+    const submittedCode = Option.getOrUndefined(
+      yield* normalizeSubmittedDiscountCode({
+        submittedCode: input.submittedCode,
+      })
+    );
     let existingReservation =
       yield* reservations.findByIntentKey(reservationIntentKey);
     yield* Effect.annotateLogsScoped({ existingReservation });
@@ -436,16 +439,19 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       };
     }
 
-    const quote = yield* buildAuthoritativeWorkspaceCheckoutQuote(
-      input.reservation
-    );
-    yield* Effect.annotateLogsScoped({ quote });
-    yield* Effect.logDebug("Workspace reservation quote built");
-
     if (existingReservation && isReusableHeldReservation(existingReservation)) {
       yield* Effect.logInfo(
         "Existing workspace reservation hold reused for checkout prep"
       );
+
+      const quote = yield* buildAuthoritativeWorkspaceCheckoutQuote({
+        reservation: input.reservation,
+        dotyposCustomerId: existingReservation.dotyposCustomerId,
+        locale: input.locale,
+        submittedCode,
+      });
+      yield* Effect.annotateLogsScoped({ quote });
+      yield* Effect.logDebug("Workspace reservation quote built");
 
       yield* reservations.updateProductIntent({
         id: existingReservation.id,
@@ -467,6 +473,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         reservation: input.reservation,
         quote,
         reservationId: existingReservation.id,
+        submittedCode,
       });
     }
 
@@ -486,12 +493,21 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         email: input.reservation.email,
         phone: input.reservation.phone,
       },
-      {}
+      { lookupFields: ["email"] }
     );
     yield* Effect.annotateLogsScoped({ customer });
     const dotyposCustomerId = yield* getDotyposCustomerId(customer);
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
+
+    const quote = yield* buildAuthoritativeWorkspaceCheckoutQuote({
+      reservation: input.reservation,
+      dotyposCustomerId,
+      locale: input.locale,
+      submittedCode,
+    });
+    yield* Effect.annotateLogsScoped({ quote });
+    yield* Effect.logDebug("Workspace reservation quote built");
 
     const holdExpiresAt = getReservationHoldExpiresAt(new Date());
     const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
@@ -526,6 +542,13 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           "Existing workspace reservation hold reused after concurrent hold creation"
         );
 
+        const reusedQuote = yield* buildAuthoritativeWorkspaceCheckoutQuote({
+          reservation: input.reservation,
+          dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
+          locale: input.locale,
+          submittedCode,
+        });
+
         yield* reservations.updateProductIntent({
           id: claimConflictReservation.id,
           productTier: input.reservation.entryTier,
@@ -544,8 +567,9 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         return toReadyResult({
           locale: input.locale,
           reservation: input.reservation,
-          quote,
+          quote: reusedQuote,
           reservationId: claimConflictReservation.id,
+          submittedCode,
         });
       }
 
@@ -724,6 +748,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation: input.reservation,
       quote,
       reservationId: reservationDraft.id,
+      submittedCode,
     });
   },
   (effect, input) =>
@@ -735,10 +760,20 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       Effect.mapError(
         (error) =>
           new PublicSafeActionError({
-            message:
-              error instanceof BotDetectedError
-                ? m.reservationRateLimitMessage({}, { locale: input.locale })
-                : m.reservationErrorMessage({}, { locale: input.locale }),
+            message: Match.value(error).pipe(
+              Match.tag("BotDetectedError", () =>
+                m.reservationRateLimitMessage({}, { locale: input.locale })
+              ),
+              Match.tag("DiscountCodeUnavailableError", () =>
+                m.reservationDiscountCodeUnavailable(
+                  {},
+                  { locale: input.locale }
+                )
+              ),
+              Match.orElse(() =>
+                m.reservationErrorMessage({}, { locale: input.locale })
+              )
+            ),
             cause: error,
           })
       )
@@ -766,7 +801,8 @@ const preparePayStateAction = createEffectSafeAction(
     ReservationHoldCleanupScheduleService.Live,
     BotProtectionService.Live,
     PostHogEventServiceLive,
-    DotyposServiceLive
+    DotyposServiceLive,
+    DiscountServiceLiveWithDependencies
   )
 );
 

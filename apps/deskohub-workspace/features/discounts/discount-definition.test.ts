@@ -9,6 +9,9 @@ import { storedDiscountIdSchema } from "./persistence-contracts";
 const discountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82edb7"
 );
+const otherDiscountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
+  "019bfe6e-8ef0-7def-8b16-55cfbc82edb8"
+);
 
 const percentageRow = (
   overrides: Partial<DiscountDefinitionRow> = {}
@@ -23,6 +26,7 @@ const percentageRow = (
   updatedAt: new Date("2026-07-15T00:00:00.000Z"),
   productTargets: [
     {
+      discountId,
       productKey: "cowork:basic",
       productIdentity: { kind: "cowork", tier: "basic" },
     },
@@ -81,7 +85,20 @@ describe("stored discount definitions", () => {
       percentageRow({
         productTargets: [
           {
+            discountId,
             productKey: "cowork:plus",
+            productIdentity: { kind: "cowork", tier: "basic" },
+          },
+        ],
+      }),
+    ],
+    [
+      "target from another discount",
+      percentageRow({
+        productTargets: [
+          {
+            discountId: otherDiscountId,
+            productKey: "cowork:basic",
             productIdentity: { kind: "cowork", tier: "basic" },
           },
         ],
@@ -92,6 +109,7 @@ describe("stored discount definitions", () => {
       percentageRow({
         productTargets: [
           {
+            discountId,
             productKey: "cowork:basic",
             productIdentity: {
               kind: "cowork",

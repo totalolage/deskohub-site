@@ -35,7 +35,11 @@ const summarySectionLabels = {
   total: m.checkoutSummarySectionTotal,
 } as const;
 
-const getSummaryItemLabel = (key: string, locale: Locale) => {
+const getSummaryItemLabel = (
+  item: CheckoutSummaryData["sections"][number]["items"][number],
+  locale: Locale
+) => {
+  const { key } = item;
   const productTier = productItemTiers[key as keyof typeof productItemTiers];
   if (productTier) return getWorkspaceProductTierTitle(productTier, locale);
 
@@ -49,9 +53,7 @@ const getSummaryItemLabel = (key: string, locale: Locale) => {
     }
   }
 
-  if (key.startsWith("customer-discount:")) {
-    return m.checkoutSummaryItemCustomerDiscount({}, { locale });
-  }
+  if (key.startsWith("discount:")) return item.label ?? key;
 
   if (key === "total:final") return m.checkoutSummaryItemTotal({}, { locale });
 
@@ -87,7 +89,7 @@ export function CheckoutSummary({
                     itemChanged && "font-semibold text-burned-orange"
                   )}
                 >
-                  <span>{getSummaryItemLabel(item.key, locale)}</span>
+                  <span>{getSummaryItemLabel(item, locale)}</span>
                   <span className="shrink-0 font-semibold">
                     {formatWorkspaceMoney(item.amount, locale)}
                   </span>

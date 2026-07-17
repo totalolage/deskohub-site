@@ -10,6 +10,7 @@ import type {
   WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
   WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType,
 } from "@/features/checkout/backend/reservation";
+import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
@@ -17,7 +18,7 @@ mock.module("server-only", () => ({}));
 
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
-    Promise.resolve({
+    Effect.succeed({
       privacyPolicy: {
         path: "/legal/privacy.md",
         hash: "privacy-hash",
@@ -81,6 +82,7 @@ const runReusableReservationScenario = async (input: {
   readonly createDraft?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
+  readonly submittedCode?: string;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -111,13 +113,27 @@ const runReusableReservationScenario = async (input: {
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.die("unused"));
   const findById = input.findById ?? mock(() => Effect.die("unused"));
+  const quote = mock(({ discountableSubtotal, product }) =>
+    Effect.succeed({
+      product,
+      discountableSubtotal,
+      discounts: [],
+      totalDiscount: { ...discountableSubtotal, value: 0 },
+      discountedSubtotal: discountableSubtotal,
+    })
+  );
+  const findOrCreateCustomer = mock(() =>
+    Effect.succeed({ id: "customer-id" })
+  );
 
   const result = await prepareWorkspacePayState({
     locale: "en-US",
     reservationIntentId: "intent-id",
     reservation,
+    submittedCode: input.submittedCode,
     legalConsent: true,
   }).pipe(
+    Effect.provide(DiscountServiceMock({ quote })),
     Effect.provide(BotProtectionServiceMock({ verifyHuman })),
     Effect.provide(
       Layer.succeed(WorkspaceAvailabilityService, {
@@ -155,9 +171,7 @@ const runReusableReservationScenario = async (input: {
     ),
     Effect.provide(
       Layer.succeed(DotyposService, {
-        findCustomer: mock(() => Effect.succeed({ _tag: "NotFound" })),
-        getCustomerDiscount: mock(() => Effect.succeed(undefined)),
-        findOrCreateCustomer: mock(() => Effect.succeed({ id: "customer-id" })),
+        findOrCreateCustomer,
       } as unknown as typeof DotyposService.Service)
     ),
     Effect.runPromise
@@ -173,6 +187,8 @@ const runReusableReservationScenario = async (input: {
     claimHoldCreation,
     findById,
     verifyHuman,
+    quote,
+    findOrCreateCustomer,
   };
 };
 
@@ -250,12 +266,32 @@ describe("prepareWorkspacePayState", () => {
       Effect.succeed({ id: "dotypos-reservation-id" } as never)
     );
     const assignTableId = mock(() => Effect.succeed("table-id"));
+    const findOrCreateCustomer = mock(() =>
+      Effect.sync(() => {
+        eventOrder.push("customer");
+        return { id: "customer-id" };
+      })
+    );
+    const quote = mock(({ discountableSubtotal, product }) =>
+      Effect.sync(() => {
+        eventOrder.push("quote");
+        return {
+          product,
+          discountableSubtotal,
+          discounts: [],
+          totalDiscount: { ...discountableSubtotal, value: 0 },
+          discountedSubtotal: discountableSubtotal,
+        };
+      })
+    );
     const result = await prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       reservation,
+      submittedCode: "  summer-50  ",
       legalConsent: true,
     }).pipe(
+      Effect.provide(DiscountServiceMock({ quote })),
       Effect.provide(BotProtectionServiceMock({ verifyHuman })),
       Effect.provide(
         Layer.succeed(WorkspaceAvailabilityService, {
@@ -298,11 +334,7 @@ describe("prepareWorkspacePayState", () => {
       ),
       Effect.provide(
         Layer.succeed(DotyposService, {
-          findCustomer: mock(() => Effect.succeed({ _tag: "NotFound" })),
-          getCustomerDiscount: mock(() => Effect.succeed(undefined)),
-          findOrCreateCustomer: mock(() =>
-            Effect.succeed({ id: "customer-id" })
-          ),
+          findOrCreateCustomer,
           createReservation,
         } as unknown as typeof DotyposService.Service)
       ),
@@ -340,6 +372,8 @@ describe("prepareWorkspacePayState", () => {
     expect(eventOrder).toEqual([
       "bot-verification",
       "availability",
+      "customer",
+      "quote",
       "attach",
       "enqueue",
     ]);
@@ -360,13 +394,23 @@ describe("prepareWorkspacePayState", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(token).toBeTruthy();
-    expect(openPayState(token ?? "").orderId).toBe("reservation-id");
+    const state = openPayState(token ?? "");
+    expect(state.orderId).toBe("reservation-id");
+    expect(state.submittedCode).toBe("SUMMER-50");
+    expect(result.redirectUrl).not.toContain("SUMMER-50");
+    expect(quote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: "customer-id",
+        submittedCode: "SUMMER-50",
+      })
+    );
   });
 
   test("reuses an existing held reservation without scheduling cleanup", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
       findByIntentKey: mock(() => Effect.succeed(existingReservation)),
+      submittedCode: " summer-50 ",
     });
 
     expect(result.result.status).toBe("ready");
@@ -382,6 +426,52 @@ describe("prepareWorkspacePayState", () => {
       productMonitorOption: undefined,
       locale: "en-US",
     });
+    expect(result.findOrCreateCustomer).not.toHaveBeenCalled();
+    expect(result.quote).toHaveBeenCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: existingReservation.dotyposCustomerId,
+        submittedCode: "SUMMER-50",
+      })
+    );
+  });
+
+  test("keeps the submitted code out of the reusable reservation intent key", async () => {
+    const existingReservation = makeReusableReservation();
+    const firstLookup = mock(() => Effect.succeed(existingReservation));
+    const secondLookup = mock(() => Effect.succeed(existingReservation));
+
+    await runReusableReservationScenario({
+      findByIntentKey: firstLookup,
+      submittedCode: "FIRST-CODE",
+    });
+    await runReusableReservationScenario({
+      findByIntentKey: secondLookup,
+      submittedCode: "SECOND-CODE",
+    });
+
+    expect(firstLookup.mock.calls[0]?.[0]).toBe(
+      secondLookup.mock.calls[0]?.[0]
+    );
+  });
+
+  test("maps an invalid submitted code to the localized unavailable message", async () => {
+    const { m } = await import("@/features/i18n");
+    const findByIntentKey = mock(() =>
+      Effect.succeed(makeReusableReservation())
+    );
+    const error = await runReusableReservationScenario({
+      findByIntentKey,
+      submittedCode: "not a code",
+    }).then(
+      () => undefined,
+      (cause: unknown) => cause
+    );
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      message: m.reservationDiscountCodeUnavailable({}, { locale: "en-US" }),
+    });
+    expect(findByIntentKey).not.toHaveBeenCalled();
   });
 
   test("reuses a concurrently created held reservation without scheduling cleanup", async () => {
@@ -399,6 +489,11 @@ describe("prepareWorkspacePayState", () => {
     expect(result.claimHoldCreation).toHaveBeenCalledWith("draft-id");
     expect(result.findById).toHaveBeenCalledWith("draft-id");
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
+    expect(result.quote).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
+      })
+    );
   });
 
   test("rejects a classified bot before resolving downstream services", async () => {

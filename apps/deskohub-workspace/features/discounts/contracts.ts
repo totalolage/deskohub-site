@@ -1,12 +1,16 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import {
   type WorkspaceProductTier,
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import { positiveWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
+import {
+  nonNegativeWorkspaceMoneyCodec,
+  positiveWorkspaceMoneyCodec,
+} from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
+import { instantStringSchema } from "@/shared/utils/temporal";
 
 export type DiscountProductIdentity = {
   readonly kind: "cowork";
@@ -21,6 +25,20 @@ export const discountIdSchema = Schema.NonEmptyString.pipe(
 });
 
 export type DiscountId = Schema.Schema.Type<typeof discountIdSchema>;
+
+export const canonicalDiscountCodeSchema = Schema.String.check(
+  Schema.isPattern(/^[A-Z0-9][A-Z0-9_-]{2,63}$/)
+)
+  .pipe(Schema.brand("CanonicalDiscountCode"))
+  .annotate({
+    identifier: "CanonicalDiscountCode",
+    description:
+      "Canonical ASCII-uppercase discount code accepted by Workspace checkout.",
+  });
+
+export type CanonicalDiscountCode = Schema.Schema.Type<
+  typeof canonicalDiscountCodeSchema
+>;
 
 export const discountBasisPointsSchema = Schema.Int.check(
   Schema.isBetween({ minimum: 1, maximum: 10_000 })
@@ -75,12 +93,41 @@ export type Discount = {
   readonly countdownStartsAt?: string;
 };
 
+export const discountCodec = Schema.Struct({
+  id: discountIdSchema,
+  label: Schema.NonEmptyString,
+  adjustment: discountAdjustmentSchema,
+  expiresAt: Schema.optionalKey(instantStringSchema),
+  countdownStartsAt: Schema.optionalKey(instantStringSchema),
+}).annotate({
+  identifier: "Discount",
+  description: "A source-neutral discount exposed to checkout consumers.",
+});
+
 export type AppliedDiscount = {
   readonly discount: Discount;
   readonly subtotalBefore: WorkspaceMoney;
   readonly amount: WorkspaceMoney;
   readonly subtotalAfter: WorkspaceMoney;
 };
+
+export const appliedDiscountCodec = Schema.Struct({
+  discount: discountCodec,
+  subtotalBefore: nonNegativeWorkspaceMoneyCodec,
+  amount: positiveWorkspaceMoneyCodec,
+  subtotalAfter: nonNegativeWorkspaceMoneyCodec,
+}).annotate({
+  identifier: "AppliedDiscount",
+  description:
+    "An immutable discount application and its before, applied, and after amounts.",
+});
+
+export const isAppliedDiscount = (value: unknown): value is AppliedDiscount =>
+  Option.isSome(
+    Schema.decodeUnknownOption(appliedDiscountCodec, {
+      onExcessProperty: "error",
+    })(value)
+  );
 
 export type DiscountQuote = {
   readonly product: DiscountProductIdentity;
@@ -96,5 +143,5 @@ export type DiscountQuoteInput = {
   readonly reservationDate: string;
   readonly dotyposCustomerId: string;
   readonly locale: Locale;
-  readonly submittedCode: string | undefined;
+  readonly submittedCode: CanonicalDiscountCode | undefined;
 };

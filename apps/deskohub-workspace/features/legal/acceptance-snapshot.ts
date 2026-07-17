@@ -1,6 +1,7 @@
-"use server";
+import "server-only";
 
 import { createHash } from "node:crypto";
+import { Data, Effect } from "effect";
 import { Children, isValidElement, type ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { getWorkspaceCanonicalUrl } from "@/shared/utils";
@@ -25,6 +26,12 @@ export type CheckoutLegalAcceptanceSnapshot = {
   readonly operatingRules: CheckoutLegalDocumentSnapshot;
   readonly privacyPolicy: CheckoutLegalDocumentSnapshot;
 };
+
+export class LegalAcceptanceSnapshotError extends Data.TaggedError(
+  "LegalAcceptanceSnapshotError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 function reactNodeToCanonicalText(node: ReactNode): string {
   if (node === null || node === undefined || typeof node === "boolean") {
@@ -58,34 +65,61 @@ function getCanonicalLegalDocument(document: LegalDocumentContent): string {
   });
 }
 
-function createLegalDocumentSnapshot(
-  locale: Locale,
-  documentKey: CheckoutLegalDocumentKey
-): CheckoutLegalDocumentSnapshot {
-  const document = getLegalDocument(locale, documentKey);
-  const path = `/${locale}/${documentKey}`;
+const createLegalDocumentHash = Effect.fn("createLegalDocumentHash")(
+  (canonicalDocument: string) =>
+    Effect.try({
+      try: () => createHash("sha256").update(canonicalDocument).digest("hex"),
+      catch: (cause) => new LegalAcceptanceSnapshotError({ cause }),
+    })
+);
 
-  return {
-    path,
-    url: getWorkspaceCanonicalUrl(path),
-    title: document.title,
-    updatedAt: document.updatedAt,
-    hash: createHash("sha256")
-      .update(getCanonicalLegalDocument(document))
-      .digest("hex"),
-    hashAlgorithm: "sha256",
-  };
-}
+const createLegalDocumentSnapshot = Effect.fn("createLegalDocumentSnapshot")(
+  (input: {
+    readonly locale: Locale;
+    readonly documentKey: CheckoutLegalDocumentKey;
+  }) =>
+    Effect.succeed(input).pipe(
+      Effect.let("document", ({ documentKey, locale }) =>
+        getLegalDocument(locale, documentKey)
+      ),
+      Effect.let(
+        "path",
+        ({ documentKey, locale }) => `/${locale}/${documentKey}`
+      ),
+      Effect.let("canonicalDocument", ({ document }) =>
+        getCanonicalLegalDocument(document)
+      ),
+      Effect.bind("hash", ({ canonicalDocument }) =>
+        createLegalDocumentHash(canonicalDocument)
+      ),
+      Effect.map(
+        ({ document, hash, path }): CheckoutLegalDocumentSnapshot => ({
+          path,
+          url: getWorkspaceCanonicalUrl(path),
+          title: document.title,
+          updatedAt: document.updatedAt,
+          hash,
+          hashAlgorithm: "sha256",
+        })
+      )
+    )
+);
 
-export async function getLegalAcceptanceSnapshot(
-  locale: Locale
-): Promise<CheckoutLegalAcceptanceSnapshot> {
-  return {
-    termsAndConditions: createLegalDocumentSnapshot(
+export const getLegalAcceptanceSnapshot = Effect.fn(
+  "getLegalAcceptanceSnapshot"
+)((locale: Locale) =>
+  Effect.all({
+    termsAndConditions: createLegalDocumentSnapshot({
       locale,
-      "terms-and-conditions"
-    ),
-    operatingRules: createLegalDocumentSnapshot(locale, "operating-rules"),
-    privacyPolicy: createLegalDocumentSnapshot(locale, "privacy-policy"),
-  };
-}
+      documentKey: "terms-and-conditions",
+    }),
+    operatingRules: createLegalDocumentSnapshot({
+      locale,
+      documentKey: "operating-rules",
+    }),
+    privacyPolicy: createLegalDocumentSnapshot({
+      locale,
+      documentKey: "privacy-policy",
+    }),
+  })
+);

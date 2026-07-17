@@ -10,7 +10,10 @@ import {
 import { Effect } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
-import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
+import {
+  formatWorkspaceMoney,
+  workspaceMoneyWithValue,
+} from "@/features/checkout/workspace-money";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
@@ -103,8 +106,11 @@ const toPragueMidnightDate = (plainDate: Temporal.PlainDate) =>
       .epochMilliseconds
   );
 
-const formatWorkspaceReservationNote = (
-  input: CreateWorkspaceDotyposReservationInput
+export const formatWorkspaceReservationNote = (
+  input: Pick<
+    CreateWorkspaceDotyposReservationInput,
+    "checkoutDetails" | "paymentOrderId"
+  >
 ) => {
   const { checkoutDetails } = input;
   const { reservation } = checkoutDetails;
@@ -120,12 +126,13 @@ const formatWorkspaceReservationNote = (
       checkoutDetails.payment.expectedPrice,
       checkoutDetails.locale
     )}`,
-    checkoutDetails.payment.customerDiscount
-      ? `Customer discount: ${checkoutDetails.payment.customerDiscount.percent}% (${formatWorkspaceMoney(
-          checkoutDetails.payment.customerDiscount.amount,
+    ...checkoutDetails.payment.discounts.map(
+      ({ amount, discount }) =>
+        `Discount: ${discount.label} (${formatWorkspaceMoney(
+          workspaceMoneyWithValue(-amount.value, amount),
           checkoutDetails.locale
         )})`
-      : null,
+    ),
   ];
 
   return lines.filter((line) => line !== null).join("\n");
