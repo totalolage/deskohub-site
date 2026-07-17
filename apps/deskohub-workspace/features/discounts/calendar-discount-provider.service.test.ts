@@ -304,24 +304,18 @@ describe("CalendarDiscountProvider", () => {
     });
   }
 
-  test("fails closed when the referenced definition does not exist", async () => {
+  test("ignores a definition unavailable in this environment", async () => {
     const cause = new DiscountDefinitionNotFoundError({
       discountId: discountIdA,
       message: "Not found",
     });
     const result = await runWithProvider(
-      quote.pipe(Effect.result),
+      quote,
       () => Effect.succeed([saleEvent()]),
       () => Effect.fail(cause)
     );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "malformed_configuration",
-        cause,
-      },
-    });
+    expect(result).toEqual([]);
   });
 
   test("maps database failures while preserving the cause", async () => {

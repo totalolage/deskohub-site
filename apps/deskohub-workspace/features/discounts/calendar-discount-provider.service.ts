@@ -1,5 +1,14 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
-import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
+import {
+  Cache,
+  Context,
+  Data,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+} from "effect";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
@@ -49,6 +58,13 @@ export class CalendarDiscountProvider extends Context.Service<
           [...new Set(input.sales.map(({ discountId }) => discountId))],
           (discountId) =>
             discountDefinitions.loadById({ discountId }).pipe(
+              Effect.map(Option.some),
+              Effect.catchTag("DiscountDefinitionNotFoundError", () =>
+                Effect.logWarning(
+                  "Calendar discount definition is unavailable in this environment",
+                  { discountId }
+                ).pipe(Effect.as(Option.none()))
+              ),
               Effect.tapError((cause) =>
                 Effect.logError(
                   "Stored calendar discount definition could not be loaded",
@@ -61,7 +77,9 @@ export class CalendarDiscountProvider extends Context.Service<
           Effect.map(
             (definitions) =>
               new Map(
-                definitions.map((definition) => [definition.id, definition])
+                definitions
+                  .filter(Option.isSome)
+                  .map(({ value }) => [value.id, value])
               )
           )
         )
@@ -102,10 +120,11 @@ export class CalendarDiscountProvider extends Context.Service<
             ),
             Effect.bind("definitions", loadDiscountDefinitions),
             Effect.map(({ definitions, sales }) =>
-              sales.map((sale) => ({
-                sale,
-                definition: definitions.get(sale.discountId)!,
-              }))
+              sales.flatMap((sale) => {
+                const definition = definitions.get(sale.discountId);
+
+                return definition ? [{ sale, definition }] : [];
+              })
             )
           ),
         (effect, key) =>
