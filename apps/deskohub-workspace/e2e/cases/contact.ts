@@ -1,9 +1,11 @@
 import { Effect } from "effect";
 import {
-  clickBrowserElement,
   fillBrowserField,
+  focusBrowserElement,
   openBrowserPage,
-  requireEnabledSnapshotRef,
+  pressBrowserKey,
+  requireSnapshotRef,
+  waitForBrowserReactHydration,
   waitForBrowserText,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -40,26 +42,27 @@ export const assertContactForm = ({
     yield* openBrowserPage(config, run, session, url.toString(), {
       timeoutMs: getCheckoutTimeoutMs(),
     });
-    yield* fillBrowserField(run, session, "#contact-name", data.name, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* fillBrowserField(run, session, "#contact-phone", data.phone, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* fillBrowserField(run, session, "#contact-email", data.email, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* fillBrowserField(run, session, "#contact-message", data.message, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    const submitRef = yield* requireEnabledSnapshotRef({
-      description: "contact submit button",
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      '#contact-form button[type="submit"]',
+      { timeoutMs: getCheckoutTimeoutMs() }
+    );
+    yield* fillBrowserField(run, session, "#contact-name", data.name);
+    yield* fillBrowserField(run, session, "#contact-phone", data.phone);
+    yield* fillBrowserField(run, session, "#contact-email", data.email);
+    yield* fillBrowserField(run, session, "#contact-message", data.message);
+    const submitRef = yield* requireSnapshotRef({
+      description: "contact form submit button",
       labels: ["Send message"],
       run,
       session,
       timeoutMs: getCheckoutTimeoutMs(),
     });
-    yield* clickBrowserElement(run, session, submitRef, {
+    yield* focusBrowserElement(run, session, submitRef, {
+      timeoutMs: getCheckoutTimeoutMs(),
+    });
+    yield* pressBrowserKey(run, session, "Enter", {
       timeoutMs: getCheckoutTimeoutMs(),
     });
     yield* waitForBrowserText({
