@@ -52,7 +52,8 @@ const isWebhookReplayReady = (row: CheckoutRow) =>
 
 export const replayNexiWebhook = (
   config: WorkspaceE2EConfig,
-  row: CheckoutRow
+  row: CheckoutRow,
+  fetch_: typeof fetch = fetch
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     yield* tryWorkspaceE2ESync("assert Nexi replay row", () => {
@@ -65,12 +66,12 @@ export const replayNexiWebhook = (
     const webhookUrl = yield* makeUrl(
       "build Nexi webhook replay URL",
       "/api/webhooks/nexi",
-      config.aliasUrl
+      config.baseUrl
     );
     const response = yield* tryWorkspaceE2EPromise(
       "replay Nexi webhook",
       (signal) =>
-        fetch(webhookUrl, {
+        fetch_(webhookUrl, {
           body: JSON.stringify({
             eventId: `workspace-e2e-nexi-${row.reservation_id}`,
             eventTime: new Date().toISOString(),

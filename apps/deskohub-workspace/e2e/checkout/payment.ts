@@ -31,6 +31,7 @@ import {
   workspaceE2EPollIntervalMs,
 } from "../timeouts";
 import type { CheckoutData } from "../types";
+import { isExpectedCheckoutStatusUrl } from "../urls";
 
 const NEXI_TEST_CARD_NUMBER = "4509034543615006";
 const NEXI_TEST_CVV = "298";
@@ -82,13 +83,7 @@ export const completeCheckout = ({
     yield* completeNexiHostedPayment({ data, run, session });
     yield* waitForBrowserUrl({
       description: "checkout status page",
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return (
-          parsed?.host === config.alias &&
-          parsed.pathname.includes("/checkout/status/")
-        );
-      },
+      matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
       run,
       session,
       timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),

@@ -10,10 +10,7 @@ export const repoRoot = resolve(workspaceDir, "../..");
 const redactions = new Set<string>();
 
 export const makeRunner =
-  (config: {
-    readonly vercelProjectId: string;
-    readonly vercelTeamId: string;
-  }) =>
+  () =>
   async (
     command: string,
     args: string[],
@@ -35,8 +32,6 @@ export const makeRunner =
       cwd: options.cwd,
       env: {
         ...baseChildEnv(),
-        VERCEL_ORG_ID: config.vercelTeamId,
-        VERCEL_PROJECT_ID: config.vercelProjectId,
         ...options.env,
       },
       stderr: "pipe",
@@ -125,13 +120,6 @@ const databaseKeyFromHostPath = (hostname: string, pathname: string) => {
       ? firstLabel.slice(0, -"-pooler".length)
       : firstLabel;
   return `${[normalizedFirstLabel, ...rest].join(".")}${pathname}`;
-};
-
-export const extractDeploymentUrl = (stdout: string) => {
-  const urls = stdout.match(/https:\/\/[^\s]+\.vercel\.app/g) ?? [];
-  const url = urls.at(-1);
-  assert(url, "could not find Vercel preview URL in deploy output");
-  return url;
 };
 
 export const parseUrl = (value: string) => {

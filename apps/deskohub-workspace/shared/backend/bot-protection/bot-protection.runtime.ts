@@ -1,8 +1,5 @@
 import { env } from "@/env";
-import { getBotIdCheckOptionsForEnvironment } from "./bot-protection.options";
+import { isWorkspaceBotIdEnforced } from "@/shared/bot-protection/bot-protection.policy.js";
 
-export const getBotIdCheckOptions = () =>
-  getBotIdCheckOptionsForEnvironment({
-    e2eBypass: env.WORKSPACE_E2E_BOTID_BYPASS,
-    vercelEnvironment: env.VERCEL_ENV,
-  });
+export const isWorkspaceBotIdEnforcedAtRuntime = () =>
+  isWorkspaceBotIdEnforced(env.VERCEL_ENV);

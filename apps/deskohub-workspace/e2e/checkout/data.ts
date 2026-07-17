@@ -16,7 +16,7 @@ export const checkoutFlows: readonly CheckoutFlow[] = [
   {
     id: "cowork-basic",
     makeData: (config, _datasourceConfig, date) =>
-      Effect.succeed(makeCoworkCheckoutData(config.browserUrl, date)),
+      Effect.succeed(makeCoworkCheckoutData(config.baseUrl, date)),
     submitReservationScript: () => submitCoworkReservationScript,
   },
 ];
@@ -92,7 +92,7 @@ export const selectAvailableCoworkDates = (
     const response = yield* tryWorkspaceE2EPromise(
       "fetch workspace availability dates",
       () =>
-        fetch(`${config.browserUrl}/api/workspace/availability?${params}`, {
+        fetch(`${config.baseUrl}/api/workspace/availability?${params}`, {
           headers: config.bypassSecret
             ? { "x-vercel-protection-bypass": config.bypassSecret }
             : undefined,

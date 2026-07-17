@@ -10,7 +10,6 @@ interface IWorkspaceE2ECaseService {
   readonly makeCases: (input: {
     readonly config: WorkspaceE2EConfig;
     readonly datasourceConfig: DatasourceConfig;
-    readonly deploymentId: string;
     readonly flowStates: CheckoutFlowState[];
     readonly run: Runner;
   }) => Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError>;

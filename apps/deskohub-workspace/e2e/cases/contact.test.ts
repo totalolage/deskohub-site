@@ -30,13 +30,11 @@ test("submits the hydrated contact form from a fresh semantic snapshot", async (
     };
   };
   const config = {
-    alias: "workspace.example.com",
-    aliasUrl: "https://workspace.example.com",
-    browserUrl: "https://workspace.example.com",
+    baseUrl:
+      "https://deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
     bypassSecret: undefined,
-    vercelProjectId: "project",
-    vercelTeamId: "team",
-    vercelToken: "token",
+    expectedHost:
+      "deskohub-workspace-site-a1b2c3d4e-deskohub-bar.vercel.app",
   } satisfies WorkspaceE2EConfig;
   const runStep: WorkspaceE2EStepRunner = ({ execute }) => execute;
 

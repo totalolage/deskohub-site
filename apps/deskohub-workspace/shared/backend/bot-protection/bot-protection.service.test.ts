@@ -3,8 +3,10 @@ import { Effect, Logger } from "effect";
 
 mock.module("server-only", () => ({}));
 
+let vercelEnvironment: "development" | "preview" | "production" = "production";
+
 mock.module("./bot-protection.runtime", () => ({
-  getBotIdCheckOptions: () => undefined,
+  isWorkspaceBotIdEnforcedAtRuntime: () => vercelEnvironment === "production",
 }));
 
 const checkBotId = mock(() =>
@@ -19,6 +21,8 @@ const checkBotId = mock(() =>
 mock.module("botid/server", () => ({ checkBotId }));
 
 beforeEach(() => {
+  vercelEnvironment = "production";
+  checkBotId.mockClear();
   checkBotId.mockImplementation(() =>
     Promise.resolve({
       isHuman: true,
@@ -27,37 +31,6 @@ beforeEach(() => {
       bypassed: false,
     })
   );
-});
-
-test("uses the supported human bypass only for the E2E preview", async () => {
-  const { getBotIdCheckOptionsForEnvironment } = await import(
-    "./bot-protection.options"
-  );
-
-  expect(
-    getBotIdCheckOptionsForEnvironment({
-      e2eBypass: "HUMAN",
-      vercelEnvironment: "preview",
-    })
-  ).toEqual({
-    developmentOptions: {
-      bypass: "HUMAN",
-      isDevelopment: true,
-    },
-  });
-});
-
-test("never enables the E2E bypass in production", async () => {
-  const { getBotIdCheckOptionsForEnvironment } = await import(
-    "./bot-protection.options"
-  );
-
-  expect(
-    getBotIdCheckOptionsForEnvironment({
-      e2eBypass: "HUMAN",
-      vercelEnvironment: "production",
-    })
-  ).toBeUndefined();
 });
 
 const getVerificationEffect = async (
@@ -71,11 +44,25 @@ const getVerificationEffect = async (
   }).pipe(Effect.provide(BotProtectionService.Live));
 };
 
+for (const environment of ["preview", "development"] as const) {
+  for (const verificationFailurePolicy of ["allow", "deny"] as const) {
+    test(`does not call BotID in ${environment} with the ${verificationFailurePolicy} policy`, async () => {
+      vercelEnvironment = environment;
+      const effect = await getVerificationEffect(verificationFailurePolicy);
+
+      await expect(Effect.runPromise(effect)).resolves.toBeUndefined();
+      expect(checkBotId).not.toHaveBeenCalled();
+    });
+  }
+}
+
 for (const verificationFailurePolicy of ["allow", "deny"] as const) {
   test(`allows a human request with the ${verificationFailurePolicy} policy`, async () => {
     const effect = await getVerificationEffect(verificationFailurePolicy);
 
     await expect(Effect.runPromise(effect)).resolves.toBeUndefined();
+    expect(checkBotId).toHaveBeenCalledTimes(1);
+    expect(checkBotId).toHaveBeenCalledWith();
   });
 
   test(`allows a verified bot with the ${verificationFailurePolicy} policy`, async () => {

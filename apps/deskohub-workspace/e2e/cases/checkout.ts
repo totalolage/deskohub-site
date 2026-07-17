@@ -32,14 +32,12 @@ import type {
   CheckoutFlowState,
   WorkspaceE2EStepRunner,
 } from "../types";
-import { makeUrl, setSearchParams } from "../urls";
-import { verifyAlias } from "../vercel";
+import { isExpectedCheckoutStatusUrl, makeUrl, setSearchParams } from "../urls";
 
 export const executeCheckoutFlow = ({
   config,
   data,
   datasourceConfig,
-  deploymentId,
   flow,
   run,
   runStep,
@@ -49,7 +47,6 @@ export const executeCheckoutFlow = ({
   config: WorkspaceE2EConfig;
   data: CheckoutData;
   datasourceConfig: DatasourceConfig;
-  deploymentId: string;
   flow: CheckoutFlow;
   run: Runner;
   runStep: WorkspaceE2EStepRunner;
@@ -112,11 +109,6 @@ export const executeCheckoutFlow = ({
     });
     state.checkoutRow = checkoutRow;
     yield* runStep({
-      execute: verifyAlias(config, deploymentId),
-      id: "verify-preview-alias",
-      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
-    });
-    yield* runStep({
       execute: assertFulfilledStatusPage({
         config,
         locale: data.locale,
@@ -155,13 +147,7 @@ const waitForCheckoutStatusPage = (
 ) =>
   waitForBrowserUrl({
     description: "checkout status page",
-    matches: (url) => {
-      const parsed = parseUrl(url);
-      return (
-        parsed?.host === config.alias &&
-        parsed.pathname.includes("/checkout/status/")
-      );
-    },
+    matches: (url) => isExpectedCheckoutStatusUrl(url, config.expectedHost),
     run,
     session,
     timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
@@ -185,7 +171,7 @@ const assertFulfilledStatusPage = ({
       config,
       run,
       session,
-      `${config.browserUrl}/${locale}/checkout/status/${orderId}`,
+      `${config.baseUrl}/${locale}/checkout/status/${orderId}`,
       { timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation") }
     );
     yield* waitForBrowserText({
@@ -228,7 +214,7 @@ const assertFulfillmentFailedSupportPath = ({
     yield* markFulfillmentFailedForE2E(datasourceConfig, orderId);
     const statusUrl = yield* makeUrl(
       "build fulfillment failed checkout status URL",
-      `${config.browserUrl}/${data.locale}/checkout/status/${orderId}`
+      `${config.baseUrl}/${data.locale}/checkout/status/${orderId}`
     );
     yield* setSearchParams(statusUrl, {
       e2eAt: String(Date.now()),

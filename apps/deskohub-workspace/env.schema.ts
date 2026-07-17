@@ -60,10 +60,6 @@ export const workspaceServerEnvSchema = Schema.Struct({
   VERCEL_AUTOMATION_BYPASS_SECRET: optionalStringSchema,
   VERCEL_PROJECT_PRODUCTION_URL: nonEmptyStringSchema,
   VERCEL_URL: nonEmptyStringSchema,
-  WORKSPACE_CALLBACK_ORIGIN: optionalUrlEnvSchema,
-  WORKSPACE_E2E_BOTID_BYPASS: toEnvSchema(
-    Schema.optional(Schema.Literal("HUMAN"))
-  ),
 });
 
 export const workspaceClientEnvSchema = Schema.Struct({

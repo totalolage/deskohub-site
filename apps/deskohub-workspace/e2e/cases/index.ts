@@ -26,13 +26,11 @@ import {
 export const makeWorkspaceE2ECases = ({
   config,
   datasourceConfig,
-  deploymentId,
   flowStates,
   run,
 }: {
   config: WorkspaceE2EConfig;
   datasourceConfig: DatasourceConfig;
-  deploymentId: string;
   flowStates: CheckoutFlowState[];
   run: Runner;
 }): Effect.Effect<readonly WorkspaceE2ECase[], WorkspaceE2EError> =>
@@ -69,7 +67,7 @@ export const makeWorkspaceE2ECases = ({
     for (const scenario of terminalScenarios) {
       const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
       const data = makeCoworkCheckoutData(
-        config.browserUrl,
+        config.baseUrl,
         date,
         `cowork-${scenario.state}`
       );
@@ -115,7 +113,6 @@ export const makeWorkspaceE2ECases = ({
             config,
             data,
             datasourceConfig,
-            deploymentId,
             flow,
             run,
             runStep,

@@ -138,13 +138,15 @@ Do not commit real env files or quote secret values in logs, issues, or PRs.
 ## CI And Deployment
 
 - `.github/workflows/workspace-tests.yml` runs Workspace tests for pull requests
-  that touch Workspace, shared packages, or root build inputs. Its checkout E2E
-  job deploys a fresh Vercel preview, assigns `new.workspace.deskohub.cz`, runs
-  the Nexi checkout flow, and uploads artifacts on failure.
+  that touch Workspace, shared packages, or root build inputs.
+- `.github/workflows/workspace-e2e.yml` starts from the successful protected
+  Vercel Git preview for the exact PR SHA, migrates its integration-created Neon
+  branch, runs every case against that immutable preview, and uploads artifacts
+  on failure.
 - `.github/workflows/mirror-repository.yml` mirrors `main` to the configured
   mirror repository as a squashed commit.
-- `.github/workflows/cleanup-neon-preview-branch.yml` contains the Neon preview
-  branch cleanup job for merged same-repository pull requests.
+- The Neon/Vercel integration owns creation and deletion of Workspace preview
+  database branches. Repository workflows must not delete those branches.
 
 For the full Workspace preview checkout procedure, see
 [`apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md`](./apps/deskohub-workspace/docs/WORKSPACE_VERCEL_PREVIEW_E2E.md).

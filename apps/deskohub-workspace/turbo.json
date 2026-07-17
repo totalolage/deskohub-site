@@ -17,9 +17,7 @@
         "NEXT_PUBLIC_POSTHOG_HOST",
         "POSTHOG_API_KEY",
         "POSTHOG_PROJECT_ID",
-        "VERCEL_PROJECT_PRODUCTION_URL",
-        "WORKSPACE_CALLBACK_ORIGIN",
-        "WORKSPACE_E2E_BOTID_BYPASS"
+        "VERCEL_PROJECT_PRODUCTION_URL"
       ]
     },
     "i18n:compile": {

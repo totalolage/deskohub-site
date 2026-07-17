@@ -1,212 +1,142 @@
-# Workspace Vercel Preview E2E Checklist
+# Workspace protected-preview E2E
 
-Use this checklist for Workspace preview deployments focused on Nexi payment and notification behavior. Nexi callbacks require a public HTTPS URL, so the payment/webhook happy path should be validated on a Vercel preview or another externally reachable HTTPS deployment.
+Workspace E2E tests run only against the ordinary immutable Vercel Git preview
+for the exact commit under test. Every Workspace preview remains protected by
+Vercel Deployment Protection. Automation, Nexi returns, and webhook replays use
+the protection-bypass mechanism; application BotID is a Vercel-production-only
+control and is not initialized or enforced in Preview or Development.
 
-## Static Validation
+The complete CI flow is:
 
-Run from the repository root after installing dependencies with Bun:
+```text
+PR commit
+  -> Vercel builds the protected Git preview and the Neon integration branch
+  -> Vercel emits vercel.deployment.success
+  -> Workspace E2E validates the project, Preview environment, SHA, PR, and URL
+  -> CI resolves and migrates the preview's Neon branch
+  -> every browser, callback, status, and replay request uses that preview URL
+```
+
+## What can be tested
+
+Full E2E validates committed and pushed code through the immutable preview
+created for that commit. Uncommitted local code has no externally reachable Git
+preview and must not be presented as if it were tested through an older
+deployment. Local unit and functional tests remain useful before pushing.
+
+The normal repository-dispatch trigger works only after the workflow exists on
+the default branch. Before then, dispatch `.github/workflows/workspace-e2e.yml`
+manually with the exact 40-character SHA, immutable HTTPS deployment URL, and
+internal PR head ref. The workflow applies the same open, internal, non-draft,
+non-Dependabot PR guards to manual runs.
+
+Never scrape a Vercel PR comment or use a branch URL. The E2E target must be the
+immutable `.vercel.app` deployment origin emitted for the exact SHA.
+
+## Preview environment contract
+
+The Workspace Vercel project's Preview environment must provide these variable
+names. Inspect settings and deployment metadata without printing their values.
+
+- Neon integration-managed `DATABASE_URL` and `DATABASE_URL_UNPOOLED`.
+- Nexi sandbox `NEXI_API_ORIGIN` and `NEXI_API_KEY`.
+- `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` for the current sandbox merchant.
+- Workspace E2E Dotypos URL, timeout, credentials, and tenant IDs.
+- `EMAIL_PROVIDER=console`; the runner marks console fulfillment delivered only
+  after the deployed payment/webhook path has completed.
+- `VERCEL_AUTOMATION_BYPASS_SECRET` for Deployment Protection.
+
+Do not use production Nexi, Dotypos, email, or database credentials in Preview.
+Do not add callback-origin or BotID test-bypass overrides. Non-production
+callback origins derive from the deployment's `VERCEL_URL`; production derives
+from `VERCEL_PROJECT_PRODUCTION_URL`.
+
+Workspace appends the protection-bypass query parameter to preview Nexi result
+and notification URLs when configured. Browser navigation establishes the
+bypass cookie, readiness checks use the bypass query, and direct Nexi webhook
+replays send the `x-vercel-protection-bypass` header.
+
+## Preview database identity and migration
+
+The Neon/Vercel integration owns the preview database branch for the PR
+lifecycle. Its validated mapping is `preview/<internal-head-ref>`. E2E waits for
+the successful Vercel preview event, resolves that exact non-primary Neon
+branch, obtains its direct and pooled connection strings with pinned
+`neonctl@2.30.1`, masks each immediately, and migrates with the direct URL.
+Runtime traffic uses the pooled URL; database assertions and the allowlist use
+the direct URL for the same branch.
+
+The workflow fails closed if the branch is missing, ambiguous, primary, or does
+not match the validated PR ref. It never falls back to production or a shared
+development database. Individual E2E runs do not create, expire, or delete the
+branch. The Neon/Vercel integration that creates the branch also owns its
+cleanup. Keep automatic deletion of obsolete preview branches enabled in the
+integration, and do not add repository workflows that delete integration-owned
+branches.
+
+The preview becomes Ready before CI runs migrations. That ordering is safe only
+while the Workspace build is database-independent and runtime traffic does not
+require a schema-breaking migration before E2E starts. Schema-breaking changes
+must preserve compatibility with this ordering or introduce a preview-only
+pre-runtime migration mechanism. Do not add migrations to the Vercel build.
+
+Production remains unchanged: build a staged production deployment, migrate the
+production Neon branch, then promote the ready deployment.
+
+## Runner target and safety
+
+`WORKSPACE_E2E_BASE_URL` is the single required target origin. The runner
+validates it as an immutable HTTPS Vercel deployment, derives the expected host,
+and uses it for:
+
+- all browser cases and availability requests;
+- Nexi result and status host assertions;
+- Nexi and Resend endpoint readiness;
+- replay POSTs to `/api/webhooks/nexi`;
+- status-page checks after fulfillment transitions.
+
+`DATABASE_URL`, `WORKSPACE_E2E_DATABASE_URL_UNPOOLED`, and
+`WORKSPACE_E2E_DATABASE_ALLOWLIST` must identify the database backing that same
+preview. `NEXI_API_ORIGIN` must be supplied explicitly as the sandbox origin.
+The runner does not deploy, pull Vercel environment files, inspect deployments,
+or mutate aliases/domains.
+
+Webhook replay is only a deterministic notification trigger. The deployed
+handler must still fetch authoritative order state from Nexi before applying a
+payment transition. Keep raw payloads, credentials, customer data, and
+connection strings out of logs and artifacts.
+
+## Verification
+
+Run from the repository root:
 
 ```bash
+bun turbo i18n:compile --filter=deskohub-workspace
+bun test apps/deskohub-workspace/e2e
+bun --cwd apps/deskohub-workspace test shared/backend/bot-protection
 bun run typecheck:workspace
 bun run lint:workspace
-bun run typecheck:boardgame
-bun run lint:boardgame
 git diff --check
 ```
 
-Run the package-level Nexi check from `packages/nexi`:
+For a real run, record only non-secret evidence:
 
-```bash
-bun run typecheck
-```
+1. The tested Git SHA equals the Vercel deployment SHA.
+2. The target is the immutable deployment URL, not a branch alias or custom domain.
+3. No Vercel deployment command runs inside E2E.
+4. No Vercel alias or domain mutation occurs.
+5. The migrated Neon branch is the branch backing that preview and is neither production nor shared development.
+6. Browser navigation succeeds through Vercel Deployment Protection.
+7. Nexi returns to the same preview host.
+8. Replay reaches that preview's `/api/webhooks/nexi`, whose handler verifies authoritative Nexi state.
+9. An intentionally induced case failure interrupts siblings and closes their browser sessions.
+10. Deleting the test PR's Git branch lets the Neon/Vercel integration remove
+    its obsolete preview branch without a repository cleanup workflow.
 
-If database scripts need a schema-only sanity check before a DB exists, run from `apps/deskohub-workspace` after populating `.env.local` or exporting placeholder values for all required typed env vars. `drizzle.config.ts` imports the full typed env, so a syntactically valid `DATABASE_URL` alone is not enough.
+Failure artifacts remain available for seven days. The suite must retain
+fail-fast parallel aggregation, scoped browser sessions, cancellation
+propagation, bounded finalizers, case watchdogs, and discrete semantic-step
+timeouts.
 
-```bash
-bunx drizzle-kit generate --config drizzle.config.ts --name preview_sanity
-```
-
-Remove any generated migration files afterward unless they are intentionally being kept. The repository now includes a fresh Workspace baseline migration generated from the current `db/schema/**` state for the disposable dev database/bootstrap flow. Future schema changes should generate additional migrations normally.
-
-## Required Environment
-
-User-supplied values:
-
-- `DATABASE_URL`: Postgres connection string for the preview/dev database. No database exists yet, so provision one first.
-- `NEXI_API_KEY`: Nexi API key for the environment under test.
-- `VERCEL_AUTOMATION_BYPASS_SECRET`: required when Vercel deployment protection is enabled and Nexi must call protected preview callback URLs.
-- `DOTYPOS_CLIENT_ID`, `DOTYPOS_CLIENT_SECRET`, `DOTYPOS_REFRESH_TOKEN`, `DOTYPOS_CLOUD_ID`, `DOTYPOS_BRANCH_ID`, `DOTYPOS_EMPLOYEE_ID`: Dotypos credentials and IDs used by the deployed app.
-- `EMAIL_PROVIDER`, `EMAIL_API_KEY`, `EMAIL_FROM_NAME`: real Workspace email provider settings used by live contact/manual reservation flows. The from address is fixed in code as `reservations@workspace.deskohub.cz`.
-- `NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`: Cloudinary account and webhook signing values.
-- `NEXT_PUBLIC_GTM_ID`: GTM container ID, if enabled for preview.
-
-Known/defaultable values:
-
-- `NEXI_API_ORIGIN`: `https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp` for Nexi sandbox. See [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md) for test keys, accounting terminal behavior, and test cards.
-- `NEXI_CHECKOUT_CURRENCY_OVERRIDE`: optional, but expected for the current public Nexi sandbox E2E setup. Use `EUR` only in non-production deployments against Nexi sandbox when validating the public Nexi CEE test merchant/cards. Leave unset for production and for any test merchant that supports the product catalog currency directly. The Workspace code ignores this override in production and when `NEXI_API_ORIGIN` is not the Nexi sandbox origin, so live payments remain in the catalog currency such as `CZK`.
-- `DOTYPOS_API_URL`: Dotypos API origin for the configured account.
-- `DOTYPOS_API_TIMEOUT`: `30000` unless a different timeout is required.
-- Dotypos Workspace tables must be active, visible, and tagged for fulfillment: `tier:basic`, `tier:plus`, or `tier:profi`; Profi monitor tables also need `monitor:count:2`, `monitor:size:27|32`, and `monitor:resolution:qhd|4k`.
-- `VERCEL_ENV`, `VERCEL_URL`, `VERCEL_PROJECT_PRODUCTION_URL`: provided by Vercel on deployments. Local values are deployment stand-ins only because callback config builds `https://${url}`; local Nexi HPP callbacks need a real HTTPS URL reachable by Nexi, or use a Vercel preview deployment.
-
-Vercel protection notes:
-
-- Keep deployment protection enabled for previews when required, but configure Vercel's protection-bypass secret in `VERCEL_AUTOMATION_BYPASS_SECRET`. Use Vercel's auth bypass documentation at `https://vercel.com/docs/deployment-protection/methods-to-bypass-deployment-protection/protection-bypass-automation`.
-- Read the secret value from `.env.development.local` as `VERCEL_AUTOMATION_BYPASS_SECRET`; do not print or commit the secret.
-- For browser/manual testing, start from the protected preview URL with `?x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET`, or append `&x-vercel-protection-bypass=$VERCEL_AUTOMATION_BYPASS_SECRET` when the URL already has query parameters. If this sets access for the browser session, use that preview URL for the Nexi checkout return/callback-safe flow.
-- For automation, pass either the same query parameter or the `x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET` header when fetching/navigating, whichever is more convenient.
-- Workspace appends `x-vercel-protection-bypass` to Nexi callback URLs only for preview deployments when the secret is present. Workspace-owned post-callback redirects add `x-vercel-set-bypass-cookie=true` so the final result or retry page can render in the same protected deployment without sending that cookie-setting parameter through Nexi.
-- If webhooks appear not to arrive, first confirm the callback URL works through protection with the bypass parameter before debugging Nexi payload handling.
-
-Dotypos manual-verification notes:
-
-- `DOTYPOS_REFRESH_TOKEN` is a secret and is intentionally not available from local `vercel env pull` output. Do not treat an empty pulled value as a missing project configuration.
-- Manual Dotypos SDK checks must load the local secret from `apps/deskohub-workspace/.env.development.local` together with the shared Workspace env files. Follow [`../../../packages/dotypos/docs/MANUAL_API_USAGE.md`](../../../packages/dotypos/docs/MANUAL_API_USAGE.md) and run commands from `apps/deskohub-workspace` with:
-
-```bash
-bun --env-file=.env.development --env-file=.env.local --env-file=.env.development.local --eval '<script>'
-```
-
-- Pull Vercel preview env only for preview database/runtime checks. Do not use pulled preview env as the source of Dotypos API secrets for manual tests.
-- Production Dotypos connection details are in `apps/deskohub-workspace/.env.production.local`. Use them only when production data access is explicitly requested, and confirm first if there is any uncertainty.
-
-Nexi sandbox notes:
-
-- Use the published CEE implicit-accounting direct API key for the normal hosted checkout happy path.
-- The public CEE OK cards have been verified with `EUR`. They can return provider-side `AUTHORIZATION FAILED` with `CZK`, even when HPP creation and callback handling are correct.
-- For Workspace catalog prices in `CZK`, use `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on sandbox preview when the goal is to validate the app payment/webhook path against the public Nexi test merchant. Seeing `EUR` on Nexi HPP, payment attempts, and checkout/status summaries in this sandbox setup is expected and is not a bug. The app only applies this override for non-production Nexi sandbox traffic; production Nexi traffic uses the real catalog currency.
-- A successful implicit-accounting CEE payment may verify as `operationType=AUTHORIZATION`, `operationResult=EXECUTED`, with both authorized and captured amounts set. This is a successful paid state for Workspace.
-
-Provider-owned HPP notes:
-
-- The Nexi hosted payment page is provider-owned. Validate that Workspace creates a correct HPP request, redirects to the provider URL, receives the provider return/webhook, and records the verified outcome. Do not treat Nexi HPP UI mechanics, wording, focus behavior, keyboard requirements, 3DS stub behavior, or the exact placement/availability of provider-side abort/cancel controls as Workspace bugs.
-- Workspace-owned behavior resumes when Nexi returns to a Workspace `/checkout/result/*`, `/checkout/payment/*`, or `/checkout/status/*` URL, or when Nexi calls the Workspace webhook. From that point, verify Workspace state transitions, retry/restart affordances, Dotypos reservation state, and no-PII/raw-payload rules.
-
-Email notes:
-
-- Workspace `email.config.ts` supports `resend` for delivered email and `console` for local/dev output.
-- Preview should use `resend`, not `console`, when validating notification delivery.
-
-## Database Bootstrap
-
-The Workspace migrations have been rewritten into a fresh single baseline, `apps/deskohub-workspace/db/migrations/0000_chubby_lucky_pierre.sql`, generated from the current schema.
-
-1. Provision a fresh Postgres database or branch for preview/dev.
-2. Set `DATABASE_URL` in Vercel preview environment variables.
-3. For this disposable dev database, drop and recreate the schema before applying the rewritten baseline.
-4. Apply the baseline migration to the preview/dev database.
-5. Do not apply rewritten migration history to non-disposable databases unless they are reset first.
-6. Future schema changes should generate additional Drizzle migrations normally from `apps/deskohub-workspace/db/schema/**`.
-
-## Preview Deployment
-
-For E2E that validates current code, deploy a fresh preview from the current checkout with Vercel CLI, then move `new.workspace.deskohub.cz` to that deployment before starting checkout. The CLI deploy is the source of truth because it uploads the current filesystem state, including uncommitted changes. The `new.workspace.deskohub.cz` alias is still used for webhook E2E because Resend/Nexi callbacks are configured for that host.
-
-```bash
-git status --short
-vercel env pull .env.local --cwd apps/deskohub-workspace
-bun --cwd apps/deskohub-workspace run db:migrate
-vercel --cwd apps/deskohub-workspace --yes --archive=tgz
-vercel alias set <preview-url> new.workspace.deskohub.cz --cwd apps/deskohub-workspace
-```
-
-If the alias CLI resolves the custom domain under the wrong scope, assign the alias through the Vercel deployments API instead. This has happened when `vercel alias set <preview-host> new.workspace.deskohub.cz` fetched the domain under `filip-kalny-projects` and failed with `You don't have access to the domain new.workspace.deskohub.cz under filip-kalny-projects`; `--scope deskohub-bar` then found the domain but could not find the Workspace deployment. Do not spend time trying `--project` because current Vercel CLI rejects it for `alias set`.
-
-Use the deployment ID from the fresh preview and the Workspace team ID:
-
-```bash
-curl -fsS \
-  -X POST \
-  -H "Authorization: Bearer $VERCEL_TOKEN" \
-  -H "Content-Type: application/json" \
-  "https://api.vercel.com/v2/deployments/<deployment-id>/aliases?teamId=team_MgMQ4MEWijWnYa1R48C2JU5e" \
-  -d '{"alias":"new.workspace.deskohub.cz"}'
-```
-
-The successful response is `200` with message `new.workspace.deskohub.cz`. Verify the alias with the Vercel API or MCP before starting checkout; CLI inspect can hit the same scope confusion as alias assignment.
-
-Use `https://new.workspace.deskohub.cz` for the checkout flow and post-deploy checks after the alias command succeeds. Do not run `vercel --prod` for preview E2E unless production validation was explicitly requested. Do not use the existing `new.workspace.deskohub.cz` deployment without first moving it to the fresh preview unless the test is explicitly about the already-live alias.
-
-The pulled `.env.local` is useful for Vercel preview runtime values such as `DATABASE_URL`. It is not sufficient for manual Dotypos SDK verification because `DOTYPOS_REFRESH_TOKEN` must come from `.env.development.local`.
-
-If the project is not linked yet, run Vercel's link flow from `apps/deskohub-workspace` and confirm it points at the Workspace project before deploying.
-
-## Release Migrations
-
-Workspace Vercel builds do not migrate databases. Production releases are serialized by `.github/workflows/deploy-workspace-production.yml`: Vercel first builds a staged production deployment without assigning the production domain, GitHub Actions then runs pending Drizzle migrations against Neon's default production branch, and the ready deployment is promoted only after migration succeeds. Automatic Vercel Git deployments from `main` are disabled for the Workspace project so this workflow is the only production release path.
-
-The checkout E2E workflow provisions an isolated Neon branch from production for each workflow run, migrates it explicitly before deploying a fresh preview, and deletes it when the job finishes. For other preview or development databases, run `bun run db:migrate` before deploying whenever the branch contains pending Workspace migrations. The app's `build` script remains the atomic core Next build (`next build --turbo`), while Turbo's Workspace build task is responsible for running `i18n:compile` and upstream generation such as `@deskohub/nexi#generate` before that build starts.
-
-Workspace runtime variables are listed in the root Turbo `globalPassThroughEnv` so tasks can read the same environment Vercel provides without every secret invalidating cache entries. Individual task `env` lists should contain only variables embedded in that task's output, such as `DATABASE_URL` for `db:migrate` and public browser variables for `build`. The deployment-specific `VERCEL_URL` remains pass-through and is read when checkout runs so a new preview URL does not invalidate the build cache. The Drizzle config intentionally validates only `DATABASE_URL` for `db:migrate`; the later Next build validates the rest of the Workspace runtime environment.
-
-Do not put Workspace migrations in the shared repository-root `vercel.json`: root-linked Vercel projects for other apps must not advance the Workspace database schema or build the Workspace app. If the Workspace Vercel project remains linked at the repository root instead of `apps/deskohub-workspace`, configure that specific Vercel project's Build Command in Vercel project settings to run `bun turbo build:vercel --filter=deskohub-workspace`.
-
-Database requirements and risks:
-
-- Production migrations obtain a direct connection string for Neon's default branch using the repository's `NEON_API_KEY` secret and `NEON_PROJECT_ID` variable.
-- `DATABASE_URL` is required for explicit preview/development migration runs.
-- Prefer a direct, unpooled Neon Postgres connection URL for migrations. Keep pooled URLs for runtime traffic only when both are configured separately.
-- Review and commit generated SQL in `apps/deskohub-workspace/db/migrations` before deploy.
-- A production migration can advance the schema even if the later Vercel promotion fails. The staged deployment is already built at that point and the workflow can be rerun to retry migration and promotion.
-- Production releases use a non-cancelling concurrency group so only one Workspace migration and promotion sequence runs at a time.
-
-## Checkout E2E Procedure
-
-Run Nexi checkout E2E against a Vercel preview deployment, not localhost. Nexi HPP result and notification callbacks must be public HTTPS URLs reachable by Nexi, and Workspace builds those URLs from the preview deployment host.
-
-1. Deploy a fresh Vercel preview from the exact current checkout and assign `new.workspace.deskohub.cz` to it with the CLI commands above.
-2. Confirm the preview environment uses the Nexi sandbox origin and sandbox API key from [`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).
-3. If validating Workspace catalog prices that are still `CZK` against the public Nexi CEE sandbox merchant/cards, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` on the preview environment only. Treat resulting `EUR` payment amounts as expected sandbox behavior, not a currency bug.
-4. Open `https://new.workspace.deskohub.cz` after it points to the new deployment and run the customer checkout flow from that URL so the HPP request contains public HTTPS `notificationUrl` and `resultUrl` values for the same deployed code under test.
-5. Complete one payment with an OK sandbox card and the successful 3DS stub option.
-6. Start a second checkout and exercise the cancellation or failure path with the documented KO card or a user cancellation from HPP.
-7. From the returned Workspace status page, retry or restart checkout as the UI allows and confirm the retry path does not mutate the already failed/cancelled order into a false success.
-
-## First E2E Focus
-
-Validate the payment and notification path first:
-
-- Checkout initiation creates a `payment_orders` row with `payment_status=created` or `payment_pending` and stores only safe checkout metadata.
-- Browser redirects to the Nexi HPP URL. Once the browser is on Nexi HPP, the UI is provider-owned; test observations there should be limited to provider result selection and whether the user can complete, fail, or cancel through a documented sandbox path.
-- HPP request includes `paymentSession.actionType=PAY`, a public HTTPS `notificationUrl`, and a public HTTPS `resultUrl`.
-- For Nexi sandbox OK-card testing, complete the 3DS stub with the successful authentication option.
-- Nexi notification webhook records a `webhook_events` row without logging raw payloads or secrets.
-- Successful payment is verified through Nexi `GET /orders/{orderId}` before local state changes. The notification payload is a trigger, not the authoritative result.
-- Successful payment transitions the order to `payment_status=paid`, sets `paid_at`, and records provider operation/status fields.
-- Duplicate or replayed webhook notifications are idempotent and keep stable state.
-- Logs do not contain `NEXI_API_KEY`, raw webhook payloads, card data, or customer secrets.
-
-Validate cancellation/failure retry behavior separately:
-
-- A KO sandbox card or cancelled HPP session returns to the preview result/status URL without creating a paid order.
-- The order remains `payment_status=payment_failed`, `cancelled`, or another documented non-paid terminal/pending state that matches the provider result.
-- Retrying checkout creates or uses the intended follow-up checkout path without overwriting the failed/cancelled provider facts from the original order.
-- A later successful retry still follows the same webhook verification and database checks as the normal OK-card path.
-
-Database checks for a successful sandbox payment:
-
-- `payment_orders.payment_status = 'paid'`.
-- `payment_orders.last_provider_status = 'EXECUTED'`.
-- `payment_orders.last_provider_operation_id` is set when Nexi returned an operation ID.
-- `payment_orders.paid_at` is set.
-- `payment_orders.checkout_details.payment.expectedPrice.currency` reflects the actual currency sent to Nexi. With the sandbox override enabled, this should be `EUR` even if the product catalog/UI remains `CZK`. In production, the override is disabled by code and the expected currency is the real catalog currency.
-- `webhook_events.status = 'processed'` for the applied event identity.
-
-Expected fulfillment boundary:
-
-- Dotypos reservation fulfillment assigns an active visible Workspace table by Dotypos tags rather than a static table ID env var.
-- If no Dotypos table matches the requested workspace tier and monitor option tags, confirm the order remains `payment_status=paid`, transitions to `fulfillment_status=failed`, sets `fulfillment_failed_at`, and records a stable `fulfillment_failure_code`.
-- If fulfillment fails before email dispatch, customer/internal emails may not send; this should not block payment/webhook validation.
-
-## Post-Deploy Checks
-
-After deploying a preview URL:
-
-```bash
-vercel inspect <preview-url>
-vercel logs <preview-url>
-```
-
-Check Vercel function logs around checkout creation, callback handling, Nexi notification handling, and fulfillment. Inspect the preview database for `payment_orders` and `webhook_events` state transitions, then verify email provider delivery logs if the fulfillment path reaches notification dispatch.
-
-If the return/status page says payment was received but access needs help, inspect fulfillment state before re-debugging Nexi. That page is expected when payment is `paid` but Dotypos reservation/access fulfillment failed.
+For Nexi sandbox facts and cards, see
+[`../../../packages/nexi/docs/TESTING_API.md`](../../../packages/nexi/docs/TESTING_API.md).

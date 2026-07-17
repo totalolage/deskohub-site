@@ -3,8 +3,11 @@ import inlangSettings from "./project.inlang/settings.json" with {
   type: "json",
 };
 import { withBotId } from "botid/next/config";
+import { configureWorkspaceBotId } from "./shared/bot-protection/bot-protection.policy.js";
 
 const localeRedirectPattern = inlangSettings.locales.join("|");
+const workspaceBotIdVercelEnvironment =
+  process.env.VERCEL_ENV ?? "development";
 
 const postHogSourceMapConfig =
   process.env.POSTHOG_API_KEY && process.env.POSTHOG_PROJECT_ID
@@ -27,6 +30,10 @@ const postHogSourceMapConfig =
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   cacheComponents: false,
+  env: {
+    NEXT_PUBLIC_WORKSPACE_BOTID_VERCEL_ENV:
+      workspaceBotIdVercelEnvironment,
+  },
   reactCompiler: true,
   transpilePackages: ["@deskohub/cloudinary", "@deskohub/cloudinary-image"],
   async redirects() {
@@ -80,7 +87,11 @@ const nextConfig = {
   },
 };
 
-const botIdConfig = withBotId(nextConfig);
+const botIdConfig = configureWorkspaceBotId(
+  nextConfig,
+  workspaceBotIdVercelEnvironment,
+  withBotId
+);
 
 export default postHogSourceMapConfig
   ? withPostHogConfig(botIdConfig, postHogSourceMapConfig)
