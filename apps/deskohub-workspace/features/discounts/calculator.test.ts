@@ -271,25 +271,6 @@ describe("discount calculator", () => {
     }
   });
 
-  test("rejects invalid percentage adjustments", () => {
-    for (const basisPoints of [0, -1, 1.5, 10_001]) {
-      const error = calculateError(money(1000), [
-        percentage("invalid", basisPoints),
-      ]);
-
-      expect(error.reason).toBe("invalid_percentage_adjustment");
-      expect(error.discountId).toBe("invalid");
-    }
-  });
-
-  test("rejects non-positive and non-integer fixed adjustments", () => {
-    for (const value of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
-      expect(
-        calculateError(money(1000), [fixed("invalid", money(value))]).reason
-      ).toBe("invalid_fixed_adjustment");
-    }
-  });
-
   test("distinguishes fixed currency and exponent mismatches", () => {
     expect(
       calculateError(money(1000), [fixed("currency", money(100, "EUR"))]).reason

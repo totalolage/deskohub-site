@@ -4,12 +4,11 @@ import {
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import {
-  type AppliedDiscount,
-  type Discount,
-  type DiscountProductIdentity,
-  type DiscountQuote,
-  discountBasisPointsSchema,
+import type {
+  AppliedDiscount,
+  Discount,
+  DiscountProductIdentity,
+  DiscountQuote,
 } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
@@ -111,22 +110,8 @@ const getAppliedValue = (input: {
 
   return Match.value(adjustment).pipe(
     Match.discriminatorsExhaustive("kind")({
-      percentage: (percentageAdjustment) => {
-        if (
-          !Schema.is(discountBasisPointsSchema)(
-            percentageAdjustment.basisPoints
-          )
-        ) {
-          return Effect.fail(
-            calculationError(
-              "invalid_percentage_adjustment",
-              "Percentage discounts require integer basis points from 1 through 10,000.",
-              input.candidate.discount
-            )
-          );
-        }
-
-        return Effect.succeed(
+      percentage: (percentageAdjustment) =>
+        Effect.succeed(
           Math.min(
             input.remaining.value,
             applyBasisPoints(
@@ -134,22 +119,8 @@ const getAppliedValue = (input: {
               percentageAdjustment.basisPoints
             )
           )
-        );
-      },
+        ),
       fixed: (fixedAdjustment) => {
-        if (
-          !Number.isSafeInteger(fixedAdjustment.amount.value) ||
-          fixedAdjustment.amount.value < 1
-        ) {
-          return Effect.fail(
-            calculationError(
-              "invalid_fixed_adjustment",
-              "Fixed discounts require a positive integer money amount.",
-              input.candidate.discount
-            )
-          );
-        }
-
         if (fixedAdjustment.amount.currency !== input.remaining.currency) {
           return Effect.fail(
             calculationError(

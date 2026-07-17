@@ -237,32 +237,34 @@ const validateFixedAdjustmentCompatibility = (input: {
   return Match.value(adjustment).pipe(
     Match.discriminatorsExhaustive("kind")({
       percentage: () => Effect.void,
-      fixed: (fixedAdjustment) => {
-        const reason =
-          fixedAdjustment.amount.currency !==
-          input.discountableSubtotal.currency
-            ? "currency_mismatch"
-            : fixedAdjustment.amount.exponent !==
-                input.discountableSubtotal.exponent
-              ? "exponent_mismatch"
-              : undefined;
-
-        return reason === undefined
-          ? Effect.void
-          : Effect.fail(
+      fixed: (fixedAdjustment) =>
+        Option.liftPredicate(
+          fixedAdjustment.amount,
+          (amount) =>
+            amount.currency !== input.discountableSubtotal.currency ||
+            amount.exponent !== input.discountableSubtotal.exponent
+        ).pipe(
+          Option.map(
+            (amount) =>
               new DiscountProviderError({
                 reason: "malformed_configuration",
                 message:
                   "The discount code fixed adjustment is incompatible with the requested subtotal.",
                 cause: new DiscountCalculationError({
-                  reason,
+                  reason:
+                    amount.currency !== input.discountableSubtotal.currency
+                      ? "currency_mismatch"
+                      : "exponent_mismatch",
                   message:
                     "Fixed discount currency and exponent must match the discountable subtotal.",
                   discountId: input.definition.id,
                 }),
               })
-            );
-      },
+          ),
+          Option.map(Effect.fail),
+          Effect.transposeOption,
+          Effect.asVoid
+        ),
     })
   );
 };
