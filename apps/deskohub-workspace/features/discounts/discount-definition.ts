@@ -60,24 +60,25 @@ export const decodeDiscountDefinition = Effect.fn("DiscountDefinition.decode")(
 
 const definitionLabelSchema = Schema.Trim.check(Schema.isNonEmpty());
 
-const discountLabelsCodec = Schema.Record(
+const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
   Schema.Literals(locales),
   definitionLabelSchema
 );
 
-const discountTargetSchema = Schema.Struct({
-  discountId: storedDiscountIdSchema,
-  productKey: discountProductKeySchema,
-  productIdentity: discountProductIdentityCodec,
-}).check(
-  Schema.makeFilter(
-    ({ productIdentity, productKey }) =>
-      productKey === `cowork:${productIdentity.tier}` || {
-        path: ["productKey"],
-        issue: "product key must match the product identity",
-      }
-  )
-);
+const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
+  Schema.Struct({
+    discountId: storedDiscountIdSchema,
+    productKey: discountProductKeySchema,
+    productIdentity: discountProductIdentityCodec,
+  }).check(
+    Schema.makeFilter(
+      ({ productIdentity, productKey }) =>
+        productKey === `cowork:${productIdentity.tier}` || {
+          path: ["productKey"],
+          issue: "product key must match the product identity",
+        }
+    )
+  );
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
   Schema.NonEmptyArray(discountTargetSchema).check(
