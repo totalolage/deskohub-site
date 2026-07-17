@@ -63,6 +63,30 @@ export const openBrowserPage = (
     { timeoutMs: options.timeoutMs ?? 60_000 }
   );
 
+export const waitForBrowserReactHydration = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const selectorLiteral = JSON.stringify(selector);
+  const hydrationCheck = `(() => {
+    const element = document.querySelector(${selectorLiteral});
+    return element !== null && Object.keys(element).some((key) => key.startsWith("__reactProps$"));
+  })()`;
+
+  return runBrowserCommand(
+    "wait for browser React hydration",
+    run,
+    session,
+    ["wait", "--fn", hydrationCheck],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const evalBrowserScript = (
   operation: string,
   run: Runner,
@@ -93,22 +117,33 @@ export const fillBrowserField = (
     }
   ).pipe(Effect.asVoid);
 
-export const clickBrowserElement = (
+export const focusBrowserElement = (
   run: Runner,
   session: string,
   selector: string,
   options: { readonly timeoutMs?: number } = {}
 ): Effect.Effect<void, WorkspaceE2EError> =>
   runBrowserCommand(
-    "click browser element",
+    "focus browser element",
     run,
     session,
-    ["click", selector],
+    ["focus", selector],
     {
       logOutput: false,
       timeoutMs: options.timeoutMs ?? 60_000,
     }
   ).pipe(Effect.asVoid);
+
+export const pressBrowserKey = (
+  run: Runner,
+  session: string,
+  key: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand("press browser key", run, session, ["press", key], {
+    logOutput: false,
+    timeoutMs: options.timeoutMs ?? 60_000,
+  }).pipe(Effect.asVoid);
 
 export const readInteractiveSnapshot = (
   run: Runner,
