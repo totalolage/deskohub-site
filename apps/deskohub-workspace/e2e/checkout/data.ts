@@ -32,7 +32,7 @@ const makeCheckoutContact = (flowId: string) => {
     .toLowerCase()
     .replaceAll(/[^a-z0-9]+/g, "-");
   const name = `Workspace E2E ${flowId} ${runId} ${sequence}`;
-  const phone = `+420735${runId.slice(6, 10)}${sequence}`;
+  const phone = `+4207${runId.slice(2, 8)}${sequence}`;
   const email = `delivered+${emailKey}@resend.dev`;
   const message = `Automated checkout e2e ${flowId} ${runId} ${sequence}`;
 
