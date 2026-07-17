@@ -62,7 +62,7 @@ describe("CheckoutSummary", () => {
     expect(view.queryByText("product:basic")).toBeNull();
   });
 
-  test("renders a discounted product with its original and final prices", () => {
+  test("renders a discounted product with its original and final prices", async () => {
     const money = (value: number) => ({
       value,
       exponent: 2,
@@ -106,7 +106,7 @@ describe("CheckoutSummary", () => {
       name: /discount.*profi workstation/i,
     });
 
-    act(() => detailsButton.focus());
+    await act(async () => detailsButton.focus());
     expect(document.activeElement).toBe(detailsButton);
     expect(detailsButton.getAttribute("data-state")).toBe("instant-open");
     expect(detailsButton.getAttribute("aria-describedby")).toMatch(/^radix-/);
