@@ -17,7 +17,6 @@ import {
   payPageOrderIdScript,
 } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
-import { getCheckoutTimeoutMs } from "../config";
 import {
   toWorkspaceE2EError,
   tryWorkspaceE2EPromise,
@@ -27,6 +26,10 @@ import {
 import { pollUntil } from "../polling";
 import type { Runner } from "../runtime";
 import { addRedaction, assert, log, parseUrl } from "../runtime";
+import {
+  getWorkspaceE2ETimeoutMs,
+  workspaceE2EPollIntervalMs,
+} from "../timeouts";
 import type { CheckoutData } from "../types";
 
 const NEXI_TEST_CARD_NUMBER = "4509034543615006";
@@ -40,8 +43,11 @@ const runBrowserCommand = (
   args: string[],
   options?: Parameters<Runner>[2]
 ) =>
-  tryWorkspaceE2EPromise(operation, () =>
-    run("agent-browser", ["--session", session, ...args], options)
+  tryWorkspaceE2EPromise(operation, (signal) =>
+    run("agent-browser", ["--session", session, ...args], {
+      ...options,
+      signal,
+    })
   );
 
 export const completeCheckout = ({
@@ -61,7 +67,7 @@ export const completeCheckout = ({
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
     yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       onOrderId,
@@ -85,7 +91,7 @@ export const completeCheckout = ({
       },
       run,
       session,
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
     });
 
     const url = yield* runBrowserCommand(
@@ -119,7 +125,7 @@ export const startCheckoutPaymentAttempt = ({
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
     yield* openBrowserPage(config, run, session, data.checkoutUrl, {
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       onOrderId,
@@ -170,7 +176,7 @@ const submitReservationAndWaitForPayPage = ({
   submitReservationScript: string;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const timeoutMs = Math.min(getCheckoutTimeoutMs(), 90_000);
+    const timeoutMs = getWorkspaceE2ETimeoutMs("checkoutStart");
 
     yield* runBrowserCommand(
       "submit checkout reservation",
@@ -234,8 +240,11 @@ const waitForReservationStart = (
           latest = yield* readReservationStartDiagnostics(run, session);
           return undefined;
         }),
-        timeoutMs,
-        "checkout pay page"
+        {
+          intervalMs: workspaceE2EPollIntervalMs.browser,
+          label: "checkout pay page",
+          timeoutMs,
+        }
       )
     );
 
@@ -342,7 +351,7 @@ const submitPaymentAndWaitForHostedPage = ({
         url.includes("nexigroup.com") || url.includes("/hpp/nexi/"),
       run,
       session,
-      timeoutMs: Math.min(getCheckoutTimeoutMs(), 2 * 60 * 1000),
+      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
     });
   });
 
@@ -441,7 +450,7 @@ export const completeNexiHostedPayment = ({
       session,
       "continue",
       [{ value: "CONTINUE" }, { value: "Continue" }, { value: "CONTINUA" }],
-      { optional: true, timeoutMs: Math.min(getCheckoutTimeoutMs(), 15_000) }
+      { optional: true, timeoutMs: 15_000 }
     );
     yield* clickHostedPaymentTarget(run, session, "pay", [
       { value: "PAY" },
@@ -520,13 +529,13 @@ const requireHostedPaymentRef = (
   session: string,
   labels: readonly string[],
   frameLabels: readonly string[],
-  timeoutMs = 60_000
+  timeoutMs = getWorkspaceE2ETimeoutMs("providerTransition")
 ): Effect.Effect<HostedPaymentRef, WorkspaceE2EError> =>
-  pollUntil(
-    findHostedPaymentRef(run, session, labels, frameLabels),
+  pollUntil(findHostedPaymentRef(run, session, labels, frameLabels), {
+    intervalMs: workspaceE2EPollIntervalMs.browser,
+    label: `Nexi target ${labels.join(" / ")}`,
     timeoutMs,
-    `Nexi target ${labels.join(" / ")}`
-  ).pipe(
+  }).pipe(
     Effect.catch((error) =>
       readInteractiveSnapshot(run, session).pipe(
         Effect.flatMap((snapshot) =>
@@ -666,7 +675,8 @@ const clickHostedPaymentTarget = (
 ): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     const labels = targets.map((target) => target.value);
-    const timeoutMs = options.timeoutMs ?? getCheckoutTimeoutMs();
+    const timeoutMs =
+      options.timeoutMs ?? getWorkspaceE2ETimeoutMs("providerTransition");
     const target = yield* options.optional
       ? waitForHostedPaymentClickTarget(run, session, labels, timeoutMs).pipe(
           Effect.catch(() => Effect.succeed(undefined))
@@ -724,11 +734,11 @@ const waitForHostedPaymentClickTarget = (
   labels: readonly string[],
   timeoutMs: number
 ) =>
-  pollUntil(
-    findHostedPaymentRef(run, session, labels, []),
+  pollUntil(findHostedPaymentRef(run, session, labels, []), {
+    intervalMs: workspaceE2EPollIntervalMs.browser,
+    label: `Nexi target ${labels.join(" / ")}`,
     timeoutMs,
-    `Nexi target ${labels.join(" / ")}`
-  );
+  });
 
 const waitForHostedPaymentTargetToChange = (
   run: Runner,
@@ -748,8 +758,11 @@ const waitForHostedPaymentTargetToChange = (
       if (stillPresent?.framed) yield* switchToMainFrame(run, session);
       return stillPresent ? undefined : true;
     }),
-    timeoutMs,
-    `Nexi ${label} completion`
+    {
+      intervalMs: workspaceE2EPollIntervalMs.browser,
+      label: `Nexi ${label} completion`,
+      timeoutMs,
+    }
   );
 
 const extractOrderId = (stdout: string) => {

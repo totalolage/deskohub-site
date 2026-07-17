@@ -14,7 +14,6 @@ import {
   startCheckoutPaymentAttempt,
 } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import { getCheckoutTimeoutMs } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import {
   markConsoleFulfillmentDeliveredForE2E,
@@ -26,7 +25,13 @@ import {
 import { validateDotypos } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { log, parseUrl } from "../runtime";
-import type { CheckoutData, CheckoutFlow, CheckoutFlowState } from "../types";
+import { getWorkspaceE2ETimeoutMs } from "../timeouts";
+import type {
+  CheckoutData,
+  CheckoutFlow,
+  CheckoutFlowState,
+  WorkspaceE2EStepRunner,
+} from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 import { verifyAlias } from "../vercel";
 
@@ -37,6 +42,7 @@ export const executeCheckoutFlow = ({
   deploymentId,
   flow,
   run,
+  runStep,
   session,
   state,
 }: {
@@ -46,77 +52,120 @@ export const executeCheckoutFlow = ({
   deploymentId: string;
   flow: CheckoutFlow;
   run: Runner;
+  runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
-    const orderId = yield* startCheckoutPaymentAttempt({
-      config,
-      data,
-      onOrderId: (orderId) => {
-        state.orderId = orderId;
-      },
-      run,
-      session,
-      submitReservationScript: flow.submitReservationScript(data),
-    }).pipe(Effect.retry({ times: 1 }));
-    yield* completeNexiHostedPayment({ data, run, session });
-    yield* waitForBrowserUrl({
-      description: "checkout status page",
-      matches: (url) => {
-        const parsed = parseUrl(url);
-        return (
-          parsed?.host === config.alias &&
-          parsed.pathname.includes("/checkout/status/")
-        );
-      },
-      run,
-      session,
-      timeoutMs: getCheckoutTimeoutMs(),
+    const orderId = yield* runStep({
+      execute: startCheckoutPaymentAttempt({
+        config,
+        data,
+        onOrderId: (startedOrderId) => {
+          state.orderId = startedOrderId;
+        },
+        run,
+        session,
+        submitReservationScript: flow.submitReservationScript(data),
+      }),
+      id: "start-checkout-payment",
+      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutStart"),
+    });
+    yield* runStep({
+      execute: completeNexiHostedPayment({ data, run, session }),
+      id: "complete-hosted-payment",
+      timeoutMs: getWorkspaceE2ETimeoutMs("hostedPayment"),
+    });
+    yield* runStep({
+      execute: waitForCheckoutStatusPage(config, run, session),
+      id: "reach-checkout-status-page",
+      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
     });
     state.orderId = orderId;
 
     // Nexi verification happens inside the deployed webhook handler. The runner
     // validates the resulting payment/webhook state without holding Nexi secrets.
-    const replayRow = yield* waitForWebhookReplayRow(
-      datasourceConfig,
-      orderId,
-      (row) => {
+    const replayRow = yield* runStep({
+      execute: waitForWebhookReplayRow(datasourceConfig, orderId, (row) => {
         state.checkoutRow = row;
-      }
-    );
-    yield* replayNexiWebhook(config, replayRow);
-    yield* markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId);
-    const checkoutRow = yield* validatePostgres(
-      datasourceConfig,
-      data,
-      orderId,
-      (row) => {
-        state.checkoutRow = row;
-      }
-    );
-    state.checkoutRow = checkoutRow;
-    yield* verifyAlias(config, deploymentId);
-    yield* assertFulfilledStatusPage({
-      config,
-      locale: data.locale,
-      orderId,
-      run,
-      session,
+      }),
+      id: "wait-for-webhook-row",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
     });
-    yield* validateDotypos(datasourceConfig, data, checkoutRow);
-    yield* assertFulfillmentFailedSupportPath({
-      config,
-      data,
-      datasourceConfig,
-      orderId,
-      run,
-      session,
+    yield* runStep({
+      execute: replayNexiWebhook(config, replayRow),
+      id: "replay-payment-webhook",
+      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
+    });
+    yield* runStep({
+      execute: markConsoleFulfillmentDeliveredForE2E(datasourceConfig, orderId),
+      id: "complete-test-fulfillment",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+    });
+    const checkoutRow = yield* runStep({
+      execute: validatePostgres(datasourceConfig, data, orderId, (row) => {
+        state.checkoutRow = row;
+      }),
+      id: "validate-postgres-state",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+    });
+    state.checkoutRow = checkoutRow;
+    yield* runStep({
+      execute: verifyAlias(config, deploymentId),
+      id: "verify-preview-alias",
+      timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
+    });
+    yield* runStep({
+      execute: assertFulfilledStatusPage({
+        config,
+        locale: data.locale,
+        orderId,
+        run,
+        session,
+      }),
+      id: "assert-fulfilled-status-page",
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+    });
+    yield* runStep({
+      execute: validateDotypos(datasourceConfig, data, checkoutRow),
+      id: "validate-dotypos-reservation",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+    });
+    yield* runStep({
+      execute: assertFulfillmentFailedSupportPath({
+        config,
+        data,
+        datasourceConfig,
+        orderId,
+        run,
+        session,
+      }),
+      id: "assert-fulfillment-support-path",
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
     });
 
     log(`${flow.id} checkout e2e passed for order ${orderId}`);
   });
+
+const waitForCheckoutStatusPage = (
+  config: WorkspaceE2EConfig,
+  run: Runner,
+  session: string
+) =>
+  waitForBrowserUrl({
+    description: "checkout status page",
+    matches: (url) => {
+      const parsed = parseUrl(url);
+      return (
+        parsed?.host === config.alias &&
+        parsed.pathname.includes("/checkout/status/")
+      );
+    },
+    run,
+    session,
+    timeoutMs: getWorkspaceE2ETimeoutMs("providerTransition"),
+  }).pipe(Effect.asVoid);
 
 const assertFulfilledStatusPage = ({
   config,
@@ -137,7 +186,7 @@ const assertFulfilledStatusPage = ({
       run,
       session,
       `${config.browserUrl}/${locale}/checkout/status/${orderId}`,
-      { timeoutMs: getCheckoutTimeoutMs() }
+      { timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation") }
     );
     yield* waitForBrowserText({
       description: "fulfilled checkout status copy",
@@ -146,7 +195,7 @@ const assertFulfilledStatusPage = ({
         /sent by email/i.test(text),
       run,
       session,
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
     });
     yield* evalBrowserScript(
       "assert fulfilled checkout status page",
@@ -154,7 +203,7 @@ const assertFulfilledStatusPage = ({
       session,
       assertFulfilledStatusScript,
       {
-        timeoutMs: getCheckoutTimeoutMs(),
+        timeoutMs: getWorkspaceE2ETimeoutMs("browserAction"),
       }
     );
     log("Checkout status page validated");
@@ -186,7 +235,7 @@ const assertFulfillmentFailedSupportPath = ({
       e2eState: "fulfillmentFailed",
     });
     yield* openBrowserPage(config, run, session, statusUrl.toString(), {
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     yield* waitForBrowserText({
       description: "fulfillment failed support link",
@@ -195,7 +244,7 @@ const assertFulfillmentFailedSupportPath = ({
         /Send support request/i.test(text),
       run,
       session,
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
     });
     yield* evalBrowserScript(
       "assert fulfillment failed support link",
@@ -204,7 +253,7 @@ const assertFulfillmentFailedSupportPath = ({
       getAssertFulfillmentFailedSupportScript(data, orderId),
       {
         logOutput: false,
-        timeoutMs: getCheckoutTimeoutMs(),
+        timeoutMs: getWorkspaceE2ETimeoutMs("browserAction"),
       }
     );
     yield* waitForBrowserUrl({

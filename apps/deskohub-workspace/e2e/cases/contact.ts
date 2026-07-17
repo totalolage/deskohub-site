@@ -9,19 +9,22 @@ import {
   waitForBrowserText,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
-import { getCheckoutTimeoutMs } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
 import { log } from "../runtime";
+import { getWorkspaceE2ETimeoutMs } from "../timeouts";
+import type { WorkspaceE2EStepRunner } from "../types";
 import { makeUrl, setSearchParams } from "../urls";
 
 export const assertContactForm = ({
   config,
   run,
+  runStep,
   session,
 }: {
   config: WorkspaceE2EConfig;
   run: Runner;
+  runStep: WorkspaceE2EStepRunner;
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
@@ -39,38 +42,74 @@ export const assertContactForm = ({
     );
     yield* setSearchParams(url, { e2eAt: runId });
 
-    yield* openBrowserPage(config, run, session, url.toString(), {
-      timeoutMs: getCheckoutTimeoutMs(),
+    yield* runStep({
+      execute: openBrowserPage(config, run, session, url.toString(), {
+        timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
+      }).pipe(Effect.asVoid),
+      id: "open-contact-form",
+      timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      '#contact-form button[type="submit"]',
-      { timeoutMs: getCheckoutTimeoutMs() }
-    );
-    yield* fillBrowserField(run, session, "#contact-name", data.name);
-    yield* fillBrowserField(run, session, "#contact-phone", data.phone);
-    yield* fillBrowserField(run, session, "#contact-email", data.email);
-    yield* fillBrowserField(run, session, "#contact-message", data.message);
+    yield* runStep({
+      execute: waitForBrowserReactHydration(
+        run,
+        session,
+        '#contact-form button[type="submit"]',
+        { timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition") }
+      ),
+      id: "wait-for-contact-form-hydration",
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+    });
+    yield* runStep({
+      execute: fillContactForm(run, session, data),
+      id: "fill-contact-form",
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+    });
+    yield* runStep({
+      execute: submitContactForm(run, session),
+      id: "submit-contact-form",
+      timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
+    });
+    log("Contact form e2e passed");
+  });
+
+const fillContactForm = (
+  run: Runner,
+  session: string,
+  data: { email: string; message: string; name: string; phone: string }
+) =>
+  Effect.gen(function* () {
+    const timeoutMs = getWorkspaceE2ETimeoutMs("browserAction");
+    yield* fillBrowserField(run, session, "#contact-name", data.name, {
+      timeoutMs,
+    });
+    yield* fillBrowserField(run, session, "#contact-phone", data.phone, {
+      timeoutMs,
+    });
+    yield* fillBrowserField(run, session, "#contact-email", data.email, {
+      timeoutMs,
+    });
+    yield* fillBrowserField(run, session, "#contact-message", data.message, {
+      timeoutMs,
+    });
+  });
+
+const submitContactForm = (run: Runner, session: string) =>
+  Effect.gen(function* () {
+    const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
     const submitRef = yield* requireSnapshotRef({
       description: "contact form submit button",
       labels: ["Send message"],
       run,
       session,
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs,
     });
-    yield* focusBrowserElement(run, session, submitRef, {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
-    yield* pressBrowserKey(run, session, "Enter", {
-      timeoutMs: getCheckoutTimeoutMs(),
-    });
+    yield* focusBrowserElement(run, session, submitRef, { timeoutMs });
+    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
     yield* waitForBrowserText({
       description: "contact form success",
       matches: (text) => /Your message has been sent\./i.test(text),
       run,
       session,
-      timeoutMs: getCheckoutTimeoutMs(),
+      timeoutMs,
     });
-    log("Contact form e2e passed");
   });

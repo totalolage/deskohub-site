@@ -85,7 +85,19 @@ export type PaymentTerminalScenario = {
 
 export type WorkspaceE2ECase = {
   readonly id: string;
+  readonly timeoutMs: number;
   readonly execute: (context: {
+    readonly runStep: WorkspaceE2EStepRunner;
     readonly session: string;
   }) => Effect.Effect<void, WorkspaceE2EError>;
 };
+
+export type WorkspaceE2EStep<A> = {
+  readonly execute: Effect.Effect<A, WorkspaceE2EError>;
+  readonly id: string;
+  readonly timeoutMs: number;
+};
+
+export type WorkspaceE2EStepRunner = <A>(
+  step: WorkspaceE2EStep<A>
+) => Effect.Effect<A, WorkspaceE2EError>;

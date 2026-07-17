@@ -1,7 +1,11 @@
 import { resolve } from "node:path";
 import { Cause, Context, Effect, Exit, Layer } from "effect";
 import type { DatasourceConfig } from "../config";
-import { toWorkspaceE2EError, type WorkspaceE2EError } from "../errors";
+import {
+  toWorkspaceE2EError,
+  type WorkspaceE2EError,
+  workspaceE2EError,
+} from "../errors";
 import type { CheckoutFlowState } from "../types";
 import { WorkspaceE2ECaseService } from "./cases";
 import { WorkspaceE2ECleanupService } from "./cleanup";
@@ -90,13 +94,23 @@ export class WorkspaceE2ERunnerService extends Context.Service<
             workflowError,
           });
 
-          if (Exit.isFailure(workflowExit))
-            return yield* Effect.fail(
-              toWorkspaceE2EError(
-                "run workspace e2e workflow",
-                Cause.squash(workflowExit.cause)
-              )
+          if (Exit.isFailure(workflowExit)) {
+            const workflowFailure = toWorkspaceE2EError(
+              "run workspace e2e workflow",
+              Cause.squash(workflowExit.cause)
             );
+            return yield* Effect.fail(
+              cleanupError
+                ? workspaceE2EError(
+                    "Workspace e2e workflow and cleanup failed",
+                    {
+                      causes: [workflowFailure, cleanupError],
+                      operation: "run workspace e2e workflow",
+                    }
+                  )
+                : workflowFailure
+            );
+          }
           if (cleanupError) return yield* Effect.fail(cleanupError);
         }),
       };

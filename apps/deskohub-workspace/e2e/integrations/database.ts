@@ -2,7 +2,6 @@ import { Effect } from "effect";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
-import { getDatasourceTimeoutMs } from "../config";
 import {
   tryWorkspaceE2EPromise,
   tryWorkspaceE2ESync,
@@ -10,6 +9,10 @@ import {
 } from "../errors";
 import { pollUntil } from "../polling";
 import { assert, log } from "../runtime";
+import {
+  getWorkspaceE2ETimeoutMs,
+  workspaceE2EPollIntervalMs,
+} from "../timeouts";
 import type {
   CheckoutData,
   CheckoutRow,
@@ -32,8 +35,11 @@ export const waitForWebhookReplayRow = (
           row && isWebhookReplayReady(row) ? row : undefined
         )
       ),
-      getDatasourceTimeoutMs(),
-      `webhook replay checkout row for ${orderId}`
+      {
+        intervalMs: workspaceE2EPollIntervalMs.datasource,
+        label: `webhook replay checkout row for ${orderId}`,
+        timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+      }
     )
   );
 
@@ -61,27 +67,30 @@ export const replayNexiWebhook = (
       "/api/webhooks/nexi",
       config.aliasUrl
     );
-    const response = yield* tryWorkspaceE2EPromise("replay Nexi webhook", () =>
-      fetch(webhookUrl, {
-        body: JSON.stringify({
-          eventId: `workspace-e2e-nexi-${row.reservation_id}`,
-          eventTime: new Date().toISOString(),
-          securityToken: row.security_token,
-          operation: {
-            orderId: row.provider_order_id,
-            operationId:
-              row.last_provider_operation_id ??
-              `workspace-e2e-${row.reservation_id}`,
-            operationType: "CAPTURE",
-            operationResult: "EXECUTED",
-            operationTime: new Date().toISOString(),
-            operationAmount: String(row.amount_value),
-            operationCurrency: row.currency,
-          },
-        }),
-        headers: previewWebhookHeaders(config),
-        method: "POST",
-      })
+    const response = yield* tryWorkspaceE2EPromise(
+      "replay Nexi webhook",
+      (signal) =>
+        fetch(webhookUrl, {
+          body: JSON.stringify({
+            eventId: `workspace-e2e-nexi-${row.reservation_id}`,
+            eventTime: new Date().toISOString(),
+            securityToken: row.security_token,
+            operation: {
+              orderId: row.provider_order_id,
+              operationId:
+                row.last_provider_operation_id ??
+                `workspace-e2e-${row.reservation_id}`,
+              operationType: "CAPTURE",
+              operationResult: "EXECUTED",
+              operationTime: new Date().toISOString(),
+              operationAmount: String(row.amount_value),
+              operationCurrency: row.currency,
+            },
+          }),
+          headers: previewWebhookHeaders(config),
+          method: "POST",
+          signal,
+        })
     );
     yield* tryWorkspaceE2ESync("assert Nexi webhook replay response", () =>
       assert(response.ok, `Nexi webhook replay failed with ${response.status}`)
@@ -113,8 +122,11 @@ export const validatePostgres = (
             row && isPostgresComplete(row, config) ? row : undefined
           )
         ),
-        getDatasourceTimeoutMs(),
-        `Postgres checkout rows for ${orderId}`
+        {
+          intervalMs: workspaceE2EPollIntervalMs.datasource,
+          label: `Postgres checkout rows for ${orderId}`,
+          timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+        }
       );
 
       yield* assertPostgresRow(row, data, config);
@@ -356,8 +368,11 @@ export const markConsoleFulfillmentDeliveredForE2E = (
 
           return yield* readCheckoutRow(pool, orderId);
         }),
-        getDatasourceTimeoutMs(),
-        `console fulfillment marker for ${orderId}`
+        {
+          intervalMs: workspaceE2EPollIntervalMs.datasource,
+          label: `console fulfillment marker for ${orderId}`,
+          timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+        }
       );
 
       yield* tryWorkspaceE2ESync("assert console fulfillment marker row", () =>
@@ -613,9 +628,9 @@ const assertNoLocalPii = (
 const makePool = (config: DatasourceConfig) =>
   new Pool({
     connectionString: normalizePostgresConnectionUrl(config.databaseUrl),
-    connectionTimeoutMillis: getDatasourceTimeoutMs(),
-    query_timeout: getDatasourceTimeoutMs(),
-    statement_timeout: getDatasourceTimeoutMs(),
+    connectionTimeoutMillis: getWorkspaceE2ETimeoutMs("datasource"),
+    query_timeout: getWorkspaceE2ETimeoutMs("datasource"),
+    statement_timeout: getWorkspaceE2ETimeoutMs("datasource"),
   });
 
 const withPool = <A>(

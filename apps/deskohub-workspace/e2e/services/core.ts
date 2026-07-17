@@ -3,12 +3,9 @@ import { Context, Effect, Layer } from "effect";
 import {
   assertNexiSandbox as assertNexiSandboxConfig,
   type DatasourceConfig,
-  getCheckoutTimeoutMs,
   getConfig,
   getDatasourceConfig,
-  getDatasourceTimeoutMs,
   getVercelDeployEnvArgs,
-  getVercelDeployTimeoutMs,
   type WorkspaceE2EConfig,
 } from "../config";
 import {
@@ -28,6 +25,10 @@ import {
   scriptDir,
   workspaceDir,
 } from "../runtime";
+import {
+  getWorkspaceE2ETimeoutMs,
+  type WorkspaceE2ETimeout,
+} from "../timeouts";
 
 export type CommandResult = Awaited<ReturnType<Runner>>;
 export type RunCommandOptions = Parameters<Runner>[2];
@@ -101,18 +102,16 @@ interface IWorkspaceE2EConfigService {
   readonly assertNexiSandbox: (
     origin: string
   ) => Effect.Effect<void, WorkspaceE2EError>;
-  readonly getCheckoutTimeoutMs: () => number;
   readonly getConfig: Effect.Effect<WorkspaceE2EConfig, WorkspaceE2EError>;
   readonly getDatasourceConfig: Effect.Effect<
     DatasourceConfig,
     WorkspaceE2EError
   >;
-  readonly getDatasourceTimeoutMs: () => number;
+  readonly getTimeoutMs: (timeout: WorkspaceE2ETimeout) => number;
   readonly getVercelDeployEnvArgs: (
     config: WorkspaceE2EConfig,
     datasourceConfig: DatasourceConfig
   ) => string[];
-  readonly getVercelDeployTimeoutMs: () => number;
 }
 
 export class WorkspaceE2EConfigService extends Context.Service<
@@ -132,15 +131,13 @@ export class WorkspaceE2EConfigService extends Context.Service<
       tryWorkspaceE2ESync("assert Nexi sandbox configuration", () =>
         assertNexiSandboxConfig(origin)
       ),
-    getCheckoutTimeoutMs,
     getConfig: tryWorkspaceE2ESync("read workspace e2e config", getConfig),
     getDatasourceConfig: tryWorkspaceE2ESync(
       "read workspace e2e datasource config",
       getDatasourceConfig
     ),
-    getDatasourceTimeoutMs,
+    getTimeoutMs: getWorkspaceE2ETimeoutMs,
     getVercelDeployEnvArgs,
-    getVercelDeployTimeoutMs,
   });
 }
 
@@ -168,8 +165,9 @@ export class WorkspaceE2ECommandRunnerService extends Context.Service<
         run: (command, args, options) =>
           Effect.gen(function* () {
             const runner = yield* getRunner;
-            return yield* tryWorkspaceE2EPromise(`run command ${command}`, () =>
-              runner(command, args, options)
+            return yield* tryWorkspaceE2EPromise(
+              `run command ${command}`,
+              (signal) => runner(command, args, { ...options, signal })
             );
           }),
       };

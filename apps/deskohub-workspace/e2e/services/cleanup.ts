@@ -1,5 +1,5 @@
 import { Context, type Effect, Layer } from "effect";
-import { cleanupCheckoutFlowStates } from "../cases";
+import { cleanupCheckoutFlowStates } from "../cleanup";
 import type { DatasourceConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { CheckoutFlowState } from "../types";

@@ -50,22 +50,6 @@ export const getDatasourceConfig = () => {
   };
 };
 
-export const getCheckoutTimeoutMs = () =>
-  readCappedTimeoutMs("WORKSPACE_E2E_CHECKOUT_TIMEOUT_MS", 10 * 60 * 1000);
-
-export const getDatasourceTimeoutMs = () =>
-  readCappedTimeoutMs("WORKSPACE_E2E_DATASOURCE_TIMEOUT_MS", 4 * 60 * 1000);
-
-export const getVercelDeployTimeoutMs = () =>
-  readCappedTimeoutMs("WORKSPACE_E2E_DEPLOY_TIMEOUT_MS", 30 * 60 * 1000);
-
-const readCappedTimeoutMs = (name: string, fallbackMs: number) => {
-  const raw = env(name);
-  const value = raw ? Number(raw) : fallbackMs;
-  if (!Number.isFinite(value) || value <= 0) return fallbackMs;
-  return Math.min(value, fallbackMs);
-};
-
 export const assertNexiSandbox = (origin: string) =>
   assert(
     parseUrl(origin)?.hostname === "xpaysandbox.nexigroup.com",
