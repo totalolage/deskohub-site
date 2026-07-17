@@ -127,20 +127,20 @@ export const getCoworkReservationProductIssues = (
 export const normalizeCoworkReservationProduct = (
   data: CoworkReservationProductInput
 ): NormalizedCoworkReservationProduct =>
-  Match.value(data).pipe(
-    Match.when({ entryTier: "basic" }, () =>
+  Match.value(data.entryTier).pipe(
+    Match.when("basic", () =>
       normalizedBasicCoworkReservationProductSchema.make({
         entryTier: "basic",
         coffee: data.coffee,
       })
     ),
-    Match.when({ entryTier: "plus" }, () =>
+    Match.when("plus", () =>
       normalizedPlusCoworkReservationProductSchema.make({
         entryTier: "plus",
         coffee: true,
       })
     ),
-    Match.when({ entryTier: "profi" }, () =>
+    Match.when("profi", () =>
       normalizedProfiCoworkReservationProductSchema.make({
         entryTier: "profi",
         coffee: true,
@@ -154,22 +154,23 @@ export const getWorkspaceReservationProductColumns = (
   product: NormalizedCoworkReservationProduct
 ): WorkspaceReservationProductColumns =>
   Match.value(product).pipe(
-    Match.when({ entryTier: "basic" }, (basicProduct) => ({
-      productTier: basicProduct.entryTier,
-      productCoffee: basicProduct.coffee,
-      productMonitorOption: null,
-    })),
-    Match.when({ entryTier: "plus" }, (plusProduct) => ({
-      productTier: plusProduct.entryTier,
-      productCoffee: plusProduct.coffee,
-      productMonitorOption: null,
-    })),
-    Match.when({ entryTier: "profi" }, (profiProduct) => ({
-      productTier: profiProduct.entryTier,
-      productCoffee: profiProduct.coffee,
-      productMonitorOption: profiProduct.monitorOption,
-    })),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: (basicProduct) => ({
+        productTier: basicProduct.entryTier,
+        productCoffee: basicProduct.coffee,
+        productMonitorOption: null,
+      }),
+      plus: (plusProduct) => ({
+        productTier: plusProduct.entryTier,
+        productCoffee: plusProduct.coffee,
+        productMonitorOption: null,
+      }),
+      profi: (profiProduct) => ({
+        productTier: profiProduct.entryTier,
+        productCoffee: profiProduct.coffee,
+        productMonitorOption: profiProduct.monitorOption,
+      }),
+    })
   );
 
 const decodeCoworkReservationProductInput = Schema.decodeUnknownSync(

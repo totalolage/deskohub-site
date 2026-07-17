@@ -158,29 +158,27 @@ export const getCoworkReservationDetails = (
   reservation: NormalizedCoworkReservationOrder
 ): CoworkReservationDetails =>
   Match.value(reservation).pipe(
-    Match.when({ entryTier: "basic" }, (basicReservation) =>
-      basicCoworkReservationDetailsSchema.make({
-        entryTier: "basic",
-        date: basicReservation.date,
-        coffee: basicReservation.coffee,
-      })
-    ),
-    Match.when({ entryTier: "plus" }, (plusReservation) =>
-      plusCoworkReservationDetailsSchema.make({
-        entryTier: "plus",
-        date: plusReservation.date,
-        coffee: true,
-      })
-    ),
-    Match.when({ entryTier: "profi" }, (profiReservation) =>
-      profiCoworkReservationDetailsSchema.make({
-        entryTier: "profi",
-        date: profiReservation.date,
-        coffee: true,
-        monitorOption: profiReservation.monitorOption,
-      })
-    ),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: (basicReservation) =>
+        basicCoworkReservationDetailsSchema.make({
+          entryTier: basicReservation.entryTier,
+          date: basicReservation.date,
+          coffee: basicReservation.coffee,
+        }),
+      plus: (plusReservation) =>
+        plusCoworkReservationDetailsSchema.make({
+          entryTier: plusReservation.entryTier,
+          date: plusReservation.date,
+          coffee: true,
+        }),
+      profi: (profiReservation) =>
+        profiCoworkReservationDetailsSchema.make({
+          entryTier: profiReservation.entryTier,
+          date: profiReservation.date,
+          coffee: true,
+          monitorOption: profiReservation.monitorOption,
+        }),
+    })
   );
 
 export const getCoworkReservationIssues = (
@@ -205,28 +203,26 @@ export const normalizeCoworkReservationOrder = (
   const date = decodePlainDate(data.date);
 
   return Match.value(product).pipe(
-    Match.when({ entryTier: "basic" }, (basicProduct) =>
-      normalizedBasicCoworkReservationOrderSchema.make({
-        ...base,
-        ...basicProduct,
-        date,
-      })
-    ),
-    Match.when({ entryTier: "plus" }, (plusProduct) =>
-      normalizedPlusCoworkReservationOrderSchema.make({
-        ...base,
-        ...plusProduct,
-        date,
-      })
-    ),
-    Match.when({ entryTier: "profi" }, (profiProduct) =>
-      normalizedProfiCoworkReservationOrderSchema.make({
-        ...base,
-        ...profiProduct,
-        date,
-      })
-    ),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: (basicProduct) =>
+        normalizedBasicCoworkReservationOrderSchema.make({
+          ...base,
+          ...basicProduct,
+          date,
+        }),
+      plus: (plusProduct) =>
+        normalizedPlusCoworkReservationOrderSchema.make({
+          ...base,
+          ...plusProduct,
+          date,
+        }),
+      profi: (profiProduct) =>
+        normalizedProfiCoworkReservationOrderSchema.make({
+          ...base,
+          ...profiProduct,
+          date,
+        }),
+    })
   );
 };
 
@@ -254,16 +250,14 @@ export const getCoworkReservationOrder = (
   form: NormalizedCoworkReservationForm
 ): NormalizedCoworkReservationOrder =>
   Match.value(form).pipe(
-    Match.when({ entryTier: "basic" }, ({ legalConsent: _, ...reservation }) =>
-      normalizedBasicCoworkReservationOrderSchema.make(reservation)
-    ),
-    Match.when({ entryTier: "plus" }, ({ legalConsent: _, ...reservation }) =>
-      normalizedPlusCoworkReservationOrderSchema.make(reservation)
-    ),
-    Match.when({ entryTier: "profi" }, ({ legalConsent: _, ...reservation }) =>
-      normalizedProfiCoworkReservationOrderSchema.make(reservation)
-    ),
-    Match.exhaustive
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: ({ legalConsent: _, ...reservation }) =>
+        normalizedBasicCoworkReservationOrderSchema.make(reservation),
+      plus: ({ legalConsent: _, ...reservation }) =>
+        normalizedPlusCoworkReservationOrderSchema.make(reservation),
+      profi: ({ legalConsent: _, ...reservation }) =>
+        normalizedProfiCoworkReservationOrderSchema.make(reservation),
+    })
   );
 
 const coworkReservationDraftSchema = coworkReservationFormInputSchema.check(

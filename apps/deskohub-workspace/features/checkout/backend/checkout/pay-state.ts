@@ -2,6 +2,7 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 import {
   Data,
   Effect,
+  Match,
   Option,
   Schema,
   SchemaGetter,
@@ -73,7 +74,7 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
-  readonly reservation: typeof normalizedCoworkReservationOrderSchema.Encoded;
+  readonly reservation: typeof normalizedCoworkReservationOrderSchema.Type;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly submittedCode?: CanonicalDiscountCode;
@@ -198,6 +199,16 @@ export const buildSignedPayState = (
       (input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds)) /
       1000
   );
+  const reservationBase = {
+    _tag: "cowork" as const,
+    date: input.reservation.date,
+    name: input.reservation.name,
+    email: input.reservation.email,
+    phone: input.reservation.phone,
+    ...(input.reservation.message !== undefined && {
+      message: input.reservation.message,
+    }),
+  };
   const state: SignedPayState = {
     type: "signedPayState",
     schema: "workspace-pay-state",
@@ -206,12 +217,13 @@ export const buildSignedPayState = (
     exp,
     locale: input.locale,
     orderId: input.orderId,
-    reservation: {
-      ...input.reservation,
-      entryTier: input.quote.order.entryTier,
-      coffee: input.quote.order.coffee,
-      monitorOption: input.quote.order.monitorOption,
-    },
+    reservation: Match.value(input.quote.order).pipe(
+      Match.discriminatorsExhaustive("entryTier")({
+        basic: (product) => ({ ...reservationBase, ...product }),
+        plus: (product) => ({ ...reservationBase, ...product }),
+        profi: (product) => ({ ...reservationBase, ...product }),
+      })
+    ),
     quote: {
       fingerprint: input.quote.fingerprint,
       order: input.quote.order,
@@ -405,9 +417,10 @@ export const sealPayState = (
   state: SignedPayState,
   options: PayStateCryptoOptions = {}
 ) =>
-  Schema.encodeUnknownSync(makePayStateTokenSchema(options), strictParseOptions)(
-    state
-  );
+  Schema.encodeUnknownSync(
+    makePayStateTokenSchema(options),
+    strictParseOptions
+  )(state);
 
 export const openPayState = (
   token: string,

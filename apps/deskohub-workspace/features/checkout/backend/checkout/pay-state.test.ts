@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import { canonicalDiscountCodeSchema } from "@/features/discounts/contracts";
+import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
@@ -40,17 +41,19 @@ const decodeSignedPayState = Schema.decodeUnknownSync(
   signedPayStateSchema,
   strictParseOptions
 );
-const baseReservation = {
-  _tag: "cowork" as const,
-  entryTier: "profi" as const,
+const baseReservation = Schema.decodeUnknownSync(
+  normalizedCoworkReservationOrderSchema
+)({
+  _tag: "cowork",
+  entryTier: "profi",
   date: "2026-06-20",
   coffee: true,
-  monitorOption: "2x27-qhd" as const,
+  monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
   email: "ada@example.com",
   phone: "+420 777 777 777",
   message: "Private setup note.",
-};
+});
 
 const buildState = (overrides: Partial<SignedPayState> = {}) => ({
   ...buildSignedPayState(
@@ -118,18 +121,18 @@ describe("Pay URL state", () => {
     expect(token.split(".")).toHaveLength(4);
   });
 
-  test("rejects noncanonical required coffee in signed Pay state", () => {
-    expect(() =>
-      buildSignedPayState(
-        {
-          locale: "en-US",
-          reservation: { ...baseReservation, coffee: false },
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
-          orderId: "required-coffee-order-id",
-        } as never,
-        { keys: [fixedKey], now: () => fixedNow }
-      )
-    ).toThrow('at ["reservation"]');
+  test("preserves required-coffee normalization in signed Pay state", () => {
+    const state = buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation: { ...baseReservation, coffee: false } as never,
+        quote: buildWorkspaceCheckoutQuote(baseReservation),
+        orderId: "required-coffee-order-id",
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    );
+
+    expect(state.reservation.coffee).toBe(true);
   });
 
   test("fails closed when no encryption key is configured", () => {

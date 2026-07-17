@@ -207,10 +207,10 @@ const getCheckoutLegalAcceptanceSnapshot: (
   getLegalAcceptanceSnapshot(locale).pipe(
     Effect.mapError(
       (cause) =>
-      new CheckoutError({
-        message: "Legal acceptance snapshot could not be created.",
-        cause,
-      })
+        new CheckoutError({
+          message: "Legal acceptance snapshot could not be created.",
+          cause,
+        })
     )
   )
 );
