@@ -13,15 +13,27 @@ const checkoutUrl =
 test("retries a transient reservation preparation failure with the same intent", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
+  const activatedRefs: string[] = [];
+  let focusedRef: string | undefined;
   const submitReservationScript = "submit-reservation";
   const run = mock(async (_command, args, options = {}) => {
     const browserArgs = args.slice(2);
     const commandIndex = browserArgs.findIndex((arg) =>
-      ["click", "eval", "get", "open", "snapshot"].includes(arg)
+      [
+        "click",
+        "eval",
+        "focus",
+        "get",
+        "open",
+        "press",
+        "snapshot",
+        "wait",
+      ].includes(arg)
     );
     const commandArgs = browserArgs.slice(commandIndex);
 
     if (commandArgs[0] === "open") return success();
+    if (commandArgs[0] === "wait") return success();
 
     if (
       commandArgs[0] === "eval" &&
@@ -59,14 +71,26 @@ test("retries a transient reservation preparation failure with the same intent",
     if (commandArgs[0] === "snapshot") {
       return success(
         [
-          '- checkbox "I agree to the terms" [ref=e1]',
-          '- button "ORDER AND PAY" [ref=e2]',
+          '- LabelText "I agree to the terms" [ref=e1] clickable [cursor:pointer]',
+          '  - checkbox "I agree to the terms" [checked=false, ref=e2]',
+          '- button "ORDER AND PAY" [ref=e3]',
         ].join("\n")
       );
     }
 
     if (commandArgs[0] === "click") {
-      if (commandArgs[1] === "@e2") hostedPaymentStarted = true;
+      activatedRefs.push(commandArgs[1] ?? "");
+      if (commandArgs[1] === "@e3") hostedPaymentStarted = true;
+      return success();
+    }
+
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+
+    if (commandArgs[0] === "press") {
+      activatedRefs.push(focusedRef ?? "");
       return success();
     }
 
@@ -85,6 +109,7 @@ test("retries a transient reservation preparation failure with the same intent",
 
   expect(result).toBe(orderId);
   expect(reservationSubmitAttempts).toBe(2);
+  expect(activatedRefs).toEqual(["@e2", "@e3"]);
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });

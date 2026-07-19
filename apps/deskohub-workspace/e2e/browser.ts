@@ -530,9 +530,11 @@ const asRecord = (value: unknown) =>
 
 export const findSnapshotRef = (
   snapshot: string,
-  labels: readonly string[]
+  labels: readonly string[],
+  role?: string
 ) => {
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
 
@@ -545,6 +547,7 @@ export const findSnapshotRef = (
   }
 
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
 
@@ -553,6 +556,10 @@ export const findSnapshotRef = (
       return ref;
   }
 };
+
+const hasSnapshotRole = (line: string, role: string | undefined) =>
+  role === undefined ||
+  line.match(/^\s*-\s+(\S+)/)?.[1]?.toLowerCase() === role.toLowerCase();
 
 export const findEnabledSnapshotRef = (
   snapshot: string,
@@ -585,19 +592,21 @@ export const findEnabledSnapshotRef = (
 export const requireSnapshotRef = ({
   description,
   labels,
+  role,
   run,
   session,
   timeoutMs = 60_000,
 }: {
   description: string;
   labels: readonly string[];
+  role?: string;
   run: Runner;
   session: string;
   timeoutMs?: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   pollUntil(
     readInteractiveSnapshot(run, session).pipe(
-      Effect.map((snapshot) => findSnapshotRef(snapshot, labels))
+      Effect.map((snapshot) => findSnapshotRef(snapshot, labels, role))
     ),
     {
       intervalMs: workspaceE2EPollIntervalMs.browser,
@@ -657,7 +666,7 @@ export const requireEnabledSnapshotRef = ({
   );
 
 export const getSnapshotRef = (line: string) =>
-  line.match(/\[ref=(e\d+)\]/)?.[1]?.replace(/^/, "@") ??
+  line.match(/\bref=(e\d+)\b/)?.[1]?.replace(/^/, "@") ??
   line.match(/@e\d+/)?.[0];
 
 export const waitForBrowserUrl = ({

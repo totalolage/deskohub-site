@@ -2,14 +2,17 @@ import { Cause, Effect, Exit } from "effect";
 import {
   findFirstTextFieldRef,
   findSnapshotRef,
+  focusBrowserElement,
   getSnapshotRef,
   openBrowserPage,
+  pressBrowserKey,
   readBrowserUrl,
   readInteractiveSnapshot,
   requireEnabledSnapshotRef,
   requireSnapshotRef,
   summarizeHostedPaymentSnapshot,
   switchToMainFrame,
+  waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
 import {
@@ -390,22 +393,20 @@ const submitPaymentAndWaitForHostedPage = ({
 
 const clickCheckoutPayConsent = (run: Runner, session: string) =>
   Effect.gen(function* () {
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      "#checkout-pay-legal-consent"
+    );
     const ref = yield* requireSnapshotRef({
       description: "payment legal consent",
       labels: ["I agree to the", "Souhlasím"],
+      role: "checkbox",
       run,
       session,
     });
-    yield* runBrowserCommand(
-      "click payment legal consent",
-      run,
-      session,
-      ["click", ref],
-      {
-        logOutput: false,
-        timeoutMs: 30_000,
-      }
-    );
+    yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
+    yield* pressBrowserKey(run, session, "Space", { timeoutMs: 30_000 });
   });
 
 const clickCheckoutPayButton = (run: Runner, session: string) =>
