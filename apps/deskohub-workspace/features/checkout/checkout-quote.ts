@@ -298,15 +298,6 @@ export const calculateWorkspaceCheckoutQuote = Effect.fn(
   };
 });
 
-export const buildWorkspaceCheckoutQuote = (
-  order: WorkspaceCheckoutOrderInput,
-  options: {
-    readonly discountQuote?: DiscountQuote;
-    readonly currencyOverride?: string;
-  } = {}
-): WorkspaceCheckoutQuote =>
-  Effect.runSync(calculateWorkspaceCheckoutQuote(order, options));
-
 const getSummarySectionMap = (summary: CheckoutSummary) =>
   new Map(summary.sections.map((section) => [section.key, section]));
 

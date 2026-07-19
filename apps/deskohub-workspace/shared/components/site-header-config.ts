@@ -1,4 +1,5 @@
 import { type Locale, m } from "@/features/i18n";
+import { isMeetingRoomPageEnabled } from "@/features/meeting-room/backend/meeting-room-page-feature-flag";
 
 const siteHeaderSectionIds = {
   overview: "overview",
@@ -10,23 +11,28 @@ const siteHeaderSectionIds = {
   faqContact: "faq-contact",
 } as const;
 
-export function getSiteHeaderConfig(locale: Locale) {
+export const getSiteHeaderLanguageLabels = (
+  locale: Locale
+): Record<Locale, string> => ({
+  "cs-CZ": m.languageCzech({}, { locale }),
+  "en-US": m.languageEnglish({}, { locale }),
+});
+
+export async function getSiteHeaderConfig(locale: Locale) {
+  const meetingRoomPageEnabled = await isMeetingRoomPageEnabled();
   const localePath = `/${locale}`;
   const localizedHash = (hash: string) => `${localePath}${hash}`;
 
   return {
-    languageLabels: {
-      "cs-CZ": m.languageCzech({}, { locale }),
-      "en-US": m.languageEnglish({}, { locale }),
-    } satisfies Record<Locale, string>,
+    languageLabels: getSiteHeaderLanguageLabels(locale),
     links: [
       {
         label: m.landingNavWhereToFindUs({}, { locale }),
         href: localizedHash(`#${siteHeaderSectionIds.locationMap}`),
       },
-      {
-        label: m.landingNavTtrpg({}, { locale }),
-        href: `${localePath}/ttrpg-room`,
+      meetingRoomPageEnabled && {
+        label: m.landingNavMeetingRoom({}, { locale }),
+        href: `${localePath}/meeting-room`,
       },
       {
         label: m.landingNavGallery({}, { locale }),
@@ -44,7 +50,7 @@ export function getSiteHeaderConfig(locale: Locale) {
         label: m.landingNavContactLabel({}, { locale }),
         href: `${localePath}/contact`,
       },
-    ],
+    ].filter(Boolean),
     contactLabel: m.reservationNavCta({}, { locale }),
     contactHref: `${localePath}/checkout/order`,
   };

@@ -13,4 +13,23 @@ export default [
       },
     },
   },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: [
+      "**/*.test.{ts,tsx}",
+      "**/*.test-utils.{ts,tsx}",
+      "shared/backend/logging/censorship.ts",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.object.name='Effect'][callee.property.name=/^run[A-Z]/]",
+          message:
+            "Run Effects through runWorkspaceEffect so Workspace logging and censorship layers are applied.",
+        },
+      ],
+    },
+  },
 ];

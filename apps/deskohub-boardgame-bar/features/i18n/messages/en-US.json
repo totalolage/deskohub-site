@@ -10,7 +10,7 @@
     "boardGames": "BOARD GAMES",
     "gallery": "GALLERY",
     "menu": "MENU",
-    "trainingRoom": "TRAINING ROOM",
+    "trainingRoom": "TTRPG ROOM",
     "contact": "CONTACT",
     "openMenu": "Open menu"
   },
@@ -454,12 +454,13 @@
     "description": "Thank you for your reservation at Deskohub"
   },
   "training": {
-    "pageTitle": "Training Room or Meeting Room",
-    "pageDescription": "Rent a room for up to 20 people. Suitable for training, business meetings, workshops or team brainstorming. Just a short walk from Palmovka metro.",
+    "pageTitle": "TTRPG Room | Deskohub",
+    "pageDescription": "Book a private room for TTRPG campaigns, one-shots, and game nights in Palmovka.",
     "hero": {
-      "title": "Rent a room for up to 20 people",
-      "subtitle": "Training room or meeting room",
-      "description": "At Deskohub we offer a training room for rent that can also be used for business meetings as a conference room. It is also suitable for workshops or team brainstorming. Located just a short walk from Palmovka metro station, ensuring easy access for all participants.",
+      "tag": "TTRPG room",
+      "title": "A room for your next adventure",
+      "subtitle": "Private TTRPG space",
+      "description": "Bring your party for campaigns, one-shots, and game nights in a private room next to Deskohub Bar, with drinks and snacks close at hand.",
       "reserveButton": "Request Reservation",
       "galleryButton": "View Gallery"
     },

@@ -5,6 +5,7 @@ import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
+import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import {
   WorkspaceReservationRepository,
   type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
@@ -74,6 +75,7 @@ const makeTable = (overrides: Partial<Table> = {}): Table => ({
 });
 
 const detailsEffect = (input: {
+  readonly seatingMapEnabled?: boolean;
   readonly workspaceReservation?: TestWorkspaceReservation | null;
   readonly dotyposReservation?: Reservation;
   readonly tables?: readonly Table[];
@@ -103,7 +105,12 @@ const detailsEffect = (input: {
   }).pipe(
     Effect.provide(WorkspaceReservationService.Live),
     Effect.provide(Layer.succeed(WorkspaceReservationRepository, repository)),
-    Effect.provide(Layer.succeed(DotyposService, dotypos))
+    Effect.provide(Layer.succeed(DotyposService, dotypos)),
+    Effect.provide(
+      SeatingMapFeatureFlagServiceMock({
+        isEnabled: () => Effect.succeed(input.seatingMapEnabled ?? true),
+      })
+    )
   );
 };
 
@@ -158,6 +165,15 @@ describe("WorkspaceReservationService", () => {
       reservationId: "reservation-id",
       errorCode: "dotypos_reservation_date_invalid",
     });
+  });
+
+  test("keeps the table number but omits the seating map while disabled", async () => {
+    const details = await Effect.runPromise(
+      detailsEffect({ seatingMapEnabled: false })
+    );
+
+    expect(details.tableName).toBe("12");
+    expect(details.tableMap).toBeUndefined();
   });
 
   test("accepts Dotypos millisecond timestamp strings", async () => {

@@ -2,7 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
   checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,

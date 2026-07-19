@@ -1,6 +1,6 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
-import { Context, Effect, Layer, Match } from "effect";
+import { Context, Effect, Layer, Match, Option } from "effect";
 import {
   type DatabaseError,
   WorkspaceDatabaseLive,
@@ -22,6 +22,7 @@ import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
+import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -194,6 +195,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const dotypos = yield* DotyposService;
     const finalization = yield* ProviderPaymentFinalizationService;
+    const seatingMapFeatureFlag = yield* SeatingMapFeatureFlagService;
 
     const reconstructSummary = Effect.fn("checkoutStatus.reconstructSummary")(
       function* (reservation: WorkspaceReservation) {
@@ -292,7 +294,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary Dotypos reservation loaded"
         );
 
-        const tables = yield* dotypos.getTables().pipe(
+        const tableMap = yield* Effect.suspend(() => dotypos.getTables()).pipe(
           Effect.tapError((cause) =>
             Effect.logWarning("Checkout status table map load failed", {
               reservationId: reservation.id,
@@ -300,14 +302,15 @@ export const CheckoutStatusServiceLive = Layer.effect(
               cause,
             })
           ),
-          Effect.option
-        );
-        const tableMap = Match.value(tables).pipe(
-          Match.tag("Some", ({ value }) =>
-            getWorkspaceTableMap(dotyposReservationValue.reservation, value)
+          Effect.option,
+          Effect.when(seatingMapFeatureFlag.isEnabled()),
+          Effect.map(Option.flatten),
+          Effect.map(
+            Option.map((tables) =>
+              getWorkspaceTableMap(dotyposReservationValue.reservation, tables)
+            )
           ),
-          Match.tag("None", () => undefined),
-          Match.exhaustive
+          Effect.map(Option.getOrUndefined)
         );
 
         const date = toPragueReservationDate(
@@ -507,5 +510,6 @@ export const CheckoutStatusServiceLiveWithDependencies =
     Layer.provide(PaymentAttemptRepositoryLive),
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
-    Layer.provide(DotyposServiceLive)
+    Layer.provide(DotyposServiceLive),
+    Layer.provide(SeatingMapFeatureFlagService.Live)
   );

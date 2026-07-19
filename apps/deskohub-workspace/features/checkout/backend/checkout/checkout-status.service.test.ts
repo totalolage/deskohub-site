@@ -3,6 +3,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
+import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
@@ -136,6 +137,11 @@ describe("CheckoutStatusService", () => {
       Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
       Effect.provide(Layer.succeed(DotyposService, makeDotypos())),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        SeatingMapFeatureFlagServiceMock({
+          isEnabled: () => Effect.succeed(true),
+        })
+      ),
       Effect.runPromise
     );
 
@@ -199,6 +205,11 @@ describe("CheckoutStatusService", () => {
       Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
       Effect.provide(Layer.succeed(DotyposService, makeDotypos())),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        SeatingMapFeatureFlagServiceMock({
+          isEnabled: () => Effect.succeed(true),
+        })
+      ),
       Effect.runPromise
     );
 
@@ -244,77 +255,86 @@ describe("CheckoutStatusService", () => {
       cancelOrderHold: mock(() => Effect.die("not used")),
       sweepExpiredHolds: mock(() => Effect.die("not used")),
     };
-
-    const status = await Effect.gen(function* () {
-      const service = yield* CheckoutStatusService;
-      return yield* service.getStatus({
-        orderId: "reservation-provider-return",
-        returnOutcome: "success",
-      });
-    }).pipe(
-      Effect.provide(CheckoutStatusServiceLive),
-      Effect.provide(
-        Layer.succeed(ProviderPaymentFinalizationService, finalization)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, reservations)
-      ),
-      Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
-      Effect.provide(
-        Layer.succeed(
-          DotyposService,
-          makeDotypos({
-            getReservation: mock(() =>
-              Effect.succeed({
-                reservation: {
-                  id: "dotypos-reservation-id",
-                  _customerId: "customer-id",
-                  _tableId: "assigned-table",
-                  startDate: "2026-06-19T22:00:00.000Z",
-                  endDate: "2026-06-20T22:00:00.000Z",
-                  seats: "1",
-                  status: "OPEN",
-                },
-                customer: { id: "customer-id" },
-              })
-            ),
-            getTables: mock(() =>
-              Effect.succeed([
-                {
-                  _cloudId: "cloud-id",
-                  display: true,
-                  enabled: true,
-                  id: "assigned-table",
-                  name: "Desk 1",
-                  locationName: "Main room",
-                  tags: ["tier:profi"],
-                },
-                {
-                  _cloudId: "cloud-id",
-                  display: true,
-                  enabled: true,
-                  id: "neighbor-table",
-                  name: "Desk 2",
-                  locationName: "Main room",
-                  tags: ["tier:profi"],
-                },
-                {
-                  _cloudId: "cloud-id",
-                  display: true,
-                  enabled: true,
-                  id: "other-room-table",
-                  name: "Desk 3",
-                  locationName: "Quiet room",
-                  tags: ["tier:profi"],
-                },
-              ])
-            ),
-          })
-        )
-      ),
-      Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
-      Effect.runPromise
+    const getTables = mock(() =>
+      Effect.succeed([
+        {
+          _cloudId: "cloud-id",
+          display: true,
+          enabled: true,
+          id: "assigned-table",
+          name: "Desk 1",
+          locationName: "Main room",
+          tags: ["tier:profi"],
+        },
+        {
+          _cloudId: "cloud-id",
+          display: true,
+          enabled: true,
+          id: "neighbor-table",
+          name: "Desk 2",
+          locationName: "Main room",
+          tags: ["tier:profi"],
+        },
+        {
+          _cloudId: "cloud-id",
+          display: true,
+          enabled: true,
+          id: "other-room-table",
+          name: "Desk 3",
+          locationName: "Quiet room",
+          tags: ["tier:profi"],
+        },
+      ])
     );
+    const dotypos = makeDotypos({
+      getReservation: mock(() =>
+        Effect.succeed({
+          reservation: {
+            id: "dotypos-reservation-id",
+            _customerId: "customer-id",
+            _tableId: "assigned-table",
+            startDate: "2026-06-19T22:00:00.000Z",
+            endDate: "2026-06-20T22:00:00.000Z",
+            seats: "1",
+            status: "OPEN",
+          },
+          customer: { id: "customer-id" },
+        })
+      ),
+      getTables,
+    });
+
+    const loadStatus = (seatingMapEnabled: boolean) =>
+      Effect.gen(function* () {
+        const service = yield* CheckoutStatusService;
+        return yield* service.getStatus({
+          orderId: "reservation-provider-return",
+          returnOutcome: "success",
+        });
+      }).pipe(
+        Effect.provide(CheckoutStatusServiceLive),
+        Effect.provide(
+          Layer.succeed(ProviderPaymentFinalizationService, finalization)
+        ),
+        Effect.provide(
+          Layer.succeed(WorkspaceReservationRepository, reservations)
+        ),
+        Effect.provide(
+          Layer.succeed(PaymentAttemptRepository, paymentAttempts)
+        ),
+        Effect.provide(Layer.succeed(DotyposService, dotypos)),
+        Effect.provide(
+          Layer.succeed(ReservationHoldCleanupService, holdCleanup)
+        ),
+        Effect.provide(
+          SeatingMapFeatureFlagServiceMock({
+            isEnabled: () => Effect.succeed(seatingMapEnabled),
+          })
+        ),
+        Effect.runPromise
+      );
+
+    const status = await loadStatus(true);
 
     expect(status).toMatchObject({
       status: "fulfilled",
@@ -342,6 +362,12 @@ describe("CheckoutStatusService", () => {
       activePaymentAttemptId: "attempt-provider-return",
       paymentState: "paid",
     });
+
+    const statusWithoutSeatingMap = await loadStatus(false);
+
+    expect(statusWithoutSeatingMap.summary).toEqual(status.summary);
+    expect(statusWithoutSeatingMap.tableMap).toBeUndefined();
+    expect(getTables).toHaveBeenCalledTimes(1);
   });
 
   test("includes support contact prefill only after fulfillment fails", async () => {
@@ -428,6 +454,11 @@ describe("CheckoutStatusService", () => {
         )
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        SeatingMapFeatureFlagServiceMock({
+          isEnabled: () => Effect.succeed(true),
+        })
+      ),
       Effect.runPromise
     );
 
@@ -505,6 +536,11 @@ describe("CheckoutStatusService", () => {
         Layer.succeed(DotyposService, makeDotypos({ getReservation }))
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        SeatingMapFeatureFlagServiceMock({
+          isEnabled: () => Effect.succeed(true),
+        })
+      ),
       Effect.runPromise
     );
 
@@ -575,6 +611,11 @@ describe("CheckoutStatusService", () => {
         )
       ),
       Effect.provide(Layer.succeed(ReservationHoldCleanupService, holdCleanup)),
+      Effect.provide(
+        SeatingMapFeatureFlagServiceMock({
+          isEnabled: () => Effect.succeed(true),
+        })
+      ),
       Effect.runPromise
     );
 

@@ -17,6 +17,8 @@
         "NEXT_PUBLIC_POSTHOG_HOST",
         "NEXT_PUBLIC_VERCEL_ENV",
         "POSTHOG_API_KEY",
+        "POSTHOG_FEATURE_FLAGS_API_KEY",
+        "POSTHOG_HOST",
         "POSTHOG_PROJECT_ID",
         "VERCEL_PROJECT_PRODUCTION_URL"
       ]
@@ -29,6 +31,15 @@
         "project.inlang/project_id"
       ],
       "outputs": ["features/i18n/paraglide/**"]
+    },
+    "feature-flags:sync": {
+      "cache": false,
+      "env": [
+        "POSTHOG_FEATURE_FLAGS_API_KEY",
+        "POSTHOG_HOST",
+        "POSTHOG_PROJECT_ID"
+      ],
+      "outputs": ["features/feature-flags/generated/contract.ts"]
     },
     "db:migrate": {
       "cache": false,
