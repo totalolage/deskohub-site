@@ -268,14 +268,19 @@ describe("discount calculator", () => {
     }
   });
 
-  test("distinguishes fixed currency and exponent mismatches", () => {
-    expect(
-      calculateError(money(1000), [fixed("currency", money(100, "EUR"))]).reason
-    ).toBe("currency_mismatch");
-    expect(
-      calculateError(money(1000), [fixed("exponent", money(100, "CZK", 0))])
-        .reason
-    ).toBe("exponent_mismatch");
+  test("skips incompatible fixed discounts and continues with valid candidates", () => {
+    const result = calculate(money(1000), [
+      percentage("before", 1000),
+      fixed("currency", money(100, "EUR")),
+      fixed("exponent", money(100, "CZK", 0)),
+      percentage("after", 1000),
+    ]);
+
+    expect(result.quote.discounts.map(({ discount }) => discount.id)).toEqual([
+      "before",
+      "after",
+    ]);
+    expect(result.quote.discountedSubtotal.value).toBe(810);
   });
 
   test("keeps private provider and claim data out of the public quote", () => {

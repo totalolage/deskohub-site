@@ -11,7 +11,6 @@ import {
   Effect,
   Layer,
   Match,
-  Option,
   Predicate,
   Schedule,
   Schema,
@@ -45,10 +44,6 @@ import {
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
-import {
-  type CanonicalDiscountCode,
-  normalizeSubmittedDiscountCode,
-} from "@/features/discounts";
 import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
@@ -73,7 +68,6 @@ const preparePayStateSchema = Schema.toStandardSchemaV1(
     locale: Schema.Literals(locales),
     reservationIntentId: Schema.NonEmptyString,
     reservation: normalizedCoworkReservationOrderSchema,
-    submittedCode: Schema.optional(Schema.String),
     legalConsent: Schema.optional(Schema.Boolean),
   }),
   { parseOptions: { onExcessProperty: "error" } }
@@ -206,14 +200,12 @@ const toReadyResult = (input: {
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
-  readonly submittedCode: CanonicalDiscountCode | undefined;
 }) => {
   const state = buildSignedPayState({
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
     orderId: input.reservationId,
-    submittedCode: input.submittedCode,
   });
   const sealedState = sealPayStateForUrl(state);
   const redirectUrl = new URL(
@@ -390,11 +382,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
-    const submittedCode = Option.getOrUndefined(
-      yield* normalizeSubmittedDiscountCode({
-        submittedCode: input.submittedCode,
-      })
-    );
     let existingReservation =
       yield* reservations.findByIntentKey(reservationIntentKey);
     yield* Effect.annotateLogsScoped({ existingReservation });
@@ -450,7 +437,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         reservation: input.reservation,
         dotyposCustomerId: existingReservation.dotyposCustomerId,
         locale: input.locale,
-        submittedCode,
       });
       yield* Effect.annotateLogsScoped({ quote });
       yield* Effect.logDebug("Workspace reservation quote built");
@@ -473,7 +459,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         reservation: input.reservation,
         quote,
         reservationId: existingReservation.id,
-        submittedCode,
       });
     }
 
@@ -504,7 +489,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation: input.reservation,
       dotyposCustomerId,
       locale: input.locale,
-      submittedCode,
     });
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logDebug("Workspace reservation quote built");
@@ -544,7 +528,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservation: input.reservation,
           dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
           locale: input.locale,
-          submittedCode,
         });
 
         yield* reservations.updateProductIntent({
@@ -565,7 +548,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservation: input.reservation,
           quote: reusedQuote,
           reservationId: claimConflictReservation.id,
-          submittedCode,
         });
       }
 
@@ -744,7 +726,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation: input.reservation,
       quote,
       reservationId: reservationDraft.id,
-      submittedCode,
     });
   },
   (effect, input) =>
@@ -759,12 +740,6 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
             message: Match.value(error).pipe(
               Match.tag("BotDetectedError", () =>
                 m.reservationRateLimitMessage({}, { locale: input.locale })
-              ),
-              Match.tag("DiscountCodeUnavailableError", () =>
-                m.reservationDiscountCodeUnavailable(
-                  {},
-                  { locale: input.locale }
-                )
               ),
               Match.orElse(() =>
                 m.reservationErrorMessage({}, { locale: input.locale })

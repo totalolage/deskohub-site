@@ -8,6 +8,7 @@ import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowo
 import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
+import { recoverDiscountResolution } from "./resolution-logging";
 
 type DiscountCalculationInput = {
   readonly product: WorkspaceCoworkProductIdentity;
@@ -92,11 +93,25 @@ const applyNextCandidate = (input: {
     candidate,
     remaining: state.remaining,
   }).pipe(
-    Effect.bind("appliedValue", getAppliedValue),
-    Effect.let("nextState", toNextCalculationState),
+    Effect.bind("appliedValue", (candidateInput) =>
+      recoverDiscountResolution(getAppliedValue(candidateInput), undefined, {
+        operation: "apply_candidate",
+        provider: "calculator",
+      })
+    ),
+    Effect.let("nextState", advanceCalculationState),
     Effect.flatMap(applyNextCandidate)
   );
 };
+
+const advanceCalculationState = (input: {
+  readonly state: DiscountCalculationState;
+  readonly candidate: DiscountCandidate;
+  readonly appliedValue: number | undefined;
+}): DiscountCalculationState =>
+  input.appliedValue === undefined
+    ? { ...input.state, index: input.state.index + 1 }
+    : toNextCalculationState({ ...input, appliedValue: input.appliedValue });
 
 const getAppliedValue = (input: {
   readonly candidate: DiscountCandidate;

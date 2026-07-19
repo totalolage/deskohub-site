@@ -1,6 +1,6 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { Deferred, Effect, Layer, Schema } from "effect";
+import { Deferred, Effect, Layer, Logger, References, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
@@ -83,7 +83,7 @@ const runWithProviders = <A, E>(
 describe("DiscountService", () => {
   test.each([
     "quote",
-    "revalidate",
+    "affirm",
   ] as const)("starts providers in parallel for %s", async (operation) => {
     const allProvidersStarted = Deferred.makeUnsafe<void>();
     const startedProviders: string[] = [];
@@ -117,7 +117,9 @@ describe("DiscountService", () => {
     await runWithProviders(
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
-        return yield* discounts[operation](input);
+        return yield* operation === "quote"
+          ? discounts.quote(input)
+          : discounts.affirm({ ...input, acceptedDiscountIds: [] });
       }).pipe(Effect.timeout("1 second")),
       providers
     );
@@ -175,7 +177,7 @@ describe("DiscountService", () => {
     expect(result.discountedSubtotal.value).toBe(5840);
   });
 
-  test("revalidates fresh provider data and creates an opaque commitment", async () => {
+  test("affirms accepted discounts with fresh provider data and creates an opaque commitment", async () => {
     const storedDiscountId = Schema.decodeUnknownSync(storedDiscountIdSchema)(
       "019bfe6e-8ef0-7def-8b16-55cfbc82edb7"
     );
@@ -211,18 +213,24 @@ describe("DiscountService", () => {
       })
     );
 
+    const affirmationInput = {
+      ...input,
+      acceptedDiscountIds: [storedDiscountId],
+    };
     const result = await runWithProviders(
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
-        return yield* discounts.revalidate(input);
+        return yield* discounts.affirm(affirmationInput);
       }),
       providers
     );
-    expect(calendarRevalidate).toHaveBeenCalledWith(input);
+    expect(calendarRevalidate).toHaveBeenCalledWith(affirmationInput);
     expect(customerResolve).toHaveBeenCalledWith(
-      expect.objectContaining(input)
+      expect.objectContaining(affirmationInput)
     );
-    expect(codeRevalidate).toHaveBeenCalledWith(expect.objectContaining(input));
+    expect(codeRevalidate).toHaveBeenCalledWith(
+      expect.objectContaining(affirmationInput)
+    );
     expect(calendarQuote).not.toHaveBeenCalled();
     expect(codeQuote).not.toHaveBeenCalled();
     expect(result.commitment).toEqual({
@@ -268,7 +276,10 @@ describe("DiscountService", () => {
     const result = await runWithProviders(
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
-        return yield* discounts.revalidate(input);
+        return yield* discounts.affirm({
+          ...input,
+          acceptedDiscountIds: [discountId("full"), discountId("code")],
+        });
       }),
       providers
     );
@@ -286,15 +297,86 @@ describe("DiscountService", () => {
     });
   });
 
-  test("preserves provider errors while resolving concurrently", async () => {
+  test("does not introduce newly available discounts during affirmation", async () => {
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        revalidate: () =>
+          Effect.succeed([
+            percentage("accepted", 1000, "calendar"),
+            percentage("newly-available", 5000, "calendar"),
+          ]),
+      }),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.affirm({
+          ...input,
+          acceptedDiscountIds: [discountId("accepted")],
+        });
+      }),
+      providers
+    );
+
+    expect(result.quote.discounts.map(({ discount }) => discount.id)).toEqual([
+      "accepted",
+    ]);
+  });
+
+  test("omits an accepted discount that cannot be affirmed", async () => {
+    const failure = new DiscountProviderError({
+      reason: "provider_failure",
+      message: "Calendar failed.",
+    });
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        revalidate: () => Effect.fail(failure),
+      }),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      CodeDiscountProviderMock({ revalidate: () => Effect.succeed([]) })
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.affirm({
+          ...input,
+          acceptedDiscountIds: [discountId("accepted")],
+        });
+      }),
+      providers
+    );
+
+    expect(result.quote.discounts).toEqual([]);
+    expect(result.commitment).toEqual({ applications: [] });
+  });
+
+  test("keeps successful provider discounts when another provider fails", async () => {
     const cause = new Error("calendar unavailable");
     const failure = new DiscountProviderError({
       reason: "provider_failure",
       message: "Calendar failed.",
       cause,
     });
-    const customerResolve = mock(() => Effect.succeed([]));
-    const codeQuote = mock(() => Effect.succeed([]));
+    const customerResolve = mock(() =>
+      Effect.succeed([percentage("customer", 1000, "customer")])
+    );
+    const codeQuote = mock(() =>
+      Effect.succeed([percentage("code", 2000, "code")])
+    );
+    const logRecords: {
+      readonly annotations: Record<string, unknown>;
+      readonly level: string;
+    }[] = [];
+    const logger = Logger.make((options) => {
+      logRecords.push({
+        annotations: options.fiber.getRef(References.CurrentLogAnnotations),
+        level: options.logLevel,
+      });
+    });
     const providers = Layer.mergeAll(
       CalendarDiscountProviderMock({ quote: () => Effect.fail(failure) }),
       CustomerDiscountProviderMock({ resolve: customerResolve }),
@@ -304,16 +386,51 @@ describe("DiscountService", () => {
     const result = await runWithProviders(
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
-        return yield* Effect.flip(discounts.quote(input));
-      }),
+        return yield* discounts.quote(input);
+      }).pipe(Effect.provide(Logger.layer([logger]))),
       providers
     );
 
-    expect(result).toBe(failure);
-    expect(result.cause).toBe(cause);
+    expect(result.discounts.map(({ discount }) => discount.id)).toEqual([
+      "customer",
+      "code",
+    ]);
     expect(customerResolve).toHaveBeenCalledWith(
       expect.objectContaining(input)
     );
     expect(codeQuote).toHaveBeenCalledWith(expect.objectContaining(input));
+    expect(logRecords).toContainEqual({
+      level: "Error",
+      annotations: expect.objectContaining({
+        discountBoundary: "resolution",
+        discountProvider: "calendar",
+        discountOperation: "quote",
+        discountErrorTag: "DiscountProviderError",
+        discountErrorReason: "provider_failure",
+      }),
+    });
+    expect(JSON.stringify(logRecords)).not.toContain("customer-1");
+    expect(JSON.stringify(logRecords)).not.toContain("SAVE20");
+  });
+
+  test.each([
+    ["defect", Effect.die("provider bug")],
+    ["interruption", Effect.interrupt],
+  ] as const)("does not recover a provider %s", async (_label, failureEffect) => {
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({ quote: () => failureEffect }),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      CodeDiscountProviderMock({ quote: () => Effect.succeed([]) })
+    );
+
+    const exit = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.quote(input);
+      }).pipe(Effect.exit),
+      providers
+    );
+
+    expect(exit._tag).toBe("Failure");
   });
 });

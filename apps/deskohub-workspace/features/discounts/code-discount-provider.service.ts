@@ -107,8 +107,7 @@ export class CodeDiscountProvider extends Context.Service<
             Effect.bind("definition", loadDiscountDefinition),
             Effect.tap(validateDiscountCodeProduct),
             Effect.tap(validateFixedAdjustmentCompatibility),
-            Effect.map(toDiscountCodeCandidate),
-            Effect.annotateLogs({ discountCode: input.code })
+            Effect.map(toDiscountCodeCandidate)
           )
       );
 
@@ -133,8 +132,7 @@ export class CodeDiscountProvider extends Context.Service<
               Option.fromNullishOr(submittedCode)
             ),
             Effect.bind("candidate", resolveSubmittedCode),
-            Effect.map(({ candidate }) => Option.toArray(candidate)),
-            Effect.tapError(logDiscountCodeError)
+            Effect.map(({ candidate }) => Option.toArray(candidate))
           )
       );
 
@@ -355,24 +353,13 @@ const toDiscountCodeProviderError = (
     cause,
   });
 
-const logDiscountCodeError = (
-  cause: DiscountCodeUnavailableError | DiscountProviderError
-) =>
-  (cause._tag === "DiscountProviderError"
-    ? Effect.logError
-    : Effect.logWarning)("Discount code resolution failed", {
-    reason: cause.reason,
-    ...("codeId" in cause &&
-      cause.codeId !== undefined && { discountCodeId: cause.codeId }),
-  });
-
 const withProviderAnnotations =
   (operation: "quote" | "revalidate") =>
   <A, E>(effect: Effect.Effect<A, E>, input: CodeDiscountProviderInput) =>
     effect.pipe(
       Effect.annotateLogs({
-        operation,
-        dotyposCustomerId: input.dotyposCustomerId,
-        product: input.product,
+        discountOperation: operation,
+        discountProductKind: input.product.kind,
+        discountProductTier: input.product.tier,
       })
     );

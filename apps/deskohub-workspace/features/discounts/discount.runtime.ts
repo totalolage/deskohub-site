@@ -1,5 +1,6 @@
 import "server-only";
-import { Layer, Scope } from "effect";
+import { GoogleCalendarService } from "@deskohub/google-calendar";
+import { Effect, Layer, Scope } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -16,9 +17,17 @@ const discountRepositories = Layer.mergeAll(
   DiscountCodeRepository.Live
 ).pipe(Layer.provide(WorkspaceDatabaseLive));
 
+const recoverableGoogleCalendarService = GoogleCalendarServiceLive.pipe(
+  Layer.catchTag("GoogleCalendarConfigError", (cause) =>
+    Layer.succeed(GoogleCalendarService, {
+      listEvents: () => Effect.fail(cause),
+    })
+  )
+);
+
 const providerDependencies = Layer.mergeAll(
   discountRepositories,
-  GoogleCalendarServiceLive,
+  recoverableGoogleCalendarService,
   CalendarResourceConfig.Live,
   DotyposServiceLive
 );
