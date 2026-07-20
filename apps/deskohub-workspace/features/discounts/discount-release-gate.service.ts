@@ -1,5 +1,7 @@
-import type { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
+import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
+import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
+import type { DiscountResolutionOperation } from "./resolution-logging";
 
 export type DiscountReleaseGates = {
   readonly calendarSales: boolean;
@@ -7,35 +9,9 @@ export type DiscountReleaseGates = {
   readonly discountCodes: boolean;
 };
 
-type DiscountOperation = "quote" | "affirm";
-
-export type DiscountReleaseFeatureFlag =
-  | "calendar_sales"
-  | "customer_discounts"
-  | "discount_codes";
-
-export interface DiscountReleaseGateEvaluationSnapshot {
-  readonly getFlag: (flag: DiscountReleaseFeatureFlag) => boolean | undefined;
-}
-
-export interface IDiscountReleaseGateEvaluator {
-  readonly evaluate: () => Effect.Effect<
-    DiscountReleaseGateEvaluationSnapshot,
-    PostHogFeatureFlagEvaluationError
-  >;
-}
-
-export class DiscountReleaseGateEvaluator extends Context.Service<
-  DiscountReleaseGateEvaluator,
-  IDiscountReleaseGateEvaluator
->()("@deskohub-workspace/discounts/DiscountReleaseGateEvaluator") {
-  static from = (implementation: IDiscountReleaseGateEvaluator) =>
-    Layer.succeed(this, implementation);
-}
-
 export interface IDiscountReleaseGateService {
   readonly evaluate: (input: {
-    readonly operation: DiscountOperation;
+    readonly operation: DiscountResolutionOperation;
   }) => Effect.Effect<DiscountReleaseGates>;
 }
 
@@ -46,12 +22,20 @@ export class DiscountReleaseGateService extends Context.Service<
   static Live = Layer.effect(
     this,
     Effect.gen(function* () {
-      const evaluator = yield* DiscountReleaseGateEvaluator;
+      const featureFlags = yield* WorkspaceFeatureFlagService;
 
       return {
         evaluate: Effect.fn("DiscountReleaseGateService.evaluate")((input) =>
           Effect.Do.pipe(
-            Effect.bind("snapshot", evaluator.evaluate),
+            Effect.bind("snapshot", () =>
+              featureFlags.evaluateFlags({
+                flagKeys: [
+                  "calendar_sales",
+                  "customer_discounts",
+                  "discount_codes",
+                ],
+              })
+            ),
             Effect.bind("calendarSales", ({ snapshot }) =>
               resolveReleaseGate({
                 flag: "calendar_sales",
@@ -109,12 +93,14 @@ const resolveReleaseGate = Effect.fn(
   "DiscountReleaseGateService.resolveReleaseGate"
 )(
   (input: {
-    readonly flag: DiscountReleaseFeatureFlag;
-    readonly operation: DiscountOperation;
+    readonly flag: PostHogFeatureFlagKey;
+    readonly operation: DiscountResolutionOperation;
     readonly value: boolean | undefined;
   }) =>
-    input.value === undefined
-      ? Effect.logError("Discount release gate is unavailable").pipe(
+    Option.fromNullishOr(input.value).pipe(
+      Option.map((value) => Effect.succeed(value === true)),
+      Option.getOrElse(() =>
+        Effect.logError("Discount release gate is unavailable").pipe(
           Effect.annotateLogs({
             discountBoundary: "release_gate",
             discountOperation: input.operation,
@@ -124,5 +110,6 @@ const resolveReleaseGate = Effect.fn(
           }),
           Effect.as(false)
         )
-      : Effect.succeed(input.value === true)
+      )
+    )
 );

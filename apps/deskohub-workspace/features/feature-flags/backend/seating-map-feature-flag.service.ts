@@ -1,8 +1,7 @@
 import "server-only";
 
 import { Context, Effect, Layer } from "effect";
-import { nodeFeatureFlags } from "./node";
-import { getCurrentPostHogFeatureFlagSubject } from "./subject";
+import { WorkspaceFeatureFlagService } from "./workspace-feature-flag.service";
 
 export interface ISeatingMapFeatureFlagService {
   readonly isEnabled: () => Effect.Effect<boolean>;
@@ -12,20 +11,24 @@ export class SeatingMapFeatureFlagService extends Context.Service<
   SeatingMapFeatureFlagService,
   ISeatingMapFeatureFlagService
 >()("@deskohub-workspace/feature-flags/SeatingMapFeatureFlagService") {
-  static Live = Layer.succeed(this, {
-    isEnabled: Effect.fn("SeatingMapFeatureFlagService.isEnabled")(() =>
-      Effect.Do.pipe(
-        Effect.bind("subject", getCurrentPostHogFeatureFlagSubject),
-        Effect.bind("enabled", ({ subject }) =>
-          nodeFeatureFlags.isEnabled({ key: "seating_map", subject })
+  static Live = Layer.effect(
+    this,
+    Effect.gen(function* () {
+      const featureFlags = yield* WorkspaceFeatureFlagService;
+
+      return {
+        isEnabled: Effect.fn("SeatingMapFeatureFlagService.isEnabled")(() =>
+          featureFlags
+            .isEnabled("seating_map")
+            .pipe(
+              Effect.catch((error) =>
+                Effect.logWarning(error.message, { cause: error.cause }).pipe(
+                  Effect.as(false)
+                )
+              )
+            )
         ),
-        Effect.map(({ enabled }) => enabled),
-        Effect.catch((error) =>
-          Effect.logWarning(error.message, { cause: error.cause }).pipe(
-            Effect.as(false)
-          )
-        )
-      )
-    ),
-  });
+      } satisfies ISeatingMapFeatureFlagService;
+    })
+  );
 }

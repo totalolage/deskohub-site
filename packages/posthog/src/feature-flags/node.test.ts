@@ -179,7 +179,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     await Effect.runPromise(featureFlags.shutdown());
   });
 
-  test("acquires one scoped SDK client for the service lifetime", async () => {
+  test("reuses one SDK client for the service lifetime", async () => {
     const { makePostHogNodeFeatureFlagService } = await import("./node");
     createClient.mockClear();
     evaluateFlags.mockClear();

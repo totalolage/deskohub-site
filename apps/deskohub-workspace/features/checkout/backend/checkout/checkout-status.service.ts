@@ -21,6 +21,7 @@ import {
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
+import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -503,5 +504,9 @@ export const CheckoutStatusServiceLiveWithDependencies =
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(DotyposServiceLive),
-    Layer.provide(SeatingMapFeatureFlagService.Live)
+    Layer.provide(
+      SeatingMapFeatureFlagService.Live.pipe(
+        Layer.provide(WorkspaceFeatureFlagServiceLive)
+      )
+    )
   );

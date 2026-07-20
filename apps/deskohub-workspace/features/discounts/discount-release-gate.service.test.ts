@@ -1,22 +1,36 @@
 import "@/shared/testing/workspace-test-env";
 
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
-import { Effect, Logger, References } from "effect";
 import {
-  DiscountReleaseGateEvaluator,
-  DiscountReleaseGateService,
-} from "./discount-release-gate.service";
+  PostHogFeatureFlagEvaluationError,
+  type TypedPostHogFeatureFlagEvaluationSnapshot,
+} from "@deskohub/posthog/feature-flags/node";
+import { Effect, Logger, References } from "effect";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
+import type {
+  PostHogFeatureFlagDefinitions,
+  PostHogFeatureFlagKey,
+} from "@/features/feature-flags/generated/contract";
+import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
-const flagValues = new Map<string, boolean | undefined>();
-const evaluateFlags = mock(() =>
-  Effect.succeed({
-    getFlag: (key: string) => flagValues.get(key),
-  })
-);
+const flagValues = new Map<PostHogFeatureFlagKey, boolean | undefined>();
 
-const evaluatorLayer = DiscountReleaseGateEvaluator.from({
-  evaluate: evaluateFlags,
+const makeSnapshot = () =>
+  ({
+    getFlag: (key) => flagValues.get(key),
+    getFlagPayload: () => undefined,
+    isEnabled: (key) => flagValues.get(key) === true,
+    raw: {
+      getFlag: (key) => flagValues.get(key as PostHogFeatureFlagKey),
+      getFlagPayload: () => undefined,
+      isEnabled: (key) => flagValues.get(key as PostHogFeatureFlagKey) === true,
+    },
+  }) satisfies TypedPostHogFeatureFlagEvaluationSnapshot<PostHogFeatureFlagDefinitions>;
+
+const evaluateFlags = mock(() => Effect.succeed(makeSnapshot()));
+
+const featureFlagLayer = WorkspaceFeatureFlagServiceMock({
+  evaluateFlags,
 });
 
 const runGateEvaluation = () =>
@@ -25,7 +39,7 @@ const runGateEvaluation = () =>
     return yield* releaseGates.evaluate({ operation: "quote" });
   }).pipe(
     Effect.provide(DiscountReleaseGateService.Live),
-    Effect.provide(evaluatorLayer),
+    Effect.provide(featureFlagLayer),
     Effect.runPromise
   );
 
@@ -63,7 +77,7 @@ describe("DiscountReleaseGateService", () => {
       return yield* releaseGates.evaluate({ operation: "quote" });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
-      Effect.provide(evaluatorLayer),
+      Effect.provide(featureFlagLayer),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
     );
@@ -98,7 +112,7 @@ describe("DiscountReleaseGateService", () => {
       return yield* releaseGates.evaluate({ operation: "affirm" });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
-      Effect.provide(evaluatorLayer),
+      Effect.provide(featureFlagLayer),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
     );
@@ -123,8 +137,8 @@ describe("DiscountReleaseGateService", () => {
   });
 
   test("fails every gate closed when evaluation fails", async () => {
-    const failingEvaluator = DiscountReleaseGateEvaluator.from({
-      evaluate: () =>
+    const failingFeatureFlags = WorkspaceFeatureFlagServiceMock({
+      evaluateFlags: () =>
         Effect.fail(
           new PostHogFeatureFlagEvaluationError({
             message: "Evaluation failed.",
@@ -148,7 +162,7 @@ describe("DiscountReleaseGateService", () => {
       return yield* releaseGates.evaluate({ operation: "quote" });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
-      Effect.provide(failingEvaluator),
+      Effect.provide(failingFeatureFlags),
       Effect.provide(Logger.layer([logger])),
       Effect.runPromise
     );

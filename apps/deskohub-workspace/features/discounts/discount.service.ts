@@ -17,6 +17,8 @@ import type { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
 import {
   type DiscountResolutionFailure,
+  type DiscountResolutionOperation,
+  type DiscountResolutionProvider,
   logDiscountResolutionFailure,
   recoverDiscountResolution,
 } from "./resolution-logging";
@@ -170,8 +172,8 @@ export class DiscountService extends Context.Service<
 
 const recoverGatedDiscountResolution = (input: {
   readonly enabled: boolean;
-  readonly operation: "quote" | "affirm";
-  readonly provider: "calendar" | "customer" | "code";
+  readonly operation: DiscountResolutionOperation;
+  readonly provider: DiscountResolutionProvider;
   readonly resolve: () => Effect.Effect<
     readonly DiscountCandidate[],
     DiscountResolutionFailure

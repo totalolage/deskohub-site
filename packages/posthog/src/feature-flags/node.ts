@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, ManagedRuntime, Match } from "effect";
+import { Data, Effect } from "effect";
 import {
   type AllFlagsOptions,
   type FeatureFlagEvaluations,
@@ -29,33 +29,29 @@ export interface PostHogFeatureFlagSubject {
   readonly sendFeatureFlagEvents: boolean;
 }
 
-interface IPostHogFeatureFlagClientService {
-  readonly client: PostHog;
-}
-
-class PostHogFeatureFlagClientService extends Context.Service<
-  PostHogFeatureFlagClientService,
-  IPostHogFeatureFlagClientService
->()("@deskohub/posthog/PostHogFeatureFlagClientService") {
-  static from = (config: PostHogNodeFeatureFlagServiceConfig) =>
-    Layer.effect(this, acquirePostHogFeatureFlagClient({ config }));
-}
-
 export const makePostHogNodeFeatureFlagService = <
   const Definitions extends ValidDefinitions<Definitions>,
 >(
   contract: PostHogFeatureFlagContract<Definitions>,
   config: PostHogNodeFeatureFlagServiceConfig
 ) => {
-  const runtime = ManagedRuntime.make(
-    PostHogFeatureFlagClientService.from(config)
+  let client: PostHog | undefined;
+
+  const getClient = Effect.fn("PostHogNodeFeatureFlags.getClient")(() =>
+    Effect.suspend(() => {
+      if (client) {
+        return Effect.succeed(client);
+      }
+
+      return createPostHogClient({ config }).pipe(
+        Effect.tap((createdClient) =>
+          Effect.sync(() => {
+            client = createdClient;
+          })
+        )
+      );
+    })
   );
-  const provideClient = <A, E>(
-    effect: Effect.Effect<A, E, PostHogFeatureFlagClientService>
-  ) =>
-    runtime.contextEffect.pipe(
-      Effect.flatMap((context) => Effect.provide(effect, context))
-    );
 
   const evaluateFlags = Effect.fn("PostHogNodeFeatureFlags.evaluateFlags")(
     (
@@ -64,12 +60,30 @@ export const makePostHogNodeFeatureFlagService = <
       TypedPostHogFeatureFlagEvaluationSnapshot<Definitions>,
       PostHogFeatureFlagEvaluationError
     > =>
-      Effect.succeed({ config, contract, input }).pipe(
-        Effect.let("evaluationInput", prepareFeatureFlagEvaluation),
-        Effect.bind("clientService", () => PostHogFeatureFlagClientService),
-        Effect.bind("evaluation", evaluatePostHogFeatureFlags),
-        Effect.map(({ evaluation }) => evaluation),
-        provideClient
+      getClient().pipe(
+        Effect.flatMap((postHogClient) => {
+          const options = {
+            ...config.defaultEvaluationOptions,
+            ...input.options,
+          };
+
+          return input.subject.sendFeatureFlagEvents
+            ? createPostHogNodeFeatureFlags(
+                contract,
+                postHogClient
+              ).evaluateFlags(input.subject.distinctId, options)
+            : evaluatePostHogFeatureFlagsWithoutEvents({
+                client: postHogClient,
+                distinctId: input.subject.distinctId,
+                options,
+              }).pipe(
+                Effect.map((snapshot) =>
+                  toTypedPostHogFeatureFlagEvaluationSnapshot<Definitions>(
+                    snapshot
+                  )
+                )
+              );
+        })
       )
   );
 
@@ -77,17 +91,43 @@ export const makePostHogNodeFeatureFlagService = <
     <Key extends PostHogFeatureFlagKey<Definitions>>(
       input: PostHogFeatureFlagCheckInput<Definitions, Key>
     ) =>
-      Effect.succeed({ config, input }).pipe(
-        Effect.let("checkInput", prepareFeatureFlagCheck),
-        Effect.bind("clientService", () => PostHogFeatureFlagClientService),
-        Effect.bind("result", evaluatePostHogFeatureFlag),
-        Effect.map(({ result }) => result?.enabled ?? false),
-        provideClient
+      getClient().pipe(
+        Effect.flatMap((postHogClient) =>
+          Effect.tryPromise({
+            try: () =>
+              postHogClient.getFeatureFlagResult(
+                input.key,
+                input.subject.distinctId,
+                {
+                  ...config.defaultEvaluationOptions,
+                  ...input.options,
+                  sendFeatureFlagEvents: input.subject.sendFeatureFlagEvents,
+                }
+              ),
+            catch: (cause) =>
+              new PostHogFeatureFlagEvaluationError({
+                message: "Could not evaluate the PostHog feature flag.",
+                cause,
+              }),
+          })
+        ),
+        Effect.map((result) => result?.enabled ?? false)
       )
   );
 
-  const shutdown = Effect.fn("PostHogNodeFeatureFlags.shutdown")(
-    () => runtime.disposeEffect
+  const shutdown = Effect.fn("PostHogNodeFeatureFlags.shutdown")(() =>
+    Effect.suspend(() => {
+      const activeClient = client;
+      client = undefined;
+
+      return activeClient
+        ? shutdownPostHogClient({ client: activeClient }).pipe(
+            Effect.catch((error) =>
+              Effect.logWarning(error.message, { cause: error.cause })
+            )
+          )
+        : Effect.void;
+    })
   );
 
   return { evaluateFlags, isEnabled, shutdown };
@@ -122,20 +162,6 @@ export interface PostHogFeatureFlagCheckInput<
 > {
   readonly key: Key;
   readonly options?: Omit<FlagEvaluationOptions, "sendFeatureFlagEvents">;
-  readonly subject: PostHogFeatureFlagSubject;
-}
-
-interface PreparedPostHogFeatureFlagEvaluationInput<Definitions> {
-  readonly options: PostHogFeatureFlagEvaluationOptions<Definitions>;
-  readonly subject: PostHogFeatureFlagSubject;
-}
-
-interface PreparedPostHogFeatureFlagCheckInput<
-  Definitions,
-  Key extends PostHogFeatureFlagKey<Definitions>,
-> {
-  readonly key: Key;
-  readonly options: FlagEvaluationOptions;
   readonly subject: PostHogFeatureFlagSubject;
 }
 
@@ -206,96 +232,24 @@ const toTypedPostHogFeatureFlagEvaluationSnapshot = <Definitions>(
   raw: snapshot,
 });
 
-const prepareFeatureFlagEvaluation = <Definitions>({
-  config,
-  input,
-}: {
-  readonly config: PostHogNodeFeatureFlagServiceConfig;
-  readonly input: PostHogFeatureFlagEvaluationInput<Definitions>;
-}): PreparedPostHogFeatureFlagEvaluationInput<Definitions> => ({
-  options: {
-    ...config.defaultEvaluationOptions,
-    ...input.options,
-  },
-  subject: input.subject,
-});
-
-const prepareFeatureFlagCheck = <
-  Definitions,
-  Key extends PostHogFeatureFlagKey<Definitions>,
->({
-  config,
-  input,
-}: {
-  readonly config: PostHogNodeFeatureFlagServiceConfig;
-  readonly input: PostHogFeatureFlagCheckInput<Definitions, Key>;
-}): PreparedPostHogFeatureFlagCheckInput<Definitions, Key> => ({
-  key: input.key,
-  options: {
-    ...config.defaultEvaluationOptions,
-    ...input.options,
-    sendFeatureFlagEvents: input.subject.sendFeatureFlagEvents,
-  },
-  subject: input.subject,
-});
-
-const evaluatePostHogFeatureFlags = Effect.fn(
-  "PostHogNodeFeatureFlags.evaluateFlags"
-)(
-  <Definitions extends ValidDefinitions<Definitions>>({
-    clientService,
-    contract,
-    evaluationInput,
-  }: {
-    readonly clientService: IPostHogFeatureFlagClientService;
-    readonly contract: PostHogFeatureFlagContract<Definitions>;
-    readonly evaluationInput: PreparedPostHogFeatureFlagEvaluationInput<Definitions>;
-  }) =>
-    Match.value(evaluationInput.subject.sendFeatureFlagEvents).pipe(
-      Match.when(true, () =>
-        createPostHogNodeFeatureFlags(
-          contract,
-          clientService.client
-        ).evaluateFlags(
-          evaluationInput.subject.distinctId,
-          evaluationInput.options
-        )
-      ),
-      Match.when(false, () =>
-        evaluatePostHogFeatureFlagsWithoutEvents({
-          clientService,
-          evaluationInput,
-        }).pipe(
-          Effect.map((snapshot) =>
-            toTypedPostHogFeatureFlagEvaluationSnapshot<Definitions>(snapshot)
-          )
-        )
-      ),
-      Match.exhaustive
-    )
-);
-
 const evaluatePostHogFeatureFlagsWithoutEvents = Effect.fn(
   "PostHogNodeFeatureFlags.evaluateFlagsWithoutEvents"
 )(
   <Definitions>({
-    clientService,
-    evaluationInput,
+    client,
+    distinctId,
+    options,
   }: {
-    readonly clientService: IPostHogFeatureFlagClientService;
-    readonly evaluationInput: PreparedPostHogFeatureFlagEvaluationInput<Definitions>;
+    readonly client: PostHog;
+    readonly distinctId: string;
+    readonly options: PostHogFeatureFlagEvaluationOptions<Definitions>;
   }) =>
     Effect.tryPromise({
       try: () =>
-        clientService.client.getAllFlagsAndPayloads(
-          evaluationInput.subject.distinctId,
-          {
-            ...evaluationInput.options,
-            flagKeys: evaluationInput.options.flagKeys
-              ? [...evaluationInput.options.flagKeys]
-              : undefined,
-          }
-        ),
+        client.getAllFlagsAndPayloads(distinctId, {
+          ...options,
+          flagKeys: options.flagKeys ? [...options.flagKeys] : undefined,
+        }),
       catch: (cause) =>
         new PostHogFeatureFlagEvaluationError({
           message: "Could not evaluate PostHog feature flags.",
@@ -311,45 +265,6 @@ const evaluatePostHogFeatureFlagsWithoutEvents = Effect.fn(
         },
       }))
     )
-);
-
-const evaluatePostHogFeatureFlag = Effect.fn(
-  "PostHogNodeFeatureFlags.evaluateFlag"
-)(
-  <Definitions, Key extends PostHogFeatureFlagKey<Definitions>>({
-    checkInput,
-    clientService,
-  }: {
-    readonly checkInput: PreparedPostHogFeatureFlagCheckInput<Definitions, Key>;
-    readonly clientService: IPostHogFeatureFlagClientService;
-  }) =>
-    Effect.tryPromise({
-      try: () =>
-        clientService.client.getFeatureFlagResult(
-          checkInput.key,
-          checkInput.subject.distinctId,
-          checkInput.options
-        ),
-      catch: (cause) =>
-        new PostHogFeatureFlagEvaluationError({
-          message: "Could not evaluate the PostHog feature flag.",
-          cause,
-        }),
-    })
-);
-
-const acquirePostHogFeatureFlagClient = Effect.fn(
-  "PostHogNodeFeatureFlags.acquireClient"
-)(({ config }: { readonly config: PostHogNodeFeatureFlagServiceConfig }) =>
-  Effect.acquireRelease(
-    createPostHogClient({ config }).pipe(Effect.map((client) => ({ client }))),
-    ({ client }) =>
-      shutdownPostHogClient({ client }).pipe(
-        Effect.catch((error) =>
-          Effect.logWarning(error.message, { cause: error.cause })
-        )
-      )
-  )
 );
 
 const createPostHogClient = Effect.fn("PostHogNodeFeatureFlags.createClient")(

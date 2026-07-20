@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { Deferred, Effect, Layer, Logger, References, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
@@ -14,10 +15,7 @@ import {
 } from "./contracts";
 import { CustomerDiscountProviderMock } from "./customer-discount-provider.service.mock";
 import { DiscountService } from "./discount.service";
-import {
-  DiscountReleaseGateEvaluator,
-  DiscountReleaseGateService,
-} from "./discount-release-gate.service";
+import { DiscountReleaseGateService } from "./discount-release-gate.service";
 import { DiscountReleaseGateServiceMock } from "./discount-release-gate.service.mock";
 import { DiscountProviderError } from "./errors";
 import {
@@ -347,8 +345,8 @@ describe("DiscountService", () => {
       CustomerDiscountProviderMock({ resolve: customerResolve }),
       CodeDiscountProviderMock({ quote: codeQuote })
     );
-    const failingEvaluator = DiscountReleaseGateEvaluator.from({
-      evaluate: () =>
+    const failingFeatureFlags = WorkspaceFeatureFlagServiceMock({
+      evaluateFlags: () =>
         Effect.fail(
           new PostHogFeatureFlagEvaluationError({
             message: "Evaluation failed.",
@@ -357,7 +355,7 @@ describe("DiscountService", () => {
         ),
     });
     const failClosedReleaseGates = DiscountReleaseGateService.Live.pipe(
-      Layer.provide(failingEvaluator)
+      Layer.provide(failingFeatureFlags)
     );
 
     const result = await runWithProviders(

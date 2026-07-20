@@ -3,6 +3,7 @@ import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-
 import { Context, Data, Effect, Layer, Predicate } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
+import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
@@ -349,5 +350,9 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     Layer.provide(WorkspaceReservationRepositoryLive),
     Layer.provide(WorkspaceDatabaseLive),
     Layer.provide(DotyposServiceLive),
-    Layer.provide(SeatingMapFeatureFlagService.Live)
+    Layer.provide(
+      SeatingMapFeatureFlagService.Live.pipe(
+        Layer.provide(WorkspaceFeatureFlagServiceLive)
+      )
+    )
   );
