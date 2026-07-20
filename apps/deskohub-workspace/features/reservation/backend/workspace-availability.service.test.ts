@@ -2,8 +2,8 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import { DatabaseError } from "@/db/database.service";
 import "@/shared/polyfills/temporal";
 import {
   GoogleCalendarWorkspaceLimitationsService,
@@ -129,9 +129,10 @@ const runWithInventory = async <A>(
               selectExpiredHoldDotyposReservationIds: mock(() => {
                 if (input.expiredHoldDotyposReservationIdsError) {
                   return Effect.fail(
-                    new DatabaseError({
-                      operation:
+                    new EffectDrizzleQueryError({
+                      query:
                         "workspaceReservations.selectExpiredHoldDotyposReservationIds",
+                      params: [],
                       cause: new Error("expired hold filter failed"),
                     })
                   );

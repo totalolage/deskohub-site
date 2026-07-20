@@ -52,6 +52,16 @@ export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
   }
 }
 
+class ReservationHoldCleanupQueueDuplicateError extends Data.TaggedError(
+  "ReservationHoldCleanupQueueDuplicateError"
+) {}
+
+class ReservationHoldCleanupQueueRequestError extends Data.TaggedError(
+  "ReservationHoldCleanupQueueRequestError"
+)<{
+  readonly cause: unknown;
+}> {}
+
 interface IReservationHoldCleanupScheduleService {
   readonly enqueueCleanup: (input: {
     readonly orderId: string;
@@ -113,16 +123,18 @@ export function makeReservationHoldCleanupScheduleService(
             await sendMessage(message.topic, message.payload, message.options);
             return "enqueued" as const;
           },
-          catch: (cause) => cause,
+          catch: (cause) =>
+            cause instanceof DuplicateMessageError
+              ? new ReservationHoldCleanupQueueDuplicateError()
+              : new ReservationHoldCleanupQueueRequestError({ cause }),
         }).pipe(
-          Effect.catchIf(
-            (cause) => cause instanceof DuplicateMessageError,
-            () => Effect.succeed("duplicate" as const)
+          Effect.catchTag("ReservationHoldCleanupQueueDuplicateError", () =>
+            Effect.succeed("duplicate" as const)
           ),
-          Effect.mapError(
+          Effect.mapError((error) =>
             ReservationHoldCleanupScheduleError.fromError(
               "Reservation hold cleanup could not be enqueued."
-            )
+            )(error.cause)
           )
         );
 

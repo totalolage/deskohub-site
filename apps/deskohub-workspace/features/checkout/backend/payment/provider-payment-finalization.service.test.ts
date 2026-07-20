@@ -5,8 +5,8 @@ import type {
   NexiService as NexiServiceTag,
   PaymentVerificationResult,
 } from "@deskohub/nexi";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import { DatabaseError } from "@/db/database.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "../fulfillment/paid-fulfillment.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
@@ -394,8 +394,9 @@ describe("ProviderPaymentFinalizationService", () => {
     const markTerminalForReservation = mock(() => Effect.die("not used"));
     const verifyPaymentOutcome = mock(() =>
       Effect.fail(
-        new DatabaseError({
-          operation: "nexi.verifyPaymentOutcome",
+        new EffectDrizzleQueryError({
+          query: "nexi.verifyPaymentOutcome",
+          params: [],
           cause: "nexi down",
         })
       )

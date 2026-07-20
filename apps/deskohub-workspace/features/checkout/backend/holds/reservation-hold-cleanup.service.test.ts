@@ -381,8 +381,9 @@ describe("ReservationHoldCleanupService", () => {
               Layer.succeed(PaymentAttemptRepository, {
                 markTerminalForReservation: mock(() =>
                   Effect.fail(
-                    new DatabaseError({
-                      operation: "paymentAttempts.markTerminalForReservation",
+                    new EffectDrizzleQueryError({
+                      query: "paymentAttempts.markTerminalForReservation",
+                      params: [],
                       cause: "stale",
                     })
                   )

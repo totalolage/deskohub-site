@@ -574,12 +574,10 @@ const fillHostedPaymentField = (
         if (valueResult.exitCode === 0 && valueResult.stdout.trim()) return;
       }
 
-      return yield* Effect.fail(
-        toWorkspaceE2EError(
-          `fill Nexi field ${labels.join(" / ")}`,
-          new Error(
-            `field value remained empty after ${hostedPaymentFieldFillAttemptCount} attempts`
-          )
+      return yield* toWorkspaceE2EError(
+        `fill Nexi field ${labels.join(" / ")}`,
+        new Error(
+          `field value remained empty after ${hostedPaymentFieldFillAttemptCount} attempts`
         )
       );
     }).pipe(

@@ -1,7 +1,7 @@
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { attachDatabasePool } from "@vercel/functions";
+import { EffectCache } from "drizzle-orm/cache/core/cache-effect";
 import {
-  DefaultServices,
   EffectLogger,
   type EffectPgDatabase,
   make,
@@ -24,12 +24,14 @@ attachDatabasePool(pool);
 
 export type WorkspaceDatabaseClient = EffectPgDatabase<typeof relations>;
 
-export interface WorkspaceDatabase {
+interface IWorkspaceDatabase {
   readonly db: WorkspaceDatabaseClient;
 }
 
-export const WorkspaceDatabase =
-  Context.Service<WorkspaceDatabase>("WorkspaceDatabase");
+export class WorkspaceDatabase extends Context.Service<
+  WorkspaceDatabase,
+  IWorkspaceDatabase
+>()("WorkspaceDatabase") {}
 
 const PgClientLive = PgClient.layerFrom(
   PgClient.fromPool({ acquire: Effect.succeed(pool) })
@@ -38,8 +40,7 @@ const PgClientLive = PgClient.layerFrom(
 export const WorkspaceDatabaseLive = Layer.effect(
   WorkspaceDatabase,
   make({ relations }).pipe(
-    Effect.provide(EffectLogger.layer),
-    Effect.provide(DefaultServices),
+    Effect.provide(Layer.merge(EffectCache.Default, EffectLogger.layer)),
     Effect.map((db) => WorkspaceDatabase.of({ db }))
   )
 ).pipe(Layer.provide(PgClientLive));

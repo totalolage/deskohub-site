@@ -51,7 +51,7 @@ export class DiscountCodeRepository extends Context.Service<
       const findByCode = Effect.fn("DiscountCodeRepository.findByCode")(
         function* (input: FindDiscountCodeInput) {
           const row = yield* db.query.discountCodes.findFirst({
-            where: { code: input.code },
+            where: { code: { eq: input.code } },
           });
 
           return yield* Option.fromNullishOr(row).pipe(

@@ -35,8 +35,8 @@ export class DiscountDefinitionRepository extends Context.Service<
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
         function* (input: LoadDiscountDefinitionInput) {
           const row = yield* db.query.discounts.findFirst({
-            where: { id: input.discountId },
-            with: { productTargets: true },
+            where: { id: { eq: input.discountId } },
+            with: { productTargets: {} },
           });
 
           if (!row) {
