@@ -5,7 +5,7 @@ import type { Runner } from "../runtime";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertContactForm } from "./contact";
 
-test("clicks the hydrated contact form button from a fresh semantic snapshot", async () => {
+test("clicks the hydrated contact form action from a fresh semantic snapshot", async () => {
   const calls: Array<{
     readonly args: string[];
     readonly input?: string;
@@ -53,9 +53,9 @@ test("clicks the hydrated contact form button from a fresh semantic snapshot", a
     .find(({ args }) => args.includes("wait"))
     ?.args.slice(2);
   expect(waitArgs?.slice(0, 2)).toEqual(["wait", "--fn"]);
-  expect(waitArgs?.[2]).toContain("#contact-form button");
-  expect(waitArgs?.[2]).toContain("submit");
+  expect(waitArgs?.[2]).toContain("#contact-form form");
   expect(waitArgs?.[2]).toContain("__reactProps$");
+  expect(waitArgs?.[2]).toContain('typeof reactProps?.action === "function"');
   expect(
     calls.find(({ args }) => args.includes("click"))?.args.slice(2)
   ).toEqual(["click", "@e1"]);

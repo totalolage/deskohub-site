@@ -4,7 +4,7 @@ import {
   fillBrowserField,
   openBrowserPage,
   requireSnapshotRef,
-  waitForBrowserReactHydration,
+  waitForBrowserReactFormAction,
   waitForBrowserTextContent,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
@@ -49,10 +49,10 @@ export const assertContactForm = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     yield* runStep({
-      execute: waitForBrowserReactHydration(
+      execute: waitForBrowserReactFormAction(
         run,
         session,
-        '#contact-form button[type="submit"]',
+        "#contact-form form",
         { timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition") }
       ),
       id: "wait-for-contact-form-hydration",

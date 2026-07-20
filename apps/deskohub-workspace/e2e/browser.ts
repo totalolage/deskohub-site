@@ -112,6 +112,34 @@ export const waitForBrowserTextContent = (
   ).pipe(Effect.asVoid);
 };
 
+export const waitForBrowserReactFormAction = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const selectorLiteral = JSON.stringify(selector);
+  const hydrationCheck = `(() => {
+    const form = document.querySelector(${selectorLiteral});
+    const reactPropsKey = form === null
+      ? undefined
+      : Object.keys(form).find((key) => key.startsWith("__reactProps$"));
+    const reactProps = reactPropsKey === undefined ? undefined : form[reactPropsKey];
+    return typeof reactProps?.action === "function";
+  })()`;
+
+  return runBrowserCommand(
+    "wait for browser React form action",
+    run,
+    session,
+    ["wait", "--fn", hydrationCheck],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const evalBrowserScript = (
   operation: string,
   run: Runner,
