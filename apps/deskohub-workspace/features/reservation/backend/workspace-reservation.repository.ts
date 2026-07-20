@@ -9,8 +9,6 @@ import {
   type NormalizedCoworkReservationProduct,
 } from "@/features/reservation/cowork-reservation-product";
 
-type ReservationTimestamp = WorkspaceReservation["createdAt"];
-
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
 )<{
@@ -25,7 +23,7 @@ export interface CreateWorkspaceReservationInput {
   readonly customerAccessCode: string;
   readonly product: NormalizedCoworkReservationProduct;
   readonly locale: string;
-  readonly reservationHoldExpiresAt?: ReservationTimestamp;
+  readonly reservationHoldExpiresAt?: Temporal.Instant;
 }
 
 export interface WorkspaceReservationRepository {
@@ -58,8 +56,8 @@ export interface WorkspaceReservationRepository {
   readonly attachHold: (input: {
     readonly id: string;
     readonly dotyposReservationId: string;
-    readonly reservationCreatedAt: ReservationTimestamp;
-    readonly reservationHoldExpiresAt: ReservationTimestamp;
+    readonly reservationCreatedAt: Temporal.Instant;
+    readonly reservationHoldExpiresAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -67,7 +65,7 @@ export interface WorkspaceReservationRepository {
   readonly markAttachFailedCancellationRequired: (input: {
     readonly id: string;
     readonly dotyposReservationId: string;
-    readonly reservationCreatedAt: ReservationTimestamp;
+    readonly reservationCreatedAt: Temporal.Instant;
     readonly failureCode: string;
   }) => Effect.Effect<
     void,
@@ -78,8 +76,8 @@ export interface WorkspaceReservationRepository {
   ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
   readonly markCancelled: (input: {
     readonly id: string;
-    readonly cancelledAt: ReservationTimestamp;
-    readonly holdExpiredAt?: ReservationTimestamp;
+    readonly cancelledAt: Temporal.Instant;
+    readonly holdExpiredAt?: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -93,7 +91,7 @@ export interface WorkspaceReservationRepository {
   >;
   readonly recordHoldCleanupSkipped: (input: {
     readonly id: string;
-    readonly holdExpiredAt: ReservationTimestamp;
+    readonly holdExpiredAt: Temporal.Instant;
     readonly failureCode: string;
   }) => Effect.Effect<
     void,
@@ -102,7 +100,7 @@ export interface WorkspaceReservationRepository {
   readonly markPaymentPaid: (input: {
     readonly id: string;
     readonly paymentAttemptId: string;
-    readonly paidAt: ReservationTimestamp;
+    readonly paidAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -118,11 +116,11 @@ export interface WorkspaceReservationRepository {
   >;
   readonly claimPaidFulfillment: (input: {
     readonly id: string;
-    readonly staleProcessingBefore: ReservationTimestamp;
+    readonly staleProcessingBefore: Temporal.Instant;
   }) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
   readonly markFulfilled: (input: {
     readonly id: string;
-    readonly fulfilledAt: ReservationTimestamp;
+    readonly fulfilledAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -130,7 +128,7 @@ export interface WorkspaceReservationRepository {
   readonly markFulfillmentFailed: (input: {
     readonly id: string;
     readonly failureCode: string;
-    readonly failedAt: ReservationTimestamp;
+    readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
@@ -138,24 +136,24 @@ export interface WorkspaceReservationRepository {
   readonly markFulfillmentDeliveryFailed: (input: {
     readonly id: string;
     readonly failureCode: string;
-    readonly failedAt: ReservationTimestamp;
+    readonly failedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly markReservationConfirmed: (input: {
     readonly id: string;
-    readonly confirmedAt: ReservationTimestamp;
+    readonly confirmedAt: Temporal.Instant;
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly selectExpiredHolds: (input: {
-    readonly now: ReservationTimestamp;
+    readonly now: Temporal.Instant;
     readonly limit: number;
   }) => Effect.Effect<readonly WorkspaceReservation[], EffectDrizzleQueryError>;
   readonly selectExpiredHoldDotyposReservationIds: (input: {
-    readonly now: ReservationTimestamp;
+    readonly now: Temporal.Instant;
   }) => Effect.Effect<readonly string[], EffectDrizzleQueryError>;
 }
 

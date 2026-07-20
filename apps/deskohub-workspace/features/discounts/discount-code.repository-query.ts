@@ -3,14 +3,11 @@ import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import { discountCodeCustomers, discountCodeRedemptions } from "@/db/schema";
 import type { DiscountCodeId } from "./persistence-contracts";
 
-type DiscountCodeAvailabilityTimestamp =
-  (typeof discountCodeRedemptions.$inferSelect)["reservationExpiresAt"];
-
 export const buildDiscountCodeAvailabilityQueries = (input: {
   readonly db: WorkspaceDatabaseClient;
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: string;
-  readonly at: DiscountCodeAvailabilityTimestamp;
+  readonly at: Temporal.Instant;
 }) => ({
   allowlist: input.db
     .select({

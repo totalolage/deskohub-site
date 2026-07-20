@@ -1,7 +1,7 @@
 import { and, desc, eq, inArray, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import type { SqlError } from "effect/unstable/sql/SqlError";
+import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type PaymentAttempt,
@@ -34,7 +34,7 @@ export interface PaymentAttemptRepository {
     readonly currency: string;
   }) => Effect.Effect<
     PaymentAttempt,
-    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError
+    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
   >;
   readonly findById: (
     id: string
@@ -78,7 +78,7 @@ export interface PaymentAttemptRepository {
     readonly paidAt: Temporal.Instant;
   }) => Effect.Effect<
     PaymentAttemptReservationTransition,
-    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError
+    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
   >;
   readonly markTerminalForReservation: (input: {
     readonly id: string;
@@ -90,7 +90,7 @@ export interface PaymentAttemptRepository {
     readonly providerStatus?: string;
   }) => Effect.Effect<
     PaymentAttemptReservationTransition,
-    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError
+    EffectDrizzleQueryError | PaymentAttemptStateError | SqlError.SqlError
   >;
 }
 

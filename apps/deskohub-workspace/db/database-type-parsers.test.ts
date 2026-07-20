@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import * as PgClient from "@effect/sql-pg/PgClient";
-import { Temporal } from "@js-temporal/polyfill";
+import "@/shared/polyfills/temporal";
 import { makeWithDefaults } from "drizzle-orm/effect-postgres";
 import { Effect, Layer } from "effect";
 import {
