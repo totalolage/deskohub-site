@@ -7,8 +7,6 @@ import { submitWorkspaceReservation } from "@/features/reservation/actions/submi
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
 
-export { submitWorkspaceReservation } from "@/features/reservation/actions/submit-workspace-reservation";
-
 const submitReservationAction = createEffectSafeAction(
   getSubmitReservationSchema(),
   submitWorkspaceReservation,
