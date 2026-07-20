@@ -9,6 +9,17 @@ const evaluateFlags = mock((_distinctId: string, _options?: unknown) =>
     isEnabled: () => true,
   })
 );
+const getAllFlagsAndPayloads = mock((_distinctId: string, _options?: unknown) =>
+  Promise.resolve({
+    featureFlags: {
+      meeting_room_page: true,
+      room_experience: "treatment",
+    },
+    featureFlagPayloads: {
+      room_experience: { capacity: 8 },
+    },
+  })
+);
 const getFeatureFlagResult = mock(
   (_key: string, _distinctId: string, _options?: unknown) =>
     Promise.resolve({
@@ -24,7 +35,12 @@ const createClient = mock((_projectToken: string, _options: unknown) => {});
 mock.module("posthog-node", () => ({
   PostHog: function PostHog(projectToken: string, options: unknown) {
     createClient(projectToken, options);
-    return { evaluateFlags, getFeatureFlagResult, shutdown };
+    return {
+      evaluateFlags,
+      getAllFlagsAndPayloads,
+      getFeatureFlagResult,
+      shutdown,
+    };
   },
 }));
 
@@ -95,10 +111,79 @@ describe("createPostHogNodeFeatureFlags", () => {
 });
 
 describe("makePostHogNodeFeatureFlagService", () => {
-  test("acquires one scoped SDK client for the service lifetime", async () => {
+  test("suppresses access events for a non-recording batched subject", async () => {
     const { makePostHogNodeFeatureFlagService } = await import("./node");
     createClient.mockClear();
     evaluateFlags.mockClear();
+    getAllFlagsAndPayloads.mockClear();
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      defaultEvaluationOptions: { disableGeoip: true },
+      projectToken: "phc_test",
+    });
+
+    const snapshot = await Effect.runPromise(
+      featureFlags.evaluateFlags({
+        options: {
+          flagKeys: ["meeting_room_page", "room_experience"],
+        },
+        subject: {
+          distinctId: "global-release",
+          sendFeatureFlagEvents: false,
+        },
+      })
+    );
+
+    expect(snapshot.getFlag("meeting_room_page")).toBeTrue();
+    expect(snapshot.getFlag("room_experience")).toBe("treatment");
+    expect(snapshot.getFlagPayload("room_experience")).toEqual({ capacity: 8 });
+    expect(snapshot.isEnabled("meeting_room_page")).toBeTrue();
+    expect(getAllFlagsAndPayloads).toHaveBeenCalledTimes(1);
+    expect(getAllFlagsAndPayloads).toHaveBeenCalledWith("global-release", {
+      disableGeoip: true,
+      flagKeys: ["meeting_room_page", "room_experience"],
+    });
+    expect(evaluateFlags).not.toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledTimes(1);
+
+    await Effect.runPromise(featureFlags.shutdown);
+  });
+
+  test("retains access events for a recording batched subject", async () => {
+    const { makePostHogNodeFeatureFlagService } = await import("./node");
+    createClient.mockClear();
+    evaluateFlags.mockClear();
+    getAllFlagsAndPayloads.mockClear();
+    const featureFlags = makePostHogNodeFeatureFlagService(contract, {
+      defaultEvaluationOptions: { disableGeoip: true },
+      projectToken: "phc_test",
+    });
+
+    await Effect.runPromise(
+      featureFlags.evaluateFlags({
+        options: { flagKeys: ["meeting_room_page"] },
+        subject: {
+          distinctId: "visitor-id",
+          sendFeatureFlagEvents: true,
+        },
+      })
+    );
+
+    expect(evaluateFlags).toHaveBeenCalledTimes(1);
+    expect(evaluateFlags).toHaveBeenCalledWith("visitor-id", {
+      disableGeoip: true,
+      flagKeys: ["meeting_room_page"],
+    });
+    expect(getAllFlagsAndPayloads).not.toHaveBeenCalled();
+    expect(createClient).toHaveBeenCalledTimes(1);
+
+    await Effect.runPromise(featureFlags.shutdown);
+  });
+
+  test("reuses one SDK client for the service lifetime", async () => {
+    const { makePostHogNodeFeatureFlagService } = await import("./node");
+    createClient.mockClear();
+    evaluateFlags.mockClear();
+    getAllFlagsAndPayloads.mockClear();
     getFeatureFlagResult.mockClear();
     shutdown.mockClear();
     const featureFlags = makePostHogNodeFeatureFlagService(contract, {
@@ -158,7 +243,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     );
     expect(shutdown).not.toHaveBeenCalled();
 
-    await Effect.runPromise(featureFlags.shutdown());
+    await Effect.runPromise(featureFlags.shutdown);
 
     expect(shutdown).toHaveBeenCalledTimes(1);
   });

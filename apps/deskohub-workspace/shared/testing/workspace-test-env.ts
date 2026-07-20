@@ -24,9 +24,6 @@ process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID ??=
   "workspace-limitations-calendar";
 process.env.NEXI_API_KEY ??= "nexi";
 process.env.NEXI_API_ORIGIN ??= "https://xpaysandbox.nexigroup.com";
-process.env.POSTHOG_FEATURE_FLAGS_API_KEY ??= "test";
-process.env.POSTHOG_HOST ??= "https://posthog.example.test";
-process.env.POSTHOG_PROJECT_ID ??= "test-project";
 process.env.RESEND_WEBHOOK_SECRET ??= "whsec_test";
 process.env.VERCEL_ENV ??= "development";
 process.env.VERCEL_PROJECT_PRODUCTION_URL ??= "workspace.deskohub.test";

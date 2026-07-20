@@ -1,7 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
+import { PostHogFeatureFlagEvaluationError } from "@deskohub/posthog/feature-flags/node";
 import { Deferred, Effect, Layer, Logger, References, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import { WorkspaceFeatureFlagServiceMock } from "@/features/feature-flags/backend/workspace-feature-flag.service.mock";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarDiscountProviderMock } from "./calendar-discount-provider.service.mock";
 import { CodeDiscountProviderMock } from "./code-discount-provider.service.mock";
@@ -13,6 +15,8 @@ import {
 } from "./contracts";
 import { CustomerDiscountProviderMock } from "./customer-discount-provider.service.mock";
 import { DiscountService } from "./discount.service";
+import { DiscountReleaseGateService } from "./discount-release-gate.service";
+import { DiscountReleaseGateServiceMock } from "./discount-release-gate.service.mock";
 import { DiscountProviderError } from "./errors";
 import {
   discountCodeIdSchema,
@@ -44,6 +48,15 @@ const input: DiscountQuoteInput = {
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 
+const allReleaseGatesEnabled = DiscountReleaseGateServiceMock({
+  evaluate: () =>
+    Effect.succeed({
+      calendarSales: true,
+      customerDiscounts: true,
+      discountCodes: true,
+    }),
+});
+
 const candidate = (
   id: string,
   adjustment: Discount["adjustment"],
@@ -72,11 +85,15 @@ const runWithProviders = <A, E>(
     | import("./calendar-discount-provider.service").CalendarDiscountProvider
     | import("./customer-discount-provider.service").CustomerDiscountProvider
     | import("./code-discount-provider.service").CodeDiscountProvider
-  >
+  >,
+  releaseGates: Layer.Layer<
+    import("./discount-release-gate.service").DiscountReleaseGateService
+  > = allReleaseGatesEnabled
 ) =>
   effect.pipe(
     Effect.provide(DiscountService.Live),
     Effect.provide(providers),
+    Effect.provide(releaseGates),
     Effect.runPromise
   );
 
@@ -175,6 +192,186 @@ describe("DiscountService", () => {
       1000, 1800, 360, 1000,
     ]);
     expect(result.discountedSubtotal.value).toBe(5840);
+  });
+
+  test.each(
+    (["quote", "affirm"] as const).flatMap((operation) =>
+      [
+        [false, false, false],
+        [false, false, true],
+        [false, true, false],
+        [false, true, true],
+        [true, false, false],
+        [true, false, true],
+        [true, true, false],
+        [true, true, true],
+      ].map(([calendarSales, customerDiscounts, discountCodes]) => ({
+        operation,
+        gates: { calendarSales, customerDiscounts, discountCodes },
+      }))
+    )
+  )("$operation gates calendar=$gates.calendarSales customer=$gates.customerDiscounts code=$gates.discountCodes", async ({
+    operation,
+    gates,
+  }) => {
+    const calendarQuote = mock(() =>
+      Effect.succeed([percentage("calendar", 1000, "calendar")])
+    );
+    const calendarRevalidate = mock(() =>
+      Effect.succeed([percentage("calendar", 1000, "calendar")])
+    );
+    const customerResolve = mock(() =>
+      Effect.succeed([percentage("customer", 1000, "customer")])
+    );
+    const codeQuote = mock(() =>
+      Effect.succeed([percentage("code", 1000, "code")])
+    );
+    const codeRevalidate = mock(() =>
+      Effect.succeed([percentage("code", 1000, "code")])
+    );
+    const evaluateGates = mock(() => Effect.succeed(gates));
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        quote: calendarQuote,
+        revalidate: calendarRevalidate,
+      }),
+      CustomerDiscountProviderMock({ resolve: customerResolve }),
+      CodeDiscountProviderMock({
+        quote: codeQuote,
+        revalidate: codeRevalidate,
+      })
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* operation === "quote"
+          ? discounts.quote(input)
+          : discounts
+              .affirm({
+                ...input,
+                acceptedDiscountIds: [
+                  discountId("calendar"),
+                  discountId("customer"),
+                  discountId("code"),
+                ],
+              })
+              .pipe(Effect.map(({ quote }) => quote));
+      }),
+      providers,
+      DiscountReleaseGateServiceMock({ evaluate: evaluateGates })
+    );
+
+    expect(evaluateGates).toHaveBeenCalledTimes(1);
+    expect(evaluateGates).toHaveBeenCalledWith({ operation });
+    expect(calendarQuote).toHaveBeenCalledTimes(
+      operation === "quote" && gates.calendarSales ? 1 : 0
+    );
+    expect(calendarRevalidate).toHaveBeenCalledTimes(
+      operation === "affirm" && gates.calendarSales ? 1 : 0
+    );
+    expect(customerResolve).toHaveBeenCalledTimes(
+      gates.customerDiscounts ? 1 : 0
+    );
+    expect(codeQuote).toHaveBeenCalledTimes(
+      operation === "quote" && gates.discountCodes ? 1 : 0
+    );
+    expect(codeRevalidate).toHaveBeenCalledTimes(
+      operation === "affirm" && gates.discountCodes ? 1 : 0
+    );
+    expect(result.discounts.map(({ discount }) => discount.id)).toEqual(
+      [
+        gates.calendarSales ? "calendar" : undefined,
+        gates.customerDiscounts ? "customer" : undefined,
+        gates.discountCodes ? "code" : undefined,
+      ].filter((id): id is string => id !== undefined)
+    );
+  });
+
+  test("observes a release gate being disabled between quote and affirmation", async () => {
+    const evaluateGates = mock(({ operation }: { operation: string }) =>
+      Effect.succeed({
+        calendarSales: operation === "quote",
+        customerDiscounts: false,
+        discountCodes: false,
+      })
+    );
+    const calendarQuote = mock(() =>
+      Effect.succeed([percentage("calendar", 1000, "calendar")])
+    );
+    const calendarRevalidate = mock(() =>
+      Effect.succeed([percentage("calendar", 1000, "calendar")])
+    );
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({
+        quote: calendarQuote,
+        revalidate: calendarRevalidate,
+      }),
+      CustomerDiscountProviderMock({ resolve: () => Effect.succeed([]) }),
+      CodeDiscountProviderMock({
+        quote: () => Effect.succeed([]),
+        revalidate: () => Effect.succeed([]),
+      })
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        const quote = yield* discounts.quote(input);
+        const affirmation = yield* discounts.affirm({
+          ...input,
+          acceptedDiscountIds: quote.discounts.map(
+            ({ discount }) => discount.id
+          ),
+        });
+        return { quote, affirmation };
+      }),
+      providers,
+      DiscountReleaseGateServiceMock({ evaluate: evaluateGates })
+    );
+
+    expect(result.quote.discounts).toHaveLength(1);
+    expect(result.affirmation.quote.discounts).toEqual([]);
+    expect(calendarQuote).toHaveBeenCalledTimes(1);
+    expect(calendarRevalidate).not.toHaveBeenCalled();
+  });
+
+  test("continues undiscounted without provider calls when gate evaluation fails", async () => {
+    const calendarQuote = mock(() => Effect.succeed([]));
+    const customerResolve = mock(() => Effect.succeed([]));
+    const codeQuote = mock(() => Effect.succeed([]));
+    const providers = Layer.mergeAll(
+      CalendarDiscountProviderMock({ quote: calendarQuote }),
+      CustomerDiscountProviderMock({ resolve: customerResolve }),
+      CodeDiscountProviderMock({ quote: codeQuote })
+    );
+    const failingFeatureFlags = WorkspaceFeatureFlagServiceMock({
+      evaluateFlags: () =>
+        Effect.fail(
+          new PostHogFeatureFlagEvaluationError({
+            message: "Evaluation failed.",
+            cause: new Error("provider unavailable"),
+          })
+        ),
+    });
+    const failClosedReleaseGates = DiscountReleaseGateService.Live.pipe(
+      Layer.provide(failingFeatureFlags)
+    );
+
+    const result = await runWithProviders(
+      Effect.gen(function* () {
+        const discounts = yield* DiscountService;
+        return yield* discounts.quote(input);
+      }).pipe(Effect.provide(Logger.layer([]))),
+      providers,
+      failClosedReleaseGates
+    );
+
+    expect(result.discounts).toEqual([]);
+    expect(result.discountedSubtotal).toEqual(input.discountableSubtotal);
+    expect(calendarQuote).not.toHaveBeenCalled();
+    expect(customerResolve).not.toHaveBeenCalled();
+    expect(codeQuote).not.toHaveBeenCalled();
   });
 
   test("affirms accepted discounts with fresh provider data and creates an opaque commitment", async () => {

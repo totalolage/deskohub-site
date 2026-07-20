@@ -108,7 +108,6 @@ export const getAssertFulfillmentFailedSupportScript = (
   if (!(url.searchParams.get('message') ?? '').includes(expected.orderId)) {
     throw new Error('support contact message missing order id');
   }
-  link.click();
   return link.href;
 })()
 `;

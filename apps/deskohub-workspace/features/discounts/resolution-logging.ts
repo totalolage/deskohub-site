@@ -2,7 +2,7 @@ import { Effect, type Option } from "effect";
 import type { CalendarSaleConfigurationError } from "./calendar-sale";
 import type { DiscountResolutionError } from "./errors";
 
-type DiscountResolutionFailure =
+export type DiscountResolutionFailure =
   | CalendarSaleConfigurationError
   | DiscountResolutionError;
 

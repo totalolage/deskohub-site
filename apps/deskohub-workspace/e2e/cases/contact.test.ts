@@ -5,21 +5,13 @@ import type { Runner } from "../runtime";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertContactForm } from "./contact";
 
-test("clicks the hydrated contact form action from a fresh semantic snapshot", async () => {
+test("activates the hydrated contact form action through its stable selector", async () => {
   const calls: Array<{
     readonly args: string[];
     readonly input?: string;
   }> = [];
   const run: Runner = async (_command, args, options) => {
     calls.push({ args, input: options?.input });
-
-    if (args.includes("snapshot")) {
-      return {
-        exitCode: 0,
-        stderr: "",
-        stdout: '- button "Send message" [ref=e1]',
-      };
-    }
 
     return {
       exitCode: 0,
@@ -56,24 +48,25 @@ test("clicks the hydrated contact form action from a fresh semantic snapshot", a
   expect(waitArgs?.[2]).toContain("#contact-form form");
   expect(waitArgs?.[2]).toContain("__reactProps$");
   expect(waitArgs?.[2]).toContain('typeof reactProps?.action === "function"');
+  expect(calls.some(({ args }) => args.includes("click"))).toBe(false);
   expect(
-    calls.find(({ args }) => args.includes("click"))?.args.slice(2)
-  ).toEqual(["click", "@e1"]);
-  expect(calls.some(({ args }) => args.includes("press"))).toBe(false);
+    calls.find(({ args }) => args.includes("focus"))?.args.slice(2)
+  ).toEqual(["focus", '#contact-form button[type="submit"]']);
+  expect(calls.find(({ args }) => args.includes("press"))?.args.slice(2)).toEqual(
+    ["press", "Enter"]
+  );
 
   const waitIndex = calls.findIndex(({ args }) => args.includes("wait"));
-  const snapshotIndex = calls.findIndex(({ args }) =>
-    args.includes("snapshot")
-  );
-  const clickIndex = calls.findIndex(({ args }) => args.includes("click"));
+  const focusIndex = calls.findIndex(({ args }) => args.includes("focus"));
+  const pressIndex = calls.findIndex(({ args }) => args.includes("press"));
   const successWaitIndex = calls.findIndex(
     ({ args }, index) =>
-      index > clickIndex &&
+      index > pressIndex &&
       args.includes("wait") &&
       args.includes("--fn") &&
       args.some((argument) => argument.includes("Your message has been sent."))
   );
-  expect(waitIndex).toBeLessThan(snapshotIndex);
-  expect(snapshotIndex).toBeLessThan(clickIndex);
-  expect(clickIndex).toBeLessThan(successWaitIndex);
+  expect(waitIndex).toBeLessThan(focusIndex);
+  expect(focusIndex).toBeLessThan(pressIndex);
+  expect(pressIndex).toBeLessThan(successWaitIndex);
 });

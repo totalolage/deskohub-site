@@ -16,10 +16,13 @@ Generation uses `POSTHOG_FEATURE_FLAGS_API_KEY`, `POSTHOG_HOST`, and `POSTHOG_PR
 
 Current runtime flags:
 
+- `calendar_sales` — gates Workspace Calendar sale discovery and affirmation.
+- `customer_discounts` — gates Workspace Dotypos customer discounts.
+- `discount_codes` — gates Workspace discount-code resolution and affirmation.
 - `meeting_room_page` — controls the Workspace Meeting Room page and its header link.
 - `seating_map` — controls whether checkout status and paid-reservation emails include the assigned seating map.
 
-The server evaluates flags through the package-owned typed Node service. It uses the consented PostHog visitor identity from the request when available. Before PostHog initializes, or without analytics consent, it evaluates with an explicit global-release subject and suppresses feature-flag access events so the fallback does not pollute visitor analytics. Unavailable, absent, or disabled release flags fail closed at their feature boundaries. React consumers can use the generated typed hook to stay aligned with PostHog after hydration.
+The server evaluates flags through the app-owned `WorkspaceFeatureFlagService`, which wraps the package-owned typed Node service and resolves the current request subject. Server features must consume this Context capability instead of importing the Node client or subject resolver directly. Feature-specific services own their fail-closed logging and fallback behavior. The shared capability uses the consented PostHog visitor identity from the request when available. Before PostHog initializes, or without analytics consent, it evaluates with an explicit global-release subject and suppresses feature-flag access events so the fallback does not pollute visitor analytics. Unavailable, absent, or disabled release flags fail closed at their feature boundaries. React consumers can use the generated typed hook to stay aligned with PostHog after hydration.
 
 The global fallback keeps release switches available on a visitor's first request. Targeted or percentage rollouts should account for the fact that a stable PostHog visitor identity is only available after consent and client initialization.
 
