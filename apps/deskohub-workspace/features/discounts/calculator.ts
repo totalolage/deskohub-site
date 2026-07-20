@@ -94,7 +94,7 @@ const applyNextCandidate = (input: {
     remaining: state.remaining,
   }).pipe(
     Effect.bind("appliedValue", (candidateInput) =>
-      recoverDiscountResolution(getAppliedValue(candidateInput), undefined, {
+      recoverDiscountResolution(getAppliedValue(candidateInput), {
         operation: "apply_candidate",
         provider: "calculator",
       })
@@ -107,9 +107,9 @@ const applyNextCandidate = (input: {
 const advanceCalculationState = (input: {
   readonly state: DiscountCalculationState;
   readonly candidate: DiscountCandidate;
-  readonly appliedValue: number | undefined;
+  readonly appliedValue: Option.Option<number>;
 }): DiscountCalculationState =>
-  Option.fromNullishOr(input.appliedValue).pipe(
+  input.appliedValue.pipe(
     Option.map((appliedValue) =>
       toNextCalculationState({ ...input, appliedValue })
     ),

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import { calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { CodeDiscountProvider } from "./code-discount-provider.service";
@@ -52,15 +52,13 @@ export class DiscountService extends Context.Service<
           {
             calendarCandidates: recoverDiscountResolution(
               calendar.quote(input),
-              [],
               { operation: "quote", provider: "calendar" }
             ),
             customerCandidates: recoverDiscountResolution(
               customer.resolve(input),
-              [],
               { operation: "quote", provider: "customer" }
             ),
-            codeCandidates: recoverDiscountResolution(code.quote(input), [], {
+            codeCandidates: recoverDiscountResolution(code.quote(input), {
               operation: "quote",
               provider: "code",
             }),
@@ -76,19 +74,16 @@ export class DiscountService extends Context.Service<
           {
             calendarCandidates: recoverDiscountResolution(
               calendar.revalidate(input),
-              [],
               { operation: "affirm", provider: "calendar" }
             ),
             customerCandidates: recoverDiscountResolution(
               customer.resolve(input),
-              [],
               { operation: "affirm", provider: "customer" }
             ),
-            codeCandidates: recoverDiscountResolution(
-              code.revalidate(input),
-              [],
-              { operation: "affirm", provider: "code" }
-            ),
+            codeCandidates: recoverDiscountResolution(code.revalidate(input), {
+              operation: "affirm",
+              provider: "code",
+            }),
           },
           { concurrency: "unbounded" }
         ).pipe(
@@ -135,14 +130,15 @@ export class DiscountService extends Context.Service<
 }
 
 const collectDiscountCandidates = (input: {
-  readonly calendarCandidates: readonly DiscountCandidate[];
-  readonly customerCandidates: readonly DiscountCandidate[];
-  readonly codeCandidates: readonly DiscountCandidate[];
-}) => [
-  ...input.calendarCandidates,
-  ...input.customerCandidates,
-  ...input.codeCandidates,
-];
+  readonly calendarCandidates: Option.Option<readonly DiscountCandidate[]>;
+  readonly customerCandidates: Option.Option<readonly DiscountCandidate[]>;
+  readonly codeCandidates: Option.Option<readonly DiscountCandidate[]>;
+}) =>
+  [
+    input.calendarCandidates,
+    input.customerCandidates,
+    input.codeCandidates,
+  ].flatMap((candidates) => Option.getOrElse(candidates, () => []));
 
 const selectAcceptedCandidates = (input: {
   readonly acceptedDiscountIds: readonly DiscountId[];

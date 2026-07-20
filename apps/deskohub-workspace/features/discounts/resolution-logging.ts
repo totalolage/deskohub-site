@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, type Option } from "effect";
 
 type DiscountResolutionFailure = {
   readonly _tag: string;
@@ -38,16 +38,14 @@ export const recoverDiscountResolution = <
   E extends DiscountResolutionFailure,
 >(
   effect: Effect.Effect<A, E>,
-  fallback: A,
   input: {
     readonly operation: DiscountResolutionOperation;
     readonly provider: DiscountResolutionProvider;
   }
-): Effect.Effect<A> =>
+): Effect.Effect<Option.Option<A>> =>
   effect.pipe(
-    Effect.catch((cause) =>
-      logDiscountResolutionFailure({ ...input, cause }).pipe(
-        Effect.as(fallback)
-      )
-    )
+    Effect.tapError((cause) =>
+      logDiscountResolutionFailure({ ...input, cause })
+    ),
+    Effect.option
   );
