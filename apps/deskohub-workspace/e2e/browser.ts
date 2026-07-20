@@ -91,6 +91,27 @@ export const waitForBrowserReactHydration = (
   ).pipe(Effect.asVoid);
 };
 
+export const waitForBrowserTextContent = (
+  run: Runner,
+  session: string,
+  text: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const textLiteral = JSON.stringify(text);
+  const textCheck = `(() => document.body?.innerText.includes(${textLiteral}) ?? false)()`;
+
+  return runBrowserCommand(
+    "wait for browser text content",
+    run,
+    session,
+    ["wait", "--fn", textCheck],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const evalBrowserScript = (
   operation: string,
   run: Runner,

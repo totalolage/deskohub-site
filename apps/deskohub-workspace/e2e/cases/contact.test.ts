@@ -66,6 +66,14 @@ test("clicks the hydrated contact form button from a fresh semantic snapshot", a
     args.includes("snapshot")
   );
   const clickIndex = calls.findIndex(({ args }) => args.includes("click"));
+  const successWaitIndex = calls.findIndex(
+    ({ args }, index) =>
+      index > clickIndex &&
+      args.includes("wait") &&
+      args.includes("--fn") &&
+      args.some((argument) => argument.includes("Your message has been sent."))
+  );
   expect(waitIndex).toBeLessThan(snapshotIndex);
   expect(snapshotIndex).toBeLessThan(clickIndex);
+  expect(clickIndex).toBeLessThan(successWaitIndex);
 });

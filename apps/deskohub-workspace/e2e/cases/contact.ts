@@ -5,7 +5,7 @@ import {
   openBrowserPage,
   requireSnapshotRef,
   waitForBrowserReactHydration,
-  waitForBrowserText,
+  waitForBrowserTextContent,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -103,11 +103,10 @@ const submitContactForm = (run: Runner, session: string) =>
       timeoutMs,
     });
     yield* clickBrowserElement(run, session, submitRef, { timeoutMs });
-    yield* waitForBrowserText({
-      description: "contact form success",
-      matches: (text) => /Your message has been sent\./i.test(text),
+    yield* waitForBrowserTextContent(
       run,
       session,
-      timeoutMs,
-    });
+      "Your message has been sent.",
+      { timeoutMs }
+    );
   });
