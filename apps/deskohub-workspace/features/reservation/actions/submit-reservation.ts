@@ -28,10 +28,6 @@ const getSubmitReservationErrorMessage = (
     return m.reservationRateLimitMessage({}, { locale: input.locale });
   }
 
-  if (error.message === "discount_code_unavailable") {
-    return m.reservationDiscountCodeUnavailable({}, { locale: input.locale });
-  }
-
   if (error.message !== "workspace_table_unavailable") {
     return m.reservationErrorMessage({}, { locale: input.locale });
   }

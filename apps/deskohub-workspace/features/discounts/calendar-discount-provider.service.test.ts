@@ -258,21 +258,12 @@ describe("CalendarDiscountProvider", () => {
       `<p><code>${discountIdA} ${discountIdB}</code></p>`,
     ],
     ["paragraph-wrapped UUID", `<p>${discountIdA}</p>`],
-  ])("fails closed for %s", async (_label, description) => {
-    const result = await runWithProvider(quote.pipe(Effect.result), () =>
+  ])("omits a malformed %s event", async (_label, description) => {
+    const result = await runWithProvider(quote, () =>
       Effect.succeed([saleEvent({ description })])
     );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "malformed_configuration",
-        cause: {
-          _tag: "CalendarSaleConfigurationError",
-          reason: "invalid_discount_reference",
-        },
-      },
-    });
+    expect(result).toEqual([]);
   });
 
   test("accepts an uppercase UUID and normalizes it before lookup", async () => {
@@ -289,59 +280,83 @@ describe("CalendarDiscountProvider", () => {
   });
 
   for (const [label, event] of invalidEventCases) {
-    test(`rejects a referenced ${label}`, async () => {
-      const result = await runWithProvider(quote.pipe(Effect.result), () =>
+    test(`omits a referenced ${label}`, async () => {
+      const result = await runWithProvider(quote, () =>
         Effect.succeed([saleEvent(event)])
       );
 
-      expect(result).toMatchObject({
-        _tag: "Failure",
-        failure: {
-          reason: "malformed_configuration",
-          cause: { _tag: "CalendarSaleConfigurationError" },
-        },
-      });
+      expect(result).toEqual([]);
     });
   }
 
-  test("fails closed when the referenced definition does not exist", async () => {
+  test("keeps valid sales when another calendar event is malformed", async () => {
+    const result = await runWithProvider(quote, () =>
+      Effect.succeed([
+        saleEvent({ id: "valid-sale" }),
+        saleEvent({ id: "malformed-sale", description: "not-a-discount-id" }),
+      ])
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.provenance.providerReference).toBe(
+      `${salesCalendarId}:valid-sale`
+    );
+  });
+
+  test("ignores a definition unavailable in this environment", async () => {
     const cause = new DiscountDefinitionNotFoundError({
       discountId: discountIdA,
       message: "Not found",
     });
     const result = await runWithProvider(
-      quote.pipe(Effect.result),
+      quote,
       () => Effect.succeed([saleEvent()]),
       () => Effect.fail(cause)
     );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "malformed_configuration",
-        cause,
-      },
-    });
+    expect(result).toEqual([]);
   });
 
-  test("maps database failures while preserving the cause", async () => {
+  test("omits a definition on database failure", async () => {
     const cause = new DatabaseError({
       operation: "discountDefinitions.loadById",
       cause: new Error("database unavailable"),
     });
     const result = await runWithProvider(
-      quote.pipe(Effect.result),
+      quote,
       () => Effect.succeed([saleEvent()]),
       () => Effect.fail(cause)
     );
 
-    expect(result).toMatchObject({
-      _tag: "Failure",
-      failure: {
-        reason: "provider_failure",
-        cause,
-      },
+    expect(result).toEqual([]);
+  });
+
+  test("keeps valid definitions when another definition fails to load", async () => {
+    const cause = new DatabaseError({
+      operation: "discountDefinitions.loadById",
+      cause: new Error("database unavailable"),
     });
+    const loadById = mock<IDiscountDefinitionRepository["loadById"]>(
+      ({ discountId }) =>
+        discountId === discountIdB
+          ? Effect.fail(cause)
+          : Effect.succeed(definition(discountId))
+    );
+    const result = await runWithProvider(
+      quote,
+      () =>
+        Effect.succeed([
+          saleEvent({ id: "valid-sale", description: discountIdA }),
+          saleEvent({ id: "failed-sale", description: discountIdB }),
+        ]),
+      loadById
+    );
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.provenance.details).toMatchObject({
+      storedDiscountId: discountIdA,
+    });
+    expect(loadById).toHaveBeenCalledTimes(2);
   });
 
   test("maps Google Calendar failures while preserving the cause", async () => {
@@ -699,7 +714,7 @@ describe("CalendarDiscountProvider", () => {
     expect(loadById).toHaveBeenCalledTimes(2);
   });
 
-  test("does not cache definition-provider failures", async () => {
+  test("does not cache omitted definition-provider failures", async () => {
     const cause = new DatabaseError({
       operation: "discountDefinitions.loadById",
       cause: new Error("temporary failure"),
@@ -724,13 +739,11 @@ describe("CalendarDiscountProvider", () => {
     const result = await runWithProvider(
       Effect.gen(function* () {
         const provider = yield* CalendarDiscountProvider;
-        const first = yield* provider
-          .quote({
-            locale: "en-US",
-            product: basicProduct,
-            reservationDate: "2026-07-20",
-          })
-          .pipe(Effect.result);
+        const first = yield* provider.quote({
+          locale: "en-US",
+          product: basicProduct,
+          reservationDate: "2026-07-20",
+        });
         const second = yield* provider.quote({
           locale: "en-US",
           product: basicProduct,
@@ -742,7 +755,7 @@ describe("CalendarDiscountProvider", () => {
       loadById
     );
 
-    expect(result.first._tag).toBe("Failure");
+    expect(result.first).toEqual([]);
     expect(result.second[0]?.discount.label).toBe("Recovered sale");
     expect(loadById).toHaveBeenCalledTimes(2);
   });

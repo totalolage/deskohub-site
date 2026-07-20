@@ -1,11 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import { getTableConfig, type PgTable } from "drizzle-orm/pg-core";
 import { Schema } from "effect";
-import { discountProductIdentityCodec } from "@/features/discounts/contracts";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
+import { canonicalDiscountCodeSchema } from "@/features/discounts/persistence-contracts";
 import {
-  canonicalDiscountCodeSchema,
-  discountProductKeySchema,
-} from "@/features/discounts/persistence-contracts";
+  workspaceCoworkProductIdentitySchema,
+  workspaceCoworkProductKeySchema,
+} from "@/features/reservation/cowork-reservation-product";
 import {
   discountApplications,
   discountCodeRedemptions,
@@ -54,11 +55,15 @@ describe("discount persistence contracts", () => {
   });
 
   test("accepts only canonical product keys and discount codes", () => {
-    const decodeProductKey = Schema.decodeUnknownSync(discountProductKeySchema);
+    const decodeProductKey = Schema.decodeUnknownSync(
+      workspaceCoworkProductKeySchema
+    );
     const decodeCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema);
 
-    for (const tier of discountProductIdentityCodec.fields.tier.literals) {
-      expect(decodeProductKey(`cowork:${tier}`)).toBe(`cowork:${tier}`);
+    for (const tier of workspaceCoworkProductIdentitySchema.fields.tier
+      .literals) {
+      const productKey = getWorkspaceProductKey({ kind: "cowork", tier });
+      expect(decodeProductKey(productKey)).toBe(productKey);
     }
     expect(decodeCode("LETNI_SLEVA-50")).toBe("LETNI_SLEVA-50");
     expect(() => decodeProductKey("cowork:enterprise")).toThrow();
@@ -73,11 +78,11 @@ describe("discount persistence contracts", () => {
     expect(config.name).toBe("discounts");
     expect(labelsColumn?.notNull).toBe(true);
     expect(namesOf(config.checks)).toEqual([
-      "discounts_label_check",
       "discounts_adjustment_variant_check",
       "discounts_percentage_basis_points_check",
       "discounts_fixed_amount_check",
     ]);
+    expect(config.columns.map(({ name }) => name)).not.toContain("label");
     expect(config.columns.map(({ name }) => name)).not.toContain("source");
     expect(config.columns.map(({ name }) => name)).not.toContain("provider");
     expect(config.columns.map(({ name }) => name)).not.toContain(
@@ -86,12 +91,49 @@ describe("discount persistence contracts", () => {
   });
 
   test("uses composite identities for targets and allowlists", () => {
-    expect(namesOf(configOf(discountProductTargets).primaryKeys)).toEqual([
+    const targetConfig = configOf(discountProductTargets);
+
+    expect(namesOf(targetConfig.primaryKeys)).toEqual([
       "discount_product_targets_pk",
+    ]);
+    expect(targetConfig.columns.map(({ name }) => name)).toEqual([
+      "discount_id",
+      "product_identity",
     ]);
     expect(namesOf(configOf(discountCodeCustomers).primaryKeys)).toEqual([
       "discount_code_customers_pk",
     ]);
+  });
+
+  test("migrates product targets to identity-only storage", async () => {
+    const migration = await Bun.file(
+      new URL("../migrations/0004_cloudy_nextwave.sql", import.meta.url)
+    ).text();
+    const dropPrimaryKey = 'DROP CONSTRAINT "discount_product_targets_pk"';
+    const dropProductKey = 'DROP COLUMN "product_key"';
+
+    expect(migration).toContain(dropPrimaryKey);
+    expect(migration).toContain(dropProductKey);
+    expect(migration.indexOf(dropPrimaryKey)).toBeLessThan(
+      migration.indexOf(dropProductKey)
+    );
+    expect(migration).toContain(
+      'PRIMARY KEY("discount_id","product_identity")'
+    );
+  });
+
+  test("removes the superseded scalar discount label", async () => {
+    const migration = await Bun.file(
+      new URL("../migrations/0004_cloudy_nextwave.sql", import.meta.url)
+    ).text();
+    const dropLabelCheck = 'DROP CONSTRAINT "discounts_label_check"';
+    const dropLabel = 'DROP COLUMN "label"';
+
+    expect(migration).toContain(dropLabelCheck);
+    expect(migration).toContain(dropLabel);
+    expect(migration.indexOf(dropLabelCheck)).toBeLessThan(
+      migration.indexOf(dropLabel)
+    );
   });
 
   test("enforces canonical code configuration in the database schema", () => {

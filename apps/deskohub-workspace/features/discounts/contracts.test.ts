@@ -1,3 +1,4 @@
+import "@/shared/testing/workspace-test-env";
 import { describe, expect, test } from "bun:test";
 import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Effect, Schema } from "effect";

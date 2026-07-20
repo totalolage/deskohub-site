@@ -6,9 +6,9 @@ import { Match, Schema } from "effect";
 import {
   isWorkspaceCoworkProductTier,
   isWorkspaceProductMonitorOption,
-  workspaceCoworkTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
+import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
@@ -30,7 +30,7 @@ export const coworkWorkspaceAvailabilityQuerySchema = Schema.Struct({
   kind: Schema.Literal(coworkReservationKind),
   ...workspaceAvailabilityQueryBaseFields,
   date: Schema.optional(Schema.String),
-  entryTier: Schema.optional(Schema.Literals(workspaceCoworkTiers)),
+  entryTier: Schema.optional(workspaceCoworkProductIdentitySchema.fields.tier),
   monitorOption: Schema.optional(
     Schema.Literals(workspaceProductMonitorOptions)
   ),
@@ -70,7 +70,9 @@ const workspaceAvailabilityResponseSchema = Schema.Struct({
   from: Schema.String,
   to: Schema.String,
   unavailableDates: Schema.Array(Schema.String),
-  unavailableCoworkTiers: Schema.Array(Schema.Literals(workspaceCoworkTiers)),
+  unavailableCoworkTiers: Schema.Array(
+    workspaceCoworkProductIdentitySchema.fields.tier
+  ),
   meetingRoomUnavailable: Schema.Boolean,
   unavailableMonitorOptions: Schema.Array(
     Schema.Literals(workspaceProductMonitorOptions)

@@ -9,5 +9,6 @@ description: Apply Deskohub React and TSX conventions when creating, editing, or
 - When mapping a small variant union to copy, icons, or similar values, use an inline object lookup instead of ternaries. Keep one-use lookup objects inline.
 - Inline a JSX `className` string when it is used only once. Do not hoist it into a local variable.
 - Inline simple one-use literals or lookup objects where they are consumed. Do not hoist them to module scope.
+- Use the matching shadcn primitive for standard interactions. In particular, use Tooltip for hover and focus hints instead of building controlled Popover timers or pointer-state machinery. If the primitive is missing, add it through the app's existing `components.json` configuration and adapt only its shared styling and React conventions.
 
 Update this skill when developer feedback changes a durable React convention.

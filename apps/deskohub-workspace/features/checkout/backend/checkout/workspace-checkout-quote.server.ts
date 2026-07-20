@@ -20,7 +20,7 @@ export const buildAuthoritativeWorkspaceCheckoutQuote = Effect.fn(
     readonly reservation: NormalizedCoworkReservationOrder;
     readonly dotyposCustomerId: string;
     readonly locale: Locale;
-    readonly submittedCode: CanonicalDiscountCode | undefined;
+    readonly submittedCode?: CanonicalDiscountCode;
   }) {
     yield* Effect.annotateLogsScoped({
       reservation: input.reservation,

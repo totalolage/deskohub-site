@@ -4,14 +4,14 @@ import type {
   DiscountProductTarget,
   StoredDiscount,
 } from "@/db/schema";
+import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import { locales } from "@/features/i18n";
-import type { DiscountAdjustment, DiscountProductIdentity } from "./contracts";
 import {
-  discountAdjustmentSchema,
-  discountProductIdentityCodec,
-} from "./contracts";
+  type WorkspaceCoworkProductIdentity,
+  workspaceCoworkProductIdentitySchema,
+} from "@/features/reservation/cowork-reservation-product";
+import { type DiscountAdjustment, discountAdjustmentSchema } from "./contracts";
 import {
-  discountProductKeySchema,
   type StoredDiscountId,
   storedDiscountIdSchema,
 } from "./persistence-contracts";
@@ -20,7 +20,7 @@ export type DiscountDefinition = {
   readonly id: StoredDiscountId;
   readonly labels: DiscountLabels;
   readonly adjustment: DiscountAdjustment;
-  readonly products: readonly DiscountProductIdentity[];
+  readonly products: readonly WorkspaceCoworkProductIdentity[];
 };
 
 export type DiscountDefinitionRow = StoredDiscount & {
@@ -68,17 +68,8 @@ const discountLabelsCodec: Schema.Decoder<DiscountLabels> = Schema.Record(
 const discountTargetSchema: Schema.Decoder<DiscountProductTarget> =
   Schema.Struct({
     discountId: storedDiscountIdSchema,
-    productKey: discountProductKeySchema,
-    productIdentity: discountProductIdentityCodec,
-  }).check(
-    Schema.makeFilter(
-      ({ productIdentity, productKey }) =>
-        productKey === `cowork:${productIdentity.tier}` || {
-          path: ["productKey"],
-          issue: "product key must match the product identity",
-        }
-    )
-  );
+    productIdentity: workspaceCoworkProductIdentitySchema,
+  });
 
 const discountTargetsSchema = (discountId: StoredDiscountId) =>
   Schema.NonEmptyArray(discountTargetSchema).check(
@@ -91,8 +82,11 @@ const discountTargetsSchema = (discountId: StoredDiscountId) =>
     ),
     Schema.makeFilter(
       (targets) =>
-        new Set(targets.map(({ productKey }) => productKey)).size ===
-          targets.length || {
+        new Set(
+          targets.map(({ productIdentity }) =>
+            getWorkspaceProductKey(productIdentity)
+          )
+        ).size === targets.length || {
           path: [],
           issue: "product targets must be unique",
         }

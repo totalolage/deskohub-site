@@ -91,6 +91,55 @@ export const waitForBrowserReactHydration = (
   ).pipe(Effect.asVoid);
 };
 
+export const waitForBrowserTextContent = (
+  run: Runner,
+  session: string,
+  text: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const textLiteral = JSON.stringify(text);
+  const textCheck = `(() => document.body?.innerText.includes(${textLiteral}) ?? false)()`;
+
+  return runBrowserCommand(
+    "wait for browser text content",
+    run,
+    session,
+    ["wait", "--fn", textCheck],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
+export const waitForBrowserReactFormAction = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> => {
+  const selectorLiteral = JSON.stringify(selector);
+  const hydrationCheck = `(() => {
+    const form = document.querySelector(${selectorLiteral});
+    const reactPropsKey = form === null
+      ? undefined
+      : Object.keys(form).find((key) => key.startsWith("__reactProps$"));
+    const reactProps = reactPropsKey === undefined ? undefined : form[reactPropsKey];
+    return typeof reactProps?.action === "function";
+  })()`;
+
+  return runBrowserCommand(
+    "wait for browser React form action",
+    run,
+    session,
+    ["wait", "--fn", hydrationCheck],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+};
+
 export const evalBrowserScript = (
   operation: string,
   run: Runner,
@@ -115,6 +164,23 @@ export const fillBrowserField = (
     run,
     session,
     ["fill", selector, value],
+    {
+      logOutput: false,
+      timeoutMs: options.timeoutMs ?? 60_000,
+    }
+  ).pipe(Effect.asVoid);
+
+export const clickBrowserElement = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(
+    "click browser element",
+    run,
+    session,
+    ["click", selector],
     {
       logOutput: false,
       timeoutMs: options.timeoutMs ?? 60_000,
@@ -530,9 +596,11 @@ const asRecord = (value: unknown) =>
 
 export const findSnapshotRef = (
   snapshot: string,
-  labels: readonly string[]
+  labels: readonly string[],
+  role?: string
 ) => {
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
 
@@ -545,6 +613,7 @@ export const findSnapshotRef = (
   }
 
   for (const line of snapshot.split("\n")) {
+    if (!hasSnapshotRole(line, role)) continue;
     const ref = getSnapshotRef(line);
     if (!ref) continue;
 
@@ -553,6 +622,10 @@ export const findSnapshotRef = (
       return ref;
   }
 };
+
+const hasSnapshotRole = (line: string, role: string | undefined) =>
+  role === undefined ||
+  line.match(/^\s*-\s+(\S+)/)?.[1]?.toLowerCase() === role.toLowerCase();
 
 export const findEnabledSnapshotRef = (
   snapshot: string,
@@ -585,19 +658,21 @@ export const findEnabledSnapshotRef = (
 export const requireSnapshotRef = ({
   description,
   labels,
+  role,
   run,
   session,
   timeoutMs = 60_000,
 }: {
   description: string;
   labels: readonly string[];
+  role?: string;
   run: Runner;
   session: string;
   timeoutMs?: number;
 }): Effect.Effect<string, WorkspaceE2EError> =>
   pollUntil(
     readInteractiveSnapshot(run, session).pipe(
-      Effect.map((snapshot) => findSnapshotRef(snapshot, labels))
+      Effect.map((snapshot) => findSnapshotRef(snapshot, labels, role))
     ),
     {
       intervalMs: workspaceE2EPollIntervalMs.browser,
@@ -657,7 +732,7 @@ export const requireEnabledSnapshotRef = ({
   );
 
 export const getSnapshotRef = (line: string) =>
-  line.match(/\[ref=(e\d+)\]/)?.[1]?.replace(/^/, "@") ??
+  line.match(/\bref=(e\d+)\b/)?.[1]?.replace(/^/, "@") ??
   line.match(/@e\d+/)?.[0];
 
 export const waitForBrowserUrl = ({

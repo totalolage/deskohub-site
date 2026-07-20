@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { discountIdSchema, discountProductIdentityCodec } from "./contracts";
+import { discountIdSchema } from "./contracts";
 
 export {
   type CanonicalDiscountCode,
@@ -20,21 +20,6 @@ export const storedDiscountIdSchema = discountIdSchema
 
 export type StoredDiscountId = Schema.Schema.Type<
   typeof storedDiscountIdSchema
->;
-
-export const discountProductKeySchema = Schema.TemplateLiteral([
-  discountProductIdentityCodec.fields.kind,
-  ":",
-  discountProductIdentityCodec.fields.tier,
-])
-  .pipe(Schema.brand("DiscountProductKey"))
-  .annotate({
-    identifier: "DiscountProductKey",
-    description: "Canonical key for a product targeted by a stored discount.",
-  });
-
-export type DiscountProductKey = Schema.Schema.Type<
-  typeof discountProductKeySchema
 >;
 
 export const discountCodeIdSchema = Schema.NonEmptyString.pipe(

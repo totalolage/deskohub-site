@@ -21,6 +21,29 @@ import {
   localDateTimeSchema,
 } from "@/shared/utils/temporal";
 
+export const workspaceMeetingRoomProductIdentitySchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  durationMinutes: Schema.Literals(workspaceMeetingRoomDurationOptions),
+});
+
+export type WorkspaceMeetingRoomProductIdentity =
+  typeof workspaceMeetingRoomProductIdentitySchema.Type;
+
+export const workspaceMeetingRoomProductKeySchema = Schema.TemplateLiteral([
+  workspaceMeetingRoomProductIdentitySchema.fields.kind,
+  ":",
+  workspaceMeetingRoomProductIdentitySchema.fields.durationMinutes,
+]);
+
+export type WorkspaceMeetingRoomProductKey =
+  typeof workspaceMeetingRoomProductKeySchema.Type;
+
+export const getWorkspaceMeetingRoomProductKey = ({
+  durationMinutes,
+  kind,
+}: WorkspaceMeetingRoomProductIdentity): WorkspaceMeetingRoomProductKey =>
+  `${kind}:${durationMinutes}`;
+
 const meetingRoomReservationOrderBaseSchema = Schema.Struct({
   ...reservationCustomerSchema.fields,
   startsAt: reservationTimestampInputSchema,

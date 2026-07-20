@@ -7,14 +7,14 @@ export {
   type Discount,
   type DiscountAdjustment,
   type DiscountId,
-  type DiscountProductIdentity,
   type DiscountQuote,
   type DiscountQuoteInput,
   discountProductIdentitySchema,
   isAppliedDiscount,
 } from "./contracts";
 export {
-  type DiscountRevalidation,
+  type DiscountAffirmation,
+  type DiscountAffirmationInput,
   DiscountService,
   type IDiscountService,
 } from "./discount.service";

@@ -1,3 +1,4 @@
+import { Match } from "effect";
 import type { ReactNode } from "react";
 import type {
   CheckoutSummaryChangedKeys,
@@ -5,12 +6,14 @@ import type {
 } from "@/features/checkout/checkout-quote";
 import { isWorkspaceProductMonitorOption } from "@/features/checkout/product-catalog";
 import {
+  getWorkspaceMeetingRoomDurationTitle,
   getWorkspaceProductMonitorTitle,
   getWorkspaceProductTierTitle,
 } from "@/features/checkout/product-catalog.i18n";
 import { formatWorkspaceMoney } from "@/features/checkout/workspace-money";
 import { type Locale, m } from "@/features/i18n";
 import { cn } from "@/shared/utils";
+import { CheckoutSummaryDiscountDetails } from "./checkout-summary-discount-details";
 
 type CheckoutSummaryProps = {
   readonly locale: Locale;
@@ -20,18 +23,8 @@ type CheckoutSummaryProps = {
 
 type CheckoutSummarySectionKey = CheckoutSummaryData["sections"][number]["key"];
 
-const productItemTiers = {
-  "product:basic": "basic",
-  "product:plus": "plus",
-  "product:profi": "profi",
-  "product:workspace-basic": "basic",
-  "product:workspace-plus": "plus",
-  "product:workspace-profi": "profi",
-} as const;
-
 const summarySectionLabels = {
   order: m.checkoutSummarySectionOrder,
-  discount: m.checkoutSummarySectionDiscount,
   total: m.checkoutSummarySectionTotal,
 } as const;
 
@@ -40,8 +33,15 @@ const getSummaryItemLabel = (
   locale: Locale
 ) => {
   const { key } = item;
-  const productTier = productItemTiers[key as keyof typeof productItemTiers];
-  if (productTier) return getWorkspaceProductTierTitle(productTier, locale);
+  if ("product" in item) {
+    return Match.value(item.product).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: ({ tier }) => getWorkspaceProductTierTitle(tier, locale),
+        "meeting-room": ({ durationMinutes }) =>
+          getWorkspaceMeetingRoomDurationTitle(durationMinutes, locale),
+      })
+    );
+  }
 
   if (key === "addon:coffee")
     return m.checkoutSummaryItemCoffee({}, { locale });
@@ -52,8 +52,6 @@ const getSummaryItemLabel = (
       return getWorkspaceProductMonitorTitle(monitorOption, locale);
     }
   }
-
-  if (key.startsWith("discount:")) return item.label ?? key;
 
   if (key === "total:final") return m.checkoutSummaryItemTotal({}, { locale });
 
@@ -80,18 +78,75 @@ export function CheckoutSummary({
             {section.items.map((item) => {
               const itemKey = `${section.key}/${item.key}`;
               const itemChanged = changedKeys?.itemKeys.includes(itemKey);
+              const itemLabel = getSummaryItemLabel(item, locale);
+              const discountedItem =
+                "originalAmount" in item && item.originalAmount
+                  ? item
+                  : undefined;
 
               return (
                 <div
                   key={item.key}
                   className={cn(
-                    "flex items-start justify-between gap-4 text-sm leading-6",
+                    "grid grid-cols-[minmax(0,1fr)_auto] items-start gap-4 text-sm leading-6",
                     itemChanged && "font-semibold text-burned-orange"
                   )}
                 >
-                  <span>{getSummaryItemLabel(item, locale)}</span>
-                  <span className="shrink-0 font-semibold">
-                    {formatWorkspaceMoney(item.amount, locale)}
+                  <span>{itemLabel}</span>
+                  <span className="flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+                    {discountedItem && (
+                      <>
+                        <span className="sr-only">
+                          {m.checkoutSummaryOriginalPrice(
+                            {
+                              price: formatWorkspaceMoney(
+                                discountedItem.originalAmount,
+                                locale
+                              ),
+                            },
+                            { locale }
+                          )}
+                        </span>
+                        <del
+                          aria-hidden="true"
+                          className="text-navy-blue/45 decoration-navy-blue/40"
+                        >
+                          {formatWorkspaceMoney(
+                            discountedItem.originalAmount,
+                            locale
+                          )}
+                        </del>
+                      </>
+                    )}
+                    <span className="shrink-0 font-semibold tabular-nums">
+                      {discountedItem ? (
+                        <>
+                          <span className="sr-only">
+                            {m.checkoutSummaryDiscountedPrice(
+                              {
+                                price: formatWorkspaceMoney(
+                                  item.amount,
+                                  locale
+                                ),
+                              },
+                              { locale }
+                            )}
+                          </span>
+                          <span aria-hidden="true">
+                            {formatWorkspaceMoney(item.amount, locale)}
+                          </span>
+                        </>
+                      ) : (
+                        formatWorkspaceMoney(item.amount, locale)
+                      )}
+                    </span>
+                    {discountedItem && (
+                      <CheckoutSummaryDiscountDetails
+                        discounts={discountedItem.discounts}
+                        locale={locale}
+                        productLabel={itemLabel}
+                      />
+                    )}
                   </span>
                 </div>
               );

@@ -83,7 +83,6 @@ const runReusableReservationScenario = async (input: {
   readonly createDraft?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
-  readonly submittedCode?: string;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -131,7 +130,6 @@ const runReusableReservationScenario = async (input: {
     locale: "en-US",
     reservationIntentId: "intent-id",
     reservation,
-    submittedCode: input.submittedCode,
     legalConsent: true,
   }).pipe(
     Effect.provide(DiscountServiceMock({ quote })),
@@ -289,7 +287,6 @@ describe("prepareWorkspacePayState", () => {
       locale: "en-US",
       reservationIntentId: "intent-id",
       reservation,
-      submittedCode: "  summer-50  ",
       legalConsent: true,
     }).pipe(
       Effect.provide(DiscountServiceMock({ quote })),
@@ -396,21 +393,19 @@ describe("prepareWorkspacePayState", () => {
     expect(token).toBeTruthy();
     const state = openPayState(token ?? "");
     expect(state.orderId).toBe("reservation-id");
-    expect(state.submittedCode).toBe("SUMMER-50");
-    expect(result.redirectUrl).not.toContain("SUMMER-50");
+    expect(state.submittedCode).toBeUndefined();
     expect(quote).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: "customer-id",
-        submittedCode: "SUMMER-50",
       })
     );
+    expect(quote.mock.calls[0]?.[0]).toHaveProperty("submittedCode", undefined);
   });
 
   test("reuses an existing held reservation without scheduling cleanup", async () => {
     const existingReservation = makeReusableReservation();
     const result = await runReusableReservationScenario({
       findByIntentKey: mock(() => Effect.succeed(existingReservation)),
-      submittedCode: " summer-50 ",
     });
 
     expect(result.result.status).toBe("ready");
@@ -428,48 +423,12 @@ describe("prepareWorkspacePayState", () => {
     expect(result.quote).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: existingReservation.dotyposCustomerId,
-        submittedCode: "SUMMER-50",
       })
     );
-  });
-
-  test("keeps the submitted code out of the reusable reservation intent key", async () => {
-    const existingReservation = makeReusableReservation();
-    const firstLookup = mock(() => Effect.succeed(existingReservation));
-    const secondLookup = mock(() => Effect.succeed(existingReservation));
-
-    await runReusableReservationScenario({
-      findByIntentKey: firstLookup,
-      submittedCode: "FIRST-CODE",
-    });
-    await runReusableReservationScenario({
-      findByIntentKey: secondLookup,
-      submittedCode: "SECOND-CODE",
-    });
-
-    expect(firstLookup.mock.calls[0]?.[0]).toBe(
-      secondLookup.mock.calls[0]?.[0]
+    expect(result.quote.mock.calls[0]?.[0]).toHaveProperty(
+      "submittedCode",
+      undefined
     );
-  });
-
-  test("maps an invalid submitted code to the localized unavailable message", async () => {
-    const { m } = await import("@/features/i18n");
-    const findByIntentKey = mock(() =>
-      Effect.succeed(makeReusableReservation())
-    );
-    const error = await runReusableReservationScenario({
-      findByIntentKey,
-      submittedCode: "not a code",
-    }).then(
-      () => undefined,
-      (cause: unknown) => cause
-    );
-
-    expect(error).toMatchObject({
-      _tag: "PublicSafeActionError",
-      message: m.reservationDiscountCodeUnavailable({}, { locale: "en-US" }),
-    });
-    expect(findByIntentKey).not.toHaveBeenCalled();
   });
 
   test("reuses a concurrently created held reservation without scheduling cleanup", async () => {

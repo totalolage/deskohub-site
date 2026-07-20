@@ -1,21 +1,16 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Option, Schema } from "effect";
-import {
-  type WorkspaceProductTier,
-  workspaceProductTiers,
-} from "@/features/checkout/product-catalog";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   nonNegativeWorkspaceMoneyCodec,
   positiveWorkspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
+import {
+  type WorkspaceCoworkProductIdentity,
+  workspaceCoworkProductIdentitySchema,
+} from "@/features/reservation/cowork-reservation-product";
 import { instantStringSchema } from "@/shared/utils/temporal";
-
-export type DiscountProductIdentity = {
-  readonly kind: "cowork";
-  readonly tier: WorkspaceProductTier;
-};
 
 export const discountIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("DiscountId")
@@ -47,15 +42,10 @@ export const discountBasisPointsSchema = Schema.Int.check(
   description: "An exact percentage discount measured in basis points.",
 });
 
-export const discountProductIdentityCodec = Schema.Struct({
-  kind: Schema.Literal("cowork"),
-  tier: Schema.Literals(workspaceProductTiers),
-});
-
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
-  DiscountProductIdentity
-> = Schema.toStandardSchemaV1(discountProductIdentityCodec, {
+  WorkspaceCoworkProductIdentity
+> = Schema.toStandardSchemaV1(workspaceCoworkProductIdentitySchema, {
   parseOptions: {
     onExcessProperty: "error",
   },
@@ -130,7 +120,7 @@ export const isAppliedDiscount = (value: unknown): value is AppliedDiscount =>
   );
 
 export type DiscountQuote = {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly discounts: readonly AppliedDiscount[];
   readonly totalDiscount: WorkspaceMoney;
@@ -138,10 +128,10 @@ export type DiscountQuote = {
 };
 
 export type DiscountQuoteInput = {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly reservationDate: string;
   readonly dotyposCustomerId: string;
   readonly locale: Locale;
-  readonly submittedCode: CanonicalDiscountCode | undefined;
+  readonly submittedCode?: CanonicalDiscountCode;
 };

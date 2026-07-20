@@ -19,7 +19,6 @@ import {
   discountIdSchema,
 } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
-import { DiscountCodeUnavailableError } from "@/features/discounts/errors";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
@@ -55,7 +54,7 @@ const reservationData = Schema.decodeUnknownSync(
 )({
   kind: "cowork",
   entryTier: "profi",
-  date: "2026-06-20",
+  date: "2099-06-20",
   coffee: true,
   monitorOption: "2x27-qhd",
   name: "Ada Lovelace",
@@ -201,7 +200,7 @@ type CheckoutHarnessOptions = {
   readonly submittedCode?: CanonicalDiscountCode;
   readonly reservationOverrides?: Record<string, unknown>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
-  readonly revalidate?: ReturnType<typeof mock>;
+  readonly affirm?: ReturnType<typeof mock>;
   readonly createHostedPaymentPage?: ReturnType<typeof mock>;
 };
 
@@ -299,8 +298,8 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     createHostedPaymentPage,
     verifyPaymentOutcome: mock(() => Effect.die("not used")),
   } as unknown as typeof NexiService.Service;
-  const revalidate =
-    options.revalidate ??
+  const affirm =
+    options.affirm ??
     mock(({ discountableSubtotal, product }) =>
       Effect.succeed({
         quote: {
@@ -330,7 +329,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     );
   }).pipe(
     Effect.provide(CheckoutServiceLive),
-    Effect.provide(DiscountServiceMock({ revalidate })),
+    Effect.provide(DiscountServiceMock({ affirm })),
     Effect.provide(Layer.succeed(DotyposService, dotypos)),
     Effect.provide(Layer.succeed(NexiService, nexi)),
     Effect.provide(Layer.succeed(WorkspaceReservationRepository, reservations)),
@@ -349,7 +348,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
 
   return {
     effect,
-    revalidate,
+    affirm,
     createAttempt,
     findAttempt,
     attachHostedPaymentPage,
@@ -363,7 +362,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
 };
 
 describe("CheckoutService", () => {
-  test("redirects a reusable active attempt before discount revalidation and note refresh", async () => {
+  test("redirects a reusable active attempt before discount affirmation and note refresh", async () => {
     const orderId = "reservation-reuses-provider-attempt";
     const activeAttempt = makeAttempt({
       id: "active-attempt",
@@ -385,17 +384,17 @@ describe("CheckoutService", () => {
       redirectUrl: "https://payments.example/existing",
     });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
-    expect(harness.revalidate).not.toHaveBeenCalled();
+    expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
     expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
-  test("revalidates with the checkout locale, stored customer, and encrypted code", async () => {
+  test("affirms the accepted discounts with the checkout locale, stored customer, and encrypted code", async () => {
     const submittedCode = canonicalCode("CANONICAL-SECRET-CODE");
-    const orderId = "reservation-revalidates-code";
+    const orderId = "reservation-affirms-code";
     const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData);
-    const revalidate = mock(() =>
+    const affirm = mock(() =>
       Effect.succeed({ quote: undiscountedQuote, commitment: emptyCommitment })
     );
     const harness = await createCheckoutHarness({
@@ -403,7 +402,7 @@ describe("CheckoutService", () => {
       locale: "cs-CZ",
       acceptedQuote,
       submittedCode,
-      revalidate,
+      affirm,
     });
 
     const token = buildPayStateToken({
@@ -415,14 +414,15 @@ describe("CheckoutService", () => {
 
     await Effect.runPromise(harness.effect);
 
-    expect(revalidate).toHaveBeenCalledTimes(1);
-    expect(revalidate).toHaveBeenCalledWith({
+    expect(affirm).toHaveBeenCalledTimes(1);
+    expect(affirm).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "profi" },
       discountableSubtotal: money(55_000),
       reservationDate: reservationData.date,
       dotyposCustomerId: "stored-dotypos-customer-id",
       locale: "cs-CZ",
       submittedCode,
+      acceptedDiscountIds: [],
     });
   });
 
@@ -445,13 +445,13 @@ describe("CheckoutService", () => {
       orderId: "reservation-label-edited",
       quote: acceptedQuote,
     });
-    const revalidate = mock(() =>
+    const affirm = mock(() =>
       Effect.succeed({ quote: editedQuote, commitment: emptyCommitment })
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-label-edited",
       acceptedQuote,
-      revalidate,
+      affirm,
     });
 
     const result = await Effect.runPromise(harness.effect);
@@ -465,7 +465,7 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: [],
-      itemKeys: ["discount/discount:public-summer-sale"],
+      itemKeys: ["order/product:cowork:profi"],
     });
     const freshToken = new URL(
       result.freshPayUrl,
@@ -476,16 +476,18 @@ describe("CheckoutService", () => {
     ).toBe("Edited English summer label");
   });
 
-  test("returns pricing_changed before updating the note or starting payment", async () => {
+  test("returns pricing_changed when an accepted discount disappears before payment", async () => {
     const submittedCode = canonicalCode("SUMMER50");
-    const revalidate = mock(() =>
-      Effect.succeed({ quote: discountedQuote, commitment: privateCommitment })
+    const affirm = mock(() =>
+      Effect.succeed({ quote: undiscountedQuote, commitment: emptyCommitment })
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-pricing-changed",
-      acceptedQuote: buildWorkspaceCheckoutQuote(reservationData),
+      acceptedQuote: buildWorkspaceCheckoutQuote(reservationData, {
+        discountQuote: discountedQuote,
+      }),
       submittedCode,
-      revalidate,
+      affirm,
     });
 
     const result = await Effect.runPromise(harness.effect);
@@ -499,31 +501,11 @@ describe("CheckoutService", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(openPayState(freshToken ?? "").submittedCode).toBe(submittedCode);
-    expect(harness.updateProductIntent).not.toHaveBeenCalled();
-    expect(harness.updateReservation).not.toHaveBeenCalled();
-    expect(harness.createAttempt).not.toHaveBeenCalled();
-    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
-  });
-
-  test("maps an unavailable submitted code and does not start payment", async () => {
-    const unavailable = new DiscountCodeUnavailableError({
-      reason: "already_redeemed",
-      message: "The submitted code is no longer available.",
-    });
-    const revalidate = mock(() => Effect.fail(unavailable));
-    const harness = await createCheckoutHarness({
-      orderId: "reservation-code-unavailable",
-      submittedCode: canonicalCode("ALREADY-USED"),
-      revalidate,
-    });
-
-    const error = await Effect.runPromise(Effect.flip(harness.effect));
-
-    expect(error).toMatchObject({
-      _tag: "CheckoutError",
-      message: "discount_code_unavailable",
-      cause: unavailable,
-    });
+    expect(affirm).toHaveBeenCalledWith(
+      expect.objectContaining({
+        acceptedDiscountIds: [application.discount.id],
+      })
+    );
     expect(harness.updateProductIntent).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
     expect(harness.createAttempt).not.toHaveBeenCalled();
@@ -535,7 +517,7 @@ describe("CheckoutService", () => {
     const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData, {
       discountQuote: discountedQuote,
     });
-    const revalidate = mock(() =>
+    const affirm = mock(() =>
       Effect.succeed({ quote: discountedQuote, commitment: privateCommitment })
     );
     const createHostedPaymentPage = mock(() => {
@@ -548,7 +530,7 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-refreshes-note",
       acceptedQuote,
-      revalidate,
+      affirm,
       createHostedPaymentPage,
     });
     harness.updateReservation.mockImplementation((input) => {
