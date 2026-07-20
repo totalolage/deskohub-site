@@ -16,6 +16,9 @@ Generation uses `POSTHOG_FEATURE_FLAGS_API_KEY`, `POSTHOG_HOST`, and `POSTHOG_PR
 
 Current runtime flags:
 
+- `calendar_sales` — gates Workspace Calendar sale discovery and affirmation.
+- `customer_discounts` — gates Workspace Dotypos customer discounts.
+- `discount_codes` — gates Workspace discount-code resolution and affirmation.
 - `meeting_room_page` — controls the Workspace Meeting Room page and its header link.
 - `seating_map` — controls whether checkout status and paid-reservation emails include the assigned seating map.
 

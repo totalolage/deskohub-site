@@ -4,6 +4,9 @@ import { definePostHogFeatureFlags } from "@deskohub/posthog/feature-flags";
 export const postHogFeatureFlags = definePostHogFeatureFlags<
   PostHogFeatureFlagDefinitions
 >([
+  "calendar_sales",
+  "customer_discounts",
+  "discount_codes",
   "meeting_room_page",
   "seating_map",
 ] as const);
@@ -12,6 +15,18 @@ export type PostHogFeatureFlagKey =
   (typeof postHogFeatureFlags.keys)[number];
 
 export interface PostHogFeatureFlagDefinitions {
+  readonly "calendar_sales": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
+  readonly "customer_discounts": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
+  readonly "discount_codes": {
+    readonly value: boolean;
+    readonly payload: undefined;
+  };
   readonly "meeting_room_page": {
     readonly value: boolean;
     readonly payload: undefined;

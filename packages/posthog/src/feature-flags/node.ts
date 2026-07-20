@@ -1,4 +1,4 @@
-import { Context, Data, Effect, Layer, ManagedRuntime } from "effect";
+import { Context, Data, Effect, Layer, ManagedRuntime, Match } from "effect";
 import {
   type AllFlagsOptions,
   type FeatureFlagEvaluations,
@@ -112,8 +112,8 @@ export type PostHogFeatureFlagEvaluationOptions<Definitions> = Readonly<
 >;
 
 export interface PostHogFeatureFlagEvaluationInput<Definitions> {
-  readonly distinctId: string;
   readonly options?: PostHogFeatureFlagEvaluationOptions<Definitions>;
+  readonly subject: PostHogFeatureFlagSubject;
 }
 
 export interface PostHogFeatureFlagCheckInput<
@@ -126,8 +126,8 @@ export interface PostHogFeatureFlagCheckInput<
 }
 
 interface PreparedPostHogFeatureFlagEvaluationInput<Definitions> {
-  readonly distinctId: string;
   readonly options: PostHogFeatureFlagEvaluationOptions<Definitions>;
+  readonly subject: PostHogFeatureFlagSubject;
 }
 
 interface PreparedPostHogFeatureFlagCheckInput<
@@ -187,22 +187,23 @@ export const createPostHogNodeFeatureFlags = <
           cause,
         }),
     }).pipe(
-      Effect.map((snapshot) => ({
-        getFlag: <Key extends PostHogFeatureFlagKey<Definitions>>(key: Key) =>
-          snapshot.getFlag(key) as
-            | PostHogFeatureFlagValue<Definitions, Key>
-            | undefined,
-        getFlagPayload: <Key extends PostHogFeatureFlagKey<Definitions>>(
-          key: Key
-        ) =>
-          snapshot.getFlagPayload(key) as PostHogFeatureFlagPayload<
-            Definitions,
-            Key
-          >,
-        isEnabled: (key) => snapshot.isEnabled(key),
-        raw: snapshot,
-      }))
+      Effect.map((snapshot) =>
+        toTypedPostHogFeatureFlagEvaluationSnapshot<Definitions>(snapshot)
+      )
     ),
+});
+
+const toTypedPostHogFeatureFlagEvaluationSnapshot = <Definitions>(
+  snapshot: PostHogFeatureFlagEvaluationSnapshot
+): TypedPostHogFeatureFlagEvaluationSnapshot<Definitions> => ({
+  getFlag: <Key extends PostHogFeatureFlagKey<Definitions>>(key: Key) =>
+    snapshot.getFlag(key) as
+      | PostHogFeatureFlagValue<Definitions, Key>
+      | undefined,
+  getFlagPayload: <Key extends PostHogFeatureFlagKey<Definitions>>(key: Key) =>
+    snapshot.getFlagPayload(key) as PostHogFeatureFlagPayload<Definitions, Key>,
+  isEnabled: (key) => snapshot.isEnabled(key),
+  raw: snapshot,
 });
 
 const prepareFeatureFlagEvaluation = <Definitions>({
@@ -212,11 +213,11 @@ const prepareFeatureFlagEvaluation = <Definitions>({
   readonly config: PostHogNodeFeatureFlagServiceConfig;
   readonly input: PostHogFeatureFlagEvaluationInput<Definitions>;
 }): PreparedPostHogFeatureFlagEvaluationInput<Definitions> => ({
-  distinctId: input.distinctId,
   options: {
     ...config.defaultEvaluationOptions,
     ...input.options,
   },
+  subject: input.subject,
 });
 
 const prepareFeatureFlagCheck = <
@@ -250,9 +251,65 @@ const evaluatePostHogFeatureFlags = Effect.fn(
     readonly contract: PostHogFeatureFlagContract<Definitions>;
     readonly evaluationInput: PreparedPostHogFeatureFlagEvaluationInput<Definitions>;
   }) =>
-    createPostHogNodeFeatureFlags(contract, clientService.client).evaluateFlags(
-      evaluationInput.distinctId,
-      evaluationInput.options
+    Match.value(evaluationInput.subject.sendFeatureFlagEvents).pipe(
+      Match.when(true, () =>
+        createPostHogNodeFeatureFlags(
+          contract,
+          clientService.client
+        ).evaluateFlags(
+          evaluationInput.subject.distinctId,
+          evaluationInput.options
+        )
+      ),
+      Match.when(false, () =>
+        evaluatePostHogFeatureFlagsWithoutEvents({
+          clientService,
+          evaluationInput,
+        }).pipe(
+          Effect.map((snapshot) =>
+            toTypedPostHogFeatureFlagEvaluationSnapshot<Definitions>(snapshot)
+          )
+        )
+      ),
+      Match.exhaustive
+    )
+);
+
+const evaluatePostHogFeatureFlagsWithoutEvents = Effect.fn(
+  "PostHogNodeFeatureFlags.evaluateFlagsWithoutEvents"
+)(
+  <Definitions>({
+    clientService,
+    evaluationInput,
+  }: {
+    readonly clientService: IPostHogFeatureFlagClientService;
+    readonly evaluationInput: PreparedPostHogFeatureFlagEvaluationInput<Definitions>;
+  }) =>
+    Effect.tryPromise({
+      try: () =>
+        clientService.client.getAllFlagsAndPayloads(
+          evaluationInput.subject.distinctId,
+          {
+            ...evaluationInput.options,
+            flagKeys: evaluationInput.options.flagKeys
+              ? [...evaluationInput.options.flagKeys]
+              : undefined,
+          }
+        ),
+      catch: (cause) =>
+        new PostHogFeatureFlagEvaluationError({
+          message: "Could not evaluate PostHog feature flags.",
+          cause,
+        }),
+    }).pipe(
+      Effect.map(({ featureFlags = {}, featureFlagPayloads = {} }) => ({
+        getFlag: (key: string) => featureFlags[key],
+        getFlagPayload: (key: string) => featureFlagPayloads[key],
+        isEnabled: (key: string) => {
+          const value = featureFlags[key];
+          return value !== undefined && value !== false;
+        },
+      }))
     )
 );
 

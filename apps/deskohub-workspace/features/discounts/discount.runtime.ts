@@ -10,6 +10,8 @@ import { CustomerDiscountProvider } from "./customer-discount-provider.service";
 import { DiscountService } from "./discount.service";
 import { DiscountCodeRepository } from "./discount-code.repository";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
+import { DiscountReleaseGateEvaluatorLive } from "./discount-release-gate.server";
+import { DiscountReleaseGateService } from "./discount-release-gate.service";
 
 const discountRepositories = Layer.mergeAll(
   DiscountDefinitionRepository.Live,
@@ -29,12 +31,19 @@ const discountProviders = Layer.mergeAll(
   CodeDiscountProvider.Live
 ).pipe(Layer.provide(providerDependencies));
 
+const discountServiceDependencies = Layer.merge(
+  discountProviders,
+  DiscountReleaseGateService.Live.pipe(
+    Layer.provide(DiscountReleaseGateEvaluatorLive)
+  )
+);
+
 const processScope = Scope.makeUnsafe();
 const processMemoMap = Layer.makeMemoMapUnsafe();
 
 export const DiscountServiceLiveWithDependencies = Layer.fromBuild(() =>
   Layer.buildWithMemoMap(
-    DiscountService.Live.pipe(Layer.provide(discountProviders)),
+    DiscountService.Live.pipe(Layer.provide(discountServiceDependencies)),
     processMemoMap,
     processScope
   )

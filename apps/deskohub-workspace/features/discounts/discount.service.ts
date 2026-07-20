@@ -9,9 +9,14 @@ import type {
   DiscountQuoteInput,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
+import {
+  DiscountReleaseGateService,
+  type DiscountReleaseGates,
+} from "./discount-release-gate.service";
 import type { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
 import {
+  type DiscountResolutionFailure,
   logDiscountResolutionFailure,
   recoverDiscountResolution,
 } from "./resolution-logging";
@@ -44,63 +49,89 @@ export class DiscountService extends Context.Service<
       const calendar = yield* CalendarDiscountProvider;
       const customer = yield* CustomerDiscountProvider;
       const code = yield* CodeDiscountProvider;
+      const releaseGates = yield* DiscountReleaseGateService;
 
       const resolveQuoteCandidates = Effect.fn(
         "DiscountService.resolveQuoteCandidates"
-      )((input: DiscountQuoteInput) =>
-        Effect.all(
-          [
-            recoverDiscountResolution(calendar.quote(input), {
-              operation: "quote",
-              provider: "calendar",
-            }),
-            recoverDiscountResolution(customer.resolve(input), {
-              operation: "quote",
-              provider: "customer",
-            }),
-            recoverDiscountResolution(code.quote(input), {
-              operation: "quote",
-              provider: "code",
-            }),
-          ],
-          { concurrency: "inherit" }
-        ).pipe(Effect.map(collectDiscountCandidates))
+      )(
+        (input: {
+          readonly quoteInput: DiscountQuoteInput;
+          readonly releaseGates: DiscountReleaseGates;
+        }) =>
+          Effect.all(
+            [
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.calendarSales,
+                operation: "quote",
+                provider: "calendar",
+                resolve: () => calendar.quote(input.quoteInput),
+              }),
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.customerDiscounts,
+                operation: "quote",
+                provider: "customer",
+                resolve: () => customer.resolve(input.quoteInput),
+              }),
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.discountCodes,
+                operation: "quote",
+                provider: "code",
+                resolve: () => code.quote(input.quoteInput),
+              }),
+            ],
+            { concurrency: "inherit" }
+          ).pipe(Effect.map(collectDiscountCandidates))
       );
 
       const resolveAcceptedCandidates = Effect.fn(
         "DiscountService.resolveAcceptedCandidates"
-      )((input: DiscountAffirmationInput) =>
-        Effect.all(
-          [
-            recoverDiscountResolution(calendar.revalidate(input), {
-              operation: "affirm",
-              provider: "calendar",
-            }),
-            recoverDiscountResolution(customer.resolve(input), {
-              operation: "affirm",
-              provider: "customer",
-            }),
-            recoverDiscountResolution(code.revalidate(input), {
-              operation: "affirm",
-              provider: "code",
-            }),
-          ],
-          { concurrency: "inherit" }
-        ).pipe(
-          Effect.map(collectDiscountCandidates),
-          Effect.map((candidates) =>
-            selectAcceptedCandidates({
-              acceptedDiscountIds: input.acceptedDiscountIds,
-              candidates,
-            })
+      )(
+        (input: {
+          readonly affirmationInput: DiscountAffirmationInput;
+          readonly releaseGates: DiscountReleaseGates;
+        }) =>
+          Effect.all(
+            [
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.calendarSales,
+                operation: "affirm",
+                provider: "calendar",
+                resolve: () => calendar.revalidate(input.affirmationInput),
+              }),
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.customerDiscounts,
+                operation: "affirm",
+                provider: "customer",
+                resolve: () => customer.resolve(input.affirmationInput),
+              }),
+              recoverGatedDiscountResolution({
+                enabled: input.releaseGates.discountCodes,
+                operation: "affirm",
+                provider: "code",
+                resolve: () => code.revalidate(input.affirmationInput),
+              }),
+            ],
+            { concurrency: "inherit" }
+          ).pipe(
+            Effect.map(collectDiscountCandidates),
+            Effect.map((candidates) =>
+              selectAcceptedCandidates({
+                acceptedDiscountIds: input.affirmationInput.acceptedDiscountIds,
+                candidates,
+              })
+            )
           )
-        )
       );
 
       const quote = Effect.fn("DiscountService.quote")(
         (input: DiscountQuoteInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("candidates", resolveQuoteCandidates),
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "quote" })
+            ),
+            Effect.bind("candidates", ({ releaseGates }) =>
+              resolveQuoteCandidates({ quoteInput: input, releaseGates })
+            ),
             Effect.bind("calculation", calculateDiscounts),
             Effect.tap(logDiscountResolution),
             Effect.map(({ calculation }) => calculation.quote)
@@ -111,7 +142,15 @@ export class DiscountService extends Context.Service<
       const affirm = Effect.fn("DiscountService.affirm")(
         (input: DiscountAffirmationInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("candidates", resolveAcceptedCandidates),
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "affirm" })
+            ),
+            Effect.bind("candidates", ({ releaseGates }) =>
+              resolveAcceptedCandidates({
+                affirmationInput: input,
+                releaseGates,
+              })
+            ),
             Effect.bind("calculation", calculateDiscounts),
             Effect.tap(logDiscountResolution),
             Effect.map(({ calculation }) => ({
@@ -128,6 +167,25 @@ export class DiscountService extends Context.Service<
     })
   );
 }
+
+const recoverGatedDiscountResolution = (input: {
+  readonly enabled: boolean;
+  readonly operation: "quote" | "affirm";
+  readonly provider: "calendar" | "customer" | "code";
+  readonly resolve: () => Effect.Effect<
+    readonly DiscountCandidate[],
+    DiscountResolutionFailure
+  >;
+}) =>
+  Effect.suspend(input.resolve).pipe(
+    Effect.when(Effect.succeed(input.enabled)),
+    Effect.map(Option.getOrElse(() => [])),
+    (effect) =>
+      recoverDiscountResolution(effect, {
+        operation: input.operation,
+        provider: input.provider,
+      })
+  );
 
 const collectDiscountCandidates = (
   candidatesByProvider: readonly Option.Option<readonly DiscountCandidate[]>[]
