@@ -5,8 +5,8 @@ import {
   GoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer } from "effect";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 const fullMarker = "[workspace:full]";
 const partialMarker = "[workspace:partial]";
@@ -195,12 +195,12 @@ const getExclusiveMidnightEndDate = (event: GoogleCalendarEvent) => {
 const toWorkspaceZonedDateTime = (dateTime: string, timeZone?: string) => {
   try {
     return Temporal.Instant.from(dateTime).toZonedDateTimeISO(
-      reservationTimeZone
+      workspaceSiteConstants.location.timeZone
     );
   } catch {
     return Temporal.PlainDateTime.from(dateTime)
-      .toZonedDateTime(timeZone ?? reservationTimeZone)
-      .withTimeZone(reservationTimeZone);
+      .toZonedDateTime(timeZone ?? workspaceSiteConstants.location.timeZone)
+      .withTimeZone(workspaceSiteConstants.location.timeZone);
   }
 };
 

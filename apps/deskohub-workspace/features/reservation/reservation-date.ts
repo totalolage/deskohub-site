@@ -1,17 +1,17 @@
 import type { Locale } from "@/features/i18n";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
-export const reservationTimeZone = workspaceSiteConstants.location.timeZone;
-
 const getCurrentPragueDate = () =>
-  Temporal.Now.zonedDateTimeISO(reservationTimeZone).toPlainDate().toString();
+  Temporal.Now.zonedDateTimeISO(workspaceSiteConstants.location.timeZone)
+    .toPlainDate()
+    .toString();
 
 export const isTodayOrFuturePragueDate = (date: string) =>
   date >= getCurrentPragueDate();
 
 const reservationDisplayDateFormatOptions = {
   dateStyle: "full",
-  timeZone: reservationTimeZone,
+  timeZone: workspaceSiteConstants.location.timeZone,
 } satisfies Intl.DateTimeFormatOptions;
 
 export const parseReservationInputDate = (date: Date | string) => {

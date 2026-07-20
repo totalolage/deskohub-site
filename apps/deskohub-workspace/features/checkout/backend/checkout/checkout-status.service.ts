@@ -25,8 +25,8 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   ProviderPaymentFinalizationService,
   ProviderPaymentFinalizationServiceLiveWithDependencies,
@@ -135,7 +135,7 @@ const toPragueReservationDate = (startDate: string | number) => {
         : Temporal.Instant.from(startDate);
 
     return instant
-      .toZonedDateTimeISO(reservationTimeZone)
+      .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
       .toPlainDate()
       .toString();
   } catch {

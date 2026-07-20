@@ -24,7 +24,6 @@ import {
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
@@ -32,6 +31,7 @@ import {
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getReservationDate,
   isSingleDayReservationInterval,
@@ -171,7 +171,7 @@ const implementation = Effect.gen(function* () {
       const selectedDate = reservation
         ? getReservationDate({
             interval: reservation,
-            timeZone: reservationTimeZone,
+            timeZone: workspaceSiteConstants.location.timeZone,
           })
         : undefined;
       yield* Effect.annotateLogsScoped({ dates, selectedDate });
@@ -540,12 +540,12 @@ const normalizeCoworkAvailabilityInterval = (date: string) =>
 const getAvailabilityTouchedDateRange = (input: ReservationInterval) => {
   const from = getReservationDate({
     interval: input,
-    timeZone: reservationTimeZone,
+    timeZone: workspaceSiteConstants.location.timeZone,
   });
   const to = Temporal.Instant.fromEpochMilliseconds(
     Temporal.Instant.from(input.endsAt).epochMilliseconds - 1
   )
-    .toZonedDateTimeISO(reservationTimeZone)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
 

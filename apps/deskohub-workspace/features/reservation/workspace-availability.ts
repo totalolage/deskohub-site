@@ -9,7 +9,6 @@ import {
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   type ReservationInterval,
   reservationIntervalSchema,
@@ -19,6 +18,7 @@ import {
   coworkReservationKind,
   meetingRoomReservationKind,
 } from "@/features/reservation/reservation-kind";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { isPlainDateString } from "@/shared/utils/temporal";
 
 const workspaceAvailabilityQueryBaseFields = {
@@ -107,7 +107,7 @@ const workspaceAvailabilityIntervalSchema = Schema.toStandardSchemaV1(
 );
 
 const pragueDateFormatter = new Intl.DateTimeFormat("en-CA", {
-  timeZone: reservationTimeZone,
+  timeZone: workspaceSiteConstants.location.timeZone,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",

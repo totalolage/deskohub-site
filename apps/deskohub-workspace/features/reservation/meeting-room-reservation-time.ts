@@ -3,8 +3,8 @@ import {
   isWorkspaceMeetingRoomDuration,
   type WorkspaceMeetingRoomDurationMinutes,
 } from "@/features/checkout/product-catalog";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval-domain";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
   localDateTimeSchema,
@@ -15,7 +15,9 @@ const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
 const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
   (startDateTime: typeof localDateTimeSchema.Type) =>
     Temporal.PlainDateTime.from(startDateTime)
-      .toZonedDateTime(reservationTimeZone, { disambiguation: "reject" })
+      .toZonedDateTime(workspaceSiteConstants.location.timeZone, {
+        disambiguation: "reject",
+      })
       .toInstant()
 );
 
@@ -25,7 +27,7 @@ export const getEarliestMeetingRoomStartDateTime = (
 ) => {
   const earliestStart = now
     .subtract({ minutes: durationMinutes })
-    .toZonedDateTimeISO(reservationTimeZone);
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone);
   const wholeHour = earliestStart.with({
     minute: 0,
     second: 0,
@@ -69,7 +71,7 @@ export const getMeetingRoomAvailabilityToDate = ({
   );
 
   return lastTouchedInstant
-    .toZonedDateTimeISO(reservationTimeZone)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
 };

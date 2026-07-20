@@ -1,14 +1,16 @@
 import { and, count, eq, gt, or, sql } from "drizzle-orm";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import { discountCodeCustomers, discountCodeRedemptions } from "@/db/schema";
-import type { TemporalInstant } from "@/shared/utils";
 import type { DiscountCodeId } from "./persistence-contracts";
+
+type DiscountCodeAvailabilityTimestamp =
+  (typeof discountCodeRedemptions.$inferSelect)["reservationExpiresAt"];
 
 export const buildDiscountCodeAvailabilityQueries = (input: {
   readonly db: WorkspaceDatabaseClient;
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: string;
-  readonly at: TemporalInstant;
+  readonly at: DiscountCodeAvailabilityTimestamp;
 }) => ({
   allowlist: input.db
     .select({

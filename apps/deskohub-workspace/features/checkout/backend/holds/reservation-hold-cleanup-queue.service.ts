@@ -155,8 +155,7 @@ const isDueReservation = (
   reservation !== null &&
   dueReservationStates.includes(reservation?.reservationState ?? "") &&
   reservation.paymentState !== "paid" &&
-  reservation.reservationHoldExpiresAt?.equals(reservationHoldExpiresAt) ===
-    true &&
+  reservation.reservationHoldExpiresAt?.equals(reservationHoldExpiresAt) &&
   Temporal.Instant.compare(reservation.reservationHoldExpiresAt, now) <= 0;
 
 export const processReservationHoldCleanupScheduleMessage = Effect.fn(

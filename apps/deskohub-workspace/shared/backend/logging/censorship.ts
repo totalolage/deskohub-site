@@ -4,6 +4,7 @@ import {
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Logger, type LogLevel, References } from "effect";
 import { after } from "next/server";
 import {
@@ -210,18 +211,11 @@ const censorUrlString = (value: string) => {
 
 const isEffectDrizzleQueryError = (
   value: unknown
-): value is Error & {
-  readonly _tag: "EffectDrizzleQueryError";
-  readonly query: string;
-  readonly params: readonly unknown[];
-} =>
-  value instanceof Error &&
+): value is EffectDrizzleQueryError =>
+  typeof value === "object" &&
+  value !== null &&
   "_tag" in value &&
-  value._tag === "EffectDrizzleQueryError" &&
-  "query" in value &&
-  typeof value.query === "string" &&
-  "params" in value &&
-  Array.isArray(value.params);
+  value._tag === "EffectDrizzleQueryError";
 
 const censorQueryParameter = (
   value: unknown,
