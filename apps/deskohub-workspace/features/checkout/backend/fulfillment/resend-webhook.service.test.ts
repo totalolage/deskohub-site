@@ -168,14 +168,19 @@ const processWebhookEffect = async (input: {
       },
     });
   }).pipe(
-    Effect.provide(ResendWebhookServiceLive),
     Effect.provide(
-      Layer.succeed(WorkspaceReservationRepository, input.reservations)
-    ),
-    Effect.provide(
-      Layer.succeed(PostHogEventService, { capture: () => Effect.void })
-    ),
-    Effect.provide(Layer.succeed(ResendWebhookRuntimeConfig, config))
+      ResendWebhookServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(WorkspaceReservationRepository, input.reservations),
+            Layer.succeed(PostHogEventService, {
+              capture: () => Effect.void,
+            }),
+            Layer.succeed(ResendWebhookRuntimeConfig, config)
+          )
+        )
+      )
+    )
   );
 };
 
@@ -400,7 +405,7 @@ describe("ResendWebhookService", () => {
     const emailService: EmailService = {
       send,
       sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: mock(() => Effect.succeed(true)),
+      verify: Effect.succeed(true),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -450,10 +455,17 @@ describe("ResendWebhookService", () => {
         } as never,
       });
     }).pipe(
-      Effect.provide(WorkspaceReservationEmailServiceLive),
-      Effect.provide(Layer.succeed(EmailServiceTag, emailService)),
-      Effect.provide(Layer.succeed(EmailConfigTag, emailConfig)),
-      Effect.provide(WorkspaceCheckoutNetworkDetailsService.Live),
+      Effect.provide(
+        WorkspaceReservationEmailServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(EmailServiceTag, emailService),
+              Layer.succeed(EmailConfigTag, emailConfig),
+              WorkspaceCheckoutNetworkDetailsService.Live
+            )
+          )
+        )
+      ),
       Effect.runPromise
     );
 
@@ -750,19 +762,23 @@ describe("ResendWebhookService", () => {
       const service = yield* WorkspacePaidFulfillmentService;
       return yield* service.fulfillPaidOrder({ orderId: "reservation-id" });
     }).pipe(
-      Effect.provide(WorkspacePaidFulfillmentServiceLive),
       Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, reservations)
-      ),
-      Effect.provide(Layer.succeed(DotyposService, dotypos)),
-      Effect.provide(
-        Layer.succeed(WorkspaceReservationService, workspaceReservations)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspaceReservationEmailService, reservationEmails)
-      ),
-      Effect.provide(
-        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
+        WorkspacePaidFulfillmentServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(WorkspaceReservationRepository, reservations),
+              Layer.succeed(DotyposService, dotypos),
+              Layer.succeed(WorkspaceReservationService, workspaceReservations),
+              Layer.succeed(
+                WorkspaceReservationEmailService,
+                reservationEmails
+              ),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              })
+            )
+          )
+        )
       ),
       Effect.runPromise
     );
@@ -793,11 +809,12 @@ describe("ResendWebhookService", () => {
       },
     };
 
-    const provider = await Effect.gen(function* () {
-      return yield* EmailProviderTag;
-    }).pipe(
-      Effect.provide(ResendEmailProviderLive),
-      Effect.provide(Layer.succeed(EmailConfigTag, emailConfig)),
+    const provider = await EmailProviderTag.pipe(
+      Effect.provide(
+        ResendEmailProviderLive.pipe(
+          Layer.provide(Layer.succeed(EmailConfigTag, emailConfig))
+        )
+      ),
       Effect.runPromise
     );
 

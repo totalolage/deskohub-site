@@ -38,7 +38,7 @@ export class PostHogFeatureFlagContractFile extends Context.Service<
 }
 
 interface IPostHogFeatureFlagSync {
-  readonly run: () => Effect.Effect<
+  readonly run: Effect.Effect<
     PostHogFeatureFlagSyncResult,
     PostHogFeatureFlagError
   >;
@@ -55,21 +55,19 @@ export class PostHogFeatureFlagSync extends Context.Service<
       const contractFile = yield* PostHogFeatureFlagContractFile;
 
       return {
-        run: () =>
-          syncPostHogFeatureFlagContract({
-            contractFile,
-            definitions: featureFlags.listDefinitions(),
-          }),
+        run: syncPostHogFeatureFlagContract({
+          contractFile,
+          definitions: featureFlags.listDefinitions,
+        }),
       } satisfies IPostHogFeatureFlagSync;
     })
   );
 }
 
-export const runPostHogFeatureFlagSync = () =>
-  Effect.gen(function* () {
-    const sync = yield* PostHogFeatureFlagSync;
-    return yield* sync.run();
-  });
+export const runPostHogFeatureFlagSync = Effect.gen(function* () {
+  const sync = yield* PostHogFeatureFlagSync;
+  return yield* sync.run;
+});
 
 export const syncPostHogFeatureFlagContract = ({
   contractFile,

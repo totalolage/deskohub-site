@@ -17,7 +17,7 @@ describe("StandaloneEmailServiceLayer", () => {
     const result = await Effect.runPromise(
       Effect.gen(function* () {
         const email = yield* EmailServiceTag;
-        return yield* email.verify();
+        return yield* email.verify;
       }).pipe(
         Effect.provide(
           StandaloneEmailServiceLayer.pipe(

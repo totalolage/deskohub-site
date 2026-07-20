@@ -23,15 +23,15 @@ test("decodes Standard Schema input, runs with layers, and preserves public erro
   const seen = mock((value: number) => value);
 
   const action = createEffectSafeAction(
-    Schema.toStandardSchemaV1(Schema.NumberFromString),
+    Schema.toStandardSchemaV1(Schema.FiniteFromString),
     (input) =>
       Effect.gen(function* () {
         seen(input);
         const multiplier = yield* TestMultiplier;
         if (input === 13) {
-          return yield* Effect.fail(
-            new PublicSafeActionError({ message: "public failure" })
-          );
+          return yield* new PublicSafeActionError({
+            message: "public failure",
+          });
         }
 
         return input * multiplier.multiplyBy;

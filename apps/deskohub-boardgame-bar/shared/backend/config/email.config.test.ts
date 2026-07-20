@@ -6,9 +6,7 @@ import { EmailConfigLayer } from "./email.config";
 
 const readConfig = (env: Record<string, string>) =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* EmailConfigTag;
-    }).pipe(
+    EmailConfigTag.pipe(
       Effect.provide(EmailConfigLayer),
       Effect.provideService(
         ConfigProvider.ConfigProvider,

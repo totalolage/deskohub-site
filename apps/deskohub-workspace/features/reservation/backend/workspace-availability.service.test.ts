@@ -3,6 +3,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
+import { DatabaseError } from "@/db/database.service";
 import "@/shared/polyfills/temporal";
 import {
   GoogleCalendarWorkspaceLimitationsService,
@@ -107,36 +108,43 @@ const runWithInventory = async <A>(
   const availability = await import("./workspace-availability.service");
 
   return effect.pipe(
-    Effect.provide(availability.WorkspaceAvailabilityService.Live),
     Effect.provide(
-      Layer.succeed(DotyposService, {
-        getTables: mock(() =>
-          Effect.succeed([...(input.tables ?? defaultTables)])
-        ),
-        listReservations: mock(() =>
-          Effect.succeed([...(input.reservations ?? [])])
-        ),
-      })
-    ),
-    Effect.provide(
-      Layer.succeed(GoogleCalendarWorkspaceLimitationsService, {
-        listLimitations: mock(() =>
-          Effect.succeed([...(input.limitations ?? [])])
-        ),
-      })
-    ),
-    Effect.provide(
-      Layer.succeed(WorkspaceReservationRepository, {
-        selectExpiredHoldDotyposReservationIds: mock(() => {
-          if (input.expiredHoldDotyposReservationIdsError) {
-            return Effect.fail(new Error("expired hold filter failed"));
-          }
+      availability.WorkspaceAvailabilityService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(DotyposService, {
+              getTables: mock(() =>
+                Effect.succeed([...(input.tables ?? defaultTables)])
+              ),
+              listReservations: mock(() =>
+                Effect.succeed([...(input.reservations ?? [])])
+              ),
+            }),
+            Layer.succeed(GoogleCalendarWorkspaceLimitationsService, {
+              listLimitations: mock(() =>
+                Effect.succeed([...(input.limitations ?? [])])
+              ),
+            }),
+            Layer.succeed(WorkspaceReservationRepository, {
+              selectExpiredHoldDotyposReservationIds: mock(() => {
+                if (input.expiredHoldDotyposReservationIdsError) {
+                  return Effect.fail(
+                    new DatabaseError({
+                      operation:
+                        "workspaceReservations.selectExpiredHoldDotyposReservationIds",
+                      cause: new Error("expired hold filter failed"),
+                    })
+                  );
+                }
 
-          return Effect.succeed([
-            ...(input.expiredHoldDotyposReservationIds ?? []),
-          ]);
-        }),
-      } as never)
+                return Effect.succeed([
+                  ...(input.expiredHoldDotyposReservationIds ?? []),
+                ]);
+              }),
+            } as never)
+          )
+        )
+      )
     ),
     Effect.runPromise
   );

@@ -1,4 +1,4 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { after } from "next/server";
 import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
 
@@ -7,6 +7,12 @@ interface IPostResponseTaskService {
     task: Effect.Effect<void, never, never>
   ) => Effect.Effect<void>;
 }
+
+class PostResponseTaskSchedulingError extends Data.TaggedError(
+  "PostResponseTaskSchedulingError"
+)<{
+  readonly cause: unknown;
+}> {}
 
 export class PostResponseTaskService extends Context.Service<
   PostResponseTaskService,
@@ -18,7 +24,7 @@ export class PostResponseTaskService extends Context.Service<
         try: () => {
           after(() => runWorkspaceEffect(task));
         },
-        catch: (cause) => cause,
+        catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
       }).pipe(
         Effect.tapError((cause) =>
           Effect.logWarning("Post-response task could not be scheduled", {

@@ -38,8 +38,12 @@ const runContactSubmission = async (options?: {
     locale: "en-US",
     submittedValues,
   }).pipe(
-    Effect.provide(BotProtectionServiceMock({ verifyHuman })),
-    Effect.provide(Layer.succeed(ContactService, { submit }))
+    Effect.provide(
+      Layer.mergeAll(
+        BotProtectionServiceMock({ verifyHuman }),
+        Layer.succeed(ContactService, { submit })
+      )
+    )
   );
 
   return { effect, verifyHuman, submit };

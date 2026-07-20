@@ -38,7 +38,9 @@ describe("execute", () => {
   test("preserves Next redirect control-flow defects", async () => {
     await expect(
       execute(Effect.sync(() => redirect("/target")))
-    ).rejects.toMatchObject({ digest: expect.stringContaining("NEXT_REDIRECT") });
+    ).rejects.toMatchObject({
+      digest: expect.stringContaining("NEXT_REDIRECT"),
+    });
   });
 
   test("preserves Next notFound control-flow defects", async () => {
@@ -54,7 +56,12 @@ describe("execute", () => {
     });
 
     await expect(
-      execute(Effect.provide(effect, Layer.succeed(TestService, { value: "provided" })))
+      execute(
+        Effect.provide(
+          effect,
+          Layer.succeed(TestService, { value: "provided" })
+        )
+      )
     ).resolves.toBe("provided");
   });
 
@@ -64,9 +71,7 @@ describe("execute", () => {
     await expect(
       execute(
         Effect.provide(
-          Effect.gen(function* () {
-            return yield* TestService;
-          }),
+          TestService,
           Layer.effect(TestService, Effect.fail("setup"))
         ),
         {

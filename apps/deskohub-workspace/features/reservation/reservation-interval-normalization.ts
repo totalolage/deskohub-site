@@ -30,12 +30,10 @@ export const normalizeReservationIntervalFields = Effect.fn(
   const durationMinutes = getDurationMinutes(interval);
 
   if (durationMinutes <= 0) {
-    return yield* Effect.fail(
-      new ReservationIntervalValidationError({
-        path: "endsAt",
-        message: "Reservation end time must be after start time.",
-      })
-    );
+    return yield* new ReservationIntervalValidationError({
+      path: "endsAt",
+      message: "Reservation end time must be after start time.",
+    });
   }
 
   return interval;

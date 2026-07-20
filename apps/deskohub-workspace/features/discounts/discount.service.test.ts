@@ -91,9 +91,11 @@ const runWithProviders = <A, E>(
   > = allReleaseGatesEnabled
 ) =>
   effect.pipe(
-    Effect.provide(DiscountService.Live),
-    Effect.provide(providers),
-    Effect.provide(releaseGates),
+    Effect.provide(
+      DiscountService.Live.pipe(
+        Layer.provide(Layer.mergeAll(providers, releaseGates))
+      )
+    ),
     Effect.runPromise
   );
 

@@ -1,8 +1,25 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 
-let send = mock(async () => ({ data: { id: "resend-id" } }));
-let listDomains = mock(async () => ({ data: [] }));
+type SendResponse =
+  | { readonly data: { readonly id: string }; readonly error?: never }
+  | {
+      readonly data?: never;
+      readonly error: {
+        readonly message: string;
+        readonly statusCode?: number;
+      };
+    };
+type SendImplementation = () => Promise<SendResponse>;
+type ListDomainsResponse =
+  | { readonly data: readonly unknown[]; readonly error?: never }
+  | { readonly data?: never; readonly error: { readonly message: string } };
+type ListDomainsImplementation = () => Promise<ListDomainsResponse>;
+
+let send = mock<SendImplementation>(async () => ({
+  data: { id: "resend-id" },
+}));
+let listDomains = mock<ListDomainsImplementation>(async () => ({ data: [] }));
 
 mock.module("resend", () => ({
   Resend: class {
@@ -14,9 +31,13 @@ mock.module("resend", () => ({
 const { ResendEmailProviderLive } = await import("./resend-provider");
 const { EmailConfigTag, EmailProviderTag } = await import("../service");
 
+type EmailProviderRequirement = import("../service").EmailProviderTag;
+
 beforeEach(() => {
-  send = mock(async () => ({ data: { id: "resend-id" } }));
-  listDomains = mock(async () => ({ data: [] }));
+  send = mock<SendImplementation>(async () => ({
+    data: { id: "resend-id" },
+  }));
+  listDomains = mock<ListDomainsImplementation>(async () => ({ data: [] }));
 });
 
 const config = {
@@ -25,11 +46,16 @@ const config = {
   apiKey: "api-key",
 };
 
-const runProvider = <A, E>(effect: Effect.Effect<A, E, EmailProviderTag>) =>
+const runProvider = <A, E>(
+  effect: Effect.Effect<A, E, EmailProviderRequirement>
+) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provide(ResendEmailProviderLive),
-      Effect.provide(Layer.succeed(EmailConfigTag, config))
+      Effect.provide(
+        ResendEmailProviderLive.pipe(
+          Layer.provide(Layer.succeed(EmailConfigTag, config))
+        )
+      )
     )
   );
 
@@ -46,7 +72,7 @@ describe("ResendEmailProvider", () => {
       { statusCode: 400, message: "Bad request" },
       { message: "Invalid API key" },
     ]) {
-      send = mock(async () => ({ error }));
+      send = mock<SendImplementation>(async () => ({ error }));
       const result = await runProvider(
         Effect.gen(function* () {
           const provider = yield* EmailProviderTag;
@@ -68,7 +94,7 @@ describe("ResendEmailProvider", () => {
         throw new Error("network down");
       },
     ]) {
-      send = mock(failure);
+      send = mock<SendImplementation>(failure);
       const result = await runProvider(
         Effect.gen(function* () {
           const provider = yield* EmailProviderTag;
@@ -99,12 +125,14 @@ describe("ResendEmailProvider", () => {
   });
 
   test("verify fails when Resend returns an error", async () => {
-    listDomains = mock(async () => ({ error: { message: "Invalid API key" } }));
+    listDomains = mock<ListDomainsImplementation>(async () => ({
+      error: { message: "Invalid API key" },
+    }));
 
     const result = await runProvider(
       Effect.gen(function* () {
         const provider = yield* EmailProviderTag;
-        return yield* provider.verify().pipe(Effect.result);
+        return yield* provider.verify.pipe(Effect.result);
       })
     );
 
@@ -116,15 +144,16 @@ describe("ResendEmailProvider", () => {
 
   test("layer fails when EMAIL_API_KEY is missing", async () => {
     const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* EmailProviderTag;
-      }).pipe(
-        Effect.provide(ResendEmailProviderLive),
+      EmailProviderTag.pipe(
         Effect.provide(
-          Layer.succeed(EmailConfigTag, {
-            provider: "resend" as const,
-            defaultFrom: { email: "deskohub@example.test" },
-          })
+          ResendEmailProviderLive.pipe(
+            Layer.provide(
+              Layer.succeed(EmailConfigTag, {
+                provider: "resend" as const,
+                defaultFrom: { email: "deskohub@example.test" },
+              })
+            )
+          )
         ),
         Effect.result
       )

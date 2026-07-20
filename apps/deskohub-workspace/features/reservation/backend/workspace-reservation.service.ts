@@ -81,13 +81,11 @@ export class WorkspaceReservationService extends Context.Service<
       )(function* (reservation: WorkspaceReservation) {
         const dotyposReservationId = reservation.dotyposReservationId?.trim();
         if (!dotyposReservationId) {
-          return yield* Effect.fail(
-            new WorkspaceReservationDetailsError({
-              reservationId: reservation.id,
-              errorCode: "dotypos_reservation_missing",
-              message: "Workspace reservation has no Dotypos reservation ID.",
-            })
-          );
+          return yield* new WorkspaceReservationDetailsError({
+            reservationId: reservation.id,
+            errorCode: "dotypos_reservation_missing",
+            message: "Workspace reservation has no Dotypos reservation ID.",
+          });
         }
 
         return yield* Effect.all(
@@ -127,21 +125,19 @@ export class WorkspaceReservationService extends Context.Service<
           });
 
           if (Temporal.Instant.compare(reservedUntil, reservedFrom) <= 0) {
-            return yield* Effect.fail(
-              new WorkspaceReservationDetailsError({
-                reservationId: reservation.id,
-                errorCode: "dotypos_reservation_date_invalid",
-                message:
-                  "Workspace Dotypos reservation end date must be after start date.",
-              })
-            );
+            return yield* new WorkspaceReservationDetailsError({
+              reservationId: reservation.id,
+              errorCode: "dotypos_reservation_date_invalid",
+              message:
+                "Workspace Dotypos reservation end date must be after start date.",
+            });
           }
 
           const tableName = getReservationTableName(
             dotyposReservationDetails.reservation,
             tables
           );
-          const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled();
+          const seatingMapEnabled = yield* seatingMapFeatureFlag.isEnabled;
           const tableMap = seatingMapEnabled
             ? getWorkspaceTableMap(
                 dotyposReservationDetails.reservation,
@@ -172,13 +168,11 @@ export class WorkspaceReservationService extends Context.Service<
           function* (id) {
             const reservation = yield* loadReservation(id);
             if (!reservation) {
-              return yield* Effect.fail(
-                new WorkspaceReservationDetailsError({
-                  reservationId: id,
-                  errorCode: "reservation_load_failed",
-                  message: "Workspace reservation was not found.",
-                })
-              );
+              return yield* new WorkspaceReservationDetailsError({
+                reservationId: id,
+                errorCode: "reservation_load_failed",
+                message: "Workspace reservation was not found.",
+              });
             }
             return yield* buildDetails(reservation);
           }

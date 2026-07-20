@@ -70,23 +70,6 @@ const handleResendWebhookProcessingError = Effect.fn(
   );
 });
 
-const handleResendWebhookRouteError = Effect.fn(
-  "handleResendWebhookRouteError"
-)(function* (cause: unknown) {
-  yield* Effect.logError("Resend webhook route failed", { cause });
-  yield* Effect.logWarning("Resend webhook response will trigger retry", {
-    errorCode: "resend_webhook_internal_error",
-  });
-
-  return NextResponse.json(
-    {
-      error: "Webhook processing failed",
-      code: "resend_webhook_internal_error",
-    },
-    { status: 500 }
-  );
-});
-
 /**
  * POST /api/webhooks/resend
  *
@@ -110,8 +93,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       Effect.catchTag(
         "ResendWebhookProcessingError",
         handleResendWebhookProcessingError
-      ),
-      Effect.catch(handleResendWebhookRouteError)
+      )
     )
   );
 }

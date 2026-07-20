@@ -75,11 +75,20 @@ const runWithProvider = <A, E>(
   loadById: IDiscountDefinitionRepository["loadById"] = defaultLoadById
 ) =>
   effect.pipe(
-    Effect.provide(CalendarDiscountProvider.Live),
-    Effect.provide(GoogleCalendarServiceMock({ listEvents })),
-    Effect.provide(DiscountDefinitionRepositoryMock({ loadById })),
-    Effect.provide(resourceConfigLayer),
-    Effect.provide(TestClock.layer()),
+    Effect.provide(
+      Layer.mergeAll(
+        CalendarDiscountProvider.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              GoogleCalendarServiceMock({ listEvents }),
+              DiscountDefinitionRepositoryMock({ loadById }),
+              resourceConfigLayer
+            )
+          )
+        ),
+        TestClock.layer()
+      )
+    ),
     Effect.runPromise
   );
 

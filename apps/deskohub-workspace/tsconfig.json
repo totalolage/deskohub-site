@@ -2,6 +2,14 @@
   "$schema": "../../node_modules/@effect/tsgo/schema.json",
   "extends": "../../tsconfig.json",
   "compilerOptions": {
+    "plugins": [
+      {
+        "name": "next"
+      },
+      {
+        "name": "@effect/language-service"
+      }
+    ],
     "paths": {
       "@/*": ["./*"]
     }

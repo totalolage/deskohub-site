@@ -109,7 +109,7 @@ const failOnVerificationMismatch = Effect.fn(
       verification: input.verification,
     });
 
-    yield* failAfterMarkingEvent(
+    return yield* failAfterMarkingEvent(
       input.webhookEvents,
       { type: "eventId", eventId: input.eventId },
       new NexiWebhookProcessingError({

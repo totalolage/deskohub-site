@@ -42,11 +42,14 @@ const runWithShared = async <A, E>(
 
   return Effect.runPromise(
     makeEffect(DotyposService).pipe(
-      Effect.provide(DotyposService.DefaultWithoutDependencies),
       Effect.provide(
-        Layer.succeed(
-          SharedDotyposService,
-          sharedDotypos as SharedDotyposServiceShape
+        DotyposService.DefaultWithoutDependencies.pipe(
+          Layer.provide(
+            Layer.succeed(
+              SharedDotyposService,
+              sharedDotypos as SharedDotyposServiceShape
+            )
+          )
         )
       )
     )
@@ -78,7 +81,7 @@ describe("DotyposService.getMenuItems", () => {
       (DotyposService) =>
         Effect.gen(function* () {
           const dotypos = yield* DotyposService;
-          return yield* dotypos.getMenuItems();
+          return yield* dotypos.getMenuItems;
         }),
       {
         getCategories: mock(() =>
@@ -124,7 +127,7 @@ describe("DotyposService.getMenuItems", () => {
       (DotyposService) =>
         Effect.gen(function* () {
           const dotypos = yield* DotyposService;
-          return yield* dotypos.getMenuItems();
+          return yield* dotypos.getMenuItems;
         }),
       {
         getCategories: mock(() => Effect.succeed([category({ id: "broken" })])),

@@ -296,7 +296,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
             })
           ),
           Effect.option,
-          Effect.when(seatingMapFeatureFlag.isEnabled()),
+          Effect.when(seatingMapFeatureFlag.isEnabled),
           Effect.map(Option.flatten),
           Effect.map(
             Option.map((tables) =>

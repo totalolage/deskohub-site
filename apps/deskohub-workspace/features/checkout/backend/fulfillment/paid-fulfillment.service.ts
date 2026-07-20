@@ -94,12 +94,10 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
         yield* Effect.logInfo("Paid fulfillment failure marker completed");
         yield* Effect.logFatal("Paid fulfillment failure handling completed");
 
-        return yield* Effect.fail(
-          new WorkspacePaidFulfillmentError({
-            ...input,
-            message: "Paid reservation fulfillment failed.",
-          })
-        );
+        return yield* new WorkspacePaidFulfillmentError({
+          ...input,
+          message: "Paid reservation fulfillment failed.",
+        });
       }
     );
 
@@ -339,7 +337,7 @@ export const WorkspacePaidFulfillmentServiceLiveWithDependencies =
     Layer.provide(
       Layer.provideMerge(
         WorkspaceReservationEmailServiceLive,
-        Layer.mergeAll(
+        Layer.provideMerge(
           Layer.provideMerge(StandaloneEmailServiceLayer, EmailConfigLayer),
           WorkspaceCheckoutNetworkDetailsService.Live
         )

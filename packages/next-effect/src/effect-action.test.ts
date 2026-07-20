@@ -78,7 +78,7 @@ describe("EffectAction", () => {
 
   test("runs Standard Schema decoded input", async () => {
     const action = EffectAction.fromClient(makeActionClient())
-      .inputSchema(Schema.toStandardSchemaV1(Schema.NumberFromString))
+      .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
       .action(({ parsedInput, clientInput }) =>
         Effect.succeed({ parsedInput, clientInput })
       );
@@ -96,11 +96,7 @@ describe("EffectAction", () => {
     });
     const action = client
       .inputSchema(Schema.toStandardSchemaV1(Schema.String))
-      .action(() =>
-        Effect.gen(function* () {
-          return yield* TestService;
-        })
-      );
+      .action(() => TestService);
 
     await expect(action("anything")).resolves.toEqual({
       serverError: "public",
@@ -137,7 +133,7 @@ describe("EffectAction", () => {
         );
       },
     })
-      .inputSchema(Schema.toStandardSchemaV1(Schema.NumberFromString))
+      .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
       .action(({ parsedInput }) =>
         Effect.gen(function* () {
           const service = yield* TestService;
@@ -173,11 +169,7 @@ describe("EffectAction", () => {
       },
     })
       .inputSchema(Schema.toStandardSchemaV1(Schema.String))
-      .action(() =>
-        Effect.gen(function* () {
-          return yield* TestService;
-        })
-      );
+      .action(() => TestService);
 
     await expect(action("anything")).resolves.toEqual({
       serverError: "public setup",
@@ -188,7 +180,7 @@ describe("EffectAction", () => {
 
 if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
   const action = EffectAction.fromClient(makeActionClient())
-    .inputSchema(Schema.toStandardSchemaV1(Schema.NumberFromString))
+    .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
     .action(({ parsedInput, clientInput, ctx }) => {
       const decoded: number = parsedInput;
       const raw: string = clientInput;
@@ -203,6 +195,7 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
     });
 
   action("1");
+  // biome-ignore lint/correctness/useHookAtTopLevel: Compile-time coverage intentionally exercises the hook API.
   const hook = useAction(action);
   hook.execute("1");
   void action("1").then((result) => {

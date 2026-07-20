@@ -293,11 +293,9 @@ const openFinalPayState: (
   });
 
   if (state.locale !== locale) {
-    return yield* Effect.fail(
-      new CheckoutError({
-        message: "Pay state locale does not match this checkout session.",
-      })
-    );
+    return yield* new CheckoutError({
+      message: "Pay state locale does not match this checkout session.",
+    });
   }
 
   return state;
@@ -496,11 +494,9 @@ export const CheckoutServiceLive = Layer.effect(
               "Hosted payment checkout rejected: missing legal consent"
             );
 
-            return yield* Effect.fail(
-              new CheckoutError({
-                message: "Legal consent is required before checkout.",
-              })
-            );
+            return yield* new CheckoutError({
+              message: "Legal consent is required before checkout.",
+            });
           }
 
           const state = yield* openFinalPayState(input.payStateToken, locale);
@@ -689,12 +685,10 @@ export const CheckoutServiceLive = Layer.effect(
           );
 
           if (!reservation.dotyposReservationId) {
-            return yield* Effect.fail(
-              new CheckoutError({
-                message:
-                  "Held reservation is missing its Dotypos reservation ID.",
-              })
-            );
+            return yield* new CheckoutError({
+              message:
+                "Held reservation is missing its Dotypos reservation ID.",
+            });
           }
 
           yield* dotypos.updateReservation({

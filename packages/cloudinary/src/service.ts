@@ -365,12 +365,10 @@ function createPublicIdLookupExecutor() {
   return Effect.fn("cloudinary.api.resource")(
     function* (publicId: string) {
       if (!publicId.trim()) {
-        return yield* Effect.fail(
-          new CloudinarySearchError({
-            message: "Cloudinary publicId is required",
-            expression: "public_id=",
-          })
-        );
+        return yield* new CloudinarySearchError({
+          message: "Cloudinary publicId is required",
+          expression: "public_id=",
+        });
       }
 
       yield* Effect.annotateLogsScoped({ publicId });

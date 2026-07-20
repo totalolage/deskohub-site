@@ -130,13 +130,11 @@ export class DotyposOAuthService extends Context.Service<
               }),
           });
 
-          return yield* Effect.fail(
-            new DotyposTokenExchangeError({
-              details,
-              status: tokenResponse.status,
-              statusText: tokenResponse.statusText,
-            })
-          );
+          return yield* new DotyposTokenExchangeError({
+            details,
+            status: tokenResponse.status,
+            statusText: tokenResponse.statusText,
+          });
         }
 
         const tokenData: unknown = yield* Effect.tryPromise({
@@ -149,11 +147,9 @@ export class DotyposOAuthService extends Context.Service<
         });
 
         if (!isTokenResponse(tokenData)) {
-          return yield* Effect.fail(
-            new DotyposTokenResponseError({
-              message: "Invalid token response format",
-            })
-          );
+          return yield* new DotyposTokenResponseError({
+            message: "Invalid token response format",
+          });
         }
 
         return {

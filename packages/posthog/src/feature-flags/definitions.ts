@@ -44,7 +44,7 @@ export type PostHogFeatureFlagPageSource = (input: {
 >;
 
 interface IPostHogFeatureFlagService {
-  readonly listDefinitions: () => Effect.Effect<
+  readonly listDefinitions: Effect.Effect<
     readonly PostHogFeatureFlagDefinition[],
     PostHogFeatureFlagError
   >;
@@ -73,18 +73,17 @@ export class PostHogFeatureFlagService extends Context.Service<
       const client = make(authenticatedClient);
 
       return {
-        listDefinitions: () =>
-          listPostHogFeatureFlagDefinitions(
-            config.projectId,
-            ({ limit, offset, projectId }) =>
-              client.featureFlagsList(projectId, {
-                params: {
-                  archived: "false",
-                  limit,
-                  offset,
-                },
-              })
-          ),
+        listDefinitions: listPostHogFeatureFlagDefinitions(
+          config.projectId,
+          ({ limit, offset, projectId }) =>
+            client.featureFlagsList(projectId, {
+              params: {
+                archived: "false",
+                limit,
+                offset,
+              },
+            })
+        ),
       } satisfies IPostHogFeatureFlagService;
     })
   );

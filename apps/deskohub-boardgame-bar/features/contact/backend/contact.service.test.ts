@@ -27,13 +27,16 @@ const runSubmit = (send: ReturnType<typeof mock>) =>
       const service = yield* ContactService;
       return yield* service.submit(input, "en-US");
     }).pipe(
-      Effect.provide(ContactServiceLive),
       Effect.provide(
-        Layer.succeed(EmailServiceTag, {
-          send,
-          sendTemplate: mock(() => Effect.succeed(sent("template"))),
-          verify: mock(() => Effect.succeed(true)),
-        })
+        ContactServiceLive.pipe(
+          Layer.provide(
+            Layer.succeed(EmailServiceTag, {
+              send,
+              sendTemplate: mock(() => Effect.succeed(sent("template"))),
+              verify: Effect.succeed(true),
+            })
+          )
+        )
       )
     )
   );

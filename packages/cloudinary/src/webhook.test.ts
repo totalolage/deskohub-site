@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 mock.module("server-only", () => ({}));
 
@@ -48,8 +48,11 @@ const request = (body: string, overrides: Record<string, string> = {}) =>
 
 const verifyRequest = (request: Request) =>
   verifyCloudinaryWebhookRequest(request).pipe(
-    Effect.provide(CloudinaryWebhookVerifier.Live),
-    Effect.provide(makeCloudinaryRuntimeConfigLayer(config))
+    Effect.provide(
+      CloudinaryWebhookVerifier.Live.pipe(
+        Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+      )
+    )
   );
 
 describe("verifyCloudinaryWebhookRequest", () => {

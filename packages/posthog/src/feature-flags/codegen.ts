@@ -42,9 +42,7 @@ export const generatePostHogFeatureFlagContract = Effect.fn(
       )
     );
 
-    return runPostHogFeatureFlagSync().pipe(
-      Effect.provide(featureFlagSyncLive)
-    );
+    return runPostHogFeatureFlagSync.pipe(Effect.provide(featureFlagSyncLive));
   }
 );
 

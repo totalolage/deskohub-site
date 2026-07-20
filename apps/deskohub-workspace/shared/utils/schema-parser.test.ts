@@ -7,7 +7,7 @@ describe("makeSchemaParser", () => {
   const parser = makeSchemaParser(
     Schema.Struct({
       id: Schema.String,
-      amount: Schema.Number,
+      amount: Schema.Finite,
     })
   );
 

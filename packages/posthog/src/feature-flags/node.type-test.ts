@@ -25,7 +25,7 @@ const program = featureFlags.evaluateFlags("public-site", {
 });
 
 // @ts-expect-error The generated contract rejects unknown flag keys.
-featureFlags.evaluateFlags("public-site", { flagKeys: ["seasonal_menu"] });
+void featureFlags.evaluateFlags("public-site", { flagKeys: ["seasonal_menu"] });
 
 void program;
 
@@ -43,14 +43,19 @@ const subject = {
   sendFeatureFlagEvents: true,
 } as const;
 
-service.isEnabled({ key: "meeting_room_page", subject });
-service.evaluateFlags({
+void service.isEnabled({ key: "meeting_room_page", subject });
+void service.evaluateFlags({
   options: { flagKeys: ["meeting_room_page"] },
   subject,
 });
 
 // @ts-expect-error The generated contract rejects unknown flag keys.
-service.isEnabled({ key: "seasonal_menu", subject });
+void service.isEnabled({ key: "seasonal_menu", subject });
 
-// @ts-expect-error The generated contract rejects unknown flag keys.
-service.evaluateFlags({ options: { flagKeys: ["seasonal_menu"] }, subject });
+void service.evaluateFlags({
+  options: {
+    // @ts-expect-error The generated contract rejects unknown flag keys.
+    flagKeys: ["seasonal_menu"],
+  },
+  subject,
+});

@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Effect, Option, Schema } from "effect";
+import { Effect, Layer, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
 import {
   CodeDiscountProvider,
@@ -102,19 +102,25 @@ const runWithProvider = <A, E>(
   } = {}
 ) =>
   effect.pipe(
-    Effect.provide(CodeDiscountProvider.Live),
     Effect.provide(
-      DiscountCodeRepositoryMock({
-        findByCode: options.findByCode ?? defaultFindByCode,
-        loadAvailability: options.loadAvailability ?? defaultLoadAvailability,
-      })
+      Layer.mergeAll(
+        CodeDiscountProvider.Live.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              DiscountCodeRepositoryMock({
+                findByCode: options.findByCode ?? defaultFindByCode,
+                loadAvailability:
+                  options.loadAvailability ?? defaultLoadAvailability,
+              }),
+              DiscountDefinitionRepositoryMock({
+                loadById: options.loadDefinition ?? defaultLoadDefinition,
+              })
+            )
+          )
+        ),
+        TestClock.layer()
+      )
     ),
-    Effect.provide(
-      DiscountDefinitionRepositoryMock({
-        loadById: options.loadDefinition ?? defaultLoadDefinition,
-      })
-    ),
-    Effect.provide(TestClock.layer()),
     Effect.runPromise
   );
 

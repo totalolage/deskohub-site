@@ -34,10 +34,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         },
       }),
       Effect.tapError(Effect.logError),
-      Effect.catch(() =>
-        Effect.succeed(
-          new NextResponse("Failed to generate PDF", { status: 500 })
-        )
+      Effect.orElseSucceed(
+        () => new NextResponse("Failed to generate PDF", { status: 500 })
       ),
       Effect.provideService(LocaleValue, extractLocaleFromRequest(request))
     )

@@ -4,7 +4,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
-import { Effect, Layer, Schema } from "effect";
+import { Data, Effect, Layer, Schema } from "effect";
 import {
   buildWorkspaceCheckoutQuote,
   type WorkspaceCheckoutQuote,
@@ -34,6 +34,10 @@ mock.module("server-only", () => ({}));
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
   Temporal.Instant.from(value);
+
+class CheckoutTestFailure extends Data.TaggedError("CheckoutTestFailure")<{
+  readonly message: string;
+}> {}
 
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
@@ -285,7 +289,11 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     updateProductIntent,
     markPaymentTerminal,
   } as unknown as WorkspaceReservationRepositoryType;
-  const updateReservation = mock(() => Effect.void);
+  const updateReservation = mock(
+    (_input: {
+      readonly note?: string;
+    }): Effect.Effect<void, CheckoutTestFailure> => Effect.void
+  );
   const dotypos = {
     updateReservation,
   } as unknown as typeof DotyposService.Service;
@@ -331,21 +339,24 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       locale
     );
   }).pipe(
-    Effect.provide(CheckoutServiceLive),
-    Effect.provide(DiscountServiceMock({ affirm })),
-    Effect.provide(Layer.succeed(DotyposService, dotypos)),
-    Effect.provide(Layer.succeed(NexiService, nexi)),
-    Effect.provide(Layer.succeed(WorkspaceReservationRepository, reservations)),
-    Effect.provide(Layer.succeed(PaymentAttemptRepository, paymentAttempts)),
     Effect.provide(
-      Layer.succeed(PostHogEventService, {
-        capture: mock(() => Effect.void),
-      })
-    ),
-    Effect.provide(
-      Layer.succeed(LegalEvidenceEventRepository, {
-        recordMany: mock(() => Effect.void),
-      })
+      CheckoutServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            DiscountServiceMock({ affirm }),
+            Layer.succeed(DotyposService, dotypos),
+            Layer.succeed(NexiService, nexi),
+            Layer.succeed(WorkspaceReservationRepository, reservations),
+            Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+            Layer.succeed(PostHogEventService, {
+              capture: mock(() => Effect.void),
+            }),
+            Layer.succeed(LegalEvidenceEventRepository, {
+              recordMany: mock((_input: readonly unknown[]) => Effect.void),
+            })
+          )
+        )
+      )
     )
   );
 
@@ -562,7 +573,7 @@ describe("CheckoutService", () => {
       orderId: "reservation-note-refresh-fails",
     });
     harness.updateReservation.mockImplementation(() =>
-      Effect.fail(new Error("Dotypos update failed"))
+      Effect.fail(new CheckoutTestFailure({ message: "Dotypos update failed" }))
     );
 
     const error = await Effect.runPromise(Effect.flip(harness.effect));
@@ -578,7 +589,9 @@ describe("CheckoutService", () => {
 
   test("marks HPP provider-create failures atomically for the reservation", async () => {
     const createHostedPaymentPage = mock(() =>
-      Effect.fail(new Error("provider create failed"))
+      Effect.fail(
+        new CheckoutTestFailure({ message: "provider create failed" })
+      )
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-hpp-create-fails",

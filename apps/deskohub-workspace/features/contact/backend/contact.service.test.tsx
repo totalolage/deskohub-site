@@ -33,7 +33,7 @@ describe("ContactService", () => {
     const emailService: EmailService = {
       send,
       sendTemplate: mock(() => Effect.die("sendTemplate is not used")),
-      verify: mock(() => Effect.succeed(true)),
+      verify: Effect.succeed(true),
     };
     const emailConfig: EmailProviderConfig = {
       provider: "console",
@@ -42,6 +42,15 @@ describe("ContactService", () => {
         name: "Deskohub Workspace",
       },
     };
+
+    const ContactServiceTest = ContactServiceLive.pipe(
+      Layer.provide(
+        Layer.mergeAll(
+          Layer.succeed(EmailServiceTag, emailService),
+          Layer.succeed(EmailConfigTag, emailConfig)
+        )
+      )
+    );
 
     await Effect.gen(function* () {
       const service = yield* ContactService;
@@ -54,12 +63,7 @@ describe("ContactService", () => {
         },
         "en-US"
       );
-    }).pipe(
-      Effect.provide(ContactServiceLive),
-      Effect.provide(Layer.succeed(EmailServiceTag, emailService)),
-      Effect.provide(Layer.succeed(EmailConfigTag, emailConfig)),
-      Effect.runPromise
-    );
+    }).pipe(Effect.provide(ContactServiceTest), Effect.runPromise);
 
     expect(send).toHaveBeenCalledTimes(2);
 

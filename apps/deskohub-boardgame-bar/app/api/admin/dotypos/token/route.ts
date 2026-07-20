@@ -1,8 +1,12 @@
-import { Effect } from "effect";
+import { Data, Effect } from "effect";
 import { type NextRequest, NextResponse } from "next/server";
 import { DotyposOAuthService } from "@/features/dotypos/backend/oauth.service";
 
 const LOCALE_PATTERN = /^[a-z]{2}-[A-Z]{2}$/;
+
+class RequestBodyParseError extends Data.TaggedError("RequestBodyParseError")<{
+  readonly cause: unknown;
+}> {}
 
 function isTokenRequest(
   body: unknown
@@ -47,7 +51,7 @@ export async function POST(request: NextRequest) {
       yield* Effect.logDebug("Dotypos token request body parse started");
       const body: unknown = yield* Effect.tryPromise({
         try: () => request.json() as Promise<unknown>,
-        catch: (cause) => cause,
+        catch: (cause) => new RequestBodyParseError({ cause }),
       });
       yield* Effect.logInfo("Dotypos token request body parsed");
 

@@ -2,7 +2,26 @@ import { beforeEach, describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import { GoogleCalendarRuntimeConfig } from "../config";
 
-let listEvents = mock(async () => ({ data: { items: [] } }));
+type CalendarListQuery = {
+  readonly calendarId: string;
+  readonly pageToken?: string;
+  readonly [key: string]: unknown;
+};
+
+type CalendarListResponse = {
+  readonly data: {
+    readonly items: readonly unknown[];
+    readonly nextPageToken?: string;
+  };
+};
+
+type ListEventsImplementation = (
+  params: CalendarListQuery
+) => Promise<CalendarListResponse>;
+
+let listEvents = mock<ListEventsImplementation>(async () => ({
+  data: { items: [] },
+}));
 const calendarCalls: unknown[] = [];
 const jwtCalls: unknown[] = [];
 
@@ -22,6 +41,8 @@ mock.module("@googleapis/calendar", () => ({
 
 const { GoogleCalendarService } = await import("./service");
 
+type GoogleCalendarRequirement = import("./service").GoogleCalendarService;
+
 const config = {
   serviceAccountEmail: "service@example.test",
   privateKey: "line1\\nline2",
@@ -29,24 +50,29 @@ const config = {
 };
 
 beforeEach(() => {
-  listEvents = mock(async () => ({ data: { items: [] } }));
+  listEvents = mock<ListEventsImplementation>(async () => ({
+    data: { items: [] },
+  }));
   calendarCalls.length = 0;
   jwtCalls.length = 0;
 });
 
 const runWithCalendar = <A, E>(
-  effect: Effect.Effect<A, E, GoogleCalendarService>
+  effect: Effect.Effect<A, E, GoogleCalendarRequirement>
 ) =>
   Effect.runPromise(
     effect.pipe(
-      Effect.provide(GoogleCalendarService.Live),
-      Effect.provide(Layer.succeed(GoogleCalendarRuntimeConfig, config))
+      Effect.provide(
+        GoogleCalendarService.Live.pipe(
+          Layer.provide(Layer.succeed(GoogleCalendarRuntimeConfig, config))
+        )
+      )
     )
   );
 
 describe("GoogleCalendarService", () => {
   test("paginates, expands date window, maps key newlines and events", async () => {
-    listEvents = mock(async (params: { pageToken?: string }) =>
+    listEvents = mock<ListEventsImplementation>(async (params) =>
       params.pageToken
         ? {
             data: {
@@ -142,20 +168,18 @@ describe("GoogleCalendarService", () => {
   });
 
   test("keeps concurrent paginated resource calendars isolated", async () => {
-    listEvents = mock(
-      async (params: { calendarId: string; pageToken?: string }) => ({
-        data: {
-          items: [
-            {
-              id: `${params.calendarId}-${params.pageToken ? "second" : "first"}`,
-            },
-          ],
-          ...(!params.pageToken && {
-            nextPageToken: `${params.calendarId}-next-page`,
-          }),
-        },
-      })
-    );
+    listEvents = mock<ListEventsImplementation>(async (params) => ({
+      data: {
+        items: [
+          {
+            id: `${params.calendarId}-${params.pageToken ? "second" : "first"}`,
+          },
+        ],
+        ...(!params.pageToken && {
+          nextPageToken: `${params.calendarId}-next-page`,
+        }),
+      },
+    }));
 
     const [workspaceEvents, salesEvents] = await runWithCalendar(
       Effect.gen(function* () {
@@ -210,7 +234,7 @@ describe("GoogleCalendarService", () => {
   });
 
   test("maps provider errors", async () => {
-    listEvents = mock(async () => {
+    listEvents = mock<ListEventsImplementation>(async () => {
       const error = new Error("Forbidden");
       Object.assign(error, { status: 403 });
       throw error;
@@ -242,15 +266,16 @@ describe("GoogleCalendarService", () => {
 
   test("fails empty config", async () => {
     const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* GoogleCalendarService;
-      }).pipe(
-        Effect.provide(GoogleCalendarService.Live),
+      GoogleCalendarService.pipe(
         Effect.provide(
-          Layer.succeed(GoogleCalendarRuntimeConfig, {
-            ...config,
-            privateKey: "",
-          })
+          GoogleCalendarService.Live.pipe(
+            Layer.provide(
+              Layer.succeed(GoogleCalendarRuntimeConfig, {
+                ...config,
+                privateKey: "",
+              })
+            )
+          )
         ),
         Effect.result
       )

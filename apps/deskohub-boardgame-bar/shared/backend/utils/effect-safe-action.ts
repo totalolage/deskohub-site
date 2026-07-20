@@ -1,9 +1,14 @@
 import { EffectAction } from "@deskohub/next-effect/effect-action";
-import { Duration, Effect, type Layer } from "effect";
+import { Data, Duration, Effect, type Layer } from "effect";
 import type { z } from "zod";
 import type { Locale } from "@/features/i18n";
 import { formatError } from "@/shared/utils/error-formatting";
 import { actionClient } from "@/shared/utils/safe-action-client";
+
+class SafeActionError extends Data.TaggedError("SafeActionError")<{
+  readonly cause?: unknown;
+  readonly message: string;
+}> {}
 
 export function createEffectSafeAction<I, O, E, R>(
   schema: z.ZodSchema<I>,
@@ -15,7 +20,10 @@ export function createEffectSafeAction<I, O, E, R>(
     mapError: (error) => {
       const formatted = formatError(error);
 
-      return new Error(formatted.message || "An unexpected error occurred");
+      return new SafeActionError({
+        message: formatted.message || "An unexpected error occurred",
+        cause: error,
+      });
     },
   })
     .inputSchema(schema)
@@ -42,7 +50,11 @@ export function createEffectSafeAction<I, O, E, R>(
         }),
         Effect.timeout(Duration.seconds(45)),
         Effect.catchTag("TimeoutError", () =>
-          Effect.fail(new Error("Request timed out. Please try again."))
+          Effect.fail(
+            new SafeActionError({
+              message: "Request timed out. Please try again.",
+            })
+          )
         )
       )
     );

@@ -91,19 +91,14 @@ export class WorkspaceE2ERunnerService extends Context.Service<
               "run workspace e2e workflow",
               Cause.squash(workflowExit.cause)
             );
-            return yield* Effect.fail(
-              cleanupError
-                ? workspaceE2EError(
-                    "Workspace e2e workflow and cleanup failed",
-                    {
-                      causes: [workflowFailure, cleanupError],
-                      operation: "run workspace e2e workflow",
-                    }
-                  )
-                : workflowFailure
-            );
+            return yield* cleanupError
+              ? workspaceE2EError("Workspace e2e workflow and cleanup failed", {
+                  causes: [workflowFailure, cleanupError],
+                  operation: "run workspace e2e workflow",
+                })
+              : workflowFailure;
           }
-          if (cleanupError) return yield* Effect.fail(cleanupError);
+          if (cleanupError) return yield* cleanupError;
         }),
       };
     })

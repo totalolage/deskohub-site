@@ -31,13 +31,7 @@ describe("NextEffect", () => {
       mapError: () => mapped,
     });
 
-    await expect(
-      next.run(
-        Effect.gen(function* () {
-          return yield* TestService;
-        })
-      )
-    ).rejects.toBe(mapped);
+    await expect(next.run(TestService)).rejects.toBe(mapped);
   });
 
   test("page passes props into an Effect component", async () => {

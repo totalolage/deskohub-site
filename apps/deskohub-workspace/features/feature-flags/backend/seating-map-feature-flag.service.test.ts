@@ -12,7 +12,7 @@ describe("SeatingMapFeatureFlagService", () => {
     );
     const enabled = await Effect.gen(function* () {
       const featureFlag = yield* SeatingMapFeatureFlagService;
-      return yield* featureFlag.isEnabled();
+      return yield* featureFlag.isEnabled;
     }).pipe(
       Effect.provide(SeatingMapFeatureFlagService.Live),
       Effect.provide(

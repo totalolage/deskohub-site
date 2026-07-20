@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 
 mock.module("server-only", () => ({}));
 
@@ -111,11 +111,12 @@ beforeEach(() => {
 
 const makeService = () =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      return yield* CloudinaryService;
-    }).pipe(
-      Effect.provide(CloudinaryService.Live),
-      Effect.provide(makeCloudinaryRuntimeConfigLayer(config))
+    CloudinaryService.pipe(
+      Effect.provide(
+        CloudinaryService.Live.pipe(
+          Layer.provide(makeCloudinaryRuntimeConfigLayer(config))
+        )
+      )
     )
   );
 
@@ -266,12 +267,13 @@ describe("CloudinaryService", () => {
 
   test("fails empty live config as CloudinaryConfigError", async () => {
     const result = await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* CloudinaryService;
-      }).pipe(
-        Effect.provide(CloudinaryService.Live),
+      CloudinaryService.pipe(
         Effect.provide(
-          makeCloudinaryRuntimeConfigLayer({ ...config, apiKey: "" })
+          CloudinaryService.Live.pipe(
+            Layer.provide(
+              makeCloudinaryRuntimeConfigLayer({ ...config, apiKey: "" })
+            )
+          )
         ),
         Effect.result
       )

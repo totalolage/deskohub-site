@@ -519,11 +519,9 @@ export const completeNexiHostedPayment = ({
       return;
     }
 
-    return yield* Effect.fail(
-      toWorkspaceE2EError(
-        "click Nexi back to shop",
-        Cause.squash(backToShopExit.cause)
-      )
+    return yield* toWorkspaceE2EError(
+      "click Nexi back to shop",
+      Cause.squash(backToShopExit.cause)
     );
   });
 
@@ -748,7 +746,7 @@ const clickHostedPaymentTarget = (
       options.timeoutMs ?? getWorkspaceE2ETimeoutMs("providerTransition");
     const target = yield* options.optional
       ? waitForHostedPaymentClickTarget(run, session, labels, timeoutMs).pipe(
-          Effect.catch(() => Effect.succeed(undefined))
+          Effect.orElseSucceed(() => undefined)
         )
       : waitForHostedPaymentClickTarget(run, session, labels, timeoutMs);
 

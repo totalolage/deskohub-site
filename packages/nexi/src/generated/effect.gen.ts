@@ -1,3 +1,4 @@
+// @effect-diagnostics schemaNumber:off unnecessaryTypeofType:off
 import * as Data from "effect/Data"
 import * as Effect from "effect/Effect"
 import type { SchemaError } from "effect/Schema"

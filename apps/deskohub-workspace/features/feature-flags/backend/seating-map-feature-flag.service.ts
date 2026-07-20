@@ -4,7 +4,7 @@ import { Context, Effect, Layer } from "effect";
 import { WorkspaceFeatureFlagService } from "./workspace-feature-flag.service";
 
 export interface ISeatingMapFeatureFlagService {
-  readonly isEnabled: () => Effect.Effect<boolean>;
+  readonly isEnabled: Effect.Effect<boolean>;
 }
 
 export class SeatingMapFeatureFlagService extends Context.Service<
@@ -17,17 +17,15 @@ export class SeatingMapFeatureFlagService extends Context.Service<
       const featureFlags = yield* WorkspaceFeatureFlagService;
 
       return {
-        isEnabled: Effect.fn("SeatingMapFeatureFlagService.isEnabled")(() =>
-          featureFlags
-            .isEnabled("seating_map")
-            .pipe(
-              Effect.catch((error) =>
-                Effect.logWarning(error.message, { cause: error.cause }).pipe(
-                  Effect.as(false)
-                )
+        isEnabled: featureFlags
+          .isEnabled("seating_map")
+          .pipe(
+            Effect.catch((error) =>
+              Effect.logWarning(error.message, { cause: error.cause }).pipe(
+                Effect.as(false)
               )
             )
-        ),
+          ),
       } satisfies ISeatingMapFeatureFlagService;
     })
   );

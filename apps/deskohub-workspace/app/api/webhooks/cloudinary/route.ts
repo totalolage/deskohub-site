@@ -84,26 +84,29 @@ export async function POST(request: Request): Promise<NextResponse> {
     request,
     processWebhookRequest(request).pipe(
       Effect.provide(CloudinaryWebhookVerifierLive),
-      Effect.catchTag(
-        "CloudinaryWebhookAuthError",
-        Effect.fn("logCloudinaryWebhookAuthError")(function* (error) {
-          yield* Effect.logWarning("Cloudinary webhook authentication failed", {
-            error,
-          });
+      Effect.catchTags({
+        CloudinaryWebhookAuthError: Effect.fn("logCloudinaryWebhookAuthError")(
+          function* (error) {
+            yield* Effect.logWarning(
+              "Cloudinary webhook authentication failed",
+              {
+                error,
+              }
+            );
 
-          return yield* Effect.fail(error);
-        })
-      ),
-      Effect.catchTag(
-        "CloudinaryWebhookValidationError",
-        Effect.fn("logCloudinaryWebhookValidationError")(function* (error) {
+            return yield* error;
+          }
+        ),
+        CloudinaryWebhookValidationError: Effect.fn(
+          "logCloudinaryWebhookValidationError"
+        )(function* (error) {
           yield* Effect.logWarning("Cloudinary webhook validation failed", {
             error,
           });
 
-          return yield* Effect.fail(error);
-        })
-      ),
+          return yield* error;
+        }),
+      }),
       Effect.catchTags({
         CloudinaryWebhookAuthError: (error) =>
           Effect.succeed(

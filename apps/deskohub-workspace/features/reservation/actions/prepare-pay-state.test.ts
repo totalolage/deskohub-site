@@ -85,8 +85,12 @@ const runReusableReservationScenario = async (input: {
   readonly findById?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
-  const { WorkspaceCheckoutAccessCodeService } = await import(
-    "@/features/checkout/backend/reservation"
+  const {
+    WorkspaceCheckoutAccessCodeService,
+    WorkspaceTableAssignmentService,
+  } = await import("@/features/checkout/backend/reservation");
+  const { PostHogEventService } = await import(
+    "@/shared/backend/analytics/posthog-event.service"
   );
   const { LegalEvidenceEventRepository } = await import(
     "@/features/checkout/backend/repositories"
@@ -125,56 +129,50 @@ const runReusableReservationScenario = async (input: {
   const findOrCreateCustomer = mock(() =>
     Effect.succeed({ id: "customer-id" })
   );
+  const testLayer = Layer.mergeAll(
+    DiscountServiceMock({ quote }),
+    BotProtectionServiceMock({ verifyHuman }),
+    Layer.succeed(WorkspaceAvailabilityService, {
+      getAvailability: mock(() => Effect.die("unused")),
+      ensureAvailable,
+    } satisfies IWorkspaceAvailabilityService),
+    Layer.succeed(WorkspaceReservationRepository, {
+      findByIntentKey: input.findByIntentKey,
+      createDraft,
+      claimHoldCreation,
+      findById,
+      releaseHoldCreation: mock(() => Effect.void),
+      updateProductIntent,
+      attachHold: mock(() => Effect.die("unused")),
+      markAttachFailedCancellationRequired: mock(() => Effect.void),
+    } as unknown as WorkspaceReservationRepositoryType),
+    Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+      generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+    } satisfies WorkspaceCheckoutAccessCodeServiceType),
+    Layer.succeed(LegalEvidenceEventRepository, {
+      record: mock(() => Effect.die("unused")),
+      recordMany,
+    } as unknown as LegalEvidenceEventRepositoryType),
+    Layer.succeed(ReservationHoldCleanupScheduleService, {
+      enqueueCleanup,
+    } as never),
+    Layer.succeed(WorkspaceTableAssignmentService, {
+      assignTableId: mock(() => Effect.die("unused")),
+    } satisfies WorkspaceTableAssignmentServiceType),
+    Layer.succeed(PostHogEventService, {
+      capture: mock(() => Effect.void),
+    }),
+    Layer.succeed(DotyposService, {
+      findOrCreateCustomer,
+    } as unknown as typeof DotyposService.Service)
+  );
 
   const result = await prepareWorkspacePayState({
     locale: "en-US",
     reservationIntentId: "intent-id",
     reservation,
     legalConsent: true,
-  }).pipe(
-    Effect.provide(DiscountServiceMock({ quote })),
-    Effect.provide(BotProtectionServiceMock({ verifyHuman })),
-    Effect.provide(
-      Layer.succeed(WorkspaceAvailabilityService, {
-        getAvailability: mock(() => Effect.die("unused")),
-        ensureAvailable,
-      } satisfies IWorkspaceAvailabilityService)
-    ),
-    Effect.provide(
-      Layer.succeed(WorkspaceReservationRepository, {
-        findByIntentKey: input.findByIntentKey,
-        createDraft,
-        claimHoldCreation,
-        findById,
-        releaseHoldCreation: mock(() => Effect.void),
-        updateProductIntent,
-        attachHold: mock(() => Effect.die("unused")),
-        markAttachFailedCancellationRequired: mock(() => Effect.void),
-      } as unknown as WorkspaceReservationRepositoryType)
-    ),
-    Effect.provide(
-      Layer.succeed(WorkspaceCheckoutAccessCodeService, {
-        generateCustomerAccessCode: mock(() => Effect.succeed("ACCESS-123")),
-      } satisfies WorkspaceCheckoutAccessCodeServiceType)
-    ),
-    Effect.provide(
-      Layer.succeed(LegalEvidenceEventRepository, {
-        record: mock(() => Effect.die("unused")),
-        recordMany,
-      } as unknown as LegalEvidenceEventRepositoryType)
-    ),
-    Effect.provide(
-      Layer.succeed(ReservationHoldCleanupScheduleService, {
-        enqueueCleanup,
-      } as never)
-    ),
-    Effect.provide(
-      Layer.succeed(DotyposService, {
-        findOrCreateCustomer,
-      } as unknown as typeof DotyposService.Service)
-    ),
-    Effect.runPromise
-  );
+  }).pipe(Effect.provide(testLayer), Effect.runPromise);
 
   return {
     result,
@@ -283,64 +281,50 @@ describe("prepareWorkspacePayState", () => {
         };
       })
     );
+    const testLayer = Layer.mergeAll(
+      DiscountServiceMock({ quote }),
+      BotProtectionServiceMock({ verifyHuman }),
+      Layer.succeed(WorkspaceAvailabilityService, {
+        getAvailability: mock(() => Effect.die("unused")),
+        ensureAvailable,
+      } satisfies IWorkspaceAvailabilityService),
+      Layer.succeed(WorkspaceReservationRepository, {
+        findByIntentKey: mock(() => Effect.succeed(null)),
+        createDraft,
+        claimHoldCreation,
+        attachHold,
+        findById: mock(() => Effect.succeed(null)),
+        releaseHoldCreation: mock(() => Effect.void),
+        updateProductIntent: mock(() => Effect.die("unused")),
+        markAttachFailedCancellationRequired: mock(() => Effect.void),
+      } as unknown as WorkspaceReservationRepositoryType),
+      Layer.succeed(WorkspaceCheckoutAccessCodeService, {
+        generateCustomerAccessCode: Effect.succeed("ACCESS-123"),
+      } satisfies WorkspaceCheckoutAccessCodeServiceType),
+      Layer.succeed(LegalEvidenceEventRepository, {
+        record: mock(() => Effect.die("unused")),
+        recordMany,
+      } as unknown as LegalEvidenceEventRepositoryType),
+      Layer.succeed(WorkspaceTableAssignmentService, {
+        assignTableId,
+      } satisfies WorkspaceTableAssignmentServiceType),
+      Layer.succeed(ReservationHoldCleanupScheduleService, {
+        enqueueCleanup,
+      } as never),
+      Layer.succeed(DotyposService, {
+        findOrCreateCustomer,
+        createReservation,
+      } as unknown as typeof DotyposService.Service),
+      Layer.succeed(PostHogEventService, {
+        capture: mock(() => Effect.void),
+      })
+    );
     const result = await prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
       reservation,
       legalConsent: true,
-    }).pipe(
-      Effect.provide(DiscountServiceMock({ quote })),
-      Effect.provide(BotProtectionServiceMock({ verifyHuman })),
-      Effect.provide(
-        Layer.succeed(WorkspaceAvailabilityService, {
-          getAvailability: mock(() => Effect.die("unused")),
-          ensureAvailable,
-        } satisfies IWorkspaceAvailabilityService)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, {
-          findByIntentKey: mock(() => Effect.succeed(null)),
-          createDraft,
-          claimHoldCreation,
-          attachHold,
-          findById: mock(() => Effect.succeed(null)),
-          releaseHoldCreation: mock(() => Effect.void),
-          updateProductIntent: mock(() => Effect.die("unused")),
-          markAttachFailedCancellationRequired: mock(() => Effect.void),
-        } as unknown as WorkspaceReservationRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspaceCheckoutAccessCodeService, {
-          generateCustomerAccessCode: mock(() => Effect.succeed("ACCESS-123")),
-        } satisfies WorkspaceCheckoutAccessCodeServiceType)
-      ),
-      Effect.provide(
-        Layer.succeed(LegalEvidenceEventRepository, {
-          record: mock(() => Effect.die("unused")),
-          recordMany,
-        } as unknown as LegalEvidenceEventRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspaceTableAssignmentService, {
-          assignTableId,
-        } satisfies WorkspaceTableAssignmentServiceType)
-      ),
-      Effect.provide(
-        Layer.succeed(ReservationHoldCleanupScheduleService, {
-          enqueueCleanup,
-        } as never)
-      ),
-      Effect.provide(
-        Layer.succeed(DotyposService, {
-          findOrCreateCustomer,
-          createReservation,
-        } as unknown as typeof DotyposService.Service)
-      ),
-      Effect.provide(
-        Layer.succeed(PostHogEventService, { capture: mock(() => Effect.void) })
-      ),
-      Effect.runPromise
-    );
+    }).pipe(Effect.provide(testLayer), Effect.runPromise);
 
     expect(ensureAvailable).toHaveBeenCalledWith({
       kind: "cowork",

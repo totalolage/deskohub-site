@@ -30,7 +30,7 @@ export interface EmailProvider {
   readonly send: (
     message: EmailMessage
   ) => Effect.Effect<EmailSendResult, EmailServiceError | NetworkError>;
-  readonly verify: () => Effect.Effect<boolean, EmailServiceError>;
+  readonly verify: Effect.Effect<boolean, EmailServiceError>;
 }
 
 export class EmailProviderTag extends Context.Service<
@@ -63,7 +63,7 @@ export interface EmailService {
     EmailSendResult,
     EmailServiceError | NetworkError | EmailTemplateError
   >;
-  readonly verify: () => Effect.Effect<boolean, EmailServiceError>;
+  readonly verify: Effect.Effect<boolean, EmailServiceError>;
 }
 
 export class EmailServiceTag extends Context.Service<
@@ -271,46 +271,40 @@ export const EmailServiceLive = Layer.effect(
           )
       ),
 
-      verify: Effect.fn("email.verify")(
-        function* () {
-          yield* Effect.logInfo("Verifying email service configuration", {
-            provider: provider.name,
-          });
+      verify: Effect.gen(function* () {
+        yield* Effect.logInfo("Verifying email service configuration", {
+          provider: provider.name,
+        });
 
-          const isValid = yield* provider.verify().pipe(
-            Effect.tap((valid) =>
-              Effect.gen(function* () {
-                yield* Effect.annotateLogsScoped({ result: valid });
-                if (valid) {
-                  yield* Effect.logInfo("Email service verified successfully", {
-                    provider: provider.name,
-                  });
-                } else {
-                  yield* Effect.logWarning(
-                    "Email service verification failed",
-                    {
-                      provider: provider.name,
-                    }
-                  );
-                }
-              })
-            ),
-            Effect.tapError((error) =>
-              Effect.logError("Email service verification failed", {
-                provider: provider.name,
-                errorType: error._tag,
-                errorMessage: error.message,
-              })
-            )
-          );
-
-          return isValid;
-        },
-        (effect) =>
-          effect.pipe(
-            Effect.scoped,
-            Effect.annotateLogs({ provider: provider.name })
+        const isValid = yield* provider.verify.pipe(
+          Effect.tap((valid) =>
+            Effect.gen(function* () {
+              yield* Effect.annotateLogsScoped({ result: valid });
+              if (valid) {
+                yield* Effect.logInfo("Email service verified successfully", {
+                  provider: provider.name,
+                });
+              } else {
+                yield* Effect.logWarning("Email service verification failed", {
+                  provider: provider.name,
+                });
+              }
+            })
+          ),
+          Effect.tapError((error) =>
+            Effect.logError("Email service verification failed", {
+              provider: provider.name,
+              errorType: error._tag,
+              errorMessage: error.message,
+            })
           )
+        );
+
+        return isValid;
+      }).pipe(
+        Effect.scoped,
+        Effect.annotateLogs({ provider: provider.name }),
+        Effect.withSpan("email.verify")
       ),
     };
   })

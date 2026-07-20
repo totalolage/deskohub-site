@@ -17,12 +17,15 @@ const config: EmailProviderConfig = {
 
 const providerName = (overrides: Partial<EmailProviderConfig> = {}) =>
   Effect.runPromise(
-    Effect.gen(function* () {
-      const provider = yield* EmailProviderTag;
-      return provider.name;
-    }).pipe(
-      Effect.provide(EmailProviderLive),
-      Effect.provide(Layer.succeed(EmailConfigTag, { ...config, ...overrides }))
+    EmailProviderTag.pipe(
+      Effect.map((provider) => provider.name),
+      Effect.provide(
+        EmailProviderLive.pipe(
+          Layer.provide(
+            Layer.succeed(EmailConfigTag, { ...config, ...overrides })
+          )
+        )
+      )
     )
   );
 
@@ -41,11 +44,12 @@ describe("EmailProviderLive", () => {
     expect(await providerName({ apiKey: "api-key" })).toBe("resend");
 
     const consoleResult = await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* EmailProviderTag;
-      }).pipe(
-        Effect.provide(EmailProviderLive),
-        Effect.provide(Layer.succeed(EmailConfigTag, config)),
+      EmailProviderTag.pipe(
+        Effect.provide(
+          EmailProviderLive.pipe(
+            Layer.provide(Layer.succeed(EmailConfigTag, config))
+          )
+        ),
         Effect.result
       )
     );
@@ -53,12 +57,16 @@ describe("EmailProviderLive", () => {
 
     process.env.NODE_ENV = "test";
     const resendResult = await Effect.runPromise(
-      Effect.gen(function* () {
-        yield* EmailProviderTag;
-      }).pipe(
-        Effect.provide(EmailProviderLive),
+      EmailProviderTag.pipe(
         Effect.provide(
-          Layer.succeed(EmailConfigTag, { ...config, provider: "resend" })
+          EmailProviderLive.pipe(
+            Layer.provide(
+              Layer.succeed(EmailConfigTag, {
+                ...config,
+                provider: "resend",
+              })
+            )
+          )
         ),
         Effect.result
       )

@@ -4,8 +4,8 @@ export const CloudinaryAssetSchema = Schema.Struct({
   public_id: Schema.String,
   secure_url: Schema.String,
   url: Schema.String,
-  width: Schema.Number,
-  height: Schema.Number,
+  width: Schema.Finite,
+  height: Schema.Finite,
   format: Schema.String,
   resource_type: Schema.String,
   created_at: Schema.String,
@@ -30,7 +30,7 @@ export const CloudinarySearchResponseSchema = Schema.Struct({
 });
 
 export const SearchOptionsSchema = Schema.Struct({
-  maxResults: Schema.optional(Schema.Number.check(Schema.isGreaterThan(0))),
+  maxResults: Schema.optional(Schema.Finite.check(Schema.isGreaterThan(0))),
   sortBy: Schema.optional(
     Schema.Literals(["created_at", "updated_at", "public_id"])
   ),
