@@ -1,4 +1,4 @@
-import { type Data, Effect, type Option } from "effect";
+import { Effect, type Option } from "effect";
 import type { CalendarSaleConfigurationError } from "./calendar-sale";
 import type {
   DiscountCalculationError,
@@ -6,15 +6,11 @@ import type {
   DiscountProviderError,
 } from "./errors";
 
-type DiscountResolutionFailure = Data.TaggedEnum<{
-  CalendarSaleConfigurationError: Pick<
-    CalendarSaleConfigurationError,
-    "reason"
-  >;
-  DiscountCalculationError: Pick<DiscountCalculationError, "reason">;
-  DiscountCodeUnavailableError: Pick<DiscountCodeUnavailableError, "reason">;
-  DiscountProviderError: Pick<DiscountProviderError, "reason">;
-}>;
+type DiscountResolutionFailure =
+  | CalendarSaleConfigurationError
+  | DiscountCalculationError
+  | DiscountCodeUnavailableError
+  | DiscountProviderError;
 
 export type DiscountResolutionProvider =
   | "calendar"
