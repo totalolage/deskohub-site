@@ -190,6 +190,72 @@ test("retries a hosted payment field when its first fill does not stick", async 
   expect(cardFillAttempts).toBe(2);
 });
 
+test("activates freshly discovered hosted-payment targets with the keyboard", async () => {
+  const calls: string[][] = [];
+  const buttons = [
+    'button "CONTINUE" [ref=e6]',
+    'button "PAY" [ref=e7]',
+    'button "Authentication successful" [ref=e8]',
+    'link "BACK TO THE SHOP" [ref=e9]',
+  ];
+  let buttonIndex = 0;
+  const run: Runner = async (_command, args) => {
+    const commandArgs = args.slice(2);
+    calls.push(commandArgs);
+
+    if (commandArgs[0] === "snapshot") {
+      return success(
+        [
+          '- textbox "Card number" [ref=e1]',
+          '- textbox "Expiration date" [ref=e2]',
+          '- textbox "CVV" [ref=e3]',
+          '- textbox "First Name" [ref=e4]',
+          '- textbox "Email" [ref=e5]',
+          buttons[buttonIndex],
+        ]
+          .filter(Boolean)
+          .join("\n")
+      );
+    }
+
+    if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      return success(
+        buttonIndex > 3
+          ? `${checkoutUrl.replace("/order", "/status/")}${orderId}`
+          : "https://xpay.nexigroup.com/hpp/nexi/test"
+      );
+    }
+
+    if (commandArgs[0] === "click" || commandArgs[0] === "press") {
+      buttonIndex += 1;
+    }
+
+    return success();
+  };
+
+  await Effect.runPromise(
+    completeNexiHostedPayment({
+      data: makeCheckoutData(),
+      run,
+      session: "test-session",
+    })
+  );
+
+  expect(calls.filter(([command]) => command === "click")).toEqual([]);
+  expect(calls.filter(([command]) => command === "focus")).toEqual([
+    ["focus", "@e6"],
+    ["focus", "@e7"],
+    ["focus", "@e8"],
+    ["focus", "@e9"],
+  ]);
+  expect(calls.filter(([command]) => command === "press")).toEqual([
+    ["press", "Enter"],
+    ["press", "Enter"],
+    ["press", "Enter"],
+    ["press", "Enter"],
+  ]);
+});
+
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });
 
 const makeConfig = (): WorkspaceE2EConfig => ({

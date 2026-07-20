@@ -754,16 +754,12 @@ const clickHostedPaymentTarget = (
 
     if (!target) return;
 
-    yield* runBrowserCommand(
-      `click Nexi ${label}`,
-      run,
-      session,
-      ["click", target.ref],
-      {
-        logOutput: false,
+    yield* Effect.gen(function* () {
+      yield* focusBrowserElement(run, session, target.ref, {
         timeoutMs: 30_000,
-      }
-    ).pipe(
+      });
+      yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
+    }).pipe(
       Effect.ensuring(
         target.framed
           ? switchToMainFrame(run, session).pipe(Effect.ignore)
