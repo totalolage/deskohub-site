@@ -1,9 +1,8 @@
 import { Effect } from "effect";
 import {
+  clickBrowserElement,
   fillBrowserField,
-  focusBrowserElement,
   openBrowserPage,
-  pressBrowserKey,
   requireSnapshotRef,
   waitForBrowserReactHydration,
   waitForBrowserText,
@@ -103,8 +102,7 @@ const submitContactForm = (run: Runner, session: string) =>
       session,
       timeoutMs,
     });
-    yield* focusBrowserElement(run, session, submitRef, { timeoutMs });
-    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
+    yield* clickBrowserElement(run, session, submitRef, { timeoutMs });
     yield* waitForBrowserText({
       description: "contact form success",
       matches: (text) => /Your message has been sent\./i.test(text),

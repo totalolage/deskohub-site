@@ -5,7 +5,7 @@ import type { Runner } from "../runtime";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertContactForm } from "./contact";
 
-test("submits the hydrated contact form from a fresh semantic snapshot", async () => {
+test("clicks the hydrated contact form button from a fresh semantic snapshot", async () => {
   const calls: Array<{
     readonly args: string[];
     readonly input?: string;
@@ -57,17 +57,15 @@ test("submits the hydrated contact form from a fresh semantic snapshot", async (
   expect(waitArgs?.[2]).toContain("submit");
   expect(waitArgs?.[2]).toContain("__reactProps$");
   expect(
-    calls.find(({ args }) => args.includes("focus"))?.args.slice(2)
-  ).toEqual(["focus", "@e1"]);
-  expect(
-    calls.find(({ args }) => args.includes("press"))?.args.slice(2)
-  ).toEqual(["press", "Enter"]);
+    calls.find(({ args }) => args.includes("click"))?.args.slice(2)
+  ).toEqual(["click", "@e1"]);
+  expect(calls.some(({ args }) => args.includes("press"))).toBe(false);
 
   const waitIndex = calls.findIndex(({ args }) => args.includes("wait"));
   const snapshotIndex = calls.findIndex(({ args }) =>
     args.includes("snapshot")
   );
-  const focusIndex = calls.findIndex(({ args }) => args.includes("focus"));
+  const clickIndex = calls.findIndex(({ args }) => args.includes("click"));
   expect(waitIndex).toBeLessThan(snapshotIndex);
-  expect(snapshotIndex).toBeLessThan(focusIndex);
+  expect(snapshotIndex).toBeLessThan(clickIndex);
 });
