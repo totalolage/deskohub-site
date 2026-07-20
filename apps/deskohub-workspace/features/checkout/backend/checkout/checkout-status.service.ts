@@ -1,10 +1,8 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer } from "@deskohub/dotypos/generated";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Match, Option } from "effect";
-import {
-  type DatabaseError,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database.service";
 import type {
   FulfillmentState,
   PaymentAttempt,
@@ -27,6 +25,7 @@ import {
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
+import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import {
   ProviderPaymentFinalizationService,
@@ -87,11 +86,11 @@ export interface CheckoutStatusService {
   readonly getStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<CheckoutStatusViewModel, DatabaseError>;
+  }) => Effect.Effect<CheckoutStatusViewModel, EffectDrizzleQueryError>;
   readonly refreshStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<CheckoutStatusViewModel, DatabaseError>;
+  }) => Effect.Effect<CheckoutStatusViewModel, EffectDrizzleQueryError>;
 }
 
 export const CheckoutStatusService = Context.Service<CheckoutStatusService>(
@@ -129,26 +128,19 @@ const toCheckoutStatusKind = (
 };
 
 const toPragueReservationDate = (startDate: string | number) => {
-  const date =
-    typeof startDate === "number" || /^\d+$/.test(startDate)
-      ? new Date(Number(startDate))
-      : new Date(startDate);
+  try {
+    const instant =
+      typeof startDate === "number" || /^\d+$/.test(startDate)
+        ? Temporal.Instant.fromEpochMilliseconds(Number(startDate))
+        : Temporal.Instant.from(startDate);
 
-  if (Number.isNaN(date.getTime())) return undefined;
-
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Europe/Prague",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(date);
-  const getPart = (type: Intl.DateTimeFormatPartTypes) =>
-    parts.find((part) => part.type === type)?.value;
-  const year = getPart("year");
-  const month = getPart("month");
-  const day = getPart("day");
-
-  return year && month && day ? `${year}-${month}-${day}` : undefined;
+    return instant
+      .toZonedDateTimeISO(reservationTimeZone)
+      .toPlainDate()
+      .toString();
+  } catch {
+    return undefined;
+  }
 };
 
 const canUseAttemptForSummary = (

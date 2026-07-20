@@ -5,6 +5,10 @@ import { WorkspaceReservationRepository } from "@/features/reservation/backend/w
 import { clamp } from "@/shared/utils";
 import { serializeErrorForLog } from "@/shared/utils/error-formatting";
 import {
+  instantStringSchema,
+  type TemporalInstant,
+} from "@/shared/utils/temporal";
+import {
   type ReservationHoldCleanupOutcome,
   ReservationHoldCleanupService,
 } from "./reservation-hold-cleanup.service";
@@ -18,12 +22,11 @@ const reservationHoldCleanupRetryWindowSeconds = 60 * 60;
 const ReservationHoldCleanupSchedulePayloadSchema = Schema.Struct({
   schemaVersion: Schema.Literal(1),
   orderId: Schema.String,
-  reservationHoldExpiresAtIso: Schema.String,
+  reservationHoldExpiresAtIso: instantStringSchema,
 });
 
-export type ReservationHoldCleanupSchedulePayload = Schema.Schema.Type<
-  typeof ReservationHoldCleanupSchedulePayloadSchema
->;
+export type ReservationHoldCleanupSchedulePayload =
+  typeof ReservationHoldCleanupSchedulePayloadSchema.Encoded;
 
 type ReservationHoldCleanupScheduleMessage = {
   readonly topic: typeof reservationHoldCleanupQueueTopic;
@@ -55,22 +58,23 @@ export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
 interface IReservationHoldCleanupScheduleService {
   readonly enqueueCleanup: (input: {
     readonly orderId: string;
-    readonly reservationHoldExpiresAt: Date;
+    readonly reservationHoldExpiresAt: TemporalInstant;
   }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
 
 export const getReservationHoldCleanupScheduleMessage = (
   input: {
     readonly orderId: string;
-    readonly reservationHoldExpiresAt: Date;
+    readonly reservationHoldExpiresAt: TemporalInstant;
   },
-  now = new Date()
+  now = Temporal.Now.instant()
 ): ReservationHoldCleanupScheduleMessage => {
-  const reservationHoldExpiresAtIso =
-    input.reservationHoldExpiresAt.toISOString();
+  const reservationHoldExpiresAtIso = input.reservationHoldExpiresAt.toString();
   const delaySeconds = clamp(
     Math.ceil(
-      (input.reservationHoldExpiresAt.getTime() - now.getTime()) / 1000
+      (input.reservationHoldExpiresAt.epochMilliseconds -
+        now.epochMilliseconds) /
+        1000
     ),
     0,
     reservationHoldCleanupScheduleMaxDelaySeconds
@@ -145,19 +149,19 @@ const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
 
 const isDueReservation = (
   reservation: WorkspaceReservation | null,
-  reservationHoldExpiresAt: Date,
-  now: Date
+  reservationHoldExpiresAt: TemporalInstant,
+  now: TemporalInstant
 ) =>
   reservation !== null &&
   dueReservationStates.includes(reservation?.reservationState ?? "") &&
   reservation.paymentState !== "paid" &&
-  reservation.reservationHoldExpiresAt?.getTime() ===
-    reservationHoldExpiresAt.getTime() &&
-  reservation.reservationHoldExpiresAt <= now;
+  reservation.reservationHoldExpiresAt?.equals(reservationHoldExpiresAt) ===
+    true &&
+  Temporal.Instant.compare(reservation.reservationHoldExpiresAt, now) <= 0;
 
 export const processReservationHoldCleanupScheduleMessage = Effect.fn(
   "reservationHoldCleanupSchedule.processMessage"
-)(function* (message: unknown, now = new Date()) {
+)(function* (message: unknown, now = Temporal.Now.instant()) {
   const payload = Option.getOrUndefined(decodeSchedulePayload(message));
   if (!payload) {
     yield* Effect.logWarning(
@@ -166,7 +170,7 @@ export const processReservationHoldCleanupScheduleMessage = Effect.fn(
     return "ignored" as const;
   }
 
-  const reservationHoldExpiresAt = new Date(
+  const reservationHoldExpiresAt = Temporal.Instant.from(
     payload.reservationHoldExpiresAtIso
   );
 

@@ -78,7 +78,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
           .markFulfillmentFailed({
             id: input.orderId,
             failureCode: input.failureCode,
-            failedAt: new Date(),
+            failedAt: Temporal.Now.instant(),
           })
           .pipe(
             Effect.tapError((cause) =>
@@ -154,12 +154,17 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             return;
           }
 
-          const staleProcessingBefore = new Date(
-            Date.now() - PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS
-          );
+          const staleProcessingBefore = Temporal.Now.instant().subtract({
+            milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS,
+          });
 
           if (reservation.fulfillmentState === "processing") {
-            if (reservation.updatedAt > staleProcessingBefore) {
+            if (
+              Temporal.Instant.compare(
+                reservation.updatedAt,
+                staleProcessingBefore
+              ) > 0
+            ) {
               yield* Effect.logInfo(
                 "Paid fulfillment skipped: already processing",
                 {
@@ -259,7 +264,7 @@ export const WorkspacePaidFulfillmentServiceLive = Layer.effect(
             yield* Effect.logInfo(
               "Paid fulfillment reservation confirmed marker started"
             );
-            const confirmedAt = new Date();
+            const confirmedAt = Temporal.Now.instant();
             yield* reservations
               .markReservationConfirmed({
                 id: claimed.id,

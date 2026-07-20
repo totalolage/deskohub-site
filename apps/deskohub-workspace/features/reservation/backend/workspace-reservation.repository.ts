@@ -1,16 +1,14 @@
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import {
-  type DatabaseError,
-  runDb,
-  WorkspaceDatabase,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import {
   getWorkspaceReservationProductColumns,
   type NormalizedCoworkReservationProduct,
 } from "@/features/reservation/cowork-reservation-product";
+import type { TemporalInstant } from "@/shared/utils";
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -26,102 +24,138 @@ export interface CreateWorkspaceReservationInput {
   readonly customerAccessCode: string;
   readonly product: NormalizedCoworkReservationProduct;
   readonly locale: string;
-  readonly reservationHoldExpiresAt?: Date;
+  readonly reservationHoldExpiresAt?: TemporalInstant;
 }
 
 export interface WorkspaceReservationRepository {
   readonly createDraft: (
     input: CreateWorkspaceReservationInput
-  ) => Effect.Effect<WorkspaceReservation, DatabaseError>;
+  ) => Effect.Effect<WorkspaceReservation, EffectDrizzleQueryError>;
   readonly findById: (
     id: string
-  ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
+  ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
   readonly findByIntentKey: (
     reservationIntentKey: string
-  ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
+  ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
   readonly updateProductIntent: (input: {
     readonly id: string;
     readonly product: NormalizedCoworkReservationProduct;
     readonly locale: string;
   }) => Effect.Effect<
     WorkspaceReservation,
-    DatabaseError | WorkspaceReservationStateError
+    EffectDrizzleQueryError | WorkspaceReservationStateError
   >;
   readonly claimHoldCreation: (
     id: string
-  ) => Effect.Effect<boolean, DatabaseError>;
+  ) => Effect.Effect<boolean, EffectDrizzleQueryError>;
   readonly releaseHoldCreation: (
     id: string
-  ) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  ) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly attachHold: (input: {
     readonly id: string;
     readonly dotyposReservationId: string;
-    readonly reservationCreatedAt: Date;
-    readonly reservationHoldExpiresAt: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly reservationCreatedAt: TemporalInstant;
+    readonly reservationHoldExpiresAt: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markAttachFailedCancellationRequired: (input: {
     readonly id: string;
     readonly dotyposReservationId: string;
-    readonly reservationCreatedAt: Date;
+    readonly reservationCreatedAt: TemporalInstant;
     readonly failureCode: string;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly claimCancellation: (
     id: string
-  ) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
+  ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
   readonly markCancelled: (input: {
     readonly id: string;
-    readonly cancelledAt: Date;
-    readonly holdExpiredAt?: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly cancelledAt: TemporalInstant;
+    readonly holdExpiredAt?: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markCancellationFailed: (input: {
     readonly id: string;
     readonly failureCode: string;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly recordHoldCleanupSkipped: (input: {
     readonly id: string;
-    readonly holdExpiredAt: Date;
+    readonly holdExpiredAt: TemporalInstant;
     readonly failureCode: string;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markPaymentPaid: (input: {
     readonly id: string;
     readonly paymentAttemptId: string;
-    readonly paidAt: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly paidAt: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markPaymentTerminal: (input: {
     readonly id: string;
     readonly paymentAttemptId: string;
     readonly paymentState: "failed" | "cancelled" | "expired";
     readonly failureCode: string;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly claimPaidFulfillment: (input: {
     readonly id: string;
-    readonly staleProcessingBefore: Date;
-  }) => Effect.Effect<WorkspaceReservation | null, DatabaseError>;
+    readonly staleProcessingBefore: TemporalInstant;
+  }) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
   readonly markFulfilled: (input: {
     readonly id: string;
-    readonly fulfilledAt: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly fulfilledAt: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markFulfillmentFailed: (input: {
     readonly id: string;
     readonly failureCode: string;
-    readonly failedAt: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly failedAt: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markFulfillmentDeliveryFailed: (input: {
     readonly id: string;
     readonly failureCode: string;
-    readonly failedAt: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly failedAt: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly markReservationConfirmed: (input: {
     readonly id: string;
-    readonly confirmedAt: Date;
-  }) => Effect.Effect<void, DatabaseError | WorkspaceReservationStateError>;
+    readonly confirmedAt: TemporalInstant;
+  }) => Effect.Effect<
+    void,
+    EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
   readonly selectExpiredHolds: (input: {
-    readonly now: Date;
+    readonly now: TemporalInstant;
     readonly limit: number;
-  }) => Effect.Effect<readonly WorkspaceReservation[], DatabaseError>;
+  }) => Effect.Effect<readonly WorkspaceReservation[], EffectDrizzleQueryError>;
   readonly selectExpiredHoldDotyposReservationIds: (input: {
-    readonly now: Date;
-  }) => Effect.Effect<readonly string[], DatabaseError>;
+    readonly now: TemporalInstant;
+  }) => Effect.Effect<readonly string[], EffectDrizzleQueryError>;
 }
 
 export const WorkspaceReservationRepository =
@@ -152,14 +186,12 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
 
     const findById = Effect.fn("workspaceReservations.findById")(
       function* (id: string) {
-        return yield* runDb("workspaceReservations.findById", async () => {
-          const [reservation] = await db
-            .select()
-            .from(workspaceReservations)
-            .where(eq(workspaceReservations.id, id))
-            .limit(1);
-          return reservation ?? null;
-        });
+        const [reservation] = yield* db
+          .select()
+          .from(workspaceReservations)
+          .where(eq(workspaceReservations.id, id))
+          .limit(1);
+        return reservation ?? null;
       },
       (effect, reservationId) =>
         effect.pipe(Effect.annotateLogs({ reservationId }))
@@ -182,30 +214,31 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             reservationHoldExpiresAt: input.reservationHoldExpiresAt,
           };
 
-          return yield* runDb("workspaceReservations.createDraft", async () => {
-            const [inserted] = await db
-              .insert(workspaceReservations)
-              .values(row)
-              .onConflictDoNothing()
-              .returning();
+          const [inserted] = yield* db
+            .insert(workspaceReservations)
+            .values(row)
+            .onConflictDoNothing()
+            .returning();
 
-            if (inserted) return inserted;
+          if (inserted) return inserted;
 
-            const [existing] = await db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                eq(
-                  workspaceReservations.reservationIntentKey,
-                  input.reservationIntentKey
-                )
+          const [existing] = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              eq(
+                workspaceReservations.reservationIntentKey,
+                input.reservationIntentKey
               )
-              .limit(1);
+            )
+            .limit(1);
 
-            if (!existing)
-              throw new Error("Workspace reservation insert returned no row");
-            return existing;
-          });
+          if (!existing) {
+            return yield* Effect.die(
+              "Workspace reservation insert returned no row."
+            );
+          }
+          return existing;
         },
         (effect, input) =>
           effect.pipe(
@@ -218,22 +251,17 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       findById,
       findByIntentKey: Effect.fn("workspaceReservations.findByIntentKey")(
         function* (reservationIntentKey) {
-          return yield* runDb(
-            "workspaceReservations.findByIntentKey",
-            async () => {
-              const [reservation] = await db
-                .select()
-                .from(workspaceReservations)
-                .where(
-                  eq(
-                    workspaceReservations.reservationIntentKey,
-                    reservationIntentKey
-                  )
-                )
-                .limit(1);
-              return reservation ?? null;
-            }
-          );
+          const [reservation] = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              eq(
+                workspaceReservations.reservationIntentKey,
+                reservationIntentKey
+              )
+            )
+            .limit(1);
+          return reservation ?? null;
         },
         (effect, reservationIntentKey) =>
           effect.pipe(Effect.annotateLogs({ reservationIntentKey }))
@@ -244,27 +272,20 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         const productColumns = getWorkspaceReservationProductColumns(
           input.product
         );
-        const updated = yield* runDb(
-          "workspaceReservations.updateProductIntent",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                ...productColumns,
-                locale: input.locale,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  inArray(workspaceReservations.reservationState, [
-                    "draft",
-                    "held",
-                  ])
-                )
-              )
-              .returning()
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            ...productColumns,
+            locale: input.locale,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              inArray(workspaceReservations.reservationState, ["draft", "held"])
+            )
+          )
+          .returning();
         if (!updated[0]) {
           return yield* Effect.fail(
             new WorkspaceReservationStateError({
@@ -279,23 +300,19 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       claimHoldCreation: Effect.fn("workspaceReservations.claimHoldCreation")(
         function* (id) {
-          const updated = yield* runDb(
-            "workspaceReservations.claimHoldCreation",
-            () =>
-              db
-                .update(workspaceReservations)
-                .set({
-                  reservationState: "creating_hold",
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, id),
-                    eq(workspaceReservations.reservationState, "draft")
-                  )
-                )
-                .returning({ id: workspaceReservations.id })
-          );
+          const updated = yield* db
+            .update(workspaceReservations)
+            .set({
+              reservationState: "creating_hold",
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, id),
+                eq(workspaceReservations.reservationState, "draft")
+              )
+            )
+            .returning({ id: workspaceReservations.id });
           return updated.length > 0;
         },
         (effect, reservationId) =>
@@ -304,21 +321,20 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       releaseHoldCreation: Effect.fn(
         "workspaceReservations.releaseHoldCreation"
       )(function* (id) {
-        const updated = yield* runDb(
-          "workspaceReservations.releaseHoldCreation",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({ reservationState: "draft", updatedAt: new Date() })
-              .where(
-                and(
-                  eq(workspaceReservations.id, id),
-                  eq(workspaceReservations.reservationState, "creating_hold"),
-                  sql`${workspaceReservations.dotyposReservationId} is null`
-                )
-              )
-              .returning({ id: workspaceReservations.id })
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "draft",
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, id),
+              eq(workspaceReservations.reservationState, "creating_hold"),
+              sql`${workspaceReservations.dotyposReservationId} is null`
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.releaseHoldCreation",
@@ -328,24 +344,22 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       attachHold: Effect.fn("workspaceReservations.attachHold")(
         function* (input) {
-          const updated = yield* runDb("workspaceReservations.attachHold", () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                dotyposReservationId: input.dotyposReservationId,
-                reservationState: "held",
-                reservationCreatedAt: input.reservationCreatedAt,
-                reservationHoldExpiresAt: input.reservationHoldExpiresAt,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "creating_hold")
-                )
+          const updated = yield* db
+            .update(workspaceReservations)
+            .set({
+              dotyposReservationId: input.dotyposReservationId,
+              reservationState: "held",
+              reservationCreatedAt: input.reservationCreatedAt,
+              reservationHoldExpiresAt: input.reservationHoldExpiresAt,
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, input.id),
+                eq(workspaceReservations.reservationState, "creating_hold")
               )
-              .returning({ id: workspaceReservations.id })
-          );
+            )
+            .returning({ id: workspaceReservations.id });
           yield* ensureUpdated(
             updated,
             "workspaceReservations.attachHold",
@@ -357,26 +371,22 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markAttachFailedCancellationRequired: Effect.fn(
         "workspaceReservations.markAttachFailedCancellationRequired"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.markAttachFailedCancellationRequired",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                dotyposReservationId: input.dotyposReservationId,
-                reservationCreatedAt: input.reservationCreatedAt,
-                reservationState: "cancellation_failed",
-                failureCode: input.failureCode,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "creating_hold")
-                )
-              )
-              .returning({ id: workspaceReservations.id })
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            dotyposReservationId: input.dotyposReservationId,
+            reservationCreatedAt: input.reservationCreatedAt,
+            reservationState: "cancellation_failed",
+            failureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "creating_hold")
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.markAttachFailedCancellationRequired",
@@ -386,53 +396,47 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       claimCancellation: Effect.fn("workspaceReservations.claimCancellation")(
         function* (id) {
-          return yield* runDb(
-            "workspaceReservations.claimCancellation",
-            async () => {
-              const [claimed] = await db
-                .update(workspaceReservations)
-                .set({ reservationState: "cancelling", updatedAt: new Date() })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, id),
-                    inArray(workspaceReservations.reservationState, [
-                      "held",
-                      "hold_expired",
-                      "cancellation_failed",
-                    ]),
-                    sql`${workspaceReservations.paymentState} <> 'paid'`,
-                    sql`${workspaceReservations.reservationState} <> 'confirmed'`
-                  )
-                )
-                .returning();
-              return claimed ?? null;
-            }
-          );
+          const [claimed] = yield* db
+            .update(workspaceReservations)
+            .set({
+              reservationState: "cancelling",
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, id),
+                inArray(workspaceReservations.reservationState, [
+                  "held",
+                  "hold_expired",
+                  "cancellation_failed",
+                ]),
+                sql`${workspaceReservations.paymentState} <> 'paid'`,
+                sql`${workspaceReservations.reservationState} <> 'confirmed'`
+              )
+            )
+            .returning();
+          return claimed ?? null;
         }
       ),
       markCancelled: Effect.fn("workspaceReservations.markCancelled")(
         function* (input) {
-          const updated = yield* runDb(
-            "workspaceReservations.markCancelled",
-            () =>
-              db
-                .update(workspaceReservations)
-                .set({
-                  reservationState: "cancelled",
-                  reservationCancelledAt: input.cancelledAt,
-                  reservationHoldExpiredAt: input.holdExpiredAt,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.id),
-                    eq(workspaceReservations.reservationState, "cancelling"),
-                    sql`${workspaceReservations.paymentState} <> 'paid'`,
-                    sql`${workspaceReservations.reservationConfirmedAt} is null`
-                  )
-                )
-                .returning({ id: workspaceReservations.id })
-          );
+          const updated = yield* db
+            .update(workspaceReservations)
+            .set({
+              reservationState: "cancelled",
+              reservationCancelledAt: input.cancelledAt,
+              reservationHoldExpiredAt: input.holdExpiredAt,
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, input.id),
+                eq(workspaceReservations.reservationState, "cancelling"),
+                sql`${workspaceReservations.paymentState} <> 'paid'`,
+                sql`${workspaceReservations.reservationConfirmedAt} is null`
+              )
+            )
+            .returning({ id: workspaceReservations.id });
           yield* ensureUpdated(
             updated,
             "workspaceReservations.markCancelled",
@@ -444,25 +448,21 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markCancellationFailed: Effect.fn(
         "workspaceReservations.markCancellationFailed"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.markCancellationFailed",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                reservationState: "cancellation_failed",
-                failureCode: input.failureCode,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "cancelling"),
-                  sql`${workspaceReservations.paymentState} <> 'paid'`
-                )
-              )
-              .returning({ id: workspaceReservations.id })
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "cancellation_failed",
+            failureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "cancelling"),
+              sql`${workspaceReservations.paymentState} <> 'paid'`
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.markCancellationFailed",
@@ -473,29 +473,25 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       recordHoldCleanupSkipped: Effect.fn(
         "workspaceReservations.recordHoldCleanupSkipped"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.recordHoldCleanupSkipped",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                reservationHoldExpiredAt: input.holdExpiredAt,
-                failureCode: input.failureCode,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "held"),
-                  sql`${workspaceReservations.paymentState} <> 'paid'`,
-                  lte(
-                    workspaceReservations.reservationHoldExpiresAt,
-                    input.holdExpiredAt
-                  )
-                )
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationHoldExpiredAt: input.holdExpiredAt,
+            failureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "held"),
+              sql`${workspaceReservations.paymentState} <> 'paid'`,
+              lte(
+                workspaceReservations.reservationHoldExpiresAt,
+                input.holdExpiredAt
               )
-              .returning({ id: workspaceReservations.id })
-        );
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.recordHoldCleanupSkipped",
@@ -505,30 +501,26 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       markPaymentPaid: Effect.fn("workspaceReservations.markPaymentPaid")(
         function* (input) {
-          const updated = yield* runDb(
-            "workspaceReservations.markPaymentPaid",
-            () =>
-              db
-                .update(workspaceReservations)
-                .set({
-                  paymentState: "paid",
-                  paidAt: input.paidAt,
-                  failureCode: null,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.id),
-                    eq(workspaceReservations.reservationState, "held"),
-                    eq(workspaceReservations.paymentState, "pending"),
-                    eq(
-                      workspaceReservations.activePaymentAttemptId,
-                      input.paymentAttemptId
-                    )
-                  )
+          const updated = yield* db
+            .update(workspaceReservations)
+            .set({
+              paymentState: "paid",
+              paidAt: input.paidAt,
+              failureCode: null,
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, input.id),
+                eq(workspaceReservations.reservationState, "held"),
+                eq(workspaceReservations.paymentState, "pending"),
+                eq(
+                  workspaceReservations.activePaymentAttemptId,
+                  input.paymentAttemptId
                 )
-                .returning({ id: workspaceReservations.id })
-          );
+              )
+            )
+            .returning({ id: workspaceReservations.id });
           yield* ensureUpdated(
             updated,
             "workspaceReservations.markPaymentPaid",
@@ -540,29 +532,25 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markPaymentTerminal: Effect.fn(
         "workspaceReservations.markPaymentTerminal"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.markPaymentTerminal",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                paymentState: input.paymentState,
-                failureCode: input.failureCode,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "held"),
-                  eq(workspaceReservations.paymentState, "pending"),
-                  eq(
-                    workspaceReservations.activePaymentAttemptId,
-                    input.paymentAttemptId
-                  )
-                )
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            paymentState: input.paymentState,
+            failureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "held"),
+              eq(workspaceReservations.paymentState, "pending"),
+              eq(
+                workspaceReservations.activePaymentAttemptId,
+                input.paymentAttemptId
               )
-              .returning({ id: workspaceReservations.id })
-        );
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.markPaymentTerminal",
@@ -573,57 +561,51 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       claimPaidFulfillment: Effect.fn(
         "workspaceReservations.claimPaidFulfillment"
       )(function* (input) {
-        return yield* runDb(
-          "workspaceReservations.claimPaidFulfillment",
-          async () => {
-            const [claimed] = await db
-              .update(workspaceReservations)
-              .set({ fulfillmentState: "processing", updatedAt: new Date() })
-              .where(
+        const [claimed] = yield* db
+          .update(workspaceReservations)
+          .set({
+            fulfillmentState: "processing",
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.paymentState, "paid"),
+              or(
+                inArray(workspaceReservations.fulfillmentState, [
+                  "not_started",
+                  "failed",
+                ]),
                 and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.paymentState, "paid"),
-                  or(
-                    inArray(workspaceReservations.fulfillmentState, [
-                      "not_started",
-                      "failed",
-                    ]),
-                    and(
-                      eq(workspaceReservations.fulfillmentState, "processing"),
-                      lte(
-                        workspaceReservations.updatedAt,
-                        input.staleProcessingBefore
-                      )
-                    )
+                  eq(workspaceReservations.fulfillmentState, "processing"),
+                  lte(
+                    workspaceReservations.updatedAt,
+                    input.staleProcessingBefore
                   )
                 )
               )
-              .returning();
-            return claimed ?? null;
-          }
-        );
+            )
+          )
+          .returning();
+        return claimed ?? null;
       }),
       markFulfilled: Effect.fn("workspaceReservations.markFulfilled")(
         function* (input) {
-          const updated = yield* runDb(
-            "workspaceReservations.markFulfilled",
-            () =>
-              db
-                .update(workspaceReservations)
-                .set({
-                  fulfillmentState: "fulfilled",
-                  fulfilledAt: input.fulfilledAt,
-                  updatedAt: new Date(),
-                })
-                .where(
-                  and(
-                    eq(workspaceReservations.id, input.id),
-                    eq(workspaceReservations.paymentState, "paid"),
-                    eq(workspaceReservations.fulfillmentState, "processing")
-                  )
-                )
-                .returning({ id: workspaceReservations.id })
-          );
+          const updated = yield* db
+            .update(workspaceReservations)
+            .set({
+              fulfillmentState: "fulfilled",
+              fulfilledAt: input.fulfilledAt,
+              updatedAt: Temporal.Now.instant(),
+            })
+            .where(
+              and(
+                eq(workspaceReservations.id, input.id),
+                eq(workspaceReservations.paymentState, "paid"),
+                eq(workspaceReservations.fulfillmentState, "processing")
+              )
+            )
+            .returning({ id: workspaceReservations.id });
           yield* ensureUpdated(
             updated,
             "workspaceReservations.markFulfilled",
@@ -635,26 +617,22 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markFulfillmentFailed: Effect.fn(
         "workspaceReservations.markFulfillmentFailed"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.markFulfillmentFailed",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                fulfillmentState: "failed",
-                fulfillmentFailedAt: input.failedAt,
-                fulfillmentFailureCode: input.failureCode,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.paymentState, "paid"),
-                  eq(workspaceReservations.fulfillmentState, "processing")
-                )
-              )
-              .returning({ id: workspaceReservations.id })
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            fulfillmentState: "failed",
+            fulfillmentFailedAt: input.failedAt,
+            fulfillmentFailureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.paymentState, "paid"),
+              eq(workspaceReservations.fulfillmentState, "processing")
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.markFulfillmentFailed",
@@ -665,30 +643,26 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markFulfillmentDeliveryFailed: Effect.fn(
         "workspaceReservations.markFulfillmentDeliveryFailed"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.markFulfillmentDeliveryFailed",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                fulfillmentState: "failed",
-                fulfilledAt: null,
-                fulfillmentFailedAt: input.failedAt,
-                fulfillmentFailureCode: input.failureCode,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.paymentState, "paid"),
-                  inArray(workspaceReservations.fulfillmentState, [
-                    "processing",
-                    "fulfilled",
-                  ])
-                )
-              )
-              .returning({ id: workspaceReservations.id })
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            fulfillmentState: "failed",
+            fulfilledAt: null,
+            fulfillmentFailedAt: input.failedAt,
+            fulfillmentFailureCode: input.failureCode,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.paymentState, "paid"),
+              inArray(workspaceReservations.fulfillmentState, [
+                "processing",
+                "fulfilled",
+              ])
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.markFulfillmentDeliveryFailed",
@@ -699,26 +673,22 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       markReservationConfirmed: Effect.fn(
         "workspaceReservations.markReservationConfirmed"
       )(function* (input) {
-        const updated = yield* runDb(
-          "workspaceReservations.markReservationConfirmed",
-          () =>
-            db
-              .update(workspaceReservations)
-              .set({
-                reservationState: "confirmed",
-                reservationConfirmedAt: input.confirmedAt,
-                updatedAt: new Date(),
-              })
-              .where(
-                and(
-                  eq(workspaceReservations.id, input.id),
-                  eq(workspaceReservations.reservationState, "held"),
-                  eq(workspaceReservations.paymentState, "paid"),
-                  eq(workspaceReservations.fulfillmentState, "processing")
-                )
-              )
-              .returning({ id: workspaceReservations.id })
-        );
+        const updated = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "confirmed",
+            reservationConfirmedAt: input.confirmedAt,
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, input.id),
+              eq(workspaceReservations.reservationState, "held"),
+              eq(workspaceReservations.paymentState, "paid"),
+              eq(workspaceReservations.fulfillmentState, "processing")
+            )
+          )
+          .returning({ id: workspaceReservations.id });
         yield* ensureUpdated(
           updated,
           "workspaceReservations.markReservationConfirmed",
@@ -728,53 +698,46 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       selectExpiredHolds: Effect.fn("workspaceReservations.selectExpiredHolds")(
         function* (input) {
-          return yield* runDb("workspaceReservations.selectExpiredHolds", () =>
-            db
-              .select()
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(workspaceReservations.reservationState, "held"),
-                  sql`${workspaceReservations.paymentState} <> 'paid'`,
-                  lte(workspaceReservations.reservationHoldExpiresAt, input.now)
-                )
+          return yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(workspaceReservations.reservationState, "held"),
+                sql`${workspaceReservations.paymentState} <> 'paid'`,
+                lte(workspaceReservations.reservationHoldExpiresAt, input.now)
               )
-              .orderBy(
-                sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, ${workspaceReservations.reservationHoldExpiresAt})`,
-                asc(workspaceReservations.reservationHoldExpiresAt),
-                asc(workspaceReservations.id)
-              )
-              .limit(input.limit)
-          );
+            )
+            .orderBy(
+              sql`coalesce(${workspaceReservations.reservationHoldExpiredAt}, ${workspaceReservations.reservationHoldExpiresAt})`,
+              asc(workspaceReservations.reservationHoldExpiresAt),
+              asc(workspaceReservations.id)
+            )
+            .limit(input.limit);
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
       selectExpiredHoldDotyposReservationIds: Effect.fn(
         "workspaceReservations.selectExpiredHoldDotyposReservationIds"
       )(function* (input) {
-        const rows = yield* runDb(
-          "workspaceReservations.selectExpiredHoldDotyposReservationIds",
-          () =>
-            db
-              .select({
-                dotyposReservationId:
-                  workspaceReservations.dotyposReservationId,
-              })
-              .from(workspaceReservations)
-              .where(
-                and(
-                  eq(workspaceReservations.reservationState, "held"),
-                  inArray(workspaceReservations.paymentState, [
-                    "not_started",
-                    "failed",
-                    "cancelled",
-                    "expired",
-                  ]),
-                  sql`${workspaceReservations.dotyposReservationId} is not null`,
-                  lte(workspaceReservations.reservationHoldExpiresAt, input.now)
-                )
-              )
-        );
+        const rows = yield* db
+          .select({
+            dotyposReservationId: workspaceReservations.dotyposReservationId,
+          })
+          .from(workspaceReservations)
+          .where(
+            and(
+              eq(workspaceReservations.reservationState, "held"),
+              inArray(workspaceReservations.paymentState, [
+                "not_started",
+                "failed",
+                "cancelled",
+                "expired",
+              ]),
+              sql`${workspaceReservations.dotyposReservationId} is not null`,
+              lte(workspaceReservations.reservationHoldExpiresAt, input.now)
+            )
+          );
 
         return rows.flatMap(({ dotyposReservationId }) =>
           dotyposReservationId ? [dotyposReservationId] : []

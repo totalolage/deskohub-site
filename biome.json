@@ -16,7 +16,8 @@
       "!**/.vercel",
       "!**/.turbo",
       "!.taskmaster",
-      "!**/generated"
+      "!**/generated",
+      "!**/db/migrations/**/snapshot.json"
     ]
   },
   "formatter": {

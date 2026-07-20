@@ -1,5 +1,6 @@
-import { relations, sql } from "drizzle-orm";
-import { check, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
+import { check, index, pgTable, text } from "drizzle-orm/pg-core";
+import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import {
   type PaymentProvider,
@@ -22,22 +23,12 @@ export const webhookEvents = pgTable(
       () => paymentAttempts.id
     ),
     providerOrderId: text("provider_order_id"),
-    receivedAt: timestamp("received_at", {
-      withTimezone: true,
-      mode: "date",
-    }).notNull(),
-    processedAt: timestamp("processed_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
+    receivedAt: instant("received_at").notNull(),
+    processedAt: instant("processed_at"),
     state: text("state").notNull().$type<WebhookEventState>(),
     errorCode: text("error_code"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
     check(
@@ -65,13 +56,6 @@ export const webhookEvents = pgTable(
     index("webhook_events_state_received_idx").on(t.state, t.receivedAt),
   ]
 );
-
-export const webhookEventsRelations = relations(webhookEvents, ({ one }) => ({
-  paymentAttempt: one(paymentAttempts, {
-    fields: [webhookEvents.paymentAttemptId],
-    references: [paymentAttempts.id],
-  }),
-}));
 
 export type WebhookEvent = typeof webhookEvents.$inferSelect;
 export type NewWebhookEvent = typeof webhookEvents.$inferInsert;

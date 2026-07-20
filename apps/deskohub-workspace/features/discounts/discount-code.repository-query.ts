@@ -1,13 +1,14 @@
 import { and, count, eq, gt, or, sql } from "drizzle-orm";
 import type { WorkspaceDatabaseClient } from "@/db/database.service";
 import { discountCodeCustomers, discountCodeRedemptions } from "@/db/schema";
+import type { TemporalInstant } from "@/shared/utils";
 import type { DiscountCodeId } from "./persistence-contracts";
 
 export const buildDiscountCodeAvailabilityQueries = (input: {
   readonly db: WorkspaceDatabaseClient;
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: string;
-  readonly at: Date;
+  readonly at: TemporalInstant;
 }) => ({
   allowlist: input.db
     .select({

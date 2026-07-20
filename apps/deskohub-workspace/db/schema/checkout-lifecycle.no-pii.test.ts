@@ -37,7 +37,7 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
 
   test("baseline migration does not create forbidden or PII-capable columns", async () => {
     const migration = await readAppFile(
-      "db/migrations/0000_free_morgan_stark.sql"
+      "db/migrations/20260602090946_free_morgan_stark/migration.sql"
     );
     const lowerMigration = migration.toLowerCase();
 

@@ -5,7 +5,6 @@ import {
   index,
   pgTable,
   text,
-  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import {
@@ -15,6 +14,7 @@ import {
   workspaceProductTiers,
 } from "@/features/checkout/product-catalog";
 import { locales } from "@/features/i18n";
+import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 
@@ -87,43 +87,18 @@ export const workspaceReservations = pgTable(
       "product_monitor_option"
     ).$type<WorkspaceProductMonitorOption>(),
     locale: text("locale").notNull(),
-    reservationHoldExpiresAt: timestamp("reservation_hold_expires_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    reservationHoldExpiredAt: timestamp("reservation_hold_expired_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    reservationCreatedAt: timestamp("reservation_created_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    reservationConfirmedAt: timestamp("reservation_confirmed_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    reservationCancelledAt: timestamp("reservation_cancelled_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    paidAt: timestamp("paid_at", { withTimezone: true, mode: "date" }),
-    fulfilledAt: timestamp("fulfilled_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    fulfillmentFailedAt: timestamp("fulfillment_failed_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
+    reservationHoldExpiresAt: instant("reservation_hold_expires_at"),
+    reservationHoldExpiredAt: instant("reservation_hold_expired_at"),
+    reservationCreatedAt: instant("reservation_created_at"),
+    reservationConfirmedAt: instant("reservation_confirmed_at"),
+    reservationCancelledAt: instant("reservation_cancelled_at"),
+    paidAt: instant("paid_at"),
+    fulfilledAt: instant("fulfilled_at"),
+    fulfillmentFailedAt: instant("fulfillment_failed_at"),
     failureCode: text("failure_code"),
     fulfillmentFailureCode: text("fulfillment_failure_code"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
     check(

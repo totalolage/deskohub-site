@@ -1,7 +1,10 @@
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Clock, Context, Effect, Layer, Match, Option } from "effect";
-import type { DatabaseError } from "@/db/database.service";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
-import { temporalInstantToIsoString } from "@/shared/utils";
+import {
+  type TemporalInstant,
+  temporalInstantToIsoString,
+} from "@/shared/utils";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import type {
   DiscountCodeAvailability,
@@ -66,7 +69,7 @@ export class CodeDiscountProvider extends Context.Service<
         "CodeDiscountProvider.loadCodeAvailability"
       )(
         (input: {
-          readonly at: Date;
+          readonly at: TemporalInstant;
           readonly configuration: DiscountCodeConfiguration;
           readonly dotyposCustomerId: string;
         }) =>
@@ -94,8 +97,11 @@ export class CodeDiscountProvider extends Context.Service<
           }
         ) =>
           Effect.succeed(input).pipe(
-            Effect.bind("now", () => Clock.currentTimeMillis),
-            Effect.let("at", ({ now }) => new Date(now)),
+            Effect.bind("at", () =>
+              Clock.currentTimeMillis.pipe(
+                Effect.map(Temporal.Instant.fromEpochMilliseconds)
+              )
+            ),
             Effect.bind("configuration", loadCodeConfiguration),
             Effect.tap(validateDiscountCodeEnabled),
             Effect.tap(validateDiscountCodeStarted),
@@ -173,20 +179,20 @@ const validateDiscountCodeEnabled = (input: {
     : unavailable(input.configuration, "inactive");
 
 const validateDiscountCodeStarted = (input: {
-  readonly at: Date;
+  readonly at: TemporalInstant;
   readonly configuration: DiscountCodeConfiguration;
 }) =>
   input.configuration.validFrom === null ||
-  input.at.getTime() >= input.configuration.validFrom.getTime()
+  Temporal.Instant.compare(input.at, input.configuration.validFrom) >= 0
     ? Effect.void
     : unavailable(input.configuration, "not_started");
 
 const validateDiscountCodeUnexpired = (input: {
-  readonly at: Date;
+  readonly at: TemporalInstant;
   readonly configuration: DiscountCodeConfiguration;
 }) =>
   input.configuration.validUntil === null ||
-  input.at.getTime() < input.configuration.validUntil.getTime()
+  Temporal.Instant.compare(input.at, input.configuration.validUntil) < 0
     ? Effect.void
     : unavailable(input.configuration, "expired");
 
@@ -303,20 +309,16 @@ const toDiscountCodeCandidate = (input: {
 };
 
 const getDiscountCodeTiming = (
-  validUntil: Date | null
+  validUntil: TemporalInstant | null
 ): Pick<DiscountCandidate["discount"], "expiresAt" | "countdownStartsAt"> => {
   if (validUntil === null) {
     return {};
   }
 
-  const expiresAt = Temporal.Instant.fromEpochMilliseconds(
-    validUntil.getTime()
-  );
-
   return {
-    expiresAt: temporalInstantToIsoString(expiresAt),
+    expiresAt: temporalInstantToIsoString(validUntil),
     countdownStartsAt: temporalInstantToIsoString(
-      expiresAt.subtract({ hours: 1 })
+      validUntil.subtract({ hours: 1 })
     ),
   };
 };
@@ -339,15 +341,15 @@ const unavailable = (
   );
 
 const toDiscountCodeProviderError = (
-  cause: DatabaseError | DiscountCodeConfigurationError
+  cause: EffectDrizzleQueryError | DiscountCodeConfigurationError
 ) =>
   new DiscountProviderError({
     reason:
-      cause._tag === "DatabaseError"
+      cause._tag === "EffectDrizzleQueryError"
         ? "provider_failure"
         : "malformed_configuration",
     message:
-      cause._tag === "DatabaseError"
+      cause._tag === "EffectDrizzleQueryError"
         ? "Stored discount codes could not be loaded."
         : "A stored discount code is malformed.",
     cause,

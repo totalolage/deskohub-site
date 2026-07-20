@@ -1,9 +1,10 @@
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
-import { DatabaseError } from "@/db/database.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
@@ -28,7 +29,11 @@ describe("ReservationHoldCleanupService", () => {
     const unused = () => Effect.die("not used");
     const selectExpiredHolds = mock(() =>
       Effect.fail(
-        new DatabaseError({ operation: "selectExpiredHolds", cause: "down" })
+        new EffectDrizzleQueryError({
+          query: "select expired holds",
+          params: [],
+          cause: "down",
+        })
       )
     );
     const reservations = {
@@ -36,7 +41,7 @@ describe("ReservationHoldCleanupService", () => {
     } as unknown as WorkspaceReservationRepositoryType;
     const dotypos = {} as unknown as typeof DotyposService.Service;
 
-    const now = new Date("2026-06-02T10:00:00.000Z");
+    const now = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const result = await Effect.gen(function* () {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.sweepExpiredHolds({
@@ -117,7 +122,7 @@ describe("ReservationHoldCleanupService", () => {
       const cleanup = yield* ReservationHoldCleanupService;
       return yield* cleanup.cancelOrderHold({
         orderId,
-        holdExpiredAt: new Date("2026-06-02T10:00:00.000Z"),
+        holdExpiredAt: Temporal.Instant.from("2026-06-02T10:00:00.000Z"),
       });
     }).pipe(
       Effect.provide(ReservationHoldCleanupServiceLive),
@@ -166,7 +171,7 @@ describe("ReservationHoldCleanupService", () => {
 
     const orderId = "reservation-cleanup-provider-pending";
     const attemptId = "attempt-cleanup-provider-pending";
-    const now = new Date("2026-06-02T10:00:00.000Z");
+    const now = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const activeReservation = {
       id: orderId,
       reservationState: "held",
@@ -258,7 +263,7 @@ describe("ReservationHoldCleanupService", () => {
 
     const orderId = "reservation-cleanup-not-verifiable";
     const attemptId = "attempt-cleanup-not-verifiable";
-    const holdExpiredAt = new Date("2026-06-02T10:00:00.000Z");
+    const holdExpiredAt = Temporal.Instant.from("2026-06-02T10:00:00.000Z");
     const claimed = {
       id: orderId,
       reservationState: "cancelling",
@@ -273,7 +278,7 @@ describe("ReservationHoldCleanupService", () => {
       Effect.succeed({
         attempt: { id: attemptId, state: "expired" },
         changed: true,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       })
     );
     await Effect.gen(function* () {
@@ -328,7 +333,7 @@ describe("ReservationHoldCleanupService", () => {
     expect(cancelReservation).toHaveBeenCalledWith("dotypos-reservation-id");
     expect(markCancelled).toHaveBeenCalledWith({
       id: orderId,
-      cancelledAt: expect.any(Date),
+      cancelledAt: expect.any(Temporal.Instant),
       holdExpiredAt,
     });
   });

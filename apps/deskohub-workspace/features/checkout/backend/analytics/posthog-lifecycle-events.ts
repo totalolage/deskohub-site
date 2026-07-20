@@ -4,6 +4,7 @@ import {
   type PostHogEventProperties,
   PostHogEventService,
 } from "@/shared/backend/analytics/posthog-event.service";
+import type { TemporalInstant } from "@/shared/utils/temporal";
 
 const reservationProperties = (
   reservation: Pick<WorkspaceReservation, "id">
@@ -39,7 +40,7 @@ const captureLifecycleEvent = (input: {
   readonly event: string;
   readonly id: string;
   readonly properties: PostHogEventProperties;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   Effect.gen(function* () {
     const posthog = yield* PostHogEventService;
@@ -57,7 +58,7 @@ export const captureReservationStarted = (input: {
     WorkspaceReservation,
     "id" | "dotyposReservationId"
   >;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.reservation.id,
@@ -77,7 +78,7 @@ export const captureReservationAbandoned = (input: {
     WorkspaceReservation,
     "id" | "dotyposReservationId"
   >;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.reservation.id,
@@ -92,7 +93,7 @@ export const captureReservationCompleted = (input: {
     WorkspaceReservation,
     "id" | "dotyposReservationId"
   >;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.reservation.id,
@@ -112,7 +113,7 @@ export const captureReservationFulfilled = (input: {
     WorkspaceReservation,
     "id" | "dotyposCustomerId" | "dotyposReservationId"
   >;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.reservation.id,
@@ -130,7 +131,7 @@ export const captureReservationFulfilled = (input: {
 
 export const capturePaymentStarted = (input: {
   readonly attempt: PaymentLifecycleAttempt;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.attempt.workspaceReservationId,
@@ -142,7 +143,7 @@ export const capturePaymentStarted = (input: {
 
 export const capturePaymentCompleted = (input: {
   readonly attempt: PaymentLifecycleAttempt;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.attempt.workspaceReservationId,
@@ -154,7 +155,7 @@ export const capturePaymentCompleted = (input: {
 
 export const capturePaymentAbandoned = (input: {
   readonly attempt: PaymentLifecycleAttempt;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.attempt.workspaceReservationId,
@@ -168,7 +169,7 @@ export const capturePaymentFailed = (input: {
   readonly attempt: PaymentLifecycleAttempt;
   readonly failureCode: string;
   readonly failureReason: string;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
 }) =>
   captureLifecycleEvent({
     distinctId: input.attempt.workspaceReservationId,

@@ -31,9 +31,9 @@ describe("WorkspacePaidFulfillmentService", () => {
       id: "reservation-id",
       paymentState: "paid",
       fulfillmentState: "processing",
-      updatedAt: new Date(
-        Date.now() - PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS - 1000
-      ),
+      updatedAt: Temporal.Now.instant().subtract({
+        milliseconds: PAID_FULFILLMENT_PROCESSING_RETRY_AFTER_MS + 1000,
+      }),
     };
     const claimed = {
       ...order,
@@ -45,8 +45,8 @@ describe("WorkspacePaidFulfillmentService", () => {
     const emailReservation = {
       ...claimed,
       customer: { email: "customer@example.com" },
-      reservedFrom: new Date("2026-07-01T08:00:00.000Z"),
-      reservedUntil: new Date("2026-07-02T08:00:00.000Z"),
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
       tableName: "12",
     };
     const claimPaidFulfillment = mock(() => Effect.succeed(claimed as never));
@@ -97,7 +97,7 @@ describe("WorkspacePaidFulfillmentService", () => {
     expect(claimPaidFulfillment).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "reservation-id",
-        staleProcessingBefore: expect.any(Date),
+        staleProcessingBefore: expect.any(Temporal.Instant),
       })
     );
     expect(confirmReservation).not.toHaveBeenCalled();
@@ -141,8 +141,8 @@ describe("WorkspacePaidFulfillmentService", () => {
     const emailReservation = {
       ...claimed,
       customer: { email: "customer@example.com" },
-      reservedFrom: new Date("2026-07-01T08:00:00.000Z"),
-      reservedUntil: new Date("2026-07-02T08:00:00.000Z"),
+      reservedFrom: Temporal.Instant.from("2026-07-01T08:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-07-02T08:00:00.000Z"),
       tableName: "12",
     };
     const confirmReservation = mock(() => Effect.void);

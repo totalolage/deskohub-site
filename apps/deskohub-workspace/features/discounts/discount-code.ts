@@ -1,5 +1,6 @@
 import { Data, Effect, Option, Schema } from "effect";
 import type { DiscountCode } from "@/db/schema";
+import { type TemporalInstant, TemporalInstantSchema } from "@/shared/utils";
 import { canonicalDiscountCodeSchema } from "./contracts";
 import { DiscountCodeUnavailableError } from "./errors";
 import {
@@ -13,8 +14,8 @@ export type DiscountCodeConfiguration = {
   readonly id: DiscountCodeId;
   readonly discountId: StoredDiscountId;
   readonly enabled: boolean;
-  readonly validFrom: Date | null;
-  readonly validUntil: Date | null;
+  readonly validFrom: TemporalInstant | null;
+  readonly validUntil: TemporalInstant | null;
   readonly maxUses: number | null;
 };
 
@@ -107,15 +108,15 @@ const discountCodeConfigurationSchema = Schema.Struct({
   discountId: storedDiscountIdSchema,
   code: canonicalDiscountCodeSchema,
   enabled: Schema.Boolean,
-  validFrom: Schema.NullOr(Schema.DateValid),
-  validUntil: Schema.NullOr(Schema.DateValid),
+  validFrom: Schema.NullOr(TemporalInstantSchema),
+  validUntil: Schema.NullOr(TemporalInstantSchema),
   maxUses: Schema.NullOr(Schema.Int.check(Schema.isGreaterThan(0))),
 }).check(
   Schema.makeFilter(
     ({ validFrom, validUntil }) =>
       validFrom === null ||
       validUntil === null ||
-      validUntil.getTime() > validFrom.getTime() || {
+      Temporal.Instant.compare(validUntil, validFrom) > 0 || {
         path: ["validUntil"],
         issue: "validUntil must be later than validFrom",
       }

@@ -10,6 +10,7 @@ import {
   PostHogEventServiceLive,
 } from "@/shared/backend/analytics/posthog-event.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
+import type { TemporalInstant } from "@/shared/utils/temporal";
 import { captureReservationAbandoned } from "../analytics/posthog-lifecycle-events";
 import {
   ProviderPaymentFinalizationService,
@@ -37,13 +38,13 @@ export type ReservationHoldCleanupOutcome = "cancelled" | "skipped";
 export interface ReservationHoldCleanupService {
   readonly cancelOrderHold: (input: {
     readonly orderId: string;
-    readonly holdExpiredAt?: Date;
+    readonly holdExpiredAt?: TemporalInstant;
   }) => Effect.Effect<
     ReservationHoldCleanupOutcome,
     ReservationHoldCleanupError
   >;
   readonly sweepExpiredHolds: (input: {
-    readonly now: Date;
+    readonly now: TemporalInstant;
     readonly limit: number;
   }) => Effect.Effect<
     {
@@ -72,7 +73,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
     const cancelOrderHold = Effect.fn("reservationHoldCleanup.cancelOrderHold")(
       function* (input: {
         readonly orderId: string;
-        readonly holdExpiredAt?: Date;
+        readonly holdExpiredAt?: TemporalInstant;
       }) {
         yield* Effect.annotateLogsScoped({ input });
         yield* Effect.logInfo("Reservation hold cancellation started");
@@ -262,7 +263,7 @@ export const ReservationHoldCleanupServiceLive = Layer.effect(
         );
 
         yield* Effect.logInfo("Reservation hold cancelled marker started");
-        const cancelledAt = new Date();
+        const cancelledAt = Temporal.Now.instant();
         const markedCancelled = yield* reservations
           .markCancelled({
             id: claimed.id,

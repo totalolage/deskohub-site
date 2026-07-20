@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
@@ -8,6 +9,9 @@ import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryTy
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { ProviderPaymentFinalizationService as ProviderPaymentFinalizationServiceType } from "../payment/provider-payment-finalization.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+
+const testInstant = (value = "2026-06-01T10:00:00Z") =>
+  Temporal.Instant.from(value);
 
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   id: "reservation-provider-return",
@@ -20,9 +24,9 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   productMonitorOption: "2x27-qhd",
   locale: "en-US",
   reservationState: "held",
-  reservationHoldExpiresAt: new Date("2099-06-20T10:00:00.000Z"),
+  reservationHoldExpiresAt: testInstant("2099-06-20T10:00:00.000Z"),
   reservationHoldExpiredAt: null,
-  reservationCreatedAt: new Date("2026-06-01T10:00:00.000Z"),
+  reservationCreatedAt: testInstant("2026-06-01T10:00:00.000Z"),
   reservationCancelledAt: null,
   paidAt: null,
   fulfillmentState: "not_started",
@@ -33,8 +37,8 @@ const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   activePaymentAttemptId: "attempt-provider-return",
   failureCode: null,
   fulfillmentFailureCode: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: testInstant(),
+  updatedAt: testInstant(),
   ...overrides,
 });
 
@@ -53,8 +57,8 @@ const makePaymentAttempt = (overrides: Record<string, unknown> = {}) => ({
   lastProviderOperationId: null,
   lastProviderStatus: null,
   failureCode: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: testInstant(),
+  updatedAt: testInstant(),
   ...overrides,
 });
 
@@ -393,7 +397,7 @@ describe("CheckoutStatusService", () => {
           makeReservation({
             paymentState: "paid",
             fulfillmentState: "failed",
-            fulfillmentFailedAt: new Date("2026-06-20T10:00:00.000Z"),
+            fulfillmentFailedAt: testInstant("2026-06-20T10:00:00.000Z"),
             fulfillmentFailureCode: "fulfillment_email_failed",
           })
         )

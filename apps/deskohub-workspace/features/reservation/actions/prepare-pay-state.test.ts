@@ -43,7 +43,7 @@ const reservation = {
   phone: "+420 777 777 777",
 };
 
-const reusableHoldExpiresAt = new Date("2030-07-01T12:00:00.000Z");
+const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
 
 const makeReusableReservation = (
   overrides: Partial<WorkspaceReservation> = {}
@@ -65,7 +65,7 @@ const makeReusableReservation = (
     locale: "en-US",
     reservationHoldExpiresAt: reusableHoldExpiresAt,
     reservationHoldExpiredAt: null,
-    reservationCreatedAt: new Date("2026-07-01T09:55:00.000Z"),
+    reservationCreatedAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     reservationConfirmedAt: null,
     reservationCancelledAt: null,
     paidAt: null,
@@ -73,8 +73,8 @@ const makeReusableReservation = (
     fulfillmentFailedAt: null,
     failureCode: null,
     fulfillmentFailureCode: null,
-    createdAt: new Date("2026-07-01T09:55:00.000Z"),
-    updatedAt: new Date("2026-07-01T09:55:00.000Z"),
+    createdAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
+    updatedAt: Temporal.Instant.from("2026-07-01T09:55:00.000Z"),
     ...overrides,
   }) as WorkspaceReservation;
 
@@ -364,7 +364,7 @@ describe("prepareWorkspacePayState", () => {
     );
     expect(enqueueCleanup).toHaveBeenCalledWith({
       orderId: "reservation-id",
-      reservationHoldExpiresAt: expect.any(Date),
+      reservationHoldExpiresAt: expect.any(Temporal.Instant),
     });
     expect(eventOrder).toEqual([
       "bot-verification",

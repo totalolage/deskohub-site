@@ -235,7 +235,7 @@ export const ResendWebhookServiceLive = Layer.effect(
             return ignored("reservation_not_processing");
           }
 
-          const fulfilledAt = new Date();
+          const fulfilledAt = Temporal.Now.instant();
           yield* reservations
             .markFulfilled({
               id: workspaceReservationId,
@@ -279,7 +279,7 @@ export const ResendWebhookServiceLive = Layer.effect(
           .markFulfillmentDeliveryFailed({
             id: workspaceReservationId,
             failureCode: fulfillmentEmailFailureCode,
-            failedAt: new Date(),
+            failedAt: Temporal.Now.instant(),
           })
           .pipe(
             Effect.mapError(

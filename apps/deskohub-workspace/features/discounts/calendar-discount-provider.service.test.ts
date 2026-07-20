@@ -7,9 +7,9 @@ import {
   type IGoogleCalendarService,
 } from "@deskohub/google-calendar";
 import { GoogleCalendarServiceMock } from "@deskohub/google-calendar/backend/service.mock";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer, Schema, Scope } from "effect";
 import { TestClock } from "effect/testing";
-import { DatabaseError } from "@/db/database.service";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import type { DiscountDefinition } from "./discount-definition";
@@ -318,8 +318,9 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test("omits a definition on database failure", async () => {
-    const cause = new DatabaseError({
-      operation: "discountDefinitions.loadById",
+    const cause = new EffectDrizzleQueryError({
+      query: "select discount definition",
+      params: [],
       cause: new Error("database unavailable"),
     });
     const result = await runWithProvider(
@@ -715,8 +716,9 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test("does not cache omitted definition-provider failures", async () => {
-    const cause = new DatabaseError({
-      operation: "discountDefinitions.loadById",
+    const cause = new EffectDrizzleQueryError({
+      query: "select discount definition",
+      params: [],
       cause: new Error("temporary failure"),
     });
     let calls = 0;

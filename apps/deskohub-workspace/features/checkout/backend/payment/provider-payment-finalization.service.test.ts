@@ -38,8 +38,8 @@ const pendingAttempt = {
   lastProviderOperationId: null,
   lastProviderStatus: null,
   failureCode: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: Temporal.Now.instant(),
+  updatedAt: Temporal.Now.instant(),
 };
 
 const buildVerification = (
@@ -212,7 +212,7 @@ describe("ProviderPaymentFinalizationService", () => {
         Effect.succeed({
           attempt: { ...pendingAttempt, state: "paid" as const },
           changed: true,
-          timestamp: new Date(),
+          timestamp: Temporal.Now.instant(),
         })
       );
       const markTerminalForReservation = mock(() =>
@@ -224,7 +224,7 @@ describe("ProviderPaymentFinalizationService", () => {
             lastProviderStatus: "DECLINED",
           },
           changed: true,
-          timestamp: new Date(),
+          timestamp: Temporal.Now.instant(),
         })
       );
       const fulfillPaidOrder = mock(() => Effect.void);

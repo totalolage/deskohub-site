@@ -1,28 +1,28 @@
+import * as PgClient from "@effect/sql-pg/PgClient";
 import { attachDatabasePool } from "@vercel/functions";
-import { drizzle } from "drizzle-orm/node-postgres";
-import { Context, Data, Effect, Layer } from "effect";
+import {
+  DefaultServices,
+  EffectLogger,
+  type EffectPgDatabase,
+  make,
+} from "drizzle-orm/effect-postgres";
+import { Context, Effect, Layer } from "effect";
 import { Pool } from "pg";
 import { env } from "@/env";
 import { normalizePostgresConnectionUrl } from "./postgres-connection-url";
-import * as schema from "./schema";
-
-export class DatabaseError extends Data.TaggedError("DatabaseError")<{
-  readonly operation: string;
-  readonly cause: unknown;
-}> {}
+import { drizzleRawTypeParsers } from "./postgres-type-parsers";
+import { relations } from "./relations";
 
 const pool = new Pool({
   connectionString: normalizePostgresConnectionUrl(env.DATABASE_URL),
-  max: 1,
   connectionTimeoutMillis: 5_000,
   query_timeout: 10_000,
   statement_timeout: 10_000,
+  types: drizzleRawTypeParsers,
 });
 attachDatabasePool(pool);
 
-export const workspaceDb = drizzle(pool, { schema });
-
-export type WorkspaceDatabaseClient = typeof workspaceDb;
+export type WorkspaceDatabaseClient = EffectPgDatabase<typeof relations>;
 
 export interface WorkspaceDatabase {
   readonly db: WorkspaceDatabaseClient;
@@ -31,28 +31,15 @@ export interface WorkspaceDatabase {
 export const WorkspaceDatabase =
   Context.Service<WorkspaceDatabase>("WorkspaceDatabase");
 
-export const WorkspaceDatabaseLive = Layer.succeed(
+const PgClientLive = PgClient.layerFrom(
+  PgClient.fromPool({ acquire: Effect.succeed(pool) })
+).pipe(Layer.orDie);
+
+export const WorkspaceDatabaseLive = Layer.effect(
   WorkspaceDatabase,
-  WorkspaceDatabase.of({ db: workspaceDb })
-);
-
-export interface RunDbOptions<E> {
-  readonly preserveError?: (cause: unknown) => cause is E;
-}
-
-export const mapDatabaseError =
-  <E>(operation: string, options?: RunDbOptions<E>) =>
-  (cause: unknown): DatabaseError | E => {
-    if (options?.preserveError?.(cause)) {
-      return cause;
-    }
-
-    return new DatabaseError({ operation, cause });
-  };
-
-export const runDb = <A, E = never>(
-  operation: string,
-  run: () => Promise<A>,
-  options?: RunDbOptions<E>
-): Effect.Effect<A, DatabaseError | E> =>
-  Effect.tryPromise({ try: run, catch: mapDatabaseError(operation, options) });
+  make({ relations }).pipe(
+    Effect.provide(EffectLogger.layer),
+    Effect.provide(DefaultServices),
+    Effect.map((db) => WorkspaceDatabase.of({ db }))
+  )
+).pipe(Layer.provide(PgClientLive));

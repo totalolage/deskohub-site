@@ -91,7 +91,9 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               dotypos.getTables(),
               dotypos.listReservations(),
               workspaceReservations
-                .selectExpiredHoldDotyposReservationIds({ now: new Date() })
+                .selectExpiredHoldDotyposReservationIds({
+                  now: Temporal.Now.instant(),
+                })
                 .pipe(
                   Effect.tapError((cause) =>
                     Effect.logWarning(

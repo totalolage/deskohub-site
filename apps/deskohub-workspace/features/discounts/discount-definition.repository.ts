@@ -1,11 +1,6 @@
-import { eq } from "drizzle-orm";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import {
-  type DatabaseError,
-  runDb,
-  WorkspaceDatabase,
-} from "@/db/database.service";
-import { discounts } from "@/db/schema";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type DiscountDefinition,
   type DiscountDefinitionMalformedError,
@@ -18,7 +13,7 @@ export interface IDiscountDefinitionRepository {
     readonly discountId: StoredDiscountId;
   }) => Effect.Effect<
     DiscountDefinition,
-    | DatabaseError
+    | EffectDrizzleQueryError
     | DiscountDefinitionNotFoundError
     | DiscountDefinitionMalformedError
   >;
@@ -35,14 +30,10 @@ export class DiscountDefinitionRepository extends Context.Service<
 
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
         function* (input) {
-          const row = yield* runDb(
-            "discountDefinitions.loadById",
-            async () =>
-              await db.query.discounts.findFirst({
-                where: eq(discounts.id, input.discountId),
-                with: { productTargets: true },
-              })
-          );
+          const row = yield* db.query.discounts.findFirst({
+            where: { id: input.discountId },
+            with: { productTargets: true },
+          });
 
           if (!row) {
             return yield* new DiscountDefinitionNotFoundError({

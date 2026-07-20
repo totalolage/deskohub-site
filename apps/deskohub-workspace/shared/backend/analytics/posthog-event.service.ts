@@ -8,6 +8,10 @@ import {
   type PostHogRuntimeConfigObj,
 } from "@/shared/backend/config/posthog.config";
 import { censorLogValue } from "@/shared/backend/logging/censorship";
+import {
+  type TemporalInstant,
+  temporalInstantToDate,
+} from "@/shared/utils/temporal";
 
 export type PostHogEventProperties = NonNullable<EventMessage["properties"]>;
 
@@ -15,7 +19,7 @@ export interface CapturePostHogEventInput {
   readonly distinctId: string;
   readonly event: string;
   readonly properties?: PostHogEventProperties;
-  readonly timestamp: Date;
+  readonly timestamp: TemporalInstant;
   readonly uuid: string;
 }
 
@@ -120,7 +124,7 @@ export const makePostHogEventService = ({
           distinctId: input.distinctId,
           event: input.event,
           properties,
-          timestamp: input.timestamp,
+          timestamp: temporalInstantToDate(input.timestamp),
           uuid: input.uuid,
         })
       ).pipe(

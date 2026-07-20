@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Schema } from "effect";
@@ -16,7 +17,7 @@ describe("discount code availability queries", () => {
       db,
       codeId,
       dotyposCustomerId: "customer-1",
-      at: new Date("2026-07-15T12:00:00.000Z"),
+      at: Temporal.Instant.from("2026-07-15T12:00:00.000Z"),
     }).allowlist.toSQL();
 
     expect(sql).toContain("count(*)");
@@ -29,7 +30,7 @@ describe("discount code availability queries", () => {
 
   test("counts redeemed and only live reserved claims", () => {
     const db = drizzle.mock({ schema });
-    const at = new Date("2026-07-15T12:00:00.000Z");
+    const at = Temporal.Instant.from("2026-07-15T12:00:00.000Z");
     const { sql, params } = buildDiscountCodeAvailabilityQueries({
       db,
       codeId,
@@ -42,8 +43,9 @@ describe("discount code availability queries", () => {
       `coalesce(bool_or("dotypos_customer_id" = $1 and "state" = 'redeemed'), false)`
     );
     expect(sql).toContain('"state" = $3');
+    expect(sql).toContain('"discount_code_redemptions"."state" = $4');
     expect(sql).toContain(
-      '("discount_code_redemptions"."state" = $4 and "discount_code_redemptions"."reservation_expires_at" > $5)'
+      '"discount_code_redemptions"."reservation_expires_at" > $5'
     );
     expect(sql).not.toContain("released");
     expect(params).toEqual([
@@ -51,7 +53,7 @@ describe("discount code availability queries", () => {
       codeId,
       "redeemed",
       "reserved",
-      at.toISOString(),
+      "2026-07-15T12:00:00.000000Z",
     ]);
   });
 });

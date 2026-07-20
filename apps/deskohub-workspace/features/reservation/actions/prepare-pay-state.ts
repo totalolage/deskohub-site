@@ -61,6 +61,7 @@ import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-even
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import type { TemporalInstant } from "@/shared/utils";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const preparePayStateSchema = Schema.toStandardSchemaV1(
@@ -80,8 +81,8 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   }
 );
 
-const getReservationHoldExpiresAt = (now: Date) =>
-  new Date(now.getTime() + payStateDefaultTtlMilliseconds);
+const getReservationHoldExpiresAt = (now: TemporalInstant) =>
+  now.add({ milliseconds: payStateDefaultTtlMilliseconds });
 
 const normalizeIdempotencyPart = (value: string) =>
   value.trim().toLocaleLowerCase("en-US");
@@ -224,7 +225,10 @@ const isReusableHeldReservation = (reservation: WorkspaceReservation) =>
   reservation.paymentState === "not_started" &&
   Boolean(reservation.dotyposReservationId) &&
   (!reservation.reservationHoldExpiresAt ||
-    reservation.reservationHoldExpiresAt > new Date());
+    Temporal.Instant.compare(
+      reservation.reservationHoldExpiresAt,
+      Temporal.Now.instant()
+    ) > 0);
 
 const canUseExistingReservationForNewHold = (
   reservation: WorkspaceReservation
@@ -244,7 +248,7 @@ const enqueueReservationHoldCleanup = Effect.fn(
   "prepareWorkspacePayState.enqueueReservationHoldCleanup"
 )(function* (input: {
   readonly orderId: string;
-  readonly reservationHoldExpiresAt: Date | null;
+  readonly reservationHoldExpiresAt: TemporalInstant | null;
 }) {
   if (!input.reservationHoldExpiresAt) {
     yield* Effect.logWarning(
@@ -345,7 +349,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     });
     yield* Effect.logInfo("Workspace reservation submit started");
 
-    const acceptedAt = new Date().toISOString();
+    const acceptedAt = Temporal.Now.instant().toString();
     const privacyEvidence = yield* getReservationPrivacyEvidence({
       locale: input.locale,
       accepted: input.legalConsent === true,
@@ -493,7 +497,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logDebug("Workspace reservation quote built");
 
-    const holdExpiresAt = getReservationHoldExpiresAt(new Date());
+    const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
     const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
     const customerAccessCode = yield* accessCodes.generateCustomerAccessCode();
 
@@ -624,7 +628,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ dotyposReservationId });
     yield* Effect.logInfo("Workspace Dotypos reservation hold created");
 
-    const reservationCreatedAt = new Date();
+    const reservationCreatedAt = Temporal.Now.instant();
 
     yield* reservations
       .attachHold({
@@ -659,7 +663,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                     .markAttachFailedCancellationRequired({
                       id: reservationDraft.id,
                       dotyposReservationId,
-                      reservationCreatedAt: new Date(),
+                      reservationCreatedAt: Temporal.Now.instant(),
                       failureCode: "attach_failed_cancel_failed",
                     })
                     .pipe(

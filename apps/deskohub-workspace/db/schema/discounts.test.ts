@@ -26,7 +26,10 @@ const namesOf = <T extends { readonly name?: string }>(values: readonly T[]) =>
 describe("discount persistence contracts", () => {
   test("generated migration preserves the concurrency and privacy invariants", async () => {
     const migration = await Bun.file(
-      new URL("../migrations/0002_discount_codes.sql", import.meta.url)
+      new URL(
+        "../migrations/20260715202356_discount_codes/migration.sql",
+        import.meta.url
+      )
     ).text();
 
     for (const table of [

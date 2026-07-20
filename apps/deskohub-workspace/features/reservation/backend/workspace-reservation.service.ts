@@ -8,6 +8,7 @@ import {
 } from "@/features/checkout/workspace-table-map";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { TemporalInstant } from "@/shared/utils";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -34,8 +35,8 @@ export type WorkspaceReservationDetails = Pick<
 > & {
   readonly dotyposReservationId: string;
   readonly customer: Customer;
-  readonly reservedFrom: Date;
-  readonly reservedUntil: Date;
+  readonly reservedFrom: TemporalInstant;
+  readonly reservedUntil: TemporalInstant;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
 };
@@ -126,7 +127,7 @@ export class WorkspaceReservationService extends Context.Service<
             fieldName: "endDate",
           });
 
-          if (reservedUntil <= reservedFrom) {
+          if (Temporal.Instant.compare(reservedUntil, reservedFrom) <= 0) {
             return yield* Effect.fail(
               new WorkspaceReservationDetailsError({
                 reservationId: reservation.id,
@@ -192,21 +193,21 @@ const parseDotyposReservationDate = (input: {
   readonly reservationId: string;
   readonly value: string;
   readonly fieldName: "startDate" | "endDate";
-}): Effect.Effect<Date, WorkspaceReservationDetailsError> =>
-  Effect.sync(() => {
-    const value = input.value.trim();
-    return new Date(/^\d+$/.test(value) ? Number(value) : value);
-  }).pipe(
-    Effect.filterOrFail(
-      (date) => !Number.isNaN(date.getTime()),
-      () =>
-        new WorkspaceReservationDetailsError({
-          reservationId: input.reservationId,
-          errorCode: "dotypos_reservation_date_invalid",
-          message: `Workspace Dotypos reservation ${input.fieldName} is invalid.`,
-        })
-    )
-  );
+}): Effect.Effect<TemporalInstant, WorkspaceReservationDetailsError> =>
+  Effect.try({
+    try: () => {
+      const value = input.value.trim();
+      return /^\d+$/.test(value)
+        ? Temporal.Instant.fromEpochMilliseconds(Number(value))
+        : Temporal.Instant.from(value);
+    },
+    catch: () =>
+      new WorkspaceReservationDetailsError({
+        reservationId: input.reservationId,
+        errorCode: "dotypos_reservation_date_invalid",
+        message: `Workspace Dotypos reservation ${input.fieldName} is invalid.`,
+      }),
+  });
 
 const getReservationTableName = (
   reservation: Reservation,

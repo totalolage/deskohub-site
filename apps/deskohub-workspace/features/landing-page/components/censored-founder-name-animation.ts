@@ -29,11 +29,10 @@ const characterUpdates = (index: number) =>
   );
 
 const animatedCensoredFounderNameResultAtom = Atom.make(
-  Stream.mergeAll(
+  Stream.mergeAll({ concurrency: censoredFounderNameLabel.length })(
     Array.from({ length: censoredFounderNameLabel.length }, (_, index) =>
       characterUpdates(index)
-    ),
-    { concurrency: "unbounded" }
+    )
   ).pipe(
     Stream.scan(
       censoredFounderNameLabel,

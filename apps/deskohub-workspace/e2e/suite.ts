@@ -62,18 +62,18 @@ export const runWorkspaceE2ECases = ({
             ),
             (runtime) => finalizeCaseRuntime(runtime, run)
           ),
-        { concurrency: "unbounded" }
+        { concurrency: cases.length }
       );
 
       yield* Effect.forEach(runtimes, (runtime) => runCase(runtime, run), {
-        concurrency: "unbounded",
+        concurrency: runtimes.length,
         discard: true,
       }).pipe(
         Effect.tapCause(() =>
           Effect.forEach(
             runtimes.filter((runtime) => runtime.failureCause !== undefined),
             (runtime) => captureFailureArtifacts(runtime, run),
-            { concurrency: "unbounded", discard: true }
+            { concurrency: runtimes.length, discard: true }
           )
         )
       );

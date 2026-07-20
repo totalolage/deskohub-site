@@ -63,7 +63,7 @@ export class DiscountService extends Context.Service<
               provider: "code",
             }),
           },
-          { concurrency: "unbounded" }
+          { concurrency: 3 }
         ).pipe(Effect.map(collectDiscountCandidates))
       );
 
@@ -85,7 +85,7 @@ export class DiscountService extends Context.Service<
               provider: "code",
             }),
           },
-          { concurrency: "unbounded" }
+          { concurrency: 3 }
         ).pipe(
           Effect.map(collectDiscountCandidates),
           Effect.map((candidates) =>

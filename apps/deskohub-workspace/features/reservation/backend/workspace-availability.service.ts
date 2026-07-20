@@ -7,10 +7,7 @@ import {
 import type { Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
-import {
-  type DatabaseError,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   excludeExpiredLocalHolds,
   getWorkspaceTableOccupancyById,
@@ -58,7 +55,6 @@ import {
 } from "./workspace-reservation.repository";
 
 type WorkspaceAvailabilityError =
-  | DatabaseError
   | ExternalAPIError
   | GoogleCalendarError
   | NetworkError
@@ -129,7 +125,7 @@ const implementation = Effect.gen(function* () {
           }),
           workspaceReservations
             .selectExpiredHoldDotyposReservationIds({
-              now: new Date(),
+              now: Temporal.Now.instant(),
             })
             .pipe(
               Effect.tapError((cause) =>

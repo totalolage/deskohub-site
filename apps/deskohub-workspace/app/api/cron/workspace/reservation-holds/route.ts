@@ -19,7 +19,7 @@ const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
   function* () {
     const cleanup = yield* ReservationHoldCleanupService;
     const input = {
-      now: new Date(),
+      now: Temporal.Now.instant(),
       limit: cronBatchLimit,
     };
     yield* Effect.annotateLogsScoped({ input });

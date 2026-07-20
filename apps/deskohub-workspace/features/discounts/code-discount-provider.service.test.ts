@@ -1,9 +1,9 @@
 import "@/shared/testing/workspace-test-env";
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Option, Schema } from "effect";
 import { TestClock } from "effect/testing";
-import { DatabaseError } from "@/db/database.service";
 import {
   CodeDiscountProvider,
   type CodeDiscountProviderInput,
@@ -27,7 +27,8 @@ import {
   storedDiscountIdSchema,
 } from "./persistence-contracts";
 
-const now = Date.parse("2026-07-15T12:00:00.000Z");
+const nowInstant = Temporal.Instant.from("2026-07-15T12:00:00.000Z");
+const now = nowInstant.epochMilliseconds;
 const codeId = Schema.decodeUnknownSync(discountCodeIdSchema)(
   "019bfe6e-8ef0-7def-8b16-55cfbc82eda1"
 );
@@ -151,7 +152,7 @@ describe("CodeDiscountProvider", () => {
   test("resolves a canonical code to a source-neutral candidate with a private claim", async () => {
     const findByCode = mock(defaultFindByCode);
     const loadAvailability = mock(defaultLoadAvailability);
-    const validUntil = new Date("2026-08-01T10:00:00.000Z");
+    const validUntil = Temporal.Instant.from("2026-08-01T10:00:00.000Z");
 
     const result = await runWithProvider(resolve(), {
       findByCode,
@@ -163,7 +164,7 @@ describe("CodeDiscountProvider", () => {
     expect(loadAvailability).toHaveBeenCalledWith({
       codeId,
       dotyposCustomerId: "customer-1",
-      at: new Date(now),
+      at: nowInstant,
     });
     expect(result).toHaveLength(1);
     expect(result[0]).toMatchObject({
@@ -233,10 +234,10 @@ describe("CodeDiscountProvider", () => {
     ["inactive", configuration({ enabled: false }), availability()],
     [
       "not_started",
-      configuration({ validFrom: new Date(now + 1) }),
+      configuration({ validFrom: nowInstant.add({ milliseconds: 1 }) }),
       availability(),
     ],
-    ["expired", configuration({ validUntil: new Date(now) }), availability()],
+    ["expired", configuration({ validUntil: nowInstant }), availability()],
     [
       "already_redeemed",
       configuration(),
@@ -270,8 +271,8 @@ describe("CodeDiscountProvider", () => {
         Effect.succeed(
           Option.some(
             configuration({
-              validFrom: new Date(now),
-              validUntil: new Date(now + 1),
+              validFrom: nowInstant,
+              validUntil: nowInstant.add({ milliseconds: 1 }),
             })
           )
         ),
@@ -379,8 +380,9 @@ describe("CodeDiscountProvider", () => {
       failure: { reason: "unknown_code" },
     });
 
-    const databaseCause = new DatabaseError({
-      operation: "discountCodes.findByCode",
+    const databaseCause = new EffectDrizzleQueryError({
+      query: "select discount code",
+      params: [],
       cause: new Error("database unavailable"),
     });
     const database = await runWithProvider(resolve().pipe(Effect.result), {
