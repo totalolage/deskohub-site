@@ -69,7 +69,8 @@ const clickLocaleSwitchLink = (
     );
     const ref = yield* requireSnapshotRef({
       description: `${locale} locale switch link`,
-      labels: [locale === "cs-CZ" ? "CZECH" : "ENGLISH"],
+      labels:
+        locale === "cs-CZ" ? ["CZECH", "ČEŠTINA"] : ["ENGLISH", "ANGLIČTINA"],
       role: "link",
       run,
       session,

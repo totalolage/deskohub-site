@@ -19,7 +19,7 @@ test("switches locale from hydrated semantic links with native activation", asyn
       return success(
         locale === "en-US"
           ? '- navigation "Language switcher" [ref=e1]\n  - link "CZECH" [ref=e2]'
-          : '- navigation "Language switcher" [ref=e1]\n  - link "ENGLISH" [ref=e3]'
+          : '- navigation "Language switcher" [ref=e1]\n  - link "ANGLIČTINA" [ref=e3]'
       );
     }
     if (command[0] === "focus") {
