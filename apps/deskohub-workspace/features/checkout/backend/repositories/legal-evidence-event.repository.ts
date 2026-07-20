@@ -8,7 +8,7 @@ import {
 } from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import { legalEvidenceSchema } from "@/features/checkout/schemas/checkout-details";
+import { legalEvidenceSchema } from "@/features/checkout/legal-evidence";
 import { workspaceReservationIdSchema } from "@/features/reservation/persistence-contracts";
 
 const legalEvidenceEventInputSchema = Schema.Struct({

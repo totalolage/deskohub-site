@@ -10,15 +10,13 @@ import {
   normalizeWorkspaceCheckoutOrder,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
+  type LegalEvidenceMap,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
-import type {
-  CheckoutDetailsJson,
-  LegalEvidenceMap,
-} from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/legal-evidence";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,

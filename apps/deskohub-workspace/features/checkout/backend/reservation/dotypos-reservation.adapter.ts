@@ -9,7 +9,7 @@ import {
 } from "@deskohub/dotypos";
 import { Effect } from "effect";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,

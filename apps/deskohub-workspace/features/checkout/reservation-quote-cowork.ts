@@ -1,14 +1,14 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   getWorkspaceProductByTier,
   getWorkspaceProductCoffeeLinePriceForTier,
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
+  workspaceCoworkProductTiers,
+  workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
   addWorkspaceMoney,
-  type WorkspaceMoney,
   withWorkspaceMoneyCurrency,
+  workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { DiscountQuote } from "@/features/discounts";
 import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
@@ -19,28 +19,36 @@ import {
 
 type CoworkReservation = NormalizedCoworkReservationOrder;
 
-type CoworkProductQuoteItem = {
-  readonly type: "cowork";
-  readonly tier: WorkspaceCoworkProductTier;
-  readonly amount: WorkspaceMoney;
-};
+const coworkProductQuoteItemSchema = Schema.Struct({
+  type: Schema.Literal("cowork"),
+  tier: Schema.Literals(workspaceCoworkProductTiers),
+  amount: workspaceMoneyCodec,
+});
 
-type CoworkCoffeeQuoteItem = {
-  readonly type: "coffee";
-  readonly amount: WorkspaceMoney;
-};
+const coworkCoffeeQuoteItemSchema = Schema.Struct({
+  type: Schema.Literal("coffee"),
+  amount: workspaceMoneyCodec,
+});
 
-type CoworkMonitorQuoteItem = {
-  readonly type: "monitor";
-  readonly monitorOption: WorkspaceProductMonitorOption;
-  readonly amount: WorkspaceMoney;
-};
+const coworkMonitorQuoteItemSchema = Schema.Struct({
+  type: Schema.Literal("monitor"),
+  monitorOption: Schema.Literals(workspaceProductMonitorOptions),
+  amount: workspaceMoneyCodec,
+});
 
+export const coworkReservationQuoteItemSchema = Schema.Union([
+  coworkProductQuoteItemSchema,
+  coworkCoffeeQuoteItemSchema,
+  coworkMonitorQuoteItemSchema,
+]);
+
+type CoworkProductQuoteItem = typeof coworkProductQuoteItemSchema.Type;
+type CoworkCoffeeQuoteItem = typeof coworkCoffeeQuoteItemSchema.Type;
+type CoworkMonitorQuoteItem = typeof coworkMonitorQuoteItemSchema.Type;
 type CoworkAddonQuoteItem = CoworkCoffeeQuoteItem | CoworkMonitorQuoteItem;
 
 export type CoworkReservationQuoteItem =
-  | CoworkProductQuoteItem
-  | CoworkAddonQuoteItem;
+  typeof coworkReservationQuoteItemSchema.Type;
 
 export type CanonicalCoworkReservation = {
   readonly kind: "cowork";

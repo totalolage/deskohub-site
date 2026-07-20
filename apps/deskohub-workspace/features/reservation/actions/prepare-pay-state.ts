@@ -43,8 +43,8 @@ import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote"
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/legal-evidence";
+import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   type CanonicalDiscountCode,
   normalizeSubmittedDiscountCode,
