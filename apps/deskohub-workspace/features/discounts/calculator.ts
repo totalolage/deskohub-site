@@ -1,4 +1,4 @@
-import { Effect, Match, Schema } from "effect";
+import { Effect, Match, Option, Schema } from "effect";
 import {
   nonNegativeWorkspaceMoneyCodec,
   type WorkspaceMoney,
@@ -109,9 +109,15 @@ const advanceCalculationState = (input: {
   readonly candidate: DiscountCandidate;
   readonly appliedValue: number | undefined;
 }): DiscountCalculationState =>
-  input.appliedValue === undefined
-    ? { ...input.state, index: input.state.index + 1 }
-    : toNextCalculationState({ ...input, appliedValue: input.appliedValue });
+  Option.fromNullishOr(input.appliedValue).pipe(
+    Option.map((appliedValue) =>
+      toNextCalculationState({ ...input, appliedValue })
+    ),
+    Option.getOrElse(() => ({
+      ...input.state,
+      index: input.state.index + 1,
+    }))
+  );
 
 const getAppliedValue = (input: {
   readonly candidate: DiscountCandidate;

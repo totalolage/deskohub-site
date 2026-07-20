@@ -9,14 +9,9 @@ import type {
   DiscountQuoteInput,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
-import type {
-  DiscountCalculationError,
-  DiscountResolutionError,
-} from "./errors";
+import type { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
 import {
-  type DiscountResolutionOperation,
-  type DiscountResolutionProvider,
   logDiscountResolutionFailure,
   recoverDiscountResolution,
 } from "./resolution-logging";
@@ -55,21 +50,20 @@ export class DiscountService extends Context.Service<
       )((input: DiscountQuoteInput) =>
         Effect.all(
           {
-            calendarCandidates: recoverProviderCandidates(
+            calendarCandidates: recoverDiscountResolution(
               calendar.quote(input),
-              "calendar",
-              "quote"
+              [],
+              { operation: "quote", provider: "calendar" }
             ),
-            customerCandidates: recoverProviderCandidates(
+            customerCandidates: recoverDiscountResolution(
               customer.resolve(input),
-              "customer",
-              "quote"
+              [],
+              { operation: "quote", provider: "customer" }
             ),
-            codeCandidates: recoverProviderCandidates(
-              code.quote(input),
-              "code",
-              "quote"
-            ),
+            codeCandidates: recoverDiscountResolution(code.quote(input), [], {
+              operation: "quote",
+              provider: "code",
+            }),
           },
           { concurrency: "unbounded" }
         ).pipe(Effect.map(collectDiscountCandidates))
@@ -80,20 +74,20 @@ export class DiscountService extends Context.Service<
       )((input: DiscountAffirmationInput) =>
         Effect.all(
           {
-            calendarCandidates: recoverProviderCandidates(
+            calendarCandidates: recoverDiscountResolution(
               calendar.revalidate(input),
-              "calendar",
-              "affirm"
+              [],
+              { operation: "affirm", provider: "calendar" }
             ),
-            customerCandidates: recoverProviderCandidates(
+            customerCandidates: recoverDiscountResolution(
               customer.resolve(input),
-              "customer",
-              "affirm"
+              [],
+              { operation: "affirm", provider: "customer" }
             ),
-            codeCandidates: recoverProviderCandidates(
+            codeCandidates: recoverDiscountResolution(
               code.revalidate(input),
-              "code",
-              "affirm"
+              [],
+              { operation: "affirm", provider: "code" }
             ),
           },
           { concurrency: "unbounded" }
@@ -149,12 +143,6 @@ const collectDiscountCandidates = (input: {
   ...input.customerCandidates,
   ...input.codeCandidates,
 ];
-
-const recoverProviderCandidates = <E extends DiscountResolutionError>(
-  effect: Effect.Effect<readonly DiscountCandidate[], E>,
-  provider: DiscountResolutionProvider,
-  operation: Extract<DiscountResolutionOperation, "quote" | "affirm">
-) => recoverDiscountResolution(effect, [], { operation, provider });
 
 const selectAcceptedCandidates = (input: {
   readonly acceptedDiscountIds: readonly DiscountId[];
