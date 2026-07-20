@@ -4,7 +4,10 @@ import { browserDiagnosticsScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import type { Runner } from "../runtime";
 import type { CheckoutData } from "../types";
-import { startCheckoutPaymentAttempt } from "./payment";
+import {
+  completeNexiHostedPayment,
+  startCheckoutPaymentAttempt,
+} from "./payment";
 
 const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
@@ -110,6 +113,81 @@ test("retries a transient reservation preparation failure with the same intent",
   expect(result).toBe(orderId);
   expect(reservationSubmitAttempts).toBe(2);
   expect(activatedRefs).toEqual(["@e2", "@e3"]);
+});
+
+test("retries a hosted payment field when its first fill does not stick", async () => {
+  const values = new Map<string, string>();
+  let cardFillAttempts = 0;
+  let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
+  const run = mock(async (_command, args) => {
+    const commandArgs = args.slice(2);
+
+    if (commandArgs[0] === "snapshot") {
+      if (phase === "continue") {
+        return success(
+          [
+            '- textbox "Card number" [ref=e1]',
+            '- textbox "Expiration date" [ref=e2]',
+            '- textbox "CVV" [ref=e3]',
+            '- textbox "First Name" [ref=e4]',
+            '- textbox "Email" [ref=e5]',
+            '- button "CONTINUE" [ref=e6]',
+          ].join("\n")
+        );
+      }
+      if (phase === "pay") return success('- button "PAY" [ref=e7]');
+      if (phase === "three-d-secure")
+        return success('- button "Authentication successful" [ref=e8]');
+      return success();
+    }
+
+    if (commandArgs[0] === "fill") {
+      const ref = commandArgs[1] ?? "";
+      const value = commandArgs[2] ?? "";
+      if (ref === "@e1") {
+        cardFillAttempts += 1;
+        if (cardFillAttempts === 1) return success();
+      }
+      values.set(ref, value);
+      return success();
+    }
+
+    if (commandArgs[0] === "get" && commandArgs[1] === "value") {
+      return success(values.get(commandArgs[2] ?? "") ?? "");
+    }
+
+    if (commandArgs[0] === "click") {
+      if (phase === "continue") {
+        phase = "pay";
+      } else if (phase === "pay") {
+        phase = "three-d-secure";
+      } else if (phase === "three-d-secure") {
+        phase = "status";
+      }
+      return success();
+    }
+
+    if (commandArgs[0] === "get" && commandArgs[1] === "url") {
+      return success(
+        phase === "status"
+          ? "https://workspace.example/en-US/checkout/status/order-id"
+          : "https://xpay.nexigroup.com/hpp/nexi/test"
+      );
+    }
+
+    if (commandArgs[0] === "frame") return success();
+    throw new Error(`Unexpected browser command: ${commandArgs.join(" ")}`);
+  }) as unknown as Runner;
+
+  await Effect.runPromise(
+    completeNexiHostedPayment({
+      data: makeCheckoutData(),
+      run,
+      session: "hosted-payment-test",
+    })
+  );
+
+  expect(cardFillAttempts).toBe(2);
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });

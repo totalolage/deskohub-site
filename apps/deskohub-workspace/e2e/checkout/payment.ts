@@ -44,6 +44,7 @@ const reservationStartRetryableErrorMessages = [
   "Platbu se nepodařilo spustit.",
 ] as const;
 const reservationSubmitAttemptCount = 2;
+const hostedPaymentFieldFillAttemptCount = 3;
 
 const runBrowserCommand = (
   operation: string,
@@ -540,16 +541,50 @@ const fillHostedPaymentField = (
       labels,
       frameLabels
     );
-    yield* runBrowserCommand(
-      "fill hosted payment field",
-      run,
-      session,
-      ["fill", target.ref, value],
-      {
-        logCommand: false,
-        timeoutMs: 60_000,
+    yield* Effect.gen(function* () {
+      for (
+        let attempt = 1;
+        attempt <= hostedPaymentFieldFillAttemptCount;
+        attempt += 1
+      ) {
+        const fillResult = yield* runBrowserCommand(
+          "fill hosted payment field",
+          run,
+          session,
+          ["fill", target.ref, value],
+          {
+            allowFailure: true,
+            logCommand: false,
+            logOutput: false,
+            timeoutMs: 60_000,
+          }
+        );
+        if (fillResult.exitCode !== 0) continue;
+
+        const valueResult = yield* runBrowserCommand(
+          "verify hosted payment field",
+          run,
+          session,
+          ["get", "value", target.ref],
+          {
+            allowFailure: true,
+            logCommand: false,
+            logOutput: false,
+            timeoutMs: 30_000,
+          }
+        );
+        if (valueResult.exitCode === 0 && valueResult.stdout.trim()) return;
       }
-    ).pipe(
+
+      return yield* Effect.fail(
+        toWorkspaceE2EError(
+          `fill Nexi field ${labels.join(" / ")}`,
+          new Error(
+            `field value remained empty after ${hostedPaymentFieldFillAttemptCount} attempts`
+          )
+        )
+      );
+    }).pipe(
       Effect.ensuring(
         target.framed
           ? switchToMainFrame(run, session).pipe(Effect.ignore)
