@@ -116,27 +116,30 @@ const implementation = Effect.gen(function* () {
       yield* Effect.logInfo("Workspace availability inventory load started");
 
       const [tables, reservations, limitations, expiredDotyposReservationIds] =
-        yield* Effect.all([
-          dotypos.getTables(),
-          dotypos.listReservations(),
-          calendarLimitations.listLimitations({
-            from: query.from,
-            to: query.to,
-          }),
-          workspaceReservations
-            .selectExpiredHoldDotyposReservationIds({
-              now: Temporal.Now.instant(),
-            })
-            .pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning(
-                  "Workspace availability expired hold filter failed",
-                  { cause }
-                )
+        yield* Effect.all(
+          [
+            dotypos.getTables(),
+            dotypos.listReservations(),
+            calendarLimitations.listLimitations({
+              from: query.from,
+              to: query.to,
+            }),
+            workspaceReservations
+              .selectExpiredHoldDotyposReservationIds({
+                now: Temporal.Now.instant(),
+              })
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Workspace availability expired hold filter failed",
+                    { cause }
+                  )
+                ),
+                Effect.orElseSucceed(() => [] as readonly string[])
               ),
-              Effect.orElseSucceed(() => [] as readonly string[])
-            ),
-        ]);
+          ],
+          { concurrency: "inherit" }
+        );
       const activeReservations = excludeExpiredLocalHolds(
         reservations,
         expiredDotyposReservationIds

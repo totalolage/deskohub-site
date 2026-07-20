@@ -61,7 +61,7 @@ export class DiscountCodeRepository extends Context.Service<
         const queries = buildDiscountCodeAvailabilityQueries({ db, ...input });
         const [allowlistRows, activeClaimRows] = yield* Effect.all(
           [queries.allowlist, queries.activeClaims],
-          { concurrency: 2 }
+          { concurrency: "inherit" }
         );
         const availability = {
           allowlistSize: allowlistRows[0]?.allowlistSize ?? 0,

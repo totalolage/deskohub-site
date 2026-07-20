@@ -1,4 +1,4 @@
-import { Context, Effect, Fiber, Layer, Option } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import { calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { CodeDiscountProvider } from "./code-discount-provider.service";
@@ -47,52 +47,55 @@ export class DiscountService extends Context.Service<
 
       const resolveQuoteCandidates = Effect.fn(
         "DiscountService.resolveQuoteCandidates"
-      )(function* (input: DiscountQuoteInput) {
-        const calendarCandidatesFiber = yield* recoverDiscountResolution(
-          calendar.quote(input),
-          { operation: "quote", provider: "calendar" }
-        ).pipe(Effect.forkChild);
-        const customerCandidatesFiber = yield* recoverDiscountResolution(
-          customer.resolve(input),
-          { operation: "quote", provider: "customer" }
-        ).pipe(Effect.forkChild);
-        const codeCandidatesFiber = yield* recoverDiscountResolution(
-          code.quote(input),
-          { operation: "quote", provider: "code" }
-        ).pipe(Effect.forkChild);
-
-        return collectDiscountCandidates({
-          calendarCandidates: yield* Fiber.join(calendarCandidatesFiber),
-          customerCandidates: yield* Fiber.join(customerCandidatesFiber),
-          codeCandidates: yield* Fiber.join(codeCandidatesFiber),
-        });
-      });
+      )((input: DiscountQuoteInput) =>
+        Effect.all(
+          [
+            recoverDiscountResolution(calendar.quote(input), {
+              operation: "quote",
+              provider: "calendar",
+            }),
+            recoverDiscountResolution(customer.resolve(input), {
+              operation: "quote",
+              provider: "customer",
+            }),
+            recoverDiscountResolution(code.quote(input), {
+              operation: "quote",
+              provider: "code",
+            }),
+          ],
+          { concurrency: "inherit" }
+        ).pipe(Effect.map(collectDiscountCandidates))
+      );
 
       const resolveAcceptedCandidates = Effect.fn(
         "DiscountService.resolveAcceptedCandidates"
-      )(function* (input: DiscountAffirmationInput) {
-        const calendarCandidatesFiber = yield* recoverDiscountResolution(
-          calendar.revalidate(input),
-          { operation: "affirm", provider: "calendar" }
-        ).pipe(Effect.forkChild);
-        const customerCandidatesFiber = yield* recoverDiscountResolution(
-          customer.resolve(input),
-          { operation: "affirm", provider: "customer" }
-        ).pipe(Effect.forkChild);
-        const codeCandidatesFiber = yield* recoverDiscountResolution(
-          code.revalidate(input),
-          { operation: "affirm", provider: "code" }
-        ).pipe(Effect.forkChild);
-
-        return selectAcceptedCandidates({
-          acceptedDiscountIds: input.acceptedDiscountIds,
-          candidates: collectDiscountCandidates({
-            calendarCandidates: yield* Fiber.join(calendarCandidatesFiber),
-            customerCandidates: yield* Fiber.join(customerCandidatesFiber),
-            codeCandidates: yield* Fiber.join(codeCandidatesFiber),
-          }),
-        });
-      });
+      )((input: DiscountAffirmationInput) =>
+        Effect.all(
+          [
+            recoverDiscountResolution(calendar.revalidate(input), {
+              operation: "affirm",
+              provider: "calendar",
+            }),
+            recoverDiscountResolution(customer.resolve(input), {
+              operation: "affirm",
+              provider: "customer",
+            }),
+            recoverDiscountResolution(code.revalidate(input), {
+              operation: "affirm",
+              provider: "code",
+            }),
+          ],
+          { concurrency: "inherit" }
+        ).pipe(
+          Effect.map(collectDiscountCandidates),
+          Effect.map((candidates) =>
+            selectAcceptedCandidates({
+              acceptedDiscountIds: input.acceptedDiscountIds,
+              candidates,
+            })
+          )
+        )
+      );
 
       const quote = Effect.fn("DiscountService.quote")(
         (input: DiscountQuoteInput) =>
@@ -126,16 +129,12 @@ export class DiscountService extends Context.Service<
   );
 }
 
-const collectDiscountCandidates = (input: {
-  readonly calendarCandidates: Option.Option<readonly DiscountCandidate[]>;
-  readonly customerCandidates: Option.Option<readonly DiscountCandidate[]>;
-  readonly codeCandidates: Option.Option<readonly DiscountCandidate[]>;
-}) =>
-  [
-    input.calendarCandidates,
-    input.customerCandidates,
-    input.codeCandidates,
-  ].flatMap((candidates) => Option.getOrElse(candidates, () => []));
+const collectDiscountCandidates = (
+  candidatesByProvider: readonly Option.Option<readonly DiscountCandidate[]>[]
+) =>
+  candidatesByProvider.flatMap((candidates) =>
+    Option.getOrElse(candidates, () => [])
+  );
 
 const selectAcceptedCandidates = (input: {
   readonly acceptedDiscountIds: readonly DiscountId[];

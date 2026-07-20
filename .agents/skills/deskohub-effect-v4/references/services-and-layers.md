@@ -47,6 +47,6 @@ Name public service operations with `Effect.fn("Service.operation")`. Do not wra
 
 In a named Effect operation, do not add a scoped annotation for the entire input when the operation wrapper already annotates the same input fields individually.
 
-Omit Effect options that restate defaults, such as unbounded concurrency when it is already the default. Specify an option only when it changes behavior or communicates an important constraint.
+Collection combinators such as `Effect.all` and `Effect.forEach` are sequential by default. For independent work that should use the runtime's ambient concurrency, specify `{ concurrency: "inherit" }`; do not manually fork and join fibers to obtain that behavior. Use a numeric limit only when the operation has a real local concurrency constraint.
 
 Expose each feature's public service API through its `index.ts` barrel. Keep providers, repositories, intermediate candidates, and other implementation modules private. In tests, import the declaration module under test directly rather than through the feature barrel.

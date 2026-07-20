@@ -92,7 +92,7 @@ export class WorkspaceReservationService extends Context.Service<
 
         return yield* Effect.all(
           [dotypos.getReservation(dotyposReservationId), dotypos.getTables()],
-          { concurrency: 2 }
+          { concurrency: "inherit" }
         ).pipe(
           Effect.map(([dotyposReservationDetails, tables]) => ({
             dotyposReservationId,
