@@ -118,6 +118,7 @@ test("retries a transient reservation preparation failure with the same intent",
 test("retries a hosted payment field when its first fill does not stick", async () => {
   const values = new Map<string, string>();
   let cardFillAttempts = 0;
+  let focusedRef: string | undefined;
   let phase: "continue" | "pay" | "status" | "three-d-secure" = "continue";
   const run = mock(async (_command, args) => {
     const commandArgs = args.slice(2);
@@ -156,12 +157,17 @@ test("retries a hosted payment field when its first fill does not stick", async 
       return success(values.get(commandArgs[2] ?? "") ?? "");
     }
 
-    if (commandArgs[0] === "click") {
-      if (phase === "continue") {
+    if (commandArgs[0] === "focus") {
+      focusedRef = commandArgs[1];
+      return success();
+    }
+
+    if (commandArgs[0] === "press") {
+      if (focusedRef === "@e6") {
         phase = "pay";
-      } else if (phase === "pay") {
+      } else if (focusedRef === "@e7") {
         phase = "three-d-secure";
-      } else if (phase === "three-d-secure") {
+      } else if (focusedRef === "@e8") {
         phase = "status";
       }
       return success();
@@ -192,6 +198,7 @@ test("retries a hosted payment field when its first fill does not stick", async 
 
 test("activates freshly discovered hosted-payment targets with the keyboard", async () => {
   const calls: string[][] = [];
+  const values = new Map<string, string>();
   const buttons = [
     'button "CONTINUE" [ref=e6]',
     'button "PAY" [ref=e7]',
@@ -224,6 +231,15 @@ test("activates freshly discovered hosted-payment targets with the keyboard", as
           ? `${checkoutUrl.replace("/order", "/status/")}${orderId}`
           : "https://xpay.nexigroup.com/hpp/nexi/test"
       );
+    }
+
+    if (commandArgs[0] === "fill") {
+      values.set(commandArgs[1] ?? "", commandArgs[2] ?? "");
+      return success();
+    }
+
+    if (commandArgs[0] === "get" && commandArgs[1] === "value") {
+      return success(values.get(commandArgs[2] ?? "") ?? "");
     }
 
     if (commandArgs[0] === "click" || commandArgs[0] === "press") {

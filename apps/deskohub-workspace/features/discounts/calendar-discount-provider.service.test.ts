@@ -333,8 +333,9 @@ describe("CalendarDiscountProvider", () => {
   });
 
   test("keeps valid definitions when another definition fails to load", async () => {
-    const cause = new DatabaseError({
-      operation: "discountDefinitions.loadById",
+    const cause = new EffectDrizzleQueryError({
+      query: "select discount definition",
+      params: [],
       cause: new Error("database unavailable"),
     });
     const loadById = mock<IDiscountDefinitionRepository["loadById"]>(

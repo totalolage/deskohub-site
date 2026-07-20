@@ -87,9 +87,9 @@ export class DiscountService extends Context.Service<
         return selectAcceptedCandidates({
           acceptedDiscountIds: input.acceptedDiscountIds,
           candidates: collectDiscountCandidates({
-          calendarCandidates: yield* Fiber.join(calendarCandidatesFiber),
-          customerCandidates: yield* Fiber.join(customerCandidatesFiber),
-          codeCandidates: yield* Fiber.join(codeCandidatesFiber),
+            calendarCandidates: yield* Fiber.join(calendarCandidatesFiber),
+            customerCandidates: yield* Fiber.join(customerCandidatesFiber),
+            codeCandidates: yield* Fiber.join(codeCandidatesFiber),
           }),
         });
       });
