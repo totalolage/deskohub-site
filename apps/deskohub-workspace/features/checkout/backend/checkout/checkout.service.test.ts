@@ -176,6 +176,12 @@ const makeReservation = (
   productTier: reservationData.entryTier,
   productCoffee: reservationData.coffee,
   productMonitorOption: reservationData.monitorOption,
+  reservationDetails: {
+    kind: "cowork" as const,
+    entryTier: reservationData.entryTier,
+    coffee: reservationData.coffee,
+    monitorOption: reservationData.monitorOption,
+  },
   locale: "en-US",
   reservationState: "held",
   reservationHoldExpiresAt: testInstant("2099-06-20T10:00:00.000Z"),
@@ -273,7 +279,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     markTerminalForReservation,
   } satisfies PaymentAttemptRepositoryType;
 
-  const updateProductIntent = mock((input) =>
+  const updateReservationDetails = mock((input) =>
     Effect.succeed({ id: input.id } as never)
   );
   const markPaymentTerminal = mock(() => Effect.void);
@@ -286,7 +292,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
         })
       )
     ),
-    updateProductIntent,
+    updateReservationDetails,
     markPaymentTerminal,
   } as unknown as WorkspaceReservationRepositoryType;
   const updateReservation = mock(
@@ -369,7 +375,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     markTerminal,
     markTerminalForReservation,
     markPaymentTerminal,
-    updateProductIntent,
+    updateReservationDetails,
     updateReservation,
     createHostedPaymentPage,
   };
@@ -520,7 +526,7 @@ describe("CheckoutService", () => {
         acceptedDiscountIds: [application.discount.id],
       })
     );
-    expect(harness.updateProductIntent).not.toHaveBeenCalled();
+    expect(harness.updateReservationDetails).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
     expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();

@@ -4,15 +4,21 @@ import "@/shared/polyfills/temporal";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   getMeetingRoomReservationIssues,
+  getStoredMeetingRoomReservationDetails,
   getWorkspaceMeetingRoomProductKey,
   meetingRoomReservationOrderInputSchema,
   meetingRoomReservationSchema,
+  storedMeetingRoomReservationDetailsSchema,
   workspaceMeetingRoomProductKeySchema,
 } from "./meeting-room-reservation";
 
 const schema = makeSchemaParser(meetingRoomReservationSchema);
 const decodeOrder = Schema.decodeUnknownSync(
   meetingRoomReservationOrderInputSchema
+);
+const storedDetailsParser = makeSchemaParser(
+  storedMeetingRoomReservationDetailsSchema,
+  { onExcessProperty: "error" }
 );
 
 afterEach(() => setSystemTime());
@@ -121,5 +127,20 @@ describe("meetingRoomReservationSchema", () => {
 
     expect(result).toMatchObject({ kind: "meeting-room" });
     expect(result).not.toHaveProperty("_tag");
+  });
+
+  test("stores only the meeting-room family discriminator", () => {
+    expect(
+      getStoredMeetingRoomReservationDetails({ kind: "meeting-room" })
+    ).toEqual({ kind: "meeting-room" });
+
+    expect(
+      Result.isFailure(
+        storedDetailsParser.safeParse({
+          kind: "meeting-room",
+          startsAt: "2099-06-10T10:00:00Z",
+        })
+      )
+    ).toBe(true);
   });
 });

@@ -1,11 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { Result, Schema } from "effect";
+import { workspaceProductMonitorOptions } from "@/features/checkout/product-catalog";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationProductSchema,
+  getStoredCoworkReservationDetails,
   getWorkspaceCoworkProductKey,
-  getWorkspaceReservationProductColumns,
   normalizedCoworkReservationProductSchema,
+  storedCoworkReservationDetailsSchema,
   workspaceCoworkProductKeySchema,
 } from "./cowork-reservation-product";
 
@@ -14,6 +16,10 @@ const productParser = makeSchemaParser(coworkReservationProductSchema, {
 });
 const normalizedProductParser = makeSchemaParser(
   normalizedCoworkReservationProductSchema,
+  { onExcessProperty: "error" }
+);
+const storedDetailsParser = makeSchemaParser(
+  storedCoworkReservationDetailsSchema,
   { onExcessProperty: "error" }
 );
 
@@ -101,30 +107,80 @@ describe("cowork reservation product", () => {
     ).toBe(true);
   });
 
-  test("projects the canonical product into persistence columns", () => {
+  test("projects canonical Profi product intent for JSONB persistence", () => {
     expect(
-      getWorkspaceReservationProductColumns({
+      getStoredCoworkReservationDetails({
         entryTier: "profi",
         coffee: true,
         monitorOption: "2x32-4k",
       })
     ).toEqual({
-      productTier: "profi",
-      productCoffee: true,
-      productMonitorOption: "2x32-4k",
+      kind: "cowork",
+      entryTier: "profi",
+      coffee: true,
+      monitorOption: "2x32-4k",
     });
   });
 
-  test("clears unsupported persistence columns inside the product projection", () => {
+  test("stores only Basic product intent", () => {
     expect(
-      getWorkspaceReservationProductColumns({
+      getStoredCoworkReservationDetails({
         entryTier: "basic",
         coffee: false,
       })
     ).toEqual({
-      productTier: "basic",
-      productCoffee: false,
-      productMonitorOption: null,
+      kind: "cowork",
+      entryTier: "basic",
+      coffee: false,
     });
+  });
+
+  test("accepts every canonical Profi monitor option in stored details", () => {
+    for (const monitorOption of workspaceProductMonitorOptions) {
+      expect(
+        storedDetailsParser.parse({
+          kind: "cowork",
+          entryTier: "profi",
+          coffee: true,
+          monitorOption,
+        })
+      ).toEqual({
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption,
+      });
+    }
+  });
+
+  test("rejects noncanonical or unrelated stored details", () => {
+    expect(
+      Result.isFailure(
+        storedDetailsParser.safeParse({
+          kind: "cowork",
+          entryTier: "plus",
+          coffee: false,
+        })
+      )
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        storedDetailsParser.safeParse({
+          kind: "cowork",
+          entryTier: "profi",
+          coffee: true,
+        })
+      )
+    ).toBe(true);
+    expect(
+      Result.isFailure(
+        storedDetailsParser.safeParse({
+          kind: "cowork",
+          entryTier: "basic",
+          coffee: true,
+          startsAt: "2099-01-01T10:00:00Z",
+        })
+      )
+    ).toBe(true);
   });
 });

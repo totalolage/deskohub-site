@@ -5,9 +5,9 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
 import { SeatingMapFeatureFlagServiceMock } from "@/features/feature-flags/backend/seating-map-feature-flag.service.mock";
 import {
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
   type WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
 } from "./workspace-reservation.repository";
@@ -32,6 +32,7 @@ type TestWorkspaceReservation = Pick<
   | "productTier"
   | "productCoffee"
   | "productMonitorOption"
+  | "reservationDetails"
   | "locale"
 >;
 
@@ -45,6 +46,12 @@ const makeWorkspaceReservation = (
   productTier: "profi",
   productCoffee: true,
   productMonitorOption: "2x27-qhd",
+  reservationDetails: {
+    kind: "cowork",
+    entryTier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
   locale: "cs-CZ",
   ...overrides,
 });
@@ -140,6 +147,12 @@ describe("WorkspaceReservationService", () => {
       id: "reservation-id",
       dotyposCustomerId: "customer-id",
       dotyposReservationId: "dotypos-reservation-id",
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x27-qhd",
+      },
       customer,
       tableName: "12",
       tableMap: {

@@ -17,7 +17,6 @@ import {
   Schema,
 } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
-import type { WorkspaceReservation } from "@/db/schema";
 import { env } from "@/env";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
@@ -50,6 +49,7 @@ import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import {
+  type WorkspaceReservation,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -58,6 +58,7 @@ import {
   type NormalizedCoworkReservationOrder,
   normalizedCoworkReservationOrderSchema,
 } from "@/features/reservation/cowork-reservation";
+import { getStoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
@@ -449,9 +450,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       yield* Effect.annotateLogsScoped({ quote });
       yield* Effect.logDebug("Workspace reservation quote built");
 
-      yield* reservations.updateProductIntent({
+      yield* reservations.updateReservationDetails({
         id: existingReservation.id,
-        product: input.reservation,
+        reservationDetails: getStoredCoworkReservationDetails(
+          input.reservation
+        ),
         locale: input.locale,
       });
       yield* legalEvents.recordMany(
@@ -509,7 +512,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservationIntentKey,
       dotyposCustomerId,
       customerAccessCode,
-      product: input.reservation,
+      reservationDetails: getStoredCoworkReservationDetails(input.reservation),
       locale: input.locale,
       reservationHoldExpiresAt: holdExpiresAt,
     });
@@ -538,9 +541,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           locale: input.locale,
         });
 
-        yield* reservations.updateProductIntent({
+        yield* reservations.updateReservationDetails({
           id: claimConflictReservation.id,
-          product: input.reservation,
+          reservationDetails: getStoredCoworkReservationDetails(
+            input.reservation
+          ),
           locale: input.locale,
         });
         yield* legalEvents.recordMany(

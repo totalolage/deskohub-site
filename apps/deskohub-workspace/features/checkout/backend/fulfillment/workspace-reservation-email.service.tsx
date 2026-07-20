@@ -297,6 +297,7 @@ const createReservationDetailRows = (
   reservation: WorkspaceReservationDetails,
   locale: Locale
 ): EmailDetailRow[] => {
+  const productTier = reservation.productTier ?? undefined;
   const monitorOption = reservation.productMonitorOption ?? undefined;
   const rows: EmailDetailRow[] = [
     [
@@ -308,9 +309,9 @@ const createReservationDetailRows = (
     ],
     [
       m.reservationEmailTierLabel({}, { locale }),
-      isWorkspaceProductTier(reservation.productTier)
-        ? getWorkspaceProductTierTitle(reservation.productTier, locale)
-        : reservation.productTier,
+      isWorkspaceProductTier(productTier)
+        ? getWorkspaceProductTierTitle(productTier, locale)
+        : (productTier ?? ""),
     ],
     [
       m.reservationEmailCoffeeLabel({}, { locale }),

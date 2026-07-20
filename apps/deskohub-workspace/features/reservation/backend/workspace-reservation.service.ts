@@ -1,13 +1,15 @@
 import { DotyposService } from "@deskohub/dotypos";
 import type { Customer, Reservation, Table } from "@deskohub/dotypos/generated";
 import { Context, Data, Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema/workspace-reservations";
 import {
   getWorkspaceTableMap,
   type WorkspaceTableMap,
 } from "@/features/checkout/workspace-table-map";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
-import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import {
+  type WorkspaceReservation,
+  WorkspaceReservationRepository,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -30,6 +32,7 @@ export type WorkspaceReservationDetails = Pick<
   | "productTier"
   | "productCoffee"
   | "productMonitorOption"
+  | "reservationDetails"
   | "locale"
 > & {
   readonly dotyposReservationId: string;
@@ -153,6 +156,7 @@ export class WorkspaceReservationService extends Context.Service<
             productTier: reservation.productTier,
             productCoffee: reservation.productCoffee,
             productMonitorOption: reservation.productMonitorOption,
+            reservationDetails: reservation.reservationDetails,
             locale: reservation.locale,
             customer: dotyposReservationDetails.customer,
             reservedFrom,

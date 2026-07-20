@@ -1,5 +1,6 @@
 import { Effect } from "effect";
 import { HttpClient, HttpClientRequest } from "effect/unstable/http";
+import { deepStrictEqual } from "node:assert/strict";
 import { Pool, type QueryResultRow } from "pg";
 import { normalizePostgresConnectionUrl } from "../../db/postgres-connection-url";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
@@ -167,9 +168,7 @@ const readCheckoutRow = (
       wr.payment_state,
       wr.fulfillment_state,
       wr.active_payment_attempt_id,
-      wr.product_tier,
-      wr.product_coffee,
-      wr.product_monitor_option,
+      wr.reservation_details,
       wr.locale,
       wr.reservation_created_at,
       wr.reservation_confirmed_at,
@@ -228,15 +227,13 @@ export const readLatestCleanupCheckoutRow = (
       where wr.reservation_created_at >= $1
         and wr.dotypos_reservation_id is not null
         and wr.payment_state <> 'paid'
-        and wr.product_tier = $2
-        and wr.product_coffee = $3
-        and wr.locale = $4
+        and wr.reservation_details = $2::jsonb
+        and wr.locale = $3
       order by wr.reservation_created_at desc
       limit 1`,
         [
           createdAfter,
-          data.expectedProductTier,
-          data.expectedCoffee,
+          JSON.stringify(data.expectedReservationDetails),
           data.locale,
         ]
       );
@@ -471,17 +468,10 @@ const assertPostgresRow = (
       row.fulfillment_failure_code === null,
       "fulfillment_failure_code should be null"
     );
-    assert(
-      row.product_tier === data.expectedProductTier,
-      "unexpected product tier"
-    );
-    assert(
-      row.product_coffee === data.expectedCoffee,
-      "unexpected product coffee flag"
-    );
-    assert(
-      row.product_monitor_option === data.expectedMonitorOption,
-      "unexpected monitor option"
+    deepStrictEqual(
+      row.reservation_details,
+      data.expectedReservationDetails,
+      "unexpected reservation details"
     );
     assert(row.locale === data.locale, "unexpected locale");
     assert(

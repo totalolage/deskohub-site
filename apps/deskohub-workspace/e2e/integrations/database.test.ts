@@ -1,9 +1,21 @@
 import { expect, mock, test } from "bun:test";
+import { fileURLToPath } from "node:url";
 import { Effect, Layer } from "effect";
 import { FetchHttpClient } from "effect/unstable/http";
 import type { WorkspaceE2EConfig } from "../config";
 import type { CheckoutRow } from "../types";
 import { replayNexiWebhook } from "./database";
+
+test("reads persisted reservation details without legacy product columns", async () => {
+  const source = await Bun.file(
+    fileURLToPath(new URL("./database.ts", import.meta.url))
+  ).text();
+
+  expect(source).toContain("wr.reservation_details");
+  expect(source).not.toContain("wr.product_tier");
+  expect(source).not.toContain("wr.product_coffee");
+  expect(source).not.toContain("wr.product_monitor_option");
+});
 
 test("replays Nexi notification against the exact protected preview", async () => {
   const requests: Array<{

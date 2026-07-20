@@ -73,16 +73,36 @@ export const normalizedCoworkReservationProductSchema = Schema.Union([
     "Canonical cowork product selection after tier-specific normalization.",
 });
 
+export const storedBasicCoworkReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  ...normalizedBasicCoworkReservationProductSchema.fields,
+});
+
+export const storedPlusCoworkReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  ...normalizedPlusCoworkReservationProductSchema.fields,
+});
+
+export const storedProfiCoworkReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  ...normalizedProfiCoworkReservationProductSchema.fields,
+});
+
+export const storedCoworkReservationDetailsSchema = Schema.Union([
+  storedBasicCoworkReservationDetailsSchema,
+  storedPlusCoworkReservationDetailsSchema,
+  storedProfiCoworkReservationDetailsSchema,
+]).annotate({
+  identifier: "StoredCoworkReservationDetails",
+  description: "App-owned cowork product intent persisted with a reservation.",
+});
+
 export type CoworkReservationProductInput =
   typeof coworkReservationProductInputSchema.Type;
 export type NormalizedCoworkReservationProduct =
   typeof normalizedCoworkReservationProductSchema.Type;
-
-export type WorkspaceReservationProductColumns = {
-  readonly productTier: WorkspaceCoworkProductTier;
-  readonly productCoffee: boolean;
-  readonly productMonitorOption: WorkspaceProductMonitorOption | null;
-};
+export type StoredCoworkReservationDetails =
+  typeof storedCoworkReservationDetailsSchema.Type;
 
 const normalizeMonitorOption = (
   monitorOption: WorkspaceProductMonitorOption | "" | undefined
@@ -174,25 +194,26 @@ export const normalizeCoworkReservationProduct = (
     Match.exhaustive
   );
 
-export const getWorkspaceReservationProductColumns = (
+export const getStoredCoworkReservationDetails = (
   product: NormalizedCoworkReservationProduct
-): WorkspaceReservationProductColumns =>
+): StoredCoworkReservationDetails =>
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("entryTier")({
       basic: (basicProduct) => ({
-        productTier: basicProduct.entryTier,
-        productCoffee: basicProduct.coffee,
-        productMonitorOption: null,
+        kind: coworkReservationKind,
+        entryTier: basicProduct.entryTier,
+        coffee: basicProduct.coffee,
       }),
       plus: (plusProduct) => ({
-        productTier: plusProduct.entryTier,
-        productCoffee: plusProduct.coffee,
-        productMonitorOption: null,
+        kind: coworkReservationKind,
+        entryTier: plusProduct.entryTier,
+        coffee: plusProduct.coffee,
       }),
       profi: (profiProduct) => ({
-        productTier: profiProduct.entryTier,
-        productCoffee: profiProduct.coffee,
-        productMonitorOption: profiProduct.monitorOption,
+        kind: coworkReservationKind,
+        entryTier: profiProduct.entryTier,
+        coffee: profiProduct.coffee,
+        monitorOption: profiProduct.monitorOption,
       }),
     })
   );

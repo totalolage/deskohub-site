@@ -7,7 +7,6 @@ import type {
   FulfillmentState,
   PaymentAttempt,
   PaymentState,
-  WorkspaceReservation,
 } from "@/db/schema";
 import {
   isWorkspaceProductMonitorOption,
@@ -23,6 +22,8 @@ import {
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
 import {
+  type WorkspaceReservation,
+  type WorkspaceReservationDetailsMalformedError,
   WorkspaceReservationRepository,
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
@@ -87,11 +88,17 @@ export interface CheckoutStatusService {
   readonly getStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<CheckoutStatusViewModel, EffectDrizzleQueryError>;
+  }) => Effect.Effect<
+    CheckoutStatusViewModel,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly refreshStatus: (input: {
     readonly orderId: string;
     readonly returnOutcome: CheckoutStatusReturnOutcome;
-  }) => Effect.Effect<CheckoutStatusViewModel, EffectDrizzleQueryError>;
+  }) => Effect.Effect<
+    CheckoutStatusViewModel,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
 }
 
 export const CheckoutStatusService = Context.Service<CheckoutStatusService>(
@@ -197,6 +204,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           "Checkout status summary reconstruction started"
         );
 
+        const productTier = reservation.productTier ?? undefined;
         const monitorOption = reservation.productMonitorOption ?? undefined;
 
         if (!reservation.dotyposReservationId) {
@@ -206,7 +214,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
           return {} satisfies CheckoutStatusReconstruction;
         }
 
-        if (!isWorkspaceProductTier(reservation.productTier)) {
+        if (!isWorkspaceProductTier(productTier)) {
           yield* Effect.logWarning(
             "Checkout status summary invalid product tier"
           );
@@ -323,7 +331,7 @@ export const CheckoutStatusServiceLive = Layer.effect(
         }
 
         const summary = {
-          tier: reservation.productTier,
+          tier: productTier,
           date,
           coffee: reservation.productCoffee,
           monitorOption,

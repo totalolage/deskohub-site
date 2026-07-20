@@ -40,6 +40,7 @@ import {
   getCoworkReservationDetails,
   type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
+import { getStoredCoworkReservationDetails } from "@/features/reservation/cowork-reservation-product";
 import {
   PostHogEventService,
   PostHogEventServiceLive,
@@ -650,9 +651,9 @@ export const CheckoutServiceLive = Layer.effect(
             "Hosted payment checkout quote comparison passed"
           );
 
-          yield* reservations.updateProductIntent({
+          yield* reservations.updateReservationDetails({
             id: reservation.id,
-            product: data,
+            reservationDetails: getStoredCoworkReservationDetails(data),
             locale,
           });
 
