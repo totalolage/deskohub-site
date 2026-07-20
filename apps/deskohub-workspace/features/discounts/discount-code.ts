@@ -1,6 +1,6 @@
 import { Data, Effect, Option, Schema } from "effect";
 import type { DiscountCode } from "@/db/schema";
-import { type TemporalInstant, TemporalInstantSchema } from "@/shared/utils";
+import { TemporalInstantSchema } from "@/shared/utils";
 import { canonicalDiscountCodeSchema } from "./contracts";
 import { DiscountCodeUnavailableError } from "./errors";
 import {
@@ -14,8 +14,8 @@ export type DiscountCodeConfiguration = {
   readonly id: DiscountCodeId;
   readonly discountId: StoredDiscountId;
   readonly enabled: boolean;
-  readonly validFrom: TemporalInstant | null;
-  readonly validUntil: TemporalInstant | null;
+  readonly validFrom: Temporal.Instant | null;
+  readonly validUntil: Temporal.Instant | null;
   readonly maxUses: number | null;
 };
 

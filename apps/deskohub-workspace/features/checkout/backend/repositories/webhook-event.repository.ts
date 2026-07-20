@@ -4,7 +4,6 @@ import { Context, Data, Effect, Layer } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import { type WebhookEvent, webhookEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import type { TemporalInstant } from "@/shared/utils/temporal";
 
 export class WebhookEventStateError extends Data.TaggedError(
   "WebhookEventStateError"
@@ -27,11 +26,11 @@ export interface WebhookEventRepository {
     readonly eventId: string;
     readonly paymentAttemptId?: string;
     readonly providerOrderId?: string;
-    readonly receivedAt: TemporalInstant;
+    readonly receivedAt: Temporal.Instant;
   }) => Effect.Effect<InsertWebhookEventResult, EffectDrizzleQueryError>;
   readonly markProcessed: (
     input: WebhookEventIdentity & {
-      readonly processedAt: TemporalInstant;
+      readonly processedAt: Temporal.Instant;
     }
   ) => Effect.Effect<void, EffectDrizzleQueryError | WebhookEventStateError>;
   readonly markFailed: (

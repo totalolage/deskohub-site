@@ -8,7 +8,6 @@ import {
 } from "@/features/checkout/workspace-table-map";
 import { SeatingMapFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { TemporalInstant } from "@/shared/utils";
 
 export class WorkspaceReservationDetailsError extends Data.TaggedError(
   "WorkspaceReservationDetailsError"
@@ -35,8 +34,8 @@ export type WorkspaceReservationDetails = Pick<
 > & {
   readonly dotyposReservationId: string;
   readonly customer: Customer;
-  readonly reservedFrom: TemporalInstant;
-  readonly reservedUntil: TemporalInstant;
+  readonly reservedFrom: Temporal.Instant;
+  readonly reservedUntil: Temporal.Instant;
   readonly tableName?: string;
   readonly tableMap?: WorkspaceTableMap;
 };
@@ -193,7 +192,7 @@ const parseDotyposReservationDate = (input: {
   readonly reservationId: string;
   readonly value: string;
   readonly fieldName: "startDate" | "endDate";
-}): Effect.Effect<TemporalInstant, WorkspaceReservationDetailsError> =>
+}): Effect.Effect<Temporal.Instant, WorkspaceReservationDetailsError> =>
   Effect.try({
     try: () => {
       const value = input.value.trim();

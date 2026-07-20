@@ -61,7 +61,6 @@ import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-even
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
-import type { TemporalInstant } from "@/shared/utils";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const preparePayStateSchema = Schema.toStandardSchemaV1(
@@ -81,7 +80,7 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   }
 );
 
-const getReservationHoldExpiresAt = (now: TemporalInstant) =>
+const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
   now.add({ milliseconds: payStateDefaultTtlMilliseconds });
 
 const normalizeIdempotencyPart = (value: string) =>
@@ -248,7 +247,7 @@ const enqueueReservationHoldCleanup = Effect.fn(
   "prepareWorkspacePayState.enqueueReservationHoldCleanup"
 )(function* (input: {
   readonly orderId: string;
-  readonly reservationHoldExpiresAt: TemporalInstant | null;
+  readonly reservationHoldExpiresAt: Temporal.Instant | null;
 }) {
   if (!input.reservationHoldExpiresAt) {
     yield* Effect.logWarning(

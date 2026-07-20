@@ -1,10 +1,7 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Clock, Context, Effect, Layer, Match, Option } from "effect";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
-import {
-  type TemporalInstant,
-  temporalInstantToIsoString,
-} from "@/shared/utils";
+import { temporalInstantToIsoString } from "@/shared/utils";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import type {
   DiscountCodeAvailability,
@@ -69,7 +66,7 @@ export class CodeDiscountProvider extends Context.Service<
         "CodeDiscountProvider.loadCodeAvailability"
       )(
         (input: {
-          readonly at: TemporalInstant;
+          readonly at: Temporal.Instant;
           readonly configuration: DiscountCodeConfiguration;
           readonly dotyposCustomerId: string;
         }) =>
@@ -179,7 +176,7 @@ const validateDiscountCodeEnabled = (input: {
     : unavailable(input.configuration, "inactive");
 
 const validateDiscountCodeStarted = (input: {
-  readonly at: TemporalInstant;
+  readonly at: Temporal.Instant;
   readonly configuration: DiscountCodeConfiguration;
 }) =>
   input.configuration.validFrom === null ||
@@ -188,7 +185,7 @@ const validateDiscountCodeStarted = (input: {
     : unavailable(input.configuration, "not_started");
 
 const validateDiscountCodeUnexpired = (input: {
-  readonly at: TemporalInstant;
+  readonly at: Temporal.Instant;
   readonly configuration: DiscountCodeConfiguration;
 }) =>
   input.configuration.validUntil === null ||
@@ -309,7 +306,7 @@ const toDiscountCodeCandidate = (input: {
 };
 
 const getDiscountCodeTiming = (
-  validUntil: TemporalInstant | null
+  validUntil: Temporal.Instant | null
 ): Pick<DiscountCandidate["discount"], "expiresAt" | "countdownStartsAt"> => {
   if (validUntil === null) {
     return {};

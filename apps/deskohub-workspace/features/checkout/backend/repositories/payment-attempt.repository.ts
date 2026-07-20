@@ -10,7 +10,6 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import type { TemporalInstant } from "@/shared/utils/temporal";
 
 export class PaymentAttemptStateError extends Data.TaggedError(
   "PaymentAttemptStateError"
@@ -23,7 +22,7 @@ export class PaymentAttemptStateError extends Data.TaggedError(
 export interface PaymentAttemptReservationTransition {
   readonly attempt: PaymentAttempt;
   readonly changed: boolean;
-  readonly timestamp: TemporalInstant;
+  readonly timestamp: Temporal.Instant;
 }
 
 export interface PaymentAttemptRepository {
@@ -76,7 +75,7 @@ export interface PaymentAttemptRepository {
     readonly webhookEventId?: string;
     readonly providerOperationId?: string;
     readonly providerStatus?: string;
-    readonly paidAt: TemporalInstant;
+    readonly paidAt: Temporal.Instant;
   }) => Effect.Effect<
     PaymentAttemptReservationTransition,
     EffectDrizzleQueryError | PaymentAttemptStateError | SqlError

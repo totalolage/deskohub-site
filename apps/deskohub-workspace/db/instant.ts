@@ -1,9 +1,8 @@
 import { Temporal } from "@js-temporal/polyfill";
 import { customType } from "drizzle-orm/pg-core";
-import type { TemporalInstant } from "@/shared/utils/temporal";
 
 export const instant = customType<{
-  data: TemporalInstant;
+  data: Temporal.Instant;
   driverData: string;
 }>({
   dataType: () => "timestamp with time zone",

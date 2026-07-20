@@ -1,7 +1,6 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import type { TemporalInstant } from "@/shared/utils";
 import {
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
@@ -25,7 +24,7 @@ export interface IDiscountCodeRepository {
   readonly loadAvailability: (input: {
     readonly codeId: DiscountCodeId;
     readonly dotyposCustomerId: string;
-    readonly at: TemporalInstant;
+    readonly at: Temporal.Instant;
   }) => Effect.Effect<
     DiscountCodeAvailability,
     EffectDrizzleQueryError | DiscountCodeConfigurationError

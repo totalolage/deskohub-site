@@ -1,7 +1,7 @@
 import { Schema } from "effect";
 
 export const TemporalInstantSchema = Schema.declare(
-  (input: unknown): input is ReturnType<typeof Temporal.Instant.from> =>
+  (input: unknown): input is Temporal.Instant =>
     input instanceof Temporal.Instant,
   {
     identifier: "TemporalInstant",
@@ -10,7 +10,7 @@ export const TemporalInstantSchema = Schema.declare(
 );
 
 export const TemporalPlainDateSchema = Schema.declare(
-  (input: unknown): input is ReturnType<typeof Temporal.PlainDate.from> =>
+  (input: unknown): input is Temporal.PlainDate =>
     input instanceof Temporal.PlainDate,
   {
     identifier: "TemporalPlainDate",
@@ -19,17 +19,13 @@ export const TemporalPlainDateSchema = Schema.declare(
 );
 
 export const TemporalPlainTimeSchema = Schema.declare(
-  (input: unknown): input is ReturnType<typeof Temporal.PlainTime.from> =>
+  (input: unknown): input is Temporal.PlainTime =>
     input instanceof Temporal.PlainTime,
   {
     identifier: "TemporalPlainTime",
     description: "Temporal plain time value.",
   }
 );
-
-export type TemporalInstant = typeof TemporalInstantSchema.Type;
-export type TemporalPlainDate = typeof TemporalPlainDateSchema.Type;
-export type TemporalPlainTime = typeof TemporalPlainTimeSchema.Type;
 
 export const localTimeSchema = Schema.String.check(
   Schema.makeFilter((value) => {
@@ -111,10 +107,10 @@ export type PlainDate = typeof plainDateStringSchema.Type;
 
 export const isValidDate = (date: Date) => !Number.isNaN(date.getTime());
 
-export const temporalInstantToDate = (instant: TemporalInstant) =>
+export const temporalInstantToDate = (instant: Temporal.Instant) =>
   new Date(instant.epochMilliseconds);
 
-export const temporalInstantToIsoString = (instant: TemporalInstant) =>
+export const temporalInstantToIsoString = (instant: Temporal.Instant) =>
   temporalInstantToDate(instant).toISOString();
 
 export const dateToTemporalInstant = (date: Date) =>
@@ -122,7 +118,7 @@ export const dateToTemporalInstant = (date: Date) =>
     ? Temporal.Instant.fromEpochMilliseconds(date.getTime())
     : undefined;
 
-export const toTemporalInstant = (date: Date | TemporalInstant) =>
+export const toTemporalInstant = (date: Date | Temporal.Instant) =>
   date instanceof Date ? dateToTemporalInstant(date) : date;
 
 export const temporalPlainDateToDate = ({
@@ -130,8 +126,8 @@ export const temporalPlainDateToDate = ({
   plainTime,
   timeZone,
 }: {
-  readonly date: TemporalPlainDate;
-  readonly plainTime: TemporalPlainTime;
+  readonly date: Temporal.PlainDate;
+  readonly plainTime: Temporal.PlainTime;
   readonly timeZone: string;
 }) =>
   temporalInstantToDate(
@@ -142,7 +138,7 @@ export const temporalInstantToPlainDate = ({
   instant,
   timeZone,
 }: {
-  readonly instant: TemporalInstant;
+  readonly instant: Temporal.Instant;
   readonly timeZone: string;
 }) => instant.toZonedDateTimeISO(timeZone).toPlainDate();
 
@@ -159,9 +155,9 @@ export const isFuturePlainDateTime = ({
   timeZone,
   now = Temporal.Now.instant(),
 }: {
-  readonly dateTime: ReturnType<typeof Temporal.PlainDateTime.from>;
+  readonly dateTime: Temporal.PlainDateTime;
   readonly timeZone: string;
-  readonly now?: TemporalInstant;
+  readonly now?: Temporal.Instant;
 }) =>
   Temporal.PlainDateTime.compare(
     dateTime,

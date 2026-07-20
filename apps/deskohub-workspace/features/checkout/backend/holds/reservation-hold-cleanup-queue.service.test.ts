@@ -5,7 +5,6 @@ import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { TemporalInstant } from "@/shared/utils/temporal";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
 const now = Temporal.Instant.from("2026-06-01T10:00:00.000Z");
@@ -50,7 +49,7 @@ const runProcessMessage = async (
   input: {
     readonly findById?: ReturnType<typeof mock>;
     readonly cancelOrderHold?: ReturnType<typeof mock>;
-    readonly now?: TemporalInstant;
+    readonly now?: Temporal.Instant;
   } = {}
 ) => {
   const { ReservationHoldCleanupService } = await import(

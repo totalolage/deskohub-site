@@ -4,10 +4,7 @@ import type { WorkspaceReservation } from "@/db/schema";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { clamp } from "@/shared/utils";
 import { serializeErrorForLog } from "@/shared/utils/error-formatting";
-import {
-  instantStringSchema,
-  type TemporalInstant,
-} from "@/shared/utils/temporal";
+import { instantStringSchema } from "@/shared/utils/temporal";
 import {
   type ReservationHoldCleanupOutcome,
   ReservationHoldCleanupService,
@@ -58,14 +55,14 @@ export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
 interface IReservationHoldCleanupScheduleService {
   readonly enqueueCleanup: (input: {
     readonly orderId: string;
-    readonly reservationHoldExpiresAt: TemporalInstant;
+    readonly reservationHoldExpiresAt: Temporal.Instant;
   }) => Effect.Effect<void, ReservationHoldCleanupScheduleError>;
 }
 
 export const getReservationHoldCleanupScheduleMessage = (
   input: {
     readonly orderId: string;
-    readonly reservationHoldExpiresAt: TemporalInstant;
+    readonly reservationHoldExpiresAt: Temporal.Instant;
   },
   now = Temporal.Now.instant()
 ): ReservationHoldCleanupScheduleMessage => {
@@ -149,8 +146,8 @@ const dueReservationStates = ["held", "cancelling", "cancellation_failed"];
 
 const isDueReservation = (
   reservation: WorkspaceReservation | null,
-  reservationHoldExpiresAt: TemporalInstant,
-  now: TemporalInstant
+  reservationHoldExpiresAt: Temporal.Instant,
+  now: Temporal.Instant
 ) =>
   reservation !== null &&
   dueReservationStates.includes(reservation?.reservationState ?? "") &&
