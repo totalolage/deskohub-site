@@ -32,28 +32,6 @@ export const submitCoworkReservationScript = `
 })()
 `;
 
-export const getClickLocaleSwitchScript = (
-  locale: CheckoutData["locale"] | "cs-CZ"
-) =>
-  `
-(() => {
-  const targetLocale = ${JSON.stringify(locale)};
-  const links = [...document.querySelectorAll('nav[aria-label="Language switcher"] a')];
-  const link = links.find((candidate) => {
-    try {
-      return new URL(candidate.href).pathname.startsWith('/' + targetLocale);
-    } catch {
-      return false;
-    }
-  });
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error('language switch link not found for ' + targetLocale);
-  }
-  link.click();
-  return link.href;
-})()
-`;
-
 export const getSubmitContactFormScript = (data: {
   readonly email: string;
   readonly message: string;

@@ -1,14 +1,26 @@
-import { Context, Effect, Layer } from "effect";
+import { Context, Effect, Layer, Option } from "effect";
 import { calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
-import type { DiscountQuote, DiscountQuoteInput } from "./contracts";
+import type {
+  DiscountId,
+  DiscountQuote,
+  DiscountQuoteInput,
+} from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
-import type { DiscountResolutionError } from "./errors";
+import type { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
+import {
+  logDiscountResolutionFailure,
+  recoverDiscountResolution,
+} from "./resolution-logging";
 
-export type DiscountRevalidation = {
+export type DiscountAffirmationInput = DiscountQuoteInput & {
+  readonly acceptedDiscountIds: readonly DiscountId[];
+};
+
+export type DiscountAffirmation = {
   readonly quote: DiscountQuote;
   readonly commitment: DiscountCommitment;
 };
@@ -16,10 +28,10 @@ export type DiscountRevalidation = {
 export interface IDiscountService {
   readonly quote: (
     input: DiscountQuoteInput
-  ) => Effect.Effect<DiscountQuote, DiscountResolutionError>;
-  readonly revalidate: (
-    input: DiscountQuoteInput
-  ) => Effect.Effect<DiscountRevalidation, DiscountResolutionError>;
+  ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
+  readonly affirm: (
+    input: DiscountAffirmationInput
+  ) => Effect.Effect<DiscountAffirmation, DiscountCalculationError>;
 }
 
 export class DiscountService extends Context.Service<
@@ -38,25 +50,51 @@ export class DiscountService extends Context.Service<
       )((input: DiscountQuoteInput) =>
         Effect.all(
           {
-            calendarCandidates: calendar.quote(input),
-            customerCandidates: customer.resolve(input),
-            codeCandidates: code.quote(input),
+            calendarCandidates: recoverDiscountResolution(
+              calendar.quote(input),
+              { operation: "quote", provider: "calendar" }
+            ),
+            customerCandidates: recoverDiscountResolution(
+              customer.resolve(input),
+              { operation: "quote", provider: "customer" }
+            ),
+            codeCandidates: recoverDiscountResolution(code.quote(input), {
+              operation: "quote",
+              provider: "code",
+            }),
           },
           { concurrency: "unbounded" }
         ).pipe(Effect.map(collectDiscountCandidates))
       );
 
-      const resolveRevalidatedCandidates = Effect.fn(
-        "DiscountService.resolveRevalidatedCandidates"
-      )((input: DiscountQuoteInput) =>
+      const resolveAcceptedCandidates = Effect.fn(
+        "DiscountService.resolveAcceptedCandidates"
+      )((input: DiscountAffirmationInput) =>
         Effect.all(
           {
-            calendarCandidates: calendar.revalidate(input),
-            customerCandidates: customer.resolve(input),
-            codeCandidates: code.revalidate(input),
+            calendarCandidates: recoverDiscountResolution(
+              calendar.revalidate(input),
+              { operation: "affirm", provider: "calendar" }
+            ),
+            customerCandidates: recoverDiscountResolution(
+              customer.resolve(input),
+              { operation: "affirm", provider: "customer" }
+            ),
+            codeCandidates: recoverDiscountResolution(code.revalidate(input), {
+              operation: "affirm",
+              provider: "code",
+            }),
           },
           { concurrency: "unbounded" }
-        ).pipe(Effect.map(collectDiscountCandidates))
+        ).pipe(
+          Effect.map(collectDiscountCandidates),
+          Effect.map((candidates) =>
+            selectAcceptedCandidates({
+              acceptedDiscountIds: input.acceptedDiscountIds,
+              candidates,
+            })
+          )
+        )
       );
 
       const quote = Effect.fn("DiscountService.quote")(
@@ -70,10 +108,10 @@ export class DiscountService extends Context.Service<
         withServiceAnnotations("quote")
       );
 
-      const revalidate = Effect.fn("DiscountService.revalidate")(
-        (input: DiscountQuoteInput) =>
+      const affirm = Effect.fn("DiscountService.affirm")(
+        (input: DiscountAffirmationInput) =>
           Effect.succeed(input).pipe(
-            Effect.bind("candidates", resolveRevalidatedCandidates),
+            Effect.bind("candidates", resolveAcceptedCandidates),
             Effect.bind("calculation", calculateDiscounts),
             Effect.tap(logDiscountResolution),
             Effect.map(({ calculation }) => ({
@@ -83,23 +121,38 @@ export class DiscountService extends Context.Service<
               }),
             }))
           ),
-        withServiceAnnotations("revalidate")
+        withServiceAnnotations("affirm")
       );
 
-      return { quote, revalidate } satisfies IDiscountService;
+      return { quote, affirm } satisfies IDiscountService;
     })
   );
 }
 
 const collectDiscountCandidates = (input: {
-  readonly calendarCandidates: readonly DiscountCandidate[];
-  readonly customerCandidates: readonly DiscountCandidate[];
-  readonly codeCandidates: readonly DiscountCandidate[];
-}) => [
-  ...input.calendarCandidates,
-  ...input.customerCandidates,
-  ...input.codeCandidates,
-];
+  readonly calendarCandidates: Option.Option<readonly DiscountCandidate[]>;
+  readonly customerCandidates: Option.Option<readonly DiscountCandidate[]>;
+  readonly codeCandidates: Option.Option<readonly DiscountCandidate[]>;
+}) =>
+  [
+    input.calendarCandidates,
+    input.customerCandidates,
+    input.codeCandidates,
+  ].flatMap((candidates) => Option.getOrElse(candidates, () => []));
+
+const selectAcceptedCandidates = (input: {
+  readonly acceptedDiscountIds: readonly DiscountId[];
+  readonly candidates: readonly DiscountCandidate[];
+}) => {
+  const candidatesById = new Map(
+    input.candidates.map((candidate) => [candidate.discount.id, candidate])
+  );
+
+  return input.acceptedDiscountIds.flatMap((discountId) => {
+    const candidate = candidatesById.get(discountId);
+    return candidate ? [candidate] : [];
+  });
+};
 
 const logDiscountResolution = (input: {
   readonly calculation: {
@@ -110,24 +163,23 @@ const logDiscountResolution = (input: {
     appliedDiscountCount: input.calculation.applications.length,
   });
 
-const logDiscountResolutionError = (cause: DiscountResolutionError) =>
-  Effect.logError("Discount resolution failed", {
-    errorTag: cause._tag,
-    reason: cause.reason,
-  });
-
 const withServiceAnnotations =
-  (operation: "quote" | "revalidate") =>
+  (operation: "quote" | "affirm") =>
   <A>(
-    effect: Effect.Effect<A, DiscountResolutionError>,
-    input: DiscountQuoteInput
+    effect: Effect.Effect<A, DiscountCalculationError>,
+    input: DiscountQuoteInput | DiscountAffirmationInput
   ) =>
     effect.pipe(
-      Effect.tapError(logDiscountResolutionError),
+      Effect.tapError((cause) =>
+        logDiscountResolutionFailure({
+          cause,
+          operation,
+          provider: "calculator",
+        })
+      ),
       Effect.annotateLogs({
-        operation,
-        product: input.product,
-        reservationDate: input.reservationDate,
-        dotyposCustomerId: input.dotyposCustomerId,
+        discountOperation: operation,
+        discountProductKind: input.product.kind,
+        discountProductTier: input.product.tier,
       })
     );

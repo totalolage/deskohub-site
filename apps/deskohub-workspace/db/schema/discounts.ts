@@ -11,14 +11,13 @@ import {
   timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { DiscountProductIdentity } from "@/features/discounts";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
-  DiscountProductKey,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
 import type { Locale } from "@/features/i18n";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
@@ -30,7 +29,6 @@ export const discounts = pgTable(
       .primaryKey()
       .default(postgresUuidV7)
       .$type<StoredDiscountId>(),
-    label: text("label").notNull(),
     labels: jsonb("labels").notNull().$type<DiscountLabels>(),
     percentageBasisPoints: integer("percentage_basis_points"),
     fixedAmountValue: integer("fixed_amount_value"),
@@ -44,7 +42,6 @@ export const discounts = pgTable(
       .defaultNow(),
   },
   (t) => [
-    check("discounts_label_check", sql`btrim(${t.label}) <> ''`),
     check(
       "discounts_adjustment_variant_check",
       sql`(
@@ -81,20 +78,15 @@ export const discountProductTargets = pgTable(
       .notNull()
       .$type<StoredDiscountId>()
       .references(() => discounts.id, { onDelete: "cascade" }),
-    productKey: text("product_key").notNull().$type<DiscountProductKey>(),
     productIdentity: jsonb("product_identity")
       .notNull()
-      .$type<DiscountProductIdentity>(),
+      .$type<WorkspaceCoworkProductIdentity>(),
   },
   (t) => [
     primaryKey({
       name: "discount_product_targets_pk",
-      columns: [t.discountId, t.productKey],
+      columns: [t.discountId, t.productIdentity],
     }),
-    check(
-      "discount_product_targets_product_key_check",
-      sql`btrim(${t.productKey}) <> ''`
-    ),
   ]
 );
 

@@ -11,8 +11,8 @@ import {
   SchemaGetter,
 } from "effect";
 import { type Locale, m } from "@/features/i18n";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import {
-  type DiscountProductIdentity,
   type DiscountQuoteInput,
   discountBasisPointsSchema,
 } from "./contracts";
@@ -92,7 +92,7 @@ const toCustomerDiscountCandidate = (input: {
     | undefined;
   readonly dotyposCustomerId: string;
   readonly locale: Locale;
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
 }) => {
   if (!input.discountGroup) {
     return Effect.succeed(Option.none<DiscountCandidate>());

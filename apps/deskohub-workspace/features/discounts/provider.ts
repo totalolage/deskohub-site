@@ -1,4 +1,5 @@
-import type { Discount, DiscountProductIdentity } from "./contracts";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import type { Discount } from "./contracts";
 import type { DiscountCodeId, StoredDiscountId } from "./persistence-contracts";
 
 export type DiscountProvenance = {
@@ -12,7 +13,7 @@ export type DiscountClaimInstruction = {
   readonly codeId: DiscountCodeId;
   readonly storedDiscountId: StoredDiscountId;
   readonly dotyposCustomerId: string;
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
 };
 
 export type DiscountCandidate = {

@@ -1,13 +1,13 @@
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import {
   getWorkspaceMeetingRoomPriceForDuration,
   isWorkspaceMeetingRoomDuration,
-  type WorkspaceMeetingRoomDurationMinutes,
+  workspaceMeetingRoomDurationOptions,
 } from "@/features/checkout/product-catalog";
 import { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 import {
-  type WorkspaceMoney,
   withWorkspaceMoneyCurrency,
+  workspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
@@ -17,11 +17,14 @@ type MeetingRoomReservation = Extract<
   { kind: "meeting-room" }
 >;
 
-export type MeetingRoomReservationQuoteItem = {
-  readonly type: "meeting-room";
-  readonly durationMinutes: WorkspaceMeetingRoomDurationMinutes;
-  readonly amount: WorkspaceMoney;
-};
+export const meetingRoomReservationQuoteItemSchema = Schema.Struct({
+  type: Schema.Literal("meeting-room"),
+  durationMinutes: Schema.Literals(workspaceMeetingRoomDurationOptions),
+  amount: workspaceMoneyCodec,
+});
+
+export type MeetingRoomReservationQuoteItem =
+  typeof meetingRoomReservationQuoteItemSchema.Type;
 
 export type CanonicalMeetingRoomReservation = {
   readonly kind: "meeting-room";

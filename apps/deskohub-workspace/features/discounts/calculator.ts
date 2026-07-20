@@ -1,20 +1,17 @@
-import { Effect, Match, Schema } from "effect";
+import { Effect, Match, Option, Schema } from "effect";
 import {
   nonNegativeWorkspaceMoneyCodec,
   type WorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import type {
-  AppliedDiscount,
-  Discount,
-  DiscountProductIdentity,
-  DiscountQuote,
-} from "./contracts";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import type { AppliedDiscount, Discount, DiscountQuote } from "./contracts";
 import { DiscountCalculationError } from "./errors";
 import type { DiscountCandidate } from "./provider";
+import { recoverDiscountResolution } from "./resolution-logging";
 
 type DiscountCalculationInput = {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly candidates: readonly DiscountCandidate[];
 };
@@ -96,11 +93,31 @@ const applyNextCandidate = (input: {
     candidate,
     remaining: state.remaining,
   }).pipe(
-    Effect.bind("appliedValue", getAppliedValue),
-    Effect.let("nextState", toNextCalculationState),
+    Effect.bind("appliedValue", (candidateInput) =>
+      recoverDiscountResolution(getAppliedValue(candidateInput), {
+        operation: "apply_candidate",
+        provider: "calculator",
+      })
+    ),
+    Effect.let("nextState", advanceCalculationState),
     Effect.flatMap(applyNextCandidate)
   );
 };
+
+const advanceCalculationState = (input: {
+  readonly state: DiscountCalculationState;
+  readonly candidate: DiscountCandidate;
+  readonly appliedValue: Option.Option<number>;
+}): DiscountCalculationState =>
+  input.appliedValue.pipe(
+    Option.map((appliedValue) =>
+      toNextCalculationState({ ...input, appliedValue })
+    ),
+    Option.getOrElse(() => ({
+      ...input.state,
+      index: input.state.index + 1,
+    }))
+  );
 
 const getAppliedValue = (input: {
   readonly candidate: DiscountCandidate;
@@ -187,7 +204,7 @@ const toNextCalculationState = (input: {
 };
 
 const toDiscountCalculation = (input: {
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly validatedSubtotal: WorkspaceMoney;
   readonly calculation: Pick<
     DiscountCalculationState,

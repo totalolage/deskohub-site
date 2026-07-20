@@ -1,10 +1,12 @@
 import { Effect } from "effect";
 import {
-  evalBrowserScript,
+  focusBrowserElement,
   openBrowserPage,
+  pressBrowserKey,
+  requireSnapshotRef,
+  waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
-import { getClickLocaleSwitchScript } from "../browser-scripts";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import type { Runner } from "../runtime";
@@ -57,16 +59,26 @@ const clickLocaleSwitchLink = (
   session: string,
   locale: CheckoutData["locale"] | "cs-CZ"
 ) =>
-  evalBrowserScript(
-    `click ${locale} locale switch link`,
-    run,
-    session,
-    getClickLocaleSwitchScript(locale),
-    {
-      logOutput: false,
-      timeoutMs: 30_000,
-    }
-  );
+  Effect.gen(function* () {
+    const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
+    yield* waitForBrowserReactHydration(
+      run,
+      session,
+      'nav[aria-label="Language switcher"] a',
+      { timeoutMs }
+    );
+    const ref = yield* requireSnapshotRef({
+      description: `${locale} locale switch link`,
+      labels:
+        locale === "cs-CZ" ? ["CZECH", "ČEŠTINA"] : ["ENGLISH", "ANGLIČTINA"],
+      role: "link",
+      run,
+      session,
+      timeoutMs,
+    });
+    yield* focusBrowserElement(run, session, ref, { timeoutMs });
+    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
+  });
 
 const switchLocale = (
   run: Runner,

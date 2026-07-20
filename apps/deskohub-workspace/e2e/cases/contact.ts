@@ -1,12 +1,11 @@
 import { Effect } from "effect";
 import {
+  clickBrowserElement,
   fillBrowserField,
-  focusBrowserElement,
   openBrowserPage,
-  pressBrowserKey,
   requireSnapshotRef,
-  waitForBrowserReactHydration,
-  waitForBrowserText,
+  waitForBrowserReactFormAction,
+  waitForBrowserTextContent,
 } from "../browser";
 import type { WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -50,10 +49,10 @@ export const assertContactForm = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
     yield* runStep({
-      execute: waitForBrowserReactHydration(
+      execute: waitForBrowserReactFormAction(
         run,
         session,
-        '#contact-form button[type="submit"]',
+        "#contact-form form",
         { timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition") }
       ),
       id: "wait-for-contact-form-hydration",
@@ -103,13 +102,11 @@ const submitContactForm = (run: Runner, session: string) =>
       session,
       timeoutMs,
     });
-    yield* focusBrowserElement(run, session, submitRef, { timeoutMs });
-    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
-    yield* waitForBrowserText({
-      description: "contact form success",
-      matches: (text) => /Your message has been sent\./i.test(text),
+    yield* clickBrowserElement(run, session, submitRef, { timeoutMs });
+    yield* waitForBrowserTextContent(
       run,
       session,
-      timeoutMs,
-    });
+      "Your message has been sent.",
+      { timeoutMs }
+    );
   });

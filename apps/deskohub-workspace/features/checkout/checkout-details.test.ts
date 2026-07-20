@@ -4,11 +4,11 @@ import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
-  checkoutDetailsJsonSchema,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
   reservationSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
+} from "@/features/checkout/legal-evidence";
+import { checkoutDetailsJsonSchema } from "@/features/checkout/schemas/checkout-details";
 import {
   type DiscountQuote,
   discountIdSchema,
@@ -118,11 +118,21 @@ describe("checkout details persistence", () => {
     ).toThrow('at ["reservation"]["message"]');
   });
 
-  test("accepts negative discount rows but rejects negative expected totals", () => {
+  test("accepts inline discounted product rows but rejects negative expected totals", () => {
     const quote = buildWorkspaceCheckoutQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: genericDiscountQuote }
     );
+
+    expect(quote.summary.sections.map(({ key }) => key)).toEqual([
+      "order",
+      "total",
+    ]);
+    expect(quote.summary.sections[0]?.items[0]).toMatchObject({
+      key: "product:cowork:basic",
+      originalAmount: money(35_000),
+      amount: money(31_500),
+    });
 
     expect(() =>
       decodeCheckoutDetails({

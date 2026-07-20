@@ -1,26 +1,34 @@
-import { Effect, Match } from "effect";
+import { Effect, Match, Schema } from "effect";
 import { getCoworkReservationQuote } from "@/features/checkout/reservation-quote-cowork";
 
 export { ReservationQuoteError } from "@/features/checkout/reservation-quote-error";
 
 import { getReservationQuoteFingerprint } from "@/features/checkout/reservation-quote-fingerprint";
-import type { ReservationQuoteItem } from "@/features/checkout/reservation-quote-item";
+import { reservationQuoteItemSchema } from "@/features/checkout/reservation-quote-item";
 import { getMeetingRoomReservationQuote } from "@/features/checkout/reservation-quote-meeting-room";
-import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
-import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
+import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
+import {
+  appliedDiscountCodec,
+  type DiscountQuote,
+} from "@/features/discounts/contracts";
 import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export type { ReservationQuoteItem } from "@/features/checkout/reservation-quote-item";
 
-export type ReservationQuote = {
-  readonly items: readonly ReservationQuoteItem[];
-  readonly fingerprint: string;
-  readonly payment: {
-    readonly expectedPrice: WorkspaceMoney;
-    readonly undiscountedPrice: WorkspaceMoney;
-    readonly discounts: readonly AppliedDiscount[];
-  };
-};
+export const reservationQuoteSchema = Schema.Struct({
+  items: Schema.Array(reservationQuoteItemSchema),
+  fingerprint: Schema.NonEmptyString,
+  payment: Schema.Struct({
+    expectedPrice: nonNegativeWorkspaceMoneyCodec,
+    undiscountedPrice: nonNegativeWorkspaceMoneyCodec,
+    discounts: Schema.Array(appliedDiscountCodec),
+  }),
+}).annotate({
+  identifier: "ReservationQuote",
+  description: "Authoritative reservation quote snapshot.",
+});
+
+export type ReservationQuote = typeof reservationQuoteSchema.Type;
 
 export const buildReservationQuote = Effect.fn("buildReservationQuote")(
   function* (

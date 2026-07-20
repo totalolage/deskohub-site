@@ -9,6 +9,7 @@ import {
   type StoredDiscountId,
   storedDiscountIdSchema,
 } from "./persistence-contracts";
+import { logDiscountResolutionFailure } from "./resolution-logging";
 
 const calendarEventReferenceSchema = Schema.NonEmptyString.pipe(
   Schema.brand("CalendarEventReference")
@@ -80,12 +81,30 @@ export const normalizeCalendarSales = Effect.fn("CalendarSale.normalizeAll")(
     readonly reservationDate: string;
   }) =>
     Effect.succeed(input).pipe(
-      Effect.bind("sales", ({ events, ...context }) =>
+      Effect.bind("results", ({ events, ...context }) =>
         Effect.forEach(events, (event) =>
-          normalizeCalendarSale({ ...context, event })
+          normalizeCalendarSale({ ...context, event }).pipe(
+            Effect.matchEffect({
+              onFailure: (cause) =>
+                logDiscountResolutionFailure({
+                  cause,
+                  operation: "normalize",
+                  provider: "calendar",
+                }).pipe(
+                  Effect.as({
+                    sale: Option.none<CalendarSale>(),
+                    failed: true,
+                  })
+                ),
+              onSuccess: (sale) => Effect.succeed({ sale, failed: false }),
+            })
+          )
         )
       ),
-      Effect.map(({ sales }) => sales.flatMap((sale) => Option.toArray(sale)))
+      Effect.map(({ results }) => ({
+        sales: results.flatMap(({ sale }) => Option.toArray(sale)),
+        hasFailures: results.some(({ failed }) => failed),
+      }))
     )
 );
 

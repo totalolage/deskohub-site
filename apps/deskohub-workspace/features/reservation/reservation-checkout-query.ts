@@ -2,13 +2,13 @@ import { decodeStandardSchema } from "@deskohub/standard-schema";
 import { Schema } from "effect";
 import {
   getWorkspaceProductByTier,
-  workspaceCoworkProductTiers,
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import {
   type CoworkReservationInput,
   coworkReservationDefaultValues,
 } from "@/features/reservation/cowork-reservation";
+import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
   reservationCustomerEmailSchema,
   reservationCustomerMessageSchema,
@@ -50,7 +50,7 @@ const queryDateSchema = Schema.toStandardSchemaV1(
   )
 );
 const queryTierSchema = Schema.toStandardSchemaV1(
-  Schema.Literals(workspaceCoworkProductTiers)
+  workspaceCoworkProductIdentitySchema.fields.tier
 );
 const queryMonitorOptionSchema = Schema.toStandardSchemaV1(
   Schema.Literals(workspaceProductMonitorOptions)

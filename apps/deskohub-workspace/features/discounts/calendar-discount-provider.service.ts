@@ -1,18 +1,25 @@
 import { GoogleCalendarService } from "@deskohub/google-calendar";
-import { Cache, Context, Data, Duration, Effect, Exit, Layer } from "effect";
-import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import {
-  type CalendarSale,
-  type CalendarSaleConfigurationError,
-  normalizeCalendarSales,
-} from "./calendar-sale";
-import type { DiscountProductIdentity, DiscountQuoteInput } from "./contracts";
+  Cache,
+  Context,
+  Data,
+  Duration,
+  Effect,
+  Exit,
+  Layer,
+  Option,
+} from "effect";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
+import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
+import type { DiscountQuoteInput } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
 import { DiscountProviderError } from "./errors";
 import { deriveOpaqueDiscountId } from "./opaque-discount-id";
 import type { DiscountCandidate } from "./provider";
+import { logDiscountResolutionFailure } from "./resolution-logging";
 
 const providerNamespace = "google-calendar-sales";
 
@@ -48,21 +55,36 @@ export class CalendarDiscountProvider extends Context.Service<
           [...new Set(input.sales.map(({ discountId }) => discountId))],
           (discountId) =>
             discountDefinitions.loadById({ discountId }).pipe(
-              Effect.tapError((cause) =>
-                Effect.logError(
-                  "Stored calendar discount definition could not be loaded",
-                  { cause, discountId }
-                )
-              ),
-              Effect.mapError(toDiscountDefinitionProviderError)
+              Effect.mapError(toDiscountDefinitionProviderError),
+              Effect.matchEffect({
+                onFailure: (cause) =>
+                  logDiscountResolutionFailure({
+                    cause,
+                    operation: "load_definition",
+                    provider: "calendar",
+                  }).pipe(
+                    Effect.as({
+                      definition: Option.none<DiscountDefinition>(),
+                      failed: true,
+                    })
+                  ),
+                onSuccess: (loadedDefinition) =>
+                  Effect.succeed({
+                    definition: Option.some(loadedDefinition),
+                    failed: false,
+                  }),
+              })
             )
         ).pipe(
-          Effect.map(
-            (definitions) =>
-              new Map(
-                definitions.map((definition) => [definition.id, definition])
-              )
-          )
+          Effect.map((results) => ({
+            definitions: new Map(
+              results
+                .map(({ definition }) => definition)
+                .filter(Option.isSome)
+                .map(({ value }) => [value.id, value])
+            ),
+            hasFailures: results.some(({ failed }) => failed),
+          }))
         )
       );
 
@@ -89,44 +111,39 @@ export class CalendarDiscountProvider extends Context.Service<
                   )
                 )
             ),
-            Effect.bind("sales", ({ calendarId, events, reservationDate }) =>
-              normalizeCalendarSales({
-                calendarId,
-                events,
-                reservationDate,
-              }).pipe(
-                Effect.tapError(logCalendarSaleConfigurationError),
-                Effect.mapError(toMalformedConfigurationError)
-              )
+            Effect.bind(
+              "normalization",
+              ({ calendarId, events, reservationDate }) =>
+                normalizeCalendarSales({
+                  calendarId,
+                  events,
+                  reservationDate,
+                })
             ),
-            Effect.bind("definitions", loadDiscountDefinitions),
-            Effect.map(({ definitions, sales }) =>
-              sales.map((sale) => ({
-                sale,
-                definition: definitions.get(sale.discountId)!,
-              }))
-            )
+            Effect.bind("definitionResolution", ({ normalization }) =>
+              loadDiscountDefinitions({ sales: normalization.sales })
+            ),
+            Effect.map(({ definitionResolution, normalization }) => ({
+              sales: normalization.sales.flatMap((sale) => {
+                const definition = definitionResolution.definitions.get(
+                  sale.discountId
+                );
+
+                return definition ? [{ sale, definition }] : [];
+              }),
+              cacheable:
+                !normalization.hasFailures && !definitionResolution.hasFailures,
+            }))
           ),
-        (effect, key) =>
-          effect.pipe(
-            Effect.annotateLogs({
-              calendarId: key.calendarId,
-              reservationDate: key.reservationDate,
-            }),
-            Effect.tapError((cause) =>
-              cause.reason === "provider_failure"
-                ? Effect.logError("Calendar discount sales load failed", {
-                    cause,
-                  })
-                : Effect.void
-            )
-          )
+        (effect) => effect
       );
 
       const salesCache = yield* Cache.makeWith(loadCalendarSales, {
         capacity: 512,
         timeToLive: (exit) =>
-          Exit.isSuccess(exit) ? Duration.seconds(60) : Duration.zero,
+          Exit.isSuccess(exit) && exit.value.cacheable
+            ? Duration.seconds(60)
+            : Duration.zero,
       });
 
       const quote = Effect.fn("CalendarDiscountProvider.quote")(
@@ -140,9 +157,10 @@ export class CalendarDiscountProvider extends Context.Service<
                   reservationDate,
                 })
             ),
-            Effect.bind("sales", ({ cacheKey }) =>
+            Effect.bind("resolvedSales", ({ cacheKey }) =>
               Cache.get(salesCache, cacheKey)
             ),
+            Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
             Effect.map(({ candidates }) => candidates)
           ),
@@ -160,7 +178,10 @@ export class CalendarDiscountProvider extends Context.Service<
                   reservationDate,
                 })
             ),
-            Effect.bind("sales", ({ cacheKey }) => loadCalendarSales(cacheKey)),
+            Effect.bind("resolvedSales", ({ cacheKey }) =>
+              loadCalendarSales(cacheKey)
+            ),
+            Effect.let("sales", ({ resolvedSales }) => resolvedSales.sales),
             Effect.let("candidates", toEligibleCalendarCandidates),
             Effect.map(({ candidates }) => candidates)
           ),
@@ -179,7 +200,7 @@ class CalendarSalesCacheKey extends Data.Class<{
 
 const toEligibleCalendarCandidates = (input: {
   readonly locale: CalendarDiscountProviderInput["locale"];
-  readonly product: DiscountProductIdentity;
+  readonly product: WorkspaceCoworkProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
 }) =>
   input.sales
@@ -230,33 +251,17 @@ type ResolvedCalendarSale = {
 };
 
 const isSameProduct = (
-  left: DiscountProductIdentity,
-  right: DiscountProductIdentity
+  left: WorkspaceCoworkProductIdentity,
+  right: WorkspaceCoworkProductIdentity
 ) => left.kind === right.kind && left.tier === right.tier;
-
-const toMalformedConfigurationError = (cause: CalendarSaleConfigurationError) =>
-  new DiscountProviderError({
-    reason: "malformed_configuration",
-    message: "A marked Google Calendar sale is malformed.",
-    cause,
-  });
-
-const logCalendarSaleConfigurationError = (
-  cause: CalendarSaleConfigurationError
-) =>
-  Effect.logError("Calendar sale configuration is invalid", {
-    reason: cause.reason,
-    eventReference: cause.eventReference,
-    cause,
-  });
 
 const withProviderAnnotations =
   (operation: "quote" | "revalidate") =>
   <A, E>(effect: Effect.Effect<A, E>, input: CalendarDiscountProviderInput) =>
     effect.pipe(
       Effect.annotateLogs({
-        operation,
-        reservationDate: input.reservationDate,
-        product: input.product,
+        discountOperation: operation,
+        discountProductKind: input.product.kind,
+        discountProductTier: input.product.tier,
       })
     );

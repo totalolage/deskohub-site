@@ -10,22 +10,19 @@ import {
   normalizeWorkspaceCheckoutOrder,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import {
+  type LegalEvidenceMap,
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
-} from "@/features/checkout/schemas/checkout-details";
-import type {
-  CheckoutDetailsJson,
-  LegalEvidenceMap,
-} from "@/features/checkout/types/checkout-details";
+} from "@/features/checkout/legal-evidence";
+import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
+import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
 import {
   type CanonicalDiscountCode,
-  type DiscountCodeUnavailableError,
   DiscountService,
 } from "@/features/discounts";
 import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
@@ -317,30 +314,18 @@ const getFreshPayUrl: (input: {
   (input) => Effect.succeed(buildFreshCheckoutPayPath(input))
 );
 
-type MappableCheckoutFailure =
-  | CheckoutError
-  | DiscountCodeUnavailableError
-  | WorkspaceTableUnavailableError;
+type MappableCheckoutFailure = CheckoutError | WorkspaceTableUnavailableError;
 
 const isMappableCheckoutFailure = (
   cause: unknown
 ): cause is MappableCheckoutFailure =>
   Predicate.isTagged(cause, "CheckoutError") ||
-  Predicate.isTagged(cause, "DiscountCodeUnavailableError") ||
   Predicate.isTagged(cause, "WorkspaceTableUnavailableError");
 
 const mapCheckoutFailure = (cause: unknown) => {
   if (isMappableCheckoutFailure(cause)) {
     return Match.value(cause).pipe(
       Match.tag("CheckoutError", (error) => error),
-      Match.tag(
-        "DiscountCodeUnavailableError",
-        (error) =>
-          new CheckoutError({
-            message: "discount_code_unavailable",
-            cause: error,
-          })
-      ),
       Match.tag(
         "WorkspaceTableUnavailableError",
         (error) =>
@@ -610,16 +595,19 @@ export const CheckoutServiceLive = Layer.effect(
             product.price,
             currencyOverride
           );
-          const revalidation = yield* discounts.revalidate({
+          const affirmation = yield* discounts.affirm({
             product: { kind: "cowork", tier: order.entryTier },
             discountableSubtotal,
             reservationDate: data.date,
             dotyposCustomerId: reservation.dotyposCustomerId,
             locale,
             submittedCode: state.submittedCode,
+            acceptedDiscountIds: state.quote.payment.discounts.map(
+              ({ discount }) => discount.id
+            ),
           });
           const quote = yield* calculateWorkspaceCheckoutQuote(data, {
-            discountQuote: revalidation.quote,
+            discountQuote: affirmation.quote,
             currencyOverride,
           });
           yield* Effect.annotateLogsScoped({ quote });

@@ -10,7 +10,7 @@ import {
   isWorkspaceProductMonitorOption,
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
-import type { CheckoutDetailsJson } from "@/features/checkout/types/checkout-details";
+import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
 import { getAssignableDotyposTableId } from "./dotypos-table-id";
 import {

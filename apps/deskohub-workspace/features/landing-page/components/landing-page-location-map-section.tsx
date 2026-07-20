@@ -61,7 +61,7 @@ export function LandingPageLocationMapSection({
         <Container className="relative z-10 flex min-h-184 items-start py-8 lg:min-h-136 lg:items-end lg:py-10">
           <GlassCard
             className="w-full max-w-xl rounded-4xl border border-white/45 p-6 shadow-[0_34px_90px_-55px_rgba(0,2,79,0.75)] sm:p-8"
-            optics={{ frost: 2}}
+            optics={{ frost: 2 }}
           >
             <h2 className="text-4xl leading-tight text-balance sm:text-5xl">
               {m.landingLocationMapTitle({}, { locale })}

@@ -1,10 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { Result } from "effect";
+import { Result, Schema } from "effect";
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationProductSchema,
+  getWorkspaceCoworkProductKey,
   getWorkspaceReservationProductColumns,
   normalizedCoworkReservationProductSchema,
+  workspaceCoworkProductKeySchema,
 } from "./cowork-reservation-product";
 
 const productParser = makeSchemaParser(coworkReservationProductSchema, {
@@ -16,6 +18,23 @@ const normalizedProductParser = makeSchemaParser(
 );
 
 describe("cowork reservation product", () => {
+  test("owns canonical cowork product keys", () => {
+    expect(
+      getWorkspaceCoworkProductKey({ kind: "cowork", tier: "basic" })
+    ).toBe("cowork:basic");
+    expect(getWorkspaceCoworkProductKey({ kind: "cowork", tier: "plus" })).toBe(
+      "cowork:plus"
+    );
+    expect(
+      getWorkspaceCoworkProductKey({ kind: "cowork", tier: "profi" })
+    ).toBe("cowork:profi");
+    expect(() =>
+      Schema.decodeUnknownSync(workspaceCoworkProductKeySchema)(
+        "cowork:enterprise"
+      )
+    ).toThrow();
+  });
+
   test("normalizes courtesy coffee once at the product boundary", () => {
     expect(
       productParser.parse({

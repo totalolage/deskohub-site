@@ -1,18 +1,15 @@
 import { describe, expect, test } from "bun:test";
 import { Effect, Schema } from "effect";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { calculateDiscounts } from "./calculator";
-import {
-  type Discount,
-  type DiscountProductIdentity,
-  discountIdSchema,
-} from "./contracts";
+import { type Discount, discountIdSchema } from "./contracts";
 import type { DiscountCandidate } from "./provider";
 
 const product = {
   kind: "cowork",
   tier: "basic",
-} satisfies DiscountProductIdentity;
+} satisfies WorkspaceCoworkProductIdentity;
 
 const discountId = Schema.decodeUnknownSync(discountIdSchema);
 
@@ -271,14 +268,19 @@ describe("discount calculator", () => {
     }
   });
 
-  test("distinguishes fixed currency and exponent mismatches", () => {
-    expect(
-      calculateError(money(1000), [fixed("currency", money(100, "EUR"))]).reason
-    ).toBe("currency_mismatch");
-    expect(
-      calculateError(money(1000), [fixed("exponent", money(100, "CZK", 0))])
-        .reason
-    ).toBe("exponent_mismatch");
+  test("skips incompatible fixed discounts and continues with valid candidates", () => {
+    const result = calculate(money(1000), [
+      percentage("before", 1000),
+      fixed("currency", money(100, "EUR")),
+      fixed("exponent", money(100, "CZK", 0)),
+      percentage("after", 1000),
+    ]);
+
+    expect(result.quote.discounts.map(({ discount }) => discount.id)).toEqual([
+      "before",
+      "after",
+    ]);
+    expect(result.quote.discountedSubtotal.value).toBe(810);
   });
 
   test("keeps private provider and claim data out of the public quote", () => {
@@ -303,7 +305,7 @@ describe("discount calculator", () => {
         product: {
           ...product,
           source: "private-product-source",
-        } as DiscountProductIdentity,
+        } as WorkspaceCoworkProductIdentity,
         discountableSubtotal: {
           ...money(1000),
           source: "private-subtotal-source",

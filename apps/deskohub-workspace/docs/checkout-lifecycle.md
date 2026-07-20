@@ -17,6 +17,33 @@ Do not recreate `checkout_return_state_tokens` as a state table. Return pages mu
 
 Discount configuration and audit history extend this lifecycle through `discounts`, `discount_product_targets`, `discount_codes`, `discount_code_customers`, `discount_applications`, and `discount_code_redemptions`. These tables store only source-neutral benefit configuration, Dotypos customer IDs, generic application snapshots, and claim state. They must not store customer contact data, Workspace access codes, or raw provider payloads. See [Workspace discount-code operations](./discount-codes.md).
 
+## Advertised, quoted, and payable prices
+
+Checkout has three distinct price boundaries:
+
+1. The reservation page advertises a price.
+2. Reservation submission creates the order-summary quote that the customer reviews.
+3. Order submission freshly affirms that signed summary before payment begins.
+
+The server must issue an integrity-protected advertisement snapshot for the product and reservation inputs whose price is visible on the reservation page. The reservation form carries that snapshot back without treating client-authored price data as authoritative. The signed order-summary state performs the same role for the price reviewed on the summary page.
+
+`pricing_changed` is a normal workflow result at both transitions, not an exceptional checkout failure:
+
+- If discount discovery fails before the reservation page is rendered, log the error, omit that discount from the advertisement, and continue without it. Quote generation must not add an automatic discount that becomes available after the advertisement snapshot was issued.
+- If a discount in the advertisement snapshot cannot be included when reservation submission creates the quote, create the current quote without that discount and return `pricing_changed` for every affected summary product key, such as `product:cowork:basic`. The customer must review the changed summary before payment can be requested.
+- If a discount in the signed summary cannot be freshly affirmed at order submission, return `pricing_changed` with a refreshed signed summary. Create no durable payment attempt and no external payment session.
+- Newly available automatic discounts are never introduced retrospectively during quote generation or final affirmation. They may appear only through a new advertisement/summary cycle. A successfully submitted discount code is the deliberate exception because the customer explicitly requested that quote change.
+
+Discount code entry belongs on the order-summary page as an independent form with its own server action, pending state, and field error. It must not resubmit the reservation form or the main order submission:
+
+- The action receives the current signed summary and submitted code.
+- It first affirms every discount already displayed. If any changed, it returns the normal `pricing_changed` result and a refreshed signed summary.
+- An unavailable or invalid code returns a field-level error and leaves the existing signed summary payable. It never blocks proceeding without the code.
+- A valid code returns a new signed summary containing the code discount. It does not create a payment attempt, persist an application, or reserve code capacity.
+- Once present in the signed summary, a code follows the same final affirmation and payment-lifecycle rules as every other discount.
+
+The hard payment invariant is that a provider session amount must exactly equal the last signed summary price shown to the customer. Order submission freshly affirms exactly the discounts in that summary and compares the complete quote fingerprint and total. A mismatch—or a failure to persist applications or admit a claim atomically—returns `pricing_changed`; the transaction rolls back and Nexi is not called.
+
 ## Ownership
 
 | Data | Owner | Local DB contract |
@@ -233,6 +260,7 @@ Allowed payment transitions:
 - Terminal aggregate updates require the active payment attempt ID and only apply while the aggregate state is still `pending` on a held reservation.
 - Attempt terminal updates only apply from non-terminal attempt states; `paid` can only be set from `pending`.
 - Webhook terminal updates must update the attempt row and reservation aggregate in one database transaction. Provider retries may reapply a matching terminal attempt/reservation pair as an idempotent no-op, but must not mark one side terminal when the other side fails its guard.
+- Discount application persistence and code-claim admission belong to the payment-attempt creation transaction. Claim redemption belongs to the paid transaction, and claim release belongs to every failed, cancelled, or expired transaction. Any application, claim, redemption, or release error is fatal and rolls back the owning payment transition; it must never be converted to an empty discount result or `not_pending` state.
 - Failed/cancelled/expired workflows may create a new `payment_attempts` row only when the reservation is still `held` and hold deadline is valid.
 - `paid` is terminal for payment state.
 
@@ -312,6 +340,7 @@ sequenceDiagram
   participant Dotypos
 
   Customer->>App: Submit reservation/contact/legal form
+  App->>App: Open advertised-price snapshot and affirm only its advertised automatic discounts
   App->>App: Validate input and legal consent
   App->>App: Build intent-key object and HMAC via JSON.stringify
   App->>Dotypos: Find or create customer using PII
@@ -322,7 +351,31 @@ sequenceDiagram
   Dotypos-->>App: dotyposReservationId
   App->>DB: Set reservation_state=held and hold deadline
   App->>DB: Insert legal_evidence_events
-  App-->>Customer: Continue to payment step
+  alt advertised price still matches
+    App-->>Customer: Show signed order summary
+  else advertised discount unavailable
+    App-->>Customer: Show refreshed signed summary with pricing_changed affected product keys
+  end
+```
+
+### Independent Discount Code Form
+
+```mermaid
+sequenceDiagram
+  actor Customer
+  participant Summary as Order Summary
+  participant App as Workspace Server Action
+
+  Customer->>Summary: Submit discount-code form
+  Summary->>App: Current signed summary + submitted code
+  App->>App: Affirm every displayed discount
+  alt displayed price changed
+    App-->>Summary: pricing_changed + refreshed signed summary
+  else code unavailable
+    App-->>Summary: Field error; retain current signed summary
+  else code accepted
+    App-->>Summary: New signed summary containing code discount
+  end
 ```
 
 ### Payment Attempt And Nexi Redirect
@@ -336,11 +389,16 @@ sequenceDiagram
 
   Customer->>App: Request payment for held workflow
   App->>DB: Load held workspace_reservations row
-  App->>DB: In one transaction set active attempt/payment_state=pending only if held and unpaid, then insert payment_attempts(created)
-  App->>Nexi: POST /orders/hpp with provider_order_id, amount, resultUrl, notificationUrl
-  Nexi-->>App: hostedPage and securityToken
-  App->>DB: Store securityToken, redirect URL, attempt pending
-  App-->>Customer: Redirect to hostedPage
+  App->>App: Freshly affirm exactly the signed-summary discounts and total
+  alt fingerprint, total, or claim admission changed
+    App-->>Customer: pricing_changed + refreshed signed summary; no payment session
+  else signed price affirmed
+    App->>DB: In one transaction create/link attempt, persist discount applications, and reserve code claim
+    App->>Nexi: POST /orders/hpp with the exact signed-summary amount
+    Nexi-->>App: hostedPage and securityToken
+    App->>DB: Store securityToken, redirect URL, attempt pending
+    App-->>Customer: Redirect to hostedPage
+  end
 ```
 
 ### Webhook Success And Dotypos Confirmation
@@ -364,7 +422,7 @@ sequenceDiagram
   Webhook->>Webhook: Compare notification securityToken if present
   Webhook->>Nexi: GET /orders/{provider_order_id}
   Nexi-->>Webhook: Verified payment result
-  Webhook->>DB: In one transaction mark active attempt paid and reservation payment_state=paid if still held/pending
+  Webhook->>DB: In one transaction mark attempt/reservation paid and redeem reserved discount claim
   Webhook->>DB: Claim fulfillment_state=processing and reservation_state=confirming
   Fulfillment->>Dotypos: Confirm/finalize reservation using dotyposReservationId
   Dotypos-->>Fulfillment: Confirmation success
@@ -388,7 +446,7 @@ sequenceDiagram
   Return->>DB: Load active payment attempt
   Return->>Nexi: Verify provider_order_id when needed
   Nexi-->>Return: Terminal unsuccessful or pending result
-  Return->>DB: Mark active non-terminal attempt and pending aggregate failed/cancelled/expired if still held/pending
+  Return->>DB: In one transaction mark attempt/reservation terminal and release reserved discount claim
   Return->>Cleanup: Request unpaid hold cancellation
   Cleanup->>DB: Claim reservation_state=cancelling
   Cleanup->>Dotypos: Cancel Dotypos reservation hold
