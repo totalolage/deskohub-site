@@ -3,7 +3,6 @@ import {
   clickBrowserElement,
   fillBrowserField,
   openBrowserPage,
-  requireSnapshotRef,
   waitForBrowserReactFormAction,
   waitForBrowserTextContent,
 } from "../browser";
@@ -95,14 +94,12 @@ const fillContactForm = (
 const submitContactForm = (run: Runner, session: string) =>
   Effect.gen(function* () {
     const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
-    const submitRef = yield* requireSnapshotRef({
-      description: "contact form submit button",
-      labels: ["Send message"],
+    yield* clickBrowserElement(
       run,
       session,
-      timeoutMs,
-    });
-    yield* clickBrowserElement(run, session, submitRef, { timeoutMs });
+      '#contact-form button[type="submit"]',
+      { timeoutMs }
+    );
     yield* waitForBrowserTextContent(
       run,
       session,

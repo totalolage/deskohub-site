@@ -149,6 +149,7 @@ describe("CheckoutStatusPage", () => {
     const link = view.getByRole("link", {
       name: "Send support request",
     });
+    expect(link.id).toBe("checkout-status-support-contact");
     const href = link.getAttribute("href");
     expect(href?.startsWith("/en-US/contact?")).toBe(true);
 

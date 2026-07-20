@@ -1,6 +1,7 @@
 import { Effect } from "effect";
 import { HttpClient } from "effect/unstable/http";
 import {
+  clickBrowserElement,
   evalBrowserScript,
   openBrowserPage,
   waitForBrowserText,
@@ -245,6 +246,12 @@ const assertFulfillmentFailedSupportPath = ({
         logOutput: false,
         timeoutMs: getWorkspaceE2ETimeoutMs("browserAction"),
       }
+    );
+    yield* clickBrowserElement(
+      run,
+      session,
+      "#checkout-status-support-contact",
+      { timeoutMs: getWorkspaceE2ETimeoutMs("browserAction") }
     );
     yield* waitForBrowserUrl({
       description: "fulfillment failed support contact page",
