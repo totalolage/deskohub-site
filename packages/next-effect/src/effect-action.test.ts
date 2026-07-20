@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 import { Context, Effect, Exit, Layer, Schema } from "effect";
 import { createMiddleware, createSafeActionClient } from "next-safe-action";
 import { useAction } from "next-safe-action/hooks";
-import { z } from "zod";
 import { EffectAction } from "./effect-action";
 
 class TestService extends Context.Service<
@@ -29,6 +28,10 @@ function makeActionClient() {
   }).use(localeMiddleware);
 }
 
+const SeatsSchema = Schema.toStandardSchemaV1(
+  Schema.Struct({ seats: Schema.FiniteFromString })
+);
+
 describe("EffectAction", () => {
   test("uses a real next-safe-action client schema and utils", async () => {
     const seen: string[] = [];
@@ -52,11 +55,11 @@ describe("EffectAction", () => {
     expect(seen).toEqual(["action-utils", "input-utils"]);
   });
 
-  test("runs Zod-decoded input with ctx and layers", async () => {
+  test("runs Effect Schema-decoded input with ctx and layers", async () => {
     const action = EffectAction.fromClient(makeActionClient(), {
       layer: Layer.succeed(TestService, { multiplier: 2 }),
     })
-      .inputSchema(z.object({ seats: z.string().transform(Number) }))
+      .inputSchema(SeatsSchema)
       .action(({ parsedInput, clientInput, ctx }) =>
         Effect.gen(function* () {
           const service = yield* TestService;
@@ -230,20 +233,20 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
     }
   });
 
-  const zodAction = EffectAction.fromClient(makeActionClient())
-    .inputSchema(z.object({ seats: z.string().transform(Number) }))
+  const effectSchemaAction = EffectAction.fromClient(makeActionClient())
+    .inputSchema(SeatsSchema)
     .action(({ parsedInput, clientInput }) => {
       const decoded: number = parsedInput.seats;
       const raw: string = clientInput.seats;
 
-      // @ts-expect-error Zod parsed input is transformed to number.
+      // @ts-expect-error Effect Schema parsed input is transformed to number.
       const wrongDecoded: string = parsedInput.seats;
 
       return Effect.succeed(decoded + raw.length + wrongDecoded.length);
     });
 
-  zodAction({ seats: "1" });
+  effectSchemaAction({ seats: "1" });
 
-  // @ts-expect-error Zod client input must be the pre-transform input type.
-  zodAction({ seats: 1 });
+  // @ts-expect-error Effect Schema client input is the pre-transform input type.
+  effectSchemaAction({ seats: 1 });
 }

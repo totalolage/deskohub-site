@@ -1,15 +1,15 @@
-import darkBgColor from "assets/logo/color-bg:dark.svg";
-import lightBgColor from "assets/logo/color-bg:light.svg";
-import darkBgCutout from "assets/logo/cutout-bg:dark.svg";
-import lightBgCutout from "assets/logo/cutout-bg:light.svg";
-import darkBgFancy from "assets/logo/fancy-bg:dark.svg";
-import lightBgFancy from "assets/logo/fancy-bg:light.svg";
-import darkBgPlain from "assets/logo/plain-bg:dark.svg";
-import lightBgPlain from "assets/logo/plain-bg:light.svg";
-import darkBgSmall from "assets/logo/small-bg:dark.svg";
-import lightBgSmall from "assets/logo/small-bg:light.svg";
 import Image from "next/image";
 import type { ComponentProps } from "react";
+import darkBgColor from "@/assets/logo/color-bg:dark.svg";
+import lightBgColor from "@/assets/logo/color-bg:light.svg";
+import darkBgCutout from "@/assets/logo/cutout-bg:dark.svg";
+import lightBgCutout from "@/assets/logo/cutout-bg:light.svg";
+import darkBgFancy from "@/assets/logo/fancy-bg:dark.svg";
+import lightBgFancy from "@/assets/logo/fancy-bg:light.svg";
+import darkBgPlain from "@/assets/logo/plain-bg:dark.svg";
+import lightBgPlain from "@/assets/logo/plain-bg:light.svg";
+import darkBgSmall from "@/assets/logo/small-bg:dark.svg";
+import lightBgSmall from "@/assets/logo/small-bg:light.svg";
 
 const logo = [
   {

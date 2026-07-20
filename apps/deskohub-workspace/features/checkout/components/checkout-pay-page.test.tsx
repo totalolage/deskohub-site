@@ -14,9 +14,14 @@ import {
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
+const { submitWorkspaceReservation } = await import(
+  "@/features/reservation/actions/submit-reservation"
+);
+
 mock.module("server-only", () => ({}));
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
   submitReservation: mock(),
+  submitWorkspaceReservation,
 }));
 
 describe("CheckoutPayPageSkeleton", () => {

@@ -7,16 +7,6 @@ on:
   pull_request:
     branches: [main]
     types: [opened, reopened, synchronize, ready_for_review, converted_to_draft]
-    paths:
-      - .vercelignore
-      - .github/workflows/workspace-tests.yml
-      - .github/workflows/workspace-e2e.yml
-      - apps/deskohub-workspace/**
-      - packages/**
-      - bun.lock
-      - package.json
-      - tsconfig.json
-      - turbo.json
 
 concurrency:
   group: workspace-ci-pr-${{ github.event.pull_request.number }}
@@ -57,5 +47,7 @@ jobs:
           bun-version: 1.3.14
 
       - run: bun install --frozen-lockfile
+
+      - run: bun turbo typecheck
 
       - run: bun turbo test --filter=./apps/deskohub-workspace
