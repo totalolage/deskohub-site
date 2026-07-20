@@ -23,21 +23,21 @@ const validateWebhookUUID = (url: URL) =>
     const providedSecret = url.searchParams.get("secret");
 
     if (!providedSecret) {
-      yield* Effect.fail(
-        new WebhookAuthError({ message: "Missing webhook secret" })
-      );
+      return yield* new WebhookAuthError({
+        message: "Missing webhook secret",
+      });
     }
 
     if (!env.DOTYPOS_WEBHOOK_SECRET) {
-      yield* Effect.fail(
-        new WebhookAuthError({ message: "Webhook secret is not configured" })
-      );
+      return yield* new WebhookAuthError({
+        message: "Webhook secret is not configured",
+      });
     }
 
     if (providedSecret !== env.DOTYPOS_WEBHOOK_SECRET) {
-      yield* Effect.fail(
-        new WebhookAuthError({ message: "Invalid webhook secret" })
-      );
+      return yield* new WebhookAuthError({
+        message: "Invalid webhook secret",
+      });
     }
   });
 
