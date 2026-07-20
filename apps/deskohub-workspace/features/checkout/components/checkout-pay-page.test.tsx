@@ -19,7 +19,11 @@ const { submitWorkspaceReservation } = await import(
 );
 
 mock.module("server-only", () => ({}));
+const submitReservationActions = await import(
+  "@/features/reservation/actions/submit-reservation"
+);
 mock.module("@/features/reservation/actions/submit-reservation", () => ({
+  ...submitReservationActions,
   submitReservation: mock(),
   submitWorkspaceReservation,
 }));
