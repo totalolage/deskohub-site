@@ -145,7 +145,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     expect(evaluateFlags).not.toHaveBeenCalled();
     expect(createClient).toHaveBeenCalledTimes(1);
 
-    await Effect.runPromise(featureFlags.shutdown());
+    await Effect.runPromise(featureFlags.shutdown);
   });
 
   test("retains access events for a recording batched subject", async () => {
@@ -176,7 +176,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     expect(getAllFlagsAndPayloads).not.toHaveBeenCalled();
     expect(createClient).toHaveBeenCalledTimes(1);
 
-    await Effect.runPromise(featureFlags.shutdown());
+    await Effect.runPromise(featureFlags.shutdown);
   });
 
   test("reuses one SDK client for the service lifetime", async () => {
@@ -243,7 +243,7 @@ describe("makePostHogNodeFeatureFlagService", () => {
     );
     expect(shutdown).not.toHaveBeenCalled();
 
-    await Effect.runPromise(featureFlags.shutdown());
+    await Effect.runPromise(featureFlags.shutdown);
 
     expect(shutdown).toHaveBeenCalledTimes(1);
   });

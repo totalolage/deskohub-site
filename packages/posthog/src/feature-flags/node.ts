@@ -115,20 +115,18 @@ export const makePostHogNodeFeatureFlagService = <
       )
   );
 
-  const shutdown = Effect.fn("PostHogNodeFeatureFlags.shutdown")(() =>
-    Effect.suspend(() => {
-      const activeClient = client;
-      client = undefined;
+  const shutdown = Effect.suspend(() => {
+    const activeClient = client;
+    client = undefined;
 
-      return activeClient
-        ? shutdownPostHogClient({ client: activeClient }).pipe(
-            Effect.catch((error) =>
-              Effect.logWarning(error.message, { cause: error.cause })
-            )
+    return activeClient
+      ? shutdownPostHogClient({ client: activeClient }).pipe(
+          Effect.catch((error) =>
+            Effect.logWarning(error.message, { cause: error.cause })
           )
-        : Effect.void;
-    })
-  );
+        )
+      : Effect.void;
+  });
 
   return { evaluateFlags, isEnabled, shutdown };
 };
