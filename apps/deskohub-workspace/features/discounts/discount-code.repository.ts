@@ -1,11 +1,6 @@
-import { eq } from "drizzle-orm";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Effect, Layer, Option } from "effect";
-import {
-  type DatabaseError,
-  runDb,
-  WorkspaceDatabase,
-} from "@/db/database.service";
-import { discountCodes } from "@/db/schema";
+import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type DiscountCodeAvailability,
   type DiscountCodeConfiguration,
@@ -24,15 +19,15 @@ export interface IDiscountCodeRepository {
     readonly code: CanonicalDiscountCode;
   }) => Effect.Effect<
     Option.Option<DiscountCodeConfiguration>,
-    DatabaseError | DiscountCodeConfigurationError
+    EffectDrizzleQueryError | DiscountCodeConfigurationError
   >;
   readonly loadAvailability: (input: {
     readonly codeId: DiscountCodeId;
     readonly dotyposCustomerId: string;
-    readonly at: Date;
+    readonly at: Temporal.Instant;
   }) => Effect.Effect<
     DiscountCodeAvailability,
-    DatabaseError | DiscountCodeConfigurationError
+    EffectDrizzleQueryError | DiscountCodeConfigurationError
   >;
 }
 
@@ -47,13 +42,9 @@ export class DiscountCodeRepository extends Context.Service<
 
       const findByCode = Effect.fn("DiscountCodeRepository.findByCode")(
         function* (input) {
-          const row = yield* runDb(
-            "discountCodes.findByCode",
-            async () =>
-              await db.query.discountCodes.findFirst({
-                where: eq(discountCodes.code, input.code),
-              })
-          );
+          const row = yield* db.query.discountCodes.findFirst({
+            where: { code: input.code },
+          });
 
           return yield* Option.fromNullishOr(row).pipe(
             Option.map((found) =>
@@ -67,27 +58,17 @@ export class DiscountCodeRepository extends Context.Service<
       const loadAvailability = Effect.fn(
         "DiscountCodeRepository.loadAvailability"
       )(function* (input) {
-        const availability = yield* runDb(
-          "discountCodes.loadAvailability",
-          async () => {
-            const queries = buildDiscountCodeAvailabilityQueries({
-              db,
-              ...input,
-            });
-            const [allowlistRows, activeClaimRows] = await Promise.all([
-              queries.allowlist,
-              queries.activeClaims,
-            ]);
-
-            return {
-              allowlistSize: allowlistRows[0]?.allowlistSize ?? 0,
-              customerAllowed: allowlistRows[0]?.customerAllowed ?? false,
-              activeUseCount: activeClaimRows[0]?.activeUseCount ?? 0,
-              customerHasRedeemed:
-                activeClaimRows[0]?.customerHasRedeemed ?? false,
-            };
-          }
+        const queries = buildDiscountCodeAvailabilityQueries({ db, ...input });
+        const [allowlistRows, activeClaimRows] = yield* Effect.all(
+          [queries.allowlist, queries.activeClaims],
+          { concurrency: "inherit" }
         );
+        const availability = {
+          allowlistSize: allowlistRows[0]?.allowlistSize ?? 0,
+          customerAllowed: allowlistRows[0]?.customerAllowed ?? false,
+          activeUseCount: activeClaimRows[0]?.activeUseCount ?? 0,
+          customerHasRedeemed: activeClaimRows[0]?.customerHasRedeemed ?? false,
+        };
 
         return yield* decodeDiscountCodeAvailability({
           codeId: input.codeId,

@@ -36,7 +36,7 @@ describe("PostHogEventService", () => {
             reservation_id: "reservation-id",
             token: "explicit-secret",
           },
-          timestamp: new Date("2026-06-17T10:00:00.000Z"),
+          timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
           uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
         })
         .pipe(
@@ -87,7 +87,7 @@ describe("PostHogEventService", () => {
       service.capture({
         distinctId: "reservation-id",
         event: "reservation started",
-        timestamp: new Date("2026-06-17T10:00:00.000Z"),
+        timestamp: Temporal.Instant.from("2026-06-17T10:00:00.000Z"),
         uuid: "019edbcf-5026-7ecc-821b-eda46998eaaa",
       })
     );

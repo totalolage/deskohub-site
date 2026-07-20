@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
@@ -6,9 +7,9 @@ import type { WorkspaceReservation } from "@/db/schema";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "./reservation-hold-cleanup.service";
 
-const now = new Date("2026-06-01T10:00:00.000Z");
-const expiresAt = new Date("2026-06-01T10:10:00.000Z");
-const dueNow = new Date("2026-06-01T10:10:00.000Z");
+const now = Temporal.Instant.from("2026-06-01T10:00:00.000Z");
+const expiresAt = Temporal.Instant.from("2026-06-01T10:10:00.000Z");
+const dueNow = Temporal.Instant.from("2026-06-01T10:10:00.000Z");
 
 const makeReservation = (
   overrides: Partial<WorkspaceReservation> = {}
@@ -30,7 +31,7 @@ const makeReservation = (
     locale: "en-US",
     reservationHoldExpiresAt: expiresAt,
     reservationHoldExpiredAt: null,
-    reservationCreatedAt: new Date("2026-06-01T09:55:00.000Z"),
+    reservationCreatedAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
     reservationConfirmedAt: null,
     reservationCancelledAt: null,
     paidAt: null,
@@ -38,8 +39,8 @@ const makeReservation = (
     fulfillmentFailedAt: null,
     failureCode: null,
     fulfillmentFailureCode: null,
-    createdAt: new Date("2026-06-01T09:55:00.000Z"),
-    updatedAt: new Date("2026-06-01T09:55:00.000Z"),
+    createdAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
+    updatedAt: Temporal.Instant.from("2026-06-01T09:55:00.000Z"),
     ...overrides,
   }) as WorkspaceReservation;
 
@@ -48,7 +49,7 @@ const runProcessMessage = async (
   input: {
     readonly findById?: ReturnType<typeof mock>;
     readonly cancelOrderHold?: ReturnType<typeof mock>;
-    readonly now?: Date;
+    readonly now?: Temporal.Instant;
   } = {}
 ) => {
   const { ReservationHoldCleanupService } = await import(
@@ -91,7 +92,7 @@ const runProcessMessage = async (
 const duePayload = {
   schemaVersion: 1,
   orderId: "order-id",
-  reservationHoldExpiresAtIso: expiresAt.toISOString(),
+  reservationHoldExpiresAtIso: expiresAt.toString(),
 };
 
 describe("ReservationHoldCleanupScheduleService", () => {
@@ -112,14 +113,16 @@ describe("ReservationHoldCleanupScheduleService", () => {
       options: {
         delaySeconds: 600,
         retentionSeconds: 4200,
-        idempotencyKey: `reservation-hold-cleanup:order-id:${expiresAt.toISOString()}`,
+        idempotencyKey: `reservation-hold-cleanup:order-id:${expiresAt.toString()}`,
       },
     });
 
     const clamped = getReservationHoldCleanupScheduleMessage(
       {
         orderId: "order-id",
-        reservationHoldExpiresAt: new Date("2026-06-09T10:00:01.000Z"),
+        reservationHoldExpiresAt: Temporal.Instant.from(
+          "2026-06-09T10:00:01.000Z"
+        ),
       },
       now
     );
@@ -165,7 +168,9 @@ describe("ReservationHoldCleanupScheduleService", () => {
     const notDue = mock(() =>
       Effect.succeed(
         makeReservation({
-          reservationHoldExpiresAt: new Date("2026-06-01T10:11:00.000Z"),
+          reservationHoldExpiresAt: Temporal.Instant.from(
+            "2026-06-01T10:11:00.000Z"
+          ),
         })
       )
     );

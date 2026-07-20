@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
@@ -145,10 +146,16 @@ describe("WorkspaceReservationService", () => {
       "table-id",
       "neighbor-table",
     ]);
-    expect(details.reservedFrom.toISOString()).toBe("2026-06-15T22:00:00.000Z");
-    expect(details.reservedUntil.toISOString()).toBe(
-      "2026-06-16T22:00:00.000Z"
-    );
+    expect(
+      details.reservedFrom.equals(
+        Temporal.Instant.from("2026-06-15T22:00:00.000Z")
+      )
+    ).toBe(true);
+    expect(
+      details.reservedUntil.equals(
+        Temporal.Instant.from("2026-06-16T22:00:00.000Z")
+      )
+    ).toBe(true);
   });
 
   test("fails when Dotypos reservation date is invalid", async () => {
@@ -180,15 +187,25 @@ describe("WorkspaceReservationService", () => {
     const details = await Effect.runPromise(
       detailsEffect({
         dotyposReservation: makeDotyposReservation({
-          startDate: String(Date.UTC(2026, 5, 15, 6)),
-          endDate: String(Date.UTC(2026, 5, 16, 6)),
+          startDate: String(
+            Temporal.Instant.from("2026-06-15T06:00:00Z").epochMilliseconds
+          ),
+          endDate: String(
+            Temporal.Instant.from("2026-06-16T06:00:00Z").epochMilliseconds
+          ),
         }),
       })
     );
 
-    expect(details.reservedFrom.toISOString()).toBe("2026-06-15T06:00:00.000Z");
-    expect(details.reservedUntil.toISOString()).toBe(
-      "2026-06-16T06:00:00.000Z"
-    );
+    expect(
+      details.reservedFrom.equals(
+        Temporal.Instant.from("2026-06-15T06:00:00.000Z")
+      )
+    ).toBe(true);
+    expect(
+      details.reservedUntil.equals(
+        Temporal.Instant.from("2026-06-16T06:00:00.000Z")
+      )
+    ).toBe(true);
   });
 });

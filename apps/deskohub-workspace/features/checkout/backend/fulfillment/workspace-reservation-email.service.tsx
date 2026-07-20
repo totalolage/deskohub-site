@@ -46,6 +46,7 @@ import {
   workspaceLocationMapImagePath,
   workspaceSiteConstants,
 } from "@/shared/utils";
+import { temporalInstantToDate } from "@/shared/utils/temporal";
 import {
   createWorkspaceCheckoutWifiQrPayload,
   type WorkspaceCheckoutNetworkDetails,
@@ -96,7 +97,7 @@ const customerAccessHeadingDateFormatOptions = {
   weekday: "long",
   day: "numeric",
   month: "long",
-  timeZone: "Europe/Prague",
+  timeZone: workspaceSiteConstants.location.timeZone,
 } satisfies Intl.DateTimeFormatOptions;
 
 const formatCustomerAccessHeadingDate = (
@@ -106,7 +107,7 @@ const formatCustomerAccessHeadingDate = (
   new Intl.DateTimeFormat(
     locale,
     customerAccessHeadingDateFormatOptions
-  ).format(reservation.reservedFrom);
+  ).format(temporalInstantToDate(reservation.reservedFrom));
 
 const createCustomerAccessHeading = (
   reservation: WorkspaceReservationDetails,
@@ -300,7 +301,10 @@ const createReservationDetailRows = (
   const rows: EmailDetailRow[] = [
     [
       m.reservationEmailDateLabel({}, { locale }),
-      formatReservationDisplayDate(reservation.reservedFrom, locale),
+      formatReservationDisplayDate(
+        temporalInstantToDate(reservation.reservedFrom),
+        locale
+      ),
     ],
     [
       m.reservationEmailTierLabel({}, { locale }),
@@ -852,8 +856,8 @@ export const WorkspaceReservationEmailServiceLive = Layer.effect(
           workspaceReservationId: reservation.id,
           dotyposReservationId: reservation.dotyposReservationId,
           dotyposCustomerId: reservation.dotyposCustomerId,
-          dotyposReservationStartDate: reservation.reservedFrom.toISOString(),
-          dotyposReservationEndDate: reservation.reservedUntil.toISOString(),
+          dotyposReservationStartDate: reservation.reservedFrom.toString(),
+          dotyposReservationEndDate: reservation.reservedUntil.toString(),
         };
 
         if (customerEmail) {

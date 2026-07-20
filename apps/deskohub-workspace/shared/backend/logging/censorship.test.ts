@@ -4,6 +4,8 @@ import {
   LoggerProvider,
   SimpleLogRecordProcessor,
 } from "@opentelemetry/sdk-logs";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
+import { EffectLogger } from "drizzle-orm/effect-postgres";
 import { Cause, Effect, Logger, References } from "effect";
 import {
   CENSORED_LOG_VALUE,
@@ -81,6 +83,7 @@ describe("isSensitiveLogKey", () => {
     expect(isSensitiveLogKey("sessionId")).toBe(false);
     expect(isSensitiveLogKey("sessionDuration")).toBe(false);
     expect(isSensitiveLogKey("userSessionCount")).toBe(false);
+    expect(isSensitiveLogKey("params")).toBe(false);
     expect(isSensitiveLogKey("apiKeyDisplayName")).toBe(true);
     expect(isSensitiveLogKey("authorizationHeaderLabel")).toBe(false);
   });
@@ -104,6 +107,8 @@ describe("censorLogValue", () => {
         requestAuthorization: "Bearer secret",
         discountCode: "SUMMER50",
         submittedCode: "SUMMER50",
+        params: '["SUMMER50"]',
+        query: "select * from discount_codes where code = $1",
         discountCodeId: "safe-discount-code-id",
         name: "Ada Lovelace",
         message: "private form message",
@@ -135,6 +140,8 @@ describe("censorLogValue", () => {
         requestAuthorization: CENSORED_LOG_VALUE,
         discountCode: CENSORED_LOG_VALUE,
         submittedCode: CENSORED_LOG_VALUE,
+        params: '["SUMMER50"]',
+        query: "select * from discount_codes where code = $1",
         discountCodeId: "safe-discount-code-id",
         name: CENSORED_LOG_VALUE,
         message: CENSORED_LOG_VALUE,
@@ -165,6 +172,46 @@ describe("censorLogValue", () => {
     expect(censored).not.toBe(input);
     expect(censored.token).toBe(CENSORED_LOG_VALUE);
     expect(censored.self).toBe(censored);
+  });
+
+  test("redacts sensitive fields inside query params without hiding safe values", () => {
+    const input = {
+      params: [
+        "visible",
+        { email: "private@example.com", sessionDuration: 123 },
+      ],
+    };
+
+    expect(censorLogValue(input)).toEqual({
+      params: ["visible", { email: CENSORED_LOG_VALUE, sessionDuration: 123 }],
+    });
+  });
+
+  test("projects Drizzle query errors without exposing their dynamic message", () => {
+    const error = new EffectDrizzleQueryError({
+      query: "select * from customers where email = $1",
+      params: [
+        "visible",
+        { email: "private@example.com", sessionDuration: 123 },
+      ],
+      cause: new Error("driver echoed private@example.com"),
+    });
+
+    const censored = censorLogValue({ cause: error });
+    const serialized = JSON.stringify(censored);
+
+    expect(censored).toEqual({
+      cause: {
+        _tag: "EffectDrizzleQueryError",
+        query: "select * from customers where email = $1",
+        params: [
+          "visible",
+          { email: CENSORED_LOG_VALUE, sessionDuration: 123 },
+        ],
+      },
+    });
+    expect(serialized).not.toContain("private@example.com");
+    expect(serialized).not.toContain("Failed query");
   });
 
   test("preserves non-plain objects", () => {
@@ -364,6 +411,35 @@ describe("censorLoggerOptions", () => {
     expect(censoredAnnotations.session).toBe("public-session");
     expect(censoredAnnotations.sessionId).toBe("ph-session");
   });
+
+  test("recursively censors params emitted by Drizzle EffectLogger", async () => {
+    let capturedParams: unknown;
+    const captureLogger = Logger.make((options) => {
+      capturedParams = censorLoggerOptions(options).fiber.getRef(
+        References.CurrentLogAnnotations
+      ).params;
+    });
+
+    await Effect.runPromise(
+      Effect.gen(function* () {
+        const logger = yield* EffectLogger;
+        yield* logger.logQuery("select $1, $2, $3", [
+          "visible",
+          { email: "private@example.com", sessionDuration: 123 },
+          42,
+        ]);
+      }).pipe(
+        Effect.provide(EffectLogger.layer),
+        Effect.provide(Logger.layer([captureLogger]))
+      )
+    );
+
+    expect(capturedParams).toEqual([
+      '"visible"',
+      `{"email":"${CENSORED_LOG_VALUE}","sessionDuration":123}`,
+      "42",
+    ]);
+  });
 });
 
 describe("createCensoredOtelLogger", () => {
@@ -393,6 +469,31 @@ describe("createCensoredOtelLogger", () => {
       sessionId: "posthog-session-id",
       token: CENSORED_LOG_VALUE,
     });
+    await provider.shutdown();
+  });
+
+  test("does not emit sensitive fields from Drizzle query errors", async () => {
+    const exporter = new InMemoryLogRecordExporter();
+    const provider = new LoggerProvider({
+      processors: [new SimpleLogRecordProcessor(exporter)],
+    });
+    const error = new EffectDrizzleQueryError({
+      query: "select * from customers where email = $1",
+      params: [{ email: "private@example.com", sessionDuration: 123 }],
+      cause: new Error("driver echoed private@example.com"),
+    });
+
+    await Effect.runPromise(
+      Effect.logError("query failed", { cause: error }).pipe(
+        Effect.provide(Logger.layer([createCensoredOtelLogger(provider)]))
+      )
+    );
+    await provider.forceFlush();
+
+    const serialized = JSON.stringify(exporter.getFinishedLogRecords()[0]);
+    expect(serialized).toContain(CENSORED_LOG_VALUE);
+    expect(serialized).not.toContain("private@example.com");
+    expect(serialized).not.toContain("Failed query");
     await provider.shutdown();
   });
 });

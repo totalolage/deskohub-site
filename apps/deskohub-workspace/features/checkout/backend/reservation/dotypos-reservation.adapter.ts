@@ -14,6 +14,7 @@ import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { WorkspaceTableAssignmentService } from "./workspace-table-assignment.service";
 import { workspaceBookingGuestCount } from "./workspace-table-occupancy";
 
@@ -102,8 +103,9 @@ const getPragueAllDayRange = (
 
 const toPragueMidnightDate = (plainDate: Temporal.PlainDate) =>
   new Date(
-    plainDate.toZonedDateTime({ timeZone: "Europe/Prague" }).toInstant()
-      .epochMilliseconds
+    plainDate
+      .toZonedDateTime({ timeZone: workspaceSiteConstants.location.timeZone })
+      .toInstant().epochMilliseconds
   );
 
 export const formatWorkspaceReservationNote = (

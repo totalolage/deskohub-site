@@ -1,3 +1,4 @@
+import "@/shared/polyfills/temporal";
 import { describe, expect, test } from "bun:test";
 import { Effect, Option, Schema } from "effect";
 import type { DiscountCode } from "@/db/schema";
@@ -30,8 +31,8 @@ const codeRow = (overrides: Partial<DiscountCode> = {}): DiscountCode => ({
   validFrom: null,
   validUntil: null,
   maxUses: null,
-  createdAt: new Date("2026-07-15T00:00:00.000Z"),
-  updatedAt: new Date("2026-07-15T00:00:00.000Z"),
+  createdAt: Temporal.Instant.from("2026-07-15T00:00:00.000Z"),
+  updatedAt: Temporal.Instant.from("2026-07-15T00:00:00.000Z"),
   ...overrides,
 });
 
@@ -127,11 +128,16 @@ describe("stored discount code configuration", () => {
     [
       "inverted validity window",
       codeRow({
-        validFrom: new Date("2026-08-01T00:00:00.000Z"),
-        validUntil: new Date("2026-07-31T00:00:00.000Z"),
+        validFrom: Temporal.Instant.from("2026-08-01T00:00:00.000Z"),
+        validUntil: Temporal.Instant.from("2026-07-31T00:00:00.000Z"),
       }),
     ],
-    ["invalid date", codeRow({ validUntil: new Date("invalid") })],
+    [
+      "invalid instant",
+      codeRow({
+        validUntil: "invalid" as unknown as DiscountCode["validUntil"],
+      }),
+    ],
   ])("rejects %s", async (_label, row) => {
     const result = await Effect.runPromise(
       decodeDiscountCodeConfiguration({ row }).pipe(Effect.result)

@@ -8,7 +8,6 @@ import {
   pgTable,
   primaryKey,
   text,
-  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type {
@@ -18,6 +17,7 @@ import type {
 } from "@/features/discounts/persistence-contracts";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 
 export type DiscountLabels = Readonly<Record<Locale, string>>;
@@ -34,12 +34,8 @@ export const discounts = pgTable(
     fixedAmountValue: integer("fixed_amount_value"),
     fixedAmountExponent: integer("fixed_amount_exponent"),
     fixedAmountCurrency: text("fixed_amount_currency"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
     check(
@@ -100,18 +96,11 @@ export const discountCodes = pgTable(
       .references(() => discounts.id),
     code: text("code").notNull().$type<CanonicalDiscountCode>(),
     enabled: boolean("enabled").notNull(),
-    validFrom: timestamp("valid_from", { withTimezone: true, mode: "date" }),
-    validUntil: timestamp("valid_until", {
-      withTimezone: true,
-      mode: "date",
-    }),
+    validFrom: instant("valid_from"),
+    validUntil: instant("valid_until"),
     maxUses: integer("max_uses"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
     uniqueIndex("discount_codes_code_unique_idx").on(t.code),

@@ -1,6 +1,6 @@
 import { devNull } from "node:os";
 import { resolve } from "node:path";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Fiber } from "effect";
 import {
   captureBrowserFailureArtifacts,
   closeBrowserSession,
@@ -47,33 +47,30 @@ export const runWorkspaceE2ECases = ({
           .map((testCase) => testCase.id)
           .join(", ")}`
       );
-      const runtimes = yield* Effect.forEach(
-        cases,
-        (testCase) =>
-          Effect.acquireRelease(
-            Effect.sync(
-              (): WorkspaceE2ECaseRuntime => ({
-                artifactDir: resolve(artifactRoot, testCase.id),
-                browserHarStarted: false,
-                browserHarStopped: false,
-                session: `${sessionPrefix}-${testCase.id}`,
-                testCase,
-              })
-            ),
-            (runtime) => finalizeCaseRuntime(runtime, run)
+      const runtimes = yield* Effect.forEach(cases, (testCase) =>
+        Effect.acquireRelease(
+          Effect.sync(
+            (): WorkspaceE2ECaseRuntime => ({
+              artifactDir: resolve(artifactRoot, testCase.id),
+              browserHarStarted: false,
+              browserHarStopped: false,
+              session: `${sessionPrefix}-${testCase.id}`,
+              testCase,
+            })
           ),
-        { concurrency: "unbounded" }
+          (runtime) => finalizeCaseRuntime(runtime, run)
+        )
       );
 
-      yield* Effect.forEach(runtimes, (runtime) => runCase(runtime, run), {
-        concurrency: "unbounded",
-        discard: true,
-      }).pipe(
+      yield* Effect.forEach(runtimes, (runtime) =>
+        runCase(runtime, run).pipe(Effect.forkChild)
+      ).pipe(
+        Effect.andThen(Fiber.joinAll),
         Effect.tapCause(() =>
           Effect.forEach(
             runtimes.filter((runtime) => runtime.failureCause !== undefined),
             (runtime) => captureFailureArtifacts(runtime, run),
-            { concurrency: "unbounded", discard: true }
+            { discard: true }
           )
         )
       );

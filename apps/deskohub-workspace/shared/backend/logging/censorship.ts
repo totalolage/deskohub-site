@@ -4,6 +4,7 @@ import {
   SeverityNumber,
 } from "@opentelemetry/api-logs";
 import type { LoggerProvider } from "@opentelemetry/sdk-logs";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Logger, type LogLevel, References } from "effect";
 import { after } from "next/server";
 import {
@@ -208,6 +209,62 @@ const censorUrlString = (value: string) => {
   }
 };
 
+const isEffectDrizzleQueryError = (
+  value: unknown
+): value is EffectDrizzleQueryError =>
+  typeof value === "object" &&
+  value !== null &&
+  "_tag" in value &&
+  value._tag === "EffectDrizzleQueryError";
+
+const censorQueryParameter = (
+  value: unknown,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  if (typeof value !== "string") {
+    return censorLogValueInternal(value, seen);
+  }
+
+  try {
+    return JSON.stringify(
+      censorLogValueInternal(JSON.parse(value) as unknown, seen)
+    );
+  } catch {
+    return censorLogValueInternal(value, seen);
+  }
+};
+
+const censorQueryParams = (
+  value: unknown,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  if (!Array.isArray(value)) return censorLogValueInternal(value, seen);
+
+  const existing = seen.get(value);
+  if (existing) return existing;
+
+  const result: unknown[] = [];
+  seen.set(value, result);
+
+  for (let index = 0; index < value.length; index += 1) {
+    if (index in value) {
+      result[index] = censorQueryParameter(value[index], seen);
+    }
+  }
+
+  return result;
+};
+
+const censorLogRecordValue = (
+  key: string,
+  value: unknown,
+  seen: WeakMap<object, unknown>
+): unknown => {
+  if (isSensitiveLogRecordKey(key)) return CENSORED_LOG_VALUE;
+  if (key.toLowerCase() === "params") return censorQueryParams(value, seen);
+  return censorLogValueInternal(value, seen);
+};
+
 const censorLogValueInternal = (
   value: unknown,
   seen: WeakMap<object, unknown>
@@ -238,8 +295,8 @@ const censorLogValueInternal = (
     for (const [key, nestedValue] of value) {
       result.set(
         key,
-        typeof key === "string" && isSensitiveLogRecordKey(key)
-          ? CENSORED_LOG_VALUE
+        typeof key === "string"
+          ? censorLogRecordValue(key, nestedValue, seen)
           : censorLogValueInternal(nestedValue, seen)
       );
     }
@@ -287,6 +344,19 @@ const censorLogValueInternal = (
 
   if (typeof value === "string") return censorUrlString(value);
 
+  if (isEffectDrizzleQueryError(value)) {
+    const existing = seen.get(value);
+    if (existing) return existing;
+
+    const result: Record<string, unknown> = {
+      _tag: value._tag,
+      query: value.query,
+    };
+    seen.set(value, result);
+    result.params = censorQueryParams(value.params, seen);
+    return result;
+  }
+
   if (!isPlainObject(value)) return value;
 
   const existing = seen.get(value);
@@ -296,9 +366,7 @@ const censorLogValueInternal = (
   seen.set(value, result);
 
   for (const [key, nestedValue] of Object.entries(value)) {
-    result[key] = isSensitiveLogRecordKey(key)
-      ? CENSORED_LOG_VALUE
-      : censorLogValueInternal(nestedValue, seen);
+    result[key] = censorLogRecordValue(key, nestedValue, seen);
   }
 
   return result;
@@ -325,9 +393,7 @@ export const censorLoggerOptions = (
         return Object.fromEntries(
           Object.entries(annotations).map(([key, nestedValue]) => [
             key,
-            isSensitiveLogKey(key)
-              ? CENSORED_LOG_VALUE
-              : censorLogValue(nestedValue),
+            censorLogRecordValue(key, nestedValue, new WeakMap()),
           ])
         ) as typeof value;
       },

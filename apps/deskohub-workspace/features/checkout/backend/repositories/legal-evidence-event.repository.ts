@@ -1,11 +1,8 @@
 import "server-only";
 
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
-import {
-  type DatabaseError,
-  runDb,
-  WorkspaceDatabase,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { type LegalEvidenceEvent, legalEvidenceEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import { legalEvidenceSchema } from "@/features/checkout/legal-evidence";
@@ -31,13 +28,13 @@ export interface LegalEvidenceEventRepository {
     input: LegalEvidenceEventInput
   ) => Effect.Effect<
     LegalEvidenceEvent,
-    DatabaseError | LegalEvidenceEventInputError
+    EffectDrizzleQueryError | LegalEvidenceEventInputError
   >;
   readonly recordMany: (
     input: readonly LegalEvidenceEventInput[]
   ) => Effect.Effect<
     readonly LegalEvidenceEvent[],
-    DatabaseError | LegalEvidenceEventInputError
+    EffectDrizzleQueryError | LegalEvidenceEventInputError
   >;
 }
 
@@ -53,7 +50,7 @@ const getLegalEvidenceEventRecord = (
   documentHash: parsed.evidence.documentHash,
   hashAlgorithm: parsed.evidence.document.hashAlgorithm,
   accepted: parsed.evidence.accepted,
-  acceptedAt: new Date(parsed.evidence.acceptedAt),
+  acceptedAt: Temporal.Instant.from(parsed.evidence.acceptedAt),
   locale: parsed.evidence.locale,
   source: parsed.evidence.source,
 });
@@ -79,18 +76,14 @@ export const LegalEvidenceEventRepositoryLive = Layer.effect(
         );
         const event = getLegalEvidenceEventRecord(parsed);
 
-        const [inserted] = yield* runDb("legalEvidenceEvents.record", () =>
-          db
-            .insert(legalEvidenceEvents)
-            .values({ id: postgresUuidV7, ...event })
-            .returning()
-        );
+        const [inserted] = yield* db
+          .insert(legalEvidenceEvents)
+          .values({ id: postgresUuidV7, ...event })
+          .returning();
 
         if (!inserted) {
-          return yield* Effect.fail(
-            new LegalEvidenceEventInputError({
-              message: "Legal evidence event insert returned no row.",
-            })
+          return yield* Effect.die(
+            "Legal evidence event insert returned no row."
           );
         }
 

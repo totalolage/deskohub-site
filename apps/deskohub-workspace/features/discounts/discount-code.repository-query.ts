@@ -7,7 +7,7 @@ export const buildDiscountCodeAvailabilityQueries = (input: {
   readonly db: WorkspaceDatabaseClient;
   readonly codeId: DiscountCodeId;
   readonly dotyposCustomerId: string;
-  readonly at: Date;
+  readonly at: Temporal.Instant;
 }) => ({
   allowlist: input.db
     .select({

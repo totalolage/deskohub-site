@@ -9,11 +9,11 @@ describe("parseChangedMigrationPaths", () => {
     expect(
       parseChangedMigrationPaths(`
 apps/deskohub-workspace/db/migrations/0002_minor_magik.sql
-apps/deskohub-workspace/db/migrations/0003_new_migration.sql
+apps/deskohub-workspace/db/migrations/20260720120000_new_migration/migration.sql
 `)
     ).toEqual([
       "apps/deskohub-workspace/db/migrations/0002_minor_magik.sql",
-      "apps/deskohub-workspace/db/migrations/0003_new_migration.sql",
+      "apps/deskohub-workspace/db/migrations/20260720120000_new_migration/migration.sql",
     ]);
   });
 

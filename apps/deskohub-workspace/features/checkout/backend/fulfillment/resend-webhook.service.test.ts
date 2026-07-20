@@ -219,7 +219,7 @@ describe("ResendWebhookService", () => {
 
     const [updateInput] = markFulfilled.mock.calls[0] ?? [];
     expect(updateInput).toMatchObject({ id: "reservation-id" });
-    expect(updateInput.fulfilledAt).toBeInstanceOf(Date);
+    expect(updateInput.fulfilledAt).toBeInstanceOf(Temporal.Instant);
   });
 
   test("fails Resend webhook processing without an API key", async () => {
@@ -300,7 +300,7 @@ describe("ResendWebhookService", () => {
       id: "reservation-id",
       failureCode: "fulfillment_email_failed",
     });
-    expect(updateInput.failedAt).toBeInstanceOf(Date);
+    expect(updateInput.failedAt).toBeInstanceOf(Temporal.Instant);
   });
 
   test("marks bounced customer reservation access emails failed", async () => {
@@ -429,8 +429,8 @@ describe("ResendWebhookService", () => {
             companyName: null,
             phone: "123456789",
           },
-          reservedFrom: new Date("2026-06-15T22:00:00.000Z"),
-          reservedUntil: new Date("2026-06-16T22:00:00.000Z"),
+          reservedFrom: Temporal.Instant.from("2026-06-15T22:00:00.000Z"),
+          reservedUntil: Temporal.Instant.from("2026-06-16T22:00:00.000Z"),
           tableName: "12",
           tableMap: {
             assignedTableId: "desk-12",
@@ -470,8 +470,8 @@ describe("ResendWebhookService", () => {
       workspaceReservationId: "reservation-id",
       dotyposReservationId: "dotypos-reservation-id",
       dotyposCustomerId: "dotypos-customer-id",
-      dotyposReservationStartDate: "2026-06-15T22:00:00.000Z",
-      dotyposReservationEndDate: "2026-06-16T22:00:00.000Z",
+      dotyposReservationStartDate: "2026-06-15T22:00:00Z",
+      dotyposReservationEndDate: "2026-06-16T22:00:00Z",
     });
     const customerEmail = sentMessages[0];
     if (!customerEmail) {
@@ -717,8 +717,8 @@ describe("ResendWebhookService", () => {
     const emailReservation = {
       ...claimedReservation,
       customer: { email: "customer@example.com" },
-      reservedFrom: new Date("2026-06-15T22:00:00.000Z"),
-      reservedUntil: new Date("2026-06-16T22:00:00.000Z"),
+      reservedFrom: Temporal.Instant.from("2026-06-15T22:00:00.000Z"),
+      reservedUntil: Temporal.Instant.from("2026-06-16T22:00:00.000Z"),
       tableName: "12",
     };
     const getReservation = mock(() =>

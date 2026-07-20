@@ -362,7 +362,6 @@ export const CheckoutServiceLive = Layer.effect(
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
         readonly workspaceReservationId: string;
-        readonly reservationHoldExpiresAt: Date | null;
         readonly correlationId: string;
         readonly locale: Locale;
         readonly total: WorkspaceCheckoutQuote["summary"]["total"];
@@ -551,7 +550,10 @@ export const CheckoutServiceLive = Layer.effect(
 
           if (
             reservation.reservationHoldExpiresAt &&
-            reservation.reservationHoldExpiresAt <= new Date()
+            Temporal.Instant.compare(
+              reservation.reservationHoldExpiresAt,
+              Temporal.Now.instant()
+            ) <= 0
           ) {
             yield* Effect.logInfo(
               "Hosted payment checkout returned in_progress: reservation hold expired"
@@ -658,7 +660,7 @@ export const CheckoutServiceLive = Layer.effect(
             locale,
           });
 
-          const acceptedAt = new Date().toISOString();
+          const acceptedAt = Temporal.Now.instant().toString();
           const legalDocuments =
             yield* getCheckoutLegalAcceptanceSnapshot(locale);
           const legalEvidence = getCheckoutLegalEvidence({
@@ -708,7 +710,6 @@ export const CheckoutServiceLive = Layer.effect(
 
           return yield* startProviderSession({
             workspaceReservationId: reservation.id,
-            reservationHoldExpiresAt: reservation.reservationHoldExpiresAt,
             correlationId: reservation.correlationId,
             locale,
             total: quote.payment.expectedPrice,

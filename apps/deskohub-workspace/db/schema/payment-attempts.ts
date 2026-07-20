@@ -1,13 +1,13 @@
-import { relations, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   check,
   index,
   integer,
   pgTable,
   text,
-  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { quotedSqlList } from "./sql-list";
 import { workspaceReservations } from "./workspace-reservations";
@@ -52,12 +52,8 @@ export const paymentAttempts = pgTable(
     lastProviderOperationId: text("last_provider_operation_id"),
     lastProviderStatus: text("last_provider_status"),
     failureCode: text("failure_code"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
     check(
@@ -82,16 +78,6 @@ export const paymentAttempts = pgTable(
     ),
     index("payment_attempts_state_created_idx").on(t.state, t.createdAt),
   ]
-);
-
-export const paymentAttemptsRelations = relations(
-  paymentAttempts,
-  ({ one }) => ({
-    workspaceReservation: one(workspaceReservations, {
-      fields: [paymentAttempts.workspaceReservationId],
-      references: [workspaceReservations.id],
-    }),
-  })
 );
 
 export type PaymentAttempt = typeof paymentAttempts.$inferSelect;
