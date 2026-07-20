@@ -12,7 +12,6 @@ import {
   workspaceMeetingRoomDurationOptions,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import type {
   ReservationInterval,
   ReservationIntervalInput,
@@ -22,6 +21,7 @@ import {
   normalizeReservationIntervalFields,
 } from "@/features/reservation/reservation-interval-normalization";
 import { toPlainDateTime } from "@/features/reservation/reservation-interval-parser";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
   localDateTimeSchema,
@@ -63,9 +63,10 @@ export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
     }),
     {
       decode: SchemaGetter.transformOrFail((input) =>
-        normalizeReservationIntervalFields(input, reservationTimeZone).pipe(
-          Effect.mapError((issue) => toSchemaIssue(input, issue))
-        )
+        normalizeReservationIntervalFields(
+          input,
+          workspaceSiteConstants.location.timeZone
+        ).pipe(Effect.mapError((issue) => toSchemaIssue(input, issue)))
       ),
       encode: SchemaGetter.transform(decodeReservationIntervalInput),
     }
@@ -75,8 +76,14 @@ export const reservationIntervalSchema = reservationIntervalInputSchema.pipe(
 export const isSingleDayReservationInterval = (
   interval: ReservationInterval
 ) => {
-  const start = toPlainDateTime(interval.startsAt, reservationTimeZone);
-  const end = toPlainDateTime(interval.endsAt, reservationTimeZone);
+  const start = toPlainDateTime(
+    interval.startsAt,
+    workspaceSiteConstants.location.timeZone
+  );
+  const end = toPlainDateTime(
+    interval.endsAt,
+    workspaceSiteConstants.location.timeZone
+  );
 
   return (
     isMidnight(start) &&
@@ -97,7 +104,7 @@ export const getMeetingRoomDurationValidationMessage = () =>
   });
 
 export const wholeHourReservationInstantSchema =
-  makeWholeHourInstantStringSchema(reservationTimeZone);
+  makeWholeHourInstantStringSchema(workspaceSiteConstants.location.timeZone);
 
 export const meetingRoomReservationDurationMinutesSchema = Schema.Number.check(
   Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
@@ -150,14 +157,18 @@ export const getReservationIntervalValidationIssue = (
 
 export const getReservationIntervalNormalization = (
   interval: ReservationIntervalInput
-) => normalizeReservationIntervalFields(interval, reservationTimeZone);
+) =>
+  normalizeReservationIntervalFields(
+    interval,
+    workspaceSiteConstants.location.timeZone
+  );
 
 export const normalizeReservationInterval = Effect.fn(
   "normalizeReservationInterval"
 )(function* (value: ReservationIntervalInput) {
   return yield* normalizeReservationIntervalFields(
     value,
-    reservationTimeZone
+    workspaceSiteConstants.location.timeZone
   ).pipe(
     Effect.mapError(
       (cause) => new ReservationIntervalError({ message: cause.message, cause })

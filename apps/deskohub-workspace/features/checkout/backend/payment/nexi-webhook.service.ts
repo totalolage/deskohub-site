@@ -162,7 +162,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             .insertReceived({
               eventId,
               providerOrderId,
-              receivedAt: new Date(),
+              receivedAt: Temporal.Now.instant(),
             })
             .pipe(
               Effect.mapError(
@@ -440,7 +440,7 @@ export const NexiWebhookServiceLive = Layer.effect(
               webhookEventId: eventId,
               providerOperationId,
               providerStatus,
-              paidAt: new Date(),
+              paidAt: Temporal.Now.instant(),
             });
             if (transition.changed) {
               yield* capturePaymentCompleted({
@@ -525,7 +525,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             .markProcessed({
               type: "eventId",
               eventId,
-              processedAt: new Date(),
+              processedAt: Temporal.Now.instant(),
             })
             .pipe(
               Effect.mapError(

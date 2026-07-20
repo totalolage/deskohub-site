@@ -49,21 +49,21 @@ export class DiscountService extends Context.Service<
         "DiscountService.resolveQuoteCandidates"
       )((input: DiscountQuoteInput) =>
         Effect.all(
-          {
-            calendarCandidates: recoverDiscountResolution(
-              calendar.quote(input),
-              { operation: "quote", provider: "calendar" }
-            ),
-            customerCandidates: recoverDiscountResolution(
-              customer.resolve(input),
-              { operation: "quote", provider: "customer" }
-            ),
-            codeCandidates: recoverDiscountResolution(code.quote(input), {
+          [
+            recoverDiscountResolution(calendar.quote(input), {
+              operation: "quote",
+              provider: "calendar",
+            }),
+            recoverDiscountResolution(customer.resolve(input), {
+              operation: "quote",
+              provider: "customer",
+            }),
+            recoverDiscountResolution(code.quote(input), {
               operation: "quote",
               provider: "code",
             }),
-          },
-          { concurrency: "unbounded" }
+          ],
+          { concurrency: "inherit" }
         ).pipe(Effect.map(collectDiscountCandidates))
       );
 
@@ -71,21 +71,21 @@ export class DiscountService extends Context.Service<
         "DiscountService.resolveAcceptedCandidates"
       )((input: DiscountAffirmationInput) =>
         Effect.all(
-          {
-            calendarCandidates: recoverDiscountResolution(
-              calendar.revalidate(input),
-              { operation: "affirm", provider: "calendar" }
-            ),
-            customerCandidates: recoverDiscountResolution(
-              customer.resolve(input),
-              { operation: "affirm", provider: "customer" }
-            ),
-            codeCandidates: recoverDiscountResolution(code.revalidate(input), {
+          [
+            recoverDiscountResolution(calendar.revalidate(input), {
+              operation: "affirm",
+              provider: "calendar",
+            }),
+            recoverDiscountResolution(customer.resolve(input), {
+              operation: "affirm",
+              provider: "customer",
+            }),
+            recoverDiscountResolution(code.revalidate(input), {
               operation: "affirm",
               provider: "code",
             }),
-          },
-          { concurrency: "unbounded" }
+          ],
+          { concurrency: "inherit" }
         ).pipe(
           Effect.map(collectDiscountCandidates),
           Effect.map((candidates) =>
@@ -129,16 +129,12 @@ export class DiscountService extends Context.Service<
   );
 }
 
-const collectDiscountCandidates = (input: {
-  readonly calendarCandidates: Option.Option<readonly DiscountCandidate[]>;
-  readonly customerCandidates: Option.Option<readonly DiscountCandidate[]>;
-  readonly codeCandidates: Option.Option<readonly DiscountCandidate[]>;
-}) =>
-  [
-    input.calendarCandidates,
-    input.customerCandidates,
-    input.codeCandidates,
-  ].flatMap((candidates) => Option.getOrElse(candidates, () => []));
+const collectDiscountCandidates = (
+  candidatesByProvider: readonly Option.Option<readonly DiscountCandidate[]>[]
+) =>
+  candidatesByProvider.flatMap((candidates) =>
+    Option.getOrElse(candidates, () => [])
+  );
 
 const selectAcceptedCandidates = (input: {
   readonly acceptedDiscountIds: readonly DiscountId[];

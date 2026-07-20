@@ -46,7 +46,7 @@ const formatSubmissionDate = (submittedAt: string, locale: Locale) =>
   new Date(submittedAt).toLocaleString(locale, {
     dateStyle: "full",
     timeStyle: "short",
-    timeZone: "Europe/Prague",
+    timeZone: workspaceSiteConstants.location.timeZone,
   });
 
 const getBusinessSubject = (name: string) => {

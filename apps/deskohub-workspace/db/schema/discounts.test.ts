@@ -26,7 +26,10 @@ const namesOf = <T extends { readonly name?: string }>(values: readonly T[]) =>
 describe("discount persistence contracts", () => {
   test("generated migration preserves the concurrency and privacy invariants", async () => {
     const migration = await Bun.file(
-      new URL("../migrations/0002_discount_codes.sql", import.meta.url)
+      new URL(
+        "../migrations/20260715202356_discount_codes/migration.sql",
+        import.meta.url
+      )
     ).text();
 
     for (const table of [
@@ -107,7 +110,10 @@ describe("discount persistence contracts", () => {
 
   test("migrates product targets to identity-only storage", async () => {
     const migration = await Bun.file(
-      new URL("../migrations/0004_cloudy_nextwave.sql", import.meta.url)
+      new URL(
+        "../migrations/20260717172119_cloudy_nextwave/migration.sql",
+        import.meta.url
+      )
     ).text();
     const dropPrimaryKey = 'DROP CONSTRAINT "discount_product_targets_pk"';
     const dropProductKey = 'DROP COLUMN "product_key"';
@@ -124,7 +130,10 @@ describe("discount persistence contracts", () => {
 
   test("removes the superseded scalar discount label", async () => {
     const migration = await Bun.file(
-      new URL("../migrations/0004_cloudy_nextwave.sql", import.meta.url)
+      new URL(
+        "../migrations/20260717172119_cloudy_nextwave/migration.sql",
+        import.meta.url
+      )
     ).text();
     const dropLabelCheck = 'DROP CONSTRAINT "discounts_label_check"';
     const dropLabel = 'DROP COLUMN "label"';

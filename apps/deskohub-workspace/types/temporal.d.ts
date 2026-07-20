@@ -1,9 +1,5 @@
-import type { Temporal as TemporalPolyfill } from "@js-temporal/polyfill";
+import { Temporal as TemporalPolyfill } from "@js-temporal/polyfill";
 
 declare global {
-  var Temporal: typeof TemporalPolyfill;
-
-  namespace Temporal {
-    type PlainDate = TemporalPolyfill.PlainDate;
-  }
+  export import Temporal = TemporalPolyfill;
 }

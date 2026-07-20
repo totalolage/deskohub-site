@@ -87,21 +87,26 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
           }
 
           const [tables, reservations, expiredDotyposReservationIds] =
-            yield* Effect.all([
-              dotypos.getTables(),
-              dotypos.listReservations(),
-              workspaceReservations
-                .selectExpiredHoldDotyposReservationIds({ now: new Date() })
-                .pipe(
-                  Effect.tapError((cause) =>
-                    Effect.logWarning(
-                      "Workspace table assignment expired hold filter failed",
-                      { cause }
-                    )
+            yield* Effect.all(
+              [
+                dotypos.getTables(),
+                dotypos.listReservations(),
+                workspaceReservations
+                  .selectExpiredHoldDotyposReservationIds({
+                    now: Temporal.Now.instant(),
+                  })
+                  .pipe(
+                    Effect.tapError((cause) =>
+                      Effect.logWarning(
+                        "Workspace table assignment expired hold filter failed",
+                        { cause }
+                      )
+                    ),
+                    Effect.orElseSucceed(() => [] as readonly string[])
                   ),
-                  Effect.orElseSucceed(() => [] as readonly string[])
-                ),
-            ]);
+              ],
+              { concurrency: "inherit" }
+            );
           const activeReservations = excludeExpiredLocalHolds(
             reservations,
             expiredDotyposReservationIds

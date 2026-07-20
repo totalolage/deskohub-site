@@ -7,10 +7,7 @@ import {
 import type { Table } from "@deskohub/dotypos/generated";
 import type { GoogleCalendarError } from "@deskohub/google-calendar";
 import { Context, Data, Effect, Layer, Match } from "effect";
-import {
-  type DatabaseError,
-  WorkspaceDatabaseLive,
-} from "@/db/database.service";
+import { WorkspaceDatabaseLive } from "@/db/database.service";
 import {
   excludeExpiredLocalHolds,
   getWorkspaceTableOccupancyById,
@@ -27,7 +24,6 @@ import {
   workspaceProductMonitorOptionTableTags,
 } from "@/features/checkout/product-catalog";
 import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
-import { reservationTimeZone } from "@/features/reservation/reservation-date";
 import {
   coworkReservationKind,
   meetingRoomReservationKind,
@@ -35,6 +31,7 @@ import {
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
 import { GoogleCalendarServiceLive } from "@/shared/backend/config/google-calendar.config";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   getReservationDate,
   isSingleDayReservationInterval,
@@ -58,7 +55,6 @@ import {
 } from "./workspace-reservation.repository";
 
 type WorkspaceAvailabilityError =
-  | DatabaseError
   | ExternalAPIError
   | GoogleCalendarError
   | NetworkError
@@ -120,27 +116,30 @@ const implementation = Effect.gen(function* () {
       yield* Effect.logInfo("Workspace availability inventory load started");
 
       const [tables, reservations, limitations, expiredDotyposReservationIds] =
-        yield* Effect.all([
-          dotypos.getTables(),
-          dotypos.listReservations(),
-          calendarLimitations.listLimitations({
-            from: query.from,
-            to: query.to,
-          }),
-          workspaceReservations
-            .selectExpiredHoldDotyposReservationIds({
-              now: new Date(),
-            })
-            .pipe(
-              Effect.tapError((cause) =>
-                Effect.logWarning(
-                  "Workspace availability expired hold filter failed",
-                  { cause }
-                )
+        yield* Effect.all(
+          [
+            dotypos.getTables(),
+            dotypos.listReservations(),
+            calendarLimitations.listLimitations({
+              from: query.from,
+              to: query.to,
+            }),
+            workspaceReservations
+              .selectExpiredHoldDotyposReservationIds({
+                now: Temporal.Now.instant(),
+              })
+              .pipe(
+                Effect.tapError((cause) =>
+                  Effect.logWarning(
+                    "Workspace availability expired hold filter failed",
+                    { cause }
+                  )
+                ),
+                Effect.orElseSucceed(() => [] as readonly string[])
               ),
-              Effect.orElseSucceed(() => [] as readonly string[])
-            ),
-        ]);
+          ],
+          { concurrency: "inherit" }
+        );
       const activeReservations = excludeExpiredLocalHolds(
         reservations,
         expiredDotyposReservationIds
@@ -175,7 +174,7 @@ const implementation = Effect.gen(function* () {
       const selectedDate = reservation
         ? getReservationDate({
             interval: reservation,
-            timeZone: reservationTimeZone,
+            timeZone: workspaceSiteConstants.location.timeZone,
           })
         : undefined;
       yield* Effect.annotateLogsScoped({ dates, selectedDate });
@@ -544,12 +543,12 @@ const normalizeCoworkAvailabilityInterval = (date: string) =>
 const getAvailabilityTouchedDateRange = (input: ReservationInterval) => {
   const from = getReservationDate({
     interval: input,
-    timeZone: reservationTimeZone,
+    timeZone: workspaceSiteConstants.location.timeZone,
   });
   const to = Temporal.Instant.fromEpochMilliseconds(
     Temporal.Instant.from(input.endsAt).epochMilliseconds - 1
   )
-    .toZonedDateTimeISO(reservationTimeZone)
+    .toZonedDateTimeISO(workspaceSiteConstants.location.timeZone)
     .toPlainDate()
     .toString();
 

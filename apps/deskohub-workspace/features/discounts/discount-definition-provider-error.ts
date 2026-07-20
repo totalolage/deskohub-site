@@ -1,11 +1,11 @@
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Match } from "effect";
-import type { DatabaseError } from "@/db/database.service";
 import type { DiscountDefinitionMalformedError } from "./discount-definition";
 import type { DiscountDefinitionNotFoundError } from "./discount-definition.repository";
 import { DiscountProviderError } from "./errors";
 
 export type DiscountDefinitionError =
-  | DatabaseError
+  | EffectDrizzleQueryError
   | DiscountDefinitionNotFoundError
   | DiscountDefinitionMalformedError;
 
@@ -14,7 +14,7 @@ export const toDiscountDefinitionProviderError = (
 ) =>
   Match.value(cause).pipe(
     Match.tag(
-      "DatabaseError",
+      "EffectDrizzleQueryError",
       (error) =>
         new DiscountProviderError({
           reason: "provider_failure",

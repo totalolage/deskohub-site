@@ -229,7 +229,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
                 webhookEventId: input.webhookEventId,
                 providerOperationId,
                 providerStatus,
-                paidAt: new Date(),
+                paidAt: Temporal.Now.instant(),
               })
               .pipe(Effect.result);
 

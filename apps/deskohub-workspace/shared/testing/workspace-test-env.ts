@@ -1,3 +1,5 @@
+import "@/shared/polyfills/temporal";
+
 import { mock } from "bun:test";
 
 mock.module("server-only", () => ({}));

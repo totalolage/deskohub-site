@@ -1,12 +1,6 @@
 import { sql } from "drizzle-orm";
-import {
-  boolean,
-  check,
-  index,
-  pgTable,
-  text,
-  timestamp,
-} from "drizzle-orm/pg-core";
+import { boolean, check, index, pgTable, text } from "drizzle-orm/pg-core";
+import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { workspaceReservations } from "./workspace-reservations";
 
@@ -23,15 +17,10 @@ export const legalEvidenceEvents = pgTable(
     documentHash: text("document_hash").notNull(),
     hashAlgorithm: text("hash_algorithm").notNull().$type<"sha256">(),
     accepted: boolean("accepted").notNull(),
-    acceptedAt: timestamp("accepted_at", {
-      withTimezone: true,
-      mode: "date",
-    }).notNull(),
+    acceptedAt: instant("accepted_at").notNull(),
     locale: text("locale").notNull(),
     source: text("source").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
   },
   (t) => [
     check(

@@ -1,10 +1,7 @@
 import { and, eq, ne } from "drizzle-orm";
+import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer } from "effect";
-import {
-  type DatabaseError,
-  runDb,
-  WorkspaceDatabase,
-} from "@/db/database.service";
+import { WorkspaceDatabase } from "@/db/database.service";
 import { type WebhookEvent, webhookEvents } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 
@@ -29,26 +26,26 @@ export interface WebhookEventRepository {
     readonly eventId: string;
     readonly paymentAttemptId?: string;
     readonly providerOrderId?: string;
-    readonly receivedAt: Date;
-  }) => Effect.Effect<InsertWebhookEventResult, DatabaseError>;
+    readonly receivedAt: Temporal.Instant;
+  }) => Effect.Effect<InsertWebhookEventResult, EffectDrizzleQueryError>;
   readonly markProcessed: (
     input: WebhookEventIdentity & {
-      readonly processedAt: Date;
+      readonly processedAt: Temporal.Instant;
     }
-  ) => Effect.Effect<void, DatabaseError | WebhookEventStateError>;
+  ) => Effect.Effect<void, EffectDrizzleQueryError | WebhookEventStateError>;
   readonly markFailed: (
     input: WebhookEventIdentity & {
       readonly errorCode: string;
     }
-  ) => Effect.Effect<void, DatabaseError | WebhookEventStateError>;
+  ) => Effect.Effect<void, EffectDrizzleQueryError | WebhookEventStateError>;
   readonly linkPaymentAttempt: (
     input: WebhookEventIdentity & {
       readonly paymentAttemptId: string;
     }
-  ) => Effect.Effect<void, DatabaseError | WebhookEventStateError>;
+  ) => Effect.Effect<void, EffectDrizzleQueryError | WebhookEventStateError>;
   readonly claimRetry: (
     input: WebhookEventIdentity
-  ) => Effect.Effect<"claimed" | "processed", DatabaseError>;
+  ) => Effect.Effect<"claimed" | "processed", EffectDrizzleQueryError>;
 }
 
 export const WebhookEventRepository = Context.Service<WebhookEventRepository>(
@@ -86,49 +83,47 @@ export const WebhookEventRepositoryLive = Layer.effect(
     return WebhookEventRepository.of({
       insertReceived: Effect.fn("webhookEvents.insertReceived")(
         function* (input) {
-          return yield* runDb("webhookEvents.insertReceived", async () => {
-            const [event] = await db
-              .insert(webhookEvents)
-              .values({
-                id: postgresUuidV7,
-                provider: "nexi",
-                eventId: input.eventId,
-                paymentAttemptId: input.paymentAttemptId,
-                providerOrderId: input.providerOrderId,
-                receivedAt: input.receivedAt,
-                state: "received",
-              })
-              .onConflictDoNothing({ target: webhookEvents.eventId })
-              .returning();
+          const [event] = yield* db
+            .insert(webhookEvents)
+            .values({
+              id: postgresUuidV7,
+              provider: "nexi",
+              eventId: input.eventId,
+              paymentAttemptId: input.paymentAttemptId,
+              providerOrderId: input.providerOrderId,
+              receivedAt: input.receivedAt,
+              state: "received",
+            })
+            .onConflictDoNothing({ target: webhookEvents.eventId })
+            .returning();
 
-            if (event) return { status: "inserted" as const, event };
+          if (event) return { status: "inserted" as const, event };
 
-            const [existing] = await db
-              .select()
-              .from(webhookEvents)
-              .where(eq(webhookEvents.eventId, input.eventId))
-              .limit(1);
+          const [existing] = yield* db
+            .select()
+            .from(webhookEvents)
+            .where(eq(webhookEvents.eventId, input.eventId))
+            .limit(1);
 
-            if (!existing) throw new Error("Webhook event duplicate not found");
-            return { status: "duplicate" as const, event: existing };
-          });
+          if (!existing) {
+            return yield* Effect.die("Webhook event duplicate not found.");
+          }
+          return { status: "duplicate" as const, event: existing };
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
 
       markProcessed: Effect.fn("webhookEvents.markProcessed")(
         function* (input) {
-          const updated = yield* runDb("webhookEvents.markProcessed", () =>
-            db
-              .update(webhookEvents)
-              .set({
-                state: "processed",
-                processedAt: input.processedAt,
-                errorCode: null,
-              })
-              .where(eventIdentityWhere(input))
-              .returning({ id: webhookEvents.id })
-          );
+          const updated = yield* db
+            .update(webhookEvents)
+            .set({
+              state: "processed",
+              processedAt: input.processedAt,
+              errorCode: null,
+            })
+            .where(eventIdentityWhere(input))
+            .returning({ id: webhookEvents.id });
 
           yield* ensureUpdated(
             updated,
@@ -141,50 +136,46 @@ export const WebhookEventRepositoryLive = Layer.effect(
 
       claimRetry: Effect.fn("webhookEvents.claimRetry")(
         function* (input) {
-          return yield* runDb("webhookEvents.claimRetry", async () => {
-            const [claimed] = await db
-              .update(webhookEvents)
-              .set({
-                state: "received",
-                processedAt: null,
-                errorCode: null,
-              })
-              .where(
-                and(
-                  eventIdentityWhere(input),
-                  ne(webhookEvents.state, "processed")
-                )
+          const [claimed] = yield* db
+            .update(webhookEvents)
+            .set({
+              state: "received",
+              processedAt: null,
+              errorCode: null,
+            })
+            .where(
+              and(
+                eventIdentityWhere(input),
+                ne(webhookEvents.state, "processed")
               )
-              .returning({ id: webhookEvents.id });
+            )
+            .returning({ id: webhookEvents.id });
 
-            if (claimed) return "claimed" as const;
+          if (claimed) return "claimed";
 
-            const [processed] = await db
-              .select({ id: webhookEvents.id })
-              .from(webhookEvents)
-              .where(
-                and(
-                  eventIdentityWhere(input),
-                  eq(webhookEvents.state, "processed")
-                )
+          const [processed] = yield* db
+            .select({ id: webhookEvents.id })
+            .from(webhookEvents)
+            .where(
+              and(
+                eventIdentityWhere(input),
+                eq(webhookEvents.state, "processed")
               )
-              .limit(1);
+            )
+            .limit(1);
 
-            return processed ? "processed" : "claimed";
-          });
+          return processed ? "processed" : "claimed";
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
 
       linkPaymentAttempt: Effect.fn("webhookEvents.linkPaymentAttempt")(
         function* (input) {
-          const updated = yield* runDb("webhookEvents.linkPaymentAttempt", () =>
-            db
-              .update(webhookEvents)
-              .set({ paymentAttemptId: input.paymentAttemptId })
-              .where(eventIdentityWhere(input))
-              .returning({ id: webhookEvents.id })
-          );
+          const updated = yield* db
+            .update(webhookEvents)
+            .set({ paymentAttemptId: input.paymentAttemptId })
+            .where(eventIdentityWhere(input))
+            .returning({ id: webhookEvents.id });
 
           yield* ensureUpdated(
             updated,
@@ -197,21 +188,19 @@ export const WebhookEventRepositoryLive = Layer.effect(
 
       markFailed: Effect.fn("webhookEvents.markFailed")(
         function* (input) {
-          const updated = yield* runDb("webhookEvents.markFailed", () =>
-            db
-              .update(webhookEvents)
-              .set({
-                state: "failed",
-                errorCode: input.errorCode,
-              })
-              .where(
-                and(
-                  eventIdentityWhere(input),
-                  ne(webhookEvents.state, "processed")
-                )
+          const updated = yield* db
+            .update(webhookEvents)
+            .set({
+              state: "failed",
+              errorCode: input.errorCode,
+            })
+            .where(
+              and(
+                eventIdentityWhere(input),
+                ne(webhookEvents.state, "processed")
               )
-              .returning({ id: webhookEvents.id })
-          );
+            )
+            .returning({ id: webhookEvents.id });
 
           yield* ensureUpdated(
             updated,

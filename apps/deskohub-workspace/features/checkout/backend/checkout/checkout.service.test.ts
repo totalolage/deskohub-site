@@ -32,6 +32,9 @@ import {
 
 mock.module("server-only", () => ({}));
 
+const testInstant = (value = "2026-06-01T10:00:00Z") =>
+  Temporal.Instant.from(value);
+
 mock.module("@/features/legal/acceptance-snapshot", () => ({
   getLegalAcceptanceSnapshot: mock(() =>
     Effect.succeed({
@@ -152,8 +155,8 @@ const makeAttempt = (input: {
   lastProviderOperationId: null,
   lastProviderStatus: null,
   failureCode: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: testInstant(),
+  updatedAt: testInstant(),
 });
 
 const makeReservation = (
@@ -171,9 +174,9 @@ const makeReservation = (
   productMonitorOption: reservationData.monitorOption,
   locale: "en-US",
   reservationState: "held",
-  reservationHoldExpiresAt: new Date("2099-06-20T10:00:00.000Z"),
+  reservationHoldExpiresAt: testInstant("2099-06-20T10:00:00.000Z"),
   reservationHoldExpiredAt: null,
-  reservationCreatedAt: new Date("2026-06-01T10:00:00.000Z"),
+  reservationCreatedAt: testInstant("2026-06-01T10:00:00.000Z"),
   reservationCancelledAt: null,
   cancellationClaimedAt: null,
   holdExpiredAt: null,
@@ -188,8 +191,8 @@ const makeReservation = (
   fulfillmentFailedAt: null,
   fulfillmentFailureCode: null,
   reservationConfirmedAt: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: testInstant(),
+  updatedAt: testInstant(),
   ...overrides,
 });
 
@@ -245,7 +248,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
         lastProviderStatus: "hpp_create_failed",
       },
       changed: true,
-      timestamp: new Date(),
+      timestamp: testInstant(),
     })
   );
   const paymentAttempts = {
@@ -260,7 +263,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       Effect.succeed({
         attempt: createdAttempt,
         changed: true,
-        timestamp: new Date(),
+        timestamp: testInstant(),
       })
     ),
     markTerminalForReservation,

@@ -1,5 +1,6 @@
 import type { Reservation } from "@deskohub/dotypos/generated";
 import type { ReservationInterval } from "@/features/reservation/reservation-interval";
+import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 
 export const workspaceBookingGuestCount = 1;
 
@@ -10,14 +11,19 @@ export const getWorkspaceTableOccupancyById = (
   const occupancyByTableId = new Map<string, number>();
   const startsAt =
     input instanceof Temporal.PlainDate
-      ? input.toZonedDateTime({ timeZone: "Europe/Prague" }).toInstant()
-          .epochMilliseconds
+      ? input
+          .toZonedDateTime({
+            timeZone: workspaceSiteConstants.location.timeZone,
+          })
+          .toInstant().epochMilliseconds
       : Temporal.Instant.from(input.startsAt).epochMilliseconds;
   const endsAt =
     input instanceof Temporal.PlainDate
       ? input
           .add({ days: 1 })
-          .toZonedDateTime({ timeZone: "Europe/Prague" })
+          .toZonedDateTime({
+            timeZone: workspaceSiteConstants.location.timeZone,
+          })
           .toInstant().epochMilliseconds
       : Temporal.Instant.from(input.endsAt).epochMilliseconds;
 

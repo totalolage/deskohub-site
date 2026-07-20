@@ -6,7 +6,6 @@ import {
   jsonb,
   pgTable,
   text,
-  timestamp,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { DiscountId } from "@/features/discounts";
@@ -15,6 +14,7 @@ import type {
   DiscountCodeClaimId,
   DiscountCodeId,
 } from "@/features/discounts/persistence-contracts";
+import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 import { discountCodes } from "./discounts";
 import { paymentAttempts } from "./payment-attempts";
@@ -56,18 +56,10 @@ export const discountApplications = pgTable(
     subtotalAfterValue: integer("subtotal_after_value").notNull(),
     subtotalAfterExponent: integer("subtotal_after_exponent").notNull(),
     subtotalAfterCurrency: text("subtotal_after_currency").notNull(),
-    expiresAt: timestamp("expires_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    countdownStartsAt: timestamp("countdown_starts_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
+    expiresAt: instant("expires_at"),
+    countdownStartsAt: instant("countdown_starts_at"),
     provenance: jsonb("provenance").notNull().$type<unknown>(),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
   },
   (t) => [
     uniqueIndex("discount_applications_attempt_sequence_unique_idx").on(
@@ -128,31 +120,13 @@ export const discountCodeRedemptions = pgTable(
       .references(() => paymentAttempts.id),
     dotyposCustomerId: text("dotypos_customer_id").notNull(),
     state: text("state").notNull().$type<DiscountCodeClaimState>(),
-    reservationExpiresAt: timestamp("reservation_expires_at", {
-      withTimezone: true,
-      mode: "date",
-    }).notNull(),
-    reservedAt: timestamp("reserved_at", {
-      withTimezone: true,
-      mode: "date",
-    })
-      .notNull()
-      .defaultNow(),
-    redeemedAt: timestamp("redeemed_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
-    releasedAt: timestamp("released_at", {
-      withTimezone: true,
-      mode: "date",
-    }),
+    reservationExpiresAt: instant("reservation_expires_at").notNull(),
+    reservedAt: instant("reserved_at").notNull().default(sql`now()`),
+    redeemedAt: instant("redeemed_at"),
+    releasedAt: instant("released_at"),
     releaseReason: text("release_reason"),
-    createdAt: timestamp("created_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
-    updatedAt: timestamp("updated_at", { withTimezone: true, mode: "date" })
-      .notNull()
-      .defaultNow(),
+    createdAt: instant("created_at").notNull().default(sql`now()`),
+    updatedAt: instant("updated_at").notNull().default(sql`now()`),
   },
   (t) => [
     uniqueIndex("discount_code_redemptions_application_unique_idx").on(

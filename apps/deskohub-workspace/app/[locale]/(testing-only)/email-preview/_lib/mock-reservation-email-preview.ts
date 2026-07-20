@@ -1,8 +1,9 @@
 import type { Customer } from "@deskohub/dotypos/generated";
+import { Temporal } from "@js-temporal/polyfill";
 import type { WorkspaceReservationDetails } from "@/features/reservation/backend/workspace-reservation.service";
 
-const mockDate = new Date("2026-06-12T09:00:00.000+02:00");
-const mockEndDate = new Date("2026-06-13T09:00:00.000+02:00");
+const mockDate = Temporal.Instant.from("2026-06-12T09:00:00.000+02:00");
+const mockEndDate = Temporal.Instant.from("2026-06-13T09:00:00.000+02:00");
 
 export const workspaceReservationEmailPreviewTableName = "12";
 

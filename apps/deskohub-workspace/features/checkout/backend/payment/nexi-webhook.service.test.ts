@@ -40,8 +40,8 @@ const attempt = {
   lastProviderOperationId: null,
   lastProviderStatus: null,
   failureCode: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: Temporal.Now.instant(),
+  updatedAt: Temporal.Now.instant(),
 };
 
 const reservation = {
@@ -68,12 +68,12 @@ const receivedEvent = {
   eventId: "event-id",
   paymentAttemptId: null,
   providerOrderId: "provider-order-id",
-  receivedAt: new Date(),
+  receivedAt: Temporal.Now.instant(),
   processedAt: null,
   state: "received" as const,
   errorCode: null,
-  createdAt: new Date(),
-  updatedAt: new Date(),
+  createdAt: Temporal.Now.instant(),
+  updatedAt: Temporal.Now.instant(),
 };
 
 type NexiWebhookTestServices = {
@@ -147,7 +147,7 @@ describe("NexiWebhookService", () => {
       Effect.succeed({
         attempt: { ...attempt, state: "paid" as const },
         changed: true,
-        timestamp: new Date(),
+        timestamp: Temporal.Now.instant(),
       })
     );
     const verifyPaymentOutcome = mock(() => Effect.succeed(verification));
@@ -236,7 +236,7 @@ describe("NexiWebhookService", () => {
               Effect.succeed({
                 attempt: { ...attempt, state: "paid" as const },
                 changed: true,
-                timestamp: new Date(),
+                timestamp: Temporal.Now.instant(),
               })
             ),
             markTerminalForReservation: mock(() => Effect.die("unused")),
