@@ -1,16 +1,10 @@
 import { Effect, type Option } from "effect";
 import type { CalendarSaleConfigurationError } from "./calendar-sale";
-import type {
-  DiscountCalculationError,
-  DiscountCodeUnavailableError,
-  DiscountProviderError,
-} from "./errors";
+import type { DiscountResolutionError } from "./errors";
 
 type DiscountResolutionFailure =
   | CalendarSaleConfigurationError
-  | DiscountCalculationError
-  | DiscountCodeUnavailableError
-  | DiscountProviderError;
+  | DiscountResolutionError;
 
 export type DiscountResolutionProvider =
   | "calendar"
