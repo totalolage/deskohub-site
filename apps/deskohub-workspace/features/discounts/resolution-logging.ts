@@ -1,9 +1,20 @@
-import { Effect, type Option } from "effect";
+import { type Data, Effect, type Option } from "effect";
+import type { CalendarSaleConfigurationError } from "./calendar-sale";
+import type {
+  DiscountCalculationError,
+  DiscountCodeUnavailableError,
+  DiscountProviderError,
+} from "./errors";
 
-type DiscountResolutionFailure = {
-  readonly _tag: string;
-  readonly reason: string;
-};
+type DiscountResolutionFailure = Data.TaggedEnum<{
+  CalendarSaleConfigurationError: Pick<
+    CalendarSaleConfigurationError,
+    "reason"
+  >;
+  DiscountCalculationError: Pick<DiscountCalculationError, "reason">;
+  DiscountCodeUnavailableError: Pick<DiscountCodeUnavailableError, "reason">;
+  DiscountProviderError: Pick<DiscountProviderError, "reason">;
+}>;
 
 export type DiscountResolutionProvider =
   | "calendar"
