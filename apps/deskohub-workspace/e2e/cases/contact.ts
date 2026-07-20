@@ -1,8 +1,9 @@
 import { Effect } from "effect";
 import {
-  clickBrowserElement,
   fillBrowserField,
+  focusBrowserElement,
   openBrowserPage,
+  pressBrowserKey,
   waitForBrowserReactFormAction,
   waitForBrowserTextContent,
 } from "../browser";
@@ -94,12 +95,13 @@ const fillContactForm = (
 const submitContactForm = (run: Runner, session: string) =>
   Effect.gen(function* () {
     const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
-    yield* clickBrowserElement(
+    yield* focusBrowserElement(
       run,
       session,
       '#contact-form button[type="submit"]',
       { timeoutMs }
     );
+    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
     yield* waitForBrowserTextContent(
       run,
       session,
