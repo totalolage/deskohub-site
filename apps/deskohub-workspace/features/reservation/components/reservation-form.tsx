@@ -593,6 +593,9 @@ export function ReservationForm({ locale }: ReservationFormProps) {
                                   isUnavailable && "cursor-not-allowed"
                                 )}
                                 data-reservation-tier-price={option.value}
+                                data-reservation-tier-price-ready={Boolean(
+                                  advertisedProductItem
+                                )}
                                 htmlFor={inputId}
                               >
                                 {advertisedProductItem &&

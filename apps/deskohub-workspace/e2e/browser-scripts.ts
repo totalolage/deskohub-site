@@ -19,6 +19,10 @@ export const submitCoworkReservationScript = `
     }
     price.click();
     await waitUntil(() => input.checked, tier + ' tier was not selected through its price');
+    await waitUntil(
+      () => price.dataset.reservationTierPriceReady === 'true',
+      tier + ' advertised price did not become ready'
+    );
   };
   await selectTierThroughPrice('plus');
   await selectTierThroughPrice('basic');
