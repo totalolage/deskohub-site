@@ -3,7 +3,9 @@ import {
   type BuildSignedPayStateInput,
   buildPayUrl,
   buildSignedPayState,
+  type PayStateCryptoOptions,
   type SealPayStateForUrlResult,
+  type SignedPayState,
   sealPayStateForUrl,
 } from "./pay-state";
 
@@ -24,8 +26,26 @@ export const buildCheckoutPayPath = (
   return `${payUrl.url.pathname}${payUrl.url.search}`;
 };
 
-export const buildFreshCheckoutPayPath = (input: BuildSignedPayStateInput) => {
-  const freshState = buildSignedPayState(input);
-  const sealedState = sealPayStateForUrl(freshState);
+export const buildFreshCheckoutPayPath = (
+  input: BuildSignedPayStateInput,
+  options: PayStateCryptoOptions = {}
+) => {
+  const freshState = buildSignedPayState(input, options);
+  const sealedState = sealPayStateForUrl(freshState, options);
   return buildCheckoutPayPath(input.locale, sealedState);
 };
+
+export const buildReviewedCheckoutPayPath = (
+  state: SignedPayState,
+  options: PayStateCryptoOptions = {}
+) =>
+  buildFreshCheckoutPayPath(
+    {
+      locale: state.locale,
+      reservation: state.reservation,
+      quote: state.quote,
+      orderId: state.orderId,
+      submittedCode: state.submittedCode,
+    },
+    options
+  );

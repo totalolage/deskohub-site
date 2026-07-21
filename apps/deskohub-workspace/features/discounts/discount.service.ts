@@ -1,12 +1,15 @@
 import { Context, Effect, Layer, Option } from "effect";
-import { calculateDiscounts } from "./calculator";
+import { appendDiscounts, calculateDiscounts } from "./calculator";
 import { CalendarDiscountProvider } from "./calendar-discount-provider.service";
 import { CodeDiscountProvider } from "./code-discount-provider.service";
 import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
-import type {
-  DiscountId,
-  DiscountQuote,
-  DiscountQuoteInput,
+import {
+  type DiscountAdvertisementInput,
+  type DiscountAdvertisementQuote,
+  type DiscountId,
+  type DiscountQuote,
+  type DiscountQuoteInput,
+  discountAdvertisementQuoteCodec,
 } from "./contracts";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
 import {
@@ -32,7 +35,27 @@ export type DiscountAffirmation = {
   readonly commitment: DiscountCommitment;
 };
 
+export type DiscountAdvertisementAffirmationInput =
+  DiscountAdvertisementInput & {
+    readonly acceptedDiscountIds: readonly DiscountId[];
+  };
+
+export type DiscountIdentifiedQuoteInput = {
+  readonly advertisementQuote: DiscountAdvertisementQuote;
+  readonly dotyposCustomerId: string;
+  readonly locale: DiscountAdvertisementInput["locale"];
+};
+
 export interface IDiscountService {
+  readonly advertise: (
+    input: DiscountAdvertisementInput
+  ) => Effect.Effect<DiscountAdvertisementQuote, DiscountCalculationError>;
+  readonly affirmAdvertisement: (
+    input: DiscountAdvertisementAffirmationInput
+  ) => Effect.Effect<DiscountAdvertisementQuote, DiscountCalculationError>;
+  readonly quoteIdentified: (
+    input: DiscountIdentifiedQuoteInput
+  ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
   readonly quote: (
     input: DiscountQuoteInput
   ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
@@ -52,6 +75,25 @@ export class DiscountService extends Context.Service<
       const customer = yield* CustomerDiscountProvider;
       const code = yield* CodeDiscountProvider;
       const releaseGates = yield* DiscountReleaseGateService;
+
+      const resolveAdvertisementCandidates = Effect.fn(
+        "DiscountService.resolveAdvertisementCandidates"
+      )(
+        (input: {
+          readonly advertisementInput: DiscountAdvertisementInput;
+          readonly releaseGates: DiscountReleaseGates;
+          readonly operation: "advertise" | "affirm_advertisement";
+        }) =>
+          recoverGatedDiscountResolution({
+            enabled: input.releaseGates.calendarSales,
+            operation: input.operation,
+            provider: "calendar",
+            resolve: () =>
+              input.operation === "advertise"
+                ? calendar.quote(input.advertisementInput)
+                : calendar.revalidate(input.advertisementInput),
+          }).pipe(Effect.map(Option.getOrElse(() => [])))
+      );
 
       const resolveQuoteCandidates = Effect.fn(
         "DiscountService.resolveQuoteCandidates"
@@ -141,6 +183,99 @@ export class DiscountService extends Context.Service<
         withServiceAnnotations("quote")
       );
 
+      const advertise = Effect.fn("DiscountService.advertise")(
+        (input: DiscountAdvertisementInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "advertise" })
+            ),
+            Effect.bind("candidates", ({ releaseGates }) =>
+              resolveAdvertisementCandidates({
+                advertisementInput: input,
+                releaseGates,
+                operation: "advertise",
+              })
+            ),
+            Effect.bind("calculation", calculateDiscounts),
+            Effect.tap(logDiscountResolution),
+            Effect.map(({ calculation }) =>
+              makeDiscountAdvertisementQuote(calculation.quote)
+            )
+          ),
+        withServiceAnnotations("advertise")
+      );
+
+      const affirmAdvertisement = Effect.fn(
+        "DiscountService.affirmAdvertisement"
+      )(
+        (input: DiscountAdvertisementAffirmationInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "affirm_advertisement" })
+            ),
+            Effect.bind("candidates", ({ releaseGates }) =>
+              resolveAdvertisementCandidates({
+                advertisementInput: input,
+                releaseGates: {
+                  ...releaseGates,
+                  calendarSales:
+                    releaseGates.calendarSales &&
+                    input.acceptedDiscountIds.length > 0,
+                },
+                operation: "affirm_advertisement",
+              }).pipe(
+                Effect.map((candidates) =>
+                  selectAcceptedCandidates({
+                    acceptedDiscountIds: input.acceptedDiscountIds,
+                    candidates,
+                  })
+                )
+              )
+            ),
+            Effect.bind("calculation", calculateDiscounts),
+            Effect.tap(logDiscountResolution),
+            Effect.map(({ calculation }) =>
+              makeDiscountAdvertisementQuote(calculation.quote)
+            )
+          ),
+        withServiceAnnotations("affirm_advertisement")
+      );
+
+      const quoteIdentified = Effect.fn("DiscountService.quoteIdentified")(
+        (input: DiscountIdentifiedQuoteInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "quote_identified" })
+            ),
+            Effect.bind("candidates", ({ releaseGates }) =>
+              recoverGatedDiscountResolution({
+                enabled: releaseGates.customerDiscounts,
+                operation: "quote_identified",
+                provider: "customer",
+                resolve: () =>
+                  customer.resolve({
+                    dotyposCustomerId: input.dotyposCustomerId,
+                    locale: input.locale,
+                    product: input.advertisementQuote.product,
+                  }),
+              }).pipe(Effect.map(Option.getOrElse(() => [])))
+            ),
+            Effect.bind("quote", ({ candidates }) =>
+              appendDiscounts({
+                baseQuote: input.advertisementQuote,
+                candidates,
+              })
+            ),
+            Effect.tap(({ quote }) =>
+              logDiscountResolution({
+                calculation: { applications: quote.discounts },
+              })
+            ),
+            Effect.map(({ quote }) => quote)
+          ),
+        withServiceAnnotations("quote_identified")
+      );
+
       const affirm = Effect.fn("DiscountService.affirm")(
         (input: DiscountAffirmationInput) =>
           Effect.succeed(input).pipe(
@@ -165,7 +300,13 @@ export class DiscountService extends Context.Service<
         withServiceAnnotations("affirm")
       );
 
-      return { quote, affirm } satisfies IDiscountService;
+      return {
+        advertise,
+        affirmAdvertisement,
+        quoteIdentified,
+        quote,
+        affirm,
+      } satisfies IDiscountService;
     })
   );
 }
@@ -220,10 +361,22 @@ const logDiscountResolution = (input: {
   });
 
 const withServiceAnnotations =
-  (operation: "quote" | "affirm") =>
+  (
+    operation:
+      | "quote"
+      | "affirm"
+      | "advertise"
+      | "affirm_advertisement"
+      | "quote_identified"
+  ) =>
   <A>(
     effect: Effect.Effect<A, DiscountCalculationError>,
-    input: DiscountQuoteInput | DiscountAffirmationInput
+    input:
+      | DiscountQuoteInput
+      | DiscountAffirmationInput
+      | DiscountAdvertisementInput
+      | DiscountAdvertisementAffirmationInput
+      | DiscountIdentifiedQuoteInput
   ) =>
     effect.pipe(
       Effect.tapError((cause) =>
@@ -235,7 +388,17 @@ const withServiceAnnotations =
       ),
       Effect.annotateLogs({
         discountOperation: operation,
-        discountProductKind: input.product.kind,
-        discountProductTier: input.product.tier,
+        discountProductKind:
+          "product" in input
+            ? input.product.kind
+            : input.advertisementQuote.product.kind,
+        discountProductTier:
+          "product" in input
+            ? input.product.tier
+            : input.advertisementQuote.product.tier,
       })
     );
+
+const makeDiscountAdvertisementQuote = (
+  quote: DiscountQuote
+): DiscountAdvertisementQuote => discountAdvertisementQuoteCodec.make(quote);

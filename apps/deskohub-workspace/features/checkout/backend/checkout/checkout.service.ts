@@ -586,6 +586,16 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
+          if (state.changedKeys) {
+            yield* Effect.logInfo(
+              "Hosted payment checkout rejected: updated price still requires review"
+            );
+            return yield* new CheckoutError({
+              message:
+                "The updated checkout price must be reviewed before payment.",
+            });
+          }
+
           const order = yield* normalizeWorkspaceCheckoutOrder(data);
           const currencyOverride = getNexiCheckoutCurrencyOverride();
           const product = getWorkspaceProductByTier(order.entryTier);

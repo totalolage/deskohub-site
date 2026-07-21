@@ -8,6 +8,7 @@ import {
   test,
 } from "bun:test";
 import { cleanup, render } from "@testing-library/react";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
 import {
   registerWorkspaceComponentTestEnv,
@@ -19,6 +20,9 @@ const { submitWorkspaceReservation } = await import(
 );
 
 mock.module("server-only", () => ({}));
+mock.module("next/navigation", () => ({
+  useRouter: () => ({ push: mock() }),
+}));
 const submitReservationActions = await import(
   "@/features/reservation/actions/submit-reservation"
 );
@@ -55,5 +59,54 @@ describe("CheckoutPayPageSkeleton", () => {
         "[data-slot='skeleton'][aria-hidden='true']"
       ).length
     ).toBeGreaterThan(0);
+  });
+});
+
+describe("CheckoutPayPage pricing change", () => {
+  beforeAll(() => {
+    registerWorkspaceComponentTestEnv();
+  });
+
+  afterEach(() => {
+    cleanup();
+  });
+
+  afterAll(() => {
+    unregisterWorkspaceComponentTestEnv();
+  });
+
+  test("requires review before exposing payment controls", async () => {
+    const { CheckoutPayPage } = await import("./checkout-pay-page");
+    const quote = buildWorkspaceCheckoutQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const freshPayUrl = "/en-US/checkout/pay?payState=fresh";
+    const view = render(
+      <CheckoutPayPage
+        changedKeys={{
+          sectionKeys: ["order", "total"],
+          itemKeys: ["order/product:cowork:basic", "total/total:final"],
+        }}
+        freshPayUrl={freshPayUrl}
+        locale="en-US"
+        summary={quote.summary}
+        variant="pricingChanged"
+      />
+    );
+
+    expect(
+      view.getByText(m.checkoutPayPricingChangedTitle({}, { locale: "en-US" }))
+    ).toBeDefined();
+    const reviewLink = view.getByRole("link", {
+      name: m.checkoutPayReviewUpdatedPriceButton({}, { locale: "en-US" }),
+    });
+    expect(reviewLink.getAttribute("href")).toBe(freshPayUrl);
+    expect(
+      view.queryByRole("button", {
+        name: m.checkoutPayOrderAndPayButton({}, { locale: "en-US" }),
+      })
+    ).toBeNull();
+    expect(view.queryByRole("checkbox")).toBeNull();
   });
 });

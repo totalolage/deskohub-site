@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
+  buildReviewedCheckoutPayPath,
   openPayState,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
@@ -122,10 +123,14 @@ async function CheckoutPayContent({
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <CheckoutPayPage
+        changedKeys={state.changedKeys}
+        freshPayUrl={
+          state.changedKeys ? buildReviewedCheckoutPayPath(state) : undefined
+        }
         locale={locale}
-        payStateToken={payStateToken}
+        payStateToken={state.changedKeys ? undefined : payStateToken}
         summary={state.quote.summary}
-        variant="pay"
+        variant={state.changedKeys ? "pricingChanged" : "pay"}
       />
     </CheckoutFlowLayout>
   ));
