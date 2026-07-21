@@ -40,7 +40,6 @@ export const signedPayStateSchema = Schema.Struct({
 export type SignedPayState = typeof signedPayStateSchema.Type;
 
 export type PayStateKey = CheckoutStateKey;
-export type PayStateCryptoOptions = CheckoutStateCryptoOptions;
 
 export type SealPayStateForUrlResult = {
   readonly type: "sealedPayState";
@@ -88,7 +87,7 @@ export const parsePayStateKey = Effect.fn("payState.parseKey")(
 
 export const buildSignedPayState = Effect.fn("payState.build")(function* (
   input: BuildSignedPayStateInput,
-  options: PayStateCryptoOptions = {}
+  options: CheckoutStateCryptoOptions = {}
 ) {
   const claims = yield* createCheckoutStateClaims(
     input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds,
@@ -140,7 +139,7 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
 
 export const sealPayState = Effect.fn("payState.seal")(function* (
   state: SignedPayState,
-  options: PayStateCryptoOptions = {}
+  options: CheckoutStateCryptoOptions = {}
 ) {
   const encodedState = yield* Schema.encodeUnknownEffect(signedPayStateSchema, {
     onExcessProperty: "error",
@@ -152,7 +151,7 @@ export const sealPayState = Effect.fn("payState.seal")(function* (
 });
 
 export const openPayState = Effect.fn("payState.open")(
-  (token: string, options: PayStateCryptoOptions = {}) =>
+  (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, signedPayStateSchema, options).pipe(
       Effect.mapError(toPayStateTokenError)
     )
@@ -160,7 +159,7 @@ export const openPayState = Effect.fn("payState.open")(
 
 export const sealPayStateForUrl = Effect.fn("payState.sealForUrl")(function* (
   state: SignedPayState,
-  options: PayStateCryptoOptions = {}
+  options: CheckoutStateCryptoOptions = {}
 ) {
   const token = yield* sealPayState(state, options);
 

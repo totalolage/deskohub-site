@@ -15,7 +15,6 @@ export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 export const advertisedPriceStateSchema = Schema.Struct({
   ...workspaceCheckoutPriceStateSchema.fields,
   reservation: workspaceAdvertisedPriceReservationSchema,
-  identifiedPricing: Schema.Literal("not_evaluated"),
 }).annotate({
   identifier: "AdvertisedPriceState",
   description:
@@ -23,7 +22,6 @@ export const advertisedPriceStateSchema = Schema.Struct({
 });
 
 export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
-export type AdvertisedPriceStateCryptoOptions = CheckoutStateCryptoOptions;
 
 export class AdvertisedPriceStateTokenError extends Data.TaggedError(
   "AdvertisedPriceStateTokenError"
@@ -55,7 +53,7 @@ export const buildAdvertisedPriceState = Effect.fn(
     readonly quote: AdvertisedPriceState["quote"];
     readonly ttlMilliseconds?: number;
   },
-  options: AdvertisedPriceStateCryptoOptions = {}
+  options: CheckoutStateCryptoOptions = {}
 ) {
   const claims = yield* createCheckoutStateClaims(
     input.ttlMilliseconds ?? advertisedPriceStateDefaultTtlMilliseconds,
@@ -69,14 +67,13 @@ export const buildAdvertisedPriceState = Effect.fn(
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
-    identifiedPricing: "not_evaluated",
   }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
 });
 
 export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
   function* (
     state: AdvertisedPriceState,
-    options: AdvertisedPriceStateCryptoOptions = {}
+    options: CheckoutStateCryptoOptions = {}
   ) {
     const encodedState = yield* Schema.encodeUnknownEffect(
       advertisedPriceStateSchema,
@@ -90,7 +87,7 @@ export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
 );
 
 export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
-  (token: string, options: AdvertisedPriceStateCryptoOptions = {}) =>
+  (token: string, options: CheckoutStateCryptoOptions = {}) =>
     openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
       Effect.mapError(toAdvertisedPriceStateTokenError)
     )

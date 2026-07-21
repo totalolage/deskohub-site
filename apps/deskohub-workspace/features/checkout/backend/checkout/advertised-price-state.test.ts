@@ -60,7 +60,7 @@ const tamperToken = (token: string) => {
 };
 
 describe("advertised price state", () => {
-  test("round-trips a PII-free snapshot marked as not identified", () => {
+  test("round-trips a PII-free snapshot", () => {
     const token = seal();
     const opened = Effect.runSync(
       openAdvertisedPriceState(token, {
@@ -70,7 +70,6 @@ describe("advertised price state", () => {
     );
 
     expect(opened).toEqual(buildState());
-    expect(opened.identifiedPricing).toBe("not_evaluated");
     expect(JSON.stringify(opened)).not.toMatch(/name|email|phone|message/i);
     expect(token).not.toContain("2026-06-20");
   });

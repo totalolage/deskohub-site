@@ -76,7 +76,6 @@ describe("buildWorkspaceAdvertisedPrice", () => {
     expect(result.quote.summary.total).toEqual(money(22_500));
     expect(state.reservation).toEqual(input.reservation);
     expect(state.quote).toEqual(result.quote);
-    expect(state.identifiedPricing).toBe("not_evaluated");
     expect(JSON.stringify(result)).not.toMatch(
       /providerNamespace|providerReference|calendarId|eventReference|storedDiscountId|operatorTitle|dotyposCustomerId|submittedCode/
     );

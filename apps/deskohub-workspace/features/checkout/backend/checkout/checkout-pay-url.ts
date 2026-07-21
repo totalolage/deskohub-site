@@ -1,9 +1,9 @@
 import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { CheckoutStateCryptoOptions } from "./checkout-state-token";
 import {
   type BuildSignedPayStateInput,
   buildSignedPayState,
-  type PayStateCryptoOptions,
   type SealPayStateForUrlResult,
   sealPayStateForUrl,
 } from "./pay-state";
@@ -21,7 +21,7 @@ export const buildCheckoutPayPath = (
 export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
   function* (
     input: BuildSignedPayStateInput,
-    options: PayStateCryptoOptions = {}
+    options: CheckoutStateCryptoOptions = {}
   ) {
     const freshState = yield* buildSignedPayState(input, options);
     const sealedState = yield* sealPayStateForUrl(freshState, options);
