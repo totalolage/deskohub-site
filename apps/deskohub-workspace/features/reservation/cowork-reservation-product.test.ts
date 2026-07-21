@@ -4,6 +4,7 @@ import { workspaceProductMonitorOptions } from "@/features/checkout/product-cata
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationProductSchema,
+  getCoworkReservationProductFields,
   getStoredCoworkReservationDetails,
   getWorkspaceCoworkProductKey,
   normalizedCoworkReservationProductSchema,
@@ -132,6 +133,43 @@ describe("cowork reservation product", () => {
       kind: "cowork",
       entryTier: "basic",
       coffee: false,
+    });
+  });
+
+  test("projects stored cowork details into compatibility product fields", () => {
+    expect(
+      getCoworkReservationProductFields({
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      })
+    ).toEqual({
+      productTier: "basic",
+      productCoffee: false,
+      productMonitorOption: null,
+    });
+    expect(
+      getCoworkReservationProductFields({
+        kind: "cowork",
+        entryTier: "plus",
+        coffee: true,
+      })
+    ).toEqual({
+      productTier: "plus",
+      productCoffee: true,
+      productMonitorOption: null,
+    });
+    expect(
+      getCoworkReservationProductFields({
+        kind: "cowork",
+        entryTier: "profi",
+        coffee: true,
+        monitorOption: "2x32-4k",
+      })
+    ).toEqual({
+      productTier: "profi",
+      productCoffee: true,
+      productMonitorOption: "2x32-4k",
     });
   });
 

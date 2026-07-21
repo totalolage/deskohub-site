@@ -7,9 +7,10 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import type {
-  WorkspaceCoworkProductTier,
-  WorkspaceProductMonitorOption,
+import {
+  getCoworkReservationProductFields,
+  type WorkspaceCoworkProductTier,
+  type WorkspaceProductMonitorOption,
 } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -213,26 +214,7 @@ const withCoworkProductFields = (
   ...reservation,
   ...Match.value(reservation.reservationDetails).pipe(
     Match.discriminatorsExhaustive("kind")({
-      cowork: (details) =>
-        Match.value(details).pipe(
-          Match.discriminatorsExhaustive("entryTier")({
-            basic: (basicDetails) => ({
-              productTier: basicDetails.entryTier,
-              productCoffee: basicDetails.coffee,
-              productMonitorOption: null,
-            }),
-            plus: (plusDetails) => ({
-              productTier: plusDetails.entryTier,
-              productCoffee: plusDetails.coffee,
-              productMonitorOption: null,
-            }),
-            profi: (profiDetails) => ({
-              productTier: profiDetails.entryTier,
-              productCoffee: profiDetails.coffee,
-              productMonitorOption: profiDetails.monitorOption,
-            }),
-          })
-        ),
+      cowork: getCoworkReservationProductFields,
       "meeting-room": () => ({
         productTier: null,
         productCoffee: false,

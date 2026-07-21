@@ -73,18 +73,18 @@ export const normalizedCoworkReservationProductSchema = Schema.Union([
     "Canonical cowork product selection after tier-specific normalization.",
 });
 
-export const storedBasicCoworkReservationDetailsSchema = Schema.Struct({
-  kind: Schema.Literal(coworkReservationKind),
+const storedBasicCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
   ...normalizedBasicCoworkReservationProductSchema.fields,
 });
 
-export const storedPlusCoworkReservationDetailsSchema = Schema.Struct({
-  kind: Schema.Literal(coworkReservationKind),
+const storedPlusCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
   ...normalizedPlusCoworkReservationProductSchema.fields,
 });
 
-export const storedProfiCoworkReservationDetailsSchema = Schema.Struct({
-  kind: Schema.Literal(coworkReservationKind),
+const storedProfiCoworkReservationDetailsSchema = Schema.Struct({
+  kind: workspaceCoworkProductIdentitySchema.fields.kind,
   ...normalizedProfiCoworkReservationProductSchema.fields,
 });
 
@@ -199,21 +199,47 @@ export const getStoredCoworkReservationDetails = (
 ): StoredCoworkReservationDetails =>
   Match.value(product).pipe(
     Match.discriminatorsExhaustive("entryTier")({
-      basic: (basicProduct) => ({
-        kind: coworkReservationKind,
-        entryTier: basicProduct.entryTier,
-        coffee: basicProduct.coffee,
+      basic: (basicProduct) =>
+        storedBasicCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: basicProduct.entryTier,
+          coffee: basicProduct.coffee,
+        }),
+      plus: (plusProduct) =>
+        storedPlusCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: plusProduct.entryTier,
+          coffee: plusProduct.coffee,
+        }),
+      profi: (profiProduct) =>
+        storedProfiCoworkReservationDetailsSchema.make({
+          kind: coworkReservationKind,
+          entryTier: profiProduct.entryTier,
+          coffee: profiProduct.coffee,
+          monitorOption: profiProduct.monitorOption,
+        }),
+    })
+  );
+
+export const getCoworkReservationProductFields = (
+  details: StoredCoworkReservationDetails
+) =>
+  Match.value(details).pipe(
+    Match.discriminatorsExhaustive("entryTier")({
+      basic: (basicDetails) => ({
+        productTier: basicDetails.entryTier,
+        productCoffee: basicDetails.coffee,
+        productMonitorOption: null,
       }),
-      plus: (plusProduct) => ({
-        kind: coworkReservationKind,
-        entryTier: plusProduct.entryTier,
-        coffee: plusProduct.coffee,
+      plus: (plusDetails) => ({
+        productTier: plusDetails.entryTier,
+        productCoffee: plusDetails.coffee,
+        productMonitorOption: null,
       }),
-      profi: (profiProduct) => ({
-        kind: coworkReservationKind,
-        entryTier: profiProduct.entryTier,
-        coffee: profiProduct.coffee,
-        monitorOption: profiProduct.monitorOption,
+      profi: (profiDetails) => ({
+        productTier: profiDetails.entryTier,
+        productCoffee: profiDetails.coffee,
+        productMonitorOption: profiDetails.monitorOption,
       }),
     })
   );

@@ -73,7 +73,7 @@ export type MeetingRoomReservationProductInput = Pick<
 >;
 
 export const storedMeetingRoomReservationDetailsSchema = Schema.Struct({
-  kind: Schema.Literal(meetingRoomReservationKind),
+  kind: workspaceMeetingRoomProductIdentitySchema.fields.kind,
 }).annotate({
   identifier: "StoredMeetingRoomReservationDetails",
   description:
