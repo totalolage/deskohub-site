@@ -146,11 +146,9 @@ export const selectAvailableCoworkDates = (
       }
     }
 
-    return yield* Effect.fail(
-      workspaceE2EError(
-        `Only found ${dates.length} available checkout dates, need ${count}`,
-        { operation: "select available cowork checkout dates" }
-      )
+    return yield* workspaceE2EError(
+      `Only found ${dates.length} available checkout dates, need ${count}`,
+      { operation: "select available cowork checkout dates" }
     );
   });
 

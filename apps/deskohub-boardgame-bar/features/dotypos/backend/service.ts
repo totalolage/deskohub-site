@@ -9,7 +9,7 @@ export const SharedDotyposServiceFromEnv = SharedDotyposService.Default.pipe(
 );
 
 export interface DotyposServiceShape {
-  readonly getMenuItems: () => Effect.Effect<
+  readonly getMenuItems: Effect.Effect<
     {
       readonly products: Product[];
       readonly categories: Category[];
@@ -28,59 +28,56 @@ export class DotyposService extends Context.Service<
       const dotypos = yield* SharedDotyposService;
 
       return {
-        getMenuItems: Effect.fn("getMenuItems")(
-          function* () {
-            yield* Effect.logInfo("Dotypos menu item load started");
+        getMenuItems: Effect.gen(function* () {
+          yield* Effect.logInfo("Dotypos menu item load started");
 
-            const categories = yield* dotypos.getCategories();
-            yield* Effect.logInfo("Dotypos menu categories loaded");
+          const categories = yield* dotypos.getCategories();
+          yield* Effect.logInfo("Dotypos menu categories loaded");
 
-            const displayableCategories = categories
-              .filter((category) => category.id)
-              .filter(isCategoryDisplayable);
+          const displayableCategories = categories
+            .filter((category) => category.id)
+            .filter(isCategoryDisplayable);
 
-            if (displayableCategories.length === 0) {
-              yield* Effect.logWarning(
-                "Dotypos menu has no displayable categories"
-              );
-            }
-
-            const productsByCategory = yield* Effect.all(
-              displayableCategories.map((category) =>
-                dotypos
-                  .getProducts({
-                    categoryId: category.id,
-                    includeDeleted: false,
-                  })
-                  .pipe(
-                    Effect.catch((cause) =>
-                      Effect.logWarning(
-                        "Dotypos category products load failed",
-                        { category, cause }
-                      ).pipe(Effect.as([]))
-                    )
-                  )
-              ),
-              { concurrency: "inherit" }
+          if (displayableCategories.length === 0) {
+            yield* Effect.logWarning(
+              "Dotypos menu has no displayable categories"
             );
-            yield* Effect.logInfo("Dotypos menu products loaded");
+          }
 
-            const productMap = new Map<string, Product>();
-            for (const categoryProducts of productsByCategory) {
-              for (const product of categoryProducts) {
-                if (product.id && product.display && !product.deleted) {
-                  productMap.set(product.id, product);
-                }
+          const productsByCategory = yield* Effect.all(
+            displayableCategories.map((category) =>
+              dotypos
+                .getProducts({
+                  categoryId: category.id,
+                  includeDeleted: false,
+                })
+                .pipe(
+                  Effect.catch((cause) =>
+                    Effect.logWarning("Dotypos category products load failed", {
+                      category,
+                      cause,
+                    }).pipe(Effect.as([]))
+                  )
+                )
+            ),
+            { concurrency: "inherit" }
+          );
+          yield* Effect.logInfo("Dotypos menu products loaded");
+
+          const productMap = new Map<string, Product>();
+          for (const categoryProducts of productsByCategory) {
+            for (const product of categoryProducts) {
+              if (product.id && product.display && !product.deleted) {
+                productMap.set(product.id, product);
               }
             }
+          }
 
-            return {
-              products: Array.from(productMap.values()),
-              categories,
-            };
-          },
-          (effect) => effect.pipe(Effect.scoped)
-        ),
+          return {
+            products: Array.from(productMap.values()),
+            categories,
+          };
+        }).pipe(Effect.scoped, Effect.withSpan("DotyposService.getMenuItems")),
       };
     })
   );

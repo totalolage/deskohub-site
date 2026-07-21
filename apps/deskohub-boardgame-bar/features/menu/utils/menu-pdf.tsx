@@ -8,7 +8,7 @@ export const generateMenuPdf = Effect.gen(function* () {
   yield* Effect.logInfo("Generating menu PDF response");
 
   const menuService = yield* MenuService;
-  const { categories, products } = yield* menuService.getMenuData();
+  const { categories, products } = yield* menuService.getMenuData;
   const locale = yield* LocaleValue;
 
   // Generate PDF

@@ -1,5 +1,5 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import { Context, Effect } from "effect";
+import { type Context, Effect } from "effect";
 
 export type ParaglideStore<Locale extends string = string> = {
   locale?: Locale;
@@ -40,12 +40,11 @@ export function createParaglideLocaleBridge<Locale extends string, LocaleTag>({
   ) {
     const locale = yield* localeTag;
     setLocale(locale, { reload: false });
-
-    const nextWithLocale = next.pipe(Effect.provideService(localeTag, locale));
+    const context = yield* Effect.context<LocaleTag>();
 
     return yield* Effect.promise((signal) =>
       localeAsyncLocalStorage.run({ locale, origin }, () =>
-        Effect.runPromise(nextWithLocale, { signal })
+        Effect.runPromiseWith(context)(next, { signal })
       )
     );
   });

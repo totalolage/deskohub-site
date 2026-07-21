@@ -169,9 +169,7 @@ const dotyposDiscountBasisPointsSchema = Schema.String.check(
           { message: "must convert exactly to whole basis points" }
         )
       )
-    )
-  )
-  .pipe(
+    ),
     Schema.decodeTo(discountBasisPointsSchema, {
       decode: SchemaGetter.transform((percentage) =>
         Number(

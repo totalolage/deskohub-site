@@ -69,11 +69,9 @@ function readRequiredCloudinaryHeaders(request: Request) {
           hasTimestamp: !!timestampHeader,
         }
       );
-      return yield* Effect.fail(
-        new CloudinaryWebhookAuthError({
-          message: "Missing signature or timestamp",
-        })
-      );
+      return yield* new CloudinaryWebhookAuthError({
+        message: "Missing signature or timestamp",
+      });
     });
   }
 
@@ -87,9 +85,9 @@ function readRequiredCloudinaryHeaders(request: Request) {
           timestampHeader,
         }
       );
-      return yield* Effect.fail(
-        new CloudinaryWebhookAuthError({ message: "Invalid timestamp" })
-      );
+      return yield* new CloudinaryWebhookAuthError({
+        message: "Invalid timestamp",
+      });
     });
   }
 
@@ -115,11 +113,9 @@ function validateCloudinaryTimestampFreshness(
           timestampSkewMagnitudeSeconds,
         }
       );
-      return yield* Effect.fail(
-        new CloudinaryWebhookAuthError({
-          message: "Webhook timestamp is outside the allowed freshness window",
-        })
-      );
+      return yield* new CloudinaryWebhookAuthError({
+        message: "Webhook timestamp is outside the allowed freshness window",
+      });
     });
   }
 
@@ -157,9 +153,9 @@ function verifyCloudinarySignature(
           signature,
         }
       );
-      return yield* Effect.fail(
-        new CloudinaryWebhookAuthError({ message: "Invalid signature" })
-      );
+      return yield* new CloudinaryWebhookAuthError({
+        message: "Invalid signature",
+      });
     });
   }
 

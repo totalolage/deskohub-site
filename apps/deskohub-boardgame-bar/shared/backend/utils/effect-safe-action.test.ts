@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import { Context, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer } from "effect";
 import { z } from "zod";
 
 mock.module("next/headers", () => ({
@@ -11,6 +11,10 @@ class TestService extends Context.Service<
   TestService,
   { readonly value: string }
 >()("TestService") {}
+
+class TestActionError extends Data.TaggedError("TestActionError")<{
+  readonly message: string;
+}> {}
 
 describe("createEffectSafeAction", () => {
   test("succeeds with fake layer and locale", async () => {
@@ -36,7 +40,7 @@ describe("createEffectSafeAction", () => {
     const { createEffectSafeAction } = await import("./effect-safe-action");
     const action = createEffectSafeAction(
       z.object({ name: z.string() }),
-      () => Effect.fail(new Error("nope")),
+      () => Effect.fail(new TestActionError({ message: "nope" })),
       Layer.empty
     );
 

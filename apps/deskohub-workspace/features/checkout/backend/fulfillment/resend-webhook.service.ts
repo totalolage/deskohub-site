@@ -311,35 +311,29 @@ export const ResendWebhookServiceLive = Layer.effect(
         function* (input) {
           const { id, timestamp, signature } = input.headers;
           if (!id || !timestamp || !signature) {
-            return yield* Effect.fail(
-              new ResendWebhookProcessingError({
-                errorCode: "resend_webhook_headers_missing",
-                message: "Resend webhook signature headers are missing.",
-              })
-            );
+            return yield* new ResendWebhookProcessingError({
+              errorCode: "resend_webhook_headers_missing",
+              message: "Resend webhook signature headers are missing.",
+            });
           }
 
           const webhookSecret = config.webhookSecret;
           const apiKey = config.apiKey;
 
           if (!webhookSecret) {
-            return yield* Effect.fail(
-              new ResendWebhookProcessingError({
-                errorCode: "resend_webhook_secret_missing",
-                message: "RESEND_WEBHOOK_SECRET is not configured.",
-                eventId: id,
-              })
-            );
+            return yield* new ResendWebhookProcessingError({
+              errorCode: "resend_webhook_secret_missing",
+              message: "RESEND_WEBHOOK_SECRET is not configured.",
+              eventId: id,
+            });
           }
 
           if (!apiKey) {
-            return yield* Effect.fail(
-              new ResendWebhookProcessingError({
-                errorCode: "resend_webhook_api_key_missing",
-                message: "EMAIL_API_KEY is not configured.",
-                eventId: id,
-              })
-            );
+            return yield* new ResendWebhookProcessingError({
+              errorCode: "resend_webhook_api_key_missing",
+              message: "EMAIL_API_KEY is not configured.",
+              eventId: id,
+            });
           }
 
           const resend = new Resend(apiKey);

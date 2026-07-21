@@ -104,13 +104,18 @@ const detailsEffect = (input: {
     const service = yield* WorkspaceReservationService;
     return yield* service.getReservation("reservation-id");
   }).pipe(
-    Effect.provide(WorkspaceReservationService.Live),
-    Effect.provide(Layer.succeed(WorkspaceReservationRepository, repository)),
-    Effect.provide(Layer.succeed(DotyposService, dotypos)),
     Effect.provide(
-      SeatingMapFeatureFlagServiceMock({
-        isEnabled: () => Effect.succeed(input.seatingMapEnabled ?? true),
-      })
+      WorkspaceReservationService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(WorkspaceReservationRepository, repository),
+            Layer.succeed(DotyposService, dotypos),
+            SeatingMapFeatureFlagServiceMock({
+              isEnabled: Effect.succeed(input.seatingMapEnabled ?? true),
+            })
+          )
+        )
+      )
     )
   );
 };

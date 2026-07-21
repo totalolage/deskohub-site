@@ -55,11 +55,9 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               "Workspace table assignment rejected: missing monitor option"
             );
 
-            return yield* Effect.fail(
-              new ValidationError({
-                message: `Workspace reservation tier ${reservation.entryTier} requires a monitor option for Dotypos table assignment`,
-              })
-            );
+            return yield* new ValidationError({
+              message: `Workspace reservation tier ${reservation.entryTier} requires a monitor option for Dotypos table assignment`,
+            });
           }
 
           if (
@@ -70,11 +68,9 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               "Workspace table assignment rejected: unsupported monitor option"
             );
 
-            return yield* Effect.fail(
-              new ValidationError({
-                message: `Workspace reservation monitor option is not supported for Dotypos table assignment: ${reservation.monitorOption}`,
-              })
-            );
+            return yield* new ValidationError({
+              message: `Workspace reservation monitor option is not supported for Dotypos table assignment: ${reservation.monitorOption}`,
+            });
           }
 
           if (reservation.monitorOption) {
@@ -150,13 +146,11 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               "Workspace table assignment rejected: no matching table"
             );
 
-            return yield* Effect.fail(
-              new ValidationError({
-                message: `No active visible Dotypos workspace table matches tags: ${requiredTags.join(
-                  ", "
-                )}`,
-              })
-            );
+            return yield* new ValidationError({
+              message: `No active visible Dotypos workspace table matches tags: ${requiredTags.join(
+                ", "
+              )}`,
+            });
           }
 
           if (!matchingTableId) {
@@ -164,13 +158,11 @@ export const WorkspaceTableAssignmentServiceLive = Layer.effect(
               "Workspace table assignment rejected: no available table"
             );
 
-            return yield* Effect.fail(
-              new ValidationError({
-                message: `No available Dotypos workspace table matches tags: ${requiredTags.join(
-                  ", "
-                )}`,
-              })
-            );
+            return yield* new ValidationError({
+              message: `No available Dotypos workspace table matches tags: ${requiredTags.join(
+                ", "
+              )}`,
+            });
           }
 
           yield* Effect.annotateLogsScoped({ matchingTable, matchingTableId });

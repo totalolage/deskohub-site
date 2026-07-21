@@ -1,4 +1,4 @@
-import { describe, expect, mock, test } from "bun:test";
+import { describe, expect, test } from "bun:test";
 import type { Category, Product } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
@@ -37,13 +37,16 @@ const runMenuData = async (input: {
   return Effect.runPromise(
     Effect.gen(function* () {
       const menuService = yield* MenuService;
-      return yield* menuService.getMenuData();
+      return yield* menuService.getMenuData;
     }).pipe(
-      Effect.provide(MenuService.DefaultWithoutDependencies),
       Effect.provide(
-        Layer.succeed(DotyposService, {
-          getMenuItems: mock(() => Effect.succeed(input)),
-        })
+        MenuService.DefaultWithoutDependencies.pipe(
+          Layer.provide(
+            Layer.succeed(DotyposService, {
+              getMenuItems: Effect.succeed(input),
+            })
+          )
+        )
       )
     )
   );

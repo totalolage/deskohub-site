@@ -106,7 +106,7 @@ export const getMeetingRoomDurationValidationMessage = () =>
 export const wholeHourReservationInstantSchema =
   makeWholeHourInstantStringSchema(workspaceSiteConstants.location.timeZone);
 
-export const meetingRoomReservationDurationMinutesSchema = Schema.Number.check(
+export const meetingRoomReservationDurationMinutesSchema = Schema.Finite.check(
   Schema.makeFilter(isWorkspaceMeetingRoomDuration, {
     message: getMeetingRoomDurationValidationMessage(),
   })

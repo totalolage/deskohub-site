@@ -22,20 +22,23 @@ const runWithEvents = async (
     const service = yield* GoogleCalendarWorkspaceLimitationsService;
     return yield* service.listLimitations(query);
   }).pipe(
-    Effect.provide(GoogleCalendarWorkspaceLimitationsService.Live),
     Effect.provide(
-      GoogleCalendarServiceMock({
-        listEvents: mock((input) => {
-          onListEvents?.(input);
-          return Effect.succeed([...events]);
-        }),
-      })
-    ),
-    Effect.provide(
-      Layer.succeed(CalendarResourceConfig, {
-        workspaceLimitationsCalendarId: "workspace-limitations-calendar",
-        salesCalendarId: "sales-calendar",
-      })
+      GoogleCalendarWorkspaceLimitationsService.Live.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            GoogleCalendarServiceMock({
+              listEvents: mock((input) => {
+                onListEvents?.(input);
+                return Effect.succeed([...events]);
+              }),
+            }),
+            Layer.succeed(CalendarResourceConfig, {
+              workspaceLimitationsCalendarId: "workspace-limitations-calendar",
+              salesCalendarId: "sales-calendar",
+            })
+          )
+        )
+      )
     ),
     Effect.runPromise
   );

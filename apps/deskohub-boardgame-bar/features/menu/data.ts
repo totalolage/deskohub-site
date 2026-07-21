@@ -14,7 +14,7 @@ export interface MenuDataShape {
 }
 
 interface MenuServiceShape {
-  readonly getMenuData: () => Effect.Effect<MenuDataShape, MenuDataError>;
+  readonly getMenuData: Effect.Effect<MenuDataShape, MenuDataError>;
 }
 
 export class MenuService extends Context.Service<
@@ -27,82 +27,79 @@ export class MenuService extends Context.Service<
       const dotypos = yield* DotyposService;
 
       return {
-        getMenuData: Effect.fn("getMenuData")(
-          function* () {
-            yield* Effect.logInfo("Generating menu props");
+        getMenuData: Effect.gen(function* () {
+          yield* Effect.logInfo("Generating menu props");
 
-            const { products, categories } = yield* dotypos.getMenuItems();
-            yield* Effect.logDebug("Menu items fetched", {
-              products,
-              categories,
-            });
+          const { products, categories } = yield* dotypos.getMenuItems;
+          yield* Effect.logDebug("Menu items fetched", {
+            products,
+            categories,
+          });
 
-            const categoryOrder = [
-              ...siteConstants.menu.categoryGroups.food,
-              ...siteConstants.menu.categoryGroups.drinks,
-            ];
-            const displayCategories: Category[] = [];
-            for (const categoryId of categoryOrder) {
-              const category = categories.find((cat) => cat.id === categoryId);
-              if (!category) {
-                yield* Effect.logDebug("Category skipped; not found", {
-                  categoryId,
-                });
-                continue;
-              }
+          const categoryOrder = [
+            ...siteConstants.menu.categoryGroups.food,
+            ...siteConstants.menu.categoryGroups.drinks,
+          ];
+          const displayCategories: Category[] = [];
+          for (const categoryId of categoryOrder) {
+            const category = categories.find((cat) => cat.id === categoryId);
+            if (!category) {
+              yield* Effect.logDebug("Category skipped; not found", {
+                categoryId,
+              });
+              continue;
+            }
 
-              if (!isCategoryDisplayable(category)) {
-                yield* Effect.logDebug("Category skipped; not displayable", {
-                  category,
-                });
-                continue;
-              }
-
-              yield* Effect.logDebug("Category added to display list", {
+            if (!isCategoryDisplayable(category)) {
+              yield* Effect.logDebug("Category skipped; not displayable", {
                 category,
               });
-              displayCategories.push(category);
+              continue;
             }
 
-            yield* Effect.logDebug("Display categories generated", {
-              displayCategories,
+            yield* Effect.logDebug("Category added to display list", {
+              category,
             });
+            displayCategories.push(category);
+          }
 
-            if (siteConstants.menu.showUncategorized) {
-              const processedIds = new Set(categoryOrder);
+          yield* Effect.logDebug("Display categories generated", {
+            displayCategories,
+          });
 
-              categories.forEach((category) => {
-                if (
-                  category.id &&
-                  !processedIds.has(category.id) &&
-                  isCategoryDisplayable(category)
-                ) {
-                  const hasProducts = products.some(
-                    (p) => p._categoryId === category.id
-                  );
-                  if (hasProducts) {
-                    displayCategories.push(category);
-                  }
+          if (siteConstants.menu.showUncategorized) {
+            const processedIds = new Set(categoryOrder);
+
+            categories.forEach((category) => {
+              if (
+                category.id &&
+                !processedIds.has(category.id) &&
+                isCategoryDisplayable(category)
+              ) {
+                const hasProducts = products.some(
+                  (p) => p._categoryId === category.id
+                );
+                if (hasProducts) {
+                  displayCategories.push(category);
                 }
-              });
-            }
+              }
+            });
+          }
 
-            return {
-              categories: displayCategories,
-              products,
-            };
-          },
-          (effect) =>
-            effect.pipe(
-              Effect.annotateLogs("service", "MenuService"),
-              Effect.mapError(
-                (error) =>
-                  new MenuDataError({
-                    message: "Failed to generate menu props",
-                    cause: error,
-                  })
-              )
-            )
+          return {
+            categories: displayCategories,
+            products,
+          };
+        }).pipe(
+          Effect.annotateLogs("service", "MenuService"),
+          Effect.mapError(
+            (error) =>
+              new MenuDataError({
+                message: "Failed to generate menu props",
+                cause: error,
+              })
+          ),
+          Effect.withSpan("MenuService.getMenuData")
         ),
       };
     })
@@ -118,7 +115,7 @@ export class MenuService extends Context.Service<
 export const MenuData = Object.assign(
   Effect.gen(function* () {
     const menuService = yield* MenuService;
-    return yield* menuService.getMenuData();
+    return yield* menuService.getMenuData;
   }),
   {
     Default: MenuService.Default,

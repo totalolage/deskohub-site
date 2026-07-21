@@ -90,7 +90,7 @@ export async function POST(request: Request): Promise<NextResponse> {
             yield* Effect.logError("Nexi webhook processing failed", details);
           }
 
-          return yield* Effect.fail(error);
+          return yield* error;
         })
       ),
       Effect.tap((result) =>

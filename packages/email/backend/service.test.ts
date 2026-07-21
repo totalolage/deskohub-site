@@ -26,11 +26,13 @@ const success = {
 };
 
 const makeProvider = (
-  send = mock(() => Effect.succeed(success))
+  send: EmailProvider["send"] = mock((_message: EmailMessage) =>
+    Effect.succeed(success)
+  )
 ): EmailProvider => ({
   name: "fake",
   send,
-  verify: mock(() => Effect.succeed(true)),
+  verify: Effect.succeed(true),
 });
 
 const templateService: EmailTemplateService = {
@@ -73,7 +75,7 @@ const message: EmailMessage = {
 
 describe("EmailService", () => {
   test("uses defaultFrom when message has no from", async () => {
-    const send = mock(() => Effect.succeed(success));
+    const send = mock((_message: EmailMessage) => Effect.succeed(success));
     const provider = makeProvider(send);
 
     await runWithEmail(
@@ -89,7 +91,7 @@ describe("EmailService", () => {
 
   test("retries NetworkError and not EmailServiceError", async () => {
     let attempts = 0;
-    const retrySend = mock(() =>
+    const retrySend = mock((_message: EmailMessage) =>
       Effect.suspend(() => {
         attempts += 1;
         return attempts === 1
@@ -112,7 +114,7 @@ describe("EmailService", () => {
     );
     expect(attempts).toBe(2);
 
-    const serviceErrorSend = mock(() =>
+    const serviceErrorSend = mock((_message: EmailMessage) =>
       Effect.fail(new EmailServiceError("bad request"))
     );
     const result = await runWithEmail(
@@ -128,7 +130,7 @@ describe("EmailService", () => {
   });
 
   test("sendTemplate sends rendered body, tags, and metadata", async () => {
-    const send = mock(() => Effect.succeed(success));
+    const send = mock((_message: EmailMessage) => Effect.succeed(success));
     const render = mock(() =>
       Effect.succeed({
         subject: "Reservation confirmed",

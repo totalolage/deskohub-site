@@ -5,6 +5,7 @@ import {
   DotyposService,
   ValidationError as DotyposValidationError,
 } from "@deskohub/dotypos";
+import type { StandardSchemaV1 } from "@standard-schema/spec";
 import {
   Data,
   Duration,
@@ -72,6 +73,10 @@ const preparePayStateSchema = Schema.toStandardSchemaV1(
   }),
   { parseOptions: { onExcessProperty: "error" } }
 );
+
+type PreparePayStateInput = StandardSchemaV1.InferOutput<
+  typeof preparePayStateSchema
+>;
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   legalEvidenceMapSchema,
@@ -333,7 +338,7 @@ const waitForPendingHoldCreation = Effect.fn(
 });
 
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
-  function* (input) {
+  function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
@@ -498,7 +503,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     const holdExpiresAt = getReservationHoldExpiresAt(Temporal.Now.instant());
     const accessCodes = yield* WorkspaceCheckoutAccessCodeService;
-    const customerAccessCode = yield* accessCodes.generateCustomerAccessCode();
+    const customerAccessCode = yield* accessCodes.generateCustomerAccessCode;
 
     const reservationDraft = yield* reservations.createDraft({
       reservationIntentKey,
@@ -685,7 +690,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
                       dotyposReservationId,
                     }
                   );
-                  return yield* Effect.fail(cancelCause);
+                  return yield* cancelCause;
                 })
               )
             );
@@ -698,7 +703,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
               Effect.ignore
             );
 
-            return yield* Effect.fail(cause);
+            return yield* cause;
           })
         )
       );

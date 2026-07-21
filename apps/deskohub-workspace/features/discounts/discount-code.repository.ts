@@ -15,20 +15,28 @@ import type {
 } from "./persistence-contracts";
 
 export interface IDiscountCodeRepository {
-  readonly findByCode: (input: {
-    readonly code: CanonicalDiscountCode;
-  }) => Effect.Effect<
+  readonly findByCode: (
+    input: FindDiscountCodeInput
+  ) => Effect.Effect<
     Option.Option<DiscountCodeConfiguration>,
     EffectDrizzleQueryError | DiscountCodeConfigurationError
   >;
-  readonly loadAvailability: (input: {
-    readonly codeId: DiscountCodeId;
-    readonly dotyposCustomerId: string;
-    readonly at: Temporal.Instant;
-  }) => Effect.Effect<
+  readonly loadAvailability: (
+    input: LoadDiscountCodeAvailabilityInput
+  ) => Effect.Effect<
     DiscountCodeAvailability,
     EffectDrizzleQueryError | DiscountCodeConfigurationError
   >;
+}
+
+interface FindDiscountCodeInput {
+  readonly code: CanonicalDiscountCode;
+}
+
+interface LoadDiscountCodeAvailabilityInput {
+  readonly codeId: DiscountCodeId;
+  readonly dotyposCustomerId: string;
+  readonly at: Temporal.Instant;
 }
 
 export class DiscountCodeRepository extends Context.Service<
@@ -41,9 +49,9 @@ export class DiscountCodeRepository extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
 
       const findByCode = Effect.fn("DiscountCodeRepository.findByCode")(
-        function* (input) {
+        function* (input: FindDiscountCodeInput) {
           const row = yield* db.query.discountCodes.findFirst({
-            where: { code: input.code },
+            where: { code: { eq: input.code } },
           });
 
           return yield* Option.fromNullishOr(row).pipe(
@@ -57,7 +65,7 @@ export class DiscountCodeRepository extends Context.Service<
 
       const loadAvailability = Effect.fn(
         "DiscountCodeRepository.loadAvailability"
-      )(function* (input) {
+      )(function* (input: LoadDiscountCodeAvailabilityInput) {
         const queries = buildDiscountCodeAvailabilityQueries({ db, ...input });
         const [allowlistRows, activeClaimRows] = yield* Effect.all(
           [queries.allowlist, queries.activeClaims],

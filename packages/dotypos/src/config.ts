@@ -8,7 +8,7 @@ export const DotyposRuntimeConfigSchema = Schema.Struct({
   branchId: Schema.NonEmptyString,
   employeeId: Schema.NonEmptyString,
   apiUrl: Schema.NonEmptyString,
-  apiTimeout: Schema.Number.check(
+  apiTimeout: Schema.Finite.check(
     Schema.isGreaterThan(0, { description: "API timeout in milliseconds" })
   ),
   reservationTableIds: Schema.Array(Schema.NonEmptyString),

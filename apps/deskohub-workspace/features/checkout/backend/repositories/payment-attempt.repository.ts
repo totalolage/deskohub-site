@@ -148,14 +148,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
               .returning({ id: workspaceReservations.id });
 
             if (!linked) {
-              return yield* Effect.fail(
-                new PaymentAttemptStateError({
-                  operation: "paymentAttempts.create",
-                  paymentAttemptId: attempt.id,
-                  message:
-                    "Payment attempts can only be created for held unpaid reservations.",
-                })
-              );
+              return yield* new PaymentAttemptStateError({
+                operation: "paymentAttempts.create",
+                paymentAttemptId: attempt.id,
+                message:
+                  "Payment attempts can only be created for held unpaid reservations.",
+              });
             }
 
             return attempt;
@@ -237,14 +235,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
 
         const attempt = updated[0];
         if (!attempt) {
-          return yield* Effect.fail(
-            new PaymentAttemptStateError({
-              operation: "paymentAttempts.attachHostedPaymentPage",
-              paymentAttemptId: input.id,
-              message:
-                "Only created payment attempts can attach a hosted payment page.",
-            })
-          );
+          return yield* new PaymentAttemptStateError({
+            operation: "paymentAttempts.attachHostedPaymentPage",
+            paymentAttemptId: input.id,
+            message:
+              "Only created payment attempts can attach a hosted payment page.",
+          });
         }
 
         return attempt;
@@ -269,13 +265,11 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
           .returning({ id: paymentAttempts.id });
 
         if (updated.length === 0) {
-          return yield* Effect.fail(
-            new PaymentAttemptStateError({
-              operation: "paymentAttempts.markPaid",
-              paymentAttemptId: input.id,
-              message: "Only pending payment attempts can be marked paid.",
-            })
-          );
+          return yield* new PaymentAttemptStateError({
+            operation: "paymentAttempts.markPaid",
+            paymentAttemptId: input.id,
+            message: "Only pending payment attempts can be marked paid.",
+          });
         }
       }),
       markTerminal: Effect.fn("paymentAttempts.markTerminal")(
@@ -299,14 +293,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
             .returning({ id: paymentAttempts.id });
 
           if (updated.length === 0) {
-            return yield* Effect.fail(
-              new PaymentAttemptStateError({
-                operation: "paymentAttempts.markTerminal",
-                paymentAttemptId: input.id,
-                message:
-                  "Only non-terminal payment attempts can be marked terminal.",
-              })
-            );
+            return yield* new PaymentAttemptStateError({
+              operation: "paymentAttempts.markTerminal",
+              paymentAttemptId: input.id,
+              message:
+                "Only non-terminal payment attempts can be marked terminal.",
+            });
           }
         }
       ),
@@ -338,14 +330,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
               .returning();
 
             if (!attempt) {
-              return yield* Effect.fail(
-                new PaymentAttemptStateError({
-                  operation: "paymentAttempts.markPaidForReservation",
-                  paymentAttemptId: input.id,
-                  message:
-                    "Only pending or already-paid payment attempts can mark a reservation paid.",
-                })
-              );
+              return yield* new PaymentAttemptStateError({
+                operation: "paymentAttempts.markPaidForReservation",
+                paymentAttemptId: input.id,
+                message:
+                  "Only pending or already-paid payment attempts can mark a reservation paid.",
+              });
             }
 
             const [reservation] = yield* tx
@@ -397,14 +387,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
               };
 
             // Intentionally reject the transaction to roll back the payment-attempt update above.
-            return yield* Effect.fail(
-              new PaymentAttemptStateError({
-                operation: "paymentAttempts.markPaidForReservation",
-                paymentAttemptId: input.id,
-                message:
-                  "Only the active pending attempt on a held reservation can mark payment paid.",
-              })
-            );
+            return yield* new PaymentAttemptStateError({
+              operation: "paymentAttempts.markPaidForReservation",
+              paymentAttemptId: input.id,
+              message:
+                "Only the active pending attempt on a held reservation can mark payment paid.",
+            });
           })
         );
         return yield* transaction;
@@ -442,14 +430,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
               .returning();
 
             if (!attempt) {
-              return yield* Effect.fail(
-                new PaymentAttemptStateError({
-                  operation: "paymentAttempts.markTerminalForReservation",
-                  paymentAttemptId: input.id,
-                  message:
-                    "Only non-terminal or matching terminal payment attempts can mark a reservation terminal.",
-                })
-              );
+              return yield* new PaymentAttemptStateError({
+                operation: "paymentAttempts.markTerminalForReservation",
+                paymentAttemptId: input.id,
+                message:
+                  "Only non-terminal or matching terminal payment attempts can mark a reservation terminal.",
+              });
             }
 
             const [reservation] = yield* tx
@@ -500,14 +486,12 @@ export const PaymentAttemptRepositoryLive = Layer.effect(
               };
 
             // Intentionally reject the transaction to roll back the payment-attempt update above.
-            return yield* Effect.fail(
-              new PaymentAttemptStateError({
-                operation: "paymentAttempts.markTerminalForReservation",
-                paymentAttemptId: input.id,
-                message:
-                  "Only the active pending attempt on a held reservation can mark payment terminal.",
-              })
-            );
+            return yield* new PaymentAttemptStateError({
+              operation: "paymentAttempts.markTerminalForReservation",
+              paymentAttemptId: input.id,
+              message:
+                "Only the active pending attempt on a held reservation can mark payment terminal.",
+            });
           })
         );
         return yield* transaction;

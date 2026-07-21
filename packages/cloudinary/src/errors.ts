@@ -12,6 +12,6 @@ export class CloudinarySearchError extends Schema.TaggedErrorClass<CloudinarySea
   {
     message: Schema.String,
     expression: Schema.String,
-    httpCode: Schema.optional(Schema.Number),
+    httpCode: Schema.optional(Schema.Finite),
   }
 ) {}

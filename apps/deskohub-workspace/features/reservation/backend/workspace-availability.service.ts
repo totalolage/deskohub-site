@@ -518,11 +518,11 @@ const getAvailabilityReservation = (
       "meeting-room": ({ startsAt, endsAt }) =>
         startsAt && endsAt
           ? normalizeMeetingRoomAvailabilityInterval({ startsAt, endsAt })
-          : Effect.succeed(undefined),
+          : Effect.void.pipe(Effect.as(undefined)),
       cowork: ({ date }) =>
         date
           ? normalizeCoworkAvailabilityInterval(date)
-          : Effect.succeed(undefined),
+          : Effect.void.pipe(Effect.as(undefined)),
     })
   );
 

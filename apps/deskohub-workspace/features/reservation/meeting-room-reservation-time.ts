@@ -7,13 +7,14 @@ import type { ReservationInterval } from "@/features/reservation/reservation-int
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import {
   instantStringSchema,
+  type LocalDateTime,
   localDateTimeSchema,
 } from "@/shared/utils/temporal";
 
 const decodeInstant = Schema.decodeUnknownOption(instantStringSchema);
 const decodeLocalDateTime = Schema.decodeUnknownOption(localDateTimeSchema);
 const localDateTimeToMeetingRoomStartInstant = Option.liftThrowable(
-  (startDateTime: typeof localDateTimeSchema.Type) =>
+  (startDateTime: LocalDateTime) =>
     Temporal.PlainDateTime.from(startDateTime)
       .toZonedDateTime(workspaceSiteConstants.location.timeZone, {
         disambiguation: "reject",

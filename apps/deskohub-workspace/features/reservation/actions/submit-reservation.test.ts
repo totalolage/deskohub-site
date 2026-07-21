@@ -19,7 +19,9 @@ const runSubmitReservation = async (options?: {
   const { CheckoutService } = await import(
     "@/features/checkout/backend/checkout"
   );
-  const { submitWorkspaceReservation } = await import("./submit-reservation");
+  const { submitWorkspaceReservation } = await import(
+    "./submit-workspace-reservation"
+  );
   const { BotProtectionServiceMock } = await import(
     "@/shared/backend/bot-protection/bot-protection.service.mock"
   );
@@ -37,11 +39,13 @@ const runSubmitReservation = async (options?: {
   const effect = submitWorkspaceReservation(input, {
     locale: "en-US",
   }).pipe(
-    Effect.provide(BotProtectionServiceMock({ verifyHuman })),
     Effect.provide(
-      Layer.succeed(CheckoutService, {
-        createHostedPaymentCheckout,
-      })
+      Layer.mergeAll(
+        BotProtectionServiceMock({ verifyHuman }),
+        Layer.succeed(CheckoutService, {
+          createHostedPaymentCheckout,
+        })
+      )
     )
   );
 

@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "generate": "mkdir -p ./src/generated && openapigen --spec ./openapi/nexi-api.yaml --name NexiClient --format httpclient > ./src/generated/effect.gen.ts",
+    "generate": "bun ../../scripts/generate-effect-openapi-client.ts --spec ./openapi/nexi-api.yaml --name NexiClient --output ./src/generated/effect.gen.ts",
     "typecheck": "bun run generate && tsc --project tsconfig.json"
   },
   "dependencies": {

@@ -52,6 +52,16 @@ export class ReservationHoldCleanupScheduleError extends Data.TaggedError(
   }
 }
 
+class ReservationHoldCleanupQueueDuplicateError extends Data.TaggedError(
+  "ReservationHoldCleanupQueueDuplicateError"
+) {}
+
+class ReservationHoldCleanupQueueRequestError extends Data.TaggedError(
+  "ReservationHoldCleanupQueueRequestError"
+)<{
+  readonly cause: unknown;
+}> {}
+
 interface IReservationHoldCleanupScheduleService {
   readonly enqueueCleanup: (input: {
     readonly orderId: string;
@@ -97,11 +107,10 @@ export const getReservationHoldCleanupScheduleMessage = (
   };
 };
 
-export class ReservationHoldCleanupScheduleService extends Context.Service<
-  ReservationHoldCleanupScheduleService,
-  IReservationHoldCleanupScheduleService
->()("ReservationHoldCleanupScheduleService") {
-  static Live = Layer.succeed(this, {
+export function makeReservationHoldCleanupScheduleService(
+  sendMessage: typeof send = send
+): IReservationHoldCleanupScheduleService {
+  return {
     enqueueCleanup: Effect.fn("reservationHoldCleanupSchedule.enqueueCleanup")(
       function* (input) {
         const message = getReservationHoldCleanupScheduleMessage(input);
@@ -111,19 +120,21 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
 
         const result = yield* Effect.tryPromise({
           try: async () => {
-            await send(message.topic, message.payload, message.options);
+            await sendMessage(message.topic, message.payload, message.options);
             return "enqueued" as const;
           },
-          catch: (cause) => cause,
+          catch: (cause) =>
+            cause instanceof DuplicateMessageError
+              ? new ReservationHoldCleanupQueueDuplicateError()
+              : new ReservationHoldCleanupQueueRequestError({ cause }),
         }).pipe(
-          Effect.catchIf(
-            (cause) => cause instanceof DuplicateMessageError,
-            () => Effect.succeed("duplicate" as const)
+          Effect.catchTag("ReservationHoldCleanupQueueDuplicateError", () =>
+            Effect.succeed("duplicate" as const)
           ),
-          Effect.mapError(
+          Effect.mapError((error) =>
             ReservationHoldCleanupScheduleError.fromError(
               "Reservation hold cleanup could not be enqueued."
-            )
+            )(error.cause)
           )
         );
 
@@ -135,7 +146,17 @@ export class ReservationHoldCleanupScheduleService extends Context.Service<
         yield* Effect.logInfo(enqueueResultMessages[result], { message });
       }
     ),
-  });
+  };
+}
+
+export class ReservationHoldCleanupScheduleService extends Context.Service<
+  ReservationHoldCleanupScheduleService,
+  IReservationHoldCleanupScheduleService
+>()("ReservationHoldCleanupScheduleService") {
+  static Live = Layer.succeed(
+    this,
+    makeReservationHoldCleanupScheduleService()
+  );
 }
 
 const decodeSchedulePayload = Schema.decodeUnknownOption(

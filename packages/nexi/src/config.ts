@@ -3,7 +3,7 @@ import { Context, Schema } from "effect";
 export const NexiRuntimeConfigSchema = Schema.Struct({
   baseUrl: Schema.NonEmptyString,
   apiKey: Schema.NonEmptyString,
-  apiTimeout: Schema.Number.check(
+  apiTimeout: Schema.Finite.check(
     Schema.isGreaterThan(0, { description: "API timeout in milliseconds" })
   ),
 });

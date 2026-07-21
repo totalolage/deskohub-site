@@ -286,14 +286,12 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           )
           .returning();
         if (!updated[0]) {
-          return yield* Effect.fail(
-            new WorkspaceReservationStateError({
-              operation: "workspaceReservations.updateProductIntent",
-              reservationId: input.id,
-              message:
-                "Only draft or held reservations can refresh product intent.",
-            })
-          );
+          return yield* new WorkspaceReservationStateError({
+            operation: "workspaceReservations.updateProductIntent",
+            reservationId: input.id,
+            message:
+              "Only draft or held reservations can refresh product intent.",
+          });
         }
         return updated[0];
       }),

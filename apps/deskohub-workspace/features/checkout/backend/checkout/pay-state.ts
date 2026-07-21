@@ -71,7 +71,9 @@ export type SealPayStateForUrlResult = {
 
 export type BuildSignedPayStateInput = {
   readonly locale: Locale;
-  readonly reservation: typeof normalizedCoworkReservationOrderSchema.Type;
+  readonly reservation: Schema.Schema.Type<
+    typeof normalizedCoworkReservationOrderSchema
+  >;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
   readonly submittedCode?: CanonicalDiscountCode;

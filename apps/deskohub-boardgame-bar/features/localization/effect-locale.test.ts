@@ -1,5 +1,4 @@
 import { describe, expect, test } from "bun:test";
-import { Effect } from "effect";
 import { setBoardgameTestEnv } from "@/shared/testing/boardgame-test-env";
 
 describe("LocalizedNextComponent", () => {
@@ -10,11 +9,7 @@ describe("LocalizedNextComponent", () => {
       "./localized-next-component"
     );
 
-    return LocalizedNextComponent.build(() =>
-      Effect.gen(function* () {
-        return yield* LocaleValue;
-      })
-    )(props);
+    return LocalizedNextComponent.build(() => LocaleValue)(props);
   };
 
   test("valid en-US params supplies LocaleValue and sets locale", async () => {

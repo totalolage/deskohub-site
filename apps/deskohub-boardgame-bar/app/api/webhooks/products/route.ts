@@ -16,6 +16,13 @@ class WebhookValidationError extends Data.TaggedError(
   readonly issues?: unknown;
 }> {}
 
+class WebhookCacheInvalidationError extends Data.TaggedError(
+  "WebhookCacheInvalidationError"
+)<{
+  readonly cause: unknown;
+  readonly tag: string;
+}> {}
+
 const validateWebhookUUID = (url: URL) =>
   Effect.gen(function* () {
     if (isDev()) return;
@@ -42,12 +49,12 @@ const validateWebhookUUID = (url: URL) =>
   });
 
 const DotyposProductPayloadItem = Schema.Struct({
-  productid: Schema.Number,
-  categoryid: Schema.Number,
+  productid: Schema.Finite,
+  categoryid: Schema.Finite,
   name: Schema.String,
-  created: Schema.Number,
-  versiondate: Schema.Number,
-  deleted: Schema.Number,
+  created: Schema.Finite,
+  versiondate: Schema.Finite,
+  deleted: Schema.Finite,
 });
 
 const DotyposProductPayload = Schema.NonEmptyArray(DotyposProductPayloadItem);
@@ -122,7 +129,7 @@ export async function POST(request: Request): Promise<NextResponse> {
     for (const tag of tagsToInvalidate) {
       yield* Effect.try({
         try: () => revalidateTag(tag, "max"),
-        catch: (cause) => cause,
+        catch: (cause) => new WebhookCacheInvalidationError({ cause, tag }),
       });
     }
 
@@ -176,13 +183,11 @@ export async function POST(request: Request): Promise<NextResponse> {
           )
         ),
     }),
-    Effect.catch(() =>
-      Effect.succeed(
-        NextResponse.json({
-          success: false,
-          error: "Internal processing error",
-        })
-      )
+    Effect.orElseSucceed(() =>
+      NextResponse.json({
+        success: false,
+        error: "Internal processing error",
+      })
     )
   );
 

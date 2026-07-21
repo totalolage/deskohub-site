@@ -36,13 +36,16 @@ const runSubmit = (send: ReturnType<typeof mock>) =>
       const service = yield* TrainingReservationService;
       return yield* service.submit(input, "en-US");
     }).pipe(
-      Effect.provide(TrainingReservationServiceLive),
       Effect.provide(
-        Layer.succeed(EmailServiceTag, {
-          send,
-          sendTemplate: mock(() => Effect.succeed(sent("template"))),
-          verify: mock(() => Effect.succeed(true)),
-        })
+        TrainingReservationServiceLive.pipe(
+          Layer.provide(
+            Layer.succeed(EmailServiceTag, {
+              send,
+              sendTemplate: mock(() => Effect.succeed(sent("template"))),
+              verify: Effect.succeed(true),
+            })
+          )
+        )
       )
     )
   );

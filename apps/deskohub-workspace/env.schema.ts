@@ -17,7 +17,7 @@ export const workspaceServerEnvSchema = Schema.Struct({
   DATABASE_URL: urlEnvSchema,
   DATABASE_URL_UNPOOLED: optionalUrlEnvSchema,
   DOTYPOS_API_TIMEOUT: toEnvSchema(
-    Schema.NumberFromString.check(Schema.isInt())
+    Schema.FiniteFromString.check(Schema.isInt())
       .check(Schema.isGreaterThan(0))
       .pipe(Schema.withDecodingDefaultType(Effect.succeed(5_000)))
   ),

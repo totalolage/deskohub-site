@@ -2,7 +2,7 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { type DotyposService, ExternalAPIError } from "@deskohub/dotypos";
 import { DotyposServiceMock } from "@deskohub/dotypos/backend/service.mock";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { calculateDiscounts } from "./calculator";
 import { CustomerDiscountProvider } from "./customer-discount-provider.service";
 
@@ -25,8 +25,11 @@ const runWithProvider = <A, E>(
   getCustomerDiscountGroup: typeof DotyposService.Service.getCustomerDiscountGroup
 ) =>
   effect.pipe(
-    Effect.provide(CustomerDiscountProvider.Live),
-    Effect.provide(DotyposServiceMock({ getCustomerDiscountGroup })),
+    Effect.provide(
+      CustomerDiscountProvider.Live.pipe(
+        Layer.provide(DotyposServiceMock({ getCustomerDiscountGroup }))
+      )
+    ),
     Effect.runPromise
   );
 
@@ -40,7 +43,7 @@ describe("CustomerDiscountProvider", () => {
   test("returns no candidate when the customer has no discount group", async () => {
     const result = await runWithProvider(
       resolve(),
-      mock(() => Effect.succeed(undefined))
+      mock(() => Effect.void.pipe(Effect.as(undefined)))
     );
 
     expect(result).toEqual([]);

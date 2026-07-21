@@ -2,13 +2,16 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import type {
-  NexiService as NexiServiceType,
+  NexiService as NexiServiceTag,
   PaymentVerificationResult,
 } from "@deskohub/nexi";
+import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "../fulfillment/paid-fulfillment.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+
+type NexiServiceType = typeof NexiServiceTag.Service;
 
 const paidNotStartedReservation = {
   id: "reservation-id",
@@ -95,23 +98,24 @@ describe("ProviderPaymentFinalizationService", () => {
           paymentAttemptId: "attempt-id",
         });
       }).pipe(
-        Effect.provide(ProviderPaymentFinalizationServiceLive),
         Effect.provide(
-          Layer.succeed(WorkspaceReservationRepository, reservations)
-        ),
-        Effect.provide(
-          Layer.succeed(WorkspacePaidFulfillmentService, fulfillment)
-        ),
-        Effect.provide(
-          Layer.succeed(
-            PaymentAttemptRepository,
-            {} as PaymentAttemptRepositoryType
+          ProviderPaymentFinalizationServiceLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(WorkspaceReservationRepository, reservations),
+                Layer.succeed(WorkspacePaidFulfillmentService, fulfillment),
+                Layer.succeed(
+                  PaymentAttemptRepository,
+                  {} as PaymentAttemptRepositoryType
+                ),
+                Layer.succeed(PostHogEventService, {
+                  capture: () => Effect.void,
+                }),
+                Layer.succeed(NexiService, {} as NexiServiceType)
+              )
+            )
           )
         ),
-        Effect.provide(
-          Layer.succeed(PostHogEventService, { capture: () => Effect.void })
-        ),
-        Effect.provide(Layer.succeed(NexiService, {} as NexiServiceType)),
         Effect.runPromise
       );
 
@@ -161,23 +165,24 @@ describe("ProviderPaymentFinalizationService", () => {
         paymentAttemptId: "attempt-id",
       });
     }).pipe(
-      Effect.provide(ProviderPaymentFinalizationServiceLive),
       Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, reservations)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspacePaidFulfillmentService, fulfillment)
-      ),
-      Effect.provide(
-        Layer.succeed(
-          PaymentAttemptRepository,
-          {} as PaymentAttemptRepositoryType
+        ProviderPaymentFinalizationServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(WorkspaceReservationRepository, reservations),
+              Layer.succeed(WorkspacePaidFulfillmentService, fulfillment),
+              Layer.succeed(
+                PaymentAttemptRepository,
+                {} as PaymentAttemptRepositoryType
+              ),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.succeed(NexiService, {} as NexiServiceType)
+            )
+          )
         )
       ),
-      Effect.provide(
-        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
-      ),
-      Effect.provide(Layer.succeed(NexiService, {} as NexiServiceType)),
       Effect.runPromise
     );
 
@@ -250,22 +255,23 @@ describe("ProviderPaymentFinalizationService", () => {
           webhookEventId: "event-id",
         });
       }).pipe(
-        Effect.provide(ProviderPaymentFinalizationServiceLive),
         Effect.provide(
-          Layer.succeed(WorkspaceReservationRepository, reservations)
+          ProviderPaymentFinalizationServiceLive.pipe(
+            Layer.provide(
+              Layer.mergeAll(
+                Layer.succeed(WorkspaceReservationRepository, reservations),
+                Layer.succeed(WorkspacePaidFulfillmentService, {
+                  fulfillPaidOrder,
+                }),
+                Layer.succeed(PaymentAttemptRepository, paymentAttempts),
+                Layer.succeed(PostHogEventService, {
+                  capture: mock(() => Effect.void),
+                }),
+                Layer.succeed(NexiService, nexi)
+              )
+            )
+          )
         ),
-        Effect.provide(
-          Layer.succeed(WorkspacePaidFulfillmentService, { fulfillPaidOrder })
-        ),
-        Effect.provide(
-          Layer.succeed(PaymentAttemptRepository, paymentAttempts)
-        ),
-        Effect.provide(
-          Layer.succeed(PostHogEventService, {
-            capture: mock(() => Effect.void),
-          })
-        ),
-        Effect.provide(Layer.succeed(NexiService, nexi)),
         Effect.runPromise
       );
 
@@ -333,31 +339,30 @@ describe("ProviderPaymentFinalizationService", () => {
         paymentAttemptId: "attempt-id",
       });
     }).pipe(
-      Effect.provide(ProviderPaymentFinalizationServiceLive),
       Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, {
-          findById: mock(() => Effect.succeed(pendingReservation)),
-        } as unknown as WorkspaceReservationRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspacePaidFulfillmentService, {
-          fulfillPaidOrder: mock(() => Effect.void),
-        })
-      ),
-      Effect.provide(
-        Layer.succeed(PaymentAttemptRepository, {
-          findById: mock(() =>
-            Effect.succeed({ ...pendingAttempt, securityToken: null })
-          ),
-        } as unknown as PaymentAttemptRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
-      ),
-      Effect.provide(
-        Layer.succeed(NexiService, {
-          verifyPaymentOutcome,
-        } as unknown as NexiServiceType)
+        ProviderPaymentFinalizationServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(pendingReservation)),
+              } as unknown as WorkspaceReservationRepositoryType),
+              Layer.succeed(WorkspacePaidFulfillmentService, {
+                fulfillPaidOrder: mock(() => Effect.void),
+              }),
+              Layer.succeed(PaymentAttemptRepository, {
+                findById: mock(() =>
+                  Effect.succeed({ ...pendingAttempt, securityToken: null })
+                ),
+              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.succeed(NexiService, {
+                verifyPaymentOutcome,
+              } as unknown as NexiServiceType)
+            )
+          )
+        )
       ),
       Effect.runPromise
     );
@@ -388,7 +393,13 @@ describe("ProviderPaymentFinalizationService", () => {
     const markPaidForReservation = mock(() => Effect.die("not used"));
     const markTerminalForReservation = mock(() => Effect.die("not used"));
     const verifyPaymentOutcome = mock(() =>
-      Effect.fail(new Error("nexi down"))
+      Effect.fail(
+        new EffectDrizzleQueryError({
+          query: "nexi.verifyPaymentOutcome",
+          params: [],
+          cause: "nexi down",
+        })
+      )
     );
 
     const result = await Effect.gen(function* () {
@@ -398,31 +409,30 @@ describe("ProviderPaymentFinalizationService", () => {
         paymentAttemptId: "attempt-id",
       });
     }).pipe(
-      Effect.provide(ProviderPaymentFinalizationServiceLive),
       Effect.provide(
-        Layer.succeed(WorkspaceReservationRepository, {
-          findById: mock(() => Effect.succeed(pendingReservation)),
-        } as unknown as WorkspaceReservationRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(WorkspacePaidFulfillmentService, {
-          fulfillPaidOrder: mock(() => Effect.void),
-        })
-      ),
-      Effect.provide(
-        Layer.succeed(PaymentAttemptRepository, {
-          findById: mock(() => Effect.succeed(pendingAttempt)),
-          markPaidForReservation,
-          markTerminalForReservation,
-        } as unknown as PaymentAttemptRepositoryType)
-      ),
-      Effect.provide(
-        Layer.succeed(PostHogEventService, { capture: () => Effect.void })
-      ),
-      Effect.provide(
-        Layer.succeed(NexiService, {
-          verifyPaymentOutcome,
-        } as unknown as NexiServiceType)
+        ProviderPaymentFinalizationServiceLive.pipe(
+          Layer.provide(
+            Layer.mergeAll(
+              Layer.succeed(WorkspaceReservationRepository, {
+                findById: mock(() => Effect.succeed(pendingReservation)),
+              } as unknown as WorkspaceReservationRepositoryType),
+              Layer.succeed(WorkspacePaidFulfillmentService, {
+                fulfillPaidOrder: mock(() => Effect.void),
+              }),
+              Layer.succeed(PaymentAttemptRepository, {
+                findById: mock(() => Effect.succeed(pendingAttempt)),
+                markPaidForReservation,
+                markTerminalForReservation,
+              } as unknown as PaymentAttemptRepositoryType),
+              Layer.succeed(PostHogEventService, {
+                capture: () => Effect.void,
+              }),
+              Layer.succeed(NexiService, {
+                verifyPaymentOutcome,
+              } as unknown as NexiServiceType)
+            )
+          )
+        )
       ),
       Effect.runPromise
     );

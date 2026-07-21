@@ -138,8 +138,10 @@ const generatePostHogClient = Effect.gen(function* () {
 if (import.meta.main) {
   Effect.runPromise(
     generatePostHogClient.pipe(
-      Effect.provide(OpenApiGenerator.layerTransformerSchema),
-      Effect.provide(FetchHttpClient.layer)
+      Effect.provide([
+        OpenApiGenerator.layerTransformerSchema,
+        FetchHttpClient.layer,
+      ])
     )
   );
 }

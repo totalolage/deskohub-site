@@ -9,14 +9,18 @@ import {
 import type { StoredDiscountId } from "./persistence-contracts";
 
 export interface IDiscountDefinitionRepository {
-  readonly loadById: (input: {
-    readonly discountId: StoredDiscountId;
-  }) => Effect.Effect<
+  readonly loadById: (
+    input: LoadDiscountDefinitionInput
+  ) => Effect.Effect<
     DiscountDefinition,
     | EffectDrizzleQueryError
     | DiscountDefinitionNotFoundError
     | DiscountDefinitionMalformedError
   >;
+}
+
+interface LoadDiscountDefinitionInput {
+  readonly discountId: StoredDiscountId;
 }
 
 export class DiscountDefinitionRepository extends Context.Service<
@@ -29,10 +33,10 @@ export class DiscountDefinitionRepository extends Context.Service<
       const { db } = yield* WorkspaceDatabase;
 
       const loadById = Effect.fn("DiscountDefinitionRepository.loadById")(
-        function* (input) {
+        function* (input: LoadDiscountDefinitionInput) {
           const row = yield* db.query.discounts.findFirst({
-            where: { id: input.discountId },
-            with: { productTargets: true },
+            where: { id: { eq: input.discountId } },
+            with: { productTargets: {} },
           });
 
           if (!row) {

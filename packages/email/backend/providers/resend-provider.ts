@@ -195,60 +195,57 @@ const createResendProvider = (apiKey: string): EmailProvider => {
         )
     ),
 
-    verify: Effect.fn("resend.verify")(
-      function* () {
-        yield* Effect.logInfo("Resend API key verification started");
+    verify: Effect.gen(function* () {
+      yield* Effect.logInfo("Resend API key verification started");
 
-        return yield* Effect.tryPromise({
-          try: async () => {
-            return await resend.domains.list();
-          },
-          catch: (error) => {
-            return new EmailServiceError(
-              "Failed to verify Resend API key",
-              error
-            );
-          },
-        }).pipe(
-          Effect.tap((response) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ response });
-              yield* Effect.logDebug(
-                "Resend verify provider response received",
-                {
-                  response,
-                }
-              );
-            })
-          ),
-          Effect.flatMap((response) => {
-            const resendError = response.error;
-            if (!resendError) return Effect.succeed(true);
+      return yield* Effect.tryPromise({
+        try: async () => {
+          return await resend.domains.list();
+        },
+        catch: (error) => {
+          return new EmailServiceError(
+            "Failed to verify Resend API key",
+            error
+          );
+        },
+      }).pipe(
+        Effect.tap((response) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ response });
+            yield* Effect.logDebug("Resend verify provider response received", {
+              response,
+            });
+          })
+        ),
+        Effect.flatMap((response) => {
+          const resendError = response.error;
+          if (!resendError) return Effect.succeed(true);
 
-            return Effect.fail(
-              new EmailServiceError(
-                `Failed to verify Resend API key: ${getResendErrorMessage(resendError)}`,
-                resendError,
-                "resend"
-              )
-            );
-          }),
-          Effect.tap((success) =>
-            Effect.gen(function* () {
-              yield* Effect.annotateLogsScoped({ result: success });
-              yield* Effect.logInfo("Resend API key verified successfully");
-            })
-          ),
-          Effect.tapError((error) =>
-            Effect.logError("Resend API key verification failed", {
-              errorType: error._tag,
-              errorMessage: error.message,
-            })
-          )
-        );
-      },
-      (effect) =>
-        effect.pipe(Effect.scoped, Effect.annotateLogs({ provider: "resend" }))
+          return Effect.fail(
+            new EmailServiceError(
+              `Failed to verify Resend API key: ${getResendErrorMessage(resendError)}`,
+              resendError,
+              "resend"
+            )
+          );
+        }),
+        Effect.tap((success) =>
+          Effect.gen(function* () {
+            yield* Effect.annotateLogsScoped({ result: success });
+            yield* Effect.logInfo("Resend API key verified successfully");
+          })
+        ),
+        Effect.tapError((error) =>
+          Effect.logError("Resend API key verification failed", {
+            errorType: error._tag,
+            errorMessage: error.message,
+          })
+        )
+      );
+    }).pipe(
+      Effect.scoped,
+      Effect.annotateLogs({ provider: "resend" }),
+      Effect.withSpan("resend.verify")
     ),
   };
 };

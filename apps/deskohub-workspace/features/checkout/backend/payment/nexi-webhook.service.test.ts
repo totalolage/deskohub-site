@@ -2,15 +2,20 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import type {
-  NexiService as NexiServiceType,
+  NexiService as NexiServiceTag,
   PaymentVerificationResult,
 } from "@deskohub/nexi";
 import { Effect, Layer } from "effect";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
-import type { WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType } from "../fulfillment/paid-fulfillment.service";
+import {
+  WorkspacePaidFulfillmentError,
+  type WorkspacePaidFulfillmentService as WorkspacePaidFulfillmentServiceType,
+} from "../fulfillment/paid-fulfillment.service";
 import type { ReservationHoldCleanupService as ReservationHoldCleanupServiceType } from "../holds/reservation-hold-cleanup.service";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
 import type { WebhookEventRepository as WebhookEventRepositoryType } from "../repositories/webhook-event.repository";
+
+type NexiServiceType = typeof NexiServiceTag.Service;
 
 const payload = {
   eventId: "event-id",
@@ -112,28 +117,31 @@ const buildWebhookEffect = async (services: NexiWebhookTestServices) => {
     const service = yield* NexiWebhookService;
     return yield* service.processNotification(payload);
   }).pipe(
-    Effect.provide(NexiWebhookServiceLive),
     Effect.provide(
-      Layer.succeed(WebhookEventRepository, services.webhookEvents)
-    ),
-    Effect.provide(
-      Layer.succeed(PaymentAttemptRepository, services.paymentAttempts)
-    ),
-    Effect.provide(
-      Layer.succeed(WorkspaceReservationRepository, services.reservations)
-    ),
-    Effect.provide(
-      Layer.succeed(ReservationHoldCleanupService, {
-        cancelOrderHold: mock(() => Effect.die("unused")),
-        sweepExpiredHolds: mock(() => Effect.die("unused")),
-      } as unknown as ReservationHoldCleanupServiceType)
-    ),
-    Effect.provide(Layer.succeed(NexiService, services.nexi)),
-    Effect.provide(
-      Layer.succeed(WorkspacePaidFulfillmentService, services.fulfillment)
-    ),
-    Effect.provide(
-      Layer.succeed(PostHogEventService, { capture: mock(() => Effect.void) })
+      NexiWebhookServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(WebhookEventRepository, services.webhookEvents),
+            Layer.succeed(PaymentAttemptRepository, services.paymentAttempts),
+            Layer.succeed(
+              WorkspaceReservationRepository,
+              services.reservations
+            ),
+            Layer.succeed(ReservationHoldCleanupService, {
+              cancelOrderHold: mock(() => Effect.die("unused")),
+              sweepExpiredHolds: mock(() => Effect.die("unused")),
+            } as unknown as ReservationHoldCleanupServiceType),
+            Layer.succeed(NexiService, services.nexi),
+            Layer.succeed(
+              WorkspacePaidFulfillmentService,
+              services.fulfillment
+            ),
+            Layer.succeed(PostHogEventService, {
+              capture: mock(() => Effect.void),
+            })
+          )
+        )
+      )
     )
   );
 };
@@ -249,7 +257,13 @@ describe("NexiWebhookService", () => {
           } as unknown as NexiServiceType,
           fulfillment: {
             fulfillPaidOrder: mock(() =>
-              Effect.fail(new Error("email failed"))
+              Effect.fail(
+                new WorkspacePaidFulfillmentError({
+                  orderId: "reservation-id",
+                  failureCode: "fulfillment_email_failed",
+                  message: "email failed",
+                })
+              )
             ),
           } satisfies WorkspacePaidFulfillmentServiceType,
         })

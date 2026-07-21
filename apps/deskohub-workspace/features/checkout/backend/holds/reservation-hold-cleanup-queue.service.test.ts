@@ -71,17 +71,17 @@ const runProcessMessage = async (
     input.now ?? now
   ).pipe(
     Effect.provide(
-      Layer.succeed(WorkspaceReservationRepository, {
-        findById,
-      } as unknown as WorkspaceReservationRepositoryType)
-    ),
-    Effect.provide(
-      Layer.succeed(ReservationHoldCleanupService, {
-        cancelOrderHold,
-        sweepExpiredHolds: mock(() =>
-          Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
-        ),
-      } satisfies ReservationHoldCleanupServiceType)
+      Layer.mergeAll(
+        Layer.succeed(WorkspaceReservationRepository, {
+          findById,
+        } as unknown as WorkspaceReservationRepositoryType),
+        Layer.succeed(ReservationHoldCleanupService, {
+          cancelOrderHold,
+          sweepExpiredHolds: mock(() =>
+            Effect.succeed({ cancelled: 0, skipped: 0, failed: 0 })
+          ),
+        } satisfies ReservationHoldCleanupServiceType)
+      )
     ),
     Effect.runPromise
   );
@@ -145,14 +145,23 @@ describe("ReservationHoldCleanupScheduleService", () => {
   });
 
   test("keeps enqueue failure causes visible in structured logs", async () => {
-    const { ReservationHoldCleanupScheduleError } = await import(
+    const { makeReservationHoldCleanupScheduleService } = await import(
       "./reservation-hold-cleanup-queue.service"
     );
     const source = new Error("queue unavailable");
-    const error = ReservationHoldCleanupScheduleError.fromError(
-      "Reservation hold cleanup could not be enqueued."
-    )(source);
+    const service = makeReservationHoldCleanupScheduleService(
+      mock(() => Promise.reject(source)) as never
+    );
+    const error = await service
+      .enqueueCleanup({
+        orderId: "order-id",
+        reservationHoldExpiresAt: expiresAt,
+      })
+      .pipe(Effect.flip, Effect.runPromise);
 
+    expect(error.message).toBe(
+      "Reservation hold cleanup could not be enqueued."
+    );
     expect(error.cause).toMatchObject({
       name: "Error",
       message: "queue unavailable",

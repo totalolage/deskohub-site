@@ -6,7 +6,7 @@ import {
 } from "@opentelemetry/sdk-logs";
 import { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { EffectLogger } from "drizzle-orm/effect-postgres";
-import { Cause, Effect, Logger, References } from "effect";
+import { Cause, Effect, Layer, Logger, References } from "effect";
 import {
   CENSORED_LOG_VALUE,
   censorLoggerOptions,
@@ -429,8 +429,9 @@ describe("censorLoggerOptions", () => {
           42,
         ]);
       }).pipe(
-        Effect.provide(EffectLogger.layer),
-        Effect.provide(Logger.layer([captureLogger]))
+        Effect.provide(
+          Layer.merge(EffectLogger.layer, Logger.layer([captureLogger]))
+        )
       )
     );
 

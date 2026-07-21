@@ -84,14 +84,19 @@ const assignTableId = (
     const service = yield* WorkspaceTableAssignmentService;
     return yield* service.assignTableId(reservation);
   }).pipe(
-    Effect.provide(WorkspaceTableAssignmentServiceLive),
-    Effect.provide(Layer.succeed(DotyposService, dotyposService)),
     Effect.provide(
-      Layer.succeed(WorkspaceReservationRepository, {
-        selectExpiredHoldDotyposReservationIds: mock(() =>
-          Effect.succeed([...expiredHoldDotyposReservationIds])
-        ),
-      } as never)
+      WorkspaceTableAssignmentServiceLive.pipe(
+        Layer.provide(
+          Layer.mergeAll(
+            Layer.succeed(DotyposService, dotyposService),
+            Layer.succeed(WorkspaceReservationRepository, {
+              selectExpiredHoldDotyposReservationIds: mock(() =>
+                Effect.succeed([...expiredHoldDotyposReservationIds])
+              ),
+            } as never)
+          )
+        )
+      )
     ),
     Effect.runPromise
   );

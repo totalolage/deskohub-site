@@ -251,11 +251,9 @@ const makeDotyposService = Effect.gen(function* () {
       };
 
       if (!reservation._customerId) {
-        return yield* Effect.fail(
-          new ValidationError({
-            message: `Reservation ${id} has no customer ID`,
-          })
-        );
+        return yield* new ValidationError({
+          message: `Reservation ${id} has no customer ID`,
+        });
       }
 
       const customerResult = yield* getCustomer(reservation._customerId);
@@ -283,42 +281,34 @@ const makeDotyposService = Effect.gen(function* () {
       const tableId = input.tableId.trim();
 
       if (!customerId) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Customer ID is required" })
-        );
+        return yield* new ValidationError({
+          message: "Customer ID is required",
+        });
       }
 
       if (!tableId) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Table ID is required" })
-        );
+        return yield* new ValidationError({ message: "Table ID is required" });
       }
 
       if (!Number.isInteger(input.seats) || input.seats <= 0) {
-        return yield* Effect.fail(
-          new ValidationError({
-            message: "Reservation seats must be a positive integer",
-          })
-        );
+        return yield* new ValidationError({
+          message: "Reservation seats must be a positive integer",
+        });
       }
 
       if (
         Number.isNaN(input.startDate.getTime()) ||
         Number.isNaN(input.endDate.getTime())
       ) {
-        return yield* Effect.fail(
-          new ValidationError({
-            message: "Reservation dates must be valid",
-          })
-        );
+        return yield* new ValidationError({
+          message: "Reservation dates must be valid",
+        });
       }
 
       if (input.endDate <= input.startDate) {
-        return yield* Effect.fail(
-          new ValidationError({
-            message: "Reservation end date must be after start date",
-          })
-        );
+        return yield* new ValidationError({
+          message: "Reservation end date must be after start date",
+        });
       }
 
       const note = input.note?.trim();
@@ -381,9 +371,9 @@ const makeDotyposService = Effect.gen(function* () {
       const id = reservationId.trim();
 
       if (!id) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Reservation ID is required" })
-        );
+        return yield* new ValidationError({
+          message: "Reservation ID is required",
+        });
       }
 
       yield* Effect.logInfo("Dotypos reservation cancellation started");
@@ -451,9 +441,9 @@ const makeDotyposService = Effect.gen(function* () {
       const id = reservationId.trim();
 
       if (!id) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Reservation ID is required" })
-        );
+        return yield* new ValidationError({
+          message: "Reservation ID is required",
+        });
       }
 
       yield* Effect.logInfo("Dotypos reservation confirmation patch started");
@@ -483,15 +473,15 @@ const makeDotyposService = Effect.gen(function* () {
       const note = input.note.trim();
 
       if (!reservationId) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Reservation ID is required" })
-        );
+        return yield* new ValidationError({
+          message: "Reservation ID is required",
+        });
       }
 
       if (!note) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Reservation note is required" })
-        );
+        return yield* new ValidationError({
+          message: "Reservation note is required",
+        });
       }
 
       yield* Effect.logInfo("Dotypos reservation update started");
@@ -690,17 +680,15 @@ const makeDotyposService = Effect.gen(function* () {
               matchCount: ambiguousLookup.matches.length,
             });
 
-            return yield* Effect.fail(
-              new ValidationError({
-                message: "Dotypos customer lookup matched multiple customers",
-              })
-            );
+            return yield* new ValidationError({
+              message: "Dotypos customer lookup matched multiple customers",
+            });
           })
         ),
         Match.tag("Matched", (matchedLookup) =>
           Effect.succeed(matchedLookup.matches[0])
         ),
-        Match.tag("NotFound", () => Effect.succeed(undefined)),
+        Match.tag("NotFound", () => Effect.as(Effect.void, undefined)),
         Match.exhaustive
       );
 
@@ -720,11 +708,9 @@ const makeDotyposService = Effect.gen(function* () {
         if (needsUpdate) {
           const customerId = existingCustomer.id;
           if (!customerId) {
-            return yield* Effect.fail(
-              new ValidationError({
-                message: "Cannot update Dotypos customer without id",
-              })
-            );
+            return yield* new ValidationError({
+              message: "Cannot update Dotypos customer without id",
+            });
           }
 
           const updateRequest: UpdateCustomerRequest = {
@@ -764,7 +750,7 @@ const makeDotyposService = Effect.gen(function* () {
                 },
               })
             ),
-            Effect.catch(() => Effect.succeed(existingCustomer))
+            Effect.orElseSucceed(() => existingCustomer)
           );
 
           yield* Effect.logDebug("Dotypos existing customer result", {
@@ -782,15 +768,15 @@ const makeDotyposService = Effect.gen(function* () {
       }
 
       if (!normalizedCustomerData.email) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Customer email is required" })
-        );
+        return yield* new ValidationError({
+          message: "Customer email is required",
+        });
       }
 
       if (!normalizedCustomerData.phone) {
-        return yield* Effect.fail(
-          new ValidationError({ message: "Customer phone is required" })
-        );
+        return yield* new ValidationError({
+          message: "Customer phone is required",
+        });
       }
 
       const createRequest: CreateCustomerRequest = {
@@ -866,7 +852,7 @@ const makeDotyposService = Effect.gen(function* () {
 
   const loadCustomerDiscountGroup = (customer: Customer) => {
     const discountGroupId = customer._discountGroupId?.toString().trim();
-    if (!discountGroupId) return Effect.succeed(undefined);
+    if (!discountGroupId) return Effect.as(Effect.void, undefined);
 
     return runDotyposRequest(
       client.getDiscountGroup(config.cloudId, discountGroupId, undefined),
