@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
+import { env } from "@/env";
 import type {
   CheckoutSummaryChangedKeys,
   WorkspaceCheckoutQuote,
@@ -490,6 +491,29 @@ describe("CheckoutService", () => {
         currency: "EUR",
       })
     );
+  });
+
+  test("does not apply the sandbox currency override to a lookalike hostname", async () => {
+    const originalNexiOrigin = env.NEXI_API_ORIGIN;
+    env.NEXI_API_ORIGIN =
+      "https://xpaysandbox.nexigroup.com.attacker.example/api";
+
+    try {
+      const harness = await createCheckoutHarness({
+        orderId: "reservation-lookalike-nexi-origin",
+      });
+
+      await Effect.runPromise(harness.effect);
+
+      expect(harness.createAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "CZK" })
+      );
+      expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "CZK" })
+      );
+    } finally {
+      env.NEXI_API_ORIGIN = originalNexiOrigin;
+    }
   });
 
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {

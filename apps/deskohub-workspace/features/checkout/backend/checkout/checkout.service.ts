@@ -191,7 +191,7 @@ const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
 
 const getNexiCheckoutCurrencyOverride = () => {
   if (env.VERCEL_ENV === "production") return undefined;
-  if (!env.NEXI_API_ORIGIN.includes("xpaysandbox.nexigroup.com")) {
+  if (new URL(env.NEXI_API_ORIGIN).hostname !== "xpaysandbox.nexigroup.com") {
     return undefined;
   }
   return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
