@@ -203,39 +203,6 @@ export const WorkspaceReservationRepository =
     "WorkspaceReservationRepository"
   );
 
-const storedReservationDetailsDecoder: Schema.Decoder<
-  WorkspaceReservationRow["reservationDetails"]
-> = storedWorkspaceReservationDetailsSchema;
-
-const decodeWorkspaceReservation = Effect.fn(
-  "WorkspaceReservation.decodeStoredDetails"
-)((reservation: WorkspaceReservationRow) =>
-  Schema.decodeUnknownEffect(storedReservationDetailsDecoder, {
-    errors: "all",
-    onExcessProperty: "error",
-  })(reservation.reservationDetails).pipe(
-    Effect.map((reservationDetails) =>
-      withReservationKindFields({
-        ...reservation,
-        reservationDetails,
-      })
-    ),
-    Effect.mapError(
-      (cause) =>
-        new WorkspaceReservationDetailsMalformedError({
-          reservationId: reservation.id,
-          message: "Stored workspace reservation details are malformed.",
-          cause,
-        })
-    )
-  )
-);
-
-const decodeOptionalWorkspaceReservation = (
-  reservation: WorkspaceReservationRow | undefined
-) =>
-  reservation ? decodeWorkspaceReservation(reservation) : Effect.succeed(null);
-
 const ensureUpdated = (
   updated: readonly Pick<WorkspaceReservation, "id">[],
   operation: string,
@@ -819,3 +786,36 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
     });
   })
 );
+
+const decodeOptionalWorkspaceReservation = (
+  reservation: WorkspaceReservationRow | undefined
+) =>
+  reservation ? decodeWorkspaceReservation(reservation) : Effect.succeed(null);
+
+const decodeWorkspaceReservation = Effect.fn(
+  "WorkspaceReservation.decodeStoredDetails"
+)((reservation: WorkspaceReservationRow) =>
+  Schema.decodeUnknownEffect(storedReservationDetailsDecoder, {
+    errors: "all",
+    onExcessProperty: "error",
+  })(reservation.reservationDetails).pipe(
+    Effect.map((reservationDetails) =>
+      withReservationKindFields({
+        ...reservation,
+        reservationDetails,
+      })
+    ),
+    Effect.mapError(
+      (cause) =>
+        new WorkspaceReservationDetailsMalformedError({
+          reservationId: reservation.id,
+          message: "Stored workspace reservation details are malformed.",
+          cause,
+        })
+    )
+  )
+);
+
+const storedReservationDetailsDecoder: Schema.Decoder<
+  WorkspaceReservationRow["reservationDetails"]
+> = storedWorkspaceReservationDetailsSchema;
