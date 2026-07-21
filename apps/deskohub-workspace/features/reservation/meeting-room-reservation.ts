@@ -72,6 +72,23 @@ export type MeetingRoomReservationProductInput = Pick<
   "kind"
 >;
 
+export const storedMeetingRoomReservationDetailsSchema = Schema.Struct({
+  kind: workspaceMeetingRoomProductIdentitySchema.fields.kind,
+}).annotate({
+  identifier: "StoredMeetingRoomReservationDetails",
+  description:
+    "App-owned meeting-room product intent persisted with a reservation.",
+});
+
+export type StoredMeetingRoomReservationDetails =
+  typeof storedMeetingRoomReservationDetailsSchema.Type;
+
+export const getStoredMeetingRoomReservationDetails = (
+  _reservation: MeetingRoomReservationProductInput
+): StoredMeetingRoomReservationDetails => ({
+  kind: meetingRoomReservationKind,
+});
+
 export const getMeetingRoomReservationProductCoffee = (
   _reservation: MeetingRoomReservationProductInput
 ) => false;

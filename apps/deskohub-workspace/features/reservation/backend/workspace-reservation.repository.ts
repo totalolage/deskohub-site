@@ -1,13 +1,26 @@
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer } from "effect";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
-import { type WorkspaceReservation, workspaceReservations } from "@/db/schema";
-import { postgresUuidV7 } from "@/db/uuid-v7";
 import {
-  getWorkspaceReservationProductColumns,
-  type NormalizedCoworkReservationProduct,
-} from "@/features/reservation/cowork-reservation-product";
+  type WorkspaceReservation as WorkspaceReservationRow,
+  workspaceReservations,
+} from "@/db/schema";
+import { postgresUuidV7 } from "@/db/uuid-v7";
+import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
+import {
+  type StoredWorkspaceReservationDetails,
+  storedWorkspaceReservationDetailsSchema,
+} from "@/features/reservation/persistence-contracts";
+
+const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
+  const reservationWithCoworkFields = withCoworkProductFields(reservation);
+
+  // Compose field enrichments for additional reservation kinds here.
+  return reservationWithCoworkFields;
+};
+
+export type WorkspaceReservation = ReturnType<typeof withReservationKindFields>;
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -17,11 +30,19 @@ export class WorkspaceReservationStateError extends Data.TaggedError(
   readonly message: string;
 }> {}
 
+export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
+  "WorkspaceReservationDetailsMalformedError"
+)<{
+  readonly reservationId: string;
+  readonly message: string;
+  readonly cause: unknown;
+}> {}
+
 export interface CreateWorkspaceReservationInput {
   readonly reservationIntentKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
-  readonly product: NormalizedCoworkReservationProduct;
+  readonly reservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: string;
   readonly reservationHoldExpiresAt?: Temporal.Instant;
 }
@@ -29,20 +50,31 @@ export interface CreateWorkspaceReservationInput {
 export interface WorkspaceReservationRepository {
   readonly createDraft: (
     input: CreateWorkspaceReservationInput
-  ) => Effect.Effect<WorkspaceReservation, EffectDrizzleQueryError>;
+  ) => Effect.Effect<
+    WorkspaceReservation,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly findById: (
     id: string
-  ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly findByIntentKey: (
     reservationIntentKey: string
-  ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
-  readonly updateProductIntent: (input: {
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
+  readonly updateReservationDetails: (input: {
     readonly id: string;
-    readonly product: NormalizedCoworkReservationProduct;
+    readonly reservationDetails: StoredWorkspaceReservationDetails;
     readonly locale: string;
   }) => Effect.Effect<
     WorkspaceReservation,
-    EffectDrizzleQueryError | WorkspaceReservationStateError
+    | EffectDrizzleQueryError
+    | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
   >;
   readonly claimHoldCreation: (
     id: string
@@ -73,7 +105,10 @@ export interface WorkspaceReservationRepository {
   >;
   readonly claimCancellation: (
     id: string
-  ) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly markCancelled: (input: {
     readonly id: string;
     readonly cancelledAt: Temporal.Instant;
@@ -117,7 +152,10 @@ export interface WorkspaceReservationRepository {
   readonly claimPaidFulfillment: (input: {
     readonly id: string;
     readonly staleProcessingBefore: Temporal.Instant;
-  }) => Effect.Effect<WorkspaceReservation | null, EffectDrizzleQueryError>;
+  }) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly markFulfilled: (input: {
     readonly id: string;
     readonly fulfilledAt: Temporal.Instant;
@@ -151,7 +189,10 @@ export interface WorkspaceReservationRepository {
   readonly selectExpiredHolds: (input: {
     readonly now: Temporal.Instant;
     readonly limit: number;
-  }) => Effect.Effect<readonly WorkspaceReservation[], EffectDrizzleQueryError>;
+  }) => Effect.Effect<
+    readonly WorkspaceReservation[],
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly selectExpiredHoldDotyposReservationIds: (input: {
     readonly now: Temporal.Instant;
   }) => Effect.Effect<readonly string[], EffectDrizzleQueryError>;
@@ -190,7 +231,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .from(workspaceReservations)
           .where(eq(workspaceReservations.id, id))
           .limit(1);
-        return reservation ?? null;
+        return yield* decodeOptionalWorkspaceReservation(reservation);
       },
       (effect, reservationId) =>
         effect.pipe(Effect.annotateLogs({ reservationId }))
@@ -208,7 +249,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             reservationState: "draft" as const,
             paymentState: "not_started" as const,
             fulfillmentState: "not_started" as const,
-            ...getWorkspaceReservationProductColumns(input.product),
+            reservationDetails: input.reservationDetails,
             locale: input.locale,
             reservationHoldExpiresAt: input.reservationHoldExpiresAt,
           };
@@ -219,7 +260,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             .onConflictDoNothing()
             .returning();
 
-          if (inserted) return inserted;
+          if (inserted) return yield* decodeWorkspaceReservation(inserted);
 
           const [existing] = yield* db
             .select()
@@ -237,7 +278,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               "Workspace reservation insert returned no row."
             );
           }
-          return existing;
+          return yield* decodeWorkspaceReservation(existing);
         },
         (effect, input) =>
           effect.pipe(
@@ -260,21 +301,18 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               )
             )
             .limit(1);
-          return reservation ?? null;
+          return yield* decodeOptionalWorkspaceReservation(reservation);
         },
         (effect, reservationIntentKey) =>
           effect.pipe(Effect.annotateLogs({ reservationIntentKey }))
       ),
-      updateProductIntent: Effect.fn(
-        "workspaceReservations.updateProductIntent"
+      updateReservationDetails: Effect.fn(
+        "workspaceReservations.updateReservationDetails"
       )(function* (input) {
-        const productColumns = getWorkspaceReservationProductColumns(
-          input.product
-        );
         const updated = yield* db
           .update(workspaceReservations)
           .set({
-            ...productColumns,
+            reservationDetails: input.reservationDetails,
             locale: input.locale,
             updatedAt: Temporal.Now.instant(),
           })
@@ -287,13 +325,13 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           .returning();
         if (!updated[0]) {
           return yield* new WorkspaceReservationStateError({
-            operation: "workspaceReservations.updateProductIntent",
+            operation: "workspaceReservations.updateReservationDetails",
             reservationId: input.id,
             message:
-              "Only draft or held reservations can refresh product intent.",
+              "Only draft or held reservations can refresh reservation details.",
           });
         }
-        return updated[0];
+        return yield* decodeWorkspaceReservation(updated[0]);
       }),
       claimHoldCreation: Effect.fn("workspaceReservations.claimHoldCreation")(
         function* (id) {
@@ -412,7 +450,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               )
             )
             .returning();
-          return claimed ?? null;
+          return yield* decodeOptionalWorkspaceReservation(claimed);
         }
       ),
       markCancelled: Effect.fn("workspaceReservations.markCancelled")(
@@ -584,7 +622,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
             )
           )
           .returning();
-        return claimed ?? null;
+        return yield* decodeOptionalWorkspaceReservation(claimed);
       }),
       markFulfilled: Effect.fn("workspaceReservations.markFulfilled")(
         function* (input) {
@@ -695,7 +733,7 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
       }),
       selectExpiredHolds: Effect.fn("workspaceReservations.selectExpiredHolds")(
         function* (input) {
-          return yield* db
+          const reservations = yield* db
             .select()
             .from(workspaceReservations)
             .where(
@@ -711,6 +749,11 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
               asc(workspaceReservations.id)
             )
             .limit(input.limit);
+          return yield* Effect.forEach(
+            reservations,
+            decodeWorkspaceReservation,
+            { concurrency: "inherit" }
+          );
         },
         (effect, input) => effect.pipe(Effect.annotateLogs(input))
       ),
@@ -743,3 +786,36 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
     });
   })
 );
+
+const decodeOptionalWorkspaceReservation = (
+  reservation: WorkspaceReservationRow | undefined
+) =>
+  reservation ? decodeWorkspaceReservation(reservation) : Effect.succeed(null);
+
+const decodeWorkspaceReservation = Effect.fn(
+  "WorkspaceReservation.decodeStoredDetails"
+)((reservation: WorkspaceReservationRow) =>
+  Schema.decodeUnknownEffect(storedReservationDetailsDecoder, {
+    errors: "all",
+    onExcessProperty: "error",
+  })(reservation.reservationDetails).pipe(
+    Effect.map((reservationDetails) =>
+      withReservationKindFields({
+        ...reservation,
+        reservationDetails,
+      })
+    ),
+    Effect.mapError(
+      (cause) =>
+        new WorkspaceReservationDetailsMalformedError({
+          reservationId: reservation.id,
+          message: "Stored workspace reservation details are malformed.",
+          cause,
+        })
+    )
+  )
+);
+
+const storedReservationDetailsDecoder: Schema.Decoder<
+  WorkspaceReservationRow["reservationDetails"]
+> = storedWorkspaceReservationDetailsSchema;

@@ -4,7 +4,6 @@ import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
-import type { WorkspaceReservation } from "@/db/schema";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
 import type {
   WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
@@ -12,7 +11,10 @@ import type {
 } from "@/features/checkout/backend/reservation";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
+import type {
+  WorkspaceReservation,
+  WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
+} from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
 
@@ -62,6 +64,11 @@ const makeReusableReservation = (
     productTier: "basic",
     productCoffee: false,
     productMonitorOption: null,
+    reservationDetails: {
+      kind: "cowork",
+      entryTier: "basic",
+      coffee: false,
+    },
     locale: "en-US",
     reservationHoldExpiresAt: reusableHoldExpiresAt,
     reservationHoldExpiredAt: null,
@@ -109,7 +116,7 @@ const runReusableReservationScenario = async (input: {
   );
 
   const enqueueCleanup = mock(() => Effect.void);
-  const updateProductIntent = mock(() => Effect.void);
+  const updateReservationDetails = mock(() => Effect.void);
   const recordMany = mock((events) => Effect.succeed(events as never));
   const ensureAvailable = mock(() => Effect.void);
   const verifyHuman = mock(() => Effect.void);
@@ -142,7 +149,7 @@ const runReusableReservationScenario = async (input: {
       claimHoldCreation,
       findById,
       releaseHoldCreation: mock(() => Effect.void),
-      updateProductIntent,
+      updateReservationDetails,
       attachHold: mock(() => Effect.die("unused")),
       markAttachFailedCancellationRequired: mock(() => Effect.void),
     } as unknown as WorkspaceReservationRepositoryType),
@@ -177,7 +184,7 @@ const runReusableReservationScenario = async (input: {
   return {
     result,
     enqueueCleanup,
-    updateProductIntent,
+    updateReservationDetails,
     recordMany,
     ensureAvailable,
     createDraft,
@@ -240,9 +247,10 @@ describe("prepareWorkspacePayState", () => {
         fulfillmentState: "not_started",
         dotyposCustomerId: input.dotyposCustomerId,
         customerAccessCode: input.customerAccessCode,
-        productTier: input.product.entryTier,
-        productCoffee: input.product.coffee,
-        productMonitorOption: input.product.monitorOption,
+        reservationDetails: input.reservationDetails,
+        productTier: "basic",
+        productCoffee: false,
+        productMonitorOption: null,
         locale: input.locale,
         reservationHoldExpiresAt: input.reservationHoldExpiresAt,
       } as never)
@@ -295,7 +303,7 @@ describe("prepareWorkspacePayState", () => {
         attachHold,
         findById: mock(() => Effect.succeed(null)),
         releaseHoldCreation: mock(() => Effect.void),
-        updateProductIntent: mock(() => Effect.die("unused")),
+        updateReservationDetails: mock(() => Effect.die("unused")),
         markAttachFailedCancellationRequired: mock(() => Effect.void),
       } as unknown as WorkspaceReservationRepositoryType),
       Layer.succeed(WorkspaceCheckoutAccessCodeService, {
@@ -398,9 +406,13 @@ describe("prepareWorkspacePayState", () => {
     expect(result.verifyHuman).toHaveBeenCalledWith({
       verificationFailurePolicy: "allow",
     });
-    expect(result.updateProductIntent).toHaveBeenCalledWith({
+    expect(result.updateReservationDetails).toHaveBeenCalledWith({
       id: existingReservation.id,
-      product: reservation,
+      reservationDetails: {
+        kind: "cowork",
+        entryTier: "basic",
+        coffee: false,
+      },
       locale: "en-US",
     });
     expect(result.findOrCreateCustomer).not.toHaveBeenCalled();

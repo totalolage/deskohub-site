@@ -30,6 +30,12 @@ export const createWorkspaceReservationEmailPreviewReservation = (
   productTier: "profi",
   productCoffee: true,
   productMonitorOption: "2x27-qhd",
+  reservationDetails: {
+    kind: "cowork",
+    entryTier: "profi",
+    coffee: true,
+    monitorOption: "2x27-qhd",
+  },
   locale,
   customer: workspaceReservationEmailPreviewCustomer,
   reservedFrom: mockDate,

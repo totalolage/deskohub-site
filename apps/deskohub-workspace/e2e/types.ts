@@ -1,4 +1,5 @@
 import type { Effect } from "effect";
+import type { StoredWorkspaceReservationDetails } from "../features/reservation/persistence-contracts";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "./config";
 import type { WorkspaceE2EError } from "./errors";
 
@@ -11,9 +12,7 @@ export type CheckoutRow = {
   payment_state: string;
   fulfillment_state: string;
   active_payment_attempt_id: string | null;
-  product_tier: string;
-  product_coffee: boolean;
-  product_monitor_option: string | null;
+  reservation_details: unknown;
   locale: string;
   reservation_created_at: Date | null;
   reservation_confirmed_at: Date | null;
@@ -50,9 +49,7 @@ export type CheckoutData = {
   readonly checkoutUrl: string;
   readonly date: string;
   readonly email: string;
-  readonly expectedCoffee: boolean;
-  readonly expectedMonitorOption: string | null;
-  readonly expectedProductTier: string;
+  readonly expectedReservationDetails: StoredWorkspaceReservationDetails;
   readonly locale: "en-US";
   readonly message: string;
   readonly name: string;
