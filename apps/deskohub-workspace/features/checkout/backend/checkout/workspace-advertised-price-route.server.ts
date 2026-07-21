@@ -2,7 +2,7 @@ import { Data, Effect, type Layer, Predicate, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { workspaceAdvertisedPriceRequestSchema } from "@/features/checkout/advertised-price";
 import type { DiscountService } from "@/features/discounts";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import { makeWorkspaceNextEffect } from "@/shared/backend/workspace-next-effect";
 import { buildWorkspaceAdvertisedPrice } from "./workspace-advertised-price.server";
 
 const decodeRequest = Schema.decodeUnknownEffect(
@@ -64,18 +64,16 @@ const handleAdvertisedPriceError = Effect.fn(
   );
 });
 
-export const makeWorkspaceAdvertisedPricePost =
-  <E>(discountServiceLayer: Layer.Layer<DiscountService, E>) =>
-  async (request: Request): Promise<NextResponse> =>
-    runWorkspaceRequestEffect(
-      request,
-      loadAdvertisedPrice(request).pipe(
-        Effect.provide(discountServiceLayer),
-        Effect.map((result) =>
-          NextResponse.json(result, {
-            headers: { "Cache-Control": "private, no-store" },
-          })
-        ),
-        Effect.catch(handleAdvertisedPriceError)
-      )
-    );
+export const makeWorkspaceAdvertisedPricePost = <E>(
+  discountServiceLayer: Layer.Layer<DiscountService, E>
+) =>
+  makeWorkspaceNextEffect(discountServiceLayer).route((request) =>
+    loadAdvertisedPrice(request).pipe(
+      Effect.map((result) =>
+        NextResponse.json(result, {
+          headers: { "Cache-Control": "private, no-store" },
+        })
+      ),
+      Effect.catch(handleAdvertisedPriceError)
+    )
+  );

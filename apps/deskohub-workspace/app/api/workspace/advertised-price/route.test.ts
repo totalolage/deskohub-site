@@ -1,11 +1,15 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect } from "effect";
-import { makeWorkspaceAdvertisedPricePost } from "@/features/checkout/backend/checkout/workspace-advertised-price-route.server";
 import { discountAdvertisementQuoteCodec } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
+import { DiscountCalculationError } from "@/features/discounts/errors";
 
 mock.module("server-only", () => ({}));
+
+const { makeWorkspaceAdvertisedPricePost } = await import(
+  "@/features/checkout/backend/checkout/workspace-advertised-price-route.server"
+);
 
 const advertise = mock(({ discountableSubtotal, product }) =>
   Effect.succeed(
@@ -34,11 +38,12 @@ const requestBody = {
   },
 };
 
-const request = (body: unknown) =>
+const request = (body: unknown, signal?: AbortSignal) =>
   new Request("https://deskohub.test/api/workspace/advertised-price", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal,
   });
 
 describe("Workspace advertised price route", () => {
@@ -77,5 +82,69 @@ describe("Workspace advertised price route", () => {
 
     expect(response.status).toBe(400);
     expect(advertise).not.toHaveBeenCalled();
+  });
+
+  test("rejects malformed JSON before invoking advertisement discovery", async () => {
+    advertise.mockClear();
+    const response = await POST(
+      new Request("https://deskohub.test/api/workspace/advertised-price", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{",
+      })
+    );
+
+    expect(response.status).toBe(400);
+    expect(advertise).not.toHaveBeenCalled();
+  });
+
+  test("maps application failures to a safe 500 response", async () => {
+    const failedPOST = makeWorkspaceAdvertisedPricePost(
+      DiscountServiceMock({
+        advertise: () =>
+          Effect.fail(
+            new DiscountCalculationError({
+              reason: "invalid_discountable_subtotal",
+              message: "provider application failed",
+            })
+          ),
+      })
+    );
+
+    const response = await failedPOST(request(requestBody));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Workspace advertised price could not be loaded",
+    });
+  });
+
+  test("cancels request execution when the request is aborted", async () => {
+    const controller = new AbortController();
+    let interruptObserved = false;
+    let markStarted = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const cancellablePOST = makeWorkspaceAdvertisedPricePost(
+      DiscountServiceMock({
+        advertise: () =>
+          Effect.sync(markStarted).pipe(
+            Effect.andThen(Effect.never),
+            Effect.onInterrupt(() =>
+              Effect.sync(() => {
+                interruptObserved = true;
+              })
+            )
+          ),
+      })
+    );
+    const response = cancellablePOST(request(requestBody, controller.signal));
+
+    await started;
+    controller.abort();
+
+    await expect(response).rejects.toBeDefined();
+    expect(interruptObserved).toBe(true);
   });
 });
