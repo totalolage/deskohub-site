@@ -7,6 +7,7 @@ import {
 import {
   type CoworkReservationInput,
   coworkReservationDefaultValues,
+  type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { workspaceCoworkProductIdentitySchema } from "@/features/reservation/cowork-reservation-product";
 import {
@@ -148,6 +149,22 @@ export const getReservationDefaultValuesFromSearchParams = (
     ...(!product.requiresMonitorOption && { monitorOption: undefined }),
   };
 };
+
+export const getReservationDefaultValuesFromPayState = (
+  reservation: NormalizedCoworkReservationOrder
+): CoworkReservationInput => ({
+  entryTier: reservation.entryTier,
+  date: reservation.date,
+  coffee: reservation.coffee,
+  name: reservation.name,
+  email: reservation.email,
+  phone: reservation.phone,
+  ...(reservation.monitorOption !== undefined && {
+    monitorOption: reservation.monitorOption,
+  }),
+  ...(reservation.message !== undefined && { message: reservation.message }),
+  legalConsent: false,
+});
 
 export const getWorkspaceAvailabilityQueryFromReservationSearchParams = (
   searchParams: SupportedSearchParams

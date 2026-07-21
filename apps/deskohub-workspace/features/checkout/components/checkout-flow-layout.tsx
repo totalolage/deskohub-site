@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
 import type { Locale } from "@/features/i18n";
 import { m } from "@/features/i18n";
@@ -8,11 +9,13 @@ type CheckoutFlowLayoutProps = {
   readonly activeStepKey: CheckoutStepKey;
   readonly children: ReactNode;
   readonly locale: Locale;
+  readonly stepHrefs?: Partial<Record<CheckoutStepKey, string>>;
 };
 
 type CheckoutStepsProps = {
   readonly activeStepKey: CheckoutStepKey;
   readonly locale: Locale;
+  readonly stepHrefs?: Partial<Record<CheckoutStepKey, string>>;
 };
 
 export const checkoutFlowSteps = [
@@ -23,7 +26,11 @@ export const checkoutFlowSteps = [
 
 export type CheckoutStepKey = (typeof checkoutFlowSteps)[number]["key"];
 
-export function CheckoutSteps({ activeStepKey, locale }: CheckoutStepsProps) {
+export function CheckoutSteps({
+  activeStepKey,
+  locale,
+  stepHrefs,
+}: CheckoutStepsProps) {
   return (
     <ol
       className="grid gap-2 sm:grid-cols-3"
@@ -31,13 +38,9 @@ export function CheckoutSteps({ activeStepKey, locale }: CheckoutStepsProps) {
     >
       {checkoutFlowSteps.map((step, index) => {
         const isCurrentStep = step.key === activeStepKey;
-
-        return (
-          <li
-            key={step.key}
-            aria-current={isCurrentStep ? "step" : undefined}
-            className="flex items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68"
-          >
+        const href = stepHrefs?.[step.key];
+        const content = (
+          <>
             <span
               className={cn(
                 "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
@@ -51,6 +54,23 @@ export function CheckoutSteps({ activeStepKey, locale }: CheckoutStepsProps) {
             <span className={cn(isCurrentStep && "text-white")}>
               {step.getLabel({}, { locale })}
             </span>
+          </>
+        );
+        const className = cn(
+          "flex items-center gap-3 rounded-2xl border border-white/12 bg-white/7 px-4 py-3 text-sm font-semibold uppercase tracking-[0.14em] text-white/68",
+          href &&
+            "transition hover:border-white/28 hover:bg-white/12 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-burned-orange"
+        );
+
+        return (
+          <li key={step.key} aria-current={isCurrentStep ? "step" : undefined}>
+            {href ? (
+              <Link className={className} href={href}>
+                {content}
+              </Link>
+            ) : (
+              <div className={className}>{content}</div>
+            )}
           </li>
         );
       })}
@@ -62,6 +82,7 @@ export function CheckoutFlowLayout({
   activeStepKey,
   children,
   locale,
+  stepHrefs,
 }: CheckoutFlowLayoutProps) {
   return (
     <main className="min-h-screen overflow-x-clip bg-navy-blue text-white">
@@ -71,7 +92,11 @@ export function CheckoutFlowLayout({
 
         <Container className="max-w-4xl">
           <div className="mx-auto max-w-3xl flex flex-col gap-6">
-            <CheckoutSteps activeStepKey={activeStepKey} locale={locale} />
+            <CheckoutSteps
+              activeStepKey={activeStepKey}
+              locale={locale}
+              stepHrefs={stepHrefs}
+            />
             {children}
           </div>
         </Container>

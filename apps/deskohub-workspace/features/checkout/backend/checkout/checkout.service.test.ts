@@ -127,6 +127,7 @@ const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
   readonly quote?: WorkspaceCheckoutQuote;
+  readonly reservationIntentId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
@@ -137,6 +138,7 @@ const buildPayStateToken = (input: {
         reservation: reservationData,
         quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
         orderId: input.orderId,
+        reservationIntentId: input.reservationIntentId,
         submittedCode: input.submittedCode,
         changedKeys: input.changedKeys,
         ttlMilliseconds: 10 * 60 * 1000,
@@ -217,6 +219,7 @@ type CheckoutHarnessOptions = {
   readonly orderId: string;
   readonly locale?: Locale;
   readonly acceptedQuote?: WorkspaceCheckoutQuote;
+  readonly reservationIntentId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: Record<string, unknown>;
@@ -340,6 +343,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
           orderId: options.orderId,
           locale,
           quote: options.acceptedQuote,
+          reservationIntentId: options.reservationIntentId,
           submittedCode: options.submittedCode,
           changedKeys: options.changedKeys,
         }),
@@ -536,6 +540,7 @@ describe("CheckoutService", () => {
     const acceptedToken = buildPayStateToken({
       orderId: "reservation-label-edited",
       quote: acceptedQuote,
+      reservationIntentId: "reservation-label-edited-intent-id",
     });
     const affirm = mock(() =>
       Effect.succeed({
@@ -548,6 +553,7 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-label-edited",
       acceptedQuote,
+      reservationIntentId: "reservation-label-edited-intent-id",
       affirm,
     });
 
@@ -569,10 +575,13 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(
-      Effect.runSync(openPayState(freshToken ?? "")).quote.payment.discounts[0]
-        ?.discount.label
-    ).toBe("Edited English summer label");
+    const freshState = Effect.runSync(openPayState(freshToken ?? ""));
+    expect(freshState.quote.payment.discounts[0]?.discount.label).toBe(
+      "Edited English summer label"
+    );
+    expect(freshState.reservationIntentId).toBe(
+      "reservation-label-edited-intent-id"
+    );
   });
 
   test("returns pricing_changed when an accepted discount disappears before payment", async () => {

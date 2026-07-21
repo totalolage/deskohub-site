@@ -303,6 +303,7 @@ const getFreshPayUrl: (input: {
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
+  readonly reservationIntentId?: string;
   readonly submittedCode: CanonicalDiscountCode | undefined;
   readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
 }) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
@@ -653,6 +654,7 @@ export const CheckoutServiceLive = Layer.effect(
               reservation: data,
               quote,
               orderId: reservation.id,
+              reservationIntentId: state.reservationIntentId,
               submittedCode: state.submittedCode,
               changedKeys,
             });

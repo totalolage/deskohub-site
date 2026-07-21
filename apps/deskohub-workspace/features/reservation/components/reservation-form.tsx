@@ -49,10 +49,12 @@ import {
   getCoworkReservationOrder,
   getCoworkTierIncludesCourtesyCoffee,
   getCoworkTierRequiresMonitorOption,
+  type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { normalizeCoworkReservationProduct } from "@/features/reservation/cowork-reservation-product";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
+  getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
@@ -90,7 +92,9 @@ import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type ReservationFormProps = {
+  initialReservation?: NormalizedCoworkReservationOrder;
   locale: Locale;
+  reservationIntentId?: string;
 };
 
 type ReservationFormFallbackProps = Pick<ReservationFormProps, "locale"> & {
@@ -237,12 +241,18 @@ const createReservationIntentId = () =>
   globalThis.crypto?.randomUUID?.() ??
   `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export function ReservationForm({ locale }: ReservationFormProps) {
+export function ReservationForm({
+  initialReservation,
+  locale,
+  reservationIntentId: initialReservationIntentId,
+}: ReservationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
-  const [reservationIntentId] = useState(createReservationIntentId);
+  const [reservationIntentId] = useState(
+    () => initialReservationIntentId ?? createReservationIntentId()
+  );
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
   const sanitizedUtmParams = useMemo(
@@ -250,8 +260,11 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     [searchParams]
   );
   const defaultValues = useMemo(
-    () => getReservationDefaultValuesFromSearchParams(searchParams),
-    [searchParams]
+    () =>
+      initialReservation
+        ? getReservationDefaultValuesFromPayState(initialReservation)
+        : getReservationDefaultValuesFromSearchParams(searchParams),
+    [initialReservation, searchParams]
   );
   const initialAvailabilityQuery = useMemo(
     () =>

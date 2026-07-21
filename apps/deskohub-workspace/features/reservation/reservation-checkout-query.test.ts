@@ -1,7 +1,10 @@
 import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
+import { Schema } from "effect";
+import { normalizedCoworkReservationOrderSchema } from "./cowork-reservation";
 import {
+  getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "./reservation-checkout-query";
@@ -92,5 +95,35 @@ describe("getReservationDefaultValuesFromSearchParams", () => {
     expect(
       getReservationDefaultValuesFromSearchParams({ email: "invalid@" }).email
     ).toBe("");
+  });
+});
+
+describe("getReservationDefaultValuesFromPayState", () => {
+  test("restores all reservation details while resetting legal consent", () => {
+    const reservation = Schema.decodeUnknownSync(
+      normalizedCoworkReservationOrderSchema
+    )({
+      kind: "cowork",
+      entryTier: "profi",
+      date: "2099-06-10",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 000 111",
+      message: "Please prepare the standing desk.",
+    });
+
+    expect(getReservationDefaultValuesFromPayState(reservation)).toEqual({
+      entryTier: "profi",
+      date: "2099-06-10",
+      coffee: true,
+      monitorOption: "2x27-qhd",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 000 111",
+      message: "Please prepare the standing desk.",
+      legalConsent: false,
+    });
   });
 });

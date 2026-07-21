@@ -136,7 +136,15 @@ async function CheckoutPayContent({
   const { freshPayUrl, state } = opened;
 
   return runWithRequestLocale(locale, () => (
-    <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+    <CheckoutFlowLayout
+      activeStepKey="pay"
+      locale={locale}
+      stepHrefs={{
+        order: `/${locale}/checkout/order?${new URLSearchParams({
+          [payStateTokenQueryParam]: payStateToken,
+        })}`,
+      }}
+    >
       <CheckoutPayPage
         changedKeys={state.changedKeys}
         freshPayUrl={freshPayUrl}

@@ -483,6 +483,7 @@ describe("prepareCoworkPayState", () => {
     expect(token).toBeTruthy();
     const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.orderId).toBe("reservation-id");
+    expect(state.reservationIntentId).toBe("intent-id");
     expect(state.submittedCode).toBeUndefined();
     expect(quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({

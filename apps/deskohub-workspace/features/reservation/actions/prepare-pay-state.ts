@@ -45,6 +45,7 @@ import {
   getCheckoutSummaryChangedKeys,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
+import type { CanonicalDiscountCode } from "@/features/discounts";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
@@ -251,6 +252,8 @@ const toReadyResult = Effect.fn("prepareCoworkPayState.toReadyResult")(
     readonly reservation: NormalizedCoworkReservationOrder;
     readonly quote: WorkspaceCheckoutQuote;
     readonly reservationId: string;
+    readonly reservationIntentId: string;
+    readonly submittedCode: CanonicalDiscountCode | undefined;
     readonly changedKeys?: CheckoutSummaryChangedKeys;
   }) {
     const state = yield* buildSignedPayState({
@@ -258,6 +261,8 @@ const toReadyResult = Effect.fn("prepareCoworkPayState.toReadyResult")(
       reservation: input.reservation,
       quote: input.quote,
       orderId: input.reservationId,
+      reservationIntentId: input.reservationIntentId,
+      submittedCode: input.submittedCode,
       changedKeys: input.changedKeys,
     });
     const sealedState = yield* sealPayStateForUrl(state);
@@ -547,6 +552,8 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
         quote,
         reservationId: existingReservation.id,
         changedKeys: advertisedPriceChangedKeys,
+        reservationIntentId: input.reservationIntentId,
+        submittedCode,
       });
     }
 
@@ -641,6 +648,8 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
           quote: reusedQuote,
           reservationId: claimConflictReservation.id,
           changedKeys: advertisedPriceChangedKeys,
+          reservationIntentId: input.reservationIntentId,
+          submittedCode,
         });
       }
 
@@ -824,6 +833,8 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
       quote,
       reservationId: reservationDraft.id,
       changedKeys: advertisedPriceChangedKeys,
+      reservationIntentId: input.reservationIntentId,
+      submittedCode,
     });
   },
   (effect, input) =>
