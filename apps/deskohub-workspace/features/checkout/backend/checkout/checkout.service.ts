@@ -189,7 +189,7 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 
 const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
 
-export const getNexiCheckoutCurrencyOverride = () => {
+const getNexiCheckoutCurrencyOverride = () => {
   if (env.VERCEL_ENV === "production") return undefined;
   if (!env.NEXI_API_ORIGIN.includes("xpaysandbox.nexigroup.com")) {
     return undefined;
@@ -378,7 +378,11 @@ export const CheckoutServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ providerSessionInput: input });
         yield* Effect.logInfo("Checkout provider session start requested");
 
-        const nexiAmount = yield* toNexiAmount(input.total).pipe(
+        const providerTotal = withWorkspaceMoneyCurrency(
+          input.total,
+          getNexiCheckoutCurrencyOverride()
+        );
+        const nexiAmount = yield* toNexiAmount(providerTotal).pipe(
           Effect.mapError(
             (cause) =>
               new CheckoutError({
@@ -393,9 +397,9 @@ export const CheckoutServiceLive = Layer.effect(
         const attempt = yield* paymentAttempts.create({
           workspaceReservationId: input.workspaceReservationId,
           providerOrderId: generateNexiOrderId(),
-          amountValue: input.total.value,
-          amountExponent: input.total.exponent,
-          currency: input.total.currency,
+          amountValue: providerTotal.value,
+          amountExponent: providerTotal.exponent,
+          currency: providerTotal.currency,
         });
         yield* Effect.annotateLogsScoped({ attempt });
         yield* Effect.logInfo("Checkout payment attempt created");
@@ -608,12 +612,8 @@ export const CheckoutServiceLive = Layer.effect(
           }
 
           const order = yield* normalizeWorkspaceCheckoutOrder(data);
-          const currencyOverride = getNexiCheckoutCurrencyOverride();
           const product = getWorkspaceProductByTier(order.entryTier);
-          const discountableSubtotal = withWorkspaceMoneyCurrency(
-            product.price,
-            currencyOverride
-          );
+          const discountableSubtotal = product.price;
           const affirmation = yield* discounts.affirm({
             product: { kind: "cowork", tier: order.entryTier },
             discountableSubtotal,
@@ -627,7 +627,6 @@ export const CheckoutServiceLive = Layer.effect(
           });
           const quote = yield* calculateWorkspaceCheckoutQuote(data, {
             discountQuote: affirmation.quote,
-            currencyOverride,
           });
           yield* Effect.annotateLogsScoped({ quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");

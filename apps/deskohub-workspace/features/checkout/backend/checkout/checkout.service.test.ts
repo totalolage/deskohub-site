@@ -477,6 +477,19 @@ describe("CheckoutService", () => {
       submittedCode,
       acceptedDiscountIds: [],
     });
+    expect(harness.createAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountValue: 55_000,
+        amountExponent: 2,
+        currency: "EUR",
+      })
+    );
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: "55000",
+        currency: "EUR",
+      })
+    );
   });
 
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {

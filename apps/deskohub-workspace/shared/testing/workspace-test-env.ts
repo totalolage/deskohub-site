@@ -24,6 +24,7 @@ process.env.GOOGLE_CALENDAR_WORKSPACE_LIMITATIONS_ID ??=
   "workspace-limitations-calendar";
 process.env.NEXI_API_KEY ??= "nexi";
 process.env.NEXI_API_ORIGIN ??= "https://xpaysandbox.nexigroup.com";
+process.env.NEXI_CHECKOUT_CURRENCY_OVERRIDE ??= "EUR";
 process.env.RESEND_WEBHOOK_SECRET ??= "whsec_test";
 process.env.VERCEL_ENV ??= "development";
 process.env.VERCEL_PROJECT_PRODUCTION_URL ??= "workspace.deskohub.test";

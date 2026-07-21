@@ -24,7 +24,6 @@ export const buildWorkspaceAdvertisedPrice = Effect.fn(
   });
   const quote = yield* calculateWorkspaceCheckoutQuote(pricing.order, {
     discountQuote,
-    currencyOverride: pricing.currencyOverride,
   });
   const state = yield* buildAdvertisedPriceState({
     locale: input.locale,

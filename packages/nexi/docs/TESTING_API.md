@@ -81,7 +81,7 @@ If Workspace catalog prices are `CZK` while validating against the public Nexi C
 NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR
 ```
 
-Workspace applies this override only for non-production deployments using the Nexi sandbox origin. Do not use it with the live Nexi origin or production Vercel environment.
+Workspace applies this override only when creating a provider session in a non-production deployment using the Nexi sandbox origin. Reservation-page advertisements, signed summaries, and final price affirmation remain in the catalog currency; the provider attempt and Nexi request use the override currency for subsequent verification. Do not use it with the live Nexi origin or production Vercel environment.
 
 Then test both paths:
 
@@ -105,4 +105,4 @@ NEXI_API_ORIGIN=https://xpaysandbox.nexigroup.com/api/phoenix-0.0/psp
 NEXI_API_KEY=bcf67740-9013-4dd9-bbfb-02debdf7206f
 ```
 
-If Workspace preview testing needs to validate the public Nexi sandbox happy path while catalog prices are `CZK`, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` only for non-production sandbox deployments. Do not use that override with the live Nexi origin or production Vercel environment.
+If Workspace preview testing needs to validate the public Nexi sandbox happy path while catalog prices are `CZK`, set `NEXI_CHECKOUT_CURRENCY_OVERRIDE=EUR` only for non-production sandbox deployments. It changes only the provider-session currency; customer-visible quotes remain in `CZK`. Do not use that override with the live Nexi origin or production Vercel environment.

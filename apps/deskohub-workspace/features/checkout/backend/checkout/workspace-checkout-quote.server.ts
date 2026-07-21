@@ -6,7 +6,6 @@ import {
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
-import { withWorkspaceMoneyCurrency } from "@/features/checkout/workspace-money";
 import {
   type CanonicalDiscountCode,
   type DiscountAdvertisementQuote,
@@ -14,7 +13,6 @@ import {
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import type { NormalizedCoworkReservationOrder } from "@/features/reservation/cowork-reservation";
-import { getNexiCheckoutCurrencyOverride } from "./checkout.service";
 
 export const buildAuthoritativeWorkspaceCheckoutQuote = Effect.fn(
   "buildAuthoritativeWorkspaceCheckoutQuote"
@@ -47,7 +45,6 @@ export const buildAuthoritativeWorkspaceCheckoutQuote = Effect.fn(
 
     const quote = yield* calculateWorkspaceCheckoutQuote(pricing.order, {
       discountQuote,
-      currencyOverride: pricing.currencyOverride,
     });
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logInfo("Authoritative workspace checkout quote built");
@@ -73,18 +70,13 @@ export const getWorkspaceCheckoutPricingContext = Effect.fn(
   };
 }) {
   const order = yield* normalizeWorkspaceCheckoutOrder(input.reservation);
-  const currencyOverride = getNexiCheckoutCurrencyOverride();
   const product = getWorkspaceProductByTier(order.entryTier);
 
   return {
     order,
-    currencyOverride,
     discountInput: {
       product: { kind: "cowork" as const, tier: order.entryTier },
-      discountableSubtotal: withWorkspaceMoneyCurrency(
-        product.price,
-        currencyOverride
-      ),
+      discountableSubtotal: product.price,
       reservationDate: input.reservation.date,
     },
   };
@@ -108,7 +100,6 @@ export const affirmWorkspaceAdvertisedPrice = Effect.fn(
   });
   const quote = yield* calculateWorkspaceCheckoutQuote(pricing.order, {
     discountQuote,
-    currencyOverride: pricing.currencyOverride,
   });
 
   return { discountQuote, quote };
@@ -132,6 +123,5 @@ export const buildIdentifiedWorkspaceCheckoutQuote = Effect.fn(
 
   return yield* calculateWorkspaceCheckoutQuote(pricing.order, {
     discountQuote,
-    currencyOverride: pricing.currencyOverride,
   });
 });
