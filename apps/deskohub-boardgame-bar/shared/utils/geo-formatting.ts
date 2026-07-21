@@ -22,25 +22,6 @@ export const getLocalizedCountryName = (
 };
 
 /**
- * Gets the localized name of a language
- * @param languageCode - ISO 639-1 language code (e.g., "cs", "en")
- * @param locale - The locale to use for formatting
- * @returns Localized language name or the code if not found
- */
-export const getLocalizedLanguageName = (
-  languageCode: string,
-  locale: string
-): string => {
-  try {
-    const displayNames = new Intl.DisplayNames([locale], { type: "language" });
-    return displayNames.of(languageCode) || languageCode;
-  } catch {
-    // Fallback if locale is not supported
-    return languageCode;
-  }
-};
-
-/**
  * Gets a translated city name based on locale
  * @param cityKey - The key for the city (e.g., "Prague")
  * @param locale - The locale to use for translation

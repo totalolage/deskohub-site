@@ -8,7 +8,6 @@ import { baseLocale, type Locale } from "@/features/i18n";
 import { Footer, Header } from "@/features/navigation";
 import { Toaster } from "@/shared/components/ui/sonner";
 import { QueryProvider } from "@/shared/providers/query-provider";
-import { SafeAreaProvider } from "@/shared/providers/safe-area-provider";
 import { isDev } from "@/shared/utils/environment";
 
 export const viewport: Viewport = {
@@ -35,27 +34,25 @@ export default async function RootLayout({
         <GoogleTagManager gtmId={env.NEXT_PUBLIC_GTM_ID} />
       )}
       <body className="min-h-screen bg-white [--header-height:80px]">
-        <SafeAreaProvider>
-          <QueryProvider>
-            <CookieConsentProvider locale={locale} />
-            <Header />
-            <main className="min-h-[calc(100dvh-var(--header-height))] isolate">
-              {children}
-            </main>
-            <Footer />
-            <Toaster />
-            <Analytics
-              mode={
-                isDev({
-                  nodeEnv: env.NEXT_PUBLIC_NODE_ENV,
-                  vercelEnv: env.NEXT_PUBLIC_VERCEL_ENV,
-                })
-                  ? "development"
-                  : "production"
-              }
-            />
-          </QueryProvider>
-        </SafeAreaProvider>
+        <QueryProvider>
+          <CookieConsentProvider locale={locale} />
+          <Header />
+          <main className="min-h-[calc(100dvh-var(--header-height))] isolate">
+            {children}
+          </main>
+          <Footer />
+          <Toaster />
+          <Analytics
+            mode={
+              isDev({
+                nodeEnv: env.NEXT_PUBLIC_NODE_ENV,
+                vercelEnv: env.NEXT_PUBLIC_VERCEL_ENV,
+              })
+                ? "development"
+                : "production"
+            }
+          />
+        </QueryProvider>
       </body>
     </html>
   );
