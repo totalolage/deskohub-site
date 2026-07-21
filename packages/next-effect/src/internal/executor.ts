@@ -5,16 +5,34 @@ export type ExecuteRun = <A>(
   effect: Effect.Effect<A, unknown, never>
 ) => Promise<A>;
 
-export interface ExecuteOptions<E> {
+interface ExecuteBaseOptions<E> {
   readonly mapError?: (error: E) => unknown;
-  readonly run?: ExecuteRun;
   readonly signal?: AbortSignal;
 }
 
-export async function execute<A, E>(
+export interface ExecuteOptions<E> extends ExecuteBaseOptions<E> {
+  readonly run?: ExecuteRun;
+}
+
+export interface ExecuteRecoveryOptions<A, E, ErrorResult>
+  extends ExecuteBaseOptions<E> {
+  readonly run: (
+    effect: Effect.Effect<A, unknown, never>
+  ) => Promise<A | ErrorResult>;
+}
+
+export function execute<A, E>(
   effect: Effect.Effect<A, E, never>,
-  options: ExecuteOptions<E> = {}
-): Promise<A> {
+  options?: ExecuteOptions<E>
+): Promise<A>;
+export function execute<A, E, ErrorResult>(
+  effect: Effect.Effect<A, E, never>,
+  options: ExecuteRecoveryOptions<A, E, ErrorResult>
+): Promise<A | ErrorResult>;
+export async function execute<A, E, ErrorResult = never>(
+  effect: Effect.Effect<A, E, never>,
+  options: ExecuteOptions<E> | ExecuteRecoveryOptions<A, E, ErrorResult> = {}
+): Promise<A | ErrorResult> {
   const program = options.mapError
     ? Effect.mapError(effect, options.mapError)
     : effect;

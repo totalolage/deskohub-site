@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Context, Effect, Layer } from "effect";
 import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
-import { NextEffect } from ".";
+import { NextEffect, type NextEffectRouteRunner } from ".";
 
 class TestService extends Context.Service<
   TestService,
@@ -199,6 +199,23 @@ describe("NextEffect", () => {
     await expect(response.text()).resolves.toBe("completed");
   });
 
+  test("custom route runners can recover with a typed response", async () => {
+    const next = NextEffect.make({
+      runRoute: (_request, effect) =>
+        Effect.runPromise(
+          Effect.catch(effect, () =>
+            Effect.succeed(new Response("recovered", { status: 500 }))
+          )
+        ),
+    });
+    const GET = next.route(() => Effect.fail("route failure"));
+
+    const response = await GET(new Request("https://deskohub.test/example"));
+
+    expect(response.status).toBe(500);
+    await expect(response.text()).resolves.toBe("recovered");
+  });
+
   test("route maps handler failures", async () => {
     const mapped = new Error("mapped handler");
     const next = NextEffect.make({ mapError: () => mapped });
@@ -275,4 +292,56 @@ if (process.env.NEXT_EFFECT_ROUTE_TYPECHECK === "1") {
 
   // @ts-expect-error Route handlers must return a Response or subtype.
   next.route(() => Effect.succeed("not a response"));
+
+  class SuccessfulRouteResponse extends Response {
+    readonly outcome = "success" as const;
+  }
+
+  class FailedRouteResponse extends Response {
+    readonly outcome = "failure" as const;
+  }
+
+  const runRecoveringRoute: NextEffectRouteRunner<FailedRouteResponse> = (
+    _request,
+    effect
+  ) =>
+    Effect.runPromise(
+      Effect.catch(effect, () => Effect.succeed(new FailedRouteResponse()))
+    );
+  const recoveringNext = NextEffect.make({
+    layer: Layer.succeed(TestService, { value: "service" }),
+    runRoute: runRecoveringRoute,
+  });
+  const recoveredRoute = recoveringNext.route(() =>
+    Effect.map(TestService, () => new SuccessfulRouteResponse())
+  );
+  const RecoveryPage = recoveringNext.page(() => Effect.succeed("page"));
+
+  void recoveredRoute(new Request("https://deskohub.test/example")).then(
+    (response) => {
+      const routeResponse: SuccessfulRouteResponse | FailedRouteResponse =
+        response;
+
+      // @ts-expect-error Recovery keeps the failure response in the result type.
+      const successOnly: SuccessfulRouteResponse = response;
+
+      return routeResponse.outcome + successOnly.outcome;
+    }
+  );
+  void recoveringNext.run(Effect.succeed("run")).then((result) => {
+    const exactRunResult: string = result;
+
+    // @ts-expect-error Route recovery does not widen run results.
+    const routeError: FailedRouteResponse = result;
+
+    return exactRunResult + routeError.outcome;
+  });
+  void RecoveryPage({}).then((result) => {
+    const exactPageResult: string = result;
+
+    // @ts-expect-error Route recovery does not widen page results.
+    const routeError: FailedRouteResponse = result;
+
+    return exactPageResult + routeError.outcome;
+  });
 }
