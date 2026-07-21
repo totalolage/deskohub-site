@@ -380,7 +380,7 @@ const submitPaymentAndWaitForHostedPage = ({
 }) =>
   Effect.gen(function* () {
     yield* clickCheckoutPayConsent(run, session);
-    yield* clickCheckoutPayButton(run, session);
+    yield* activateCheckoutPayButton(run, session);
 
     return yield* waitForBrowserUrl({
       description: "Nexi hosted payment page",
@@ -410,7 +410,7 @@ const clickCheckoutPayConsent = (run: Runner, session: string) =>
     yield* pressBrowserKey(run, session, "Space", { timeoutMs: 30_000 });
   });
 
-const clickCheckoutPayButton = (run: Runner, session: string) =>
+const activateCheckoutPayButton = (run: Runner, session: string) =>
   Effect.gen(function* () {
     const ref = yield* requireEnabledSnapshotRef({
       description: "enabled payment submit button",
@@ -418,16 +418,8 @@ const clickCheckoutPayButton = (run: Runner, session: string) =>
       run,
       session,
     });
-    yield* runBrowserCommand(
-      "click checkout pay button",
-      run,
-      session,
-      ["click", ref],
-      {
-        logOutput: false,
-        timeoutMs: 30_000,
-      }
-    );
+    yield* focusBrowserElement(run, session, ref, { timeoutMs: 30_000 });
+    yield* pressBrowserKey(run, session, "Enter", { timeoutMs: 30_000 });
   });
 
 export const completeNexiHostedPayment = ({
