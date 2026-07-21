@@ -15,6 +15,9 @@ export type DiscountResolutionProvider =
 export type DiscountResolutionOperation =
   | "quote"
   | "affirm"
+  | "advertise"
+  | "affirm_advertisement"
+  | "quote_identified"
   | "normalize"
   | "load_definition"
   | "apply_candidate";

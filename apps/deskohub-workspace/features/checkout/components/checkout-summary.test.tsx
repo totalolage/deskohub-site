@@ -62,6 +62,27 @@ describe("CheckoutSummary", () => {
     expect(view.queryByText("product:basic")).toBeNull();
   });
 
+  test("highlights the canonical changed product key", () => {
+    const quote = buildWorkspaceCheckoutQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const view = render(
+      <CheckoutSummary
+        changedKeys={{
+          sectionKeys: ["order"],
+          itemKeys: ["order/product:cowork:basic"],
+        }}
+        locale="en-US"
+        summary={quote.summary}
+      />
+    );
+
+    expect(view.getByText("Basic Day Pass").parentElement?.className).toContain(
+      "text-burned-orange"
+    );
+  });
+
   test("renders a discounted product with its original and final prices", async () => {
     const money = (value: number) => ({
       value,

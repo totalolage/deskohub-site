@@ -18,6 +18,7 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
+const { buildReviewedCheckoutPayPath } = await import("./checkout-pay-url");
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
 const fixedKey: PayStateKey = parsePayStateKey(
@@ -372,5 +373,31 @@ describe("Pay URL state", () => {
 
     expect(result.type).toBe("sealedPayState");
     expect(searchParams.get(payStateTokenQueryParam)).toBe(result.token);
+  });
+
+  test("builds a clean payable continuation after price review", () => {
+    const reviewState = buildState({
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["order/product:cowork:profi"],
+      },
+    });
+    const path = buildReviewedCheckoutPayPath(reviewState, {
+      keys: [fixedKey],
+      now: () => fixedNow,
+      randomBytes: fixedRandomBytes,
+    });
+    const token = new URL(path, "https://deskohub.test").searchParams.get(
+      payStateTokenQueryParam
+    );
+    const continued = openPayState(token ?? "", {
+      keys: [fixedKey],
+      now: () => fixedNow,
+    });
+
+    expect(continued.changedKeys).toBeUndefined();
+    expect(continued.quote).toEqual(reviewState.quote);
+    expect(continued.orderId).toBe(reviewState.orderId);
+    expect(continued.submittedCode).toBe(reviewState.submittedCode);
   });
 });

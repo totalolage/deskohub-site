@@ -6,15 +6,21 @@ export {
   canonicalDiscountCodeSchema,
   type Discount,
   type DiscountAdjustment,
+  type DiscountAdvertisementInput,
+  type DiscountAdvertisementQuote,
   type DiscountId,
   type DiscountQuote,
   type DiscountQuoteInput,
+  discountAdvertisementQuoteCodec,
   discountProductIdentitySchema,
+  discountQuoteCodec,
   isAppliedDiscount,
 } from "./contracts";
 export {
+  type DiscountAdvertisementAffirmationInput,
   type DiscountAffirmation,
   type DiscountAffirmationInput,
+  type DiscountIdentifiedQuoteInput,
   DiscountService,
   type IDiscountService,
 } from "./discount.service";

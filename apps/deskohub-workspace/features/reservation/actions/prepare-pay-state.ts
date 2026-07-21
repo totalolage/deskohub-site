@@ -18,11 +18,14 @@ import {
 } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
+import { workspaceAdvertisedPriceReservationEquals } from "@/features/checkout/advertised-price";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
-  buildAuthoritativeWorkspaceCheckoutQuote,
+  affirmWorkspaceAdvertisedPrice,
   buildCheckoutPayPath,
+  buildIdentifiedWorkspaceCheckoutQuote,
   buildSignedPayState,
+  openAdvertisedPriceState,
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
@@ -38,12 +41,17 @@ import {
   WorkspaceCheckoutAccessCodeServiceLive,
   WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
-import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import {
+  type CheckoutSummaryChangedKeys,
+  getCheckoutSummaryChangedKeys,
+  type WorkspaceCheckoutQuote,
+} from "@/features/checkout/checkout-quote";
 import {
   legalEvidenceMapSchema,
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
+import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
@@ -69,6 +77,7 @@ const preparePayStateSchema = Schema.toStandardSchemaV1(
   Schema.Struct({
     locale: Schema.Literals(locales),
     reservationIntentId: Schema.NonEmptyString,
+    advertisedPriceToken: Schema.NonEmptyString,
     reservation: normalizedCoworkReservationOrderSchema,
     legalConsent: Schema.optional(Schema.Boolean),
   }),
@@ -79,6 +88,14 @@ type PreparePayStateInput = StandardSchemaV1.InferOutput<
   typeof preparePayStateSchema
 >;
 
+class AdvertisedPriceMismatchError extends Data.TaggedError(
+  "AdvertisedPriceMismatchError"
+)<{
+  readonly reason: "invalid_token" | "input_mismatch";
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
   legalEvidenceMapSchema,
   {
@@ -88,6 +105,35 @@ const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
 
 const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
   now.add({ milliseconds: payStateDefaultTtlMilliseconds });
+
+const openSubmittedAdvertisedPrice = Effect.fn(
+  "prepareWorkspacePayState.openAdvertisedPrice"
+)((input: PreparePayStateInput) =>
+  Effect.try({
+    try: () => openAdvertisedPriceState(input.advertisedPriceToken),
+    catch: (cause) =>
+      new AdvertisedPriceMismatchError({
+        reason: "invalid_token",
+        message: "Advertised price snapshot is invalid or expired.",
+        cause,
+      }),
+  }).pipe(
+    Effect.filterOrFail(
+      (state) =>
+        state.locale === input.locale &&
+        workspaceAdvertisedPriceReservationEquals(state.reservation, {
+          kind: "cowork",
+          details: getCoworkReservationDetails(input.reservation),
+        }),
+      () =>
+        new AdvertisedPriceMismatchError({
+          reason: "input_mismatch",
+          message:
+            "Advertised price snapshot does not match the submitted reservation.",
+        })
+    )
+  )
+);
 
 const normalizeIdempotencyPart = (value: string) =>
   value.trim().toLocaleLowerCase("en-US");
@@ -206,12 +252,14 @@ const toReadyResult = (input: {
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly reservationId: string;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) => {
   const state = buildSignedPayState({
     locale: input.locale,
     reservation: input.reservation,
     quote: input.quote,
     orderId: input.reservationId,
+    changedKeys: input.changedKeys,
   });
   const sealedState = sealPayStateForUrl(state);
   const redirectUrl = new URL(
@@ -220,8 +268,15 @@ const toReadyResult = (input: {
   );
   redirectUrl.searchParams.set("orderId", input.reservationId);
   return {
-    status: "ready" as const,
+    status: input.changedKeys
+      ? ("pricing_changed" as const)
+      : ("ready" as const),
     redirectUrl: `${redirectUrl.pathname}${redirectUrl.search}`,
+    ...(input.changedKeys && {
+      affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
+        key.startsWith("order/product:") ? [key.slice("order/".length)] : []
+      ),
+    }),
   };
 };
 
@@ -343,6 +398,8 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
+    const advertisedPrice = yield* openSubmittedAdvertisedPrice(input);
+
     const reservationIntentKey = deriveReservationIntentKey({
       reservationIntentId: input.reservationIntentId,
       reservation: input.reservation,
@@ -388,6 +445,25 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         message: m.reservationValidationLegalConsentRequired(),
       };
     }
+
+    const affirmedAdvertisement = yield* affirmWorkspaceAdvertisedPrice({
+      reservation: input.reservation,
+      locale: input.locale,
+      advertisedQuote: advertisedPrice.quote,
+    });
+    const advertisedPriceChanged =
+      advertisedPrice.quote.fingerprint !==
+        affirmedAdvertisement.quote.fingerprint ||
+      !workspaceMoneyEquals(
+        advertisedPrice.quote.summary.total,
+        affirmedAdvertisement.quote.summary.total
+      );
+    const advertisedPriceChangedKeys = advertisedPriceChanged
+      ? getCheckoutSummaryChangedKeys(
+          advertisedPrice.quote.summary,
+          affirmedAdvertisement.quote.summary
+        )
+      : undefined;
 
     const reservations = yield* WorkspaceReservationRepository;
     const dotypos = yield* DotyposService;
@@ -442,10 +518,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         "Existing workspace reservation hold reused for checkout prep"
       );
 
-      const quote = yield* buildAuthoritativeWorkspaceCheckoutQuote({
+      const quote = yield* buildIdentifiedWorkspaceCheckoutQuote({
         reservation: input.reservation,
         dotyposCustomerId: existingReservation.dotyposCustomerId,
         locale: input.locale,
+        advertisementQuote: affirmedAdvertisement.discountQuote,
       });
       yield* Effect.annotateLogsScoped({ quote });
       yield* Effect.logDebug("Workspace reservation quote built");
@@ -470,6 +547,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         reservation: input.reservation,
         quote,
         reservationId: existingReservation.id,
+        changedKeys: advertisedPriceChangedKeys,
       });
     }
 
@@ -496,10 +574,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
 
-    const quote = yield* buildAuthoritativeWorkspaceCheckoutQuote({
+    const quote = yield* buildIdentifiedWorkspaceCheckoutQuote({
       reservation: input.reservation,
       dotyposCustomerId,
       locale: input.locale,
+      advertisementQuote: affirmedAdvertisement.discountQuote,
     });
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logDebug("Workspace reservation quote built");
@@ -535,10 +614,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           "Existing workspace reservation hold reused after concurrent hold creation"
         );
 
-        const reusedQuote = yield* buildAuthoritativeWorkspaceCheckoutQuote({
+        const reusedQuote = yield* buildIdentifiedWorkspaceCheckoutQuote({
           reservation: input.reservation,
           dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
           locale: input.locale,
+          advertisementQuote: affirmedAdvertisement.discountQuote,
         });
 
         yield* reservations.updateReservationDetails({
@@ -561,6 +641,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           reservation: input.reservation,
           quote: reusedQuote,
           reservationId: claimConflictReservation.id,
+          changedKeys: advertisedPriceChangedKeys,
         });
       }
 
@@ -743,6 +824,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       reservation: input.reservation,
       quote,
       reservationId: reservationDraft.id,
+      changedKeys: advertisedPriceChangedKeys,
     });
   },
   (effect, input) =>

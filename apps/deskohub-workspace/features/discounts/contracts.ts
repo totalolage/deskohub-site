@@ -127,11 +127,36 @@ export type DiscountQuote = {
   readonly discountedSubtotal: WorkspaceMoney;
 };
 
-export type DiscountQuoteInput = {
+export const discountQuoteCodec = Schema.Struct({
+  product: workspaceCoworkProductIdentitySchema,
+  discountableSubtotal: nonNegativeWorkspaceMoneyCodec,
+  discounts: Schema.Array(appliedDiscountCodec),
+  totalDiscount: nonNegativeWorkspaceMoneyCodec,
+  discountedSubtotal: nonNegativeWorkspaceMoneyCodec,
+}).annotate({
+  identifier: "DiscountQuote",
+  description: "A source-neutral discount calculation for one product.",
+});
+
+export const discountAdvertisementQuoteCodec = discountQuoteCodec
+  .pipe(Schema.brand("DiscountAdvertisementQuote"))
+  .annotate({
+    identifier: "DiscountAdvertisementQuote",
+    description:
+      "A discount quote produced only by anonymous advertisement discovery or affirmation.",
+  });
+
+export type DiscountAdvertisementQuote =
+  typeof discountAdvertisementQuoteCodec.Type;
+
+export type DiscountAdvertisementInput = {
   readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly reservationDate: string;
-  readonly dotyposCustomerId: string;
   readonly locale: Locale;
+};
+
+export type DiscountQuoteInput = DiscountAdvertisementInput & {
+  readonly dotyposCustomerId: string;
   readonly submittedCode?: CanonicalDiscountCode;
 };

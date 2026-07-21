@@ -5,10 +5,11 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
-import {
-  buildWorkspaceCheckoutQuote,
-  type WorkspaceCheckoutQuote,
-} from "@/features/checkout/checkout-quote.test-utils";
+import type {
+  CheckoutSummaryChangedKeys,
+  WorkspaceCheckoutQuote,
+} from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
   CanonicalDiscountCode,
@@ -128,6 +129,7 @@ const buildPayStateToken = (input: {
   readonly locale?: Locale;
   readonly quote?: WorkspaceCheckoutQuote;
   readonly submittedCode?: CanonicalDiscountCode;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
   sealPayState(
     buildSignedPayState({
@@ -136,6 +138,7 @@ const buildPayStateToken = (input: {
       quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
       orderId: input.orderId,
       submittedCode: input.submittedCode,
+      changedKeys: input.changedKeys,
       ttlMilliseconds: 10 * 60 * 1000,
     })
   );
@@ -213,6 +216,7 @@ type CheckoutHarnessOptions = {
   readonly locale?: Locale;
   readonly acceptedQuote?: WorkspaceCheckoutQuote;
   readonly submittedCode?: CanonicalDiscountCode;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: Record<string, unknown>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
@@ -341,6 +345,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
           locale,
           quote: options.acceptedQuote,
           submittedCode: options.submittedCode,
+          changedKeys: options.changedKeys,
         }),
         legalConsent: true,
       },
@@ -396,6 +401,10 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId,
       activeAttempt,
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["order/product:cowork:profi"],
+      },
       reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
     });
 
@@ -406,6 +415,27 @@ describe("CheckoutService", () => {
       redirectUrl: "https://payments.example/existing",
     });
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("rejects a review-required price state before affirmation or provider work", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-review-required",
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["order/product:cowork:profi"],
+      },
+    });
+
+    const error = await Effect.runPromise(Effect.flip(harness.effect));
+
+    expect(error).toMatchObject({
+      _tag: "CheckoutError",
+      message: "The updated checkout price must be reviewed before payment.",
+    });
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
     expect(harness.createAttempt).not.toHaveBeenCalled();

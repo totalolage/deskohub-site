@@ -3,16 +3,24 @@ import "@/shared/testing/workspace-test-env";
 
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
-import { Effect, Layer } from "effect";
+import { Effect, Layer, Schema } from "effect";
+import type { WorkspaceReservation } from "@/db/schema";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
+import {
+  calculateWorkspaceCheckoutQuote,
+  type WorkspaceCheckoutQuote,
+} from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import {
+  type DiscountAdvertisementQuote,
+  discountAdvertisementQuoteCodec,
+} from "@/features/discounts";
+import { discountIdSchema } from "@/features/discounts/contracts";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
-import type {
-  WorkspaceReservation,
-  WorkspaceReservationRepository as WorkspaceReservationRepositoryType,
-} from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
 mock.module("server-only", () => ({}));
 
@@ -44,6 +52,77 @@ const reservation = {
 };
 
 const reusableHoldExpiresAt = Temporal.Instant.from("2030-07-01T12:00:00.000Z");
+
+const buildAdvertisedPriceToken = async (
+  quote: WorkspaceCheckoutQuote = buildWorkspaceCheckoutQuote(reservation),
+  ttlMilliseconds?: number
+) => {
+  const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
+    "@/features/checkout/backend/checkout"
+  );
+  return sealAdvertisedPriceState(
+    buildAdvertisedPriceState({
+      locale: "en-US",
+      reservation: {
+        kind: "cowork",
+        details: {
+          entryTier: reservation.entryTier,
+          coffee: reservation.coffee,
+          date: reservation.date,
+        },
+      },
+      quote,
+      ttlMilliseconds,
+    })
+  );
+};
+
+const tamperToken = (token: string) => {
+  const parts = token.split(".");
+  const ciphertext = parts[2] ?? "";
+  parts[2] = `${ciphertext.startsWith("A") ? "B" : "A"}${ciphertext.slice(1)}`;
+  return parts.join(".");
+};
+
+const basicMoney = (value: number) => ({
+  value,
+  exponent: 2,
+  currency: "CZK",
+});
+const makeAdvertisementQuote = (
+  basisPoints?: number,
+  label = "Summer sale"
+): DiscountAdvertisementQuote => {
+  const discountableSubtotal = basicMoney(35_000);
+  const amount = basisPoints
+    ? Math.round((discountableSubtotal.value * basisPoints) / 10_000)
+    : 0;
+  return discountAdvertisementQuoteCodec.make({
+    product: { kind: "cowork", tier: "basic" },
+    discountableSubtotal,
+    discounts: basisPoints
+      ? [
+          {
+            discount: {
+              id: Schema.decodeUnknownSync(discountIdSchema)("sale"),
+              label,
+              adjustment: { kind: "percentage", basisPoints },
+            },
+            subtotalBefore: discountableSubtotal,
+            amount: basicMoney(amount),
+            subtotalAfter: basicMoney(discountableSubtotal.value - amount),
+          },
+        ]
+      : [],
+    totalDiscount: basicMoney(amount),
+    discountedSubtotal: basicMoney(discountableSubtotal.value - amount),
+  });
+};
+
+const buildQuoteFromAdvertisement = (quote: DiscountAdvertisementQuote) =>
+  Effect.runSync(
+    calculateWorkspaceCheckoutQuote(reservation, { discountQuote: quote })
+  );
 
 const makeReusableReservation = (
   overrides: Partial<WorkspaceReservation> = {}
@@ -88,6 +167,9 @@ const runReusableReservationScenario = async (input: {
   readonly createDraft?: ReturnType<typeof mock>;
   readonly claimHoldCreation?: ReturnType<typeof mock>;
   readonly findById?: ReturnType<typeof mock>;
+  readonly advertisedPriceToken?: string;
+  readonly affirmAdvertisement?: ReturnType<typeof mock>;
+  readonly quoteIdentified?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -121,20 +203,17 @@ const runReusableReservationScenario = async (input: {
   const claimHoldCreation =
     input.claimHoldCreation ?? mock(() => Effect.die("unused"));
   const findById = input.findById ?? mock(() => Effect.die("unused"));
-  const quote = mock(({ discountableSubtotal, product }) =>
-    Effect.succeed({
-      product,
-      discountableSubtotal,
-      discounts: [],
-      totalDiscount: { ...discountableSubtotal, value: 0 },
-      discountedSubtotal: discountableSubtotal,
-    })
-  );
+  const affirmAdvertisement =
+    input.affirmAdvertisement ??
+    mock(() => Effect.succeed(makeAdvertisementQuote()));
+  const quoteIdentified =
+    input.quoteIdentified ??
+    mock(({ advertisementQuote }) => Effect.succeed(advertisementQuote));
   const findOrCreateCustomer = mock(() =>
     Effect.succeed({ id: "customer-id" })
   );
   const testLayer = Layer.mergeAll(
-    DiscountServiceMock({ quote }),
+    DiscountServiceMock({ affirmAdvertisement, quoteIdentified }),
     BotProtectionServiceMock({ verifyHuman }),
     Layer.succeed(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
@@ -174,6 +253,8 @@ const runReusableReservationScenario = async (input: {
   const result = await prepareWorkspacePayState({
     locale: "en-US",
     reservationIntentId: "intent-id",
+    advertisedPriceToken:
+      input.advertisedPriceToken ?? (await buildAdvertisedPriceToken()),
     reservation,
     legalConsent: true,
   }).pipe(Effect.provide(testLayer), Effect.runPromise);
@@ -188,7 +269,8 @@ const runReusableReservationScenario = async (input: {
     claimHoldCreation,
     findById,
     verifyHuman,
-    quote,
+    affirmAdvertisement,
+    quoteIdentified,
     findOrCreateCustomer,
   };
 };
@@ -271,9 +353,9 @@ describe("prepareWorkspacePayState", () => {
         return { id: "customer-id" };
       })
     );
-    const quote = mock(({ discountableSubtotal, product }) =>
+    const affirmAdvertisement = mock(({ discountableSubtotal, product }) =>
       Effect.sync(() => {
-        eventOrder.push("quote");
+        eventOrder.push("advertisement");
         return {
           product,
           discountableSubtotal,
@@ -283,8 +365,14 @@ describe("prepareWorkspacePayState", () => {
         };
       })
     );
+    const quoteIdentified = mock(({ advertisementQuote }) =>
+      Effect.sync(() => {
+        eventOrder.push("quote");
+        return advertisementQuote;
+      })
+    );
     const testLayer = Layer.mergeAll(
-      DiscountServiceMock({ quote }),
+      DiscountServiceMock({ affirmAdvertisement, quoteIdentified }),
       BotProtectionServiceMock({ verifyHuman }),
       Layer.succeed(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
@@ -324,6 +412,7 @@ describe("prepareWorkspacePayState", () => {
     const result = await prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
+      advertisedPriceToken: await buildAdvertisedPriceToken(),
       reservation,
       legalConsent: true,
     }).pipe(Effect.provide(testLayer), Effect.runPromise);
@@ -355,6 +444,7 @@ describe("prepareWorkspacePayState", () => {
     });
     expect(eventOrder).toEqual([
       "bot-verification",
+      "advertisement",
       "availability",
       "customer",
       "quote",
@@ -381,12 +471,11 @@ describe("prepareWorkspacePayState", () => {
     const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.orderId).toBe("reservation-id");
     expect(state.submittedCode).toBeUndefined();
-    expect(quote).toHaveBeenCalledWith(
+    expect(quoteIdentified).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: "customer-id",
       })
     );
-    expect(quote.mock.calls[0]?.[0]).toHaveProperty("submittedCode", undefined);
   });
 
   test("reuses an existing held reservation without scheduling cleanup", async () => {
@@ -411,14 +500,10 @@ describe("prepareWorkspacePayState", () => {
       locale: "en-US",
     });
     expect(result.findOrCreateCustomer).not.toHaveBeenCalled();
-    expect(result.quote).toHaveBeenCalledWith(
+    expect(result.quoteIdentified).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: existingReservation.dotyposCustomerId,
       })
-    );
-    expect(result.quote.mock.calls[0]?.[0]).toHaveProperty(
-      "submittedCode",
-      undefined
     );
   });
 
@@ -437,10 +522,153 @@ describe("prepareWorkspacePayState", () => {
     expect(result.claimHoldCreation).toHaveBeenCalledWith("draft-id");
     expect(result.findById).toHaveBeenCalledWith("draft-id");
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
-    expect(result.quote).toHaveBeenLastCalledWith(
+    expect(result.quoteIdentified).toHaveBeenLastCalledWith(
       expect.objectContaining({
         dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
       })
+    );
+  });
+
+  test("rejects a tampered advertised-price snapshot before downstream work", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const token = await buildAdvertisedPriceToken();
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      reservationIntentId: "intent-id",
+      advertisedPriceToken: tamperToken(token),
+      reservation,
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(
+        BotProtectionServiceMock({ verifyHuman: () => Effect.void })
+      )
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: {
+        _tag: "AdvertisedPriceMismatchError",
+        reason: "invalid_token",
+      },
+    });
+  });
+
+  test("rejects a snapshot for different reservation inputs", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      reservationIntentId: "intent-id",
+      advertisedPriceToken: await buildAdvertisedPriceToken(),
+      reservation: { ...reservation, coffee: true },
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(
+        BotProtectionServiceMock({ verifyHuman: () => Effect.void })
+      )
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: {
+        _tag: "AdvertisedPriceMismatchError",
+        reason: "input_mismatch",
+      },
+    });
+  });
+
+  test("rejects an expired advertised-price snapshot", async () => {
+    const { prepareWorkspacePayState } = await import("./prepare-pay-state");
+    const { BotProtectionServiceMock } = await import(
+      "@/shared/backend/bot-protection/bot-protection.service.mock"
+    );
+    const effect = prepareWorkspacePayState({
+      locale: "en-US",
+      reservationIntentId: "intent-id",
+      advertisedPriceToken: await buildAdvertisedPriceToken(
+        buildWorkspaceCheckoutQuote(reservation),
+        -1000
+      ),
+      reservation,
+      legalConsent: true,
+    }).pipe(
+      Effect.provide(
+        BotProtectionServiceMock({ verifyHuman: () => Effect.void })
+      )
+    ) as Effect.Effect<never, unknown, never>;
+
+    const error = await Effect.runPromise(Effect.flip(effect));
+
+    expect(error).toMatchObject({
+      _tag: "PublicSafeActionError",
+      cause: {
+        _tag: "AdvertisedPriceMismatchError",
+        reason: "invalid_token",
+      },
+    });
+  });
+
+  test("returns a usable pricing_changed summary when an advertised sale disappears", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const advertisedDiscount = makeAdvertisementQuote(5000);
+    const result = await runReusableReservationScenario({
+      findByIntentKey: mock(() => Effect.succeed(makeReusableReservation())),
+      advertisedPriceToken: await buildAdvertisedPriceToken(
+        buildQuoteFromAdvertisement(advertisedDiscount)
+      ),
+      affirmAdvertisement: mock(() => Effect.succeed(makeAdvertisementQuote())),
+    });
+
+    expect(result.result).toMatchObject({
+      status: "pricing_changed",
+      affectedProductKeys: ["product:cowork:basic"],
+    });
+    if (result.result.status !== "pricing_changed") {
+      throw new Error("Expected pricing_changed result");
+    }
+    const token = new URL(
+      result.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const state = openPayState(token ?? "");
+    expect(state.changedKeys?.itemKeys).toContain("order/product:cowork:basic");
+    expect(state.quote.payment.discounts).toEqual([]);
+  });
+
+  test("allows the customer discount to first appear on a ready summary", async () => {
+    const { openPayState, payStateTokenQueryParam } = await import(
+      "@/features/checkout/backend/checkout"
+    );
+    const customerQuote = makeAdvertisementQuote(1000, "Customer discount");
+    const result = await runReusableReservationScenario({
+      findByIntentKey: mock(() => Effect.succeed(makeReusableReservation())),
+      quoteIdentified: mock(() => Effect.succeed(customerQuote)),
+    });
+
+    expect(result.result.status).toBe("ready");
+    if (result.result.status !== "ready") {
+      throw new Error("Expected ready result");
+    }
+    const token = new URL(
+      result.result.redirectUrl,
+      "https://deskohub.test"
+    ).searchParams.get(payStateTokenQueryParam);
+    const state = openPayState(token ?? "");
+    expect(state.changedKeys).toBeUndefined();
+    expect(state.quote.payment.discounts).toHaveLength(1);
+    expect(state.quote.payment.discounts[0]?.discount.label).toBe(
+      "Customer discount"
     );
   });
 
@@ -461,6 +689,7 @@ describe("prepareWorkspacePayState", () => {
     const effect = prepareWorkspacePayState({
       locale: "en-US",
       reservationIntentId: "intent-id",
+      advertisedPriceToken: "invalid-but-bot-rejects-first",
       reservation,
       legalConsent: true,
     }).pipe(

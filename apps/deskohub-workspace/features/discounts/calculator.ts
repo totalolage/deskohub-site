@@ -42,6 +42,39 @@ export const calculateDiscounts = Effect.fn("DiscountCalculator.calculate")(
     )
 );
 
+export const appendDiscounts = Effect.fn("DiscountCalculator.append")(
+  (input: {
+    readonly baseQuote: DiscountQuote;
+    readonly candidates: readonly DiscountCandidate[];
+  }) =>
+    calculateDiscounts({
+      product: input.baseQuote.product,
+      discountableSubtotal: input.baseQuote.discountedSubtotal,
+      candidates: input.candidates,
+    }).pipe(
+      Effect.bindTo("additional"),
+      Effect.let("totalDiscount", ({ additional }) =>
+        workspaceMoneyWithValue(
+          input.baseQuote.totalDiscount.value +
+            additional.quote.totalDiscount.value,
+          input.baseQuote.totalDiscount
+        )
+      ),
+      Effect.map(
+        ({ additional, totalDiscount }): DiscountQuote => ({
+          product: input.baseQuote.product,
+          discountableSubtotal: input.baseQuote.discountableSubtotal,
+          discounts: [
+            ...input.baseQuote.discounts,
+            ...additional.quote.discounts,
+          ],
+          totalDiscount,
+          discountedSubtotal: additional.quote.discountedSubtotal,
+        })
+      )
+    )
+);
+
 const validateDiscountableSubtotal = (input: {
   readonly discountableSubtotal: WorkspaceMoney;
 }) =>
