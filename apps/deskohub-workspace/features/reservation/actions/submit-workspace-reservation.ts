@@ -1,10 +1,13 @@
-import { Effect, Option } from "effect";
+import { Effect } from "effect";
 import {
   CheckoutService,
   openPayState,
 } from "@/features/checkout/backend/checkout";
-import { m } from "@/features/i18n";
-import type { SubmitReservationInput } from "@/features/reservation/actions/submit-reservation-input";
+import { type Locale, m } from "@/features/i18n";
+import {
+  getSubmitReservationCheckoutLocale,
+  type SubmitReservationInput,
+} from "@/features/reservation/actions/submit-reservation-input";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
   BotDetectedError,
@@ -13,7 +16,7 @@ import {
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const getSubmitReservationErrorMessage = Effect.fn(
-  "getSubmitReservationErrorMessage"
+  "submitWorkspaceReservation.getErrorMessage"
 )(function* (
   error: { readonly message: string },
   input: SubmitReservationInput
@@ -26,24 +29,29 @@ const getSubmitReservationErrorMessage = Effect.fn(
     return m.reservationErrorMessage({}, { locale: input.locale });
   }
 
-  const payState = Option.getOrUndefined(
-    yield* openPayState(input.payStateToken).pipe(Effect.option)
+  const payState = yield* openPayState(input.payStateToken).pipe(
+    Effect.catch(() => Effect.succeed(undefined))
   );
 
-  return payState
-    ? getReservationAvailabilityUnavailableMessage({
-        date: payState.reservation.date,
-        locale: input.locale,
-        tier: payState.reservation.entryTier,
-      })
-    : m.reservationErrorMessage({}, { locale: input.locale });
+  if (!payState) {
+    return m.reservationErrorMessage({}, { locale: input.locale });
+  }
+
+  return getReservationAvailabilityUnavailableMessage({
+    date: payState.reservation.date,
+    locale: input.locale,
+    tier: payState.reservation.entryTier,
+  });
 });
 
 export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
 )(
-  function* (input: SubmitReservationInput) {
-    const { locale } = input;
+  function* (
+    input: SubmitReservationInput,
+    context: { readonly locale: Locale }
+  ) {
+    const locale = getSubmitReservationCheckoutLocale(input, context.locale);
     yield* Effect.annotateLogsScoped({ locale });
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });

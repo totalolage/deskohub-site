@@ -1,6 +1,6 @@
 import { Option, Schema } from "effect";
 import { workspaceCheckoutQuoteSchema } from "@/features/checkout/checkout-quote";
-import { type Locale, locales } from "@/features/i18n";
+import { locales } from "@/features/i18n";
 import { coworkReservationDetailsSchema } from "@/features/reservation/cowork-reservation";
 
 export const workspaceAdvertisedPriceReservationSchema = Schema.Struct({
@@ -58,20 +58,6 @@ export const workspaceAdvertisedPriceKeys = {
     [...workspaceAdvertisedPriceKeys.all, input] as const,
 };
 
-export const getWorkspaceAdvertisedPriceRequest = (input: {
-  readonly locale: Locale;
-  readonly reservation: WorkspaceAdvertisedPriceReservation;
-}): WorkspaceAdvertisedPriceRequest => ({
-  locale: input.locale,
-  reservation: input.reservation,
-});
-
-export const workspaceAdvertisedPriceReservationEquals = (
-  left: WorkspaceAdvertisedPriceReservation,
-  right: WorkspaceAdvertisedPriceReservation
-) =>
-  left.kind === right.kind &&
-  left.details.entryTier === right.details.entryTier &&
-  left.details.coffee === right.details.coffee &&
-  left.details.monitorOption === right.details.monitorOption &&
-  left.details.date === right.details.date;
+export const workspaceAdvertisedPriceReservationEquals = Schema.toEquivalence(
+  workspaceAdvertisedPriceReservationSchema
+);

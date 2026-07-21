@@ -31,8 +31,6 @@ import {
   sealPayState,
 } from "./pay-state";
 
-const openPayStateSync = (token: string) => Effect.runSync(openPayState(token));
-
 mock.module("server-only", () => ({}));
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
@@ -131,15 +129,18 @@ const buildPayStateToken = (input: {
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
-  sealPayState(
-    buildSignedPayState({
-      locale: input.locale ?? "en-US",
-      reservation: reservationData,
-      quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
-      orderId: input.orderId,
-      submittedCode: input.submittedCode,
-      changedKeys: input.changedKeys,
-      ttlMilliseconds: 10 * 60 * 1000,
+  Effect.runSync(
+    Effect.gen(function* () {
+      const state = yield* buildSignedPayState({
+        locale: input.locale ?? "en-US",
+        reservation: reservationData,
+        quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
+        orderId: input.orderId,
+        submittedCode: input.submittedCode,
+        changedKeys: input.changedKeys,
+        ttlMilliseconds: 10 * 60 * 1000,
+      });
+      return yield* sealPayState(state);
     })
   );
 
@@ -509,7 +510,8 @@ describe("CheckoutService", () => {
     const result = await Effect.runPromise(harness.effect);
 
     expect(
-      openPayStateSync(acceptedToken).quote.payment.discounts[0]?.discount.label
+      Effect.runSync(openPayState(acceptedToken)).quote.payment.discounts[0]
+        ?.discount.label
     ).toBe("Letni sleva 50 %");
     expect(result.status).toBe("pricing_changed");
     if (result.status !== "pricing_changed") {
@@ -524,8 +526,8 @@ describe("CheckoutService", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(
-      openPayStateSync(freshToken ?? "").quote.payment.discounts[0]?.discount
-        .label
+      Effect.runSync(openPayState(freshToken ?? "")).quote.payment.discounts[0]
+        ?.discount.label
     ).toBe("Edited English summer label");
   });
 
@@ -553,7 +555,7 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(openPayStateSync(freshToken ?? "").submittedCode).toBe(
+    expect(Effect.runSync(openPayState(freshToken ?? "")).submittedCode).toBe(
       submittedCode
     );
     expect(affirm).toHaveBeenCalledWith(

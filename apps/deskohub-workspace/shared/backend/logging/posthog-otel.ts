@@ -4,6 +4,7 @@ import {
   BatchLogRecordProcessor,
   LoggerProvider,
 } from "@opentelemetry/sdk-logs";
+import { env } from "@/env";
 
 const DEFAULT_POSTHOG_HOST = "https://us.i.posthog.com";
 const POSTHOG_LOGS_PATH = "/i/v1/logs";
@@ -65,10 +66,10 @@ export function createPostHogLoggerProvider({
 }
 
 export const postHogLoggerProvider = createPostHogLoggerProvider({
-  posthogHost: process.env.NEXT_PUBLIC_POSTHOG_HOST,
-  posthogProjectToken: process.env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
-  vercelEnv: process.env.VERCEL_ENV,
-  vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA,
+  posthogHost: env.NEXT_PUBLIC_POSTHOG_HOST,
+  posthogProjectToken: env.NEXT_PUBLIC_POSTHOG_PROJECT_TOKEN,
+  vercelEnv: env.VERCEL_ENV,
+  vercelGitCommitSha: env.VERCEL_GIT_COMMIT_SHA,
 });
 
 export async function flushPostHogLogs(options: PostHogLogsFlushOptions = {}) {

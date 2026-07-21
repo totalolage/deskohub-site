@@ -5,7 +5,7 @@ import { notFound } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import {
-  buildReviewedCheckoutPayPath,
+  buildFreshCheckoutPayPath,
   openPayState,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
@@ -103,29 +103,42 @@ async function CheckoutPayContent({
     ));
   }
 
-  const state = await openPayState(payStateToken).pipe(
+  const opened = await Effect.gen(function* () {
+    const state = yield* openPayState(payStateToken);
+    const freshPayUrl = state.changedKeys
+      ? yield* buildFreshCheckoutPayPath({
+          locale: state.locale,
+          reservation: state.reservation,
+          quote: state.quote,
+          orderId: state.orderId,
+          submittedCode: state.submittedCode,
+        })
+      : undefined;
+
+    return { state, freshPayUrl };
+  }).pipe(
     Effect.catch((cause) =>
       Effect.logWarning("Checkout pay state token could not be opened", {
         cause,
         reason: "openPayStateFailed",
       }).pipe(Effect.as(undefined))
     ),
-    runWorkspaceEffect("checkout.pay.invalid-state")
+    runWorkspaceEffect("checkout.pay.open-state")
   );
 
-  if (!state || state.locale !== locale) {
+  if (!opened || opened.state.locale !== locale) {
     return runWithRequestLocale(locale, () => (
       <InvalidPayState locale={locale} />
     ));
   }
 
+  const { freshPayUrl, state } = opened;
+
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
       <CheckoutPayPage
         changedKeys={state.changedKeys}
-        freshPayUrl={
-          state.changedKeys ? buildReviewedCheckoutPayPath(state) : undefined
-        }
+        freshPayUrl={freshPayUrl}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}
         summary={state.quote.summary}

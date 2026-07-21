@@ -311,7 +311,16 @@ const getFreshPayUrl: (input: {
   readonly submittedCode: CanonicalDiscountCode | undefined;
   readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
 }) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
-  (input) => Effect.succeed(buildFreshCheckoutPayPath(input))
+  (input) =>
+    buildFreshCheckoutPayPath(input).pipe(
+      Effect.mapError(
+        (cause) =>
+          new CheckoutError({
+            message: "A refreshed Pay state could not be created.",
+            cause,
+          })
+      )
+    )
 );
 
 type MappableCheckoutFailure = CheckoutError | WorkspaceTableUnavailableError;

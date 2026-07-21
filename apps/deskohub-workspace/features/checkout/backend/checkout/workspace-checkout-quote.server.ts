@@ -2,6 +2,7 @@ import { Effect } from "effect";
 import {
   calculateWorkspaceCheckoutQuote,
   normalizeWorkspaceCheckoutOrder,
+  type WorkspaceCheckoutOrderInput,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
@@ -64,10 +65,12 @@ export const buildAuthoritativeWorkspaceCheckoutQuote = Effect.fn(
     )
 );
 
-const getWorkspaceCheckoutPricingContext = Effect.fn(
+export const getWorkspaceCheckoutPricingContext = Effect.fn(
   "getWorkspaceCheckoutPricingContext"
 )(function* (input: {
-  readonly reservation: NormalizedCoworkReservationOrder;
+  readonly reservation: WorkspaceCheckoutOrderInput & {
+    readonly date: string;
+  };
 }) {
   const order = yield* normalizeWorkspaceCheckoutOrder(input.reservation);
   const currencyOverride = getNexiCheckoutCurrencyOverride();

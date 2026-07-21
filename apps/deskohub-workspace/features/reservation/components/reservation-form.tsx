@@ -16,7 +16,6 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { type Control, useForm, useWatch } from "react-hook-form";
 import {
-  getWorkspaceAdvertisedPriceRequest,
   parseWorkspaceAdvertisedPrice,
   type WorkspaceAdvertisedPriceRequest,
   workspaceAdvertisedPriceKeys,
@@ -332,7 +331,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       return undefined;
     }
 
-    return getWorkspaceAdvertisedPriceRequest({
+    return {
       locale,
       reservation: {
         kind: "cowork",
@@ -345,7 +344,7 @@ export function ReservationForm({ locale }: ReservationFormProps) {
           date: selectedDate,
         },
       },
-    });
+    } satisfies WorkspaceAdvertisedPriceRequest;
   }, [
     locale,
     selectedCoffee,

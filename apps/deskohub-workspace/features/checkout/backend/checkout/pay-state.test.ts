@@ -18,20 +18,19 @@ const {
   sealPayStateForUrl,
   signedPayStateSchema,
 } = await import("./pay-state");
-const { buildReviewedCheckoutPayPath } = await import("./checkout-pay-url");
+const { buildFreshCheckoutPayPath } = await import("./checkout-pay-url");
+
+const runSync = <A, E>(effect: Effect.Effect<A, E>) => Effect.runSync(effect);
 
 const fixedNow = new Date("2026-06-01T10:00:00.000Z");
-const fixedKey: PayStateKey = parsePayStateKey(
-  "test-kid",
-  Buffer.alloc(32, 1).toString("base64url")
+const fixedKey: PayStateKey = runSync(
+  parsePayStateKey("test-kid", Buffer.alloc(32, 1).toString("base64url"))
 );
-const wrongKey: PayStateKey = parsePayStateKey(
-  "test-kid",
-  Buffer.alloc(32, 2).toString("base64url")
+const wrongKey: PayStateKey = runSync(
+  parsePayStateKey("test-kid", Buffer.alloc(32, 2).toString("base64url"))
 );
-const rotatedKey: PayStateKey = parsePayStateKey(
-  "rotated-kid",
-  Buffer.alloc(32, 3).toString("base64url")
+const rotatedKey: PayStateKey = runSync(
+  parsePayStateKey("rotated-kid", Buffer.alloc(32, 3).toString("base64url"))
 );
 const fixedRandomBytes = (byteLength: number) => Buffer.alloc(byteLength, 7);
 const canonicalCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
@@ -57,24 +56,26 @@ const baseReservation = Schema.decodeUnknownSync(
 });
 
 const buildState = (overrides: Partial<SignedPayState> = {}) => ({
-  ...buildSignedPayState(
-    {
-      locale: "en-US",
-      reservation: baseReservation,
-      quote: buildWorkspaceCheckoutQuote(baseReservation),
-      orderId: "pay-state-test-order-id",
-      submittedCode: canonicalCode,
-      ttlMilliseconds: 10 * 60 * 1000,
-    },
-    { keys: [fixedKey], now: () => fixedNow }
+  ...runSync(
+    buildSignedPayState(
+      {
+        locale: "en-US",
+        reservation: baseReservation,
+        quote: buildWorkspaceCheckoutQuote(baseReservation),
+        orderId: "pay-state-test-order-id",
+        submittedCode: canonicalCode,
+        ttlMilliseconds: 10 * 60 * 1000,
+      },
+      { keys: [fixedKey], now: () => fixedNow }
+    )
   ),
   ...overrides,
 });
 
 const seal = (state = buildState()) =>
-  sealPayState(state, { keys: [fixedKey], randomBytes: fixedRandomBytes });
-const openPayStateSync = (...args: Parameters<typeof openPayState>) =>
-  Effect.runSync(openPayState(...args));
+  runSync(
+    sealPayState(state, { keys: [fixedKey], randomBytes: fixedRandomBytes })
+  );
 
 const replaceTokenHeader = (
   token: string,
@@ -117,7 +118,7 @@ describe("Pay URL state", () => {
     const token = seal(state);
 
     expect(
-      openPayStateSync(token, { keys: [fixedKey], now: () => fixedNow })
+      runSync(openPayState(token, { keys: [fixedKey], now: () => fixedNow }))
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
     expect(state.submittedCode).toBe(canonicalCode);
@@ -132,58 +133,58 @@ describe("Pay URL state", () => {
   });
 
   test("preserves required-coffee normalization in signed Pay state", () => {
-    const state = buildSignedPayState(
-      {
-        locale: "en-US",
-        reservation: { ...baseReservation, coffee: false } as never,
-        quote: buildWorkspaceCheckoutQuote(baseReservation),
-        orderId: "required-coffee-order-id",
-      },
-      { keys: [fixedKey], now: () => fixedNow }
+    const state = runSync(
+      buildSignedPayState(
+        {
+          locale: "en-US",
+          reservation: { ...baseReservation, coffee: false } as never,
+          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          orderId: "required-coffee-order-id",
+        },
+        { keys: [fixedKey], now: () => fixedNow }
+      )
     );
 
     expect(state.reservation.coffee).toBe(true);
   });
 
   test("fails closed when no encryption key is configured", () => {
-    const previousKeys = process.env.CHECKOUT_PAY_STATE_KEYS;
-    delete process.env.CHECKOUT_PAY_STATE_KEYS;
-
-    try {
-      expect(() =>
-        buildSignedPayState({
-          locale: "en-US",
-          reservation: baseReservation,
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
-          orderId: "missing-key-test",
-        })
-      ).toThrow("CHECKOUT_PAY_STATE_KEYS");
-    } finally {
-      if (previousKeys === undefined) {
-        delete process.env.CHECKOUT_PAY_STATE_KEYS;
-      } else {
-        process.env.CHECKOUT_PAY_STATE_KEYS = previousKeys;
-      }
-    }
+    expect(() =>
+      runSync(
+        buildSignedPayState(
+          {
+            locale: "en-US",
+            reservation: baseReservation,
+            quote: buildWorkspaceCheckoutQuote(baseReservation),
+            orderId: "missing-key-test",
+          },
+          { keys: [] }
+        )
+      )
+    ).toThrow("At least one");
   });
 
   test("rejects expired tokens", () => {
     const token = seal(buildState());
 
     expect(() =>
-      openPayStateSync(token, {
-        keys: [fixedKey],
-        now: () => new Date("2026-06-01T10:11:00.000Z"),
-      })
+      runSync(
+        openPayState(token, {
+          keys: [fixedKey],
+          now: () => new Date("2026-06-01T10:11:00.000Z"),
+        })
+      )
     ).toThrow("expired");
   });
 
   test("rejects tampered ciphertext", () => {
     expect(() =>
-      openPayStateSync(tamperCiphertext(seal()), {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
+      runSync(
+        openPayState(tamperCiphertext(seal()), {
+          keys: [fixedKey],
+          now: () => fixedNow,
+        })
+      )
     ).toThrow("Invalid Pay state token");
   });
 
@@ -195,53 +196,62 @@ describe("Pay URL state", () => {
     }));
 
     expect(() =>
-      openPayStateSync(token, { keys: [wrongKey], now: () => fixedNow })
+      runSync(openPayState(token, { keys: [wrongKey], now: () => fixedNow }))
     ).toThrow("Invalid Pay state token");
     expect(() =>
-      openPayStateSync(unknownKidToken, {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
+      runSync(
+        openPayState(unknownKidToken, { keys: [fixedKey], now: () => fixedNow })
+      )
     ).toThrow("unknown key id");
   });
 
   test("keeps existing tokens readable while rotating to a new active key", () => {
     const oldState = buildState();
     const oldToken = seal(oldState);
-    const newState = buildSignedPayState(
-      {
-        locale: "en-US",
-        reservation: baseReservation,
-        quote: buildWorkspaceCheckoutQuote(baseReservation),
-        orderId: "rotated-key-order-id",
-      },
-      { keys: [rotatedKey, fixedKey], now: () => fixedNow }
+    const newState = runSync(
+      buildSignedPayState(
+        {
+          locale: "en-US",
+          reservation: baseReservation,
+          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          orderId: "rotated-key-order-id",
+        },
+        { keys: [rotatedKey, fixedKey], now: () => fixedNow }
+      )
     );
 
     expect(
-      openPayStateSync(oldToken, {
-        keys: [rotatedKey, fixedKey],
-        now: () => fixedNow,
-      })
+      runSync(
+        openPayState(oldToken, {
+          keys: [rotatedKey, fixedKey],
+          now: () => fixedNow,
+        })
+      )
     ).toEqual(oldState);
     expect(newState.kid).toBe(rotatedKey.kid);
     expect(
-      openPayStateSync(
-        sealPayState(newState, {
-          keys: [rotatedKey, fixedKey],
-          randomBytes: fixedRandomBytes,
-        }),
-        { keys: [rotatedKey, fixedKey], now: () => fixedNow }
+      runSync(
+        openPayState(
+          runSync(
+            sealPayState(newState, {
+              keys: [rotatedKey, fixedKey],
+              randomBytes: fixedRandomBytes,
+            })
+          ),
+          { keys: [rotatedKey, fixedKey], now: () => fixedNow }
+        )
       )
     ).toEqual(newState);
   });
 
   test("rejects old prefixed and versioned token headers", () => {
     expect(() =>
-      openPayStateSync(`dhp1.${seal()}`, {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
+      runSync(
+        openPayState(`dhp1.${seal()}`, {
+          keys: [fixedKey],
+          now: () => fixedNow,
+        })
+      )
     ).toThrow("Invalid Pay state token");
 
     const versionedToken = replaceTokenHeader(seal(), (header) => ({
@@ -251,10 +261,12 @@ describe("Pay URL state", () => {
     }));
 
     expect(() =>
-      openPayStateSync(versionedToken, {
-        keys: [fixedKey],
-        now: () => fixedNow,
-      })
+      runSync(
+        openPayState(versionedToken, {
+          keys: [fixedKey],
+          now: () => fixedNow,
+        })
+      )
     ).toThrow("Invalid Pay state token header");
   });
 
@@ -272,10 +284,12 @@ describe("Pay URL state", () => {
     };
     expect(() => decodeSignedPayState(oldSignedState)).toThrow();
     expect(() =>
-      sealPayState(oldSignedState as unknown as SignedPayState, {
-        keys: [fixedKey],
-      })
-    ).toThrow('at ["schemaVersion"]');
+      runSync(
+        sealPayState(oldSignedState as unknown as SignedPayState, {
+          keys: [fixedKey],
+        })
+      )
+    ).toThrow("Invalid Pay state");
   });
 
   test("strictly validates generic applied-discount snapshots", () => {
@@ -365,10 +379,12 @@ describe("Pay URL state", () => {
   });
 
   test("builds URL query params", () => {
-    const result = sealPayStateForUrl(buildState(), {
-      keys: [fixedKey],
-      randomBytes: fixedRandomBytes,
-    });
+    const result = runSync(
+      sealPayStateForUrl(buildState(), {
+        keys: [fixedKey],
+        randomBytes: fixedRandomBytes,
+      })
+    );
     const searchParams = buildPayStateQueryParams(result);
 
     expect(result.type).toBe("sealedPayState");
@@ -382,18 +398,31 @@ describe("Pay URL state", () => {
         itemKeys: ["order/product:cowork:profi"],
       },
     });
-    const path = buildReviewedCheckoutPayPath(reviewState, {
-      keys: [fixedKey],
-      now: () => fixedNow,
-      randomBytes: fixedRandomBytes,
-    });
+    const path = runSync(
+      buildFreshCheckoutPayPath(
+        {
+          locale: reviewState.locale,
+          reservation: reviewState.reservation,
+          quote: reviewState.quote,
+          orderId: reviewState.orderId,
+          submittedCode: reviewState.submittedCode,
+        },
+        {
+          keys: [fixedKey],
+          now: () => fixedNow,
+          randomBytes: fixedRandomBytes,
+        }
+      )
+    );
     const token = new URL(path, "https://deskohub.test").searchParams.get(
       payStateTokenQueryParam
     );
-    const continued = openPayState(token ?? "", {
-      keys: [fixedKey],
-      now: () => fixedNow,
-    });
+    const continued = runSync(
+      openPayState(token ?? "", {
+        keys: [fixedKey],
+        now: () => fixedNow,
+      })
+    );
 
     expect(continued.changedKeys).toBeUndefined();
     expect(continued.quote).toEqual(reviewState.quote);

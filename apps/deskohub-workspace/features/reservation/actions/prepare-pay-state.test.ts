@@ -60,8 +60,8 @@ const buildAdvertisedPriceToken = async (
   const { buildAdvertisedPriceState, sealAdvertisedPriceState } = await import(
     "@/features/checkout/backend/checkout"
   );
-  return sealAdvertisedPriceState(
-    buildAdvertisedPriceState({
+  return Effect.gen(function* () {
+    const state = yield* buildAdvertisedPriceState({
       locale: "en-US",
       reservation: {
         kind: "cowork",
@@ -73,8 +73,9 @@ const buildAdvertisedPriceToken = async (
       },
       quote,
       ttlMilliseconds,
-    })
-  );
+    });
+    return yield* sealAdvertisedPriceState(state);
+  }).pipe(Effect.runPromise);
 };
 
 const tamperToken = (token: string) => {
@@ -641,7 +642,7 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const state = openPayState(token ?? "");
+    const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.changedKeys?.itemKeys).toContain("order/product:cowork:basic");
     expect(state.quote.payment.discounts).toEqual([]);
   });
@@ -664,7 +665,7 @@ describe("prepareWorkspacePayState", () => {
       result.result.redirectUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    const state = openPayState(token ?? "");
+    const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.changedKeys).toBeUndefined();
     expect(state.quote.payment.discounts).toHaveLength(1);
     expect(state.quote.payment.discounts[0]?.discount.label).toBe(

@@ -109,15 +109,15 @@ const getReservationHoldExpiresAt = (now: Temporal.Instant) =>
 const openSubmittedAdvertisedPrice = Effect.fn(
   "prepareWorkspacePayState.openAdvertisedPrice"
 )((input: PreparePayStateInput) =>
-  Effect.try({
-    try: () => openAdvertisedPriceState(input.advertisedPriceToken),
-    catch: (cause) =>
-      new AdvertisedPriceMismatchError({
-        reason: "invalid_token",
-        message: "Advertised price snapshot is invalid or expired.",
-        cause,
-      }),
-  }).pipe(
+  openAdvertisedPriceState(input.advertisedPriceToken).pipe(
+    Effect.mapError(
+      (cause) =>
+        new AdvertisedPriceMismatchError({
+          reason: "invalid_token",
+          message: "Advertised price snapshot is invalid or expired.",
+          cause,
+        })
+    ),
     Effect.filterOrFail(
       (state) =>
         state.locale === input.locale &&
@@ -247,38 +247,36 @@ const getReservationPrivacyEvidence = Effect.fn(
   });
 });
 
-const toReadyResult = (input: {
-  readonly locale: Locale;
-  readonly reservation: NormalizedCoworkReservationOrder;
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly reservationId: string;
-  readonly changedKeys?: CheckoutSummaryChangedKeys;
-}) => {
-  const state = buildSignedPayState({
-    locale: input.locale,
-    reservation: input.reservation,
-    quote: input.quote,
-    orderId: input.reservationId,
-    changedKeys: input.changedKeys,
-  });
-  const sealedState = sealPayStateForUrl(state);
-  const redirectUrl = new URL(
-    buildCheckoutPayPath(input.locale, sealedState),
-    "https://deskohub.local"
-  );
-  redirectUrl.searchParams.set("orderId", input.reservationId);
-  return {
-    status: input.changedKeys
-      ? ("pricing_changed" as const)
-      : ("ready" as const),
-    redirectUrl: `${redirectUrl.pathname}${redirectUrl.search}`,
-    ...(input.changedKeys && {
-      affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
-        key.startsWith("order/product:") ? [key.slice("order/".length)] : []
-      ),
-    }),
-  };
-};
+const toReadyResult = Effect.fn("prepareWorkspacePayState.toReadyResult")(
+  function* (input: {
+    readonly locale: Locale;
+    readonly reservation: NormalizedCoworkReservationOrder;
+    readonly quote: WorkspaceCheckoutQuote;
+    readonly reservationId: string;
+    readonly changedKeys?: CheckoutSummaryChangedKeys;
+  }) {
+    const state = yield* buildSignedPayState({
+      locale: input.locale,
+      reservation: input.reservation,
+      quote: input.quote,
+      orderId: input.reservationId,
+      changedKeys: input.changedKeys,
+    });
+    const sealedState = yield* sealPayStateForUrl(state);
+    const payPath = buildCheckoutPayPath(input.locale, sealedState);
+    return {
+      status: input.changedKeys
+        ? ("pricing_changed" as const)
+        : ("ready" as const),
+      redirectUrl: `${payPath}&orderId=${encodeURIComponent(input.reservationId)}`,
+      ...(input.changedKeys && {
+        affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
+          key.startsWith("order/product:") ? [key.slice("order/".length)] : []
+        ),
+      }),
+    };
+  }
+);
 
 const isReusableHeldReservation = (reservation: WorkspaceReservation) =>
   reservation.reservationState === "held" &&
@@ -542,7 +540,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       );
       yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
-      return toReadyResult({
+      return yield* toReadyResult({
         locale: input.locale,
         reservation: input.reservation,
         quote,
@@ -636,7 +634,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         );
         yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
-        return toReadyResult({
+        return yield* toReadyResult({
           locale: input.locale,
           reservation: input.reservation,
           quote: reusedQuote,
@@ -819,7 +817,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
 
     yield* Effect.logInfo("Workspace reservation checkout prep ready");
 
-    return toReadyResult({
+    return yield* toReadyResult({
       locale: input.locale,
       reservation: input.reservation,
       quote,

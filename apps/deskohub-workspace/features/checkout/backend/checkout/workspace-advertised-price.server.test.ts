@@ -63,7 +63,9 @@ describe("buildWorkspaceAdvertisedPrice", () => {
       Effect.provide(DiscountServiceMock({ advertise })),
       Effect.runPromise
     );
-    const state = openAdvertisedPriceState(result.advertisedPriceToken);
+    const state = await openAdvertisedPriceState(
+      result.advertisedPriceToken
+    ).pipe(Effect.runPromise);
 
     expect(advertise).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
