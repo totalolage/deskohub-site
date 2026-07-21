@@ -108,9 +108,6 @@ export const getWorkspaceProductTierTitle = (
 ) =>
   getWorkspaceProductMessage(workspaceProductTierMessages[tier].title, locale);
 
-export const getWorkspaceMeetingRoomProductTitle = (locale: Locale) =>
-  getWorkspaceProductMessage(m.reservationTierMeetingRoomTitle, locale);
-
 export const getWorkspaceProductMonitorTitle = (
   option: WorkspaceProductMonitorOption,
   locale: Locale

@@ -1,7 +1,6 @@
 import { getLocale } from "@/features/i18n";
 import { siteConstants } from "@/shared/utils/constants";
 
-type DayOfWeek = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 type TimeOfDay = { hrs: number; mins: number };
 type DayHours = { open: TimeOfDay; close: TimeOfDay };
 
@@ -10,7 +9,7 @@ type DayHours = { open: TimeOfDay; close: TimeOfDay };
  * The TimeOfDay values represent the actual display time (already in Prague timezone)
  * We need to create a fixed reference date to avoid timezone conversion issues
  */
-export function formatTime(time: TimeOfDay): string {
+function formatTime(time: TimeOfDay): string {
   // Create a fixed UTC date with our time values
   // Using UTC ensures no local timezone conversion happens
   // The year/month/day don't matter since we only format hours/minutes
@@ -30,17 +29,10 @@ export function formatTime(time: TimeOfDay): string {
 /**
  * Format day hours to string representation using Intl API
  */
-export function formatDayHours(dayHours: DayHours): string {
+function formatDayHours(dayHours: DayHours): string {
   const open = formatTime(dayHours.open);
   const close = formatTime(dayHours.close);
   return `${open} - ${close}`;
-}
-
-/**
- * Get working hours for a specific day
- */
-export function getWorkingHoursForDay(day: DayOfWeek): DayHours {
-  return siteConstants.workingHours.hours[day];
 }
 
 /**
@@ -75,55 +67,4 @@ export function getWeekendHours(): {
     close: formatTime(saturdayHours.close),
     formatted: formatDayHours(saturdayHours),
   };
-}
-
-/**
- * Check if a day is a weekend day
- */
-export function isWeekend(day: DayOfWeek): boolean {
-  return day === 0 || day === 6;
-}
-
-/**
- * Get list of days for weekdays
- */
-export function getWeekdaysList(): DayOfWeek[] {
-  return [1, 2, 3, 4, 5];
-}
-
-/**
- * Get list of days for weekends
- */
-export function getWeekendsList(): DayOfWeek[] {
-  return [0, 6];
-}
-
-/**
- * Convert time string to TimeOfDay
- */
-export function parseTimeString(timeStr: string): TimeOfDay {
-  const [hrs, mins] = timeStr.split(":").map(Number);
-  return { hrs: hrs ?? 0, mins: mins ?? 0 };
-}
-
-/**
- * Convert TimeOfDay to minutes since midnight
- */
-export function timeToMinutes(time: TimeOfDay): number {
-  return time.hrs * 60 + time.mins;
-}
-
-/**
- * Check if a specific time is within working hours for a day
- */
-export function isTimeWithinWorkingHours(
-  day: DayOfWeek,
-  time: TimeOfDay
-): boolean {
-  const dayHours = getWorkingHoursForDay(day);
-  const timeInMinutes = timeToMinutes(time);
-  const openInMinutes = timeToMinutes(dayHours.open);
-  const closeInMinutes = timeToMinutes(dayHours.close);
-
-  return timeInMinutes >= openInMinutes && timeInMinutes < closeInMinutes;
 }

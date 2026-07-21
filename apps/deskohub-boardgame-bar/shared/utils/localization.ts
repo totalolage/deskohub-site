@@ -25,8 +25,3 @@ export function getLocalizedText<D extends string | null | undefined>(
 ): string | D | undefined {
   return getTranslatedValue(text, locale, defaultValue);
 }
-
-/**
- * @deprecated Use getLocalizedText instead
- */
-export const getTranslatableText = getLocalizedText;

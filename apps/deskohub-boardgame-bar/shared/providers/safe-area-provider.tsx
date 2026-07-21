@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { createContext, useContext, useEffect, useState } from "react";
+import { createContext, useEffect, useState } from "react";
 
 interface SafeAreaInsets {
   top: number;
@@ -16,8 +16,6 @@ const SafeAreaContext = createContext<SafeAreaInsets>({
   bottom: 0,
   left: 0,
 });
-
-export const useSafeArea = () => useContext(SafeAreaContext);
 
 export function SafeAreaProvider({ children }: { children: ReactNode }) {
   const [insets, setInsets] = useState<SafeAreaInsets>({
