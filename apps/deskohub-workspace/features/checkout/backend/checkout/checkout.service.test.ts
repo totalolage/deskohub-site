@@ -20,11 +20,11 @@ import {
   canonicalDiscountCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
-import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 import {
   buildSignedPayState,
   openPayState,
@@ -325,15 +325,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   } as unknown as typeof NexiService.Service;
   const affirm =
     options.affirm ??
-    mock(({ discountableSubtotal, product }) =>
+    mock(() =>
       Effect.succeed({
-        quote: {
-          ...undiscountedQuote,
-          product,
-          discountableSubtotal,
-          totalDiscount: { ...discountableSubtotal, value: 0 },
-          discountedSubtotal: discountableSubtotal,
-        },
+        quote: buildWorkspaceCheckoutQuote(reservationData),
         commitment: emptyCommitment,
       })
     );
@@ -358,7 +352,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       CheckoutServiceLive.pipe(
         Layer.provide(
           Layer.mergeAll(
-            DiscountServiceMock({ affirm }),
+            CheckoutPricingServiceMock({ affirmForPayment: affirm }),
             Layer.succeed(DotyposService, dotypos),
             Layer.succeed(NexiService, nexi),
             Layer.succeed(WorkspaceReservationRepository, reservations),
@@ -449,7 +443,12 @@ describe("CheckoutService", () => {
     const orderId = "reservation-affirms-code";
     const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData);
     const affirm = mock(() =>
-      Effect.succeed({ quote: undiscountedQuote, commitment: emptyCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: undiscountedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
     );
     const harness = await createCheckoutHarness({
       orderId,
@@ -470,13 +469,11 @@ describe("CheckoutService", () => {
 
     expect(affirm).toHaveBeenCalledTimes(1);
     expect(affirm).toHaveBeenCalledWith({
-      product: { kind: "cowork", tier: "profi" },
-      discountableSubtotal: money(55_000),
-      reservationDate: reservationData.date,
+      reservation: expect.objectContaining(reservationData),
       dotyposCustomerId: "stored-dotypos-customer-id",
       locale: "cs-CZ",
       submittedCode,
-      acceptedDiscountIds: [],
+      displayedQuote: acceptedQuote,
     });
     expect(harness.createAttempt).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -536,7 +533,12 @@ describe("CheckoutService", () => {
       quote: acceptedQuote,
     });
     const affirm = mock(() =>
-      Effect.succeed({ quote: editedQuote, commitment: emptyCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: editedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-label-edited",
@@ -571,7 +573,12 @@ describe("CheckoutService", () => {
   test("returns pricing_changed when an accepted discount disappears before payment", async () => {
     const submittedCode = canonicalCode("SUMMER50");
     const affirm = mock(() =>
-      Effect.succeed({ quote: undiscountedQuote, commitment: emptyCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: undiscountedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-pricing-changed",
@@ -597,7 +604,11 @@ describe("CheckoutService", () => {
     );
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        acceptedDiscountIds: [application.discount.id],
+        displayedQuote: expect.objectContaining({
+          payment: expect.objectContaining({
+            discounts: [application],
+          }),
+        }),
       })
     );
     expect(harness.updateReservationDetails).not.toHaveBeenCalled();
@@ -612,7 +623,12 @@ describe("CheckoutService", () => {
       discountQuote: discountedQuote,
     });
     const affirm = mock(() =>
-      Effect.succeed({ quote: discountedQuote, commitment: privateCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: discountedQuote,
+        }),
+        commitment: privateCommitment,
+      })
     );
     const createHostedPaymentPage = mock(() => {
       events.push("provider-created");

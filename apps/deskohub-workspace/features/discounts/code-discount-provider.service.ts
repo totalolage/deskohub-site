@@ -1,6 +1,7 @@
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Clock, Context, Effect, Layer, Match, Option } from "effect";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { temporalInstantToIsoString } from "@/shared/utils";
 import type { CanonicalDiscountCode, DiscountQuoteInput } from "./contracts";
 import type {
@@ -68,7 +69,7 @@ export class CodeDiscountProvider extends Context.Service<
         (input: {
           readonly at: Temporal.Instant;
           readonly configuration: DiscountCodeConfiguration;
-          readonly dotyposCustomerId: string;
+          readonly dotyposCustomerId: DotyposCustomerId;
         }) =>
           codes
             .loadAvailability({
@@ -274,7 +275,7 @@ const validateFixedAdjustmentCompatibility = (input: {
 const toDiscountCodeCandidate = (input: {
   readonly configuration: DiscountCodeConfiguration;
   readonly definition: DiscountDefinition;
-  readonly dotyposCustomerId: string;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: CodeDiscountProviderInput["locale"];
   readonly product: WorkspaceCoworkProductIdentity;
 }): DiscountCandidate => {

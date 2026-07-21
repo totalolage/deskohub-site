@@ -12,6 +12,7 @@ import {
 } from "effect";
 import { type Locale, m } from "@/features/i18n";
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import {
   type DiscountQuoteInput,
   discountBasisPointsSchema,
@@ -90,7 +91,7 @@ const toCustomerDiscountCandidate = (input: {
         readonly discountPercent: DiscountGroup["discountPercent"];
       }
     | undefined;
-  readonly dotyposCustomerId: string;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
   readonly product: WorkspaceCoworkProductIdentity;
 }) => {

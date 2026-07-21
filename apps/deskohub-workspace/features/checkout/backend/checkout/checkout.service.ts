@@ -5,9 +5,7 @@ import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import {
-  calculateWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
-  normalizeWorkspaceCheckoutOrder,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
@@ -15,17 +13,12 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
-import {
-  type CanonicalDiscountCode,
-  DiscountService,
-} from "@/features/discounts";
-import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
+import type { CanonicalDiscountCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
   type CheckoutLegalAcceptanceSnapshot,
@@ -66,6 +59,8 @@ import {
 } from "../repositories/payment-attempt.repository";
 import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
+import { CheckoutPricingServiceLiveWithDependencies } from "./checkout-pricing.runtime";
+import { CheckoutPricingService } from "./checkout-pricing.service";
 import { openPayState, type SignedPayState } from "./pay-state.server";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
@@ -366,7 +361,7 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const posthogEvents = yield* PostHogEventService;
-    const discounts = yield* DiscountService;
+    const pricing = yield* CheckoutPricingService;
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -611,23 +606,14 @@ export const CheckoutServiceLive = Layer.effect(
             });
           }
 
-          const order = yield* normalizeWorkspaceCheckoutOrder(data);
-          const product = getWorkspaceProductByTier(order.entryTier);
-          const discountableSubtotal = product.price;
-          const affirmation = yield* discounts.affirm({
-            product: { kind: "cowork", tier: order.entryTier },
-            discountableSubtotal,
-            reservationDate: data.date,
+          const paymentAffirmation = yield* pricing.affirmForPayment({
+            reservation: data,
             dotyposCustomerId: reservation.dotyposCustomerId,
             locale,
             submittedCode: state.submittedCode,
-            acceptedDiscountIds: state.quote.payment.discounts.map(
-              ({ discount }) => discount.id
-            ),
+            displayedQuote: state.quote,
           });
-          const quote = yield* calculateWorkspaceCheckoutQuote(data, {
-            discountQuote: affirmation.quote,
-          });
+          const quote = paymentAffirmation.quote;
           yield* Effect.annotateLogsScoped({ quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");
           yield* Effect.logDebug(
@@ -755,5 +741,5 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(DotyposServiceLive),
   Layer.provide(NexiServiceLive),
-  Layer.provide(DiscountServiceLiveWithDependencies)
+  Layer.provide(CheckoutPricingServiceLiveWithDependencies)
 );

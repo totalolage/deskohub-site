@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -105,15 +105,16 @@ async function CheckoutPayContent({
 
   const opened = await Effect.gen(function* () {
     const state = yield* openPayState(payStateToken);
-    const freshPayUrl = state.changedKeys
-      ? yield* buildFreshCheckoutPayPath({
-          locale: state.locale,
-          reservation: state.reservation,
-          quote: state.quote,
-          orderId: state.orderId,
-          submittedCode: state.submittedCode,
-        })
-      : undefined;
+    const freshPayUrl = yield* buildFreshCheckoutPayPath({
+      locale: state.locale,
+      reservation: state.reservation,
+      quote: state.quote,
+      orderId: state.orderId,
+      submittedCode: state.submittedCode,
+    }).pipe(
+      Effect.when(Effect.succeed(state.changedKeys !== undefined)),
+      Effect.map(Option.getOrUndefined)
+    );
 
     return { state, freshPayUrl };
   }).pipe(

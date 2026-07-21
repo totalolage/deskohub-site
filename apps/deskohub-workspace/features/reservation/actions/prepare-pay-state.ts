@@ -18,17 +18,16 @@ import {
 } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
-import { workspaceAdvertisedPriceReservationEquals } from "@/features/checkout/advertised-price";
 import { captureReservationStarted } from "@/features/checkout/backend/analytics";
 import {
-  affirmWorkspaceAdvertisedPrice,
   buildCheckoutPayPath,
-  buildIdentifiedWorkspaceCheckoutQuote,
   buildSignedPayState,
+  CheckoutPricingService,
   openAdvertisedPriceState,
   payStateDefaultTtlMilliseconds,
   sealPayStateForUrl,
 } from "@/features/checkout/backend/checkout";
+import { CheckoutPricingServiceLiveWithDependencies } from "@/features/checkout/backend/checkout/checkout-pricing.runtime";
 import { ReservationHoldCleanupScheduleService } from "@/features/checkout/backend/holds";
 import {
   LegalEvidenceEventRepository,
@@ -52,7 +51,6 @@ import {
 } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
-import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
@@ -62,6 +60,7 @@ import {
   WorkspaceReservationRepositoryLive,
 } from "@/features/reservation/backend/workspace-reservation.repository";
 import {
+  coworkAdvertisedPriceReservationEquals,
   getCoworkReservationDetails,
   type NormalizedCoworkReservationOrder,
   normalizedCoworkReservationOrderSchema,
@@ -121,7 +120,7 @@ const openSubmittedAdvertisedPrice = Effect.fn(
     Effect.filterOrFail(
       (state) =>
         state.locale === input.locale &&
-        workspaceAdvertisedPriceReservationEquals(state.reservation, {
+        coworkAdvertisedPriceReservationEquals(state.reservation, {
           kind: "cowork",
           details: getCoworkReservationDetails(input.reservation),
         }),
@@ -394,6 +393,7 @@ const waitForPendingHoldCreation = Effect.fn(
 export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
   function* (input: PreparePayStateInput) {
     const botProtection = yield* BotProtectionService;
+    const pricing = yield* CheckoutPricingService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });
 
     const advertisedPrice = yield* openSubmittedAdvertisedPrice(input);
@@ -444,7 +444,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       };
     }
 
-    const affirmedAdvertisement = yield* affirmWorkspaceAdvertisedPrice({
+    const affirmedAdvertisement = yield* pricing.affirmAdvertisement({
       reservation: input.reservation,
       locale: input.locale,
       advertisedQuote: advertisedPrice.quote,
@@ -516,11 +516,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
         "Existing workspace reservation hold reused for checkout prep"
       );
 
-      const quote = yield* buildIdentifiedWorkspaceCheckoutQuote({
+      const quote = yield* pricing.quoteForCustomer({
         reservation: input.reservation,
         dotyposCustomerId: existingReservation.dotyposCustomerId,
         locale: input.locale,
-        advertisementQuote: affirmedAdvertisement.discountQuote,
+        affirmedAdvertisement: affirmedAdvertisement.discountQuote,
       });
       yield* Effect.annotateLogsScoped({ quote });
       yield* Effect.logDebug("Workspace reservation quote built");
@@ -572,11 +572,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     yield* Effect.annotateLogsScoped({ dotyposCustomerId });
     yield* Effect.logDebug("Workspace reservation Dotypos customer resolved");
 
-    const quote = yield* buildIdentifiedWorkspaceCheckoutQuote({
+    const quote = yield* pricing.quoteForCustomer({
       reservation: input.reservation,
       dotyposCustomerId,
       locale: input.locale,
-      advertisementQuote: affirmedAdvertisement.discountQuote,
+      affirmedAdvertisement: affirmedAdvertisement.discountQuote,
     });
     yield* Effect.annotateLogsScoped({ quote });
     yield* Effect.logDebug("Workspace reservation quote built");
@@ -612,11 +612,11 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
           "Existing workspace reservation hold reused after concurrent hold creation"
         );
 
-        const reusedQuote = yield* buildIdentifiedWorkspaceCheckoutQuote({
+        const reusedQuote = yield* pricing.quoteForCustomer({
           reservation: input.reservation,
           dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
           locale: input.locale,
-          advertisementQuote: affirmedAdvertisement.discountQuote,
+          affirmedAdvertisement: affirmedAdvertisement.discountQuote,
         });
 
         yield* reservations.updateReservationDetails({
@@ -866,7 +866,7 @@ const PreparePayStateLive = Layer.mergeAll(
   ReservationHoldCleanupScheduleService.Live,
   PostHogEventServiceLive,
   DotyposServiceLive,
-  DiscountServiceLiveWithDependencies
+  CheckoutPricingServiceLiveWithDependencies
 );
 
 const preparePayStateAction = defineWorkspaceAction(

@@ -1,8 +1,11 @@
 import { Data, Effect, type Layer, Predicate, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { workspaceAdvertisedPriceRequestSchema } from "@/features/checkout/advertised-price";
-import type { DiscountService } from "@/features/discounts";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import {
+  makeWorkspaceNextEffect,
+  WorkspaceRouteFailure,
+} from "@/shared/backend/workspace-next-effect";
+import type { CheckoutPricingService } from "./checkout-pricing.service";
 import { buildWorkspaceAdvertisedPrice } from "./workspace-advertised-price.server";
 
 const decodeRequest = Schema.decodeUnknownEffect(
@@ -29,53 +32,35 @@ const loadAdvertisedPrice = Effect.fn("loadWorkspaceAdvertisedPrice")(
     );
     return yield* buildWorkspaceAdvertisedPrice(input);
   },
-  (effect) =>
-    effect.pipe(
-      Effect.scoped,
-      Effect.annotateLogs({
-        method: "POST",
-        operation: "workspaceAdvertisedPrice",
-      })
-    )
+  Effect.scoped
 );
 
-const handleAdvertisedPriceError = Effect.fn(
-  "handleWorkspaceAdvertisedPriceError"
-)(function* (error: unknown) {
+const toAdvertisedPriceRouteFailure = (error: unknown) => {
   const invalidRequest = Predicate.isTagged(
     error,
     "WorkspaceAdvertisedPriceRequestError"
   );
 
-  yield* invalidRequest
-    ? Effect.logWarning("Workspace advertised price request was invalid", {
-        errorTag: "WorkspaceAdvertisedPriceRequestError",
-      })
-    : Effect.logError("Workspace advertised price request failed", {
-        errorTag:
-          error && typeof error === "object" && "_tag" in error
-            ? String(error._tag)
-            : "UnknownError",
-      });
+  return new WorkspaceRouteFailure({
+    statusCode: invalidRequest ? 400 : 500,
+    publicMessage: "Workspace advertised price could not be loaded",
+    cause: error,
+  });
+};
 
-  return NextResponse.json(
-    { error: "Workspace advertised price could not be loaded" },
-    { status: invalidRequest ? 400 : 500 }
-  );
-});
-
-export const makeWorkspaceAdvertisedPricePost =
-  <E>(discountServiceLayer: Layer.Layer<DiscountService, E>) =>
-  async (request: Request): Promise<NextResponse> =>
-    runWorkspaceRequestEffect(
-      request,
-      loadAdvertisedPrice(request).pipe(
-        Effect.provide(discountServiceLayer),
-        Effect.map((result) =>
-          NextResponse.json(result, {
-            headers: { "Cache-Control": "private, no-store" },
-          })
-        ),
-        Effect.catch(handleAdvertisedPriceError)
+export const makeWorkspaceAdvertisedPricePost = <E>(
+  pricingServiceLayer: Layer.Layer<CheckoutPricingService, E>
+) =>
+  makeWorkspaceNextEffect({
+    layer: pricingServiceLayer,
+    mapLayerError: toAdvertisedPriceRouteFailure,
+  }).route({ method: "POST", operation: "advertisedPrice" }, (request) =>
+    loadAdvertisedPrice(request).pipe(
+      Effect.mapError(toAdvertisedPriceRouteFailure),
+      Effect.map((result) =>
+        NextResponse.json(result, {
+          headers: { "Cache-Control": "private, no-store" },
+        })
       )
-    );
+    )
+  );

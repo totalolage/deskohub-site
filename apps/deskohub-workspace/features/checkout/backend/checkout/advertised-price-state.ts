@@ -1,9 +1,9 @@
-import { Data, Effect, Schema } from "effect";
-import { workspaceAdvertisedPriceReservationSchema } from "@/features/checkout/advertised-price";
+import { Data, Effect, Predicate, Schema } from "effect";
 import type { Locale } from "@/features/i18n";
+import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 import {
   type CheckoutStateCryptoOptions,
-  CheckoutStateTokenError,
+  type CheckoutStateTokenError,
   createCheckoutStateClaims,
   openCheckoutState,
   sealCheckoutState,
@@ -14,7 +14,7 @@ export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 
 export const advertisedPriceStateSchema = Schema.Struct({
   ...workspaceCheckoutPriceStateSchema.fields,
-  reservation: workspaceAdvertisedPriceReservationSchema,
+  reservation: coworkAdvertisedPriceReservationSchema,
 }).annotate({
   identifier: "AdvertisedPriceState",
   description:
@@ -31,8 +31,13 @@ export class AdvertisedPriceStateTokenError extends Data.TaggedError(
   readonly cause?: unknown;
 }> {}
 
+const isCheckoutStateTokenError = (
+  cause: unknown
+): cause is CheckoutStateTokenError =>
+  Predicate.isTagged(cause, "CheckoutStateTokenError");
+
 const toAdvertisedPriceStateTokenError = (cause: unknown) =>
-  cause instanceof CheckoutStateTokenError
+  isCheckoutStateTokenError(cause)
     ? new AdvertisedPriceStateTokenError({
         code: cause.code,
         message: cause.message,

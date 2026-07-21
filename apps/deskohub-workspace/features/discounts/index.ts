@@ -1,6 +1,8 @@
 export type { DiscountCommitment } from "./commitment";
 export {
+  type AffirmedDiscountAdvertisementQuote,
   type AppliedDiscount,
+  affirmedDiscountAdvertisementQuoteCodec,
   appliedDiscountCodec,
   type CanonicalDiscountCode,
   canonicalDiscountCodeSchema,
@@ -10,17 +12,16 @@ export {
   type DiscountAdvertisementQuote,
   type DiscountId,
   type DiscountQuote,
-  type DiscountQuoteInput,
   discountAdvertisementQuoteCodec,
   discountProductIdentitySchema,
   discountQuoteCodec,
   isAppliedDiscount,
 } from "./contracts";
 export {
+  type CustomerDiscountQuoteInput,
   type DiscountAdvertisementAffirmationInput,
-  type DiscountAffirmation,
-  type DiscountAffirmationInput,
-  type DiscountIdentifiedQuoteInput,
+  type DiscountPaymentAffirmation,
+  type DiscountPaymentAffirmationInput,
   DiscountService,
   type IDiscountService,
 } from "./discount.service";

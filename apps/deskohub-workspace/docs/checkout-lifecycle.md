@@ -25,7 +25,7 @@ Checkout has three distinct price boundaries:
 2. Reservation submission creates the order-summary quote that the customer reviews.
 3. Order submission freshly affirms that signed summary before payment begins.
 
-The server must issue an integrity-protected advertisement snapshot for the product and reservation inputs whose price is visible on the reservation page. Reservation-page advertisement evaluates only automatic discounts that can be discovered without customer identity; currently this means Calendar sales. It must not resolve or create a Dotypos customer merely to advertise a price. The snapshot explicitly records that customer-specific pricing has not been evaluated, contains no customer PII, and is carried back by the reservation form without treating client-authored price data as authoritative. The signed order-summary state performs the same role for the price reviewed on the summary page.
+The server must issue an integrity-protected advertisement snapshot for the product and reservation inputs whose price is visible on the reservation page. Reservation-page advertisement evaluates only automatic discounts that can be discovered without customer identity; currently this means Calendar sales. It must not resolve or create a Dotypos customer merely to advertise a price. Customer-specific pricing is outside the advertisement boundary by contract and does not need an inert marker in the snapshot. The snapshot contains no customer PII and is carried back by the reservation form without treating client-authored price data as authoritative. The signed order-summary state performs the same role for the price reviewed on the summary page.
 
 On reservation submission, the server opens the advertisement snapshot and freshly affirms only the anonymously discoverable automatic discounts that were advertised. A Calendar sale that became available after the snapshot was issued is not added retrospectively. After that boundary is affirmed, the normal reservation workflow resolves or creates the Dotypos customer and evaluates the customer discount for the first signed order summary. Because customer-specific pricing could not be evaluated at the anonymous advertisement boundary, that customer discount may first appear on the summary without producing `pricing_changed`. This is an explicit boundary contract, not a general permission to introduce later automatic discounts.
 
@@ -346,7 +346,7 @@ sequenceDiagram
   participant Dotypos
 
   Customer->>App: Submit reservation/contact/legal form
-  App->>App: Open snapshot marked customer pricing not evaluated
+  App->>App: Open anonymous advertised-price snapshot
   App->>App: Validate input and legal consent
   App->>App: Affirm only its advertised anonymous automatic discounts
   App->>App: Build intent-key object and HMAC via JSON.stringify

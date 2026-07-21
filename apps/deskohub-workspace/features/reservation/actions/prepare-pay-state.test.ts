@@ -5,6 +5,7 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer, Schema } from "effect";
 import type { WorkspaceReservation } from "@/db/schema";
+import { CheckoutPricingServiceMock } from "@/features/checkout/backend/checkout/checkout-pricing.service.mock";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
 import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
 import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
@@ -14,11 +15,12 @@ import {
 } from "@/features/checkout/checkout-quote";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
+  type AffirmedDiscountAdvertisementQuote,
+  affirmedDiscountAdvertisementQuoteCodec,
   type DiscountAdvertisementQuote,
   discountAdvertisementQuoteCodec,
 } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
-import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 
@@ -125,6 +127,21 @@ const buildQuoteFromAdvertisement = (quote: DiscountAdvertisementQuote) =>
     calculateWorkspaceCheckoutQuote(reservation, { discountQuote: quote })
   );
 
+const affirmAdvertisementQuote = (
+  quote: DiscountAdvertisementQuote
+): AffirmedDiscountAdvertisementQuote =>
+  affirmedDiscountAdvertisementQuoteCodec.make(quote);
+
+const makeAdvertisementAffirmation = (basisPoints?: number) => {
+  const discountQuote = affirmAdvertisementQuote(
+    makeAdvertisementQuote(basisPoints)
+  );
+  return {
+    discountQuote,
+    quote: buildQuoteFromAdvertisement(discountQuote),
+  };
+};
+
 const makeReusableReservation = (
   overrides: Partial<WorkspaceReservation> = {}
 ): WorkspaceReservation =>
@@ -170,7 +187,7 @@ const runReusableReservationScenario = async (input: {
   readonly findById?: ReturnType<typeof mock>;
   readonly advertisedPriceToken?: string;
   readonly affirmAdvertisement?: ReturnType<typeof mock>;
-  readonly quoteIdentified?: ReturnType<typeof mock>;
+  readonly quoteForCustomer?: ReturnType<typeof mock>;
 }) => {
   const { prepareWorkspacePayState } = await import("./prepare-pay-state");
   const { WorkspaceCheckoutAccessCodeService } = await import(
@@ -206,15 +223,17 @@ const runReusableReservationScenario = async (input: {
   const findById = input.findById ?? mock(() => Effect.die("unused"));
   const affirmAdvertisement =
     input.affirmAdvertisement ??
-    mock(() => Effect.succeed(makeAdvertisementQuote()));
-  const quoteIdentified =
-    input.quoteIdentified ??
-    mock(({ advertisementQuote }) => Effect.succeed(advertisementQuote));
+    mock(() => Effect.succeed(makeAdvertisementAffirmation()));
+  const quoteForCustomer =
+    input.quoteForCustomer ??
+    mock(({ affirmedAdvertisement }) =>
+      Effect.succeed(buildQuoteFromAdvertisement(affirmedAdvertisement))
+    );
   const findOrCreateCustomer = mock(() =>
     Effect.succeed({ id: "customer-id" })
   );
   const testLayer = Layer.mergeAll(
-    DiscountServiceMock({ affirmAdvertisement, quoteIdentified }),
+    CheckoutPricingServiceMock({ affirmAdvertisement, quoteForCustomer }),
     BotProtectionServiceMock({ verifyHuman }),
     Layer.succeed(WorkspaceAvailabilityService, {
       getAvailability: mock(() => Effect.die("unused")),
@@ -271,7 +290,7 @@ const runReusableReservationScenario = async (input: {
     findById,
     verifyHuman,
     affirmAdvertisement,
-    quoteIdentified,
+    quoteForCustomer,
     findOrCreateCustomer,
   };
 };
@@ -354,26 +373,20 @@ describe("prepareWorkspacePayState", () => {
         return { id: "customer-id" };
       })
     );
-    const affirmAdvertisement = mock(({ discountableSubtotal, product }) =>
+    const affirmAdvertisement = mock(() =>
       Effect.sync(() => {
         eventOrder.push("advertisement");
-        return {
-          product,
-          discountableSubtotal,
-          discounts: [],
-          totalDiscount: { ...discountableSubtotal, value: 0 },
-          discountedSubtotal: discountableSubtotal,
-        };
+        return makeAdvertisementAffirmation();
       })
     );
-    const quoteIdentified = mock(({ advertisementQuote }) =>
+    const quoteForCustomer = mock(({ affirmedAdvertisement }) =>
       Effect.sync(() => {
         eventOrder.push("quote");
-        return advertisementQuote;
+        return buildQuoteFromAdvertisement(affirmedAdvertisement);
       })
     );
     const testLayer = Layer.mergeAll(
-      DiscountServiceMock({ affirmAdvertisement, quoteIdentified }),
+      CheckoutPricingServiceMock({ affirmAdvertisement, quoteForCustomer }),
       BotProtectionServiceMock({ verifyHuman }),
       Layer.succeed(WorkspaceAvailabilityService, {
         getAvailability: mock(() => Effect.die("unused")),
@@ -472,7 +485,7 @@ describe("prepareWorkspacePayState", () => {
     const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.orderId).toBe("reservation-id");
     expect(state.submittedCode).toBeUndefined();
-    expect(quoteIdentified).toHaveBeenCalledWith(
+    expect(quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: "customer-id",
       })
@@ -501,7 +514,7 @@ describe("prepareWorkspacePayState", () => {
       locale: "en-US",
     });
     expect(result.findOrCreateCustomer).not.toHaveBeenCalled();
-    expect(result.quoteIdentified).toHaveBeenCalledWith(
+    expect(result.quoteForCustomer).toHaveBeenCalledWith(
       expect.objectContaining({
         dotyposCustomerId: existingReservation.dotyposCustomerId,
       })
@@ -523,7 +536,7 @@ describe("prepareWorkspacePayState", () => {
     expect(result.claimHoldCreation).toHaveBeenCalledWith("draft-id");
     expect(result.findById).toHaveBeenCalledWith("draft-id");
     expect(result.enqueueCleanup).not.toHaveBeenCalled();
-    expect(result.quoteIdentified).toHaveBeenLastCalledWith(
+    expect(result.quoteForCustomer).toHaveBeenLastCalledWith(
       expect.objectContaining({
         dotyposCustomerId: claimConflictReservation.dotyposCustomerId,
       })
@@ -544,7 +557,10 @@ describe("prepareWorkspacePayState", () => {
       legalConsent: true,
     }).pipe(
       Effect.provide(
-        BotProtectionServiceMock({ verifyHuman: () => Effect.void })
+        Layer.merge(
+          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
+          CheckoutPricingServiceMock({})
+        )
       )
     ) as Effect.Effect<never, unknown, never>;
 
@@ -572,7 +588,10 @@ describe("prepareWorkspacePayState", () => {
       legalConsent: true,
     }).pipe(
       Effect.provide(
-        BotProtectionServiceMock({ verifyHuman: () => Effect.void })
+        Layer.merge(
+          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
+          CheckoutPricingServiceMock({})
+        )
       )
     ) as Effect.Effect<never, unknown, never>;
 
@@ -603,7 +622,10 @@ describe("prepareWorkspacePayState", () => {
       legalConsent: true,
     }).pipe(
       Effect.provide(
-        BotProtectionServiceMock({ verifyHuman: () => Effect.void })
+        Layer.merge(
+          BotProtectionServiceMock({ verifyHuman: () => Effect.void }),
+          CheckoutPricingServiceMock({})
+        )
       )
     ) as Effect.Effect<never, unknown, never>;
 
@@ -628,7 +650,9 @@ describe("prepareWorkspacePayState", () => {
       advertisedPriceToken: await buildAdvertisedPriceToken(
         buildQuoteFromAdvertisement(advertisedDiscount)
       ),
-      affirmAdvertisement: mock(() => Effect.succeed(makeAdvertisementQuote())),
+      affirmAdvertisement: mock(() =>
+        Effect.succeed(makeAdvertisementAffirmation())
+      ),
     });
 
     expect(result.result).toMatchObject({
@@ -654,7 +678,9 @@ describe("prepareWorkspacePayState", () => {
     const customerQuote = makeAdvertisementQuote(1000, "Customer discount");
     const result = await runReusableReservationScenario({
       findByIntentKey: mock(() => Effect.succeed(makeReusableReservation())),
-      quoteIdentified: mock(() => Effect.succeed(customerQuote)),
+      quoteForCustomer: mock(() =>
+        Effect.succeed(buildQuoteFromAdvertisement(customerQuote))
+      ),
     });
 
     expect(result.result.status).toBe("ready");
@@ -694,7 +720,12 @@ describe("prepareWorkspacePayState", () => {
       reservation,
       legalConsent: true,
     }).pipe(
-      Effect.provide(BotProtectionServiceMock({ verifyHuman }))
+      Effect.provide(
+        Layer.merge(
+          BotProtectionServiceMock({ verifyHuman }),
+          CheckoutPricingServiceMock({})
+        )
+      )
     ) as Effect.Effect<never, unknown, never>;
 
     const error = await Effect.runPromise(Effect.flip(effect));

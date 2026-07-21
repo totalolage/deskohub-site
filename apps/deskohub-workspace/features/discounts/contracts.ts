@@ -10,6 +10,7 @@ import {
   type WorkspaceCoworkProductIdentity,
   workspaceCoworkProductIdentitySchema,
 } from "@/features/reservation/cowork-reservation-product";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 export const discountIdSchema = Schema.NonEmptyString.pipe(
@@ -149,6 +150,18 @@ export const discountAdvertisementQuoteCodec = discountQuoteCodec
 export type DiscountAdvertisementQuote =
   typeof discountAdvertisementQuoteCodec.Type;
 
+export const affirmedDiscountAdvertisementQuoteCodec =
+  discountAdvertisementQuoteCodec
+    .pipe(Schema.brand("AffirmedDiscountAdvertisementQuote"))
+    .annotate({
+      identifier: "AffirmedDiscountAdvertisementQuote",
+      description:
+        "An anonymous advertisement quote freshly affirmed at reservation submission.",
+    });
+
+export type AffirmedDiscountAdvertisementQuote =
+  typeof affirmedDiscountAdvertisementQuoteCodec.Type;
+
 export type DiscountAdvertisementInput = {
   readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
@@ -157,6 +170,6 @@ export type DiscountAdvertisementInput = {
 };
 
 export type DiscountQuoteInput = DiscountAdvertisementInput & {
-  readonly dotyposCustomerId: string;
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly submittedCode?: CanonicalDiscountCode;
 };

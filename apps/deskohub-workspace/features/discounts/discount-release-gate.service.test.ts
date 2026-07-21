@@ -36,7 +36,9 @@ const featureFlagLayer = WorkspaceFeatureFlagServiceMock({
 const runGateEvaluation = () =>
   Effect.gen(function* () {
     const releaseGates = yield* DiscountReleaseGateService;
-    return yield* releaseGates.evaluate({ operation: "quote" });
+    return yield* releaseGates.evaluate({
+      operation: "discover_advertised_discounts",
+    });
   }).pipe(
     Effect.provide(DiscountReleaseGateService.Live),
     Effect.provide(featureFlagLayer),
@@ -74,7 +76,9 @@ describe("DiscountReleaseGateService", () => {
 
     const result = await Effect.gen(function* () {
       const releaseGates = yield* DiscountReleaseGateService;
-      return yield* releaseGates.evaluate({ operation: "quote" });
+      return yield* releaseGates.evaluate({
+        operation: "discover_advertised_discounts",
+      });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
       Effect.provide(featureFlagLayer),
@@ -109,7 +113,7 @@ describe("DiscountReleaseGateService", () => {
 
     const result = await Effect.gen(function* () {
       const releaseGates = yield* DiscountReleaseGateService;
-      return yield* releaseGates.evaluate({ operation: "affirm" });
+      return yield* releaseGates.evaluate({ operation: "affirm_for_payment" });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
       Effect.provide(featureFlagLayer),
@@ -126,7 +130,7 @@ describe("DiscountReleaseGateService", () => {
       level: "Error",
       annotations: expect.objectContaining({
         discountBoundary: "release_gate",
-        discountOperation: "affirm",
+        discountOperation: "affirm_for_payment",
         discountFeatureFlag: flag,
         discountErrorTag: "MissingFeatureFlag",
         discountErrorReason: "missing_flag",
@@ -159,7 +163,9 @@ describe("DiscountReleaseGateService", () => {
 
     const result = await Effect.gen(function* () {
       const releaseGates = yield* DiscountReleaseGateService;
-      return yield* releaseGates.evaluate({ operation: "quote" });
+      return yield* releaseGates.evaluate({
+        operation: "discover_advertised_discounts",
+      });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
       Effect.provide(failingFeatureFlags),
@@ -176,7 +182,7 @@ describe("DiscountReleaseGateService", () => {
       level: "Error",
       annotations: expect.objectContaining({
         discountBoundary: "release_gate",
-        discountOperation: "quote",
+        discountOperation: "discover_advertised_discounts",
         discountErrorTag: "PostHogFeatureFlagEvaluationError",
         discountErrorReason: "evaluation_failure",
       }),

@@ -1,8 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { Option, Schema } from "effect";
+import { coworkAdvertisedPriceReservationEquals } from "@/features/reservation/cowork-reservation";
 import {
+  parseWorkspaceAdvertisedPrice,
   workspaceAdvertisedPriceRequestSchema,
-  workspaceAdvertisedPriceReservationEquals,
 } from "./advertised-price";
 
 const decodeRequest = Schema.decodeUnknownOption(
@@ -34,13 +35,19 @@ describe("Workspace advertised price contract", () => {
 
   test("compares the full normalized PII-free reservation", () => {
     expect(
-      workspaceAdvertisedPriceReservationEquals(reservation, reservation)
+      coworkAdvertisedPriceReservationEquals(reservation, reservation)
     ).toBe(true);
     expect(
-      workspaceAdvertisedPriceReservationEquals(reservation, {
+      coworkAdvertisedPriceReservationEquals(reservation, {
         ...reservation,
         details: { ...reservation.details, coffee: false },
       })
     ).toBe(false);
+  });
+
+  test("rejects an invalid response asynchronously", async () => {
+    const parsed = parseWorkspaceAdvertisedPrice({ quote: null });
+
+    await expect(parsed).rejects.toBeDefined();
   });
 });
