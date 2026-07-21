@@ -7,21 +7,20 @@ import {
   workspaceReservations,
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
-import {
-  type WorkspaceCoworkProductTier,
-  type WorkspaceProductMonitorOption,
-  withCoworkProductFields,
-} from "@/features/reservation/cowork-reservation-product";
+import { withCoworkProductFields } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
   storedWorkspaceReservationDetailsSchema,
 } from "@/features/reservation/persistence-contracts";
 
-export type WorkspaceReservation = WorkspaceReservationRow & {
-  readonly productTier: WorkspaceCoworkProductTier | null;
-  readonly productCoffee: boolean;
-  readonly productMonitorOption: WorkspaceProductMonitorOption | null;
+const withReservationKindFields = (reservation: WorkspaceReservationRow) => {
+  const reservationWithCoworkFields = withCoworkProductFields(reservation);
+
+  // Compose field enrichments for additional reservation kinds here.
+  return reservationWithCoworkFields;
 };
+
+export type WorkspaceReservation = ReturnType<typeof withReservationKindFields>;
 
 export class WorkspaceReservationStateError extends Data.TaggedError(
   "WorkspaceReservationStateError"
@@ -216,7 +215,10 @@ const decodeWorkspaceReservation = Effect.fn(
     onExcessProperty: "error",
   })(reservation.reservationDetails).pipe(
     Effect.map((reservationDetails) =>
-      withCoworkProductFields({ ...reservation, reservationDetails })
+      withReservationKindFields({
+        ...reservation,
+        reservationDetails,
+      })
     ),
     Effect.mapError(
       (cause) =>
