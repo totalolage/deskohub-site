@@ -1,6 +1,6 @@
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
-import { Context, Data, Effect, Layer, Match, Schema } from "effect";
+import { Context, Data, Effect, Layer, Schema } from "effect";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type WorkspaceReservation as WorkspaceReservationRow,
@@ -8,9 +8,9 @@ import {
 } from "@/db/schema";
 import { postgresUuidV7 } from "@/db/uuid-v7";
 import {
-  getCoworkReservationProductFields,
   type WorkspaceCoworkProductTier,
   type WorkspaceProductMonitorOption,
+  withCoworkProductFields,
 } from "@/features/reservation/cowork-reservation-product";
 import {
   type StoredWorkspaceReservationDetails,
@@ -207,22 +207,6 @@ export const WorkspaceReservationRepository =
 const storedReservationDetailsDecoder: Schema.Decoder<
   WorkspaceReservationRow["reservationDetails"]
 > = storedWorkspaceReservationDetailsSchema;
-
-const withCoworkProductFields = (
-  reservation: WorkspaceReservationRow
-): WorkspaceReservation => ({
-  ...reservation,
-  ...Match.value(reservation.reservationDetails).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: getCoworkReservationProductFields,
-      "meeting-room": () => ({
-        productTier: null,
-        productCoffee: false,
-        productMonitorOption: null,
-      }),
-    })
-  ),
-});
 
 const decodeWorkspaceReservation = Effect.fn(
   "WorkspaceReservation.decodeStoredDetails"

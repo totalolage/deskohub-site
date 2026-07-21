@@ -9,6 +9,8 @@
 
 Keep reservation-family-specific schemas and projections in the corresponding cowork or meeting-room domain modules. Generic checkout and reservation modules compose those family contracts instead of redeclaring family rules.
 
+Cowork compatibility-field enrichment owns the complete partial family match in the cowork domain. Make the enricher generic over a reservation carrying decoded family details, project cowork details there, and return empty cowork fields for every non-cowork family so generic repositories do not own cowork behavior.
+
 ## Product identities and keys
 
 A product key must encode the complete product identity, including its reservation family. Never use a cowork tier or meeting-room duration by itself as a product key.

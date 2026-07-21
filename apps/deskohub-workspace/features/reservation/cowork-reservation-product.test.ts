@@ -4,11 +4,11 @@ import { workspaceProductMonitorOptions } from "@/features/checkout/product-cata
 import { makeSchemaParser } from "@/shared/utils/schema-parser";
 import {
   coworkReservationProductSchema,
-  getCoworkReservationProductFields,
   getStoredCoworkReservationDetails,
   getWorkspaceCoworkProductKey,
   normalizedCoworkReservationProductSchema,
   storedCoworkReservationDetailsSchema,
+  withCoworkProductFields,
   workspaceCoworkProductKeySchema,
 } from "./cowork-reservation-product";
 
@@ -138,38 +138,81 @@ describe("cowork reservation product", () => {
 
   test("projects stored cowork details into compatibility product fields", () => {
     expect(
-      getCoworkReservationProductFields({
+      withCoworkProductFields({
+        id: "basic-reservation",
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "basic",
+          coffee: false,
+        },
+      })
+    ).toEqual({
+      id: "basic-reservation",
+      reservationDetails: {
         kind: "cowork",
         entryTier: "basic",
         coffee: false,
-      })
-    ).toEqual({
+      },
       productTier: "basic",
       productCoffee: false,
       productMonitorOption: null,
     });
     expect(
-      getCoworkReservationProductFields({
+      withCoworkProductFields({
+        id: "plus-reservation",
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "plus",
+          coffee: true,
+        },
+      })
+    ).toEqual({
+      id: "plus-reservation",
+      reservationDetails: {
         kind: "cowork",
         entryTier: "plus",
         coffee: true,
-      })
-    ).toEqual({
+      },
       productTier: "plus",
       productCoffee: true,
       productMonitorOption: null,
     });
     expect(
-      getCoworkReservationProductFields({
+      withCoworkProductFields({
+        id: "profi-reservation",
+        reservationDetails: {
+          kind: "cowork",
+          entryTier: "profi",
+          coffee: true,
+          monitorOption: "2x32-4k",
+        },
+      })
+    ).toEqual({
+      id: "profi-reservation",
+      reservationDetails: {
         kind: "cowork",
         entryTier: "profi",
         coffee: true,
         monitorOption: "2x32-4k",
-      })
-    ).toEqual({
+      },
       productTier: "profi",
       productCoffee: true,
       productMonitorOption: "2x32-4k",
+    });
+  });
+
+  test("projects empty cowork product fields for another reservation family", () => {
+    expect(
+      withCoworkProductFields({
+        id: "meeting-room-reservation",
+        reservationDetails: { kind: "meeting-room" },
+      })
+    ).toEqual({
+      id: "meeting-room-reservation",
+      reservationDetails: { kind: "meeting-room" },
+      productTier: null,
+      productCoffee: false,
+      productMonitorOption: null,
     });
   });
 

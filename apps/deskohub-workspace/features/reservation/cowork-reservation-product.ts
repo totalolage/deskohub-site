@@ -7,7 +7,10 @@ import {
   workspaceProductMonitorOptions,
 } from "@/features/checkout/product-catalog";
 import { m } from "@/features/i18n";
-import { coworkReservationKind } from "@/features/reservation/reservation-kind";
+import {
+  coworkReservationKind,
+  type WorkspaceReservationKind,
+} from "@/features/reservation/reservation-kind";
 
 const coworkReservationMonitorOptionInputSchema = Schema.optional(
   Schema.Union([
@@ -103,6 +106,23 @@ export type NormalizedCoworkReservationProduct =
   typeof normalizedCoworkReservationProductSchema.Type;
 export type StoredCoworkReservationDetails =
   typeof storedCoworkReservationDetailsSchema.Type;
+
+type CoworkProductFields = {
+  readonly productTier: WorkspaceCoworkProductTier | null;
+  readonly productCoffee: boolean;
+  readonly productMonitorOption: WorkspaceProductMonitorOption | null;
+};
+
+type ReservationWithCoworkProductDetails = {
+  readonly reservationDetails:
+    | StoredCoworkReservationDetails
+    | {
+        readonly kind: Exclude<
+          WorkspaceReservationKind,
+          typeof coworkReservationKind
+        >;
+      };
+};
 
 const normalizeMonitorOption = (
   monitorOption: WorkspaceProductMonitorOption | "" | undefined
@@ -221,9 +241,9 @@ export const getStoredCoworkReservationDetails = (
     })
   );
 
-export const getCoworkReservationProductFields = (
+const getCoworkReservationProductFields = (
   details: StoredCoworkReservationDetails
-) =>
+): CoworkProductFields =>
   Match.value(details).pipe(
     Match.discriminatorsExhaustive("entryTier")({
       basic: (basicDetails) => ({
@@ -243,6 +263,25 @@ export const getCoworkReservationProductFields = (
       }),
     })
   );
+
+export const withCoworkProductFields = <
+  const Reservation extends ReservationWithCoworkProductDetails,
+>(
+  reservation: Reservation
+): Reservation & CoworkProductFields => ({
+  ...reservation,
+  ...Match.value(reservation.reservationDetails).pipe(
+    Match.when(
+      { kind: coworkReservationKind },
+      getCoworkReservationProductFields
+    ),
+    Match.orElse(() => ({
+      productTier: null,
+      productCoffee: false,
+      productMonitorOption: null,
+    }))
+  ),
+});
 
 const decodeCoworkReservationProductInput = Schema.decodeUnknownSync(
   coworkReservationProductInputSchema
