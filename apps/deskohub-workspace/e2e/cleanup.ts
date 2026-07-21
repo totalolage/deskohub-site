@@ -6,7 +6,7 @@ import {
   workspaceE2EError,
 } from "./errors";
 import {
-  readCleanupCheckoutRow,
+  readCheckoutRow,
   readLatestCleanupCheckoutRow,
 } from "./integrations/database";
 import { cancelDotyposReservation } from "./integrations/dotypos";
@@ -33,7 +33,7 @@ export const cleanupCheckoutFlowStates = ({
       ) {
         const orderId = state.orderId;
         const rowExit = yield* Effect.exit(
-          readCleanupCheckoutRow(datasourceConfig, orderId)
+          readCheckoutRow(datasourceConfig, orderId)
         );
         if (Exit.isSuccess(rowExit)) {
           state.checkoutRow = rowExit.value;

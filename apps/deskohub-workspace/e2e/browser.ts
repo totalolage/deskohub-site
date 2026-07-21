@@ -152,6 +152,18 @@ export const evalBrowserScript = (
     ...options,
   });
 
+export const clickBrowserRef = (
+  operation: string,
+  run: Runner,
+  session: string,
+  ref: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  runBrowserCommand(operation, run, session, ["click", ref], {
+    logOutput: false,
+    timeoutMs: options.timeoutMs ?? 60_000,
+  }).pipe(Effect.asVoid);
+
 export const fillBrowserField = (
   run: Runner,
   session: string,

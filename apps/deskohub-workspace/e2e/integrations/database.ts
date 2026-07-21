@@ -31,7 +31,7 @@ export const waitForWebhookReplayRow = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     pollUntil(
-      readCheckoutRow(pool, orderId).pipe(
+      queryCheckoutRow(pool, orderId).pipe(
         Effect.tap((row) =>
           row ? Effect.sync(() => onRow?.(row)) : Effect.void
         ),
@@ -123,7 +123,7 @@ export const validatePostgres = (
   withPool(config, (pool) =>
     Effect.gen(function* () {
       const row = yield* pollUntil(
-        readCheckoutRow(pool, orderId).pipe(
+        queryCheckoutRow(pool, orderId).pipe(
           Effect.tap((row) =>
             row ? Effect.sync(() => onRow?.(row)) : Effect.void
           ),
@@ -152,7 +152,7 @@ export const validatePostgres = (
     })
   );
 
-const readCheckoutRow = (
+const queryCheckoutRow = (
   pool: Pool,
   orderId: string
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
@@ -206,11 +206,11 @@ const readCheckoutRow = (
     [orderId]
   ).pipe(Effect.map((result) => result.rows[0]));
 
-export const readCleanupCheckoutRow = (
+export const readCheckoutRow = (
   config: DatasourceConfig,
   orderId: string
 ): Effect.Effect<CheckoutRow | undefined, WorkspaceE2EError> =>
-  withPool(config, (pool) => readCheckoutRow(pool, orderId));
+  withPool(config, (pool) => queryCheckoutRow(pool, orderId));
 
 export const readLatestCleanupCheckoutRow = (
   config: DatasourceConfig,
@@ -239,7 +239,7 @@ export const readLatestCleanupCheckoutRow = (
       );
 
       const orderId = result.rows[0]?.id;
-      return orderId ? yield* readCheckoutRow(pool, orderId) : undefined;
+      return orderId ? yield* queryCheckoutRow(pool, orderId) : undefined;
     })
   );
 
@@ -250,7 +250,7 @@ export const markPaymentTerminalForE2E = (
 ): Effect.Effect<CheckoutRow, WorkspaceE2EError> =>
   withPool(config, (pool) =>
     Effect.gen(function* () {
-      const current = yield* readCheckoutRow(pool, orderId);
+      const current = yield* queryCheckoutRow(pool, orderId);
       const paymentAttemptId = yield* tryWorkspaceE2ESync(
         "assert payment terminal checkout row",
         () => {
@@ -298,7 +298,7 @@ export const markPaymentTerminalForE2E = (
         [orderId, paymentAttemptId, scenario.state, failureCode]
       );
 
-      const row = yield* readCheckoutRow(pool, orderId);
+      const row = yield* queryCheckoutRow(pool, orderId);
       return yield* tryWorkspaceE2ESync(
         "assert terminal checkout row exists",
         () => {
@@ -365,13 +365,13 @@ export const markConsoleFulfillmentDeliveredForE2E = (
           );
 
           if (result.rows[0]?.id !== orderId) {
-            const current = yield* readCheckoutRow(pool, orderId);
+            const current = yield* queryCheckoutRow(pool, orderId);
             return current?.fulfillment_state === "fulfilled"
               ? current
               : undefined;
           }
 
-          return yield* readCheckoutRow(pool, orderId);
+          return yield* queryCheckoutRow(pool, orderId);
         }),
         {
           intervalMs: workspaceE2EPollIntervalMs.datasource,

@@ -79,15 +79,12 @@ export const completeCheckout = ({
     yield* openBrowserPage(config, run, session, data.checkoutUrl, {
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
-    const payPageUrl = yield* submitReservationAndWaitForPayPage({
+    yield* submitReservationForPayPage({
       onOrderId,
       run,
       session,
       submitReservationScript,
     });
-    const payPageOrderId =
-      getSearchOrderId(payPageUrl) ?? (yield* readPayPageOrderId(run, session));
-    yield* Effect.sync(() => onOrderId?.(payPageOrderId));
     yield* submitPaymentAndWaitForHostedPage({ run, session });
     yield* completeNexiHostedPayment({ data, run, session });
     yield* waitForBrowserUrl({
@@ -131,6 +128,29 @@ export const startCheckoutPaymentAttempt = ({
     yield* openBrowserPage(config, run, session, data.checkoutUrl, {
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),
     });
+    const orderId = yield* submitReservationForPayPage({
+      onOrderId,
+      run,
+      session,
+      submitReservationScript,
+    });
+    yield* submitPaymentAndWaitForHostedPage({ run, session });
+    log(`Started hosted payment attempt for order ${orderId}`);
+    return orderId;
+  });
+
+export const submitReservationForPayPage = ({
+  onOrderId,
+  run,
+  session,
+  submitReservationScript,
+}: {
+  onOrderId?: (orderId: string) => void;
+  run: Runner;
+  session: string;
+  submitReservationScript: string;
+}): Effect.Effect<string, WorkspaceE2EError> =>
+  Effect.gen(function* () {
     const payPageUrl = yield* submitReservationAndWaitForPayPage({
       onOrderId,
       run,
@@ -140,8 +160,6 @@ export const startCheckoutPaymentAttempt = ({
     const orderId =
       getSearchOrderId(payPageUrl) ?? (yield* readPayPageOrderId(run, session));
     yield* Effect.sync(() => onOrderId?.(orderId));
-    yield* submitPaymentAndWaitForHostedPage({ run, session });
-    log(`Started hosted payment attempt for order ${orderId}`);
     return orderId;
   });
 
