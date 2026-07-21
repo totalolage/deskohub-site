@@ -1,5 +1,5 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import type { LoggerProvider } from "@opentelemetry/sdk-logs";
+import type { LoggerProvider } from "@opentelemetry/api-logs";
 import {
   createPostHogLoggerProvider,
   getPostHogLogsEndpoint,

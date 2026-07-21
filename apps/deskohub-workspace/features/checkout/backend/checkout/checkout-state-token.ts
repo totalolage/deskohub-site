@@ -1,6 +1,5 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
-import { Data, Effect, Schema } from "effect";
-import { env } from "@/env";
+import { Config, Data, Effect, Schema } from "effect";
 
 const ivByteLength = 12;
 const authTagByteLength = 16;
@@ -113,11 +112,22 @@ export const parseCheckoutStateKeys = Effect.fn("checkoutStateToken.parseKeys")(
   }
 );
 
+const loadConfiguredCheckoutStateKeys = Effect.fn(
+  "checkoutStateToken.loadConfiguredKeys"
+)(() =>
+  Config.string("CHECKOUT_PAY_STATE_KEYS").pipe(
+    Effect.mapError((cause) =>
+      invalidSecret("Workspace checkout state configuration is invalid.", cause)
+    ),
+    Effect.flatMap(parseCheckoutStateKeys)
+  )
+);
+
 export const getCheckoutStateKeys = Effect.fn("checkoutStateToken.getKeys")(
   function* (options: CheckoutStateCryptoOptions = {}) {
     const keys = options.keys
       ? [...options.keys]
-      : [...(yield* parseCheckoutStateKeys(env.CHECKOUT_PAY_STATE_KEYS))];
+      : [...(yield* loadConfiguredCheckoutStateKeys())];
 
     const [first, ...rest] = keys;
     if (!first) {
