@@ -1,7 +1,8 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
-import { Effect } from "effect";
+import { Effect, Layer } from "effect";
 import { discountAdvertisementQuoteCodec } from "@/features/discounts/contracts";
+import { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import { DiscountCalculationError } from "@/features/discounts/errors";
 
@@ -109,6 +110,27 @@ describe("Workspace advertised price route", () => {
             })
           ),
       })
+    );
+
+    const response = await failedPOST(request(requestBody));
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: "Workspace advertised price could not be loaded",
+    });
+  });
+
+  test("maps Layer setup failures to a safe 500 response", async () => {
+    const failedPOST = makeWorkspaceAdvertisedPricePost(
+      Layer.effect(
+        DiscountService,
+        Effect.fail(
+          new DiscountCalculationError({
+            reason: "invalid_discountable_subtotal",
+            message: "discount Layer setup failed",
+          })
+        )
+      )
     );
 
     const response = await failedPOST(request(requestBody));

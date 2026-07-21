@@ -67,13 +67,15 @@ const handleAdvertisedPriceError = Effect.fn(
 export const makeWorkspaceAdvertisedPricePost = <E>(
   discountServiceLayer: Layer.Layer<DiscountService, E>
 ) =>
-  makeWorkspaceNextEffect(discountServiceLayer).route((request) =>
+  makeWorkspaceNextEffect(
+    discountServiceLayer,
+    handleAdvertisedPriceError
+  ).route((request) =>
     loadAdvertisedPrice(request).pipe(
       Effect.map((result) =>
         NextResponse.json(result, {
           headers: { "Cache-Control": "private, no-store" },
         })
-      ),
-      Effect.catch(handleAdvertisedPriceError)
+      )
     )
   );
