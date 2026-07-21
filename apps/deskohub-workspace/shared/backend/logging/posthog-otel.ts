@@ -16,6 +16,14 @@ type PostHogLoggerProviderOptions = {
 };
 
 type PostHogLogsFlushScheduler = (task: () => Promise<void>) => void;
+type PostHogLogsFlushProvider = Pick<LoggerProvider, "forceFlush">;
+
+type PostHogLogsFlushOptions = {
+  readonly provider?: PostHogLogsFlushProvider;
+  readonly timeoutMs?: number;
+};
+
+const postHogLogsFlushTimeoutMs = 2_000;
 
 export function getPostHogLogsEndpoint(posthogHost = DEFAULT_POSTHOG_HOST) {
   return new URL(POSTHOG_LOGS_PATH, posthogHost).toString();
@@ -46,10 +54,13 @@ export function createPostHogLoggerProvider({
             Authorization: `Bearer ${posthogProjectToken}`,
             "Content-Type": "application/json",
           },
+          timeoutMillis: postHogLogsFlushTimeoutMs,
           url: getPostHogLogsEndpoint(posthogHost),
-        })
+        }),
+        { exportTimeoutMillis: postHogLogsFlushTimeoutMs }
       ),
     ],
+    forceFlushTimeoutMillis: postHogLogsFlushTimeoutMs,
   });
 }
 
@@ -60,12 +71,41 @@ export const postHogLoggerProvider = createPostHogLoggerProvider({
   vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA,
 });
 
-export async function flushPostHogLogs() {
-  await postHogLoggerProvider?.forceFlush();
+export async function flushPostHogLogs(options: PostHogLogsFlushOptions = {}) {
+  const provider = options.provider ?? postHogLoggerProvider;
+  if (!provider) return;
+
+  const timeoutMs = options.timeoutMs ?? postHogLogsFlushTimeoutMs;
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  const result = await Promise.race([
+    provider.forceFlush().then(
+      () => "completed" as const,
+      () => "failed" as const
+    ),
+    new Promise<"timed_out">((resolve) => {
+      timeout = setTimeout(() => resolve("timed_out"), timeoutMs);
+    }),
+  ]);
+  if (timeout) clearTimeout(timeout);
+
+  if (result === "failed") {
+    console.warn("PostHog log flush failed.");
+  } else if (result === "timed_out") {
+    console.warn("PostHog log flush exceeded its post-response deadline.");
+  }
 }
 
-export function schedulePostHogLogsFlush(schedule: PostHogLogsFlushScheduler) {
-  if (postHogLoggerProvider) {
-    schedule(() => postHogLoggerProvider.forceFlush());
+export function schedulePostHogLogsFlush(
+  schedule: PostHogLogsFlushScheduler,
+  options: PostHogLogsFlushOptions = {}
+) {
+  const provider = options.provider ?? postHogLoggerProvider;
+  if (provider) {
+    schedule(() =>
+      flushPostHogLogs({
+        provider,
+        timeoutMs: options.timeoutMs,
+      })
+    );
   }
 }
