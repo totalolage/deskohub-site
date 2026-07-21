@@ -16,6 +16,10 @@ import {
 } from "@/features/i18n/routing";
 
 export function proxy(request: NextRequest) {
+  if (request.headers.has("next-action")) {
+    return NextResponse.next();
+  }
+
   const localeFromUrl = getLocaleFromRequestPathname(request, locales);
 
   if (localeFromUrl) {
