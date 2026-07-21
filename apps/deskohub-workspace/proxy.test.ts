@@ -27,3 +27,17 @@ test("continues to persist the locale for ordinary localized requests", () => {
 
   expect(response.cookies.get(localeCookieName)?.value).toBe("cs-CZ");
 });
+
+test("does not treat a GET with a spoofed action header as a Server Action", () => {
+  const request = new NextRequest("https://workspace.example/", {
+    headers: {
+      "next-action": "spoofed-action-id",
+    },
+  });
+
+  const response = proxy(request);
+
+  expect(response.headers.get("location")).toBe(
+    "https://workspace.example/en-US"
+  );
+});

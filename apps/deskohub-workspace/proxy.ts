@@ -16,7 +16,7 @@ import {
 } from "@/features/i18n/routing";
 
 export function proxy(request: NextRequest) {
-  if (request.headers.has("next-action")) {
+  if (request.method === "POST" && request.headers.has("next-action")) {
     return NextResponse.next();
   }
 
