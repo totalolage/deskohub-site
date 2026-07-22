@@ -5,10 +5,8 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { Effect, Layer } from "effect";
 import type { LegalEvidenceEventRepository as LegalEvidenceEventRepositoryType } from "@/features/checkout/backend/repositories";
-import type {
-  WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType,
-  WorkspaceTableAssignmentService as WorkspaceTableAssignmentServiceType,
-} from "@/features/checkout/backend/reservation";
+import type { WorkspaceCheckoutAccessCodeService as WorkspaceCheckoutAccessCodeServiceType } from "@/features/checkout/backend/reservation";
+import { WorkspaceTableAssignmentServiceMock } from "@/features/checkout/backend/reservation/workspace-table-assignment.service.mock";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { IWorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import type {
@@ -94,10 +92,9 @@ const runReusableReservationScenario = async (input: {
   const { prepareWorkspacePayState } = await import(
     "./prepare-pay-state-workflow"
   );
-  const {
-    WorkspaceCheckoutAccessCodeService,
-    WorkspaceTableAssignmentService,
-  } = await import("@/features/checkout/backend/reservation");
+  const { WorkspaceCheckoutAccessCodeService } = await import(
+    "@/features/checkout/backend/reservation"
+  );
   const { PostHogEventService } = await import(
     "@/shared/backend/analytics/posthog-event.service"
   );
@@ -165,9 +162,9 @@ const runReusableReservationScenario = async (input: {
     Layer.succeed(ReservationHoldCleanupScheduleService, {
       enqueueCleanup,
     } as never),
-    Layer.succeed(WorkspaceTableAssignmentService, {
+    WorkspaceTableAssignmentServiceMock({
       assignTableId: mock(() => Effect.die("unused")),
-    } satisfies WorkspaceTableAssignmentServiceType),
+    }),
     Layer.succeed(PostHogEventService, {
       capture: mock(() => Effect.void),
     }),
@@ -214,9 +211,6 @@ describe("prepareWorkspacePayState", () => {
     );
     const { ReservationHoldCleanupScheduleService } = await import(
       "@/features/checkout/backend/holds"
-    );
-    const { WorkspaceTableAssignmentService } = await import(
-      "@/features/checkout/backend/reservation"
     );
     const { WorkspaceAvailabilityService } = await import(
       "@/features/reservation/backend/workspace-availability.service"
@@ -317,9 +311,9 @@ describe("prepareWorkspacePayState", () => {
         record: mock(() => Effect.die("unused")),
         recordMany,
       } as unknown as LegalEvidenceEventRepositoryType),
-      Layer.succeed(WorkspaceTableAssignmentService, {
+      WorkspaceTableAssignmentServiceMock({
         assignTableId,
-      } satisfies WorkspaceTableAssignmentServiceType),
+      }),
       Layer.succeed(ReservationHoldCleanupScheduleService, {
         enqueueCleanup,
       } as never),
@@ -347,6 +341,7 @@ describe("prepareWorkspacePayState", () => {
     expect(createDraft).toHaveBeenCalledTimes(1);
     expect(claimHoldCreation).toHaveBeenCalledWith("reservation-id");
     expect(assignTableId).toHaveBeenCalledWith({
+      kind: "cowork",
       entryTier: "basic",
       date: reservation.date,
       coffee: false,

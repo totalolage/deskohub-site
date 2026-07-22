@@ -34,6 +34,11 @@ import {
 
 type DotyposError = ValidationError | ExternalAPIError | NetworkError;
 
+type DotyposPage<A> = {
+  readonly data?: readonly A[];
+  readonly nextPage?: string | null;
+};
+
 const isDotyposError = (error: unknown): error is DotyposError =>
   Predicate.isTagged(error, "ValidationError") ||
   Predicate.isTagged(error, "ExternalAPIError") ||
@@ -77,6 +82,60 @@ const catchUnexpectedDotyposError = (operation: string) =>
           })
         )
   );
+
+const getNextDotyposPageNumber = (input: {
+  readonly currentPage: number;
+  readonly nextPage: string | null | undefined;
+  readonly operation: string;
+}) =>
+  Effect.succeed(
+    Option.fromNullishOr(input.nextPage).pipe(
+      Option.map(Number),
+      Option.getOrUndefined
+    )
+  ).pipe(
+    Effect.filterOrFail(
+      (pageNumber) =>
+        pageNumber === undefined ||
+        (Number.isSafeInteger(pageNumber) && pageNumber > input.currentPage),
+      () =>
+        new ExternalAPIError({
+          service: "Dotypos",
+          operation: input.operation,
+          message: `Dotypos returned an invalid next page: ${input.nextPage}`,
+          statusCode: 502,
+        })
+    )
+  );
+
+const loadAllDotyposPages = <A, E, R>(input: {
+  readonly loadPage: (page: number) => Effect.Effect<DotyposPage<A>, E, R>;
+  readonly operation: string;
+}): Effect.Effect<readonly A[], E | ExternalAPIError, R> => {
+  const items: A[] = [];
+  let currentPage = 1;
+  let hasNextPage = true;
+
+  return Effect.whileLoop({
+    while: () => hasNextPage,
+    body: () =>
+      input.loadPage(currentPage).pipe(
+        Effect.bindTo("page"),
+        Effect.bind("nextPage", ({ page }) =>
+          getNextDotyposPageNumber({
+            currentPage,
+            nextPage: page.nextPage,
+            operation: input.operation,
+          })
+        )
+      ),
+    step: ({ nextPage, page }) => {
+      items.push(...(page.data ?? []));
+      hasNextPage = nextPage !== undefined;
+      if (nextPage !== undefined) currentPage = nextPage;
+    },
+  }).pipe(Effect.map(() => items));
+};
 
 export type CustomerLookupField = "email" | "phone";
 
@@ -916,29 +975,40 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
-  const getTables = Effect.fn("getTables")(function* () {
-    return yield* runDotyposRequest(
-      client
-        .getTables(config.cloudId, { params: { limit: 100 } })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "getTables"
-    ).pipe(Effect.retry(retryPolicy), catchUnexpectedDotyposError("getTables"));
-  });
+  const getTables = Effect.fn("getTables")(() =>
+    loadAllDotyposPages({
+      operation: "getTables",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.getTables(config.cloudId, {
+            params: { limit: 100, page },
+          }),
+          "getTables"
+        ),
+    }).pipe(Effect.retry(retryPolicy), catchUnexpectedDotyposError("getTables"))
+  );
 
-  const listReservations = Effect.fn("listReservations")(function* () {
-    return yield* runDotyposRequest(
-      client
-        .listReservations(config.cloudId, { params: { limit: 100 } })
-        .pipe(Effect.map((page) => [...(page.data ?? [])])),
-      "listReservations"
-    ).pipe(
-      Effect.catchTag("ExternalAPIError", (error) =>
-        error.statusCode === 404 ? Effect.succeed([]) : Effect.fail(error)
-      ),
+  const listReservations = Effect.fn("listReservations")(() =>
+    loadAllDotyposPages({
+      operation: "listReservations",
+      loadPage: (page) =>
+        runDotyposRequest(
+          client.listReservations(config.cloudId, {
+            params: { limit: 100, page },
+          }),
+          "listReservations"
+        ).pipe(
+          Effect.catchTag("ExternalAPIError", (error) =>
+            page === 1 && error.statusCode === 404
+              ? Effect.succeed({ data: [] })
+              : Effect.fail(error)
+          )
+        ),
+    }).pipe(
       Effect.retry(retryPolicy),
       catchUnexpectedDotyposError("listReservations")
-    );
-  });
+    )
+  );
 
   const getProducts = Effect.fn("getProducts")(function* (options: {
     categoryId?: string;

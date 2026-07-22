@@ -34,7 +34,7 @@ import {
   splitCustomerName,
   WorkspaceCheckoutAccessCodeService,
   WorkspaceCheckoutAccessCodeServiceLive,
-  WorkspaceTableAssignmentServiceLive,
+  WorkspaceTableAssignmentService,
 } from "@/features/checkout/backend/reservation";
 import type { WorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
 import {
@@ -583,6 +583,10 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
       paymentOrderId: reservationDraft.id,
       dotyposCustomerId,
       checkoutDetails,
+      reservation: {
+        kind: input.reservation.kind,
+        ...checkoutDetails.reservation,
+      },
       status: "NEW",
     }).pipe(
       Effect.tapError(
@@ -767,7 +771,7 @@ export const PreparePayStateLive = Layer.mergeAll(
     LegalEvidenceEventRepositoryLive
   ).pipe(Layer.provide(WorkspaceDatabaseLive)),
   WorkspaceAvailabilityService.LiveWithDependencies,
-  WorkspaceTableAssignmentServiceLive.pipe(
+  WorkspaceTableAssignmentService.Live.pipe(
     Layer.provide(
       WorkspaceReservationRepositoryLive.pipe(
         Layer.provide(WorkspaceDatabaseLive)
