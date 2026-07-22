@@ -153,17 +153,6 @@ export const getSubmitContactFormScript = (data: {
 })()
 `;
 
-export const clickStatusReserveAgainScript = `
-(() => {
-  const link = [...document.querySelectorAll('a')].find((candidate) => /Start a new reservation/i.test(candidate.textContent ?? ''));
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error('start a new reservation link not found');
-  }
-  link.click();
-  return link.href;
-})()
-`;
-
 export const getAssertFulfillmentFailedSupportScript = (
   data: CheckoutData,
   orderId: string

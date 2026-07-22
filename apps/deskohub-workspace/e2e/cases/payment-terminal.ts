@@ -1,15 +1,13 @@
 import { Effect } from "effect";
 import {
-  evalBrowserScript,
+  activateBrowserElement,
   openBrowserPage,
   switchToMainFrame,
+  waitForBrowserReactHydration,
   waitForBrowserText,
   waitForBrowserUrl,
 } from "../browser";
-import {
-  clickStatusReserveAgainScript,
-  submitCoworkReservationScript,
-} from "../browser-scripts";
+import { submitCoworkReservationScript } from "../browser-scripts";
 import { startCheckoutPaymentAttempt } from "../checkout/payment";
 import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
@@ -143,7 +141,7 @@ const restartReservation = (
   scenario: PaymentTerminalScenario
 ) =>
   Effect.gen(function* () {
-    yield* clickStatusReserveAgain(run, session);
+    yield* activateStatusReserveAgain(run, session);
     yield* waitForBrowserUrl({
       description: `${scenario.state} payment restart page`,
       matches: (url) =>
@@ -191,14 +189,12 @@ const assertTerminalStatusPage = ({
     log(`Checkout ${scenario.state} status page validated`);
   });
 
-const clickStatusReserveAgain = (run: Runner, session: string) =>
-  evalBrowserScript(
-    "click status reserve again",
-    run,
-    session,
-    clickStatusReserveAgainScript,
-    {
-      logOutput: false,
-      timeoutMs: 30_000,
-    }
-  );
+export const activateStatusReserveAgain = (run: Runner, session: string) => {
+  const selector = 'a[href="/en-US/checkout/order"]';
+  const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
+
+  return Effect.gen(function* () {
+    yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
+    yield* activateBrowserElement(run, session, selector, { timeoutMs });
+  });
+};
