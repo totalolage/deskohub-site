@@ -6,8 +6,10 @@ import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountCommitment } from "@/features/discounts";
 import {
   affirmedDiscountAdvertisementQuoteCodec,
+  canonicalDiscountCodeSchema,
   discountAdvertisementQuoteCodec,
   discountIdSchema,
+  discountQuoteCodec,
 } from "@/features/discounts/contracts";
 import type { DiscountService } from "@/features/discounts/discount.service";
 import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
@@ -24,6 +26,9 @@ const advertisedDiscountId =
   Schema.decodeUnknownSync(discountIdSchema)("summer-sale");
 const dotyposCustomerId = Schema.decodeUnknownSync(dotyposCustomerIdSchema)(
   "customer-id"
+);
+const submittedCode = Schema.decodeUnknownSync(canonicalDiscountCodeSchema)(
+  "SAVE20"
 );
 
 const advertisementQuote = discountAdvertisementQuoteCodec.make({
@@ -160,7 +165,7 @@ describe("cowork checkout pricing", () => {
 
   test("affirms displayed discounts for payment and preserves the commitment", async () => {
     const commitment = { applications: [] } as unknown as DiscountCommitment;
-    const affirmForPayment = mock(() =>
+    const affirmDisplayedDiscounts = mock(() =>
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
     const displayedQuote = await Effect.runPromise(
@@ -179,10 +184,10 @@ describe("cowork checkout pricing", () => {
           quote: displayedQuote,
         });
       }),
-      DiscountServiceMock({ affirmForPayment })
+      DiscountServiceMock({ affirmDisplayedDiscounts })
     );
 
-    expect(affirmForPayment).toHaveBeenCalledWith({
+    expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
       product: { kind: "cowork", tier: "basic" },
       discountableSubtotal: money(35_000),
       reservationDate: reservation.date,
@@ -193,5 +198,122 @@ describe("cowork checkout pricing", () => {
     });
     expect(result.commitment).toBe(commitment);
     expect(result.quote.summary.total).toEqual(money(22_500));
+  });
+
+  test("affirms the displayed price before appending a submitted code", async () => {
+    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const affirmDisplayedDiscounts = mock(() =>
+      Effect.succeed({ quote: affirmedAdvertisement, commitment })
+    );
+    const codeDiscountId = Schema.decodeUnknownSync(discountIdSchema)("code");
+    const codeQuote = discountQuoteCodec.make({
+      ...affirmedAdvertisement,
+      discounts: [
+        ...affirmedAdvertisement.discounts,
+        {
+          discount: {
+            id: codeDiscountId,
+            label: "Member code",
+            adjustment: { kind: "percentage", basisPoints: 2000 },
+          },
+          subtotalBefore: money(17_500),
+          amount: money(3500),
+          subtotalAfter: money(14_000),
+        },
+      ],
+      totalDiscount: money(21_000),
+      discountedSubtotal: money(14_000),
+    });
+    const applyDiscountCode = mock(() => Effect.succeed(codeQuote));
+    const displayedQuote = await Effect.runPromise(
+      calculateCoworkReservationQuote(reservation, {
+        discountQuote: advertisementQuote,
+      })
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* coworkCheckoutPricing;
+        return yield* pricing.applyDiscountCode({
+          reservation,
+          locale: "en-US",
+          dotyposCustomerId,
+          quote: displayedQuote,
+          submittedCode,
+        });
+      }),
+      DiscountServiceMock({
+        affirmDisplayedDiscounts,
+        applyDiscountCode,
+      })
+    );
+
+    expect(affirmDisplayedDiscounts).toHaveBeenCalledWith({
+      product: { kind: "cowork", tier: "basic" },
+      discountableSubtotal: money(35_000),
+      reservationDate: reservation.date,
+      dotyposCustomerId,
+      locale: "en-US",
+      submittedCode: undefined,
+      displayedDiscountIds: [advertisedDiscountId],
+    });
+    expect(applyDiscountCode).toHaveBeenCalledWith({
+      baseQuote: affirmedAdvertisement,
+      dotyposCustomerId,
+      locale: "en-US",
+      submittedCode,
+    });
+    expect(result).toMatchObject({
+      status: "applied",
+      quote: { summary: { total: money(19_000) } },
+    });
+  });
+
+  test("returns pricing_changed before resolving a submitted code", async () => {
+    const commitment = { applications: [] } as unknown as DiscountCommitment;
+    const affirmDisplayedDiscounts = mock(() =>
+      Effect.succeed({
+        quote: discountQuoteCodec.make({
+          product: { kind: "cowork", tier: "basic" },
+          discountableSubtotal: money(35_000),
+          discounts: [],
+          totalDiscount: money(0),
+          discountedSubtotal: money(35_000),
+        }),
+        commitment,
+      })
+    );
+    const applyDiscountCode = mock(() => Effect.die("must not resolve code"));
+    const displayedQuote = await Effect.runPromise(
+      calculateCoworkReservationQuote(reservation, {
+        discountQuote: advertisementQuote,
+      })
+    );
+
+    const result = await runWithDiscounts(
+      Effect.gen(function* () {
+        const pricing = yield* coworkCheckoutPricing;
+        return yield* pricing.applyDiscountCode({
+          reservation,
+          locale: "en-US",
+          dotyposCustomerId,
+          quote: displayedQuote,
+          submittedCode,
+        });
+      }),
+      DiscountServiceMock({
+        affirmDisplayedDiscounts,
+        applyDiscountCode,
+      })
+    );
+
+    expect(result).toMatchObject({
+      status: "pricing_changed",
+      changedKeys: {
+        itemKeys: ["product:cowork:basic", "total:final"],
+        sectionKeys: ["order", "total"],
+      },
+    });
+    expect(applyDiscountCode).not.toHaveBeenCalled();
   });
 });

@@ -9,6 +9,7 @@ import { type DiscountCommitment, makeDiscountCommitment } from "./commitment";
 import {
   type AffirmedDiscountAdvertisementQuote,
   affirmedDiscountAdvertisementQuoteCodec,
+  type CanonicalDiscountCode,
   type DiscountAdvertisementInput,
   type DiscountAdvertisementQuote,
   type DiscountId,
@@ -21,7 +22,12 @@ import {
   DiscountReleaseGateService,
   type DiscountReleaseGates,
 } from "./discount-release-gate.service";
-import type { DiscountCalculationError } from "./errors";
+import {
+  type DiscountCalculationError,
+  DiscountCodeUnavailableError,
+  DiscountProviderError,
+  type DiscountResolutionError,
+} from "./errors";
 import type { DiscountCandidate } from "./provider";
 import {
   type DiscountResolutionFailure,
@@ -31,11 +37,13 @@ import {
   recoverDiscountResolution,
 } from "./resolution-logging";
 
-export type DiscountPaymentAffirmationInput = DiscountQuoteInput & {
+export type DisplayedDiscountAffirmationInput = DiscountAdvertisementInput & {
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly submittedCode?: CanonicalDiscountCode;
   readonly displayedDiscountIds: readonly DiscountId[];
 };
 
-export type DiscountPaymentAffirmation = {
+export type DisplayedDiscountAffirmation = {
   readonly quote: DiscountQuote;
   readonly commitment: DiscountCommitment;
 };
@@ -49,6 +57,13 @@ export type ApplyCustomerDiscountInput = {
   readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
+};
+
+export type ApplyDiscountCodeInput = {
+  readonly baseQuote: DiscountQuote;
+  readonly dotyposCustomerId: DotyposCustomerId;
+  readonly locale: Locale;
+  readonly submittedCode: CanonicalDiscountCode;
 };
 
 export interface IDiscountService {
@@ -67,9 +82,12 @@ export interface IDiscountService {
   readonly applyCustomerDiscount: (
     input: ApplyCustomerDiscountInput
   ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
-  readonly affirmForPayment: (
-    input: DiscountPaymentAffirmationInput
-  ) => Effect.Effect<DiscountPaymentAffirmation, DiscountCalculationError>;
+  readonly affirmDisplayedDiscounts: (
+    input: DisplayedDiscountAffirmationInput
+  ) => Effect.Effect<DisplayedDiscountAffirmation, DiscountCalculationError>;
+  readonly applyDiscountCode: (
+    input: ApplyDiscountCodeInput
+  ) => Effect.Effect<DiscountQuote, DiscountResolutionError>;
 }
 
 export class DiscountService extends Context.Service<
@@ -141,26 +159,26 @@ export class DiscountService extends Context.Service<
         "DiscountService.resolveDisplayedCandidates"
       )(
         (input: {
-          readonly affirmationInput: DiscountPaymentAffirmationInput;
+          readonly affirmationInput: DisplayedDiscountAffirmationInput;
           readonly releaseGates: DiscountReleaseGates;
         }) =>
           Effect.all(
             [
               recoverGatedDiscountResolution({
                 enabled: input.releaseGates.calendarSales,
-                operation: "affirm_for_payment",
+                operation: "affirm_displayed_discounts",
                 provider: "calendar",
                 resolve: () => calendar.revalidate(input.affirmationInput),
               }),
               recoverGatedDiscountResolution({
                 enabled: input.releaseGates.customerDiscounts,
-                operation: "affirm_for_payment",
+                operation: "affirm_displayed_discounts",
                 provider: "customer",
                 resolve: () => customer.resolve(input.affirmationInput),
               }),
               recoverGatedDiscountResolution({
                 enabled: input.releaseGates.discountCodes,
-                operation: "affirm_for_payment",
+                operation: "affirm_displayed_discounts",
                 provider: "code",
                 resolve: () => code.revalidate(input.affirmationInput),
               }),
@@ -293,11 +311,15 @@ export class DiscountService extends Context.Service<
         withServiceAnnotations("apply_customer_discount")
       );
 
-      const affirmForPayment = Effect.fn("DiscountService.affirmForPayment")(
-        (input: DiscountPaymentAffirmationInput) =>
+      const affirmDisplayedDiscounts = Effect.fn(
+        "DiscountService.affirmDisplayedDiscounts"
+      )(
+        (input: DisplayedDiscountAffirmationInput) =>
           Effect.succeed(input).pipe(
             Effect.bind("releaseGates", () =>
-              releaseGates.evaluate({ operation: "affirm_for_payment" })
+              releaseGates.evaluate({
+                operation: "affirm_displayed_discounts",
+              })
             ),
             Effect.bind("candidates", ({ releaseGates }) =>
               resolveDisplayedCandidates({
@@ -314,7 +336,46 @@ export class DiscountService extends Context.Service<
               }),
             }))
           ),
-        withServiceAnnotations("affirm_for_payment")
+        withServiceAnnotations("affirm_displayed_discounts")
+      );
+
+      const applyDiscountCode = Effect.fn("DiscountService.applyDiscountCode")(
+        (input: ApplyDiscountCodeInput) =>
+          Effect.succeed(input).pipe(
+            Effect.bind("releaseGates", () =>
+              releaseGates.evaluate({ operation: "apply_discount_code" })
+            ),
+            Effect.tap(({ releaseGates }) =>
+              requireDiscountCodesEnabled(releaseGates)
+            ),
+            Effect.tap(requireEligibleSubtotal),
+            Effect.bind("candidates", () =>
+              code.quote({
+                product: input.baseQuote.product,
+                discountableSubtotal: input.baseQuote.discountableSubtotal,
+                dotyposCustomerId: input.dotyposCustomerId,
+                locale: input.locale,
+                submittedCode: input.submittedCode,
+              })
+            ),
+            Effect.tap(requireResolvedCodeCandidate),
+            Effect.bind("quote", ({ candidates }) =>
+              appendDiscounts({
+                baseQuote: input.baseQuote,
+                candidates,
+              })
+            ),
+            Effect.tap(({ quote }) =>
+              requireAppliedCode({ baseQuote: input.baseQuote, quote })
+            ),
+            Effect.tap(({ quote }) =>
+              logDiscountResolution({
+                calculation: { applications: quote.discounts },
+              })
+            ),
+            Effect.map(({ quote }) => quote)
+          ),
+        withApplyDiscountCodeAnnotations
       );
 
       return {
@@ -322,7 +383,8 @@ export class DiscountService extends Context.Service<
         discoverAdvertisedDiscounts,
         affirmAdvertisement,
         applyCustomerDiscount,
-        affirmForPayment,
+        affirmDisplayedDiscounts,
+        applyDiscountCode,
       } satisfies IDiscountService;
     })
   );
@@ -384,12 +446,12 @@ const withServiceAnnotations =
       | "discover_advertised_discounts"
       | "affirm_advertisement"
       | "apply_customer_discount"
-      | "affirm_for_payment"
+      | "affirm_displayed_discounts"
   ) =>
   <A>(
     effect: Effect.Effect<A, DiscountCalculationError>,
     input:
-      | DiscountPaymentAffirmationInput
+      | DisplayedDiscountAffirmationInput
       | DiscountQuoteInput
       | DiscountAdvertisementInput
       | DiscountAdvertisementAffirmationInput
@@ -416,6 +478,79 @@ const withServiceAnnotations =
         ),
       })
     );
+
+const requireDiscountCodesEnabled = (releaseGates: DiscountReleaseGates) =>
+  releaseGates.discountCodes
+    ? Effect.void
+    : Effect.fail(
+        new DiscountCodeUnavailableError({
+          reason: "feature_disabled",
+          message: "Discount code entry is disabled.",
+        })
+      );
+
+const requireEligibleSubtotal = (input: ApplyDiscountCodeInput) =>
+  input.baseQuote.discountedSubtotal.value > 0
+    ? Effect.void
+    : Effect.fail(
+        new DiscountCodeUnavailableError({
+          reason: "no_eligible_subtotal",
+          message: "No discountable subtotal remains for a discount code.",
+        })
+      );
+
+const requireResolvedCodeCandidate = (input: {
+  readonly candidates: readonly DiscountCandidate[];
+}) =>
+  input.candidates.length > 0
+    ? Effect.void
+    : Effect.fail(
+        new DiscountProviderError({
+          reason: "provider_failure",
+          message: "The submitted discount code resolved no candidate.",
+        })
+      );
+
+const requireAppliedCode = (input: {
+  readonly baseQuote: DiscountQuote;
+  readonly quote: DiscountQuote;
+}) =>
+  input.quote.discounts.length > input.baseQuote.discounts.length
+    ? Effect.void
+    : Effect.fail(
+        new DiscountCodeUnavailableError({
+          reason: "no_eligible_subtotal",
+          message: "The discount code has no applicable amount.",
+        })
+      );
+
+const withApplyDiscountCodeAnnotations = <A>(
+  effect: Effect.Effect<A, DiscountResolutionError>,
+  input: ApplyDiscountCodeInput
+) =>
+  effect.pipe(
+    Effect.tapError((cause) =>
+      cause._tag === "DiscountCodeUnavailableError"
+        ? Effect.logDebug("Discount code was unavailable", {
+            discountBoundary: "resolution",
+            discountProvider: "code",
+            discountOperation: "apply_discount_code",
+            discountErrorTag: cause._tag,
+            discountErrorReason: cause.reason,
+          })
+        : logDiscountResolutionFailure({
+            cause,
+            operation: "apply_discount_code",
+            provider:
+              cause._tag === "DiscountCalculationError" ? "calculator" : "code",
+          })
+    ),
+    Effect.annotateLogs({
+      discountOperation: "apply_discount_code",
+      discountProductKind: input.baseQuote.product.kind,
+      discountProductKey: getWorkspaceProductKey(input.baseQuote.product),
+    })
+  );
 
 const makeDiscountAdvertisementQuote = (
   quote: DiscountQuote

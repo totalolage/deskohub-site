@@ -20,10 +20,11 @@ export {
 } from "./contracts";
 export {
   type ApplyCustomerDiscountInput,
+  type ApplyDiscountCodeInput,
   type DiscountAdvertisementAffirmationInput,
-  type DiscountPaymentAffirmation,
-  type DiscountPaymentAffirmationInput,
   DiscountService,
+  type DisplayedDiscountAffirmation,
+  type DisplayedDiscountAffirmationInput,
   type IDiscountService,
 } from "./discount.service";
 export { normalizeSubmittedDiscountCode } from "./discount-code";

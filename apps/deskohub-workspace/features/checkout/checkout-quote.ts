@@ -13,6 +13,7 @@ import {
   addWorkspaceMoney,
   nonNegativeWorkspaceMoneyCodec,
   positiveWorkspaceMoneyCodec,
+  type WorkspaceMoney,
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
   workspaceMoneyWithValue,

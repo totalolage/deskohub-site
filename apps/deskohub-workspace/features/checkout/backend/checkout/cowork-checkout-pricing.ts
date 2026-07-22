@@ -7,7 +7,7 @@ import {
 } from "@/features/checkout/checkout-quote";
 import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { WorkspaceMoneyError } from "@/features/checkout/workspace-money";
-import type { DiscountCalculationError } from "@/features/discounts";
+import type { DiscountResolutionError } from "@/features/discounts";
 import type {
   CoworkAdvertisedPriceReservation,
   CoworkReservationDetails,
@@ -20,6 +20,8 @@ import {
   type ReservationAdvertisementQuoteInput,
   type ReservationCustomerQuote,
   type ReservationCustomerQuoteInput,
+  type ReservationDiscountCodePriceInput,
+  type ReservationDiscountCodePriceResult,
   type ReservationPaymentPriceAffirmation,
   type ReservationPaymentPriceAffirmationInput,
   reservationCheckoutPricing,
@@ -28,7 +30,7 @@ import {
 export type CoworkCheckoutPricingError =
   | CheckoutQuoteError
   | WorkspaceMoneyError
-  | DiscountCalculationError;
+  | DiscountResolutionError;
 
 export type CoworkAdvertisementQuoteInput =
   ReservationAdvertisementQuoteInput<CoworkAdvertisedPriceReservation>;
@@ -44,6 +46,12 @@ export type CoworkCustomerQuoteInput =
 
 export type CoworkPaymentPriceAffirmationInput =
   ReservationPaymentPriceAffirmationInput<
+    NormalizedCoworkReservationOrder,
+    CoworkReservationQuote
+  >;
+
+export type CoworkDiscountCodePriceInput =
+  ReservationDiscountCodePriceInput<
     NormalizedCoworkReservationOrder,
     CoworkReservationQuote
   >;
@@ -68,6 +76,12 @@ export type CoworkPaymentPriceAffirmation = ReservationPaymentPriceAffirmation<
   NormalizedCoworkReservationOrder,
   CoworkReservationQuote
 >;
+
+export type CoworkDiscountCodePriceResult =
+  ReservationDiscountCodePriceResult<
+    NormalizedCoworkReservationOrder,
+    CoworkReservationQuote
+  >;
 
 const getCoworkPricingContext = Effect.fn(
   "CoworkCheckoutPricing.getPricingContext"
@@ -101,4 +115,5 @@ export const coworkCheckoutPricing = reservationCheckoutPricing<
   getPricingContext: getCoworkPricingContext,
   buildQuote: ({ discountQuote, pricing }) =>
     calculateCoworkReservationQuote(pricing.order, { discountQuote }),
+  getCheckoutSummary: (quote) => quote.summary,
 });

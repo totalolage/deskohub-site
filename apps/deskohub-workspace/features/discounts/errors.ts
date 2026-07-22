@@ -18,6 +18,7 @@ export class DiscountCalculationError extends Data.TaggedError(
 
 export type DiscountCodeUnavailableReason =
   | "invalid_syntax"
+  | "feature_disabled"
   | "unknown_code"
   | "inactive"
   | "not_started"
@@ -25,7 +26,8 @@ export type DiscountCodeUnavailableReason =
   | "usage_limit_reached"
   | "already_redeemed"
   | "customer_ineligible"
-  | "product_ineligible";
+  | "product_ineligible"
+  | "no_eligible_subtotal";
 
 export class DiscountCodeUnavailableError extends Data.TaggedError(
   "DiscountCodeUnavailableError"

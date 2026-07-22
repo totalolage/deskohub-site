@@ -216,7 +216,7 @@ const makeAttempt = (input: {
   state: input.state ?? ("created" as const),
   amountValue: 55_000,
   amountExponent: 2,
-  currency: "CZK",
+  currency: env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || "CZK",
   securityToken: input.securityToken ?? null,
   providerRedirectUrl: input.providerRedirectUrl ?? null,
   lastWebhookEventId: null,
@@ -489,6 +489,33 @@ describe("CheckoutService", () => {
     expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
     expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
+  test("does not reuse an active attempt whose amount differs from the signed summary", async () => {
+    const orderId = "reservation-rejects-mismatched-provider-attempt";
+    const activeAttempt = makeAttempt({
+      id: "active-attempt",
+      orderId,
+      state: "pending",
+      securityToken: "active-security-token",
+      providerRedirectUrl: "https://payments.example/existing",
+    });
+    const harness = await createCheckoutHarness({
+      orderId,
+      acceptedQuote: buildWorkspaceCheckoutQuote(reservationData, {
+        discountQuote: discountedQuote,
+      }),
+      activeAttempt,
+      reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toEqual({ status: "in_progress" });
+    expect(harness.findAttempt).toHaveBeenCalledWith(activeAttempt.id);
+    expect(harness.affirm).not.toHaveBeenCalled();
     expect(harness.createAttempt).not.toHaveBeenCalled();
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });

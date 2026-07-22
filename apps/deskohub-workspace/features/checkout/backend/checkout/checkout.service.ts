@@ -331,6 +331,18 @@ const mapCheckoutFailure = (cause: unknown) => {
 const isReusableAttemptState = (state: string) =>
   state === "created" || state === "pending";
 
+const hasAcceptedPaymentAttemptAmount = (input: {
+  readonly attempt: {
+    readonly amountValue: number;
+    readonly amountExponent: number;
+    readonly currency: string;
+  };
+  readonly total: WorkspaceMoney;
+}) =>
+  input.attempt.amountValue === input.total.value &&
+  input.attempt.amountExponent === input.total.exponent &&
+  input.attempt.currency === input.total.currency;
+
 export const CheckoutServiceLive = Layer.effect(
   CheckoutService,
   Effect.gen(function* () {
@@ -577,7 +589,11 @@ export const CheckoutServiceLive = Layer.effect(
               attempt &&
               isReusableAttemptState(attempt.state) &&
               attempt.securityToken &&
-              attempt.providerRedirectUrl
+              attempt.providerRedirectUrl &&
+              hasAcceptedPaymentAttemptAmount({
+                attempt,
+                total: state.acceptedTotal,
+              })
             ) {
               yield* Effect.annotateLogsScoped({ attempt });
               yield* Effect.logInfo(
@@ -587,6 +603,14 @@ export const CheckoutServiceLive = Layer.effect(
                 status: "redirect" as const,
                 redirectUrl: attempt.providerRedirectUrl,
               };
+            }
+
+            if (attempt && isReusableAttemptState(attempt.state)) {
+              yield* Effect.logInfo(
+                "Hosted payment checkout returned in_progress: active attempt is not reusable for signed summary"
+              );
+
+              return { status: "in_progress" as const };
             }
           }
 

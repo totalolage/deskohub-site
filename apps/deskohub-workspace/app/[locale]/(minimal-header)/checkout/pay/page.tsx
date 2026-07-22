@@ -13,6 +13,7 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
 import { CheckoutPayPage } from "@/features/checkout/components/checkout-pay-page";
+import { getDiscountCodeEntryEnabled } from "@/features/discounts/discount-code-entry.server";
 import { isLocale, type Locale, locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
@@ -108,6 +109,7 @@ async function CheckoutPayContent({
   const opened = await Effect.gen(function* () {
     const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
+    const discountCodeEntryEnabled = yield* getDiscountCodeEntryEnabled();
     const freshPayUrl = yield* buildFreshCheckoutPayPath(state).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)
@@ -118,7 +120,7 @@ async function CheckoutPayContent({
       checkoutSessionId: state.checkoutSessionId,
     });
 
-    return { state, freshPayUrl };
+    return { state, freshPayUrl, discountCodeEntryEnabled };
   }).pipe(
     Effect.provide(PayableReservationService.LiveWithDependencies),
     Effect.catch((cause) =>
@@ -136,7 +138,7 @@ async function CheckoutPayContent({
     ));
   }
 
-  const { freshPayUrl, state } = opened;
+  const { discountCodeEntryEnabled, freshPayUrl, state } = opened;
 
   return runWithRequestLocale(locale, () => (
     <CheckoutFlowLayout
@@ -150,7 +152,9 @@ async function CheckoutPayContent({
     >
       <CheckoutPayPage
         changedKeys={state.changedKeys}
+        discountCodeEntryEnabled={discountCodeEntryEnabled}
         freshPayUrl={freshPayUrl}
+        hasSubmittedCode={state.submittedCode !== undefined}
         locale={locale}
         payStateToken={state.changedKeys ? undefined : payStateToken}
         summary={getSignedPayStateCheckoutSummary(state)}

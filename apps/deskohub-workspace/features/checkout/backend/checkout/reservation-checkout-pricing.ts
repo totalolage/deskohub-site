@@ -1,12 +1,18 @@
 import { Effect } from "effect";
+import {
+  type CheckoutSummary,
+  type CheckoutSummaryChangedKeys,
+  getCheckoutSummaryChangedKeys,
+} from "@/features/checkout/checkout-quote";
 import type { ReservationQuotePayment } from "@/features/checkout/reservation-quote-schema";
+import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import {
   type AffirmedDiscountAdvertisementQuote,
   type CanonicalDiscountCode,
   type DiscountAdvertisementInput,
-  type DiscountCalculationError,
   type DiscountCommitment,
   type DiscountQuote,
+  type DiscountResolutionError,
   DiscountService,
 } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
@@ -22,6 +28,7 @@ type AdvertisedReservation<Details extends ReservationDetails> = {
 };
 
 type ReservationQuote = {
+  readonly fingerprint: string;
   readonly payment: ReservationQuotePayment;
 };
 
@@ -59,6 +66,16 @@ export type ReservationPaymentPriceAffirmationInput<
   readonly submittedCode?: CanonicalDiscountCode;
 };
 
+export type ReservationDiscountCodePriceInput<
+  Reservation extends ReservationDetails,
+  Quote extends ReservationQuote,
+> = Omit<
+  ReservationPaymentPriceAffirmationInput<Reservation, Quote>,
+  "submittedCode"
+> & {
+  readonly submittedCode: CanonicalDiscountCode;
+};
+
 export type ReservationAdvertisementQuote<
   Reservation extends AdvertisedReservation<ReservationDetails>,
   Quote extends ReservationQuote,
@@ -91,6 +108,18 @@ export type ReservationPaymentPriceAffirmation<
   readonly commitment: DiscountCommitment;
 };
 
+export type ReservationDiscountCodePriceResult<
+  Reservation extends ReservationDetails,
+  Quote extends ReservationQuote,
+> =
+  | (ReservationCustomerQuote<Reservation, Quote> & {
+      readonly status: "pricing_changed";
+      readonly changedKeys: CheckoutSummaryChangedKeys;
+    })
+  | (ReservationCustomerQuote<Reservation, Quote> & {
+      readonly status: "applied";
+    });
+
 type PricingContext = {
   readonly discountInput: Omit<DiscountAdvertisementInput, "locale">;
 };
@@ -109,6 +138,7 @@ type ReservationPricingDomain<
     readonly pricing: Context;
     readonly discountQuote: DiscountQuote;
   }) => Effect.Effect<Quote, QuoteError>;
+  readonly getCheckoutSummary: (quote: Quote) => CheckoutSummary;
 };
 
 interface ReservationCheckoutPricing<
@@ -142,6 +172,12 @@ interface ReservationCheckoutPricing<
     ReservationPaymentPriceAffirmation<CustomerReservation, Quote>,
     Error
   >;
+  readonly applyDiscountCode: (
+    input: ReservationDiscountCodePriceInput<CustomerReservation, Quote>
+  ) => Effect.Effect<
+    ReservationDiscountCodePriceResult<CustomerReservation, Quote>,
+    Error
+  >;
 }
 
 export const reservationCheckoutPricing = <
@@ -166,7 +202,7 @@ export const reservationCheckoutPricing = <
     Advertisement,
     CustomerReservation,
     Quote,
-    ContextError | QuoteError | DiscountCalculationError
+    ContextError | QuoteError | DiscountResolutionError
   >,
   never,
   DiscountService
@@ -245,8 +281,8 @@ export const reservationCheckoutPricing = <
       )
     );
 
-    const affirmForPayment = Effect.fn(
-      "ReservationCheckoutPricing.affirmForPayment"
+    const affirmDisplayedPrice = Effect.fn(
+      "ReservationCheckoutPricing.affirmDisplayedPrice"
     )(
       (
         input: ReservationPaymentPriceAffirmationInput<
@@ -257,7 +293,7 @@ export const reservationCheckoutPricing = <
         domain.getPricingContext(input.reservation).pipe(
           Effect.bindTo("pricing"),
           Effect.bind("affirmation", ({ pricing }) =>
-            discounts.affirmForPayment({
+            discounts.affirmDisplayedDiscounts({
               ...pricing.discountInput,
               dotyposCustomerId: input.dotyposCustomerId,
               locale: input.locale,
@@ -272,7 +308,20 @@ export const reservationCheckoutPricing = <
               pricing,
               discountQuote: affirmation.quote,
             })
-          ),
+          )
+        )
+    );
+
+    const affirmForPayment = Effect.fn(
+      "ReservationCheckoutPricing.affirmForPayment"
+    )(
+      (
+        input: ReservationPaymentPriceAffirmationInput<
+          CustomerReservation,
+          Quote
+        >
+      ) =>
+        affirmDisplayedPrice(input).pipe(
           Effect.map(({ affirmation, quote }) => ({
             kind: input.reservation.kind,
             reservation: input.reservation,
@@ -282,10 +331,70 @@ export const reservationCheckoutPricing = <
         )
     );
 
+    const applyDiscountCode = Effect.fn(
+      "ReservationCheckoutPricing.applyDiscountCode"
+    )(
+      (
+        input: ReservationDiscountCodePriceInput<
+          CustomerReservation,
+          Quote
+        >
+      ) =>
+        affirmDisplayedPrice({
+          reservation: input.reservation,
+          dotyposCustomerId: input.dotyposCustomerId,
+          locale: input.locale,
+          quote: input.quote,
+        }).pipe(
+          Effect.bind("result", ({ affirmation, pricing, quote }) => {
+            const displayedSummary = domain.getCheckoutSummary(input.quote);
+            const affirmedSummary = domain.getCheckoutSummary(quote);
+            const displayedPriceIsCurrent =
+              quote.fingerprint === input.quote.fingerprint &&
+              workspaceMoneyEquals(
+                affirmedSummary.total,
+                displayedSummary.total
+              );
+
+            return displayedPriceIsCurrent
+              ? discounts
+                  .applyDiscountCode({
+                    baseQuote: affirmation.quote,
+                    dotyposCustomerId: input.dotyposCustomerId,
+                    locale: input.locale,
+                    submittedCode: input.submittedCode,
+                  })
+                  .pipe(
+                    Effect.flatMap((discountQuote) =>
+                      domain.buildQuote({ pricing, discountQuote })
+                    ),
+                    Effect.map((appliedQuote) => ({
+                      kind: input.reservation.kind,
+                      reservation: input.reservation,
+                      quote: appliedQuote,
+                      status: "applied" as const,
+                    }))
+                  )
+              : Effect.succeed({
+                  kind: input.reservation.kind,
+                  reservation: input.reservation,
+                  quote,
+                  status: "pricing_changed" as const,
+                  changedKeys: getCheckoutSummaryChangedKeys(
+                    displayedSummary,
+                    affirmedSummary
+                  ),
+                });
+          }),
+          Effect.map(({ result }) => result)
+        )
+    );
+
     return {
       quoteAdvertisement,
       affirmAdvertisement,
       quoteForCustomer,
       affirmForPayment,
+      applyDiscountCode,
     };
   });

@@ -113,7 +113,9 @@ describe("DiscountReleaseGateService", () => {
 
     const result = await Effect.gen(function* () {
       const releaseGates = yield* DiscountReleaseGateService;
-      return yield* releaseGates.evaluate({ operation: "affirm_for_payment" });
+      return yield* releaseGates.evaluate({
+        operation: "affirm_displayed_discounts",
+      });
     }).pipe(
       Effect.provide(DiscountReleaseGateService.Live),
       Effect.provide(featureFlagLayer),
@@ -130,7 +132,7 @@ describe("DiscountReleaseGateService", () => {
       level: "Error",
       annotations: expect.objectContaining({
         discountBoundary: "release_gate",
-        discountOperation: "affirm_for_payment",
+        discountOperation: "affirm_displayed_discounts",
         discountFeatureFlag: flag,
         discountErrorTag: "MissingFeatureFlag",
         discountErrorReason: "missing_flag",

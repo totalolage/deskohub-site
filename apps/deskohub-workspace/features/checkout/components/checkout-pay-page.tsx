@@ -28,10 +28,13 @@ import { Checkbox } from "@/shared/components/ui/checkbox";
 import { Skeleton } from "@/shared/components/ui/skeleton";
 import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
+import { CheckoutDiscountCodeForm } from "./checkout-discount-code-form";
 
 type CheckoutPayPageProps = {
   readonly changedKeys?: CheckoutSummaryChangedKeys;
+  readonly discountCodeEntryEnabled?: boolean;
   readonly freshPayUrl?: string;
+  readonly hasSubmittedCode?: boolean;
   readonly locale: Locale;
   readonly payStateToken?: string;
   readonly summary: CheckoutSummaryData;
@@ -43,7 +46,9 @@ type CheckoutPayActionVariant = "pay" | "retry";
 
 export function CheckoutPayPage({
   changedKeys,
+  discountCodeEntryEnabled = false,
   freshPayUrl,
+  hasSubmittedCode = false,
   locale,
   payStateToken,
   retryOutcome,
@@ -131,6 +136,16 @@ export function CheckoutPayPage({
         locale={locale}
         summary={summary}
       />
+
+      {variant === "pay" && payStateToken && (
+        <CheckoutDiscountCodeForm
+          applied={hasSubmittedCode}
+          checkoutNavigationPending={isSubmitPending}
+          initialEnabled={discountCodeEntryEnabled}
+          locale={locale}
+          payStateToken={payStateToken}
+        />
+      )}
 
       {isPricingChanged ? (
         <Button
