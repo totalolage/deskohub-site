@@ -11,6 +11,8 @@ Continue this structure through abstraction layers until reaching simple leaf op
 
 Define a function implemented with an Effect generator as `Effect.fn("descriptor")(function* (...) { ... })`. Do not wrap `Effect.gen(function* (...) { ... })` in an arrow function.
 
+Do not add a pass-through `Effect.fn` whose only behavior is renaming or reshaping arguments for an existing named Effect operation. Call the existing operation directly unless the wrapper adds real domain policy, composition, or behavior.
+
 Type real operations to accept an object containing the named domain values they require. Pass those operations directly to `Effect.bind`, `Effect.let`, or `Effect.tap`; do not add adapters whose only job is converting an Effect accumulator into positional arguments.
 
 ```ts

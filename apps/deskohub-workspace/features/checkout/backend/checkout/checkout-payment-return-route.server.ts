@@ -28,11 +28,6 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
   })
 );
 
-const refreshStatus = Effect.fn("checkoutPaymentReturn.refreshStatus")(
-  (orderId: string, returnOutcome: CheckoutStatusReturnOutcome) =>
-    refreshCheckoutStatus({ orderId, returnOutcome })
-);
-
 const getCheckoutStatusRedirectPath = (input: {
   readonly locale: string;
   readonly orderId: string;
@@ -72,7 +67,7 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       )
     );
 
-    yield* refreshStatus(orderId, outcome).pipe(
+    yield* refreshCheckoutStatus({ orderId, returnOutcome: outcome }).pipe(
       Effect.catchCause((cause) =>
         Effect.logError("Checkout payment return refresh failed", {
           orderId,
