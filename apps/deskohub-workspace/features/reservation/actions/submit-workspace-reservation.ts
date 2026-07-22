@@ -3,11 +3,8 @@ import {
   CheckoutService,
   openPayState,
 } from "@/features/checkout/backend/checkout";
-import { type Locale, m } from "@/features/i18n";
-import {
-  getSubmitReservationCheckoutLocale,
-  type SubmitReservationInput,
-} from "@/features/reservation/actions/submit-reservation-input";
+import { m } from "@/features/i18n";
+import type { SubmitReservationInput } from "@/features/reservation/actions/submit-reservation-input";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
   BotDetectedError,
@@ -45,11 +42,8 @@ const getSubmitReservationErrorMessage = Effect.fn(
 export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
 )(
-  function* (
-    input: SubmitReservationInput,
-    context: { readonly locale: Locale }
-  ) {
-    const locale = getSubmitReservationCheckoutLocale(input, context.locale);
+  function* (input: SubmitReservationInput) {
+    const { locale } = input;
     yield* Effect.annotateLogsScoped({ locale });
     const botProtection = yield* BotProtectionService;
     yield* botProtection.verifyHuman({ verificationFailurePolicy: "allow" });

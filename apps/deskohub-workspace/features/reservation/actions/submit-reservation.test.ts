@@ -36,9 +36,7 @@ const runSubmitReservation = async (options?: {
       })
     );
 
-  const effect = submitWorkspaceReservation(input, {
-    locale: "en-US",
-  }).pipe(
+  const effect = submitWorkspaceReservation(input).pipe(
     Effect.provide(
       Layer.mergeAll(
         BotProtectionServiceMock({ verifyHuman }),
