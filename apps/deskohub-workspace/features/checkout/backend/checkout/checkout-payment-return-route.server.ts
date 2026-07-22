@@ -1,4 +1,4 @@
-import { Effect, Layer, Option, Schema } from "effect";
+import { Effect, type Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
 import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
@@ -6,8 +6,8 @@ import { WorkspaceRouteFailure } from "@/shared/backend/effect-boundary/route-fa
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getSearchParamsDecoder } from "@/shared/utils";
 import { refreshCheckoutStatus } from "./checkout-status.server";
-import {
-  type CheckoutStatusReturnOutcome,
+import type {
+  CheckoutStatusReturnOutcome,
   CheckoutStatusService,
 } from "./checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
@@ -81,26 +81,19 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   }
 );
 
-export const makeCheckoutPaymentReturnGet = <E>(
-  statusServiceLayer: Layer.Layer<CheckoutStatusService, E>
+export const makeCheckoutPaymentReturnGet = (
+  statusServiceLayer: Layer.Layer<CheckoutStatusService, unknown>
 ) =>
   WorkspaceEffect.route(
     {
       operation: "checkout.payment-return",
-      layer: statusServiceLayer.pipe(
-        Layer.catch((cause) =>
-          Layer.effect(
-            CheckoutStatusService,
-            Effect.fail(
-              new WorkspaceRouteFailure({
-                statusCode: 500,
-                publicMessage: "Checkout status could not be refreshed",
-                cause,
-              })
-            )
-          )
-        )
-      ),
+      layer: statusServiceLayer,
+      mapFailure: (cause) =>
+        new WorkspaceRouteFailure({
+          statusCode: 500,
+          publicMessage: "Checkout status could not be refreshed",
+          cause,
+        }),
       cancellation: "continue-after-disconnect",
     },
     handleCheckoutPaymentReturn
