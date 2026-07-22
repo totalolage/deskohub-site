@@ -1,17 +1,11 @@
-"use server";
+import "server-only";
 
-import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer } from "effect";
+import { Effect } from "effect";
 import { z } from "zod/v4";
-import {
-  ContactService,
-  ContactServiceLive,
-} from "@/features/contact/backend/contact.service";
+import { ContactService } from "@/features/contact/backend/contact.service";
 import { getContactSchema } from "@/features/contact/schemas/contact";
-import { getLocale, type Locale, m } from "@/features/i18n";
+import { type Locale, m } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
-import { EmailConfigLayer } from "@/shared/backend/config/email.config";
-import { runWorkspaceServerActionEffect } from "@/shared/backend/logging/server-action";
 
 export type ContactFormValues = {
   name: string;
@@ -26,25 +20,6 @@ export type ContactFormState = {
   fieldErrors?: Partial<Record<"name" | "email" | "phone" | "message", string>>;
   values?: ContactFormValues;
 };
-
-function getSubmittedContactValues(formData: FormData): ContactFormValues {
-  return {
-    name: getSubmittedString(formData, "name"),
-    email: getSubmittedString(formData, "email"),
-    phone: getSubmittedString(formData, "phone"),
-    message: getSubmittedString(formData, "message"),
-  };
-}
-
-function getSubmittedString(formData: FormData, name: keyof ContactFormValues) {
-  const value = formData.get(name);
-
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  return value;
-}
 
 interface SubmitContactFormInput {
   readonly locale: Locale;
@@ -120,24 +95,3 @@ export const processContactSubmission = Effect.fn("submitContactForm")(
       )
     )
 );
-
-const ContactActionLive = ContactServiceLive.pipe(
-  Layer.provide(
-    StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
-  ),
-  Layer.merge(BotProtectionService.Live)
-);
-
-export async function submitContactForm(
-  _previousState: ContactFormState,
-  formData: FormData
-): Promise<ContactFormState> {
-  const locale = getLocale();
-  const submittedValues = getSubmittedContactValues(formData);
-
-  const program = processContactSubmission({ locale, submittedValues }).pipe(
-    Effect.provide(ContactActionLive)
-  );
-
-  return await runWorkspaceServerActionEffect(program);
-}

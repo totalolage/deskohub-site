@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Exit, Layer, Schema } from "effect";
 import { createMiddleware, createSafeActionClient } from "next-safe-action";
-import { useAction } from "next-safe-action/hooks";
+import { useAction, useStateAction } from "next-safe-action/hooks";
 import { EffectAction } from "./effect-action";
 
 class TestService extends Context.Service<
@@ -176,6 +176,29 @@ describe("EffectAction", () => {
     });
     expect(runnerError).toBe(mapped);
   });
+
+  test("declares stateful Effect actions after validation", async () => {
+    let executions = 0;
+    let previousResult: unknown;
+    const action = EffectAction.fromClient(makeActionClient())
+      .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
+      .stateAction(({ parsedInput }, { prevResult }) =>
+        Effect.sync(() => {
+          executions += 1;
+          previousResult = prevResult;
+          return parsedInput * 2;
+        })
+      );
+
+    await expect(action({ data: 1 }, "invalid")).resolves.toMatchObject({
+      validationErrors: expect.any(Object),
+    });
+    expect(executions).toBe(0);
+
+    await expect(action({ data: 1 }, "21")).resolves.toEqual({ data: 42 });
+    expect(executions).toBe(1);
+    expect(previousResult).toEqual({ data: 1 });
+  });
 });
 
 if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
@@ -214,6 +237,24 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
 
   // @ts-expect-error useAction preserves the action input type.
   hook.execute(1);
+
+  const statefulAction = EffectAction.fromClient(makeActionClient())
+    .inputSchema(Schema.toStandardSchemaV1(Schema.FiniteFromString))
+    .stateAction(({ parsedInput }) => Effect.succeed(parsedInput));
+
+  // biome-ignore lint/correctness/useHookAtTopLevel: Compile-time coverage intentionally exercises the hook API.
+  const statefulHook = useStateAction(statefulAction, {
+    initResult: { data: 0 },
+  });
+  statefulHook.formAction("1");
+
+  // @ts-expect-error useStateAction preserves the action input type.
+  statefulHook.formAction(1);
+
+  EffectAction.fromClient(makeActionClient())
+    .inputSchema(Schema.toStandardSchemaV1(Schema.String))
+    // @ts-expect-error an action must provide every required service.
+    .action(() => TestService);
 
   void hook.executeAsync("1").then((result) => {
     if (result.data !== undefined) {

@@ -1,20 +1,11 @@
 import {
   type AnyValue,
   type AnyValueMap,
+  type LoggerProvider,
   SeverityNumber,
 } from "@opentelemetry/api-logs";
-import type { LoggerProvider } from "@opentelemetry/sdk-logs";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Effect, Logger, type LogLevel, References } from "effect";
-import { after } from "next/server";
-import {
-  getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics,
-  logUnexpectedConsentCookieReasons,
-} from "./posthog-log-annotations";
-import {
-  postHogLoggerProvider,
-  schedulePostHogLogsFlush,
-} from "./posthog-otel";
 
 export const CENSORED_LOG_VALUE = "[REDACTED]";
 
@@ -480,39 +471,7 @@ export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
     })
   );
 
-export const createWorkspaceLoggerLive = (loggerProvider?: LoggerProvider) =>
-  Logger.layer(
-    loggerProvider
-      ? [CensoringLogger, createCensoredOtelLogger(loggerProvider)]
-      : [CensoringLogger]
-  );
+export const WorkspaceLoggerLive = Logger.layer([CensoringLogger]);
 
-export const LoggerLive = createWorkspaceLoggerLive(postHogLoggerProvider);
-
-export const runWorkspaceEffectWithLogAnnotations = <A, E>(
-  effect: Effect.Effect<A, E, never>,
-  annotations: Record<string, unknown>
-) =>
-  Effect.runPromise(
-    effect.pipe(Effect.annotateLogs(annotations), Effect.provide(LoggerLive))
-  );
-
-export const runWorkspaceEffect = <A, E>(effect: Effect.Effect<A, E, never>) =>
-  runWorkspaceEffectWithLogAnnotations(effect, {});
-
-export const runWorkspaceRequestEffect = <A, E>(
-  request: Request,
-  effect: Effect.Effect<A, E, never>
-) => {
-  schedulePostHogLogsFlush(after);
-  const { annotations, unexpectedConsentCookieReasons } =
-    getPostHogLogAnnotationsFromRequestHeadersWithDiagnostics(request.headers);
-
-  return runWorkspaceEffectWithLogAnnotations(
-    Effect.gen(function* () {
-      yield* logUnexpectedConsentCookieReasons(unexpectedConsentCookieReasons);
-      return yield* effect;
-    }),
-    annotations
-  );
-};
+export const createWorkspaceOtelLoggerLive = (loggerProvider: LoggerProvider) =>
+  Logger.layer([CensoringLogger, createCensoredOtelLogger(loggerProvider)]);

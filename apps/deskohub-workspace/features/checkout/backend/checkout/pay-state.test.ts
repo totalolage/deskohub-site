@@ -1,6 +1,6 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
-import { Schema } from "effect";
+import { Effect, Schema } from "effect";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { canonicalDiscountCodeSchema } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
@@ -72,6 +72,8 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
 
 const seal = (state = buildState()) =>
   sealPayState(state, { keys: [fixedKey], randomBytes: fixedRandomBytes });
+const openPayStateSync = (...args: Parameters<typeof openPayState>) =>
+  Effect.runSync(openPayState(...args));
 
 const replaceTokenHeader = (
   token: string,
@@ -114,7 +116,7 @@ describe("Pay URL state", () => {
     const token = seal(state);
 
     expect(
-      openPayState(token, { keys: [fixedKey], now: () => fixedNow })
+      openPayStateSync(token, { keys: [fixedKey], now: () => fixedNow })
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
     expect(state.submittedCode).toBe(canonicalCode);
@@ -168,7 +170,7 @@ describe("Pay URL state", () => {
     const token = seal(buildState());
 
     expect(() =>
-      openPayState(token, {
+      openPayStateSync(token, {
         keys: [fixedKey],
         now: () => new Date("2026-06-01T10:11:00.000Z"),
       })
@@ -177,7 +179,7 @@ describe("Pay URL state", () => {
 
   test("rejects tampered ciphertext", () => {
     expect(() =>
-      openPayState(tamperCiphertext(seal()), {
+      openPayStateSync(tamperCiphertext(seal()), {
         keys: [fixedKey],
         now: () => fixedNow,
       })
@@ -192,10 +194,13 @@ describe("Pay URL state", () => {
     }));
 
     expect(() =>
-      openPayState(token, { keys: [wrongKey], now: () => fixedNow })
+      openPayStateSync(token, { keys: [wrongKey], now: () => fixedNow })
     ).toThrow("Invalid Pay state token");
     expect(() =>
-      openPayState(unknownKidToken, { keys: [fixedKey], now: () => fixedNow })
+      openPayStateSync(unknownKidToken, {
+        keys: [fixedKey],
+        now: () => fixedNow,
+      })
     ).toThrow("unknown key id");
   });
 
@@ -213,14 +218,14 @@ describe("Pay URL state", () => {
     );
 
     expect(
-      openPayState(oldToken, {
+      openPayStateSync(oldToken, {
         keys: [rotatedKey, fixedKey],
         now: () => fixedNow,
       })
     ).toEqual(oldState);
     expect(newState.kid).toBe(rotatedKey.kid);
     expect(
-      openPayState(
+      openPayStateSync(
         sealPayState(newState, {
           keys: [rotatedKey, fixedKey],
           randomBytes: fixedRandomBytes,
@@ -232,7 +237,7 @@ describe("Pay URL state", () => {
 
   test("rejects old prefixed and versioned token headers", () => {
     expect(() =>
-      openPayState(`dhp1.${seal()}`, {
+      openPayStateSync(`dhp1.${seal()}`, {
         keys: [fixedKey],
         now: () => fixedNow,
       })
@@ -245,7 +250,7 @@ describe("Pay URL state", () => {
     }));
 
     expect(() =>
-      openPayState(versionedToken, {
+      openPayStateSync(versionedToken, {
         keys: [fixedKey],
         now: () => fixedNow,
       })

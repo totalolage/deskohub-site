@@ -3,7 +3,7 @@ import {
   PostHogFeatureFlagError,
 } from "@deskohub/posthog/feature-flags/codegen";
 import { Effect, Schema } from "effect";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runStandaloneWorkspaceEffect } from "@/shared/backend/standalone-workspace-effect";
 
 const PostHogFeatureFlagGenerationEnv = Schema.Struct({
   POSTHOG_FEATURE_FLAGS_API_KEY: Schema.NonEmptyString,
@@ -50,4 +50,8 @@ const syncPostHogFeatureFlags = Effect.Do.pipe(
   Effect.map(({ result }) => result)
 );
 
-if (import.meta.main) runWorkspaceEffect(syncPostHogFeatureFlags);
+if (import.meta.main) {
+  await syncPostHogFeatureFlags.pipe(
+    runStandaloneWorkspaceEffect("feature-flags.sync")
+  );
+}

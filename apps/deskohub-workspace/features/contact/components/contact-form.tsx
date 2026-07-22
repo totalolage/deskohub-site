@@ -3,13 +3,14 @@
 import { Send } from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Suspense, useActionState, useEffect, useRef, useState } from "react";
+import { useStateAction } from "next-safe-action/stateful-hooks";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useFormStatus } from "react-dom";
-import {
-  type ContactFormState,
-  type ContactFormValues,
-  submitContactForm,
+import type {
+  ContactFormState,
+  ContactFormValues,
 } from "@/features/contact/actions/contact";
+import { submitContactForm } from "@/features/contact/actions/submit-contact";
 import { type Locale, m } from "@/features/i18n";
 import { Button } from "@/shared/components/ui/button";
 import {
@@ -53,10 +54,15 @@ const getContactQueryInitialValues = (params: Pick<URLSearchParams, "get">) => {
 };
 
 export function ContactForm({ locale, initialValues }: ContactFormProps) {
-  const [state, formAction] = useActionState(
-    submitContactForm,
-    initialContactFormState
-  );
+  const action = useStateAction(submitContactForm);
+  const state: ContactFormState =
+    action.result.data ??
+    (action.result.serverError
+      ? {
+          status: "error" as const,
+          message: m.contactEmailSendError({}, { locale }),
+        }
+      : initialContactFormState);
   const formRef = useRef<HTMLFormElement>(null);
   const [queryInitialValues, setQueryInitialValues] =
     useState<ContactFormInitialValues>();
@@ -105,7 +111,8 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
           </Suspense>
         )}
 
-        <form ref={formRef} action={formAction} className="space-y-5">
+        <form ref={formRef} action={action.formAction} className="space-y-5">
+          <input type="hidden" name="locale" value={locale} />
           <div key={fieldRemountKey} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <Field

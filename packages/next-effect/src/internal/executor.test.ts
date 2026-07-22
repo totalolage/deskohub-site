@@ -80,4 +80,13 @@ describe("execute", () => {
       )
     ).rejects.toBe(mapped);
   });
+
+  test("interrupts execution with an explicit signal", async () => {
+    const controller = new AbortController();
+    const result = execute(Effect.never, { signal: controller.signal });
+
+    controller.abort();
+
+    await expect(result).rejects.toBeDefined();
+  });
 });

@@ -1,11 +1,12 @@
 import { Context, Data, Effect, Layer } from "effect";
 import { after } from "next/server";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { defineWorkspaceTask } from "@/shared/backend/workspace-effect";
 
 interface IPostResponseTaskService {
-  readonly run: (
-    task: Effect.Effect<void, never, never>
-  ) => Effect.Effect<void>;
+  readonly run: (options: {
+    readonly operation: string;
+    readonly task: Effect.Effect<void, never, never>;
+  }) => Effect.Effect<void>;
 }
 
 class PostResponseTaskSchedulingError extends Data.TaggedError(
@@ -18,20 +19,30 @@ export class PostResponseTaskService extends Context.Service<
   PostResponseTaskService,
   IPostResponseTaskService
 >()("PostResponseTaskService") {
-  static Live = Layer.succeed(this, {
-    run: (task) =>
-      Effect.try({
-        try: () => {
-          after(() => runWorkspaceEffect(task));
-        },
-        catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
-      }).pipe(
-        Effect.tapError((cause) =>
-          Effect.logWarning("Post-response task could not be scheduled", {
-            cause,
-          })
+  static Live = Layer.effect(
+    this,
+    Effect.succeed({
+      run: ({ operation, task }) =>
+        Effect.try({
+          try: () => {
+            const runTask = defineWorkspaceTask(operation, () =>
+              task.pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Post-response task failed", { cause })
+                )
+              )
+            );
+            after(runTask);
+          },
+          catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
+        }).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Post-response task could not be scheduled", {
+              cause,
+            })
+          ),
+          Effect.ignore
         ),
-        Effect.ignore
-      ),
-  });
+    })
+  );
 }

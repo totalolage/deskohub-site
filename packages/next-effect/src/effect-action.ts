@@ -8,10 +8,16 @@ import type {
   MaybeBrandThrows,
   SafeActionClient,
   SafeActionFn,
+  SafeActionResult,
+  SafeStateActionFn,
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
-import { execute, type ExecuteRun } from "./internal/executor";
+import {
+  type ExecuteOptions,
+  type ExecuteRun,
+  execute,
+} from "./internal/executor";
 
 type SchemaInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
 type SchemaOutput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
@@ -48,12 +54,28 @@ export type EffectActionOptions<R = never, LE = never> =
   | EffectActionRunnableOptions
   | EffectActionLayerOptions<R, LE>;
 
+const getExecuteOptions = <E>(
+  options: EffectActionBaseOptions
+): ExecuteOptions<E> =>
+  options.run
+    ? { mapError: options.mapError, run: options.run }
+    : { mapError: options.mapError };
+
 type SafeActionValidationErrors<
   ErrorsFormat extends ValidationErrorsFormat | undefined,
   S extends StandardSchemaV1,
 > = ErrorsFormat extends "flattened"
   ? FlattenedValidationErrors<ValidationErrors<S>>
   : ValidationErrors<S>;
+
+export interface EffectActionState<
+  ServerError,
+  S extends StandardSchemaV1,
+  ShapedErrors = unknown,
+  A = unknown,
+> {
+  readonly prevResult: SafeActionResult<ServerError, S, ShapedErrors, A>;
+}
 
 interface EffectActionSafeClient<
   ServerError,
@@ -109,6 +131,50 @@ interface EffectActionSafeClient<
       utils?: Utils
     ): MaybeBrandThrows<
       SafeActionFn<
+        ServerError,
+        S,
+        BindArgsSchemas,
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A
+      >,
+      EffectiveThrows<ThrowsValidationErrors, Utils>
+    >;
+    stateAction<
+      A extends SchemaOutputOrDefault<OutputSchema, unknown>,
+      E,
+      Utils extends ActionCallbacks<
+        ServerError,
+        Metadata,
+        Ctx,
+        S,
+        BindArgsSchemas,
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A,
+        PreValidationCtx
+      > = ActionCallbacks<
+        ServerError,
+        Metadata,
+        Ctx,
+        S,
+        BindArgsSchemas,
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A,
+        PreValidationCtx
+      >,
+    >(
+      this: HasMetadata extends true ? object : never,
+      handler: (
+        args: EffectActionArgs<S, Ctx, Metadata>,
+        state: EffectActionState<
+          ServerError,
+          S,
+          SafeActionValidationErrors<ErrorsFormat, S>,
+          NoInfer<A>
+        >
+      ) => Effect.Effect<A, E, R>,
+      utils?: Utils
+    ): MaybeBrandThrows<
+      SafeStateActionFn<
         ServerError,
         S,
         BindArgsSchemas,
@@ -173,6 +239,12 @@ function makeEffectActionClient<
         action(handler, actionUtils) {
           return builder.action(
             (args) => runEffect(handler(args)),
+            actionUtils
+          );
+        },
+        stateAction(handler, actionUtils) {
+          return builder.stateAction(
+            (args, state) => runEffect(handler(args, state)),
             actionUtils
           );
         },
@@ -292,20 +364,14 @@ function fromClient(
 ): unknown {
   if (options.layer) {
     return makeEffectActionClient(actionClient, (effect) =>
-      execute(Effect.provide(effect, options.layer), {
-        mapError: options.mapError,
-        run: options.run,
-      })
+      execute(Effect.provide(effect, options.layer), getExecuteOptions(options))
     );
   }
 
   return makeEffectActionClient(
     actionClient,
     <A, E>(effect: Effect.Effect<A, E, never>) =>
-      execute(effect, {
-        mapError: options.mapError,
-        run: options.run,
-      })
+      execute(effect, getExecuteOptions(options))
   );
 }
 

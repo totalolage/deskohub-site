@@ -3,13 +3,11 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { env } from "@/env";
 import {
   appendVercelPreviewProtectionBypass,
-  type CheckoutStatusReturnOutcome,
+  CheckoutStatusService,
+  CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
-  getCheckoutStatus,
-  refreshCheckoutStatus,
 } from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
@@ -21,10 +19,9 @@ import {
 import { locales, m } from "@/features/i18n";
 import { runWithRequestLocale } from "@/features/i18n/server/request-locale";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
 import {
-  getSearchParam,
   getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
   type SearchParamsRecord,
@@ -47,19 +44,6 @@ const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
     outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
-
-const shouldUsePreviewE2EStatusRead = (searchParams: SearchParamsRecord) =>
-  env.VERCEL_ENV === "preview" &&
-  getSearchParam(searchParams, "e2eState") === "fulfillmentFailed";
-
-const loadCheckoutStatus = (input: {
-  readonly orderId: string;
-  readonly returnOutcome: CheckoutStatusReturnOutcome;
-  readonly searchParams: SearchParamsRecord;
-}) =>
-  shouldUsePreviewE2EStatusRead(input.searchParams)
-    ? getCheckoutStatus(input)
-    : refreshCheckoutStatus(input);
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -150,18 +134,19 @@ async function CheckoutStatusContent({
     decodeCheckoutStatusSearchParams(rawSearchParams),
     () => ({ outcome: "unknown" as const })
   );
-  const status = await loadCheckoutStatus({
-    orderId,
-    returnOutcome,
-    searchParams: rawSearchParams,
-  }).catch(async (cause) => {
-    await Effect.logError("Checkout status load failed", {
-      orderId,
-      returnOutcome,
-      cause,
-    }).pipe(runWorkspaceEffect);
-    throw cause;
-  });
+  const status = await Effect.flatMap(CheckoutStatusService, (service) =>
+    service.refreshStatus({ orderId, returnOutcome })
+  ).pipe(
+    Effect.tapError((cause) =>
+      Effect.logError("Checkout status load failed", {
+        orderId,
+        returnOutcome,
+        cause,
+      })
+    ),
+    Effect.provide(CheckoutStatusServiceLiveWithDependencies),
+    runWorkspaceEffect("checkout.status.load")
+  );
   const retryOutcome = getRetryOutcome(status.status);
 
   if (

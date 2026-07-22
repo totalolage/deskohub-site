@@ -7,7 +7,7 @@ import {
 import { getGalleryImages } from "@deskohub/cloudinary/server";
 import { Effect } from "effect";
 import { env } from "@/env";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   type CloudinaryAsset,
   CloudinaryServiceLive,
@@ -23,10 +23,7 @@ export async function getCloudinaryImages({
   tags,
   maxResults = 60,
 }: GetCloudinaryImagesOptions): Promise<readonly CloudinaryAsset[]> {
-  return Effect.provide(
-    getGalleryImages(normalizeExpression(tags), { maxResults }),
-    CloudinaryServiceLive
-  ).pipe(
+  return getGalleryImages(normalizeExpression(tags), { maxResults }).pipe(
     Effect.catch((error) => {
       if (env.VERCEL_ENV !== "development") return Effect.fail(error);
 
@@ -37,6 +34,7 @@ export async function getCloudinaryImages({
     Effect.tapError((error) =>
       Effect.logError("Workspace Cloudinary gallery search failed", error)
     ),
-    runWorkspaceEffect
+    Effect.provide(CloudinaryServiceLive),
+    runWorkspaceEffect("gallery.images.load")
   );
 }

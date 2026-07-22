@@ -1,18 +1,14 @@
-import { z } from "zod/v4";
-import { type Locale, locales } from "@/features/i18n";
+import { Schema } from "effect";
+import { locales } from "@/features/i18n";
 
-export const getSubmitReservationSchema = () =>
-  z.object({
-    locale: z.enum(locales),
-    payStateToken: z.string().min(1),
-    legalConsent: z.boolean().optional(),
-  });
+const submitReservationInputSchema = Schema.Struct({
+  locale: Schema.Literals(locales),
+  payStateToken: Schema.NonEmptyString,
+  legalConsent: Schema.optionalKey(Schema.Boolean),
+});
 
-export type SubmitReservationInput = z.output<
-  ReturnType<typeof getSubmitReservationSchema>
->;
+export const submitReservationSchema = Schema.toStandardSchemaV1(
+  submitReservationInputSchema
+);
 
-export const getSubmitReservationCheckoutLocale = (
-  input: Pick<SubmitReservationInput, "locale">,
-  _contextLocale: Locale
-): Locale => input.locale;
+export type SubmitReservationInput = typeof submitReservationInputSchema.Type;

@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { connection } from "next/server";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend";
 import { WorkspaceFeatureFlagServiceLive } from "@/features/feature-flags/backend/workspace-feature-flag.server";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const meetingRoomPageFeatureFlag = Effect.gen(function* () {
   const featureFlags = yield* WorkspaceFeatureFlagService;
@@ -21,5 +21,7 @@ const meetingRoomPageFeatureFlag = Effect.gen(function* () {
 export async function isMeetingRoomPageEnabled() {
   await connection();
 
-  return meetingRoomPageFeatureFlag.pipe(runWorkspaceEffect);
+  return meetingRoomPageFeatureFlag.pipe(
+    runWorkspaceEffect("meeting-room.page-enabled")
+  );
 }

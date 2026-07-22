@@ -3,7 +3,7 @@ import { Effect, Layer } from "effect";
 import { connection } from "next/server";
 import { Suspense } from "react";
 import { DotyposRuntimeConfigLive } from "@/shared/backend/config/dotypos.config";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import { runWorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { DotyposTablesPreview } from "./dotypos-tables-preview";
 
 const DotyposLive = Layer.provide(
@@ -11,17 +11,10 @@ const DotyposLive = Layer.provide(
   DotyposRuntimeConfigLive
 );
 
-const loadTables = () =>
-  Effect.gen(function* () {
-    const dotypos = yield* DotyposService;
-    return yield* dotypos.getTables();
-  }).pipe(
-    Effect.provide(DotyposLive),
-    Effect.tapError((error) =>
-      Effect.logError("Workspace Dotypos table preview load failed", error)
-    ),
-    runWorkspaceEffect
-  );
+const loadTables = Effect.fn("dotyposTables.load")(function* () {
+  const dotypos = yield* DotyposService;
+  return yield* dotypos.getTables();
+});
 
 export default function DotyposTablesPreviewPage() {
   return (
@@ -33,7 +26,13 @@ export default function DotyposTablesPreviewPage() {
 
 async function DotyposTablesPreviewContent() {
   await connection();
-  const tables = await loadTables();
+  const tables = await loadTables().pipe(
+    Effect.tapError((error) =>
+      Effect.logError("Workspace Dotypos table preview load failed", error)
+    ),
+    Effect.provide(DotyposLive),
+    runWorkspaceEffect("dotypos.tables-preview.load")
+  );
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] px-4 py-10 text-[#00024f]">

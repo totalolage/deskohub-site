@@ -62,7 +62,7 @@ import { getStoredCoworkReservationDetails } from "@/features/reservation/cowork
 import { PostHogEventServiceLive } from "@/shared/backend/analytics/posthog-event.service";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { DotyposServiceLive } from "@/shared/backend/config/dotypos.config";
-import { createEffectSafeAction } from "@/shared/backend/utils/effect-safe-action";
+import { defineWorkspaceAction } from "@/shared/backend/workspace-action";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
 const preparePayStateSchema = Schema.toStandardSchemaV1(
@@ -768,30 +768,34 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     )
 );
 
-const preparePayStateAction = createEffectSafeAction(
-  preparePayStateSchema,
-  prepareWorkspacePayState,
+const PreparePayStateLive = Layer.mergeAll(
   Layer.mergeAll(
-    Layer.mergeAll(
-      WorkspaceReservationRepositoryLive,
-      LegalEvidenceEventRepositoryLive
-    ).pipe(Layer.provide(WorkspaceDatabaseLive)),
-    WorkspaceAvailabilityService.LiveWithDependencies,
-    WorkspaceTableAssignmentService.Live.pipe(
-      Layer.provide(
-        WorkspaceReservationRepositoryLive.pipe(
-          Layer.provide(WorkspaceDatabaseLive)
-        )
-      ),
-      Layer.provide(DotyposServiceLive)
+    WorkspaceReservationRepositoryLive,
+    LegalEvidenceEventRepositoryLive
+  ).pipe(Layer.provide(WorkspaceDatabaseLive)),
+  WorkspaceAvailabilityService.LiveWithDependencies,
+  WorkspaceTableAssignmentService.Live.pipe(
+    Layer.provide(
+      WorkspaceReservationRepositoryLive.pipe(
+        Layer.provide(WorkspaceDatabaseLive)
+      )
     ),
-    WorkspaceCheckoutAccessCodeServiceLive,
-    ReservationHoldCleanupScheduleService.Live,
-    BotProtectionService.Live,
-    PostHogEventServiceLive,
-    DotyposServiceLive,
-    DiscountServiceLiveWithDependencies
-  )
+    Layer.provide(DotyposServiceLive)
+  ),
+  WorkspaceCheckoutAccessCodeServiceLive,
+  ReservationHoldCleanupScheduleService.Live,
+  PostHogEventServiceLive,
+  DotyposServiceLive,
+  DiscountServiceLiveWithDependencies
+);
+
+const preparePayStateAction = defineWorkspaceAction(
+  {
+    operation: "checkout.prepare-pay-state",
+    schema: preparePayStateSchema,
+  },
+  (input) =>
+    prepareWorkspacePayState(input).pipe(Effect.provide(PreparePayStateLive))
 );
 
 export const preparePayState: typeof preparePayStateAction = async (

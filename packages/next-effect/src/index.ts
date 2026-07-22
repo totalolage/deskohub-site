@@ -35,12 +35,15 @@ function makeRuntime<R>(
 ): NextEffectRuntime<R> {
   return {
     run: runEffect,
-    page: (component) => (props) => runEffect(component(props)),
+    page: (component) => (props) =>
+      runEffect(Effect.suspend(() => component(props))),
   };
 }
 
 function make(options?: NextEffectRunnableOptions): NextEffectRuntime<never>;
-function make<R, LE>(options: NextEffectLayerOptions<R, LE>): NextEffectRuntime<R>;
+function make<R, LE>(
+  options: NextEffectLayerOptions<R, LE>
+): NextEffectRuntime<R>;
 function make<R, LE>(
   options: NextEffectOptions<R, LE> = {}
 ): NextEffectRuntime<R> | NextEffectRuntime<never> {

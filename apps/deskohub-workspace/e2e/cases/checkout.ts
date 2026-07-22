@@ -223,7 +223,6 @@ const assertFulfillmentFailedSupportPath = ({
     );
     yield* setSearchParams(statusUrl, {
       e2eAt: String(Date.now()),
-      e2eState: "fulfillmentFailed",
     });
     yield* openBrowserPage(config, run, session, statusUrl.toString(), {
       timeoutMs: getWorkspaceE2ETimeoutMs("browserNavigation"),

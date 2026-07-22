@@ -1,6 +1,5 @@
 export * from "./checkout.service";
 export * from "./checkout-pay-url";
-export * from "./checkout-status.server";
 export * from "./checkout-status.service";
 export * from "./pay-state";
 export * from "./pay-state.server";

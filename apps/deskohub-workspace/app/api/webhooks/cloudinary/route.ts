@@ -8,7 +8,10 @@ import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import {
+  defineWorkspaceRoute,
+  mapWorkspaceInternalRouteFailure,
+} from "@/shared/backend/workspace-route";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const CloudinaryWebhookVerifierLive = CloudinaryWebhookVerifier.Live.pipe(
@@ -49,13 +52,6 @@ const processWebhook = Effect.fn("processWebhook")(function* (
 
 const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
   function* (request: Request) {
-    yield* Effect.annotateLogsScoped({
-      request: {
-        headers: Object.fromEntries(request.headers.entries()),
-        method: request.method,
-        url: request.url,
-      },
-    });
     yield* Effect.logInfo("Cloudinary webhook invoked");
 
     const webhook = yield* verifyCloudinaryWebhookRequest(request);
@@ -64,14 +60,7 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
 
     return yield* processWebhook(webhook);
   },
-  (effect) =>
-    effect.pipe(
-      Effect.scoped,
-      Effect.annotateLogs({
-        method: "POST",
-        operation: "cloudinaryWebhook",
-      })
-    )
+  Effect.scoped
 );
 
 /**
@@ -79,11 +68,13 @@ const processWebhookRequest = Effect.fn("processCloudinaryWebhookRequest")(
  *
  * Receives webhooks from Cloudinary
  */
-export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceRequestEffect(
-    request,
+export const POST = defineWorkspaceRoute(
+  {
+    operation: "cloudinaryWebhook",
+    cancellation: "continue-after-disconnect",
+  },
+  (request) =>
     processWebhookRequest(request).pipe(
-      Effect.provide(CloudinaryWebhookVerifierLive),
       Effect.catchTags({
         CloudinaryWebhookAuthError: Effect.fn("logCloudinaryWebhookAuthError")(
           function* (error) {
@@ -130,10 +121,13 @@ export async function POST(request: Request): Promise<NextResponse> {
               }
             )
           ),
-      })
+      }),
+      Effect.provide(CloudinaryWebhookVerifierLive),
+      Effect.mapError(
+        mapWorkspaceInternalRouteFailure("Cloudinary webhook processing failed")
+      )
     )
-  );
-}
+);
 
 /**
  * GET /api/webhooks/cloudinary

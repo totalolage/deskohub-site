@@ -23,16 +23,27 @@ export async function execute<A, E>(
     return options.run(program);
   }
 
-  const exit = await Effect.runPromiseExit(program, { signal: options.signal });
+  const exit = await runPromiseExit(program, options.signal);
+  return interpretExit(exit);
+}
 
-  if (Exit.isSuccess(exit)) {
-    return exit.value;
+const runPromiseExit = async <A, E>(
+  effect: Effect.Effect<A, E, never>,
+  signal?: AbortSignal
+): Promise<Exit.Exit<A, E>> => {
+  try {
+    return await Effect.runPromiseExit(effect, { signal });
+  } catch (defect) {
+    return Exit.die(defect);
   }
+};
+
+export function interpretExit<A, E>(exit: Exit.Exit<A, E>): A {
+  if (Exit.isSuccess(exit)) return exit.value;
 
   for (const reason of exit.cause.reasons) {
     if (Cause.isFailReason(reason)) {
       unstable_rethrow(reason.error);
-      throw reason.error;
     } else if (Cause.isDieReason(reason)) {
       unstable_rethrow(reason.defect);
     }
