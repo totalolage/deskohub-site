@@ -1,23 +1,65 @@
+import "@/shared/testing/workspace-test-env";
+
 import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import type { Reservation, Table } from "@deskohub/dotypos/generated";
 import { Effect, Layer } from "effect";
 import "@/shared/polyfills/temporal";
-import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import { WorkspaceReservationRepository } from "@/features/reservation/backend/workspace-reservation.repository";
+import type { WorkspaceProductMonitorOption } from "@/features/reservation/cowork-reservation-product";
 import {
+  type WorkspaceTableAssignmentReservation,
   WorkspaceTableAssignmentService,
-  WorkspaceTableAssignmentServiceLive,
 } from "./workspace-table-assignment.service";
 
 type DotyposAssignmentTestService = typeof DotyposService.Service;
 
+type MakeCoworkReservationInput =
+  | {
+      readonly entryTier?: "basic";
+      readonly coffee?: boolean;
+      readonly date?: string;
+    }
+  | { readonly entryTier: "plus"; readonly date?: string }
+  | {
+      readonly entryTier: "profi";
+      readonly date?: string;
+      readonly monitorOption: WorkspaceProductMonitorOption;
+    };
+
 const makeReservation = (
-  overrides: Partial<CheckoutDetailsJson["reservation"]> = {}
-): CheckoutDetailsJson["reservation"] => ({
-  entryTier: "basic",
-  date: "2099-06-10",
-  coffee: false,
+  input: MakeCoworkReservationInput = {}
+): WorkspaceTableAssignmentReservation => {
+  const date = input.date ?? "2099-06-10";
+
+  if (input.entryTier === "plus") {
+    return { kind: "cowork", entryTier: "plus", coffee: true, date };
+  }
+
+  if (input.entryTier === "profi") {
+    return {
+      kind: "cowork",
+      entryTier: "profi",
+      coffee: true,
+      date,
+      monitorOption: input.monitorOption,
+    };
+  }
+
+  return {
+    kind: "cowork",
+    entryTier: "basic",
+    coffee: input.coffee ?? false,
+    date,
+  };
+};
+
+const makeMeetingRoomReservation = (
+  overrides: { readonly startsAt?: string; readonly endsAt?: string } = {}
+): WorkspaceTableAssignmentReservation => ({
+  kind: "meeting-room",
+  startsAt: "2099-06-10T07:00:00Z",
+  endsAt: "2099-06-10T08:00:00Z",
   ...overrides,
 });
 
@@ -58,7 +100,7 @@ const makeDotyposReservation = (input: {
 });
 
 const assignTableId = (
-  reservation: CheckoutDetailsJson["reservation"],
+  reservation: WorkspaceTableAssignmentReservation,
   tables: readonly Table[],
   dotyposReservations: readonly Reservation[] = [],
   expiredHoldDotyposReservationIds: readonly string[] = []
@@ -85,7 +127,7 @@ const assignTableId = (
     return yield* service.assignTableId(reservation);
   }).pipe(
     Effect.provide(
-      WorkspaceTableAssignmentServiceLive.pipe(
+      WorkspaceTableAssignmentService.Live.pipe(
         Layer.provide(
           Layer.mergeAll(
             Layer.succeed(DotyposService, dotyposService),
@@ -198,6 +240,64 @@ describe("WorkspaceTableAssignmentService", () => {
         [makeDotyposReservation({ tableId: "basic-1", status: "NEW" })]
       )
     ).resolves.toBe("basic-2");
+  });
+
+  test("does not count back-to-back meeting-room reservations as occupied", async () => {
+    await expect(
+      assignTableId(
+        makeMeetingRoomReservation({
+          startsAt: "2099-06-10T12:00:00Z",
+          endsAt: "2099-06-10T13:00:00Z",
+        }),
+        [
+          makeTable({
+            id: "room-1",
+            name: "Room 1",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "room-1",
+            status: "NEW",
+            startDate: "2099-06-10T06:00:00Z",
+            endDate: "2099-06-10T12:00:00Z",
+          }),
+        ]
+      )
+    ).resolves.toBe("room-1");
+  });
+
+  test("reserves overlapping meeting-room tables exclusively", async () => {
+    await expect(
+      assignTableId(
+        makeMeetingRoomReservation(),
+        [
+          makeTable({
+            id: "room-1",
+            name: "Room 1",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+          makeTable({
+            id: "room-2",
+            name: "Room 2",
+            tags: ["reservation:meeting-room"],
+            seats: "12",
+          }),
+        ],
+        [
+          makeDotyposReservation({
+            tableId: "room-1",
+            status: "NEW",
+            seats: "1",
+            startDate: "2099-06-10T07:30:00Z",
+            endDate: "2099-06-10T08:30:00Z",
+          }),
+        ]
+      )
+    ).resolves.toBe("room-2");
   });
 
   test("ignores expired local holds while assigning a table", async () => {
@@ -384,25 +484,6 @@ describe("WorkspaceTableAssignmentService", () => {
         makeTable({ id: "basic-8", name: "8", tags: ["tier:basic"] }),
       ])
     ).resolves.toBe("basic-8");
-  });
-
-  test("fails clearly when Profi is missing the required monitor option", async () => {
-    await expect(
-      assignTableId(makeReservation({ entryTier: "profi" }), [])
-    ).rejects.toThrow("requires a monitor option");
-  });
-
-  test("fails clearly when Profi has an unsupported monitor option", async () => {
-    const invalidReservation: CheckoutDetailsJson["reservation"] = JSON.parse(
-      JSON.stringify({
-        ...makeReservation({ entryTier: "profi" }),
-        monitorOption: "2x27",
-      })
-    );
-
-    await expect(assignTableId(invalidReservation, [])).rejects.toThrow(
-      "monitor option is not supported"
-    );
   });
 
   test("fails clearly when no active visible table matches all required tags", async () => {

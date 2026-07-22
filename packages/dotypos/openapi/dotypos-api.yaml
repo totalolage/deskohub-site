@@ -1540,10 +1540,12 @@ components:
           description: Reservation flags (string representation)
         startDate:
           type: string
-          description: Start date/time (ISO 8601 format)
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$'
+          description: Start date/time returned by Dotypos as an ISO 8601 timestamp with a UTC or numeric offset
         endDate:
           type: string
-          description: End date/time (ISO 8601 format)
+          pattern: '^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$'
+          description: End date/time returned by Dotypos as an ISO 8601 timestamp with a UTC or numeric offset
         seats:
           type: string
           description: Number of seats (string representation)
@@ -1553,6 +1555,7 @@ components:
           description: Reservation status
         note:
           type: string
+          nullable: true
           description: Additional notes
         versionDate:
           type: string
