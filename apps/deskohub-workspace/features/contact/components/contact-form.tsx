@@ -114,6 +114,7 @@ export function ContactForm({ locale, initialValues }: ContactFormProps) {
         )}
 
         <form ref={formRef} action={action.formAction} className="space-y-5">
+          <input type="hidden" name="locale" value={locale} />
           <div key={fieldRemountKey} className="space-y-5">
             <div className="grid gap-5 md:grid-cols-2">
               <Field

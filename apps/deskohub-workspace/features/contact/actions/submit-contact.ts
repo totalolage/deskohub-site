@@ -1,20 +1,21 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer, Schema, SchemaTransformation } from "effect";
+import { Effect, Layer, Schema, SchemaGetter, SchemaParser } from "effect";
 import {
   type ContactFormState,
   type ContactFormValues,
   processContactSubmission,
 } from "@/features/contact/actions/contact";
 import { ContactServiceLive } from "@/features/contact/backend/contact.service";
+import { locales } from "@/features/i18n";
 import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const getSubmittedString = (
   formData: FormData,
-  name: keyof ContactFormValues
+  name: keyof ContactFormValues | "locale"
 ) => {
   const value = formData.get(name);
   return typeof value === "string" ? value : "";
@@ -27,26 +28,40 @@ const contactFormValuesSchema = Schema.Struct({
   message: Schema.String,
 });
 
+const contactFormSubmissionSchema = Schema.Struct({
+  locale: Schema.Literals(locales),
+  submittedValues: contactFormValuesSchema,
+});
+const decodeContactFormSubmission = SchemaParser.decodeUnknownEffect(
+  contactFormSubmissionSchema
+);
+
 const contactFormDataSchema = Schema.FormData.pipe(
-  Schema.decodeTo(
-    contactFormValuesSchema,
-    SchemaTransformation.transform({
-      decode: (formData): ContactFormValues => ({
-        name: getSubmittedString(formData, "name"),
-        email: getSubmittedString(formData, "email"),
-        phone: getSubmittedString(formData, "phone"),
-        message: getSubmittedString(formData, "message"),
-      }),
-      encode: (values) => {
-        const formData = new FormData();
-        formData.set("name", values.name);
-        formData.set("email", values.email);
-        formData.set("phone", values.phone);
-        formData.set("message", values.message);
-        return formData;
-      },
-    })
-  )
+  Schema.decodeTo(contactFormSubmissionSchema, {
+    decode: SchemaGetter.transformOrFail((formData, options) =>
+      decodeContactFormSubmission(
+        {
+          locale: getSubmittedString(formData, "locale"),
+          submittedValues: {
+            name: getSubmittedString(formData, "name"),
+            email: getSubmittedString(formData, "email"),
+            phone: getSubmittedString(formData, "phone"),
+            message: getSubmittedString(formData, "message"),
+          },
+        },
+        options
+      )
+    ),
+    encode: SchemaGetter.transform(({ locale, submittedValues }) => {
+      const formData = new FormData();
+      formData.set("locale", locale);
+      formData.set("name", submittedValues.name);
+      formData.set("email", submittedValues.email);
+      formData.set("phone", submittedValues.phone);
+      formData.set("message", submittedValues.message);
+      return formData;
+    }),
+  })
 );
 const contactFormDataStandardSchema = Schema.toStandardSchemaV1(
   contactFormDataSchema
@@ -66,10 +81,10 @@ const submitContactAction = WorkspaceEffect.action(
     stateful: true,
     layer: ContactActionLive,
   },
-  ({ ctx, parsedInput }) =>
+  ({ parsedInput }) =>
     processContactSubmission({
-      locale: ctx.locale,
-      submittedValues: parsedInput,
+      locale: parsedInput.locale,
+      submittedValues: parsedInput.submittedValues,
     }).pipe(Effect.map((state): ContactFormState => state))
 );
 

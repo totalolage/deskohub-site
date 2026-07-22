@@ -56,5 +56,9 @@ describe("ContactForm", () => {
     expect((view.getByLabelText("Message") as HTMLTextAreaElement).value).toBe(
       "Please help with order reservation-status-page."
     );
+    expect(
+      view.container.querySelector<HTMLInputElement>('input[name="locale"]')
+        ?.value
+    ).toBe("en-US");
   });
 });
