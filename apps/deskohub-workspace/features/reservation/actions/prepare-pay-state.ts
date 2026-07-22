@@ -50,7 +50,6 @@ import {
   reservationSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
-import { workspaceMoneyEquals } from "@/features/checkout/workspace-money";
 import { type Locale, locales, m } from "@/features/i18n";
 import { getLegalAcceptanceSnapshot } from "@/features/legal/acceptance-snapshot";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
@@ -270,7 +269,7 @@ const toReadyResult = Effect.fn("prepareWorkspacePayState.toReadyResult")(
       redirectUrl: `${payPath}&orderId=${encodeURIComponent(input.reservationId)}`,
       ...(input.changedKeys && {
         affectedProductKeys: input.changedKeys.itemKeys.flatMap((key) =>
-          key.startsWith("order/product:") ? [key.slice("order/".length)] : []
+          key.startsWith("product:") ? [key] : []
         ),
       }),
     };
@@ -451,11 +450,7 @@ export const prepareWorkspacePayState = Effect.fn("prepareWorkspacePayState")(
     });
     const advertisedPriceChanged =
       advertisedPrice.quote.fingerprint !==
-        affirmedAdvertisement.quote.fingerprint ||
-      !workspaceMoneyEquals(
-        advertisedPrice.quote.summary.total,
-        affirmedAdvertisement.quote.summary.total
-      );
+      affirmedAdvertisement.quote.fingerprint;
     const advertisedPriceChangedKeys = advertisedPriceChanged
       ? getCheckoutSummaryChangedKeys(
           advertisedPrice.quote.summary,

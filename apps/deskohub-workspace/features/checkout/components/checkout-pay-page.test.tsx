@@ -86,7 +86,7 @@ describe("CheckoutPayPage pricing change", () => {
       <CheckoutPayPage
         changedKeys={{
           sectionKeys: ["order", "total"],
-          itemKeys: ["order/product:cowork:basic", "total/total:final"],
+          itemKeys: ["product:cowork:basic", "total:final"],
         }}
         freshPayUrl={freshPayUrl}
         locale="en-US"

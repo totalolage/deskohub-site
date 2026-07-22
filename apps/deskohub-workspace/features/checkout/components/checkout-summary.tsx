@@ -76,8 +76,7 @@ export function CheckoutSummary({
             sectionKey={section.key}
           >
             {section.items.map((item) => {
-              const itemKey = `${section.key}/${item.key}`;
-              const itemChanged = changedKeys?.itemKeys.includes(itemKey);
+              const itemChanged = changedKeys?.itemKeys.includes(item.key);
               const itemLabel = getSummaryItemLabel(item, locale);
               const discountedItem =
                 "originalAmount" in item && item.originalAmount

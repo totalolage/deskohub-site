@@ -46,7 +46,7 @@ export type DiscountAdvertisementAffirmationInput =
     readonly advertisedDiscountIds: readonly DiscountId[];
   };
 
-export type CustomerDiscountQuoteInput = {
+export type ApplyCustomerDiscountInput = {
   readonly affirmedAdvertisement: AffirmedDiscountAdvertisementQuote;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
@@ -62,8 +62,8 @@ export interface IDiscountService {
     AffirmedDiscountAdvertisementQuote,
     DiscountCalculationError
   >;
-  readonly quoteForCustomer: (
-    input: CustomerDiscountQuoteInput
+  readonly applyCustomerDiscount: (
+    input: ApplyCustomerDiscountInput
   ) => Effect.Effect<DiscountQuote, DiscountCalculationError>;
   readonly affirmForPayment: (
     input: DiscountPaymentAffirmationInput
@@ -206,16 +206,18 @@ export class DiscountService extends Context.Service<
         withServiceAnnotations("affirm_advertisement")
       );
 
-      const quoteForCustomer = Effect.fn("DiscountService.quoteForCustomer")(
-        (input: CustomerDiscountQuoteInput) =>
+      const applyCustomerDiscount = Effect.fn(
+        "DiscountService.applyCustomerDiscount"
+      )(
+        (input: ApplyCustomerDiscountInput) =>
           Effect.succeed(input).pipe(
             Effect.bind("releaseGates", () =>
-              releaseGates.evaluate({ operation: "quote_for_customer" })
+              releaseGates.evaluate({ operation: "apply_customer_discount" })
             ),
             Effect.bind("candidates", ({ releaseGates }) =>
               recoverGatedDiscountResolution({
                 enabled: releaseGates.customerDiscounts,
-                operation: "quote_for_customer",
+                operation: "apply_customer_discount",
                 provider: "customer",
                 resolve: () =>
                   customer.resolve({
@@ -238,7 +240,7 @@ export class DiscountService extends Context.Service<
             ),
             Effect.map(({ quote }) => quote)
           ),
-        withServiceAnnotations("quote_for_customer")
+        withServiceAnnotations("apply_customer_discount")
       );
 
       const affirmForPayment = Effect.fn("DiscountService.affirmForPayment")(
@@ -268,7 +270,7 @@ export class DiscountService extends Context.Service<
       return {
         discoverAdvertisedDiscounts,
         affirmAdvertisement,
-        quoteForCustomer,
+        applyCustomerDiscount,
         affirmForPayment,
       } satisfies IDiscountService;
     })
@@ -329,7 +331,7 @@ const withServiceAnnotations =
     operation:
       | "discover_advertised_discounts"
       | "affirm_advertisement"
-      | "quote_for_customer"
+      | "apply_customer_discount"
       | "affirm_for_payment"
   ) =>
   <A>(
@@ -338,7 +340,7 @@ const withServiceAnnotations =
       | DiscountPaymentAffirmationInput
       | DiscountAdvertisementInput
       | DiscountAdvertisementAffirmationInput
-      | CustomerDiscountQuoteInput
+      | ApplyCustomerDiscountInput
   ) =>
     effect.pipe(
       Effect.tapError((cause) =>

@@ -18,7 +18,7 @@ export {
   isAppliedDiscount,
 } from "./contracts";
 export {
-  type CustomerDiscountQuoteInput,
+  type ApplyCustomerDiscountInput,
   type DiscountAdvertisementAffirmationInput,
   type DiscountPaymentAffirmation,
   type DiscountPaymentAffirmationInput,

@@ -15,7 +15,7 @@ export type DiscountResolutionProvider =
 export type DiscountResolutionOperation =
   | "discover_advertised_discounts"
   | "affirm_advertisement"
-  | "quote_for_customer"
+  | "apply_customer_discount"
   | "affirm_for_payment"
   | "normalize"
   | "load_definition"

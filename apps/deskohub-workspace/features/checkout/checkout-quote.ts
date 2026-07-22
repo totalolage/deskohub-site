@@ -373,7 +373,7 @@ const getSummarySectionMap = (summary: CheckoutSummary) =>
 const getSummaryItemMap = (summary: CheckoutSummary) =>
   new Map(
     summary.sections.flatMap((section) =>
-      section.items.map((item) => [`${section.key}/${item.key}`, item] as const)
+      section.items.map((item) => [item.key, item] as const)
     )
   );
 

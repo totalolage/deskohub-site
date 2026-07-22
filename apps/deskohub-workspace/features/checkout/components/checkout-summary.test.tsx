@@ -71,7 +71,7 @@ describe("CheckoutSummary", () => {
       <CheckoutSummary
         changedKeys={{
           sectionKeys: ["order"],
-          itemKeys: ["order/product:cowork:basic"],
+          itemKeys: ["product:cowork:basic"],
         }}
         locale="en-US"
         summary={quote.summary}

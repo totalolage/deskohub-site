@@ -395,7 +395,7 @@ describe("Pay URL state", () => {
     const reviewState = buildState({
       changedKeys: {
         sectionKeys: ["order", "total"],
-        itemKeys: ["order/product:cowork:profi"],
+        itemKeys: ["product:cowork:profi"],
       },
     });
     const path = runSync(

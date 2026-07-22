@@ -5,7 +5,7 @@ import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/c
 export type DiscountReleaseGateOperation =
   | "discover_advertised_discounts"
   | "affirm_advertisement"
-  | "quote_for_customer"
+  | "apply_customer_discount"
   | "affirm_for_payment";
 
 export type DiscountReleaseGates = {

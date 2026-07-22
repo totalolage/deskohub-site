@@ -399,7 +399,7 @@ describe("CheckoutService", () => {
       activeAttempt,
       changedKeys: {
         sectionKeys: ["order", "total"],
-        itemKeys: ["order/product:cowork:profi"],
+        itemKeys: ["product:cowork:profi"],
       },
       reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
     });
@@ -422,7 +422,7 @@ describe("CheckoutService", () => {
       orderId: "reservation-review-required",
       changedKeys: {
         sectionKeys: ["order", "total"],
-        itemKeys: ["order/product:cowork:profi"],
+        itemKeys: ["product:cowork:profi"],
       },
     });
 
@@ -558,7 +558,7 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: [],
-      itemKeys: ["order/product:cowork:profi"],
+      itemKeys: ["product:cowork:profi"],
     });
     const freshToken = new URL(
       result.freshPayUrl,

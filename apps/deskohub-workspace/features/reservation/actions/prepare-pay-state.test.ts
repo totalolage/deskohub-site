@@ -667,7 +667,7 @@ describe("prepareWorkspacePayState", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     const state = Effect.runSync(openPayState(token ?? ""));
-    expect(state.changedKeys?.itemKeys).toContain("order/product:cowork:basic");
+    expect(state.changedKeys?.itemKeys).toContain("product:cowork:basic");
     expect(state.quote.payment.discounts).toEqual([]);
   });
 

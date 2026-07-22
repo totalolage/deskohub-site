@@ -119,7 +119,9 @@ describe("CheckoutPricingService", () => {
   });
 
   test("completes the affirmed advertisement for the identified customer", async () => {
-    const quoteForCustomer = mock(() => Effect.succeed(affirmedAdvertisement));
+    const applyCustomerDiscount = mock(() =>
+      Effect.succeed(affirmedAdvertisement)
+    );
 
     const quote = await runWithDiscounts(
       Effect.gen(function* () {
@@ -131,10 +133,10 @@ describe("CheckoutPricingService", () => {
           affirmedAdvertisement,
         });
       }),
-      DiscountServiceMock({ quoteForCustomer })
+      DiscountServiceMock({ applyCustomerDiscount })
     );
 
-    expect(quoteForCustomer).toHaveBeenCalledWith({
+    expect(applyCustomerDiscount).toHaveBeenCalledWith({
       affirmedAdvertisement,
       dotyposCustomerId: "customer-id",
       locale: "en-US",

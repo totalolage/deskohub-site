@@ -377,7 +377,7 @@ describe("DiscountService", () => {
     const result = await runWithProviders(
       Effect.gen(function* () {
         const discounts = yield* DiscountService;
-        return yield* discounts.quoteForCustomer({
+        return yield* discounts.applyCustomerDiscount({
           affirmedAdvertisement,
           dotyposCustomerId: paymentInput.dotyposCustomerId,
           locale: paymentInput.locale,
@@ -404,7 +404,7 @@ describe("DiscountService", () => {
       [
         "discover_advertised_discounts",
         "affirm_advertisement",
-        "quote_for_customer",
+        "apply_customer_discount",
         "affirm_for_payment",
       ] as const
     ).flatMap((operation) =>
@@ -469,8 +469,8 @@ describe("DiscountService", () => {
           });
           return result.discounts.map(({ discount }) => discount.id);
         }
-        if (operation === "quote_for_customer") {
-          const result = yield* discounts.quoteForCustomer({
+        if (operation === "apply_customer_discount") {
+          const result = yield* discounts.applyCustomerDiscount({
             affirmedAdvertisement: emptyAffirmedAdvertisement,
             dotyposCustomerId: paymentInput.dotyposCustomerId,
             locale: paymentInput.locale,
@@ -506,7 +506,7 @@ describe("DiscountService", () => {
         : 0
     );
     expect(customerResolve).toHaveBeenCalledTimes(
-      (operation === "quote_for_customer" ||
+      (operation === "apply_customer_discount" ||
         operation === "affirm_for_payment") &&
         gates.customerDiscounts
         ? 1
@@ -522,7 +522,7 @@ describe("DiscountService", () => {
         ? gates.calendarSales
           ? ["calendar"]
           : []
-        : operation === "quote_for_customer"
+        : operation === "apply_customer_discount"
           ? gates.customerDiscounts
             ? ["customer"]
             : []

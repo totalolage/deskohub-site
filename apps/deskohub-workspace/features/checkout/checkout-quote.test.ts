@@ -362,7 +362,7 @@ describe("workspace checkout quotes", () => {
       getCheckoutSummaryChangedKeys(accessOnly.summary, withCoffee.summary)
     ).toEqual({
       sectionKeys: ["order", "total"],
-      itemKeys: ["order/addon:coffee", "total/total:final"],
+      itemKeys: ["addon:coffee", "total:final"],
     });
   });
 
@@ -396,7 +396,7 @@ describe("workspace checkout quotes", () => {
       getCheckoutSummaryChangedKeys(quote.summary, renamedSummary)
     ).toEqual({
       sectionKeys: [],
-      itemKeys: ["order/product:cowork:basic"],
+      itemKeys: ["product:cowork:basic"],
     });
   });
 
@@ -500,7 +500,7 @@ describe("workspace checkout quotes", () => {
 
       expect(
         getCheckoutSummaryChangedKeys(quote.summary, changedSummary).itemKeys
-      ).toContain("order/product:cowork:basic");
+      ).toContain("product:cowork:basic");
     }
   });
 
@@ -536,7 +536,7 @@ describe("workspace checkout quotes", () => {
 
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedCurrency).itemKeys
-    ).toContain("order/product:cowork:basic");
+    ).toContain("product:cowork:basic");
     expect(
       getCheckoutSummaryChangedKeys(quote.summary, changedExponent).sectionKeys
     ).toContain("total");

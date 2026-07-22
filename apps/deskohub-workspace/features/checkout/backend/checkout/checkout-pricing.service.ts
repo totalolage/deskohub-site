@@ -173,7 +173,7 @@ export class CheckoutPricingService extends Context.Service<
             getDotyposCustomerId(input.dotyposCustomerId)
           ),
           Effect.bind("discountQuote", ({ dotyposCustomerId }) =>
-            discounts.quoteForCustomer({
+            discounts.applyCustomerDiscount({
               affirmedAdvertisement: input.affirmedAdvertisement,
               dotyposCustomerId,
               locale: input.locale,
