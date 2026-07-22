@@ -10,10 +10,14 @@ import {
 
 export const buildCheckoutPayPath = (
   locale: Locale,
-  sealedState: SealPayStateForUrlResult
+  sealedState: SealPayStateForUrlResult,
+  options: { readonly orderId?: string } = {}
 ) => {
   const searchParams = new URLSearchParams();
   searchParams.set(sealedState.queryParam, sealedState.token);
+  if (options.orderId) {
+    searchParams.set("orderId", options.orderId);
+  }
 
   return `/${locale}/checkout/pay?${searchParams}`;
 };

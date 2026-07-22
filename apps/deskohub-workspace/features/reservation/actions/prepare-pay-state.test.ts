@@ -477,10 +477,9 @@ describe("prepareCoworkPayState", () => {
 
     expect(result.status).toBe("ready");
     if (result.status !== "ready") throw new Error("Expected ready result");
-    const token = new URL(
-      result.redirectUrl,
-      "https://deskohub.test"
-    ).searchParams.get(payStateTokenQueryParam);
+    const redirectUrl = new URL(result.redirectUrl, "https://deskohub.test");
+    const token = redirectUrl.searchParams.get(payStateTokenQueryParam);
+    expect(redirectUrl.searchParams.get("orderId")).toBe("reservation-id");
     expect(token).toBeTruthy();
     const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.orderId).toBe("reservation-id");

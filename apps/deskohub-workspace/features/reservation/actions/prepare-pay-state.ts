@@ -261,8 +261,9 @@ const toReadyResult = Effect.fn("prepareCoworkPayState.toReadyResult")(
       changedKeys: input.changedKeys,
     });
     const sealedState = yield* sealPayStateForUrl(state);
-    const payPath = buildCheckoutPayPath(input.locale, sealedState);
-    const redirectUrl = `${payPath}&orderId=${encodeURIComponent(input.reservationId)}`;
+    const redirectUrl = buildCheckoutPayPath(input.locale, sealedState, {
+      orderId: input.reservationId,
+    });
 
     if (input.changedKeys) {
       return {
