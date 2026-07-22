@@ -75,12 +75,10 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
         )
       );
 
-    return yield* Effect.sync(() =>
-      NextResponse.redirect(
-        new URL(
-          getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
-          request.url
-        )
+    return NextResponse.redirect(
+      new URL(
+        getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
+        request.url
       )
     );
   }
