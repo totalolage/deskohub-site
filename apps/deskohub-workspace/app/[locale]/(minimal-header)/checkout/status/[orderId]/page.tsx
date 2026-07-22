@@ -7,6 +7,7 @@ import { env } from "@/env";
 import {
   appendVercelPreviewProtectionBypass,
   type CheckoutStatusReturnOutcome,
+  CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
   getCheckoutStatus,
   refreshCheckoutStatus,
@@ -150,21 +151,25 @@ async function CheckoutStatusContent({
     decodeCheckoutStatusSearchParams(rawSearchParams),
     () => ({ outcome: "unknown" as const })
   );
-  const status = await loadCheckoutStatus({
-    orderId,
-    returnOutcome,
-    searchParams: rawSearchParams,
-  }).catch(async (cause) => {
-    await WorkspaceEffect.run(
-      { operation: "checkout.status.load-failure" },
-      Effect.logError("Checkout status load failed", {
-        orderId,
-        returnOutcome,
-        cause,
-      })
-    );
-    throw cause;
-  });
+  const status = await WorkspaceEffect.run(
+    {
+      operation: "checkout.status.load",
+      layer: CheckoutStatusServiceLiveWithDependencies,
+    },
+    loadCheckoutStatus({
+      orderId,
+      returnOutcome,
+      searchParams: rawSearchParams,
+    }).pipe(
+      Effect.tapError((cause) =>
+        Effect.logError("Checkout status load failed", {
+          orderId,
+          returnOutcome,
+          cause,
+        })
+      )
+    )
+  );
   const retryOutcome = getRetryOutcome(status.status);
 
   if (

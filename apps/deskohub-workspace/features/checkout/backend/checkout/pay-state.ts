@@ -418,10 +418,10 @@ export const sealPayState = (
     onExcessProperty: "error",
   })(state);
 
-export const openPayState = (
-  token: string,
-  options: PayStateCryptoOptions = {}
-): SignedPayState => Schema.decodeSync(makePayStateTokenSchema(options))(token);
+export const openPayState = Effect.fn("payState.open")(
+  (token: string, options: PayStateCryptoOptions = {}) =>
+    Schema.decodeUnknownEffect(makePayStateTokenSchema(options))(token)
+);
 
 export const sealPayStateForUrl = (
   state: SignedPayState,

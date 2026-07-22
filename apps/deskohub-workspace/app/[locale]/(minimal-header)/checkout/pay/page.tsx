@@ -102,19 +102,17 @@ async function CheckoutPayContent({
     ));
   }
 
-  const state = await Promise.resolve()
-    .then(() => openPayState(payStateToken))
-    .catch(async (cause) => {
-      await WorkspaceEffect.run(
-        { operation: "checkout.pay.invalid-state" },
+  const state = await WorkspaceEffect.run(
+    { operation: "checkout.pay.invalid-state" },
+    openPayState(payStateToken).pipe(
+      Effect.catch((cause) =>
         Effect.logWarning("Checkout pay state token could not be opened", {
           cause,
-          payStateToken,
           reason: "openPayStateFailed",
-        })
-      );
-      return undefined;
-    });
+        }).pipe(Effect.as(undefined))
+      )
+    )
+  );
 
   if (!state || state.locale !== locale) {
     return runWithRequestLocale(locale, () => (

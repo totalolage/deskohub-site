@@ -11,18 +11,10 @@ const DotyposLive = Layer.provide(
   DotyposRuntimeConfigLive
 );
 
-const loadTables = () =>
-  WorkspaceEffect.run(
-    { operation: "dotypos.tables-preview.load", layer: DotyposLive },
-    Effect.gen(function* () {
-      const dotypos = yield* DotyposService;
-      return yield* dotypos.getTables();
-    }).pipe(
-      Effect.tapError((error) =>
-        Effect.logError("Workspace Dotypos table preview load failed", error)
-      )
-    )
-  );
+const loadTables = Effect.fn("dotyposTables.load")(function* () {
+  const dotypos = yield* DotyposService;
+  return yield* dotypos.getTables();
+});
 
 export default function DotyposTablesPreviewPage() {
   return (
@@ -34,7 +26,14 @@ export default function DotyposTablesPreviewPage() {
 
 async function DotyposTablesPreviewContent() {
   await connection();
-  const tables = await loadTables();
+  const tables = await WorkspaceEffect.run(
+    { operation: "dotypos.tables-preview.load", layer: DotyposLive },
+    loadTables().pipe(
+      Effect.tapError((error) =>
+        Effect.logError("Workspace Dotypos table preview load failed", error)
+      )
+    )
+  );
 
   return (
     <main className="min-h-screen bg-[#f4f1ea] px-4 py-10 text-[#00024f]">

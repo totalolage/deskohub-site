@@ -283,15 +283,16 @@ const openFinalPayState: (
 ) => Effect.Effect<SignedPayState, CheckoutError> = Effect.fn(
   "openFinalPayState"
 )(function* (payStateToken, locale) {
-  const state = yield* Effect.try({
-    try: () => openPayState(payStateToken),
-    catch: (cause) =>
-      new CheckoutError({
-        message:
-          "Pay state is invalid or expired. Please review checkout again.",
-        cause,
-      }),
-  });
+  const state = yield* openPayState(payStateToken).pipe(
+    Effect.mapError(
+      (cause) =>
+        new CheckoutError({
+          message:
+            "Pay state is invalid or expired. Please review checkout again.",
+          cause,
+        })
+    )
+  );
 
   if (state.locale !== locale) {
     return yield* new CheckoutError({

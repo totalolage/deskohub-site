@@ -1,4 +1,4 @@
-import { Effect } from "effect";
+import { Effect, Option } from "effect";
 import {
   CheckoutService,
   openPayState,
@@ -15,10 +15,12 @@ import {
 } from "@/shared/backend/bot-protection/bot-protection.service";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
 
-const getSubmitReservationErrorMessage = (
+const getSubmitReservationErrorMessage = Effect.fn(
+  "getSubmitReservationErrorMessage"
+)(function* (
   error: { readonly message: string },
   input: SubmitReservationInput
-) => {
+) {
   if (error instanceof BotDetectedError) {
     return m.reservationRateLimitMessage({}, { locale: input.locale });
   }
@@ -27,18 +29,18 @@ const getSubmitReservationErrorMessage = (
     return m.reservationErrorMessage({}, { locale: input.locale });
   }
 
-  try {
-    const payState = openPayState(input.payStateToken);
+  const payState = Option.getOrUndefined(
+    yield* openPayState(input.payStateToken).pipe(Effect.option)
+  );
 
-    return getReservationAvailabilityUnavailableMessage({
-      date: payState.reservation.date,
-      locale: input.locale,
-      tier: payState.reservation.entryTier,
-    });
-  } catch {
-    return m.reservationErrorMessage({}, { locale: input.locale });
-  }
-};
+  return payState
+    ? getReservationAvailabilityUnavailableMessage({
+        date: payState.reservation.date,
+        locale: input.locale,
+        tier: payState.reservation.entryTier,
+      })
+    : m.reservationErrorMessage({}, { locale: input.locale });
+});
 
 export const submitWorkspaceReservation = Effect.fn(
   "submitWorkspaceReservation"
@@ -71,12 +73,17 @@ export const submitWorkspaceReservation = Effect.fn(
     effect.pipe(
       Effect.scoped,
       Effect.annotateLogs(input),
-      Effect.mapError(
-        (error) =>
-          new PublicSafeActionError({
-            message: getSubmitReservationErrorMessage(error, input),
-            cause: error,
-          })
+      Effect.catch((error) =>
+        getSubmitReservationErrorMessage(error, input).pipe(
+          Effect.flatMap((message) =>
+            Effect.fail(
+              new PublicSafeActionError({
+                message,
+                cause: error,
+              })
+            )
+          )
+        )
       )
     )
 );

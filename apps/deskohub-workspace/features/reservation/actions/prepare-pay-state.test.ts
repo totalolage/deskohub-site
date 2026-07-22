@@ -378,7 +378,7 @@ describe("prepareWorkspacePayState", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(token).toBeTruthy();
-    const state = openPayState(token ?? "");
+    const state = Effect.runSync(openPayState(token ?? ""));
     expect(state.orderId).toBe("reservation-id");
     expect(state.submittedCode).toBeUndefined();
     expect(quote).toHaveBeenCalledWith(

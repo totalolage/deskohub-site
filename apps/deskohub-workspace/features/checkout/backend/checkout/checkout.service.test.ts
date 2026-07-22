@@ -30,6 +30,8 @@ import {
   sealPayState,
 } from "./pay-state";
 
+const openPayStateSync = (token: string) => Effect.runSync(openPayState(token));
+
 mock.module("server-only", () => ({}));
 
 const testInstant = (value = "2026-06-01T10:00:00Z") =>
@@ -477,7 +479,7 @@ describe("CheckoutService", () => {
     const result = await Effect.runPromise(harness.effect);
 
     expect(
-      openPayState(acceptedToken).quote.payment.discounts[0]?.discount.label
+      openPayStateSync(acceptedToken).quote.payment.discounts[0]?.discount.label
     ).toBe("Letni sleva 50 %");
     expect(result.status).toBe("pricing_changed");
     if (result.status !== "pricing_changed") {
@@ -492,7 +494,8 @@ describe("CheckoutService", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(
-      openPayState(freshToken ?? "").quote.payment.discounts[0]?.discount.label
+      openPayStateSync(freshToken ?? "").quote.payment.discounts[0]?.discount
+        .label
     ).toBe("Edited English summer label");
   });
 
@@ -520,7 +523,9 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(openPayState(freshToken ?? "").submittedCode).toBe(submittedCode);
+    expect(openPayStateSync(freshToken ?? "").submittedCode).toBe(
+      submittedCode
+    );
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
         acceptedDiscountIds: [application.discount.id],

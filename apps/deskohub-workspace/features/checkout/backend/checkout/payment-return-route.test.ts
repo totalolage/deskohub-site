@@ -1,21 +1,65 @@
 import "@/shared/testing/workspace-test-env";
 
-import { describe, expect, test } from "bun:test";
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { describe, expect, mock, test } from "bun:test";
+import { Effect, Layer } from "effect";
+import type { CheckoutStatusService as CheckoutStatusServiceType } from "./checkout-status.service";
 
-const routePath = join(
-  import.meta.dirname,
-  "../../../../app/[locale]/(minimal-header)/checkout/payment/[orderId]/route.ts"
+mock.module("server-only", () => ({}));
+
+const { CheckoutStatusService } = await import("./checkout-status.service");
+const { makeCheckoutPaymentReturnGet } = await import(
+  "./checkout-payment-return-route.server"
 );
 
-describe("checkout payment return route", () => {
-  test("processes provider return and redirects to status instead of hard 404", () => {
-    const source = readFileSync(routePath, "utf8");
+const makeStatusServiceLayer = (
+  refreshStatus: CheckoutStatusServiceType["refreshStatus"]
+) =>
+  Layer.succeed(CheckoutStatusService, {
+    getStatus: () => Effect.die("unused"),
+    refreshStatus,
+  });
 
-    expect(source).toContain("refreshStatus");
-    expect(source).toContain("Checkout payment return refresh failed");
-    expect(source).toContain("NextResponse.redirect");
-    expect(source).not.toContain("\n  notFound();\n}");
+const invoke = (refreshStatus: CheckoutStatusServiceType["refreshStatus"]) => {
+  const GET = makeCheckoutPaymentReturnGet(
+    makeStatusServiceLayer(refreshStatus)
+  );
+
+  return GET(
+    new Request(
+      "https://deskohub.test/en-US/checkout/payment/order-id?outcome=success"
+    ),
+    { params: Promise.resolve({ locale: "en-US", orderId: "order-id" }) }
+  );
+};
+
+describe("checkout payment return route", () => {
+  test("refreshes the provider state and redirects to status", async () => {
+    const refreshStatus = mock(() =>
+      Effect.succeed({
+        orderId: "order-id",
+        returnOutcome: "success" as const,
+        status: "fulfilled" as const,
+      })
+    );
+
+    const response = await invoke(refreshStatus);
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/en-US/checkout/status/order-id?outcome=success"
+    );
+    expect(refreshStatus).toHaveBeenCalledWith({
+      orderId: "order-id",
+      returnOutcome: "success",
+    });
+  });
+
+  test("preserves the fail-open redirect when refresh fails", async () => {
+    const response = await invoke(() => Effect.fail(new Error("unavailable")));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain(
+      "/en-US/checkout/status/order-id?outcome=success"
+    );
   });
 });
