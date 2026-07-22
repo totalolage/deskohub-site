@@ -71,6 +71,10 @@ export function registerPostHogLoggerProvider(
   registeredPostHogLoggerProvider = provider;
 }
 
+export function getRegisteredPostHogLoggerProvider() {
+  return registeredPostHogLoggerProvider;
+}
+
 export async function flushPostHogLogs(options: PostHogLogsFlushOptions = {}) {
   const provider = options.provider ?? registeredPostHogLoggerProvider;
   if (!provider) return;

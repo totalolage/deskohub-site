@@ -7,6 +7,16 @@ import {
 } from "@/features/checkout/advertised-price";
 import { getAdvertisedPrice } from "@/features/reservation/actions/get-advertised-price";
 
+const loadAdvertisedPrice = async (request: AdvertisedPriceRequest) => {
+  const result = await getAdvertisedPrice(request);
+
+  if (result.data) {
+    return result.data;
+  }
+
+  throw new Error(result.serverError ?? "Advertised price could not be loaded");
+};
+
 export const useAdvertisedPrice = (
   request: AdvertisedPriceRequest | undefined
 ) =>
@@ -14,7 +24,7 @@ export const useAdvertisedPrice = (
     queryKey: request
       ? advertisedPriceKeys.price(request)
       : advertisedPriceKeys.all,
-    queryFn: request ? () => getAdvertisedPrice(request) : skipToken,
+    queryFn: request ? () => loadAdvertisedPrice(request) : skipToken,
     retry: (failureCount) => failureCount < 3,
     staleTime: 4 * 60 * 1000,
     refetchInterval: 4 * 60 * 1000,

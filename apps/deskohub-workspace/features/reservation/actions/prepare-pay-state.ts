@@ -828,9 +828,6 @@ export const prepareCoworkPayState = Effect.fn("prepareCoworkPayState")(
   (effect, input) =>
     effect.pipe(
       Effect.scoped,
-      Effect.annotateLogs({
-        input,
-      }),
       Effect.mapError(
         (error) =>
           new PublicSafeActionError({

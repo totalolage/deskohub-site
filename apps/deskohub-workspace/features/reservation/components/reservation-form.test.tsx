@@ -25,7 +25,9 @@ import {
 
 const push = mock(() => undefined);
 const execute = mock(() => undefined);
-const getAdvertisedPrice = mock(() => Promise.resolve(advertisedPriceResponse));
+const getAdvertisedPrice = mock(() =>
+  Promise.resolve({ data: advertisedPriceResponse })
+);
 
 mock.module("next/navigation", () => ({
   unstable_rethrow: (error: unknown) => {
@@ -144,7 +146,7 @@ describe("ReservationForm advertised pricing", () => {
   test("renders the discount accessibly and clears the prior price while selection refreshes", async () => {
     const advertisedRequests: unknown[] = [];
     let resolvePlusRequest:
-      | ((response: typeof advertisedPriceResponse) => void)
+      | ((response: { data: typeof advertisedPriceResponse }) => void)
       | undefined;
     getAdvertisedPrice.mockImplementation((input) => {
       advertisedRequests.push(input);
@@ -153,7 +155,7 @@ describe("ReservationForm advertised pricing", () => {
           resolvePlusRequest = resolve;
         });
       }
-      return Promise.resolve(advertisedPriceResponse);
+      return Promise.resolve({ data: advertisedPriceResponse });
     });
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
@@ -199,7 +201,7 @@ describe("ReservationForm advertised pricing", () => {
     expect(view.queryByText(/discounted price.*175/i)).toBeNull();
 
     await act(async () => {
-      resolvePlusRequest?.(advertisedPriceResponse);
+      resolvePlusRequest?.({ data: advertisedPriceResponse });
     });
     await waitFor(() => {
       expect(
@@ -211,9 +213,11 @@ describe("ReservationForm advertised pricing", () => {
   test("shows a retryable error instead of enabling checkout with failed price data", async () => {
     let failAdvertisedPrice = true;
     getAdvertisedPrice.mockImplementation(() =>
-      failAdvertisedPrice
-        ? Promise.reject(new Error("unavailable"))
-        : Promise.resolve(advertisedPriceResponse)
+      Promise.resolve(
+        failAdvertisedPrice
+          ? { serverError: "unavailable" }
+          : { data: advertisedPriceResponse }
+      )
     );
     globalThis.fetch = mock((request: RequestInfo | URL) => {
       const url = String(request);
