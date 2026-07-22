@@ -18,7 +18,7 @@
     "lint": "bun run --parallel lint:biome lint:eslint",
     "lint:biome": "biome check app db features shared proxy.ts --config-path ../../biome.json --vcs-root ../../",
     "lint:eslint": "eslint --ext .ts,.tsx app db features scripts shared proxy.ts",
-    "test": "bun test",
+    "test": "bun test --preload ./shared/testing/workspace-test-env.ts --parallel=1",
     "typecheck": "tsc --noEmit",
     "start": "next start"
   },
