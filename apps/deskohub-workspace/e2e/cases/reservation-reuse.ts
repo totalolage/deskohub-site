@@ -1,9 +1,8 @@
 import { Effect } from "effect";
 import {
-  clickBrowserRef,
+  activateBrowserElement,
   evalBrowserScript,
   openBrowserPage,
-  requireSnapshotRef,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
@@ -163,19 +162,17 @@ const returnToPrefilledReservation = ({
   session: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
-    const reservationStepRef = yield* requireSnapshotRef({
-      description: "reservation checkout step",
-      labels: ["Reservation", "Rezervace"],
+    const reservationStepSelector = `a[href^="/${data.locale}/checkout/order?payState="]`;
+    const browserActionTimeoutMs = getWorkspaceE2ETimeoutMs("browserAction");
+    yield* waitForBrowserReactHydration(
       run,
       session,
-    });
-    yield* clickBrowserRef(
-      "click reservation checkout step",
-      run,
-      session,
-      reservationStepRef,
-      { timeoutMs: getWorkspaceE2ETimeoutMs("browserAction") }
+      reservationStepSelector,
+      { timeoutMs: browserActionTimeoutMs }
     );
+    yield* activateBrowserElement(run, session, reservationStepSelector, {
+      timeoutMs: browserActionTimeoutMs,
+    });
     yield* waitForBrowserUrl({
       description: "prefilled reservation page",
       matches: (value) => {

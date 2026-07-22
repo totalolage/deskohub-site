@@ -5,29 +5,22 @@ import type { Runner } from "../runtime";
 import type { WorkspaceE2EStepRunner } from "../types";
 import { assertLocaleSwitcher } from "./locale";
 
-test("switches locale from hydrated semantic links with native activation", async () => {
+test("switches locale from hydrated stable selectors with native activation", async () => {
   const calls: Array<{ readonly args: string[]; readonly input?: string }> = [];
   let locale = "en-US";
-  let focusedRef: string | undefined;
+  let focusedSelector: string | undefined;
   const run: Runner = async (_command, args, options) => {
     calls.push({ args, input: options?.input });
     const command = args.slice(2);
 
     if (command[0] === "open") return success();
     if (command[0] === "wait") return success();
-    if (command[0] === "snapshot") {
-      return success(
-        locale === "en-US"
-          ? '- navigation "Language switcher" [ref=e1]\n  - link "CZECH" [ref=e2]'
-          : '- navigation "Language switcher" [ref=e1]\n  - link "ANGLIČTINA" [ref=e3]'
-      );
-    }
     if (command[0] === "focus") {
-      focusedRef = command[1];
+      focusedSelector = command[1];
       return success();
     }
     if (command[0] === "press") {
-      locale = focusedRef === "@e2" ? "cs-CZ" : "en-US";
+      locale = focusedSelector?.includes("/cs-CZ") ? "cs-CZ" : "en-US";
       return success();
     }
     if (command[0] === "get" && command[1] === "url") {
@@ -56,7 +49,14 @@ test("switches locale from hydrated semantic links with native activation", asyn
     calls
       .filter(({ args }) => args.includes("focus"))
       .map(({ args }) => args[3])
-  ).toEqual(["@e2", "@e3", "@e2", "@e3", "@e2", "@e3"]);
+  ).toEqual([
+    'nav[aria-label="Language switcher"] a[href^="/cs-CZ"]',
+    'nav[aria-label="Language switcher"] a[href^="/en-US"]',
+    'nav[aria-label="Language switcher"] a[href^="/cs-CZ"]',
+    'nav[aria-label="Language switcher"] a[href^="/en-US"]',
+    'nav[aria-label="Language switcher"] a[href^="/cs-CZ"]',
+    'nav[aria-label="Language switcher"] a[href^="/en-US"]',
+  ]);
   expect(
     calls
       .filter(({ args }) => args.includes("press"))
@@ -64,12 +64,9 @@ test("switches locale from hydrated semantic links with native activation", asyn
   ).toEqual(Array.from({ length: 6 }, () => "Enter"));
 
   const hydrationIndex = calls.findIndex(({ args }) => args.includes("wait"));
-  const snapshotIndex = calls.findIndex(({ args }) =>
-    args.includes("snapshot")
-  );
   const focusIndex = calls.findIndex(({ args }) => args.includes("focus"));
-  expect(hydrationIndex).toBeLessThan(snapshotIndex);
-  expect(snapshotIndex).toBeLessThan(focusIndex);
+  expect(hydrationIndex).toBeLessThan(focusIndex);
+  expect(calls.some(({ args }) => args.includes("snapshot"))).toBe(false);
 });
 
 const success = (stdout = "") => ({ exitCode: 0, stderr: "", stdout });

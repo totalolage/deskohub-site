@@ -152,18 +152,6 @@ export const evalBrowserScript = (
     ...options,
   });
 
-export const clickBrowserRef = (
-  operation: string,
-  run: Runner,
-  session: string,
-  ref: string,
-  options: { readonly timeoutMs?: number } = {}
-): Effect.Effect<void, WorkspaceE2EError> =>
-  runBrowserCommand(operation, run, session, ["click", ref], {
-    logOutput: false,
-    timeoutMs: options.timeoutMs ?? 60_000,
-  }).pipe(Effect.asVoid);
-
 export const fillBrowserField = (
   run: Runner,
   session: string,
@@ -226,6 +214,17 @@ export const pressBrowserKey = (
     logOutput: false,
     timeoutMs: options.timeoutMs ?? 60_000,
   }).pipe(Effect.asVoid);
+
+export const activateBrowserElement = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* focusBrowserElement(run, session, selector, options);
+    yield* pressBrowserKey(run, session, "Enter", options);
+  });
 
 export const readInteractiveSnapshot = (
   run: Runner,
