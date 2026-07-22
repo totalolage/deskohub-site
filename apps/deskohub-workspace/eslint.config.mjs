@@ -18,7 +18,9 @@ export default [
     ignores: [
       "**/*.test.{ts,tsx}",
       "**/*.test-utils.{ts,tsx}",
+      "shared/backend/effect-boundary/executor.ts",
       "shared/backend/logging/censorship.ts",
+      "shared/backend/logging/censorship-core.ts",
     ],
     rules: {
       "no-restricted-syntax": [

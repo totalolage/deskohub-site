@@ -1,7 +1,7 @@
 import type { EffectRunExit } from "@deskohub/next-effect";
 import type { LoggerProvider } from "@opentelemetry/api-logs";
 import { Cause, Effect, Exit } from "effect";
-import { createWorkspaceLoggerLive } from "../logging/censorship";
+import { createWorkspaceLoggerLive } from "../logging/censorship-core";
 
 export interface WorkspaceEffectExecutorDependencies {
   readonly getLoggerProvider: () => LoggerProvider | undefined;
