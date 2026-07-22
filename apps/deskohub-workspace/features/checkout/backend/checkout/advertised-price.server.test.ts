@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { calculateWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { calculateCoworkReservationQuote } from "@/features/checkout/checkout-quote";
 import {
   discountAdvertisementQuoteCodec,
   discountIdSchema,
@@ -40,13 +40,14 @@ describe("buildAdvertisedPrice", () => {
       discountedSubtotal: money(17_500),
     });
     const quoteAdvertisement = mock(({ reservation }) =>
-      calculateWorkspaceCheckoutQuote(reservation, { discountQuote })
+      calculateCoworkReservationQuote(reservation, { discountQuote })
     );
     const input = {
       locale: "en-US" as const,
       reservation: {
         kind: "cowork" as const,
         details: {
+          kind: "cowork" as const,
           entryTier: "basic" as const,
           coffee: true,
           date: "2026-07-30",

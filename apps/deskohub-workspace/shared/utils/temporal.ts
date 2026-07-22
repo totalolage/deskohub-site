@@ -1,5 +1,12 @@
 import { Schema } from "effect";
 
+export const unixTimestampSecondsSchema = Schema.Int.check(
+  Schema.isGreaterThanOrEqualTo(0)
+).annotate({
+  identifier: "UnixTimestampSeconds",
+  description: "Whole seconds since the Unix epoch.",
+});
+
 export const TemporalInstantSchema = Schema.declare(
   (input: unknown): input is Temporal.Instant =>
     input instanceof Temporal.Instant,

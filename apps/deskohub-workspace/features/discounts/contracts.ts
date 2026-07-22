@@ -1,15 +1,16 @@
 import type { StandardSchemaV1 } from "@standard-schema/spec";
 import { Option, Schema } from "effect";
+import {
+  type WorkspaceProductIdentity,
+  workspaceProductIdentitySchema,
+} from "@/features/checkout/product-identity";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import {
   nonNegativeWorkspaceMoneyCodec,
   positiveWorkspaceMoneyCodec,
 } from "@/features/checkout/workspace-money";
 import type { Locale } from "@/features/i18n";
-import {
-  type WorkspaceCoworkProductIdentity,
-  workspaceCoworkProductIdentitySchema,
-} from "@/features/reservation/cowork-reservation-product";
+import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
@@ -45,8 +46,8 @@ export const discountBasisPointsSchema = Schema.Int.check(
 
 export const discountProductIdentitySchema: StandardSchemaV1<
   unknown,
-  WorkspaceCoworkProductIdentity
-> = Schema.toStandardSchemaV1(workspaceCoworkProductIdentitySchema, {
+  WorkspaceProductIdentity
+> = Schema.toStandardSchemaV1(workspaceProductIdentitySchema, {
   parseOptions: {
     onExcessProperty: "error",
   },
@@ -121,7 +122,7 @@ export const isAppliedDiscount = (value: unknown): value is AppliedDiscount =>
   );
 
 export type DiscountQuote = {
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly discounts: readonly AppliedDiscount[];
   readonly totalDiscount: WorkspaceMoney;
@@ -129,7 +130,7 @@ export type DiscountQuote = {
 };
 
 export const discountQuoteCodec = Schema.Struct({
-  product: workspaceCoworkProductIdentitySchema,
+  product: workspaceProductIdentitySchema,
   discountableSubtotal: nonNegativeWorkspaceMoneyCodec,
   discounts: Schema.Array(appliedDiscountCodec),
   totalDiscount: nonNegativeWorkspaceMoneyCodec,
@@ -169,7 +170,11 @@ export type DiscountAdvertisementInput = {
   readonly locale: Locale;
 };
 
-export type DiscountQuoteInput = DiscountAdvertisementInput & {
+export type DiscountQuoteInput = {
+  readonly product: WorkspaceProductIdentity;
+  readonly discountableSubtotal: WorkspaceMoney;
+  readonly reservationDate: string;
+  readonly locale: Locale;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly submittedCode?: CanonicalDiscountCode;
 };

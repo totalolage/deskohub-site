@@ -1,5 +1,5 @@
 import { Schema } from "effect";
-import { workspaceCheckoutQuoteSchema } from "@/features/checkout/checkout-quote";
+import { coworkReservationQuoteSchema } from "@/features/checkout/checkout-quote";
 import { locales } from "@/features/i18n";
 import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
 
@@ -12,7 +12,7 @@ export const advertisedPriceRequestSchema = Schema.Struct({
 });
 
 export const advertisedPriceSchema = Schema.Struct({
-  quote: workspaceCheckoutQuoteSchema,
+  quote: coworkReservationQuoteSchema,
   advertisedPriceToken: Schema.NonEmptyString,
 }).annotate({
   identifier: "AdvertisedPrice",

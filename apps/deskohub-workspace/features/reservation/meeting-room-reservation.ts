@@ -67,6 +67,42 @@ export type MeetingRoomReservationOrderInput =
 export type NormalizedMeetingRoomReservationOrder =
   typeof normalizedMeetingRoomReservationOrderSchema.Type;
 
+export const meetingRoomReservationDetailsSchema = Schema.Struct({
+  kind: Schema.Literal(meetingRoomReservationKind),
+  startsAt: instantStringSchema,
+  endsAt: instantStringSchema,
+}).annotate({
+  identifier: "MeetingRoomReservationDetails",
+  description:
+    "PII-free meeting-room reservation projection for external consumers.",
+});
+
+export type MeetingRoomReservationDetails =
+  typeof meetingRoomReservationDetailsSchema.Type;
+
+export const getMeetingRoomReservationDetails = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): MeetingRoomReservationDetails =>
+  meetingRoomReservationDetailsSchema.make({
+    kind: meetingRoomReservationKind,
+    startsAt: reservation.startsAt,
+    endsAt: reservation.endsAt,
+  });
+
+export type MeetingRoomCheckoutAttemptDetails = {
+  readonly kind: NormalizedMeetingRoomReservationOrder["kind"];
+  readonly startsAt: NormalizedMeetingRoomReservationOrder["startsAt"];
+  readonly endsAt: NormalizedMeetingRoomReservationOrder["endsAt"];
+};
+
+export const getMeetingRoomCheckoutAttemptDetails = (
+  reservation: NormalizedMeetingRoomReservationOrder
+): MeetingRoomCheckoutAttemptDetails => ({
+  kind: reservation.kind,
+  startsAt: reservation.startsAt,
+  endsAt: reservation.endsAt,
+});
+
 export type MeetingRoomReservationProductInput = Pick<
   MeetingRoomReservationOrderInput,
   "kind"

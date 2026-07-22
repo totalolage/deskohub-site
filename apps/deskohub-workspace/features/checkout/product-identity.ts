@@ -34,3 +34,16 @@ export const getWorkspaceProductKey = (
       "meeting-room": getWorkspaceMeetingRoomProductKey,
     })
   );
+
+export const getCanonicalWorkspaceProductIdentity = (
+  product: WorkspaceProductIdentity
+): WorkspaceProductIdentity =>
+  Match.value(product).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: ({ kind, tier }) => ({ kind, tier }),
+      "meeting-room": ({ durationMinutes, kind }) => ({
+        kind,
+        durationMinutes,
+      }),
+    })
+  );

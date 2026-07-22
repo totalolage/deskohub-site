@@ -1,9 +1,11 @@
 import "@/shared/polyfills/temporal";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildReservationQuote } from "@/features/checkout/reservation-quote";
 import { canonicalDiscountCodeSchema } from "@/features/discounts/contracts";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import { reservationOrderSchema } from "@/features/reservation/reservation-order";
 import type { PayStateKey, SignedPayState } from "./pay-state";
 
 mock.module("server-only", () => ({}));
@@ -61,7 +63,7 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
       {
         locale: "en-US",
         reservation: baseReservation,
-        quote: buildWorkspaceCheckoutQuote(baseReservation),
+        quote: buildCoworkReservationQuote(baseReservation),
         orderId: "pay-state-test-order-id",
         checkoutSessionId: "pay-state-test-checkout-session-id",
         submittedCode: canonicalCode,
@@ -114,6 +116,12 @@ const tamperCiphertext = (token: string) => {
 };
 
 describe("Pay URL state", () => {
+  test("does not expose a temporary reservation-family rejection gate", async () => {
+    const payState = await import("./pay-state");
+
+    expect(payState).not.toHaveProperty("isCoworkSignedPayState");
+  });
+
   test("round-trips signed Pay state", () => {
     const state = buildState();
     const token = seal(state);
@@ -125,6 +133,42 @@ describe("Pay URL state", () => {
     expect(state.checkoutSessionId).toBe("pay-state-test-checkout-session-id");
     expect(state.submittedCode).toBe(canonicalCode);
     expect(token.split(".")).toHaveLength(4);
+  });
+
+  test("preserves discount and price-change metadata for meeting-room state", () => {
+    const reservation = Schema.decodeUnknownSync(reservationOrderSchema)({
+      kind: "meeting-room",
+      startsAt: "2099-06-10T08:00:00Z",
+      endsAt: "2099-06-10T12:00:00Z",
+      name: "Ada Lovelace",
+      email: "ada@example.com",
+      phone: "+420 777 777 777",
+    });
+    if (reservation.kind !== "meeting-room") {
+      throw new Error("Expected meeting-room reservation");
+    }
+    const quote = Effect.runSync(buildReservationQuote(reservation));
+    const changedKeys = {
+      sectionKeys: ["total"],
+      itemKeys: ["meeting-room"],
+    };
+
+    const state = runSync(
+      buildSignedPayState(
+        {
+          locale: "en-US",
+          reservation,
+          quote,
+          orderId: "meeting-room-pay-state-test-order-id",
+          submittedCode: canonicalCode,
+          changedKeys,
+        },
+        { keys: [fixedKey], now: () => fixedNow }
+      )
+    );
+
+    expect(state.submittedCode).toBe(canonicalCode);
+    expect(state.changedKeys).toEqual(changedKeys);
   });
 
   test("omits redundant payload markers from signed Pay state", () => {
@@ -140,7 +184,7 @@ describe("Pay URL state", () => {
         {
           locale: "en-US",
           reservation: { ...baseReservation, coffee: false } as never,
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          quote: buildCoworkReservationQuote(baseReservation),
           orderId: "required-coffee-order-id",
         },
         { keys: [fixedKey], now: () => fixedNow }
@@ -157,7 +201,7 @@ describe("Pay URL state", () => {
           {
             locale: "en-US",
             reservation: baseReservation,
-            quote: buildWorkspaceCheckoutQuote(baseReservation),
+            quote: buildCoworkReservationQuote(baseReservation),
             orderId: "missing-key-test",
           },
           { keys: [] }
@@ -215,7 +259,7 @@ describe("Pay URL state", () => {
         {
           locale: "en-US",
           reservation: baseReservation,
-          quote: buildWorkspaceCheckoutQuote(baseReservation),
+          quote: buildCoworkReservationQuote(baseReservation),
           orderId: "rotated-key-order-id",
         },
         { keys: [rotatedKey, fixedKey], now: () => fixedNow }

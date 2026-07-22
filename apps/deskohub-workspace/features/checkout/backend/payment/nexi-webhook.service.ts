@@ -36,6 +36,7 @@ import {
   WebhookEventRepository,
   WebhookEventRepositoryLive,
 } from "../repositories/webhook-event.repository";
+import { getNexiCurrencyOverride } from "./nexi-currency";
 
 type NexiWebhookFailureCode =
   | "nexi_webhook_parse_failed"
@@ -389,7 +390,7 @@ export const NexiWebhookServiceLive = Layer.effect(
             orderId: attempt.providerOrderId,
             correlationId: reservation.correlationId,
             amount: String(attempt.amountValue),
-            currency,
+            currency: getNexiCurrencyOverride() ?? currency,
             securityToken: attempt.securityToken,
           };
           yield* Effect.annotateLogsScoped({ verificationInput });

@@ -2,7 +2,7 @@ import "@/shared/polyfills/temporal";
 
 import { describe, expect, test } from "bun:test";
 import { Schema } from "effect";
-import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "@/features/checkout/checkout-quote.test-utils";
 import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
@@ -74,16 +74,55 @@ const genericDiscountQuote: DiscountQuote = {
 };
 
 describe("checkout details persistence", () => {
+  test("rejects obsolete snapshot markers and provider redirect URLs", () => {
+    const quote = buildCoworkReservationQuote({
+      entryTier: "basic",
+      coffee: false,
+    });
+    const details = {
+      locale: "en-US",
+      reservation: {
+        kind: "cowork",
+        entryTier: "basic",
+        date: "2099-06-10",
+        coffee: false,
+      },
+      payment: {
+        expectedPrice: quote.payment.expectedPrice,
+        undiscountedPrice: quote.payment.undiscountedPrice,
+        discounts: quote.payment.discounts,
+        summary: quote.summary,
+      },
+      legal: legalEvidenceMap,
+    };
+
+    expect(() =>
+      decodeCheckoutDetails({
+        ...details,
+        schema: "workspace-checkout-details",
+        schemaVersion: 1,
+      })
+    ).toThrow();
+    expect(() =>
+      decodeCheckoutDetails({
+        ...details,
+        payment: {
+          ...details.payment,
+          providerRedirectUrl: "https://provider.example/pay",
+        },
+      })
+    ).toThrow();
+  });
+
   test("persists quote summary, legal evidence, and no contact PII", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });
     const details = decodeCheckoutDetails({
-      schema: "workspace-checkout-details",
-      schemaVersion: 1,
       locale: "en-US",
       reservation: {
+        kind: "cowork",
         entryTier: "basic",
         date: "2099-06-10",
         coffee: false,
@@ -119,7 +158,7 @@ describe("checkout details persistence", () => {
   });
 
   test("accepts inline discounted product rows but rejects negative expected totals", () => {
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: genericDiscountQuote }
     );
@@ -136,10 +175,9 @@ describe("checkout details persistence", () => {
 
     expect(() =>
       decodeCheckoutDetails({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          kind: "cowork",
           entryTier: "basic",
           date: "2099-06-10",
           coffee: false,
@@ -156,10 +194,9 @@ describe("checkout details persistence", () => {
 
     expect(() =>
       decodeCheckoutDetails({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          kind: "cowork",
           entryTier: "basic",
           date: "2099-06-10",
           coffee: false,
@@ -176,17 +213,16 @@ describe("checkout details persistence", () => {
   });
 
   test("rejects provider-private fields in generic discount snapshots", () => {
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: genericDiscountQuote }
     );
 
     expect(() =>
       decodeCheckoutDetails({
-        schema: "workspace-checkout-details",
-        schemaVersion: 1,
         locale: "en-US",
         reservation: {
+          kind: "cowork",
           entryTier: "basic",
           date: "2099-06-10",
           coffee: false,

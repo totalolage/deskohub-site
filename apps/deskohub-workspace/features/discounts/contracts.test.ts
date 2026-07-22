@@ -43,11 +43,32 @@ describe("discount contracts", () => {
     ]);
   });
 
+  test("decodes every meeting-room product identity", () => {
+    expect(
+      [60, 240, 1440].map((durationMinutes) =>
+        decodeStandardSchema(discountProductIdentitySchema, {
+          kind: "meeting-room",
+          durationMinutes,
+        })
+      )
+    ).toEqual([
+      { kind: "meeting-room", durationMinutes: 60 },
+      { kind: "meeting-room", durationMinutes: 240 },
+      { kind: "meeting-room", durationMinutes: 1440 },
+    ]);
+  });
+
   test("strictly rejects unknown product kinds, tiers, and fields", () => {
     expect(
       decodeStandardSchema(discountProductIdentitySchema, {
         kind: "event",
         tier: "basic",
+      })
+    ).toBeUndefined();
+    expect(
+      decodeStandardSchema(discountProductIdentitySchema, {
+        kind: "meeting-room",
+        durationMinutes: 120,
       })
     ).toBeUndefined();
     expect(

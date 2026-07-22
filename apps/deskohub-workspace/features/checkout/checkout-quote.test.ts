@@ -6,10 +6,10 @@ import { getWorkspaceProductKey } from "@/features/checkout/product-identity";
 import type { AppliedDiscount, DiscountQuote } from "@/features/discounts";
 import { discountIdSchema } from "@/features/discounts/contracts";
 import {
+  type CoworkReservationQuoteOrder,
   getCheckoutSummaryChangedKeys,
-  type WorkspaceCheckoutOrder,
 } from "./checkout-quote";
-import { buildWorkspaceCheckoutQuote } from "./checkout-quote.test-utils";
+import { buildCoworkReservationQuote } from "./checkout-quote.test-utils";
 
 const money = (value: number) => ({
   value,
@@ -50,13 +50,13 @@ const percentageApplication = (
   ...overrides,
 });
 
-describe("workspace checkout quotes", () => {
+describe("cowork reservation quotes", () => {
   test.each([
     "basic",
     "plus",
     "profi",
   ] as const)("uses the canonical full product identity for the %s summary key", (entryTier) => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier,
       coffee: false,
       ...(entryTier === "profi" && { monitorOption: "2x27-qhd" as const }),
@@ -68,7 +68,7 @@ describe("workspace checkout quotes", () => {
   });
 
   test("builds an access-only quote without a discount section", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });
@@ -90,7 +90,7 @@ describe("workspace checkout quotes", () => {
   });
 
   test("charges paid coffee for the Basic non-courtesy tier", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: true,
     });
@@ -110,7 +110,7 @@ describe("workspace checkout quotes", () => {
   });
 
   test("shows courtesy coffee as a zero CZK line item for included tiers", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "plus",
       coffee: false,
     });
@@ -132,7 +132,7 @@ describe("workspace checkout quotes", () => {
 
   test("rejects unreachable monitor combinations consistently", () => {
     expect(() =>
-      buildWorkspaceCheckoutQuote({
+      buildCoworkReservationQuote({
         entryTier: "basic",
         coffee: false,
         monitorOption: "2x27-qhd",
@@ -140,7 +140,7 @@ describe("workspace checkout quotes", () => {
     ).toThrow("monitorOption");
 
     expect(() =>
-      buildWorkspaceCheckoutQuote({
+      buildCoworkReservationQuote({
         entryTier: "profi",
         coffee: true,
       })
@@ -149,7 +149,7 @@ describe("workspace checkout quotes", () => {
 
   test("applies generic cowork discounts without discounting paid coffee", () => {
     const application = percentageApplication();
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       {
         entryTier: "basic",
         coffee: true,
@@ -191,11 +191,11 @@ describe("workspace checkout quotes", () => {
   });
 
   test("fingerprint changes for different composition with the same total", () => {
-    const accessOnly = buildWorkspaceCheckoutQuote({
+    const accessOnly = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });
-    const coffeeDiscountedToSameTotal = buildWorkspaceCheckoutQuote(
+    const coffeeDiscountedToSameTotal = buildCoworkReservationQuote(
       {
         entryTier: "basic",
         coffee: true,
@@ -226,7 +226,7 @@ describe("workspace checkout quotes", () => {
 
   test("fingerprint includes the complete generic discount snapshot", () => {
     const application = percentageApplication();
-    const fingerprint = buildWorkspaceCheckoutQuote(
+    const fingerprint = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: discountQuote([application]) }
     ).fingerprint;
@@ -270,7 +270,7 @@ describe("workspace checkout quotes", () => {
 
     for (const variant of variants) {
       expect(
-        buildWorkspaceCheckoutQuote(
+        buildCoworkReservationQuote(
           { entryTier: "basic", coffee: false },
           { discountQuote: discountQuote([variant]) }
         ).fingerprint
@@ -291,11 +291,11 @@ describe("workspace checkout quotes", () => {
       subtotalAfter: money(15_000),
     };
 
-    const ordered = buildWorkspaceCheckoutQuote(
+    const ordered = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: discountQuote([first, second]) }
     );
-    const reversed = buildWorkspaceCheckoutQuote(
+    const reversed = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: discountQuote([second, first]) }
     );
@@ -313,9 +313,9 @@ describe("workspace checkout quotes", () => {
       email: "ada@example.com",
       phone: "+420 777 777 777",
       message: "Please keep this private.",
-    } as unknown as WorkspaceCheckoutOrder;
+    } as unknown as CoworkReservationQuoteOrder;
 
-    const quote = buildWorkspaceCheckoutQuote(orderWithRuntimeExtras);
+    const quote = buildCoworkReservationQuote(orderWithRuntimeExtras);
 
     expect(quote.order).toEqual({
       entryTier: "basic",
@@ -330,11 +330,11 @@ describe("workspace checkout quotes", () => {
   });
 
   test("ignores runtime contact and consent fields when fingerprinting", () => {
-    const cleanQuote = buildWorkspaceCheckoutQuote({
+    const cleanQuote = buildCoworkReservationQuote({
       entryTier: "plus",
       coffee: false,
     });
-    const quoteWithRuntimeExtras = buildWorkspaceCheckoutQuote({
+    const quoteWithRuntimeExtras = buildCoworkReservationQuote({
       entryTier: "plus",
       date: "2026-06-01",
       coffee: false,
@@ -343,17 +343,17 @@ describe("workspace checkout quotes", () => {
       email: "grace@example.com",
       phone: "+420 111 111 111",
       message: "Do not fingerprint this.",
-    } as unknown as WorkspaceCheckoutOrder);
+    } as unknown as CoworkReservationQuoteOrder);
 
     expect(quoteWithRuntimeExtras.fingerprint).toBe(cleanQuote.fingerprint);
   });
 
   test("detects changed summary section and item keys", () => {
-    const accessOnly = buildWorkspaceCheckoutQuote({
+    const accessOnly = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });
-    const withCoffee = buildWorkspaceCheckoutQuote({
+    const withCoffee = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: true,
     });
@@ -367,7 +367,7 @@ describe("workspace checkout quotes", () => {
   });
 
   test("detects a changed public item label when its amount is unchanged", () => {
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: discountQuote([percentageApplication()]) }
     );
@@ -412,7 +412,7 @@ describe("workspace checkout quotes", () => {
       amount: money(2500),
       subtotalAfter: money(15_000),
     };
-    const quote = buildWorkspaceCheckoutQuote(
+    const quote = buildCoworkReservationQuote(
       { entryTier: "basic", coffee: false },
       { discountQuote: discountQuote([first, second]) }
     );
@@ -505,7 +505,7 @@ describe("workspace checkout quotes", () => {
   });
 
   test("detects changed summary currency and exponent", () => {
-    const quote = buildWorkspaceCheckoutQuote({
+    const quote = buildCoworkReservationQuote({
       entryTier: "basic",
       coffee: false,
     });

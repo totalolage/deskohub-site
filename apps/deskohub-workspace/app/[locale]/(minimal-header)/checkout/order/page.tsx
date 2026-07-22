@@ -81,7 +81,11 @@ export default async function LocalizedCheckoutOrderPage({
 
   return runWithRequestLocale(locale, () => (
     <CheckoutOrderPage
-      initialReservation={payState?.reservation}
+      initialReservation={
+        payState?.reservation.kind === "cowork"
+          ? payState.reservation
+          : undefined
+      }
       locale={locale}
       checkoutSessionId={payState?.checkoutSessionId}
     />

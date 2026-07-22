@@ -53,6 +53,7 @@ describe("cowork reservation schema", () => {
       expect(
         getCoworkReservationDetails(getCoworkReservationOrder(result.success))
       ).toEqual({
+        kind: "cowork",
         entryTier: "plus",
         date: "2099-06-10",
         coffee: true,

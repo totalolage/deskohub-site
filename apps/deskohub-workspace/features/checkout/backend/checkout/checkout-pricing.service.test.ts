@@ -1,7 +1,7 @@
 import "@/shared/testing/workspace-test-env";
 import { describe, expect, mock, test } from "bun:test";
 import { Effect, Layer, Schema } from "effect";
-import { calculateWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote";
+import { calculateCoworkReservationQuote } from "@/features/checkout/checkout-quote";
 import type { WorkspaceMoney } from "@/features/checkout/workspace-money";
 import type { DiscountCommitment } from "@/features/discounts";
 import {
@@ -45,9 +45,13 @@ const affirmedAdvertisement =
   affirmedDiscountAdvertisementQuoteCodec.make(advertisementQuote);
 
 const reservation = {
+  kind: "cowork" as const,
   entryTier: "basic" as const,
   coffee: true,
   date: "2026-07-30",
+  name: "Ada Lovelace",
+  email: "ada@example.com",
+  phone: "+420 777 777 777",
 };
 
 const runWithDiscounts = <A, E>(
@@ -90,7 +94,7 @@ describe("CheckoutPricingService", () => {
       Effect.succeed(affirmedAdvertisement)
     );
     const displayedQuote = await Effect.runPromise(
-      calculateWorkspaceCheckoutQuote(reservation, {
+      calculateCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );
@@ -141,7 +145,7 @@ describe("CheckoutPricingService", () => {
       dotyposCustomerId: "customer-id",
       locale: "en-US",
     });
-    expect(quote.summary.total).toEqual(money(22_500));
+    expect(quote.quote.summary.total).toEqual(money(22_500));
   });
 
   test("affirms displayed discounts for payment and preserves the commitment", async () => {
@@ -150,7 +154,7 @@ describe("CheckoutPricingService", () => {
       Effect.succeed({ quote: affirmedAdvertisement, commitment })
     );
     const displayedQuote = await Effect.runPromise(
-      calculateWorkspaceCheckoutQuote(reservation, {
+      calculateCoworkReservationQuote(reservation, {
         discountQuote: advertisementQuote,
       })
     );

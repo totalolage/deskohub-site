@@ -28,6 +28,7 @@ import {
   PaymentAttemptRepository,
   PaymentAttemptRepositoryLive,
 } from "../repositories/payment-attempt.repository";
+import { getNexiCurrencyOverride } from "./nexi-currency";
 
 export type ProviderPaymentFinalizationResult =
   | "not_found"
@@ -178,7 +179,7 @@ export const ProviderPaymentFinalizationServiceLive = Layer.effect(
               orderId: attempt.providerOrderId,
               correlationId: reservation.correlationId,
               amount: String(attempt.amountValue),
-              currency,
+              currency: getNexiCurrencyOverride() ?? currency,
               securityToken: attempt.securityToken,
             })
             .pipe(

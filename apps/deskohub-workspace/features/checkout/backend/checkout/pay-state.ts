@@ -1,16 +1,6 @@
 import { Data, Effect, Match, Schema } from "effect";
-import {
-  type CheckoutSummaryChangedKeys,
-  checkoutSummaryChangedKeysSchema,
-  type WorkspaceCheckoutQuote,
-} from "@/features/checkout/checkout-quote";
-import { nonNegativeWorkspaceMoneyCodec } from "@/features/checkout/workspace-money";
-import {
-  type CanonicalDiscountCode,
-  canonicalDiscountCodeSchema,
-} from "@/features/discounts/contracts";
-import type { Locale } from "@/features/i18n";
-import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
+import type { CheckoutSummary } from "@/features/checkout/checkout-quote";
+import { getMeetingRoomCheckoutSummary } from "@/features/checkout/reservation-quote-meeting-room";
 import {
   type CheckoutStateCryptoOptions,
   type CheckoutStateKey,
@@ -20,20 +10,24 @@ import {
   parseCheckoutStateKey,
   sealCheckoutState,
 } from "./checkout-state-token";
-import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-state";
+import {
+  type BuildSignedCoworkPayStateInput,
+  buildSignedCoworkPayState,
+  coworkSignedPayStateSchema,
+} from "./cowork-pay-state";
+import {
+  type BuildSignedMeetingRoomPayStateInput,
+  buildSignedMeetingRoomPayState,
+  meetingRoomSignedPayStateSchema,
+} from "./meeting-room-pay-state";
 
 export const payStateTokenQueryParam = "payState" as const;
 export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 
-export const signedPayStateSchema = Schema.Struct({
-  ...workspaceCheckoutPriceStateSchema.fields,
-  orderId: Schema.NonEmptyString,
-  checkoutSessionId: Schema.optional(Schema.NonEmptyString),
-  reservation: normalizedCoworkReservationOrderSchema,
-  acceptedTotal: nonNegativeWorkspaceMoneyCodec,
-  submittedCode: Schema.optional(canonicalDiscountCodeSchema),
-  changedKeys: Schema.optional(checkoutSummaryChangedKeysSchema),
-}).annotate({
+export const signedPayStateSchema = Schema.Union([
+  coworkSignedPayStateSchema,
+  meetingRoomSignedPayStateSchema,
+]).annotate({
   identifier: "SignedPayState",
   description: "Workspace checkout Pay state payload.",
 });
@@ -48,18 +42,23 @@ export type SealPayStateForUrlResult = {
   readonly queryParam: typeof payStateTokenQueryParam;
 };
 
-export type BuildSignedPayStateInput = {
-  readonly locale: Locale;
-  readonly reservation: Schema.Schema.Type<
-    typeof normalizedCoworkReservationOrderSchema
-  >;
-  readonly quote: WorkspaceCheckoutQuote;
-  readonly orderId: string;
-  readonly checkoutSessionId?: string;
-  readonly submittedCode?: CanonicalDiscountCode;
-  readonly changedKeys?: CheckoutSummaryChangedKeys;
-  readonly ttlMilliseconds?: number;
-};
+export type BuildSignedPayStateInput =
+  | BuildSignedCoworkPayStateInput
+  | BuildSignedMeetingRoomPayStateInput;
+
+export const getSignedPayStateCheckoutSummary = (
+  state: SignedPayState
+): CheckoutSummary =>
+  Match.value(state).pipe(
+    Match.when(
+      { reservation: { kind: "cowork" } },
+      ({ quote }) => quote.summary
+    ),
+    Match.when({ reservation: { kind: "meeting-room" } }, ({ quote }) =>
+      getMeetingRoomCheckoutSummary(quote)
+    ),
+    Match.exhaustive
+  );
 
 export class PayStateTokenError extends Data.TaggedError("PayStateTokenError")<{
   readonly code: CheckoutStateTokenError["code"];
@@ -95,51 +94,24 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
     input.ttlMilliseconds ?? payStateDefaultTtlMilliseconds,
     options
   ).pipe(Effect.mapError(toPayStateTokenError));
-  const reservationBase = {
-    kind: "cowork" as const,
-    date: input.reservation.date,
-    name: input.reservation.name,
-    email: input.reservation.email,
-    phone: input.reservation.phone,
-    ...(input.reservation.message !== undefined && {
-      message: input.reservation.message,
-    }),
-  };
-
-  return yield* Schema.decodeUnknownEffect(signedPayStateSchema, {
-    onExcessProperty: "error",
-  })({
+  const envelope = {
     ...claims,
     locale: input.locale,
     orderId: input.orderId,
-    ...(input.checkoutSessionId && {
-      checkoutSessionId: input.checkoutSessionId,
-    }),
-    reservation: Match.value(input.quote.order).pipe(
-      Match.discriminatorsExhaustive("entryTier")({
-        basic: (product) => ({ ...reservationBase, ...product }),
-        plus: (product) => ({ ...reservationBase, ...product }),
-        profi: (product) => ({ ...reservationBase, ...product }),
-      })
+  };
+  const state = Match.value(input).pipe(
+    Match.when({ reservation: { kind: "cowork" } }, (coworkInput) =>
+      buildSignedCoworkPayState(envelope, coworkInput)
     ),
-    quote: {
-      fingerprint: input.quote.fingerprint,
-      order: input.quote.order,
-      summary: input.quote.summary,
-      payment: {
-        ...input.quote.payment,
-        discounts: [...input.quote.payment.discounts],
-      },
-    },
-    acceptedTotal: input.quote.summary.total,
-    ...(input.submittedCode && { submittedCode: input.submittedCode }),
-    ...(input.changedKeys && {
-      changedKeys: {
-        sectionKeys: [...input.changedKeys.sectionKeys],
-        itemKeys: [...input.changedKeys.itemKeys],
-      },
-    }),
-  }).pipe(Effect.mapError(toPayStateTokenError));
+    Match.when({ reservation: { kind: "meeting-room" } }, (meetingRoomInput) =>
+      buildSignedMeetingRoomPayState(envelope, meetingRoomInput)
+    ),
+    Match.exhaustive
+  );
+
+  return yield* Schema.decodeUnknownEffect(signedPayStateSchema, {
+    onExcessProperty: "error",
+  })(state).pipe(Effect.mapError(toPayStateTokenError));
 });
 
 export const sealPayState = Effect.fn("payState.seal")(function* (

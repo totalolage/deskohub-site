@@ -10,13 +10,13 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import type {
   CanonicalDiscountCode,
   DiscountCodeId,
   StoredDiscountId,
 } from "@/features/discounts/persistence-contracts";
 import type { Locale } from "@/features/i18n";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { instant } from "../instant";
 import { postgresUuidV7 } from "../uuid-v7";
 
@@ -76,7 +76,7 @@ export const discountProductTargets = pgTable(
       .references(() => discounts.id, { onDelete: "cascade" }),
     productIdentity: jsonb("product_identity")
       .notNull()
-      .$type<WorkspaceCoworkProductIdentity>(),
+      .$type<WorkspaceProductIdentity>(),
   },
   (t) => [
     primaryKey({

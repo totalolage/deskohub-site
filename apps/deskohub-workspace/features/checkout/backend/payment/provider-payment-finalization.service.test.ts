@@ -280,7 +280,7 @@ describe("ProviderPaymentFinalizationService", () => {
         orderId: "provider-order-id",
         correlationId: "correlation-id",
         amount: "35000",
-        currency: "CZK",
+        currency: "EUR",
         securityToken: "security-token",
       });
 
@@ -442,7 +442,7 @@ describe("ProviderPaymentFinalizationService", () => {
       orderId: "provider-order-id",
       correlationId: "correlation-id",
       amount: "35000",
-      currency: "CZK",
+      currency: "EUR",
       securityToken: "security-token",
     });
     expect(markPaidForReservation).not.toHaveBeenCalled();

@@ -133,7 +133,6 @@ jobs:
       TARGET_SHA: ${{ needs.resolve-target.outputs.sha }}
       TURBO_TEAM: ${{ vars.TURBO_TEAM }}
       WORKSPACE_E2E_BASE_URL: ${{ needs.resolve-target.outputs.url }}
-      WORKSPACE_E2E_EXPECTED_CURRENCY: EUR
 
     steps:
       - name: Publish pending commit status

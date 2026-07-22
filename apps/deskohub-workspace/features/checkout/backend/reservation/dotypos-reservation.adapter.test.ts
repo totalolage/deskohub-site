@@ -15,10 +15,9 @@ import {
 const decodeInstant = Schema.decodeUnknownSync(instantStringSchema);
 
 const checkoutDetails = Schema.decodeUnknownSync(checkoutDetailsJsonSchema)({
-  schema: "workspace-checkout-details",
-  schemaVersion: 1,
   locale: "en-US",
   reservation: {
+    kind: "cowork",
     entryTier: "basic",
     date: "2099-06-10",
     coffee: false,

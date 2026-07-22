@@ -27,15 +27,16 @@ import {
   workspaceCoworkProductIdentitySchema,
 } from "@/features/reservation/cowork-reservation-product";
 
-export const workspaceCheckoutOrderSchema =
+export const coworkReservationQuoteOrderSchema =
   normalizedCoworkReservationProductSchema.annotate({
-    identifier: "WorkspaceCheckoutOrder",
+    identifier: "CoworkReservationQuoteOrder",
     description: "Canonical normalized product selection for checkout.",
   });
 
-export type WorkspaceCheckoutOrderInput =
+export type CoworkReservationQuoteOrderInput =
   typeof coworkReservationProductSchema.Encoded;
-export type WorkspaceCheckoutOrder = typeof workspaceCheckoutOrderSchema.Type;
+export type CoworkReservationQuoteOrder =
+  typeof coworkReservationQuoteOrderSchema.Type;
 
 export type CheckoutSummaryDiscount = Pick<
   AppliedDiscount,
@@ -138,9 +139,9 @@ export const checkoutSummarySchema = Schema.Struct({
   description: "Public itemized Workspace checkout summary.",
 });
 
-export const workspaceCheckoutQuoteSchema = Schema.Struct({
+export const coworkReservationQuoteSchema = Schema.Struct({
   fingerprint: Schema.NonEmptyString,
-  order: workspaceCheckoutOrderSchema,
+  order: coworkReservationQuoteOrderSchema,
   summary: checkoutSummarySchema,
   payment: Schema.Struct({
     expectedPrice: nonNegativeWorkspaceMoneyCodec,
@@ -148,8 +149,8 @@ export const workspaceCheckoutQuoteSchema = Schema.Struct({
     discounts: Schema.Array(appliedDiscountCodec),
   }),
 }).annotate({
-  identifier: "WorkspaceCheckoutQuote",
-  description: "Authoritative Workspace checkout quote snapshot.",
+  identifier: "CoworkReservationQuote",
+  description: "Authoritative cowork reservation quote snapshot.",
 });
 
 export const checkoutSummaryChangedKeysSchema = Schema.Struct({
@@ -162,7 +163,7 @@ export type CheckoutSummaryOrderItem =
   typeof checkoutSummaryOrderItemSchema.Type;
 export type CheckoutSummarySection = typeof checkoutSummarySectionSchema.Type;
 export type CheckoutSummary = typeof checkoutSummarySchema.Type;
-export type WorkspaceCheckoutQuote = typeof workspaceCheckoutQuoteSchema.Type;
+export type CoworkReservationQuote = typeof coworkReservationQuoteSchema.Type;
 export type CheckoutSummaryChangedKeys =
   typeof checkoutSummaryChangedKeysSchema.Type;
 
@@ -171,9 +172,9 @@ export class CheckoutQuoteError extends Data.TaggedError("CheckoutQuoteError")<{
   readonly cause?: unknown;
 }> {}
 
-export const normalizeWorkspaceCheckoutOrder = Effect.fn(
-  "normalizeWorkspaceCheckoutOrder"
-)((order: WorkspaceCheckoutOrderInput) =>
+export const normalizeCoworkReservationQuoteOrder = Effect.fn(
+  "normalizeCoworkReservationQuoteOrder"
+)((order: CoworkReservationQuoteOrderInput) =>
   Schema.decodeUnknownEffect(coworkReservationProductSchema)(order).pipe(
     Effect.mapError(
       (cause) =>
@@ -220,7 +221,7 @@ const getCanonicalAppliedDiscount = (application: AppliedDiscount) => ({
 });
 
 const getQuoteFingerprint = (
-  quote: Omit<WorkspaceCheckoutQuote, "fingerprint">
+  quote: Omit<CoworkReservationQuote, "fingerprint">
 ) => {
   const coffeePriceAmount = getWorkspaceProductCoffeeLinePriceForTier(
     quote.order.entryTier
@@ -257,16 +258,16 @@ const getQuoteFingerprint = (
     .toString(16);
 };
 
-export const calculateWorkspaceCheckoutQuote = Effect.fn(
-  "buildWorkspaceCheckoutQuote"
+export const calculateCoworkReservationQuote = Effect.fn(
+  "calculateCoworkReservationQuote"
 )(function* (
-  order: WorkspaceCheckoutOrderInput,
+  order: CoworkReservationQuoteOrderInput,
   options: {
     readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
   } = {}
 ) {
-  const normalizedOrder = yield* normalizeWorkspaceCheckoutOrder(order);
+  const normalizedOrder = yield* normalizeCoworkReservationQuoteOrder(order);
   const product = getWorkspaceProductByTier(normalizedOrder.entryTier);
   const productPrice = withWorkspaceMoneyCurrency(
     product.price,

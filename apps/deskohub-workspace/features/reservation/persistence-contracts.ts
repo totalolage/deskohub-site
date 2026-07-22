@@ -1,6 +1,13 @@
-import { Schema } from "effect";
-import { storedCoworkReservationDetailsSchema } from "@/features/reservation/cowork-reservation-product";
-import { storedMeetingRoomReservationDetailsSchema } from "@/features/reservation/meeting-room-reservation";
+import { Match, Schema } from "effect";
+import {
+  getStoredCoworkReservationDetails,
+  storedCoworkReservationDetailsSchema,
+} from "@/features/reservation/cowork-reservation-product";
+import {
+  getStoredMeetingRoomReservationDetails,
+  storedMeetingRoomReservationDetailsSchema,
+} from "@/features/reservation/meeting-room-reservation";
+import type { ReservationOrderData } from "@/features/reservation/reservation-order";
 
 export const storedWorkspaceReservationDetailsSchema = Schema.Union([
   storedCoworkReservationDetailsSchema,
@@ -13,6 +20,16 @@ export const storedWorkspaceReservationDetailsSchema = Schema.Union([
 
 export type StoredWorkspaceReservationDetails =
   typeof storedWorkspaceReservationDetailsSchema.Type;
+
+export const getStoredWorkspaceReservationDetails = (
+  reservation: ReservationOrderData
+): StoredWorkspaceReservationDetails =>
+  Match.value(reservation).pipe(
+    Match.discriminatorsExhaustive("kind")({
+      cowork: getStoredCoworkReservationDetails,
+      "meeting-room": getStoredMeetingRoomReservationDetails,
+    })
+  );
 
 export const workspaceReservationIdSchema = Schema.NonEmptyString.pipe(
   Schema.brand("WorkspaceReservationId")

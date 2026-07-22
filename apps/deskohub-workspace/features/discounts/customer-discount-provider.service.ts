@@ -10,8 +10,8 @@ import {
   Schema,
   SchemaGetter,
 } from "effect";
+import type { WorkspaceProductIdentity } from "@/features/checkout/product-identity";
 import { type Locale, m } from "@/features/i18n";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import {
   type DiscountQuoteInput,
@@ -93,7 +93,7 @@ const toCustomerDiscountCandidate = (input: {
     | undefined;
   readonly dotyposCustomerId: DotyposCustomerId;
   readonly locale: Locale;
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
 }) => {
   if (!input.discountGroup) {
     return Effect.succeed(Option.none<DiscountCandidate>());

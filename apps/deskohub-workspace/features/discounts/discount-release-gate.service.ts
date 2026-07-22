@@ -3,6 +3,7 @@ import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/wo
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
 
 export type DiscountReleaseGateOperation =
+  | "quote"
   | "discover_advertised_discounts"
   | "affirm_advertisement"
   | "apply_customer_discount"

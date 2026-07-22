@@ -332,6 +332,7 @@ export function ReservationForm({
       reservation: {
         kind: "cowork",
         details: {
+          kind: "cowork",
           ...normalizeCoworkReservationProduct({
             entryTier: selectedTier,
             coffee: Boolean(selectedCoffee),

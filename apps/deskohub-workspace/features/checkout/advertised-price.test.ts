@@ -10,6 +10,7 @@ const decodeRequest = Schema.decodeUnknownOption(advertisedPriceRequestSchema, {
 const reservation = {
   kind: "cowork" as const,
   details: {
+    kind: "cowork" as const,
     entryTier: "basic" as const,
     coffee: true,
     date: "2026-07-20",

@@ -1,16 +1,16 @@
-import type { DotyposCustomerDiscount } from "@deskohub/dotypos";
 import { Effect } from "effect";
+import type { DiscountQuote } from "@/features/discounts";
 import {
-  calculateWorkspaceCheckoutQuote,
-  type WorkspaceCheckoutOrder,
-  type WorkspaceCheckoutQuote,
+  type CoworkReservationQuote,
+  type CoworkReservationQuoteOrder,
+  calculateCoworkReservationQuote,
 } from "./checkout-quote";
 
-export const buildWorkspaceCheckoutQuote = (
-  order: WorkspaceCheckoutOrder,
+export const buildCoworkReservationQuote = (
+  order: CoworkReservationQuoteOrder,
   options: {
-    readonly customerDiscount?: DotyposCustomerDiscount;
+    readonly discountQuote?: DiscountQuote;
     readonly currencyOverride?: string;
   } = {}
-): WorkspaceCheckoutQuote =>
-  Effect.runSync(calculateWorkspaceCheckoutQuote(order, options));
+): CoworkReservationQuote =>
+  Effect.runSync(calculateCoworkReservationQuote(order, options));

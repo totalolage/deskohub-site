@@ -9,10 +9,13 @@ import {
   Layer,
   Option,
 } from "effect";
-import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
+import {
+  getWorkspaceProductKey,
+  type WorkspaceProductIdentity,
+} from "@/features/checkout/product-identity";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
-import type { DiscountAdvertisementInput } from "./contracts";
+import type { DiscountQuoteInput } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
@@ -24,7 +27,7 @@ import { logDiscountResolutionFailure } from "./resolution-logging";
 const providerNamespace = "google-calendar-sales";
 
 export type CalendarDiscountProviderInput = Pick<
-  DiscountAdvertisementInput,
+  DiscountQuoteInput,
   "locale" | "product" | "reservationDate"
 >;
 
@@ -200,7 +203,7 @@ class CalendarSalesCacheKey extends Data.Class<{
 
 const toEligibleCalendarCandidates = (input: {
   readonly locale: CalendarDiscountProviderInput["locale"];
-  readonly product: WorkspaceCoworkProductIdentity;
+  readonly product: WorkspaceProductIdentity;
   readonly sales: readonly ResolvedCalendarSale[];
 }) =>
   input.sales
@@ -251,9 +254,9 @@ type ResolvedCalendarSale = {
 };
 
 const isSameProduct = (
-  left: WorkspaceCoworkProductIdentity,
-  right: WorkspaceCoworkProductIdentity
-) => left.kind === right.kind && left.tier === right.tier;
+  left: WorkspaceProductIdentity,
+  right: WorkspaceProductIdentity
+) => getWorkspaceProductKey(left) === getWorkspaceProductKey(right);
 
 const withProviderAnnotations =
   (operation: "quote" | "revalidate") =>
@@ -262,6 +265,6 @@ const withProviderAnnotations =
       Effect.annotateLogs({
         discountOperation: operation,
         discountProductKind: input.product.kind,
-        discountProductTier: input.product.tier,
+        discountProductKey: getWorkspaceProductKey(input.product),
       })
     );

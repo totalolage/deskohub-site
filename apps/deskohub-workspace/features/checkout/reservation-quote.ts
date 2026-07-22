@@ -46,10 +46,10 @@ export const buildReservationQuote = Effect.fn("buildReservationQuote")(
             currencyOverride: options.currencyOverride,
           }),
         "meeting-room": (meetingRoomReservation) =>
-          getMeetingRoomReservationQuote(
-            meetingRoomReservation,
-            options.currencyOverride
-          ),
+          getMeetingRoomReservationQuote(meetingRoomReservation, {
+            discountQuote: options.discountQuote,
+            currencyOverride: options.currencyOverride,
+          }),
       })
     );
     const fingerprint = getReservationQuoteFingerprint(
