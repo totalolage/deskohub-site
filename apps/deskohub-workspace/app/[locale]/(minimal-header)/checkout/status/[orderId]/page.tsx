@@ -3,10 +3,8 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { connection } from "next/server";
 import { Suspense } from "react";
-import { env } from "@/env";
 import {
   appendVercelPreviewProtectionBypass,
-  type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
@@ -24,7 +22,6 @@ import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { Container } from "@/shared/components/container";
 import {
-  getSearchParam,
   getSearchParamsDecoder,
   getWorkspaceLocalizedCanonicalUrl,
   type SearchParamsRecord,
@@ -47,21 +44,6 @@ const decodeCheckoutStatusSearchParams = getSearchParamsDecoder(
     outcome: Schema.Literals(["success", "cancelled"]),
   })
 );
-
-const shouldUsePreviewE2EStatusRead = (searchParams: SearchParamsRecord) =>
-  env.VERCEL_ENV === "preview" &&
-  getSearchParam(searchParams, "e2eState") === "fulfillmentFailed";
-
-const loadCheckoutStatus = Effect.fn("checkoutStatus.load")(function* (input: {
-  readonly orderId: string;
-  readonly returnOutcome: CheckoutStatusReturnOutcome;
-  readonly searchParams: SearchParamsRecord;
-}) {
-  const service = yield* CheckoutStatusService;
-  return yield* shouldUsePreviewE2EStatusRead(input.searchParams)
-    ? service.getStatus(input)
-    : service.refreshStatus(input);
-});
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -157,11 +139,9 @@ async function CheckoutStatusContent({
       operation: "checkout.status.load",
       layer: CheckoutStatusServiceLiveWithDependencies,
     },
-    loadCheckoutStatus({
-      orderId,
-      returnOutcome,
-      searchParams: rawSearchParams,
-    }).pipe(
+    Effect.flatMap(CheckoutStatusService, (service) =>
+      service.refreshStatus({ orderId, returnOutcome })
+    ).pipe(
       Effect.tapError((cause) =>
         Effect.logError("Checkout status load failed", {
           orderId,
