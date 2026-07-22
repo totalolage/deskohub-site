@@ -26,6 +26,7 @@ const reservation = {
   phone: "+420777000111",
 };
 const quote = buildWorkspaceCheckoutQuote(reservation);
+const checkoutSessionId = "checkout-session-id";
 
 const makePayStateToken = async () => {
   const state = await Effect.runPromise(
@@ -34,6 +35,7 @@ const makePayStateToken = async () => {
       reservation,
       quote,
       orderId: "reservation-id",
+      checkoutSessionId,
     })
   );
 
@@ -129,6 +131,7 @@ describe("applyDiscountCodeToPayState", () => {
     const freshToken = freshUrl.searchParams.get(payStateTokenQueryParam);
     expect(freshToken).toBeTruthy();
     const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.submittedCode).toBe("SAVE20");
     expect(freshState.changedKeys).toBeUndefined();
     expect(scenario.result.freshPayUrl).not.toContain("SAVE20");
@@ -186,6 +189,7 @@ describe("applyDiscountCodeToPayState", () => {
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     const freshState = await Effect.runPromise(openPayState(freshToken ?? ""));
+    expect(freshState.checkoutSessionId).toBe(checkoutSessionId);
     expect(freshState.changedKeys).toEqual(changedKeys);
     expect(freshState.submittedCode).toBeUndefined();
   });

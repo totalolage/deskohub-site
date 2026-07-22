@@ -80,6 +80,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
           reservation: state.reservation,
           quote: result.quote,
           orderId: state.orderId,
+          checkoutSessionId: state.checkoutSessionId,
           changedKeys: result.changedKeys,
         });
 
@@ -91,6 +92,7 @@ export const applyDiscountCodeToPayState = Effect.fn(
         reservation: state.reservation,
         quote: result.quote,
         orderId: state.orderId,
+        checkoutSessionId: state.checkoutSessionId,
         submittedCode,
       });
 
