@@ -125,9 +125,9 @@ describe("execute", () => {
 
     await expect(
       execute(Effect.succeed("unused"), {
-        runExit: (() => {
+        runExit: () => {
           throw thrown;
-        }) as never,
+        },
       })
     ).rejects.toBe(thrown);
     await expect(
@@ -156,3 +156,11 @@ describe("execute", () => {
     expect(receivedSignal).toBe(controller.signal);
   });
 });
+
+if (process.env.NEXT_EFFECT_EXECUTOR_TYPECHECK === "1") {
+  execute(Effect.void, {
+    run: (effect) => Effect.runPromise(effect),
+    // @ts-expect-error custom value and Exit runners are mutually exclusive.
+    runExit: (effect) => Effect.runPromiseExit(effect),
+  });
+}

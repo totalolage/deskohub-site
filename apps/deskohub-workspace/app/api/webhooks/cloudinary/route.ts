@@ -8,10 +8,8 @@ import { Effect, Layer } from "effect";
 import { revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { env } from "@/env";
-import {
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceEffect,
-} from "@/shared/backend/workspace-effect";
+import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { cloudinaryTags } from "@/shared/utils/cache-tags";
 
 const CloudinaryWebhookVerifierLive = CloudinaryWebhookVerifier.Live.pipe(

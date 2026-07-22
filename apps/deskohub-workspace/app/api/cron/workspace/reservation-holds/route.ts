@@ -5,10 +5,8 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
-import {
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceEffect,
-} from "@/shared/backend/workspace-effect";
+import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const cronBatchLimit = 25;
 

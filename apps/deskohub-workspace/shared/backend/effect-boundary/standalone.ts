@@ -6,4 +6,4 @@ const executor = EffectBoundary.makeExecutor({
   transform: (effect) => Effect.provide(effect, createWorkspaceLoggerLive()),
 });
 
-export const WorkspaceEffect = EffectBoundary.makeHost(executor);
+export const StandaloneWorkspaceEffect = EffectBoundary.makeHost(executor);

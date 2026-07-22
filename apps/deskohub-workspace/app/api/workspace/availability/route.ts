@@ -3,10 +3,8 @@ import { Effect, Predicate } from "effect";
 import { NextResponse } from "next/server";
 import { WorkspaceAvailabilityService } from "@/features/reservation/backend/workspace-availability.service";
 import { parseWorkspaceAvailabilityQuery } from "@/features/reservation/workspace-availability";
-import {
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceEffect,
-} from "@/shared/backend/workspace-effect";
+import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const getAvailabilityRequest = (request: Request) => {
   const { searchParams } = new URL(request.url);

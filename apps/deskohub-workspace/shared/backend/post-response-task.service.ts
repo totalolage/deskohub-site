@@ -19,27 +19,30 @@ export class PostResponseTaskService extends Context.Service<
   PostResponseTaskService,
   IPostResponseTaskService
 >()("PostResponseTaskService") {
-  static Live = Layer.succeed(this, {
-    run: ({ operation, task }) =>
-      Effect.try({
-        try: () => {
-          const runTask = WorkspaceEffect.task({ operation }, () =>
-            task.pipe(
-              Effect.catchCause((cause) =>
-                Effect.logWarning("Post-response task failed", { cause })
+  static Live = Layer.effect(
+    this,
+    Effect.succeed({
+      run: ({ operation, task }) =>
+        Effect.try({
+          try: () => {
+            const runTask = WorkspaceEffect.task({ operation }, () =>
+              task.pipe(
+                Effect.catchCause((cause) =>
+                  Effect.logWarning("Post-response task failed", { cause })
+                )
               )
-            )
-          );
-          after(runTask);
-        },
-        catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
-      }).pipe(
-        Effect.tapError((cause) =>
-          Effect.logWarning("Post-response task could not be scheduled", {
-            cause,
-          })
+            );
+            after(runTask);
+          },
+          catch: (cause) => new PostResponseTaskSchedulingError({ cause }),
+        }).pipe(
+          Effect.tapError((cause) =>
+            Effect.logWarning("Post-response task could not be scheduled", {
+              cause,
+            })
+          ),
+          Effect.ignore
         ),
-        Effect.ignore
-      ),
-  });
+    })
+  );
 }

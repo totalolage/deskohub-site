@@ -6,10 +6,8 @@ import {
   NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/payment";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
-import {
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceEffect,
-} from "@/shared/backend/workspace-effect";
+import { mapWorkspaceInternalRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_parse_failed: 400,

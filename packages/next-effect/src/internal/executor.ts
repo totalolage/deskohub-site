@@ -1,5 +1,6 @@
 import { Cause, Effect, Exit } from "effect";
 import { unstable_rethrow } from "next/navigation";
+import type { RequireOneOrNone } from "type-fest";
 import type { EffectRunExit } from "../effect-boundary";
 
 export type ExecuteRun = <A>(
@@ -12,16 +13,13 @@ interface ExecuteBaseOptions<E> {
 }
 
 export type ExecuteOptions<E> = ExecuteBaseOptions<E> &
-  (
-    | {
-        readonly run?: ExecuteRun;
-        readonly runExit?: never;
-      }
-    | {
-        readonly run?: never;
-        readonly runExit: EffectRunExit;
-      }
-  );
+  RequireOneOrNone<
+    {
+      readonly run: ExecuteRun;
+      readonly runExit: EffectRunExit;
+    },
+    "run" | "runExit"
+  >;
 
 export function execute<A, E>(
   effect: Effect.Effect<A, E, never>,

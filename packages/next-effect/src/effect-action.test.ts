@@ -322,6 +322,20 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
   // @ts-expect-error useStateAction preserves the action input type.
   statefulHook.formAction(1);
 
+  const boundary = EffectAction.makeBoundary(makeActionClient(), {
+    runExit: (effect) => Effect.runPromiseExit(effect),
+    prepare: (_invocation, effect) => effect,
+  });
+
+  boundary.action(
+    // @ts-expect-error an action requiring a service must declare its Layer.
+    {
+      operation: "test.missing-action-layer",
+      schema: Schema.toStandardSchemaV1(Schema.String),
+    },
+    () => TestService
+  );
+
   void hook.executeAsync("1").then((result) => {
     if (result.data !== undefined) {
       const data: number = result.data;

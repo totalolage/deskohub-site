@@ -49,8 +49,3 @@ export const WorkspaceEffect = makeWorkspaceEffect({
   readActionHeaders,
   scheduleTelemetryFlush,
 });
-
-export {
-  mapWorkspaceInternalRouteFailure,
-  WorkspaceRouteFailure,
-} from "./effect-boundary/route-failure";

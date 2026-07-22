@@ -1,10 +1,8 @@
 import { Effect, Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import {
-  WorkspaceEffect,
-  WorkspaceRouteFailure,
-} from "@/shared/backend/workspace-effect";
+import { WorkspaceRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import {
   getSearchParamsDecoder,
   type SearchParamsRecord,
