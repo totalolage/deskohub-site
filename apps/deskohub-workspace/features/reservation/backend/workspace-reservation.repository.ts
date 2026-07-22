@@ -1,6 +1,7 @@
-import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { EffectDrizzleQueryError } from "drizzle-orm/effect-core";
 import { Context, Data, Effect, Layer, Schema } from "effect";
+import type { SqlError } from "effect/unstable/sql";
 import { WorkspaceDatabase } from "@/db/database.service";
 import {
   type WorkspaceReservation as WorkspaceReservationRow,
@@ -39,7 +40,8 @@ export class WorkspaceReservationDetailsMalformedError extends Data.TaggedError(
 }> {}
 
 export interface CreateWorkspaceReservationInput {
-  readonly reservationIntentKey: string;
+  readonly checkoutSessionKey: string;
+  readonly checkoutAttemptKey: string;
   readonly dotyposCustomerId: string;
   readonly customerAccessCode: string;
   readonly reservationDetails: StoredWorkspaceReservationDetails;
@@ -60,8 +62,14 @@ export interface WorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
-  readonly findByIntentKey: (
-    reservationIntentKey: string
+  readonly findByAttemptKey: (
+    checkoutAttemptKey: string
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
+  readonly findCurrentByCheckoutSessionKey: (
+    checkoutSessionKey: string
   ) => Effect.Effect<
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
@@ -109,6 +117,12 @@ export interface WorkspaceReservationRepository {
     WorkspaceReservation | null,
     EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
   >;
+  readonly claimSupersessionCancellation: (
+    id: string
+  ) => Effect.Effect<
+    WorkspaceReservation | null,
+    EffectDrizzleQueryError | WorkspaceReservationDetailsMalformedError
+  >;
   readonly markCancelled: (input: {
     readonly id: string;
     readonly cancelledAt: Temporal.Instant;
@@ -116,6 +130,17 @@ export interface WorkspaceReservationRepository {
   }) => Effect.Effect<
     void,
     EffectDrizzleQueryError | WorkspaceReservationStateError
+  >;
+  readonly completeSupersessionAndCreateDraft: (input: {
+    readonly cancelledReservationId: string;
+    readonly cancelledAt: Temporal.Instant;
+    readonly replacement: CreateWorkspaceReservationInput;
+  }) => Effect.Effect<
+    WorkspaceReservation,
+    | EffectDrizzleQueryError
+    | SqlError.SqlError
+    | WorkspaceReservationDetailsMalformedError
+    | WorkspaceReservationStateError
   >;
   readonly markCancellationFailed: (input: {
     readonly id: string;
@@ -242,7 +267,8 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
         function* (input) {
           const row = {
             id: postgresUuidV7,
-            reservationIntentKey: input.reservationIntentKey,
+            checkoutSessionKey: input.checkoutSessionKey,
+            checkoutAttemptKey: input.checkoutAttemptKey,
             correlationId: postgresUuidV7,
             dotyposCustomerId: input.dotyposCustomerId,
             customerAccessCode: input.customerAccessCode,
@@ -262,49 +288,89 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
 
           if (inserted) return yield* decodeWorkspaceReservation(inserted);
 
-          const [existing] = yield* db
+          const [existingAttempt] = yield* db
             .select()
             .from(workspaceReservations)
             .where(
               eq(
-                workspaceReservations.reservationIntentKey,
-                input.reservationIntentKey
+                workspaceReservations.checkoutAttemptKey,
+                input.checkoutAttemptKey
               )
             )
             .limit(1);
 
-          if (!existing) {
+          if (existingAttempt) {
+            return yield* decodeWorkspaceReservation(existingAttempt);
+          }
+
+          const [currentAttempt] = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.checkoutSessionKey,
+                  input.checkoutSessionKey
+                ),
+                sql`${workspaceReservations.reservationState} <> 'cancelled'`
+              )
+            )
+            .orderBy(desc(workspaceReservations.createdAt))
+            .limit(1);
+
+          if (!currentAttempt) {
             return yield* Effect.die(
               "Workspace reservation insert returned no row."
             );
           }
-          return yield* decodeWorkspaceReservation(existing);
+          return yield* decodeWorkspaceReservation(currentAttempt);
         },
         (effect, input) =>
           effect.pipe(
             Effect.annotateLogs({
-              reservationIntentKey: input.reservationIntentKey,
+              checkoutSessionKey: input.checkoutSessionKey,
+              checkoutAttemptKey: input.checkoutAttemptKey,
               dotyposCustomerId: input.dotyposCustomerId,
             })
           )
       ),
       findById,
-      findByIntentKey: Effect.fn("workspaceReservations.findByIntentKey")(
-        function* (reservationIntentKey) {
+      findByAttemptKey: Effect.fn("workspaceReservations.findByAttemptKey")(
+        function* (checkoutAttemptKey) {
           const [reservation] = yield* db
             .select()
             .from(workspaceReservations)
             .where(
-              eq(
-                workspaceReservations.reservationIntentKey,
-                reservationIntentKey
-              )
+              eq(workspaceReservations.checkoutAttemptKey, checkoutAttemptKey)
             )
             .limit(1);
           return yield* decodeOptionalWorkspaceReservation(reservation);
         },
-        (effect, reservationIntentKey) =>
-          effect.pipe(Effect.annotateLogs({ reservationIntentKey }))
+        (effect, checkoutAttemptKey) =>
+          effect.pipe(Effect.annotateLogs({ checkoutAttemptKey }))
+      ),
+      findCurrentByCheckoutSessionKey: Effect.fn(
+        "workspaceReservations.findCurrentByCheckoutSessionKey"
+      )(
+        function* (checkoutSessionKey) {
+          const [reservation] = yield* db
+            .select()
+            .from(workspaceReservations)
+            .where(
+              and(
+                eq(
+                  workspaceReservations.checkoutSessionKey,
+                  checkoutSessionKey
+                ),
+                sql`${workspaceReservations.reservationState} <> 'cancelled'`
+              )
+            )
+            .orderBy(desc(workspaceReservations.createdAt))
+            .limit(1);
+          return yield* decodeOptionalWorkspaceReservation(reservation);
+        },
+        (effect, checkoutSessionKey) =>
+          effect.pipe(Effect.annotateLogs({ checkoutSessionKey }))
       ),
       updateReservationDetails: Effect.fn(
         "workspaceReservations.updateReservationDetails"
@@ -453,6 +519,30 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           return yield* decodeOptionalWorkspaceReservation(claimed);
         }
       ),
+      claimSupersessionCancellation: Effect.fn(
+        "workspaceReservations.claimSupersessionCancellation"
+      )(function* (id) {
+        const [claimed] = yield* db
+          .update(workspaceReservations)
+          .set({
+            reservationState: "cancelling",
+            updatedAt: Temporal.Now.instant(),
+          })
+          .where(
+            and(
+              eq(workspaceReservations.id, id),
+              eq(workspaceReservations.reservationState, "held"),
+              inArray(workspaceReservations.paymentState, [
+                "not_started",
+                "failed",
+                "cancelled",
+                "expired",
+              ])
+            )
+          )
+          .returning();
+        return yield* decodeOptionalWorkspaceReservation(claimed);
+      }),
       markCancelled: Effect.fn("workspaceReservations.markCancelled")(
         function* (input) {
           const updated = yield* db
@@ -480,6 +570,72 @@ export const WorkspaceReservationRepositoryLive = Layer.effect(
           );
         }
       ),
+      completeSupersessionAndCreateDraft: Effect.fn(
+        "workspaceReservations.completeSupersessionAndCreateDraft"
+      )(function* (input) {
+        const transaction = db.transaction((tx) =>
+          Effect.gen(function* () {
+            const [cancelled] = yield* tx
+              .update(workspaceReservations)
+              .set({
+                reservationState: "cancelled",
+                reservationCancelledAt: input.cancelledAt,
+                updatedAt: input.cancelledAt,
+              })
+              .where(
+                and(
+                  eq(workspaceReservations.id, input.cancelledReservationId),
+                  eq(workspaceReservations.reservationState, "cancelling"),
+                  sql`${workspaceReservations.paymentState} <> 'pending'`,
+                  sql`${workspaceReservations.paymentState} <> 'paid'`,
+                  sql`${workspaceReservations.reservationConfirmedAt} is null`
+                )
+              )
+              .returning({ id: workspaceReservations.id });
+
+            if (!cancelled) {
+              return yield* new WorkspaceReservationStateError({
+                operation:
+                  "workspaceReservations.completeSupersessionAndCreateDraft",
+                reservationId: input.cancelledReservationId,
+                message:
+                  "Only an unpaid supersession cancellation can create its replacement.",
+              });
+            }
+
+            const [replacement] = yield* tx
+              .insert(workspaceReservations)
+              .values({
+                id: postgresUuidV7,
+                checkoutSessionKey: input.replacement.checkoutSessionKey,
+                checkoutAttemptKey: input.replacement.checkoutAttemptKey,
+                correlationId: postgresUuidV7,
+                dotyposCustomerId: input.replacement.dotyposCustomerId,
+                customerAccessCode: input.replacement.customerAccessCode,
+                reservationState: "draft",
+                paymentState: "not_started",
+                fulfillmentState: "not_started",
+                reservationDetails: input.replacement.reservationDetails,
+                locale: input.replacement.locale,
+                reservationHoldExpiresAt:
+                  input.replacement.reservationHoldExpiresAt,
+              })
+              .returning();
+
+            if (!replacement) {
+              return yield* Effect.die(
+                "Workspace replacement reservation insert returned no row."
+              );
+            }
+
+            return replacement;
+          })
+        );
+
+        return yield* transaction.pipe(
+          Effect.flatMap(decodeWorkspaceReservation)
+        );
+      }),
       markCancellationFailed: Effect.fn(
         "workspaceReservations.markCancellationFailed"
       )(function* (input) {

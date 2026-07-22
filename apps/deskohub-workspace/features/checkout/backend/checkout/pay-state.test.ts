@@ -63,6 +63,7 @@ const buildState = (overrides: Partial<SignedPayState> = {}) => ({
         reservation: baseReservation,
         quote: buildWorkspaceCheckoutQuote(baseReservation),
         orderId: "pay-state-test-order-id",
+        checkoutSessionId: "pay-state-test-checkout-session-id",
         submittedCode: canonicalCode,
         ttlMilliseconds: 10 * 60 * 1000,
       },
@@ -121,6 +122,7 @@ describe("Pay URL state", () => {
       runSync(openPayState(token, { keys: [fixedKey], now: () => fixedNow }))
     ).toEqual(state);
     expect(state.orderId).toBe("pay-state-test-order-id");
+    expect(state.checkoutSessionId).toBe("pay-state-test-checkout-session-id");
     expect(state.submittedCode).toBe(canonicalCode);
     expect(token.split(".")).toHaveLength(4);
   });

@@ -7,6 +7,7 @@ import { Suspense } from "react";
 import {
   buildFreshCheckoutPayPath,
   openPayState,
+  PayableReservationService,
   payStateTokenQueryParam,
 } from "@/features/checkout/backend/checkout";
 import { CheckoutFlowLayout } from "@/features/checkout/components/checkout-flow-layout";
@@ -104,27 +105,35 @@ async function CheckoutPayContent({
   }
 
   const opened = await Effect.gen(function* () {
+    const payableReservations = yield* PayableReservationService;
     const state = yield* openPayState(payStateToken);
     const freshPayUrl = yield* buildFreshCheckoutPayPath({
       locale: state.locale,
       reservation: state.reservation,
       quote: state.quote,
       orderId: state.orderId,
+      checkoutSessionId: state.checkoutSessionId,
       submittedCode: state.submittedCode,
     }).pipe(
       Effect.when(Effect.succeed(state.changedKeys !== undefined)),
       Effect.map(Option.getOrUndefined)
     );
 
+    yield* payableReservations.requireCurrent({
+      orderId: state.orderId,
+      checkoutSessionId: state.checkoutSessionId,
+    });
+
     return { state, freshPayUrl };
   }).pipe(
+    Effect.provide(PayableReservationService.LiveWithDependencies),
     Effect.catch((cause) =>
-      Effect.logWarning("Checkout pay state token could not be opened", {
+      Effect.logWarning("Checkout pay state could not be loaded", {
         cause,
-        reason: "openPayStateFailed",
+        reason: "payStateUnavailable",
       }).pipe(Effect.as(undefined))
     ),
-    runWorkspaceEffect("checkout.pay.open-state")
+    runWorkspaceEffect("checkout.pay.load")
   );
 
   if (!opened || opened.state.locale !== locale) {
@@ -136,7 +145,15 @@ async function CheckoutPayContent({
   const { freshPayUrl, state } = opened;
 
   return runWithRequestLocale(locale, () => (
-    <CheckoutFlowLayout activeStepKey="pay" locale={locale}>
+    <CheckoutFlowLayout
+      activeStepKey="pay"
+      locale={locale}
+      stepHrefs={{
+        order: `/${locale}/checkout/order?${new URLSearchParams({
+          [payStateTokenQueryParam]: payStateToken,
+        })}`,
+      }}
+    >
       <CheckoutPayPage
         changedKeys={state.changedKeys}
         freshPayUrl={freshPayUrl}

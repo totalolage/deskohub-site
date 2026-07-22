@@ -56,7 +56,7 @@ Advertised, signed, and freshly affirmed quotes always retain the catalog curren
 | --- | --- | --- |
 | Customer name, email, phone | Dotypos customer | Store only `dotypos_customer_id`. Never store as columns, JSON, event text, or raw payload. |
 | Dotypos reservation date, service options, staff note, reservation status | Dotypos reservation | Store `dotypos_reservation_id` and local workflow timestamps/states only. Read Dotypos when reservation facts are needed. |
-| Reservation intent idempotency | Deskohub workflow | Store only the HMAC intent key. The object payload used to derive it is transient and must not be persisted. |
+| Checkout session and attempt idempotency | Deskohub workflow | Store only the HMAC session and attempt keys. The object payloads used to derive them are transient and must not be persisted. |
 | Payment session and terminal state | Nexi plus Deskohub workflow | Store payment attempts, Nexi order IDs, non-PII security tokens, operation IDs/statuses, redirect URL if needed for retry support, and local payment state. |
 | Nexi webhooks | Nexi plus Deskohub workflow | Store dedupe identity and normalized processing state. Never store raw notification bodies or optional sensitive provider fields. |
 | Legal acceptance | Deskohub legal evidence | Store document keys, paths, hashes, acceptance booleans, timestamps, locale, source, and idempotency keys. Never store rendered legal documents or customer contact data. |
@@ -68,7 +68,7 @@ No customer PII may be persisted in database columns, JSON, text messages, or ev
 Allowed local values:
 
 - Dotypos customer IDs and reservation IDs.
-- Deskohub IDs, correlation IDs, HMAC intent keys, payment attempt IDs, webhook event IDs, and provider operation IDs.
+- Deskohub IDs, correlation IDs, HMAC checkout session and attempt keys, payment attempt IDs, webhook event IDs, and provider operation IDs.
 - Nexi `securityToken`, because it is short-lived non-PII and needed for payment-attempt safety.
 - Legal document paths and hashes.
 - Local state enums, timestamps, and normalized failure codes.
@@ -76,7 +76,7 @@ Allowed local values:
 
 Enforcement boundary:
 
-- Server actions may hold customer PII in memory only long enough to find or create the Dotypos customer and derive the transient intent-key payload.
+- Server actions may hold customer PII in memory only long enough to find or create the Dotypos customer and derive the transient checkout-key payloads.
 - Repository inputs must be shaped so PII has no destination field.
 - `jsonb` columns must use schemas that exclude customer contact fields, free-form customer notes, raw provider envelopes, and raw Dotypos responses.
 - Logs may contain PII only under the application's global filtering policy.
@@ -91,7 +91,8 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 | Column | Type | Required | Purpose |
 | --- | --- | --- | --- |
 | `id` | text | yes | Local workflow ID. Stable route/support reference. |
-| `reservation_intent_key` | text | yes | HMAC idempotency key for duplicate submits of the same checkout intent and same reservation details. Stores only the digest. |
+| `checkout_session_key` | text | yes | HMAC key grouping deliberate reservation submissions while the customer moves between Reservation and Pay. Stores only the digest. |
+| `checkout_attempt_key` | text | yes | HMAC idempotency key for one mounted-form submission and its immediate retry. Includes the normalized reservation details and stores only the digest. |
 | `correlation_id` | text | yes | Non-PII cross-system tracing ID. Unique. |
 | `dotypos_customer_id` | text | yes | Dotypos customer that owns customer PII. |
 | `dotypos_reservation_id` | text | no | Dotypos reservation hold/final reservation ID. Null until Dotypos creates it. |
@@ -115,7 +116,9 @@ One row per Deskohub checkout workflow for a Dotypos reservation hold and its pa
 Indexes and constraints:
 
 - Primary key on `id`.
-- Unique index on `reservation_intent_key`.
+- Unique index on `checkout_attempt_key`.
+- Partial unique index on `checkout_session_key` while `reservation_state <> 'cancelled'`.
+- Lookup index on `(checkout_session_key, created_at)`.
 - Unique index on `correlation_id`.
 - Partial unique index on `dotypos_reservation_id` where not null.
 - Partial index on `reservation_hold_expires_at` for `reservation_state = 'held'`.
@@ -235,7 +238,8 @@ Allowed reservation transitions:
 Forbidden reservation transitions:
 
 - Any transition from `cancelled` or `confirmed` without an explicit manual repair path.
-- Any creation of a second Dotypos reservation for the same `reservation_intent_key`.
+- Any creation of a second Dotypos reservation for the same `checkout_attempt_key`.
+- Any creation of a replacement Dotypos reservation in the same checkout session before the prior local and Dotypos reservations are cancelled.
 - Any cancellation finalization unless the row is still in `cancelling`, unpaid, and unconfirmed.
 
 ### Payment State
@@ -286,53 +290,25 @@ Allowed fulfillment transitions:
 
 Fulfillment is allowed only when `payment_state = 'paid'`.
 
-## Intent-Key HMAC
+## Checkout Session And Attempt HMACs
 
-The reservation intent key deduplicates repeated submits of the same checkout intent and same reservation details before payment. Store only the HMAC digest in `workspace_reservations.reservation_intent_key` and legal evidence `idempotency_key`.
+`checkoutSessionId` groups the reservation rows created while a customer moves back and forth between Reservation and Pay. It remains stable when the customer returns to the form and deliberately submits again. `checkoutAttemptId` identifies one mounted-form submission and its immediate transport retry; a changed form value or a new form mount creates a new attempt.
 
-A fresh form/session must generate a new opaque `reservationIntentId`, so a customer can submit a second reservation with the same date, product, and contact details. The intent key must also include normalized reservation details, so changing date/tier/options within an existing mounted form does not reuse an incompatible Dotypos hold.
-
-Use `JSON.stringify` on a fixed object payload. Do not sort keys. Do not build a delimiter-joined tuple. The object construction order is the contract.
-
-Example transient payload before HMAC:
-
-```json
-{
-  "schema": "workspace-reservation-intent-key",
-  "schemaVersion": 2,
-  "reservationIntentId": "opaque-client-intent-id",
-  "name": "Ada Lovelace",
-  "email": "ada@example.test",
-  "phone": "+420777000111",
-  "date": "2026-06-10",
-  "entryTier": "basic",
-  "coffee": false,
-  "monitorOption": null
-}
-```
-
-Example implementation shape:
+Only HMAC digests are stored in `workspace_reservations.checkout_session_key` and `workspace_reservations.checkout_attempt_key`. The opaque browser IDs are carried only in signed checkout state and action input. Both key payloads use `JSON.stringify` on a fixed object shape; do not sort keys or build a delimiter-joined tuple.
 
 ```ts
-const intentKeyPayload = {
-  schema: "workspace-reservation-intent-key",
-  schemaVersion: 2,
-  reservationIntentId,
-  name: normalizedName,
-  email: normalizedEmail,
-  phone: normalizedPhone,
-  date: reservation.date,
-  entryTier: reservation.entryTier,
-  coffee: reservation.coffee,
-  monitorOption: reservation.monitorOption ?? null,
-};
+const checkoutSessionKey = hmac({
+  checkoutSessionId,
+});
 
-const reservationIntentKey = createHmac("sha256", secret)
-  .update(JSON.stringify(intentKeyPayload))
-  .digest("hex");
+const checkoutAttemptKey = hmac({
+  checkoutSessionId,
+  checkoutAttemptId,
+  reservation: normalizedReservation,
+});
 ```
 
-The payload contains customer PII transiently in memory. It must not be persisted. Logs are subject to the application's global filtering policy. The stored HMAC is non-PII for this system's purposes.
+The normalized reservation is included so a replayed opaque attempt ID with changed values cannot reuse a hold created for different facts; its PII exists only in the transient HMAC payload. An exact attempt-key match makes an immediate retry idempotent. A new attempt in the same session does not mutate or reuse the existing Dotypos reservation: the server claims the previous unpaid hold for cancellation, verifies its live Dotypos status, cancels it when `NEW`, marks its local row cancelled, and creates a fresh local and Dotypos reservation. If the previous row has pending/paid payment, is no longer pending in Dotypos, or its Dotypos cancellation fails, the server leaves that row to its normal lifecycle and rotates to a fresh checkout session before creating the new reservation. Every created row keeps its original cleanup deadline and scheduled cleanup job.
 
 ## Sequence Diagrams
 
@@ -349,11 +325,19 @@ sequenceDiagram
   App->>App: Open anonymous advertised-price snapshot
   App->>App: Validate input and legal consent
   App->>App: Affirm only its advertised anonymous automatic discounts
-  App->>App: Build intent-key object and HMAC via JSON.stringify
+  App->>App: Derive checkout session and attempt HMACs
   App->>Dotypos: Find or create customer using PII
   Dotypos-->>App: dotyposCustomerId
   App->>App: Evaluate customer discount for the first signed summary
-  App->>DB: Insert workspace_reservations(draft, not_started, not_started)
+  alt same attempt is already held
+    App->>DB: Reuse exact attempt row
+  else session has an earlier unpaid hold
+    App->>DB: Claim earlier row for cancellation
+    App->>Dotypos: Cancel earlier NEW reservation
+    App->>DB: Mark earlier row cancelled and insert replacement draft
+  else no current row in session
+    App->>DB: Insert workspace_reservations(draft, not_started, not_started)
+  end
   App->>DB: Claim reservation_state=creating_hold
   App->>Dotypos: Create NEW reservation hold
   Dotypos-->>App: dotyposReservationId
@@ -502,7 +486,7 @@ sequenceDiagram
 - Confirm the database branch is development/preview, not production, before schema reset or test checkout.
 - Confirm migrations do not create `checkout_return_state_tokens`.
 - Confirm `workspace_reservations`, `payment_attempts`, `webhook_events`, and `legal_evidence_events` have no PII-capable columns or raw payload columns.
-- Confirm intent-key derivation stores only the HMAC and uses `JSON.stringify` on the fixed object payload.
+- Confirm checkout session/attempt key derivation stores only HMAC digests and uses `JSON.stringify` on fixed object payloads.
 - Confirm Dotypos test customer lookup/create is the only persistence destination for customer name, email, and phone.
 - Confirm Dotypos reservation is created as a hold before payment only for the approved hold workflow, and Dotypos remains the source of reservation facts.
 - Confirm Nexi `securityToken` is stored only on `payment_attempts` and is not copied to webhook events.

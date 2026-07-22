@@ -7,16 +7,23 @@ import {
 import {
   coworkReservationDefaultValues,
   getCoworkTierRequiresMonitorOption,
+  type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { CheckoutFlowLayout } from "./checkout-flow-layout";
 
 type CheckoutOrderPageProps = {
-  locale: Locale;
+  readonly initialReservation?: NormalizedCoworkReservationOrder;
+  readonly locale: Locale;
+  readonly checkoutSessionId?: string;
 };
 
-export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
+export function CheckoutOrderPage({
+  initialReservation,
+  locale,
+  checkoutSessionId,
+}: CheckoutOrderPageProps) {
   const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
-    coworkReservationDefaultValues.entryTier
+    initialReservation?.entryTier ?? coworkReservationDefaultValues.entryTier
   );
 
   return (
@@ -30,7 +37,11 @@ export function CheckoutOrderPage({ locale }: CheckoutOrderPageProps) {
           />
         }
       >
-        <ReservationForm locale={locale} />
+        <ReservationForm
+          initialReservation={initialReservation}
+          locale={locale}
+          checkoutSessionId={checkoutSessionId}
+        />
       </Suspense>
     </CheckoutFlowLayout>
   );

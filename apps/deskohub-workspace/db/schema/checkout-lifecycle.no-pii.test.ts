@@ -48,13 +48,15 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
     }
   });
 
-  test("intent key uses JSON.stringify payload and does not use tuple delimiter", async () => {
+  test("checkout keys use JSON.stringify payload and do not use tuple delimiters", async () => {
     const source = await readAppFile(
-      "features/reservation/actions/prepare-pay-state.ts"
+      "features/checkout/backend/checkout/checkout-session-key.server.ts"
     );
 
-    expect(source).toContain('schema: "workspace-reservation-intent-key"');
-    expect(source).toContain("reservationIntentId");
+    expect(source).not.toContain("schema:");
+    expect(source).not.toContain("schemaVersion");
+    expect(source).toContain("checkoutSessionId");
+    expect(source).toContain("checkoutAttemptId");
     expect(source).toContain(".update(JSON.stringify(payload))");
     expect(source).not.toContain('.join("\\u001f")');
     expect(source).not.toContain("Effect.annotateLogs(input)");

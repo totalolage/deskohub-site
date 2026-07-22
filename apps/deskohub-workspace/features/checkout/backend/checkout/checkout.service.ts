@@ -62,6 +62,10 @@ import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
 import { CheckoutPricingServiceLiveWithDependencies } from "./checkout-pricing.runtime";
 import { CheckoutPricingService } from "./checkout-pricing.service";
 import { openPayState, type SignedPayState } from "./pay-state.server";
+import {
+  PayableReservationService,
+  type PayableReservationUnavailableError,
+} from "./payable-reservation.service";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
 const decodeLegalEvidenceMap = Schema.decodeUnknownSync(
@@ -303,6 +307,7 @@ const getFreshPayUrl: (input: {
   readonly reservation: NormalizedCoworkReservationOrder;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
+  readonly checkoutSessionId?: string;
   readonly submittedCode: CanonicalDiscountCode | undefined;
   readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
 }) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
@@ -362,11 +367,13 @@ export const CheckoutServiceLive = Layer.effect(
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const posthogEvents = yield* PostHogEventService;
     const pricing = yield* CheckoutPricingService;
+    const payableReservations = yield* PayableReservationService;
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
         readonly workspaceReservationId: string;
         readonly correlationId: string;
+        readonly checkoutSessionId?: string;
         readonly locale: Locale;
         readonly total: WorkspaceCheckoutQuote["summary"]["total"];
       }) {
@@ -388,6 +395,14 @@ export const CheckoutServiceLive = Layer.effect(
         );
         yield* Effect.annotateLogsScoped({ nexiAmount });
         yield* Effect.logDebug("Checkout provider session amount encoded");
+
+        yield* payableReservations.requireCurrent({
+          orderId: input.workspaceReservationId,
+          checkoutSessionId: input.checkoutSessionId,
+        });
+        yield* Effect.logDebug(
+          "Checkout provider session reservation revalidated"
+        );
 
         const attempt = yield* paymentAttempts.create({
           workspaceReservationId: input.workspaceReservationId,
@@ -514,17 +529,22 @@ export const CheckoutServiceLive = Layer.effect(
           yield* Effect.logInfo("Hosted payment checkout pay state opened");
 
           const data = state.reservation;
-          yield* Effect.logDebug(
-            "Hosted payment checkout reservation lookup started",
-            {
+          const reservation = yield* payableReservations
+            .requireCurrent({
               orderId: state.orderId,
-            }
-          );
-          const reservation = yield* reservations.findById(state.orderId);
+              checkoutSessionId: state.checkoutSessionId,
+            })
+            .pipe(
+              Effect.catchTag(
+                "PayableReservationUnavailableError",
+                (cause: PayableReservationUnavailableError) =>
+                  Effect.logInfo(
+                    "Hosted payment checkout reservation is unavailable",
+                    { orderId: state.orderId, reason: cause.reason }
+                  ).pipe(Effect.as(null))
+              )
+            );
           yield* Effect.annotateLogsScoped({ reservation });
-          yield* Effect.logDebug(
-            "Hosted payment checkout reservation lookup completed"
-          );
 
           if (!reservation) {
             yield* Effect.logWarning(
@@ -653,6 +673,7 @@ export const CheckoutServiceLive = Layer.effect(
               reservation: data,
               quote,
               orderId: reservation.id,
+              checkoutSessionId: state.checkoutSessionId,
               submittedCode: state.submittedCode,
               changedKeys,
             });
@@ -726,6 +747,7 @@ export const CheckoutServiceLive = Layer.effect(
           return yield* startProviderSession({
             workspaceReservationId: reservation.id,
             correlationId: reservation.correlationId,
+            checkoutSessionId: state.checkoutSessionId,
             locale,
             total: quote.payment.expectedPrice,
           });
@@ -745,6 +767,7 @@ export const CheckoutServiceLive = Layer.effect(
 );
 
 export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
+  Layer.provide(PayableReservationService.Live),
   Layer.provide(LegalEvidenceEventRepositoryLive),
   Layer.provide(PostHogEventServiceLive),
   Layer.provide(PaymentAttemptRepositoryLive),

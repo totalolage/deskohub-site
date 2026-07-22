@@ -5,6 +5,8 @@ import type { WorkspaceE2EError } from "./errors";
 
 export type CheckoutRow = {
   reservation_id: string;
+  checkout_session_key: string;
+  checkout_attempt_key: string;
   correlation_id: string;
   dotypos_customer_id: string | null;
   dotypos_reservation_id: string | null;
@@ -15,6 +17,7 @@ export type CheckoutRow = {
   reservation_details: unknown;
   locale: string;
   reservation_created_at: Date | null;
+  reservation_hold_expires_at: Date | null;
   reservation_confirmed_at: Date | null;
   reservation_cancelled_at: Date | null;
   reservation_hold_expired_at: Date | null;

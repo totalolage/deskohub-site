@@ -49,10 +49,12 @@ import {
   getCoworkReservationOrder,
   getCoworkTierIncludesCourtesyCoffee,
   getCoworkTierRequiresMonitorOption,
+  type NormalizedCoworkReservationOrder,
 } from "@/features/reservation/cowork-reservation";
 import { normalizeCoworkReservationProduct } from "@/features/reservation/cowork-reservation-product";
 import { getReservationAvailabilityUnavailableMessage } from "@/features/reservation/reservation.i18n";
 import {
+  getReservationDefaultValuesFromPayState,
   getReservationDefaultValuesFromSearchParams,
   getWorkspaceAvailabilityQueryFromReservationSearchParams,
 } from "@/features/reservation/reservation-checkout-query";
@@ -90,7 +92,9 @@ import { cn } from "@/shared/utils";
 import { useWorkspaceAction } from "@/shared/utils/use-workspace-action";
 
 type ReservationFormProps = {
+  initialReservation?: NormalizedCoworkReservationOrder;
   locale: Locale;
+  checkoutSessionId?: string;
 };
 
 type ReservationFormFallbackProps = Pick<ReservationFormProps, "locale"> & {
@@ -233,16 +237,26 @@ const getSanitizedUtmParams = (
   return sanitizedParams;
 };
 
-const createReservationIntentId = () =>
+const createCheckoutIdentifier = () =>
   globalThis.crypto?.randomUUID?.() ??
-  `reservation-intent-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  `checkout-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-export function ReservationForm({ locale }: ReservationFormProps) {
+export function ReservationForm({
+  initialReservation,
+  locale,
+  checkoutSessionId: initialCheckoutSessionId,
+}: ReservationFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isAccepted } = useCookieConsent();
   const hasTrackedSuccessfulSubmission = useRef(false);
-  const [reservationIntentId] = useState(createReservationIntentId);
+  const [checkoutSessionId] = useState(
+    () => initialCheckoutSessionId ?? createCheckoutIdentifier()
+  );
+  const [checkoutAttemptId, setCheckoutAttemptId] = useState(
+    createCheckoutIdentifier
+  );
+  const lastSubmittedReservationRef = useRef<string | null>(null);
   const [submissionMessage, setSubmissionMessage] =
     useState<SubmissionMessage | null>(null);
   const sanitizedUtmParams = useMemo(
@@ -250,8 +264,11 @@ export function ReservationForm({ locale }: ReservationFormProps) {
     [searchParams]
   );
   const defaultValues = useMemo(
-    () => getReservationDefaultValuesFromSearchParams(searchParams),
-    [searchParams]
+    () =>
+      initialReservation
+        ? getReservationDefaultValuesFromPayState(initialReservation)
+        : getReservationDefaultValuesFromSearchParams(searchParams),
+    [initialReservation, searchParams]
   );
   const initialAvailabilityQuery = useMemo(
     () =>
@@ -460,12 +477,25 @@ export function ReservationForm({ locale }: ReservationFormProps) {
       }
       hasTrackedSuccessfulSubmission.current = false;
       window.scrollTo({ top: 0, behavior: "instant" });
+      const reservation = getCoworkReservationOrder(data);
+      const reservationFingerprint = JSON.stringify(reservation);
+      const effectiveCheckoutAttemptId =
+        lastSubmittedReservationRef.current &&
+        lastSubmittedReservationRef.current !== reservationFingerprint
+          ? createCheckoutIdentifier()
+          : checkoutAttemptId;
+      if (effectiveCheckoutAttemptId !== checkoutAttemptId) {
+        setCheckoutAttemptId(effectiveCheckoutAttemptId);
+      }
+      lastSubmittedReservationRef.current = reservationFingerprint;
+
       sendReservation({
         locale,
-        reservationIntentId,
+        checkoutSessionId,
+        checkoutAttemptId: effectiveCheckoutAttemptId,
         advertisedPriceToken: advertisedPrice.advertisedPriceToken,
         legalConsent: data.legalConsent,
-        reservation: getCoworkReservationOrder(data),
+        reservation,
       });
     })(event);
   };

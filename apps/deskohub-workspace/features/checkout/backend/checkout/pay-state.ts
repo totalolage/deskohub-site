@@ -28,6 +28,7 @@ export const payStateDefaultTtlMilliseconds = 10 * 60 * 1000;
 export const signedPayStateSchema = Schema.Struct({
   ...workspaceCheckoutPriceStateSchema.fields,
   orderId: Schema.NonEmptyString,
+  checkoutSessionId: Schema.optional(Schema.NonEmptyString),
   reservation: normalizedCoworkReservationOrderSchema,
   acceptedTotal: nonNegativeWorkspaceMoneyCodec,
   submittedCode: Schema.optional(canonicalDiscountCodeSchema),
@@ -54,6 +55,7 @@ export type BuildSignedPayStateInput = {
   >;
   readonly quote: WorkspaceCheckoutQuote;
   readonly orderId: string;
+  readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly ttlMilliseconds?: number;
@@ -110,6 +112,9 @@ export const buildSignedPayState = Effect.fn("payState.build")(function* (
     ...claims,
     locale: input.locale,
     orderId: input.orderId,
+    ...(input.checkoutSessionId && {
+      checkoutSessionId: input.checkoutSessionId,
+    }),
     reservation: Match.value(input.quote.order).pipe(
       Match.discriminatorsExhaustive("entryTier")({
         basic: (product) => ({ ...reservationBase, ...product }),

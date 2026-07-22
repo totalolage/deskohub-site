@@ -1,5 +1,67 @@
 import type { CheckoutData } from "./types";
 
+export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
+  if (data.expectedReservationDetails.kind !== "cowork") {
+    throw new Error("Reservation backfill assertions require cowork data");
+  }
+
+  const expectedReservation = data.expectedReservationDetails;
+
+  return `
+(() => {
+  const expected = ${JSON.stringify({
+    coffee: expectedReservation.coffee,
+    date: data.date,
+    email: data.email,
+    entryTier: expectedReservation.entryTier,
+    message: data.message,
+    monitorOption: expectedReservation.monitorOption ?? null,
+    name: data.name,
+    phone: data.phone,
+  })};
+  const fail = (field) => {
+    throw new Error('restored reservation ' + field + ' did not match');
+  };
+  const value = (selector, field) => {
+    const element = document.querySelector(selector);
+    if (!(element instanceof HTMLInputElement || element instanceof HTMLTextAreaElement)) fail(field);
+    return element.value;
+  };
+
+  const tier = document.querySelector('input[name="entryTier"]:checked');
+  if (!(tier instanceof HTMLInputElement) || tier.value !== expected.entryTier) fail('entry tier');
+
+  const dateButton = document.querySelector('button[aria-haspopup="dialog"]');
+  if (!(dateButton instanceof HTMLButtonElement)) fail('date');
+  const restoredDate = new Intl.DateTimeFormat(${JSON.stringify(data.locale)}, {
+    dateStyle: 'full',
+    timeZone: 'Europe/Prague',
+  }).format(new Date(expected.date + 'T12:00:00Z'));
+  if ((dateButton.textContent ?? '').trim() !== restoredDate) fail('date');
+
+  const coffee = document.querySelector('[role="switch"]');
+  if (!(coffee instanceof HTMLButtonElement) || coffee.getAttribute('aria-checked') !== String(expected.coffee)) fail('coffee');
+  if (value('input[name="email"]', 'email') !== expected.email) fail('email');
+  if (value('input[name="phone"]', 'phone') !== expected.phone) fail('phone');
+  if (value('input[name="name"]', 'name') !== expected.name) fail('name');
+  if (value('textarea[name="message"]', 'message') !== expected.message) fail('message');
+
+  const monitorInputs = [...document.querySelectorAll('input[type="radio"]')]
+    .filter((input) => input instanceof HTMLInputElement && input.name !== 'entryTier');
+  const selectedMonitor = monitorInputs.find((input) => input.checked);
+  if (expected.monitorOption === null) {
+    if (monitorInputs.length !== 0) fail('monitor option');
+  } else if (!(selectedMonitor instanceof HTMLInputElement) || selectedMonitor.value !== expected.monitorOption) {
+    fail('monitor option');
+  }
+
+  const consent = document.querySelector('#reservation-privacy-consent');
+  if (!(consent instanceof HTMLButtonElement) || consent.getAttribute('aria-checked') !== 'false') fail('privacy consent reset');
+  return true;
+})()
+`;
+};
+
 export const submitCoworkReservationScript = `
 (async () => {
   const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -88,17 +150,6 @@ export const getSubmitContactFormScript = (data: {
   await waitUntil(() => !button.disabled, 'contact submit button stayed disabled');
   button.click();
   return location.href;
-})()
-`;
-
-export const clickStatusReserveAgainScript = `
-(() => {
-  const link = [...document.querySelectorAll('a')].find((candidate) => /Start a new reservation/i.test(candidate.textContent ?? ''));
-  if (!(link instanceof HTMLAnchorElement)) {
-    throw new Error('start a new reservation link not found');
-  }
-  link.click();
-  return link.href;
 })()
 `;
 

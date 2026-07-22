@@ -215,6 +215,17 @@ export const pressBrowserKey = (
     timeoutMs: options.timeoutMs ?? 60_000,
   }).pipe(Effect.asVoid);
 
+export const activateBrowserElement = (
+  run: Runner,
+  session: string,
+  selector: string,
+  options: { readonly timeoutMs?: number } = {}
+): Effect.Effect<void, WorkspaceE2EError> =>
+  Effect.gen(function* () {
+    yield* focusBrowserElement(run, session, selector, options);
+    yield* pressBrowserKey(run, session, "Enter", options);
+  });
+
 export const readInteractiveSnapshot = (
   run: Runner,
   session: string,

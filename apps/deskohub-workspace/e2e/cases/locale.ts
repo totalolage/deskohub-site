@@ -1,9 +1,7 @@
 import { Effect } from "effect";
 import {
-  focusBrowserElement,
+  activateBrowserElement,
   openBrowserPage,
-  pressBrowserKey,
-  requireSnapshotRef,
   waitForBrowserReactHydration,
   waitForBrowserUrl,
 } from "../browser";
@@ -54,30 +52,16 @@ export const assertLocaleSwitcher = ({
     log("Locale switch e2e passed");
   });
 
-const clickLocaleSwitchLink = (
+const activateLocaleSwitchLink = (
   run: Runner,
   session: string,
   locale: CheckoutData["locale"] | "cs-CZ"
 ) =>
   Effect.gen(function* () {
     const timeoutMs = getWorkspaceE2ETimeoutMs("uiTransition");
-    yield* waitForBrowserReactHydration(
-      run,
-      session,
-      'nav[aria-label="Language switcher"] a',
-      { timeoutMs }
-    );
-    const ref = yield* requireSnapshotRef({
-      description: `${locale} locale switch link`,
-      labels:
-        locale === "cs-CZ" ? ["CZECH", "ČEŠTINA"] : ["ENGLISH", "ANGLIČTINA"],
-      role: "link",
-      run,
-      session,
-      timeoutMs,
-    });
-    yield* focusBrowserElement(run, session, ref, { timeoutMs });
-    yield* pressBrowserKey(run, session, "Enter", { timeoutMs });
+    const selector = `nav[aria-label="Language switcher"] a[href^="/${locale}"]`;
+    yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
+    yield* activateBrowserElement(run, session, selector, { timeoutMs });
   });
 
 const switchLocale = (
@@ -87,7 +71,7 @@ const switchLocale = (
   cycle: number
 ) =>
   Effect.gen(function* () {
-    yield* clickLocaleSwitchLink(run, session, locale);
+    yield* activateLocaleSwitchLink(run, session, locale);
     yield* waitForBrowserUrl({
       description: `${locale} locale switch ${cycle}`,
       matches: (url) =>

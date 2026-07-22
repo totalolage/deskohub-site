@@ -23,6 +23,7 @@ import {
   assertPaymentTerminalPath,
   getPaymentTerminalScenarios,
 } from "./payment-terminal";
+import { assertReservationReplacement } from "./reservation-reuse";
 
 export const makeWorkspaceE2ECases = ({
   config,
@@ -44,7 +45,7 @@ export const makeWorkspaceE2ECases = ({
     const terminalScenarios = getPaymentTerminalScenarios();
     const checkoutDates = yield* selectAvailableCoworkDates(
       config,
-      checkoutFlows.length + terminalScenarios.length
+      checkoutFlows.length + terminalScenarios.length + 1
     );
     const cases: WorkspaceE2ECase[] = [
       {
@@ -102,6 +103,39 @@ export const makeWorkspaceE2ECases = ({
         timeoutMs: getWorkspaceE2ETimeoutMs("paymentTerminalCase"),
       });
     }
+
+    const reservationReplacementDate = yield* requireCheckoutDate(
+      checkoutDates,
+      nextDateIndex
+    );
+    const reservationReplacementData = makeCoworkCheckoutData(
+      config.baseUrl,
+      reservationReplacementDate,
+      "cowork-reservation-replacement"
+    );
+    nextDateIndex += 1;
+    const reservationReplacementState = trackCheckoutState(
+      flowStates,
+      reservationReplacementData
+    );
+    cases.push({
+      execute: ({ runStep, session }) =>
+        assertReservationReplacement({
+          config,
+          data: reservationReplacementData,
+          datasourceConfig,
+          run,
+          runStep,
+          session,
+          state: reservationReplacementState,
+        }).pipe(
+          Effect.mapError((cause) =>
+            toWorkspaceE2EError("run reservation replacement e2e case", cause)
+          )
+        ),
+      id: "reservation-replacement",
+      timeoutMs: getWorkspaceE2ETimeoutMs("checkoutCase"),
+    });
 
     for (const flow of checkoutFlows) {
       const date = yield* requireCheckoutDate(checkoutDates, nextDateIndex);
