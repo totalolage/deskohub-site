@@ -7,7 +7,7 @@ import {
   EffectAction,
   type EffectActionBoundary,
 } from "@deskohub/next-effect/effect-action";
-import { Duration, Effect, References } from "effect";
+import { Duration, Effect, type Layer, References } from "effect";
 import type { Locale } from "@/features/i18n";
 import { formatError } from "@/shared/utils/error-formatting";
 import {
@@ -22,30 +22,33 @@ import {
   type WorkspaceRouteFailure,
 } from "./route-failure";
 
-type WorkspaceEffectAction = EffectActionBoundary<
+type WorkspaceEffectAction<ActionR> = EffectActionBoundary<
   string,
   "flattened",
   unknown,
-  { readonly locale: Locale }
+  { readonly locale: Locale },
+  false,
+  ActionR
 >["action"];
 
-export interface WorkspaceEffectDependencies {
+export interface WorkspaceEffectDependencies<ActionR, ActionLE> {
   readonly executor: EffectBoundaryExecutor;
+  readonly actionLayer: Layer.Layer<ActionR, ActionLE, never>;
   readonly readActionHeaders: () => Effect.Effect<Headers, never>;
   readonly scheduleTelemetryFlush: () => Effect.Effect<void, never>;
 }
 
-export interface WorkspaceEffectFacade
+export interface WorkspaceEffectFacade<ActionR = never>
   extends NextEffectBoundary<
     WorkspaceRouteFailure,
     WorkspaceRouteErrorResponse
   > {
-  readonly action: WorkspaceEffectAction;
+  readonly action: WorkspaceEffectAction<ActionR>;
 }
 
-export const makeWorkspaceEffect = (
-  dependencies: WorkspaceEffectDependencies
-): WorkspaceEffectFacade => {
+export const makeWorkspaceEffect = <ActionR, ActionLE>(
+  dependencies: WorkspaceEffectDependencies<ActionR, ActionLE>
+): WorkspaceEffectFacade<ActionR> => {
   const next = NextEffect.makeBoundary<
     WorkspaceRouteFailure,
     WorkspaceRouteErrorResponse
@@ -63,6 +66,7 @@ export const makeWorkspaceEffect = (
 
   const actions = EffectAction.makeBoundary(actionClient, {
     runExit: dependencies.executor.runExit,
+    layer: dependencies.actionLayer,
     prepare: ({ args }, effect) => {
       const invocation = dependencies.readActionHeaders().pipe(
         Effect.flatMap((headers) => {

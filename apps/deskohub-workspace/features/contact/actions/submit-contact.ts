@@ -8,7 +8,6 @@ import {
 } from "@/features/contact/actions/contact";
 import { ContactServiceLive } from "@/features/contact/backend/contact.service";
 import { locales } from "@/features/i18n";
-import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { EmailConfigLayer } from "@/shared/backend/config/email.config";
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
@@ -69,11 +68,10 @@ const contactFormDataStandardSchema = Schema.toStandardSchemaV1(
 const ContactActionLive = ContactServiceLive.pipe(
   Layer.provide(
     StandaloneEmailServiceLayer.pipe(Layer.provideMerge(EmailConfigLayer))
-  ),
-  Layer.merge(BotProtectionService.Live)
+  )
 );
 
-export const submitContactForm = WorkspaceEffect.action(
+const submitContactAction = WorkspaceEffect.action(
   {
     operation: "contact.submit",
     schema: contactFormDataStandardSchema,
@@ -86,3 +84,7 @@ export const submitContactForm = WorkspaceEffect.action(
       submittedValues: parsedInput.submittedValues,
     })
 );
+
+// Next must register an async function declared by this "use server" module.
+export const submitContactForm: typeof submitContactAction = async (...args) =>
+  await submitContactAction(...args);

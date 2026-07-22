@@ -1,20 +1,15 @@
 "use server";
 
-import { Layer } from "effect";
 import { CheckoutServiceLiveWithDependencies } from "@/features/checkout/backend/checkout";
 import { submitReservationSchema } from "@/features/reservation/actions/submit-reservation-input";
 import { submitWorkspaceReservation } from "@/features/reservation/actions/submit-workspace-reservation";
-import { BotProtectionService } from "@/shared/backend/bot-protection/bot-protection.service";
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const submitReservationAction = WorkspaceEffect.action(
   {
     operation: "checkout.submit-reservation",
     schema: submitReservationSchema,
-    layer: Layer.merge(
-      CheckoutServiceLiveWithDependencies,
-      BotProtectionService.Live
-    ),
+    layer: CheckoutServiceLiveWithDependencies,
   },
   ({ parsedInput }) => submitWorkspaceReservation(parsedInput)
 );

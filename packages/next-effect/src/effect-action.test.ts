@@ -205,6 +205,24 @@ describe("EffectAction", () => {
     expect(preparations).toBe(1);
   });
 
+  test("provides a shared Layer to every boundary action", async () => {
+    const boundary = EffectAction.makeBoundary(makeActionClient(), {
+      runExit: (effect) => Effect.runPromiseExit(effect),
+      layer: Layer.succeed(TestService, { multiplier: 3 }),
+      prepare: (_invocation, effect) => effect,
+    });
+    const action = boundary.action(
+      {
+        operation: "test.shared-boundary-layer",
+        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
+      },
+      ({ parsedInput }) =>
+        Effect.map(TestService, ({ multiplier }) => parsedInput * multiplier)
+    );
+
+    await expect(action("14")).resolves.toEqual({ data: 42 });
+  });
+
   test("prepares actions after fallible Layer acquisition", async () => {
     let preparedFailure: unknown;
     const boundary = EffectAction.makeBoundary(makeActionClient(), {

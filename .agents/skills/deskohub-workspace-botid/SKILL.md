@@ -18,6 +18,10 @@ Configure BotID end to end:
   Vercel environment. Expose the public value through the Workspace typed `env`
   module rather than reading `process.env` directly in client code.
 - Keep server-side `checkBotId()` before mutation side effects in production.
+- Let the Workspace action boundary provide `BotProtectionService.Live`, but keep
+  each protected workflow's `verifyHuman` call explicit so it owns placement and
+  the `allow` or `deny` verification-failure policy. An unprotected action must
+  not verify merely because the capability is available.
 - Do not use blanket `/*` client interception without matching server verification.
 - Preserve production verification failure policies and error mapping.
 

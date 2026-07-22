@@ -471,9 +471,7 @@ export const createCensoredOtelLogger = (loggerProvider: LoggerProvider) =>
     })
   );
 
-export const createWorkspaceLoggerLive = (loggerProvider?: LoggerProvider) =>
-  Logger.layer(
-    loggerProvider
-      ? [CensoringLogger, createCensoredOtelLogger(loggerProvider)]
-      : [CensoringLogger]
-  );
+export const WorkspaceLoggerLive = Logger.layer([CensoringLogger]);
+
+export const createWorkspaceOtelLoggerLive = (loggerProvider: LoggerProvider) =>
+  Logger.layer([CensoringLogger, createCensoredOtelLogger(loggerProvider)]);

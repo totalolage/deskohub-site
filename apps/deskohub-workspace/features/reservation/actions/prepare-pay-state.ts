@@ -788,7 +788,6 @@ const preparePayStateAction = WorkspaceEffect.action(
       ),
       WorkspaceCheckoutAccessCodeServiceLive,
       ReservationHoldCleanupScheduleService.Live,
-      BotProtectionService.Live,
       PostHogEventServiceLive,
       DotyposServiceLive,
       DiscountServiceLiveWithDependencies

@@ -29,9 +29,15 @@ type CapturedLog = {
   readonly message: unknown;
 };
 
+class ActionTestService extends Context.Service<
+  ActionTestService,
+  { readonly verify: () => Effect.Effect<void> }
+>()("WorkspaceEffectActionTestService") {}
+
 const makeHarness = (requestHeaders = new Headers()) => {
   const logs: CapturedLog[] = [];
   let actionHeaderReads = 0;
+  let actionServiceCalls = 0;
   let scheduledFlushes = 0;
   let taskFlushes = 0;
   const captureLogger = Logger.make((options) => {
@@ -56,6 +62,12 @@ const makeHarness = (requestHeaders = new Headers()) => {
   };
   const workspace = makeWorkspaceEffect({
     executor,
+    actionLayer: Layer.succeed(ActionTestService, {
+      verify: () =>
+        Effect.sync(() => {
+          actionServiceCalls += 1;
+        }),
+    }),
     readActionHeaders: () =>
       Effect.sync(() => {
         actionHeaderReads += 1;
@@ -70,6 +82,9 @@ const makeHarness = (requestHeaders = new Headers()) => {
   return {
     get actionHeaderReads() {
       return actionHeaderReads;
+    },
+    get actionServiceCalls() {
+      return actionServiceCalls;
     },
     get scheduledFlushes() {
       return scheduledFlushes;
@@ -281,6 +296,20 @@ describe("WorkspaceEffect", () => {
     });
     expect(harness.actionHeaderReads).toBe(2);
     expect(harness.scheduledFlushes).toBe(2);
+  });
+
+  test("action provides its shared Workspace capability Layer", async () => {
+    const harness = makeHarness();
+    const action = harness.workspace.action(
+      {
+        operation: "test.protected-action",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+      },
+      () => Effect.flatMap(ActionTestService, (service) => service.verify())
+    );
+
+    await expect(action("input")).resolves.toEqual({ data: undefined });
+    expect(harness.actionServiceCalls).toBe(1);
   });
 
   test("stateful form actions use the same validated lifecycle", async () => {
