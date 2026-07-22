@@ -176,6 +176,35 @@ describe("EffectAction", () => {
     });
     expect(runnerError).toBe(mapped);
   });
+
+  test("an Exit runner executes once and observes suspended handler construction", async () => {
+    const defect = new Error("handler construction failed");
+    let calls = 0;
+    const action = EffectAction.fromClient(makeActionClient(), {
+      runExit: async <A, E>(effect: Effect.Effect<A, E, never>) => {
+        calls += 1;
+        return Effect.runPromiseExit(effect);
+      },
+    })
+      .inputSchema(Schema.toStandardSchemaV1(Schema.String))
+      .action(() => {
+        throw defect;
+      });
+
+    await expect(action("input")).resolves.toEqual({
+      serverError: defect.message,
+    });
+    expect(calls).toBe(1);
+  });
+
+  test("rejects conflicting safe-action executor models in development", () => {
+    expect(() =>
+      EffectAction.fromClient(makeActionClient(), {
+        run: (() => Promise.resolve(undefined)) as never,
+        runExit: (() => Promise.resolve(Exit.succeed(undefined))) as never,
+      } as never)
+    ).toThrow("cannot combine runExit");
+  });
 });
 
 if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {

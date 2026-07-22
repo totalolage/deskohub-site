@@ -11,7 +11,11 @@ import type {
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
-import { execute, type ExecuteRun } from "./internal/executor";
+import {
+  type EffectRunExit,
+  type ExecuteRun,
+  execute,
+} from "./internal/executor";
 
 type SchemaInput<S extends StandardSchemaV1> = StandardSchemaV1.InferInput<S>;
 type SchemaOutput<S extends StandardSchemaV1> = StandardSchemaV1.InferOutput<S>;
@@ -33,16 +37,27 @@ export interface EffectActionArgs<
 
 interface EffectActionBaseOptions {
   readonly mapError?: (error: unknown) => unknown;
-  readonly run?: ExecuteRun;
 }
 
-interface EffectActionRunnableOptions extends EffectActionBaseOptions {
-  readonly layer?: undefined;
-}
+type EffectActionExecutorOptions =
+  | {
+      readonly run?: ExecuteRun;
+      readonly runExit?: never;
+    }
+  | {
+      readonly run?: never;
+      readonly runExit: EffectRunExit;
+    };
 
-interface EffectActionLayerOptions<R, LE> extends EffectActionBaseOptions {
-  readonly layer: Layer.Layer<R, LE, never>;
-}
+type EffectActionRunnableOptions = EffectActionBaseOptions &
+  EffectActionExecutorOptions & {
+    readonly layer?: undefined;
+  };
+
+type EffectActionLayerOptions<R, LE> = EffectActionBaseOptions &
+  EffectActionExecutorOptions & {
+    readonly layer: Layer.Layer<R, LE, never>;
+  };
 
 export type EffectActionOptions<R = never, LE = never> =
   | EffectActionRunnableOptions
@@ -172,7 +187,7 @@ function makeEffectActionClient<
       return {
         action(handler, actionUtils) {
           return builder.action(
-            (args) => runEffect(handler(args)),
+            (args) => runEffect(Effect.suspend(() => handler(args))),
             actionUtils
           );
         },
@@ -290,23 +305,36 @@ function fromClient(
   >,
   options: EffectActionOptions<unknown, unknown> = {}
 ): unknown {
+  assertExecutorOptions(options);
+
   if (options.layer) {
     return makeEffectActionClient(actionClient, (effect) =>
-      execute(Effect.provide(effect, options.layer), {
-        mapError: options.mapError,
-        run: options.run,
-      })
+      execute(Effect.provide(effect, options.layer), getExecuteOptions(options))
     );
   }
 
   return makeEffectActionClient(
     actionClient,
     <A, E>(effect: Effect.Effect<A, E, never>) =>
-      execute(effect, {
-        mapError: options.mapError,
-        run: options.run,
-      })
+      execute(effect, getExecuteOptions(options))
   );
+}
+
+function getExecuteOptions(
+  options: EffectActionBaseOptions & EffectActionExecutorOptions
+) {
+  return options.runExit
+    ? { mapError: options.mapError, runExit: options.runExit }
+    : { mapError: options.mapError, run: options.run };
+}
+
+function assertExecutorOptions(options: {
+  readonly run?: ExecuteRun;
+  readonly runExit?: EffectRunExit;
+}) {
+  if (process.env.NODE_ENV !== "production" && options.run && options.runExit) {
+    throw new TypeError("EffectAction cannot combine runExit with run");
+  }
 }
 
 export const EffectAction = {
