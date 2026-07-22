@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
+    "./effect-boundary": "./src/effect-boundary.ts",
     "./effect-action": "./src/effect-action.ts"
   },
   "scripts": {

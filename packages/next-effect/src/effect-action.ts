@@ -11,6 +11,8 @@ import type {
   ValidationErrors,
   ValidationErrorsFormat,
 } from "next-safe-action";
+import type { EffectBoundaryOptions } from "./effect-boundary";
+import { provideBoundaryLayer } from "./internal/boundary";
 import {
   type EffectRunExit,
   type ExecuteRun,
@@ -33,6 +35,29 @@ export interface EffectActionArgs<
   readonly bindArgsClientInputs: readonly unknown[];
   readonly ctx: Ctx;
   readonly metadata: Metadata;
+}
+
+export interface EffectActionBoundaryInvocation<
+  S extends StandardSchemaV1,
+  Ctx extends object,
+  Metadata,
+> {
+  readonly operation: string;
+  readonly args: EffectActionArgs<S, Ctx, Metadata>;
+}
+
+export type EffectActionBoundaryPrepare<Ctx extends object, Metadata> = <
+  S extends StandardSchemaV1,
+  A,
+  E,
+>(
+  invocation: EffectActionBoundaryInvocation<S, Ctx, Metadata>,
+  effect: Effect.Effect<A, E, never>
+) => Effect.Effect<A, unknown, never>;
+
+export interface EffectActionBoundaryOptions<Ctx extends object, Metadata> {
+  readonly runExit: EffectRunExit;
+  readonly prepare: EffectActionBoundaryPrepare<Ctx, Metadata>;
 }
 
 interface EffectActionBaseOptions {
@@ -69,6 +94,50 @@ type SafeActionValidationErrors<
 > = ErrorsFormat extends "flattened"
   ? FlattenedValidationErrors<ValidationErrors<S>>
   : ValidationErrors<S>;
+
+export interface EffectActionBoundary<
+  ServerError,
+  ErrorsFormat extends ValidationErrorsFormat | undefined,
+  Metadata,
+  Ctx extends object,
+  ThrowsValidationErrors extends boolean = false,
+> {
+  readonly safeAction: {
+    <S extends StandardSchemaV1, A, E>(
+      options: EffectBoundaryOptions & { readonly schema: S },
+      handler: (
+        args: EffectActionArgs<S, Ctx, Metadata>
+      ) => Effect.Effect<A, E, never>
+    ): MaybeBrandThrows<
+      SafeActionFn<
+        ServerError,
+        S,
+        readonly [],
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A
+      >,
+      ThrowsValidationErrors
+    >;
+    <S extends StandardSchemaV1, A, E, R, LE>(
+      options: EffectBoundaryOptions & {
+        readonly schema: S;
+        readonly layer: Layer.Layer<R, LE, never>;
+      },
+      handler: (
+        args: EffectActionArgs<S, Ctx, Metadata>
+      ) => Effect.Effect<A, E, R>
+    ): MaybeBrandThrows<
+      SafeActionFn<
+        ServerError,
+        S,
+        readonly [],
+        SafeActionValidationErrors<ErrorsFormat, S>,
+        A
+      >,
+      ThrowsValidationErrors
+    >;
+  };
+}
 
 interface EffectActionSafeClient<
   ServerError,
@@ -320,6 +389,83 @@ function fromClient(
   );
 }
 
+function makeBoundary<
+  ServerError,
+  ErrorsFormat extends ValidationErrorsFormat | undefined,
+  MetadataSchema extends StandardSchemaV1 | undefined,
+  Metadata,
+  Ctx extends object,
+  InputSchemaFn extends
+    | ((clientInput?: unknown) => Promise<StandardSchemaV1>)
+    | undefined,
+  InputSchema extends StandardSchemaV1 | undefined,
+  BindArgsSchemas extends readonly [],
+  ShapedErrors,
+  ThrowsValidationErrors extends boolean,
+  PreValidationCtx extends object,
+>(
+  actionClient: SafeActionClient<
+    ServerError,
+    ErrorsFormat,
+    MetadataSchema,
+    Metadata,
+    true,
+    Ctx,
+    InputSchemaFn,
+    InputSchema,
+    undefined,
+    BindArgsSchemas,
+    ShapedErrors,
+    ThrowsValidationErrors,
+    false,
+    PreValidationCtx
+  >,
+  options: EffectActionBoundaryOptions<Ctx, Metadata>
+): EffectActionBoundary<
+  ServerError,
+  ErrorsFormat,
+  Metadata,
+  Ctx,
+  ThrowsValidationErrors
+> {
+  const safeAction = (<S extends StandardSchemaV1, A, E, R, LE>(
+    declaration: EffectBoundaryOptions & {
+      readonly schema: S;
+      readonly layer?: Layer.Layer<R, LE, never>;
+    },
+    handler: (
+      args: EffectActionArgs<S, Ctx, Metadata>
+    ) => Effect.Effect<A, E, R>
+  ) => {
+    const builder = actionClient.inputSchema(declaration.schema);
+
+    return builder.action((args) => {
+      const effect = provideBoundaryLayer(
+        Effect.suspend(() => handler(args)),
+        declaration.layer
+      );
+      const prepared = options
+        .prepare({ operation: declaration.operation, args }, effect)
+        .pipe(
+          Effect.annotateLogs({
+            boundary: "safe-action",
+            operation: declaration.operation,
+          })
+        );
+
+      return execute(prepared, { runExit: options.runExit });
+    });
+  }) as unknown as EffectActionBoundary<
+    ServerError,
+    ErrorsFormat,
+    Metadata,
+    Ctx,
+    ThrowsValidationErrors
+  >["safeAction"];
+
+  return { safeAction };
+}
+
 function getExecuteOptions(
   options: EffectActionBaseOptions & EffectActionExecutorOptions
 ) {
@@ -339,4 +485,5 @@ function assertExecutorOptions(options: {
 
 export const EffectAction = {
   fromClient,
+  makeBoundary,
 };

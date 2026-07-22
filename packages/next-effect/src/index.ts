@@ -4,8 +4,24 @@ import {
   type ExecuteRun,
   execute,
 } from "./internal/executor";
+import { makeNextEffectBoundary } from "./next-boundary";
 
+export type {
+  EffectBoundaryExecutor,
+  EffectBoundaryExecutorOptions,
+  EffectBoundaryOptions,
+  EffectBoundaryTransform,
+  EffectHostBoundary,
+} from "./effect-boundary";
 export type { EffectRunExit } from "./internal/executor";
+export type {
+  NextEffectBoundary,
+  NextEffectBoundaryActionPolicy,
+  NextEffectBoundaryOptions,
+  NextEffectBoundaryRoutePolicy,
+  NextEffectRequestCancellation,
+  NextEffectRouteFailureMapping,
+} from "./next-boundary";
 
 export type NextEffectRouteRunner<ErrorResponse extends Response = never> = <
   A extends Response,
@@ -254,4 +270,5 @@ function assertExecutorOptions(options: {
 
 export const NextEffect = {
   make,
+  makeBoundary: makeNextEffectBoundary,
 };

@@ -205,6 +205,59 @@ describe("EffectAction", () => {
       } as never)
     ).toThrow("cannot combine runExit");
   });
+
+  test("declares safe actions with per-invocation Layers after validation", async () => {
+    let preparations = 0;
+    const boundary = EffectAction.makeBoundary(makeActionClient(), {
+      runExit: (effect) => Effect.runPromiseExit(effect),
+      prepare: (_invocation, effect) =>
+        Effect.sync(() => {
+          preparations += 1;
+        }).pipe(Effect.andThen(effect)),
+    });
+    const action = boundary.safeAction(
+      {
+        operation: "test.boundary-action",
+        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
+        layer: Layer.succeed(TestService, { multiplier: 3 }),
+      },
+      ({ parsedInput }) =>
+        Effect.map(TestService, ({ multiplier }) => parsedInput * multiplier)
+    );
+
+    await expect(action("invalid")).resolves.toMatchObject({
+      validationErrors: expect.any(Object),
+    });
+    expect(preparations).toBe(0);
+
+    await expect(action("14")).resolves.toEqual({ data: 42 });
+    expect(preparations).toBe(1);
+  });
+
+  test("prepares safe actions after fallible Layer acquisition", async () => {
+    let preparedFailure: unknown;
+    const boundary = EffectAction.makeBoundary(makeActionClient(), {
+      runExit: (effect) => Effect.runPromiseExit(effect),
+      prepare: (_invocation, effect) =>
+        Effect.mapError(effect, (error) => {
+          preparedFailure = error;
+          return new Error("public setup");
+        }),
+    });
+    const action = boundary.safeAction(
+      {
+        operation: "test.boundary-layer-failure",
+        schema: Schema.toStandardSchemaV1(Schema.String),
+        layer: Layer.effect(TestService, Effect.fail("setup")),
+      },
+      () => TestService
+    );
+
+    await expect(action("input")).resolves.toEqual({
+      serverError: "public setup",
+    });
+    expect(preparedFailure).toBe("setup");
+  });
 });
 
 if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {

@@ -38,8 +38,8 @@ if (typecheck) {
     Effect.succeed(new Response())
   );
 
+  // @ts-expect-error Routes with typed failures require total mapping.
   workspace.route(
-    // @ts-expect-error Routes with typed failures require total mapping.
     {
       operation: "type.route-failure",
       cancellation: "continue-after-disconnect",
