@@ -54,9 +54,7 @@ const getContactQueryInitialValues = (params: Pick<URLSearchParams, "get">) => {
 };
 
 export function ContactForm({ locale, initialValues }: ContactFormProps) {
-  const action = useStateAction(submitContactForm, {
-    initResult: { data: initialContactFormState },
-  });
+  const action = useStateAction(submitContactForm);
   const state: ContactFormState =
     action.result.data ??
     (action.result.serverError

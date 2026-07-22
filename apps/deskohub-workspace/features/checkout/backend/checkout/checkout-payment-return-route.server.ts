@@ -5,9 +5,8 @@ import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { WorkspaceRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 import { getSearchParamsDecoder } from "@/shared/utils";
-import { refreshCheckoutStatus } from "./checkout-status.server";
-import type {
-  CheckoutStatusReturnOutcome,
+import {
+  type CheckoutStatusReturnOutcome,
   CheckoutStatusService,
 } from "./checkout-status.service";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
@@ -60,15 +59,21 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
       () => ({ outcome: "unknown" as const })
     );
 
-    yield* refreshCheckoutStatus({ orderId, returnOutcome: outcome }).pipe(
-      Effect.catch((cause) =>
-        Effect.logError("Checkout payment return refresh failed", {
-          orderId,
-          outcome,
-          cause,
-        })
-      )
-    );
+    const checkoutStatus = yield* CheckoutStatusService;
+    yield* checkoutStatus
+      .refreshStatus({
+        orderId,
+        returnOutcome: outcome,
+      })
+      .pipe(
+        Effect.catch((cause) =>
+          Effect.logError("Checkout payment return refresh failed", {
+            orderId,
+            outcome,
+            cause,
+          })
+        )
+      );
 
     return yield* Effect.sync(() =>
       NextResponse.redirect(

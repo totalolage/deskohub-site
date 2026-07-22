@@ -7,10 +7,9 @@ import { env } from "@/env";
 import {
   appendVercelPreviewProtectionBypass,
   type CheckoutStatusReturnOutcome,
+  CheckoutStatusService,
   CheckoutStatusServiceLiveWithDependencies,
   type CheckoutStatusViewModel,
-  getCheckoutStatus,
-  refreshCheckoutStatus,
 } from "@/features/checkout/backend/checkout";
 import { shouldAutoRefreshCheckoutStatus } from "@/features/checkout/checkout-status-refresh-policy";
 import { CheckoutStatusAutoRefresh } from "@/features/checkout/components/checkout-status-auto-refresh";
@@ -53,14 +52,16 @@ const shouldUsePreviewE2EStatusRead = (searchParams: SearchParamsRecord) =>
   env.VERCEL_ENV === "preview" &&
   getSearchParam(searchParams, "e2eState") === "fulfillmentFailed";
 
-const loadCheckoutStatus = (input: {
+const loadCheckoutStatus = Effect.fn("checkoutStatus.load")(function* (input: {
   readonly orderId: string;
   readonly returnOutcome: CheckoutStatusReturnOutcome;
   readonly searchParams: SearchParamsRecord;
-}) =>
-  shouldUsePreviewE2EStatusRead(input.searchParams)
-    ? getCheckoutStatus(input)
-    : refreshCheckoutStatus(input);
+}) {
+  const service = yield* CheckoutStatusService;
+  return yield* shouldUsePreviewE2EStatusRead(input.searchParams)
+    ? service.getStatus(input)
+    : service.refreshStatus(input);
+});
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";

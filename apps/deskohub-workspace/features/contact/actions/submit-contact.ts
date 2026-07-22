@@ -1,9 +1,8 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer, Schema, SchemaGetter, SchemaParser } from "effect";
+import { Layer, Schema, SchemaGetter, SchemaParser } from "effect";
 import {
-  type ContactFormState,
   type ContactFormValues,
   processContactSubmission,
 } from "@/features/contact/actions/contact";
@@ -74,7 +73,7 @@ const ContactActionLive = ContactServiceLive.pipe(
   Layer.merge(BotProtectionService.Live)
 );
 
-const submitContactAction = WorkspaceEffect.action(
+export const submitContactForm = WorkspaceEffect.action(
   {
     operation: "contact.submit",
     schema: contactFormDataStandardSchema,
@@ -85,8 +84,5 @@ const submitContactAction = WorkspaceEffect.action(
     processContactSubmission({
       locale: parsedInput.locale,
       submittedValues: parsedInput.submittedValues,
-    }).pipe(Effect.map((state): ContactFormState => state))
+    })
 );
-
-export const submitContactForm: typeof submitContactAction = async (...args) =>
-  await submitContactAction(...args);
