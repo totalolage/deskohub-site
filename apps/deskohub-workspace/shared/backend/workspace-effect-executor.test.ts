@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import {
   CENSORED_LOG_VALUE,
   createWorkspaceLoggerLive,
-} from "./logging/censorship-core";
+} from "./logging/censorship";
 
 describe("Workspace Effect executor composition", () => {
   test("provides one censored logger composition", async () => {

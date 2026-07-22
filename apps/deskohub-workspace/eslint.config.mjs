@@ -18,8 +18,6 @@ export default [
     ignores: [
       "**/*.test.{ts,tsx}",
       "**/*.test-utils.{ts,tsx}",
-      "shared/backend/logging/censorship.ts",
-      "shared/backend/logging/censorship-core.ts",
     ],
     rules: {
       "no-restricted-syntax": [
@@ -28,7 +26,60 @@ export default [
           selector:
             "CallExpression[callee.object.name='Effect'][callee.property.name=/^run[A-Z]/]",
           message:
-            "Run Effects through runWorkspaceEffect so Workspace logging and censorship layers are applied.",
+            "Declare the real lifecycle boundary through WorkspaceEffect so logging, cancellation, and telemetry policy are applied.",
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: [
+      "shared/backend/effect-boundary/next.ts",
+      "**/*.test.{ts,tsx}",
+      "**/*.test-utils.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@deskohub/next-effect",
+              message:
+                "Workspace production code imports the app-owned WorkspaceEffect facade.",
+            },
+            {
+              name: "@deskohub/next-effect/effect-action",
+              message:
+                "Workspace actions are declared through WorkspaceEffect.action.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["**/*.{ts,tsx}"],
+    ignores: [
+      "scripts/**",
+      "shared/backend/effect-boundary/**",
+      "**/*.test.{ts,tsx}",
+      "**/*.test-utils.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.object.name='Effect'][callee.property.name=/^run[A-Z]/]",
+          message:
+            "Declare the real lifecycle boundary through WorkspaceEffect so logging, cancellation, and telemetry policy are applied.",
+        },
+        {
+          selector:
+            "CallExpression[callee.object.name='WorkspaceEffect'][callee.property.name='run']",
+          message:
+            "Use the named WorkspaceEffect lifecycle adapter; run is reserved for standalone scripts and boundary composition.",
         },
       ],
     },

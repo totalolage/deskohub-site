@@ -4,7 +4,7 @@ import { Effect } from "effect";
 import { headers } from "next/headers";
 import { after } from "next/server";
 import { makeWorkspaceEffect } from "./effect-boundary/next";
-import { createWorkspaceLoggerLive } from "./logging/censorship-core";
+import { createWorkspaceLoggerLive } from "./logging/censorship";
 import {
   flushPostHogLogs,
   schedulePostHogLogsFlush,
@@ -54,4 +54,7 @@ export const WorkspaceEffect = makeWorkspaceEffect({
   scheduleTelemetryFlush,
 });
 
-export { WorkspaceRouteFailure } from "./effect-boundary/route-failure";
+export {
+  mapWorkspaceInternalRouteFailure,
+  WorkspaceRouteFailure,
+} from "./effect-boundary/route-failure";

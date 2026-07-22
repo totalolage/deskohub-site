@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import type { EffectBoundaryExecutor } from "@deskohub/next-effect";
 import {
   Cause,
   Context,
@@ -15,7 +16,6 @@ import {
   POSTHOG_SESSION_ID_COOKIE,
 } from "@/shared/utils/posthog-session-cookies";
 import { PublicSafeActionError } from "@/shared/utils/safe-action-client";
-import type { WorkspaceEffectExecutor } from "./effect-boundary/executor";
 import { makeWorkspaceEffect } from "./effect-boundary/next";
 import { WorkspaceRouteFailure } from "./effect-boundary/route-failure";
 
@@ -40,12 +40,12 @@ const makeHarness = (requestHeaders = new Headers()) => {
       message: options.message,
     });
   });
-  const runExit: WorkspaceEffectExecutor["runExit"] = (effect, options) =>
+  const runExit: EffectBoundaryExecutor["runExit"] = (effect, options) =>
     Effect.runPromiseExit(
       effect.pipe(Effect.provide(Logger.layer([captureLogger]))),
       options
     );
-  const executor: WorkspaceEffectExecutor = {
+  const executor: EffectBoundaryExecutor = {
     runExit,
     runTask: async (effect) => {
       const exit = await runExit(effect);
@@ -246,6 +246,28 @@ describe("WorkspaceEffect", () => {
     });
     expect(harness.actionHeaderReads).toBe(2);
     expect(harness.scheduledFlushes).toBe(2);
+  });
+
+  test("stateful form actions use the same validated lifecycle", async () => {
+    const harness = makeHarness();
+    const action = harness.workspace.action(
+      {
+        operation: "test.stateful-action",
+        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
+        stateful: true,
+      },
+      ({ parsedInput }, { prevResult }) =>
+        Effect.succeed({
+          previous: prevResult.data,
+          value: parsedInput * 2,
+        })
+    );
+
+    await expect(action({ data: { value: 1 } }, "21")).resolves.toEqual({
+      data: { previous: { value: 1 }, value: 42 },
+    });
+    expect(harness.actionHeaderReads).toBe(1);
+    expect(harness.scheduledFlushes).toBe(1);
   });
 
   test("task awaits its composition flush and preserves rejection", async () => {
