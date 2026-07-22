@@ -149,6 +149,22 @@ export const coworkReservationDetailsSchema = Schema.Union([
 export type CoworkReservationDetails =
   typeof coworkReservationDetailsSchema.Type;
 
+export const coworkAdvertisedPriceReservationSchema = Schema.Struct({
+  kind: Schema.Literal(coworkReservationKind),
+  details: coworkReservationDetailsSchema,
+}).annotate({
+  identifier: "CoworkAdvertisedPriceReservation",
+  description:
+    "PII-free normalized cowork reservation inputs whose price is advertised.",
+});
+
+export type CoworkAdvertisedPriceReservation =
+  typeof coworkAdvertisedPriceReservationSchema.Type;
+
+export const coworkAdvertisedPriceReservationEquals = Schema.toEquivalence(
+  coworkAdvertisedPriceReservationSchema
+);
+
 export const getCoworkReservationDetails = (
   reservation: NormalizedCoworkReservationOrder
 ): CoworkReservationDetails =>

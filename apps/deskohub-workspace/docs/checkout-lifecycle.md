@@ -25,14 +25,18 @@ Checkout has three distinct price boundaries:
 2. Reservation submission creates the order-summary quote that the customer reviews.
 3. Order submission freshly affirms that signed summary before payment begins.
 
-The server must issue an integrity-protected advertisement snapshot for the product and reservation inputs whose price is visible on the reservation page. The reservation form carries that snapshot back without treating client-authored price data as authoritative. The signed order-summary state performs the same role for the price reviewed on the summary page.
+The server must issue an integrity-protected advertisement snapshot for the product and reservation inputs whose price is visible on the reservation page. Reservation-page advertisement evaluates only automatic discounts that can be discovered without customer identity; currently this means Calendar sales. It must not resolve or create a Dotypos customer merely to advertise a price. Customer-specific pricing is outside the advertisement boundary by contract and does not need an inert marker in the snapshot. The snapshot contains no customer PII and is carried back by the reservation form without treating client-authored price data as authoritative. The signed order-summary state performs the same role for the price reviewed on the summary page.
+
+On reservation submission, the server opens the advertisement snapshot and freshly affirms only the anonymously discoverable automatic discounts that were advertised. A Calendar sale that became available after the snapshot was issued is not added retrospectively. After that boundary is affirmed, the normal reservation workflow resolves or creates the Dotypos customer and evaluates the customer discount for the first signed order summary. Because customer-specific pricing could not be evaluated at the anonymous advertisement boundary, that customer discount may first appear on the summary without producing `pricing_changed`. This is an explicit boundary contract, not a general permission to introduce later automatic discounts.
+
+Once a customer discount has appeared in a signed summary, it is an accepted discount like any other: code submission must affirm it before changing the summary, final order submission must freshly affirm it, and its disappearance or change produces the normal `pricing_changed` result. No later workflow may use the anonymous-advertisement exception to replace, add, or silently remove a customer discount that the customer has already seen.
 
 `pricing_changed` is a normal workflow result at both transitions, not an exceptional checkout failure:
 
-- If discount discovery fails before the reservation page is rendered, log the error, omit that discount from the advertisement, and continue without it. Quote generation must not add an automatic discount that becomes available after the advertisement snapshot was issued.
+- If anonymous discount discovery fails before the reservation page is rendered, log the error, omit that discount from the advertisement, and continue without it. Quote generation must not add an anonymously discoverable automatic discount that becomes available after the advertisement snapshot was issued.
 - If a discount in the advertisement snapshot cannot be included when reservation submission creates the quote, create the current quote without that discount and return `pricing_changed` for every affected summary product key, such as `product:cowork:basic`. The customer must review the changed summary before payment can be requested.
 - If a discount in the signed summary cannot be freshly affirmed at order submission, return `pricing_changed` with a refreshed signed summary. Create no durable payment attempt and no external payment session.
-- Newly available automatic discounts are never introduced retrospectively during quote generation or final affirmation. They may appear only through a new advertisement/summary cycle. A successfully submitted discount code is the deliberate exception because the customer explicitly requested that quote change.
+- Newly available anonymously discoverable automatic discounts are never introduced retrospectively during quote generation or final affirmation. They may appear only through a new advertisement/summary cycle. The customer discount may first appear only at the first signed-summary boundary after Dotypos identity resolution, as described above. A successfully submitted discount code is a separate deliberate exception because the customer explicitly requested that quote change.
 
 Discount code entry belongs on the order-summary page as an independent form with its own server action, pending state, and field error. It must not resubmit the reservation form or the main order submission:
 
@@ -43,6 +47,8 @@ Discount code entry belongs on the order-summary page as an independent form wit
 - Once present in the signed summary, a code follows the same final affirmation and payment-lifecycle rules as every other discount.
 
 The hard payment invariant is that a provider session amount must exactly equal the last signed summary price shown to the customer. Order submission freshly affirms exactly the discounts in that summary and compares the complete quote fingerprint and total. A mismatch—or a failure to persist applications or admit a claim atomically—returns `pricing_changed`; the transaction rolls back and Nexi is not called.
+
+Advertised, signed, and freshly affirmed quotes always retain the catalog currency. The controlled non-production Nexi sandbox currency override is a provider-adapter exception only: immediately before HPP creation, Workspace may replace the currency code on the provider amount and persist that provider amount on the attempt so later Nexi verification uses the same facts. The override never changes the customer-visible quote, its numeric minor-unit value, or its exponent, and it is unavailable for production or the live Nexi origin.
 
 ## Ownership
 
@@ -340,11 +346,13 @@ sequenceDiagram
   participant Dotypos
 
   Customer->>App: Submit reservation/contact/legal form
-  App->>App: Open advertised-price snapshot and affirm only its advertised automatic discounts
+  App->>App: Open anonymous advertised-price snapshot
   App->>App: Validate input and legal consent
+  App->>App: Affirm only its advertised anonymous automatic discounts
   App->>App: Build intent-key object and HMAC via JSON.stringify
   App->>Dotypos: Find or create customer using PII
   Dotypos-->>App: dotyposCustomerId
+  App->>App: Evaluate customer discount for the first signed summary
   App->>DB: Insert workspace_reservations(draft, not_started, not_started)
   App->>DB: Claim reservation_state=creating_hold
   App->>Dotypos: Create NEW reservation hold
@@ -352,9 +360,9 @@ sequenceDiagram
   App->>DB: Set reservation_state=held and hold deadline
   App->>DB: Insert legal_evidence_events
   alt advertised price still matches
-    App-->>Customer: Show signed order summary
+    App-->>Customer: Show signed order summary, which may first add the customer discount
   else advertised discount unavailable
-    App-->>Customer: Show refreshed signed summary with pricing_changed affected product keys
+    App-->>Customer: Show refreshed signed summary with pricing_changed affected product keys; customer discount may still first appear
   end
 ```
 

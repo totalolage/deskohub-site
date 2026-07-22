@@ -1,0 +1,99 @@
+import { Data, Effect, Predicate, Schema } from "effect";
+import type { Locale } from "@/features/i18n";
+import { coworkAdvertisedPriceReservationSchema } from "@/features/reservation/cowork-reservation";
+import {
+  type CheckoutStateCryptoOptions,
+  CheckoutStateTokenError,
+  createCheckoutStateClaims,
+  openCheckoutState,
+  sealCheckoutState,
+} from "./checkout-state-token";
+import { workspaceCheckoutPriceStateSchema } from "./workspace-checkout-price-state";
+
+export const advertisedPriceStateDefaultTtlMilliseconds = 10 * 60 * 1000;
+
+export const advertisedPriceStateSchema = Schema.Struct({
+  ...workspaceCheckoutPriceStateSchema.fields,
+  reservation: coworkAdvertisedPriceReservationSchema,
+}).annotate({
+  identifier: "AdvertisedPriceState",
+  description:
+    "PII-free Workspace price advertisement state protected for reservation submission.",
+});
+
+export type AdvertisedPriceState = typeof advertisedPriceStateSchema.Type;
+
+export class AdvertisedPriceStateTokenError extends Data.TaggedError(
+  "AdvertisedPriceStateTokenError"
+)<{
+  readonly code: CheckoutStateTokenError["code"];
+  readonly message: string;
+  readonly cause?: unknown;
+}> {}
+
+const isCheckoutStateTokenError = (
+  cause: unknown
+): cause is CheckoutStateTokenError =>
+  Predicate.isTagged(cause, CheckoutStateTokenError._tag);
+
+const toAdvertisedPriceStateTokenError = (cause: unknown) =>
+  isCheckoutStateTokenError(cause)
+    ? new AdvertisedPriceStateTokenError({
+        code: cause.code,
+        message: cause.message,
+        cause,
+      })
+    : new AdvertisedPriceStateTokenError({
+        code: "invalid-token",
+        message: "Invalid advertised price state.",
+        cause,
+      });
+
+export const buildAdvertisedPriceState = Effect.fn(
+  "advertisedPriceState.build"
+)(function* (
+  input: {
+    readonly locale: Locale;
+    readonly reservation: AdvertisedPriceState["reservation"];
+    readonly quote: AdvertisedPriceState["quote"];
+    readonly ttlMilliseconds?: number;
+  },
+  options: CheckoutStateCryptoOptions = {}
+) {
+  const claims = yield* createCheckoutStateClaims(
+    input.ttlMilliseconds ?? advertisedPriceStateDefaultTtlMilliseconds,
+    options
+  ).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
+
+  return yield* Schema.decodeUnknownEffect(advertisedPriceStateSchema, {
+    onExcessProperty: "error",
+  })({
+    ...claims,
+    locale: input.locale,
+    reservation: input.reservation,
+    quote: input.quote,
+  }).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
+});
+
+export const sealAdvertisedPriceState = Effect.fn("advertisedPriceState.seal")(
+  function* (
+    state: AdvertisedPriceState,
+    options: CheckoutStateCryptoOptions = {}
+  ) {
+    const encodedState = yield* Schema.encodeUnknownEffect(
+      advertisedPriceStateSchema,
+      { onExcessProperty: "error" }
+    )(state).pipe(Effect.mapError(toAdvertisedPriceStateTokenError));
+
+    return yield* sealCheckoutState(encodedState, options).pipe(
+      Effect.mapError(toAdvertisedPriceStateTokenError)
+    );
+  }
+);
+
+export const openAdvertisedPriceState = Effect.fn("advertisedPriceState.open")(
+  (token: string, options: CheckoutStateCryptoOptions = {}) =>
+    openCheckoutState(token, advertisedPriceStateSchema, options).pipe(
+      Effect.mapError(toAdvertisedPriceStateTokenError)
+    )
+);

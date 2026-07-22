@@ -1,31 +1,34 @@
+import { Effect } from "effect";
 import type { Locale } from "@/features/i18n";
+import type { CheckoutStateCryptoOptions } from "./checkout-state-token";
 import {
   type BuildSignedPayStateInput,
-  buildPayUrl,
   buildSignedPayState,
   type SealPayStateForUrlResult,
   sealPayStateForUrl,
 } from "./pay-state";
 
-export const getCheckoutPayBaseUrl = (locale: Locale) =>
-  new URL(`/${locale}/checkout/pay`, "https://deskohub.local");
-
-export const buildCheckoutPayUrl = (
-  locale: Locale,
-  sealedState: SealPayStateForUrlResult
-) => buildPayUrl(getCheckoutPayBaseUrl(locale), sealedState);
-
 export const buildCheckoutPayPath = (
   locale: Locale,
-  sealedState: SealPayStateForUrlResult
+  sealedState: SealPayStateForUrlResult,
+  options: { readonly orderId?: string } = {}
 ) => {
-  const payUrl = buildCheckoutPayUrl(locale, sealedState);
+  const searchParams = new URLSearchParams();
+  searchParams.set(sealedState.queryParam, sealedState.token);
+  if (options.orderId) {
+    searchParams.set("orderId", options.orderId);
+  }
 
-  return `${payUrl.url.pathname}${payUrl.url.search}`;
+  return `/${locale}/checkout/pay?${searchParams}`;
 };
 
-export const buildFreshCheckoutPayPath = (input: BuildSignedPayStateInput) => {
-  const freshState = buildSignedPayState(input);
-  const sealedState = sealPayStateForUrl(freshState);
-  return buildCheckoutPayPath(input.locale, sealedState);
-};
+export const buildFreshCheckoutPayPath = Effect.fn("buildFreshCheckoutPayPath")(
+  function* (
+    input: BuildSignedPayStateInput,
+    options: CheckoutStateCryptoOptions = {}
+  ) {
+    const freshState = yield* buildSignedPayState(input, options);
+    const sealedState = yield* sealPayStateForUrl(freshState, options);
+    return buildCheckoutPayPath(input.locale, sealedState);
+  }
+);

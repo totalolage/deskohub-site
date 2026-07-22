@@ -60,4 +60,42 @@ export default [
       ],
     },
   },
+  {
+    files: [
+      "app/**/*.{ts,tsx}",
+      "db/**/*.{ts,tsx}",
+      "features/**/*.{ts,tsx}",
+      "shared/**/*.{ts,tsx}",
+      "proxy.ts",
+    ],
+    ignores: [
+      "**/*.test.{ts,tsx}",
+      "**/*.test-utils.{ts,tsx}",
+      "shared/backend/logging/censorship.ts",
+      "shared/testing/**",
+    ],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.object.name='Effect'][callee.property.name=/^run[A-Z]/]",
+          message:
+            "Run Effects through runWorkspaceEffect so Workspace logging and censorship layers are applied.",
+        },
+        {
+          selector:
+            "MemberExpression[object.type='MemberExpression'][object.object.name='process'][object.property.name='env'][computed=false][property.name!='NODE_ENV']",
+          message:
+            "Use the typed Workspace env from '@/env'; direct process.env access belongs only in the environment adapter or test setup.",
+        },
+        {
+          selector:
+            "MemberExpression[object.type='MemberExpression'][object.object.name='process'][object.property.name='env'][computed=true]",
+          message:
+            "Use the typed Workspace env from '@/env'; direct process.env access belongs only in the environment adapter or test setup.",
+        },
+      ],
+    },
+  },
 ];

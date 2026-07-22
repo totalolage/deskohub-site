@@ -10,6 +10,7 @@ import {
   type WorkspaceCoworkProductIdentity,
   workspaceCoworkProductIdentitySchema,
 } from "@/features/reservation/cowork-reservation-product";
+import type { DotyposCustomerId } from "@/features/reservation/dotypos-customer";
 import { instantStringSchema } from "@/shared/utils/temporal";
 
 export const discountIdSchema = Schema.NonEmptyString.pipe(
@@ -127,11 +128,48 @@ export type DiscountQuote = {
   readonly discountedSubtotal: WorkspaceMoney;
 };
 
-export type DiscountQuoteInput = {
+export const discountQuoteCodec = Schema.Struct({
+  product: workspaceCoworkProductIdentitySchema,
+  discountableSubtotal: nonNegativeWorkspaceMoneyCodec,
+  discounts: Schema.Array(appliedDiscountCodec),
+  totalDiscount: nonNegativeWorkspaceMoneyCodec,
+  discountedSubtotal: nonNegativeWorkspaceMoneyCodec,
+}).annotate({
+  identifier: "DiscountQuote",
+  description: "A source-neutral discount calculation for one product.",
+});
+
+export const discountAdvertisementQuoteCodec = discountQuoteCodec
+  .pipe(Schema.brand("DiscountAdvertisementQuote"))
+  .annotate({
+    identifier: "DiscountAdvertisementQuote",
+    description:
+      "A discount quote produced only by anonymous advertisement discovery or affirmation.",
+  });
+
+export type DiscountAdvertisementQuote =
+  typeof discountAdvertisementQuoteCodec.Type;
+
+export const affirmedDiscountAdvertisementQuoteCodec =
+  discountAdvertisementQuoteCodec
+    .pipe(Schema.brand("AffirmedDiscountAdvertisementQuote"))
+    .annotate({
+      identifier: "AffirmedDiscountAdvertisementQuote",
+      description:
+        "An anonymous advertisement quote freshly affirmed at reservation submission.",
+    });
+
+export type AffirmedDiscountAdvertisementQuote =
+  typeof affirmedDiscountAdvertisementQuoteCodec.Type;
+
+export type DiscountAdvertisementInput = {
   readonly product: WorkspaceCoworkProductIdentity;
   readonly discountableSubtotal: WorkspaceMoney;
   readonly reservationDate: string;
-  readonly dotyposCustomerId: string;
   readonly locale: Locale;
+};
+
+export type DiscountQuoteInput = DiscountAdvertisementInput & {
+  readonly dotyposCustomerId: DotyposCustomerId;
   readonly submittedCode?: CanonicalDiscountCode;
 };

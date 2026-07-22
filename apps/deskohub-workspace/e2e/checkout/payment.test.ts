@@ -17,6 +17,7 @@ test("retries a transient reservation preparation failure with the same intent",
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
   const activatedRefs: string[] = [];
+  const clickedRefs: string[] = [];
   let focusedRef: string | undefined;
   const submitReservationScript = "submit-reservation";
   const run = mock(async (_command, args, options = {}) => {
@@ -82,6 +83,7 @@ test("retries a transient reservation preparation failure with the same intent",
     }
 
     if (commandArgs[0] === "click") {
+      clickedRefs.push(commandArgs[1] ?? "");
       activatedRefs.push(commandArgs[1] ?? "");
       if (commandArgs[1] === "@e3") hostedPaymentStarted = true;
       return success();
@@ -94,6 +96,7 @@ test("retries a transient reservation preparation failure with the same intent",
 
     if (commandArgs[0] === "press") {
       activatedRefs.push(focusedRef ?? "");
+      if (focusedRef === "@e3") hostedPaymentStarted = true;
       return success();
     }
 
@@ -112,6 +115,7 @@ test("retries a transient reservation preparation failure with the same intent",
 
   expect(result).toBe(orderId);
   expect(reservationSubmitAttempts).toBe(2);
+  expect(clickedRefs).toEqual([]);
   expect(activatedRefs).toEqual(["@e2", "@e3"]);
 });
 

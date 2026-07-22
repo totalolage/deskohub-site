@@ -5,9 +5,7 @@ import { Context, Data, Effect, Layer, Match, Predicate, Schema } from "effect";
 import { WorkspaceDatabaseLive } from "@/db/database.service";
 import { env } from "@/env";
 import {
-  calculateWorkspaceCheckoutQuote,
   getCheckoutSummaryChangedKeys,
-  normalizeWorkspaceCheckoutOrder,
   type WorkspaceCheckoutQuote,
 } from "@/features/checkout/checkout-quote";
 import {
@@ -15,17 +13,12 @@ import {
   legalEvidenceMapSchema,
   paymentSubmitLegalEvidenceSource,
 } from "@/features/checkout/legal-evidence";
-import { getWorkspaceProductByTier } from "@/features/checkout/product-catalog";
 import type { CheckoutDetailsJson } from "@/features/checkout/schemas/checkout-details";
 import {
   withWorkspaceMoneyCurrency,
   workspaceMoneyEquals,
 } from "@/features/checkout/workspace-money";
-import {
-  type CanonicalDiscountCode,
-  DiscountService,
-} from "@/features/discounts";
-import { DiscountServiceLiveWithDependencies } from "@/features/discounts/discount.runtime";
+import type { CanonicalDiscountCode } from "@/features/discounts";
 import type { Locale } from "@/features/i18n";
 import {
   type CheckoutLegalAcceptanceSnapshot,
@@ -66,6 +59,8 @@ import {
 } from "../repositories/payment-attempt.repository";
 import { formatWorkspaceReservationNote } from "../reservation/dotypos-reservation.adapter";
 import { buildFreshCheckoutPayPath } from "./checkout-pay-url";
+import { CheckoutPricingServiceLiveWithDependencies } from "./checkout-pricing.runtime";
+import { CheckoutPricingService } from "./checkout-pricing.service";
 import { openPayState, type SignedPayState } from "./pay-state.server";
 import { appendVercelPreviewProtectionBypass } from "./vercel-preview-protection-bypass";
 
@@ -189,9 +184,9 @@ const getNotificationUrl: Effect.Effect<string, CheckoutError> = Effect.gen(
 
 const toNexiAmount = Schema.encodeEffect(NexiAmountFromWorkspaceMoney);
 
-export const getNexiCheckoutCurrencyOverride = () => {
+const getNexiCheckoutCurrencyOverride = () => {
   if (env.VERCEL_ENV === "production") return undefined;
-  if (!env.NEXI_API_ORIGIN.includes("xpaysandbox.nexigroup.com")) {
+  if (new URL(env.NEXI_API_ORIGIN).hostname !== "xpaysandbox.nexigroup.com") {
     return undefined;
   }
   return env.NEXI_CHECKOUT_CURRENCY_OVERRIDE || undefined;
@@ -311,7 +306,16 @@ const getFreshPayUrl: (input: {
   readonly submittedCode: CanonicalDiscountCode | undefined;
   readonly changedKeys: ReturnType<typeof getCheckoutSummaryChangedKeys>;
 }) => Effect.Effect<string, CheckoutError> = Effect.fn("getFreshPayUrl")(
-  (input) => Effect.succeed(buildFreshCheckoutPayPath(input))
+  (input) =>
+    buildFreshCheckoutPayPath(input).pipe(
+      Effect.mapError(
+        (cause) =>
+          new CheckoutError({
+            message: "A refreshed Pay state could not be created.",
+            cause,
+          })
+      )
+    )
 );
 
 type MappableCheckoutFailure = CheckoutError | WorkspaceTableUnavailableError;
@@ -357,7 +361,7 @@ export const CheckoutServiceLive = Layer.effect(
     const paymentAttempts = yield* PaymentAttemptRepository;
     const legalEvidenceEvents = yield* LegalEvidenceEventRepository;
     const posthogEvents = yield* PostHogEventService;
-    const discounts = yield* DiscountService;
+    const pricing = yield* CheckoutPricingService;
 
     const startProviderSession = Effect.fn("checkout.startProviderSession")(
       function* (input: {
@@ -369,7 +373,11 @@ export const CheckoutServiceLive = Layer.effect(
         yield* Effect.annotateLogsScoped({ providerSessionInput: input });
         yield* Effect.logInfo("Checkout provider session start requested");
 
-        const nexiAmount = yield* toNexiAmount(input.total).pipe(
+        const providerTotal = withWorkspaceMoneyCurrency(
+          input.total,
+          getNexiCheckoutCurrencyOverride()
+        );
+        const nexiAmount = yield* toNexiAmount(providerTotal).pipe(
           Effect.mapError(
             (cause) =>
               new CheckoutError({
@@ -384,9 +392,9 @@ export const CheckoutServiceLive = Layer.effect(
         const attempt = yield* paymentAttempts.create({
           workspaceReservationId: input.workspaceReservationId,
           providerOrderId: generateNexiOrderId(),
-          amountValue: input.total.value,
-          amountExponent: input.total.exponent,
-          currency: input.total.currency,
+          amountValue: providerTotal.value,
+          amountExponent: providerTotal.exponent,
+          currency: providerTotal.currency,
         });
         yield* Effect.annotateLogsScoped({ attempt });
         yield* Effect.logInfo("Checkout payment attempt created");
@@ -588,28 +596,35 @@ export const CheckoutServiceLive = Layer.effect(
             }
           }
 
-          const order = yield* normalizeWorkspaceCheckoutOrder(data);
-          const currencyOverride = getNexiCheckoutCurrencyOverride();
-          const product = getWorkspaceProductByTier(order.entryTier);
-          const discountableSubtotal = withWorkspaceMoneyCurrency(
-            product.price,
-            currencyOverride
-          );
-          const affirmation = yield* discounts.affirm({
-            product: { kind: "cowork", tier: order.entryTier },
-            discountableSubtotal,
-            reservationDate: data.date,
+          if (state.changedKeys) {
+            yield* Effect.logInfo(
+              "Hosted payment checkout returned existing pricing_changed review"
+            );
+
+            const freshPayUrl = yield* getFreshPayUrl({
+              locale,
+              reservation: data,
+              quote: state.quote,
+              orderId: reservation.id,
+              submittedCode: state.submittedCode,
+              changedKeys: state.changedKeys,
+            });
+            return {
+              status: "pricing_changed" as const,
+              changedKeys: state.changedKeys,
+              freshSummary: state.quote.summary,
+              freshPayUrl,
+            };
+          }
+
+          const paymentAffirmation = yield* pricing.affirmForPayment({
+            reservation: data,
             dotyposCustomerId: reservation.dotyposCustomerId,
             locale,
             submittedCode: state.submittedCode,
-            acceptedDiscountIds: state.quote.payment.discounts.map(
-              ({ discount }) => discount.id
-            ),
+            displayedQuote: state.quote,
           });
-          const quote = yield* calculateWorkspaceCheckoutQuote(data, {
-            discountQuote: affirmation.quote,
-            currencyOverride,
-          });
+          const quote = paymentAffirmation.quote;
           yield* Effect.annotateLogsScoped({ quote });
           yield* Effect.logDebug("Hosted payment checkout quote built");
           yield* Effect.logDebug(
@@ -737,5 +752,5 @@ export const CheckoutServiceLiveWithDependencies = CheckoutServiceLive.pipe(
   Layer.provide(WorkspaceDatabaseLive),
   Layer.provide(DotyposServiceLive),
   Layer.provide(NexiServiceLive),
-  Layer.provide(DiscountServiceLiveWithDependencies)
+  Layer.provide(CheckoutPricingServiceLiveWithDependencies)
 );

@@ -1,7 +1,12 @@
 import { Context, Effect, Layer, Option } from "effect";
 import { WorkspaceFeatureFlagService } from "@/features/feature-flags/backend/workspace-feature-flag.service";
 import type { PostHogFeatureFlagKey } from "@/features/feature-flags/generated/contract";
-import type { DiscountResolutionOperation } from "./resolution-logging";
+
+export type DiscountReleaseGateOperation =
+  | "discover_advertised_discounts"
+  | "affirm_advertisement"
+  | "apply_customer_discount"
+  | "affirm_for_payment";
 
 export type DiscountReleaseGates = {
   readonly calendarSales: boolean;
@@ -11,7 +16,7 @@ export type DiscountReleaseGates = {
 
 export interface IDiscountReleaseGateService {
   readonly evaluate: (input: {
-    readonly operation: DiscountResolutionOperation;
+    readonly operation: DiscountReleaseGateOperation;
   }) => Effect.Effect<DiscountReleaseGates>;
 }
 
@@ -94,7 +99,7 @@ const resolveReleaseGate = Effect.fn(
 )(
   (input: {
     readonly flag: PostHogFeatureFlagKey;
-    readonly operation: DiscountResolutionOperation;
+    readonly operation: DiscountReleaseGateOperation;
     readonly value: boolean | undefined;
   }) =>
     Option.fromNullishOr(input.value).pipe(

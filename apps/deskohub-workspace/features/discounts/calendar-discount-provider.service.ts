@@ -12,7 +12,7 @@ import {
 import type { WorkspaceCoworkProductIdentity } from "@/features/reservation/cowork-reservation-product";
 import { CalendarResourceConfig } from "@/shared/backend/config/calendar-resource.config";
 import { type CalendarSale, normalizeCalendarSales } from "./calendar-sale";
-import type { DiscountQuoteInput } from "./contracts";
+import type { DiscountAdvertisementInput } from "./contracts";
 import type { DiscountDefinition } from "./discount-definition";
 import { DiscountDefinitionRepository } from "./discount-definition.repository";
 import { toDiscountDefinitionProviderError } from "./discount-definition-provider-error";
@@ -24,7 +24,7 @@ import { logDiscountResolutionFailure } from "./resolution-logging";
 const providerNamespace = "google-calendar-sales";
 
 export type CalendarDiscountProviderInput = Pick<
-  DiscountQuoteInput,
+  DiscountAdvertisementInput,
   "locale" | "product" | "reservationDate"
 >;
 

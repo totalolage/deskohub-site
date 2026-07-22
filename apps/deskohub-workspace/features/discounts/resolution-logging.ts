@@ -13,8 +13,10 @@ export type DiscountResolutionProvider =
   | "calculator";
 
 export type DiscountResolutionOperation =
-  | "quote"
-  | "affirm"
+  | "discover_advertised_discounts"
+  | "affirm_advertisement"
+  | "apply_customer_discount"
+  | "affirm_for_payment"
   | "normalize"
   | "load_definition"
   | "apply_candidate";

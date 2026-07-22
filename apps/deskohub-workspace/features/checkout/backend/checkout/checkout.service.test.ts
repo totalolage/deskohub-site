@@ -5,10 +5,12 @@ import { describe, expect, mock, test } from "bun:test";
 import { DotyposService } from "@deskohub/dotypos";
 import { NexiService } from "@deskohub/nexi";
 import { Data, Effect, Layer, Schema } from "effect";
-import {
-  buildWorkspaceCheckoutQuote,
-  type WorkspaceCheckoutQuote,
-} from "@/features/checkout/checkout-quote.test-utils";
+import { env } from "@/env";
+import type {
+  CheckoutSummaryChangedKeys,
+  WorkspaceCheckoutQuote,
+} from "@/features/checkout/checkout-quote";
+import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { makeDiscountCommitment } from "@/features/discounts/commitment";
 import type {
   CanonicalDiscountCode,
@@ -18,19 +20,17 @@ import {
   canonicalDiscountCodeSchema,
   discountIdSchema,
 } from "@/features/discounts/contracts";
-import { DiscountServiceMock } from "@/features/discounts/discount.service.mock";
 import type { Locale } from "@/features/i18n";
 import type { WorkspaceReservationRepository as WorkspaceReservationRepositoryType } from "@/features/reservation/backend/workspace-reservation.repository";
 import { normalizedCoworkReservationOrderSchema } from "@/features/reservation/cowork-reservation";
 import type { PaymentAttemptRepository as PaymentAttemptRepositoryType } from "../repositories/payment-attempt.repository";
+import { CheckoutPricingServiceMock } from "./checkout-pricing.service.mock";
 import {
   buildSignedPayState,
   openPayState,
   payStateTokenQueryParam,
   sealPayState,
 } from "./pay-state";
-
-const openPayStateSync = (token: string) => Effect.runSync(openPayState(token));
 
 mock.module("server-only", () => ({}));
 
@@ -128,15 +128,20 @@ const buildPayStateToken = (input: {
   readonly locale?: Locale;
   readonly quote?: WorkspaceCheckoutQuote;
   readonly submittedCode?: CanonicalDiscountCode;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
-  sealPayState(
-    buildSignedPayState({
-      locale: input.locale ?? "en-US",
-      reservation: reservationData,
-      quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
-      orderId: input.orderId,
-      submittedCode: input.submittedCode,
-      ttlMilliseconds: 10 * 60 * 1000,
+  Effect.runSync(
+    Effect.gen(function* () {
+      const state = yield* buildSignedPayState({
+        locale: input.locale ?? "en-US",
+        reservation: reservationData,
+        quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
+        orderId: input.orderId,
+        submittedCode: input.submittedCode,
+        changedKeys: input.changedKeys,
+        ttlMilliseconds: 10 * 60 * 1000,
+      });
+      return yield* sealPayState(state);
     })
   );
 
@@ -213,6 +218,7 @@ type CheckoutHarnessOptions = {
   readonly locale?: Locale;
   readonly acceptedQuote?: WorkspaceCheckoutQuote;
   readonly submittedCode?: CanonicalDiscountCode;
+  readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: Record<string, unknown>;
   readonly activeAttempt?: ReturnType<typeof makeAttempt> | null;
   readonly affirm?: ReturnType<typeof mock>;
@@ -319,15 +325,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   } as unknown as typeof NexiService.Service;
   const affirm =
     options.affirm ??
-    mock(({ discountableSubtotal, product }) =>
+    mock(() =>
       Effect.succeed({
-        quote: {
-          ...undiscountedQuote,
-          product,
-          discountableSubtotal,
-          totalDiscount: { ...discountableSubtotal, value: 0 },
-          discountedSubtotal: discountableSubtotal,
-        },
+        quote: buildWorkspaceCheckoutQuote(reservationData),
         commitment: emptyCommitment,
       })
     );
@@ -341,6 +341,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
           locale,
           quote: options.acceptedQuote,
           submittedCode: options.submittedCode,
+          changedKeys: options.changedKeys,
         }),
         legalConsent: true,
       },
@@ -351,7 +352,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
       CheckoutServiceLive.pipe(
         Layer.provide(
           Layer.mergeAll(
-            DiscountServiceMock({ affirm }),
+            CheckoutPricingServiceMock({ affirmForPayment: affirm }),
             Layer.succeed(DotyposService, dotypos),
             Layer.succeed(NexiService, nexi),
             Layer.succeed(WorkspaceReservationRepository, reservations),
@@ -396,6 +397,10 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId,
       activeAttempt,
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["product:cowork:profi"],
+      },
       reservationOverrides: { activePaymentAttemptId: activeAttempt.id },
     });
 
@@ -412,12 +417,43 @@ describe("CheckoutService", () => {
     expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
   });
 
+  test("returns the existing pricing change for a review-required state before provider work", async () => {
+    const harness = await createCheckoutHarness({
+      orderId: "reservation-review-required",
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["product:cowork:profi"],
+      },
+    });
+
+    const result = await Effect.runPromise(harness.effect);
+
+    expect(result).toMatchObject({
+      status: "pricing_changed",
+      changedKeys: {
+        sectionKeys: ["order", "total"],
+        itemKeys: ["product:cowork:profi"],
+      },
+      freshSummary: expect.any(Object),
+      freshPayUrl: expect.stringContaining("/en-US/checkout/pay?payState="),
+    });
+    expect(harness.affirm).not.toHaveBeenCalled();
+    expect(harness.updateReservation).not.toHaveBeenCalled();
+    expect(harness.createAttempt).not.toHaveBeenCalled();
+    expect(harness.createHostedPaymentPage).not.toHaveBeenCalled();
+  });
+
   test("affirms the accepted discounts with the checkout locale, stored customer, and encrypted code", async () => {
     const submittedCode = canonicalCode("CANONICAL-SECRET-CODE");
     const orderId = "reservation-affirms-code";
     const acceptedQuote = buildWorkspaceCheckoutQuote(reservationData);
     const affirm = mock(() =>
-      Effect.succeed({ quote: undiscountedQuote, commitment: emptyCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: undiscountedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
     );
     const harness = await createCheckoutHarness({
       orderId,
@@ -438,14 +474,48 @@ describe("CheckoutService", () => {
 
     expect(affirm).toHaveBeenCalledTimes(1);
     expect(affirm).toHaveBeenCalledWith({
-      product: { kind: "cowork", tier: "profi" },
-      discountableSubtotal: money(55_000),
-      reservationDate: reservationData.date,
+      reservation: expect.objectContaining(reservationData),
       dotyposCustomerId: "stored-dotypos-customer-id",
       locale: "cs-CZ",
       submittedCode,
-      acceptedDiscountIds: [],
+      displayedQuote: acceptedQuote,
     });
+    expect(harness.createAttempt).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amountValue: 55_000,
+        amountExponent: 2,
+        currency: "EUR",
+      })
+    );
+    expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: "55000",
+        currency: "EUR",
+      })
+    );
+  });
+
+  test("does not apply the sandbox currency override to a lookalike hostname", async () => {
+    const originalNexiOrigin = env.NEXI_API_ORIGIN;
+    env.NEXI_API_ORIGIN =
+      "https://xpaysandbox.nexigroup.com.attacker.example/api";
+
+    try {
+      const harness = await createCheckoutHarness({
+        orderId: "reservation-lookalike-nexi-origin",
+      });
+
+      await Effect.runPromise(harness.effect);
+
+      expect(harness.createAttempt).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "CZK" })
+      );
+      expect(harness.createHostedPaymentPage).toHaveBeenCalledWith(
+        expect.objectContaining({ currency: "CZK" })
+      );
+    } finally {
+      env.NEXI_API_ORIGIN = originalNexiOrigin;
+    }
   });
 
   test("treats a translated-label edit as a quote change while retaining the accepted snapshot", async () => {
@@ -468,7 +538,12 @@ describe("CheckoutService", () => {
       quote: acceptedQuote,
     });
     const affirm = mock(() =>
-      Effect.succeed({ quote: editedQuote, commitment: emptyCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: editedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-label-edited",
@@ -479,7 +554,8 @@ describe("CheckoutService", () => {
     const result = await Effect.runPromise(harness.effect);
 
     expect(
-      openPayStateSync(acceptedToken).quote.payment.discounts[0]?.discount.label
+      Effect.runSync(openPayState(acceptedToken)).quote.payment.discounts[0]
+        ?.discount.label
     ).toBe("Letni sleva 50 %");
     expect(result.status).toBe("pricing_changed");
     if (result.status !== "pricing_changed") {
@@ -487,22 +563,27 @@ describe("CheckoutService", () => {
     }
     expect(result.changedKeys).toEqual({
       sectionKeys: [],
-      itemKeys: ["order/product:cowork:profi"],
+      itemKeys: ["product:cowork:profi"],
     });
     const freshToken = new URL(
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
     expect(
-      openPayStateSync(freshToken ?? "").quote.payment.discounts[0]?.discount
-        .label
+      Effect.runSync(openPayState(freshToken ?? "")).quote.payment.discounts[0]
+        ?.discount.label
     ).toBe("Edited English summer label");
   });
 
   test("returns pricing_changed when an accepted discount disappears before payment", async () => {
     const submittedCode = canonicalCode("SUMMER50");
     const affirm = mock(() =>
-      Effect.succeed({ quote: undiscountedQuote, commitment: emptyCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: undiscountedQuote,
+        }),
+        commitment: emptyCommitment,
+      })
     );
     const harness = await createCheckoutHarness({
       orderId: "reservation-pricing-changed",
@@ -523,12 +604,16 @@ describe("CheckoutService", () => {
       result.freshPayUrl,
       "https://deskohub.test"
     ).searchParams.get(payStateTokenQueryParam);
-    expect(openPayStateSync(freshToken ?? "").submittedCode).toBe(
+    expect(Effect.runSync(openPayState(freshToken ?? "")).submittedCode).toBe(
       submittedCode
     );
     expect(affirm).toHaveBeenCalledWith(
       expect.objectContaining({
-        acceptedDiscountIds: [application.discount.id],
+        displayedQuote: expect.objectContaining({
+          payment: expect.objectContaining({
+            discounts: [application],
+          }),
+        }),
       })
     );
     expect(harness.updateReservationDetails).not.toHaveBeenCalled();
@@ -543,7 +628,12 @@ describe("CheckoutService", () => {
       discountQuote: discountedQuote,
     });
     const affirm = mock(() =>
-      Effect.succeed({ quote: discountedQuote, commitment: privateCommitment })
+      Effect.succeed({
+        quote: buildWorkspaceCheckoutQuote(reservationData, {
+          discountQuote: discountedQuote,
+        }),
+        commitment: privateCommitment,
+      })
     );
     const createHostedPaymentPage = mock(() => {
       events.push("provider-created");

@@ -7,7 +7,7 @@ import {
 } from "./logging/censorship";
 import {
   flushPostHogLogs,
-  postHogLoggerProvider,
+  getRegisteredPostHogLoggerProvider,
 } from "./logging/posthog-otel";
 
 type WorkspaceEffectBoundary = "action" | "route" | "run" | "task";
@@ -42,7 +42,7 @@ export const defineWorkspaceTask =
     );
 
 export const scheduleWorkspaceTelemetryFlush = () =>
-  postHogLoggerProvider
+  getRegisteredPostHogLoggerProvider()
     ? Effect.try({
         try: () =>
           after(() =>
@@ -59,9 +59,11 @@ export const scheduleWorkspaceTelemetryFlush = () =>
       )
     : Effect.void;
 
+const registeredLoggerProvider = getRegisteredPostHogLoggerProvider();
+
 const workspaceRuntime = NextEffect.make({
-  layer: postHogLoggerProvider
-    ? createWorkspaceOtelLoggerLive(postHogLoggerProvider)
+  layer: registeredLoggerProvider
+    ? createWorkspaceOtelLoggerLive(registeredLoggerProvider)
     : WorkspaceLoggerLive,
 });
 

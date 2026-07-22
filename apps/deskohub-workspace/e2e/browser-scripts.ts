@@ -11,6 +11,21 @@ export const submitCoworkReservationScript = `
     }
     throw new Error(label);
   };
+  const selectTierThroughPrice = async (tier) => {
+    const price = document.querySelector('[data-reservation-tier-price="' + tier + '"]');
+    const input = document.querySelector('#reservation-entry-tier-' + tier);
+    if (!(price instanceof HTMLElement) || !(input instanceof HTMLInputElement)) {
+      throw new Error(tier + ' tier price control not found');
+    }
+    price.click();
+    await waitUntil(() => input.checked, tier + ' tier was not selected through its price');
+    await waitUntil(
+      () => price.dataset.reservationTierPriceReady === 'true',
+      tier + ' advertised price did not become ready'
+    );
+  };
+  await selectTierThroughPrice('plus');
+  await selectTierThroughPrice('basic');
   let checkbox;
   await waitUntil(() => {
     const candidate = document.querySelector('#reservation-privacy-consent');

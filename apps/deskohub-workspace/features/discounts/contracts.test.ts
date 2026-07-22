@@ -5,6 +5,7 @@ import { Effect, Schema } from "effect";
 import {
   type DiscountQuote,
   type DiscountQuoteInput,
+  discountAdvertisementQuoteCodec,
   discountIdSchema,
   discountProductIdentitySchema,
 } from "./contracts";
@@ -76,11 +77,12 @@ describe("discount contracts", () => {
 
     const result = await Effect.gen(function* () {
       const discounts = yield* DiscountService;
-      return yield* discounts.quote(input);
+      return yield* discounts.discoverAdvertisedDiscounts(input);
     }).pipe(
       Effect.provide(
         DiscountServiceMock({
-          quote: () => Effect.succeed(quote),
+          discoverAdvertisedDiscounts: () =>
+            Effect.succeed(discountAdvertisementQuoteCodec.make(quote)),
         })
       ),
       Effect.runPromise
