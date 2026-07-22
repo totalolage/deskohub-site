@@ -15,7 +15,11 @@ import {
   formatWorkspaceMoney,
   workspaceMoneyWithValue,
 } from "@/features/checkout/workspace-money";
-import { getReservationDate } from "@/features/reservation/reservation-interval";
+import { getCoworkReservationIntervalInput } from "@/features/reservation/cowork-reservation";
+import {
+  getReservationDate,
+  getReservationIntervalNormalization,
+} from "@/features/reservation/reservation-interval";
 import { getDurationMinutes } from "@/features/reservation/reservation-interval-normalization";
 import { workspaceSiteConstants } from "@/shared/utils/site-constants";
 import { temporalInstantToDate } from "@/shared/utils/temporal";
@@ -48,15 +52,25 @@ export const createWorkspaceDotyposReservation: (
 
     const dotypos = yield* DotyposService;
     const tableAssignments = yield* WorkspaceTableAssignmentService;
-    const { startDate, endDate } = yield* getDotyposReservationDateRange(
-      input.reservation
+    const reservationIntervalInput = Match.value(input.reservation).pipe(
+      Match.discriminatorsExhaustive("kind")({
+        cowork: ({ date }) => getCoworkReservationIntervalInput(date),
+        "meeting-room": (meetingRoomReservation) => meetingRoomReservation,
+      })
+    );
+    const { startsAt, endsAt } = yield* getReservationIntervalNormalization(
+      reservationIntervalInput
+    ).pipe(
+      Effect.mapError(
+        (cause) => new ValidationError({ message: cause.message, cause })
+      )
     );
     const tableId = yield* tableAssignments.assignTableId(input.reservation);
 
     const reservationInput: CreateDotyposReservationInput = {
       customerId: input.dotyposCustomerId,
-      startDate,
-      endDate,
+      startDate: temporalInstantToDate(Temporal.Instant.from(startsAt)),
+      endDate: temporalInstantToDate(Temporal.Instant.from(endsAt)),
       seats: workspaceBookingGuestCount,
       tableId,
       status: input.status,
@@ -89,44 +103,6 @@ export const createWorkspaceDotyposReservation: (
       })
     )
 );
-
-const getDotyposReservationDateRange = (
-  reservation: WorkspaceTableAssignmentReservation
-) =>
-  Match.value(reservation).pipe(
-    Match.discriminatorsExhaustive("kind")({
-      cowork: ({ date }) => getPragueAllDayRange(date),
-      "meeting-room": ({ endsAt, startsAt }) =>
-        Effect.succeed({
-          startDate: temporalInstantToDate(Temporal.Instant.from(startsAt)),
-          endDate: temporalInstantToDate(Temporal.Instant.from(endsAt)),
-        }),
-    })
-  );
-
-const getPragueAllDayRange = (
-  date: string
-): Effect.Effect<{ startDate: Date; endDate: Date }, ValidationError> =>
-  Effect.try({
-    try: () => {
-      const reservationDate = Temporal.PlainDate.from(date);
-      return {
-        startDate: toPragueMidnightDate(reservationDate),
-        endDate: toPragueMidnightDate(reservationDate.add({ days: 1 })),
-      };
-    },
-    catch: () =>
-      new ValidationError({
-        message: `Workspace reservation date must be a valid YYYY-MM-DD date: ${date}`,
-      }),
-  });
-
-const toPragueMidnightDate = (plainDate: Temporal.PlainDate) =>
-  new Date(
-    plainDate
-      .toZonedDateTime({ timeZone: workspaceSiteConstants.location.timeZone })
-      .toInstant().epochMilliseconds
-  );
 
 export const formatWorkspaceReservationNote = (
   input: Pick<

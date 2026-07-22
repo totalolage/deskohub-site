@@ -36,6 +36,43 @@ const checkoutDetails = Schema.decodeUnknownSync(checkoutDetailsJsonSchema)({
 });
 
 describe("createWorkspaceDotyposReservation", () => {
+  test("uses the cowork reservation domain interval for creation", async () => {
+    const reservation = {
+      kind: "cowork" as const,
+      entryTier: "basic" as const,
+      date: "2099-06-10",
+      coffee: false,
+    };
+    const assignTableId = mock(() => Effect.succeed("cowork-table-id"));
+    const createReservation = mock(() =>
+      Effect.succeed({ id: "dotypos-reservation-id" } as never)
+    );
+    const testLayer = Layer.mergeAll(
+      Layer.succeed(WorkspaceTableAssignmentService, {
+        assignTableId,
+      } satisfies IWorkspaceTableAssignmentService),
+      Layer.succeed(DotyposService, {
+        createReservation,
+      } as unknown as typeof DotyposService.Service)
+    );
+
+    await createWorkspaceDotyposReservation({
+      paymentOrderId: "payment-order-id",
+      dotyposCustomerId: "dotypos-customer-id",
+      checkoutDetails,
+      reservation,
+      status: "NEW",
+    }).pipe(Effect.provide(testLayer), Effect.runPromise);
+
+    expect(assignTableId).toHaveBeenCalledWith(reservation);
+    expect(createReservation).toHaveBeenCalledWith(
+      expect.objectContaining({
+        startDate: new Date("2099-06-09T22:00:00Z"),
+        endDate: new Date("2099-06-10T22:00:00Z"),
+      })
+    );
+  });
+
   test("uses the meeting-room reservation for assignment and creation", async () => {
     const reservation = {
       kind: "meeting-room" as const,
