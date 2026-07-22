@@ -12,13 +12,16 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { buildWorkspaceCheckoutQuote } from "@/features/checkout/checkout-quote.test-utils";
 import { m } from "@/features/i18n";
 import {
+  workspaceRouterPush as routerPush,
+  workspaceRouterReplace as routerReplace,
+  workspaceUseFeatureFlagEnabled as useFeatureFlagEnabled,
+  workspaceUseAction,
+} from "@/shared/testing/workspace-component-module-mocks";
+import {
   registerWorkspaceComponentTestEnv,
   unregisterWorkspaceComponentTestEnv,
 } from "@/shared/testing/workspace-component-test-env";
 
-const routerReplace = mock();
-const routerPush = mock();
-const useFeatureFlagEnabled = mock();
 const execute = mock();
 let actionCallCount = 0;
 let pendingActionCall: number | undefined;
@@ -30,32 +33,6 @@ let actionOptions: {
   onTransportError?: () => void;
 };
 
-mock.module("next/navigation", () => ({
-  useRouter: () => ({ push: routerPush, replace: routerReplace }),
-  unstable_rethrow: (error: unknown) => {
-    throw error;
-  },
-}));
-mock.module("@/features/feature-flags/react", () => ({
-  useFeatureFlagEnabled,
-}));
-mock.module("next-safe-action/hooks", () => ({
-  useAction: (_action: unknown, options: typeof actionOptions) => {
-    actionCallCount += 1;
-    actionOptions = options;
-    return {
-      execute: mock(),
-      executeAsync: async (input: unknown) => {
-        execute(input);
-        return undefined;
-      },
-      isExecuting:
-        pendingActionCall !== undefined &&
-        actionCallCount % pendingActionCall === 0,
-      result: {},
-    };
-  },
-}));
 mock.module("@/features/checkout/actions/apply-discount-code", () => ({
   applyDiscountCode: mock(),
 }));
@@ -75,6 +52,21 @@ describe("CheckoutDiscountCodeForm", () => {
     execute.mockReset();
     actionCallCount = 0;
     pendingActionCall = undefined;
+    workspaceUseAction.mockImplementation((_action, options) => {
+      actionCallCount += 1;
+      actionOptions = options as typeof actionOptions;
+      return {
+        execute,
+        executeAsync: async (input: unknown) => {
+          execute(input);
+          return undefined;
+        },
+        isExecuting:
+          pendingActionCall !== undefined &&
+          actionCallCount % pendingActionCall === 0,
+        result: {},
+      };
+    });
   });
 
   afterEach(() => {
