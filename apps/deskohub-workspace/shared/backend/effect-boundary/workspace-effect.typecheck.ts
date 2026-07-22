@@ -1,4 +1,4 @@
-import { Effect, type Layer } from "effect";
+import { Effect, type Layer, Schema } from "effect";
 import type { WorkspaceEffectFacade } from "./next";
 import { WorkspaceRouteFailure } from "./route-failure";
 
@@ -28,9 +28,17 @@ if (typecheck) {
     () => responseWithService
   );
 
-  // @ts-expect-error Native actions must recover their typed failure channel.
-  workspace.action({ operation: "type.action" }, () =>
-    Effect.fail("handler failed")
+  // @ts-expect-error Actions must declare their input schema.
+  workspace.action({ operation: "type.action" }, ({ parsedInput }) =>
+    Effect.succeed(parsedInput)
+  );
+
+  workspace.action(
+    {
+      operation: "type.action-failure",
+      schema: Schema.toStandardSchemaV1(Schema.String),
+    },
+    () => Effect.fail("handler failed")
   );
 
   // @ts-expect-error Routes must declare disconnect cancellation semantics.

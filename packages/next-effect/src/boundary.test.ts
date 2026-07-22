@@ -13,7 +13,6 @@ class TestRouteFailure extends Data.TaggedError("TestRouteFailure")<{
 }> {}
 
 const makeBoundary = () => {
-  let actionInvocations = 0;
   let routeInvocations = 0;
   const executor = EffectBoundary.makeExecutor();
   const boundary = NextEffect.makeBoundary<TestRouteFailure, Response>({
@@ -28,19 +27,10 @@ const makeBoundary = () => {
           routeInvocations += 1;
         }).pipe(Effect.andThen(effect)),
     },
-    action: {
-      withInvocation: (effect) =>
-        Effect.sync(() => {
-          actionInvocations += 1;
-        }).pipe(Effect.andThen(effect)),
-    },
   });
 
   return {
     boundary,
-    get actionInvocations() {
-      return actionInvocations;
-    },
     get routeInvocations() {
       return routeInvocations;
     },
@@ -121,19 +111,8 @@ describe("NextEffect boundary declarations", () => {
     await expect((await continued(request)).text()).resolves.toBe("continued");
   });
 
-  test("wraps native action invocation while preserving variadic inference", async () => {
-    const harness = makeBoundary();
-    const action = harness.boundary.action(
-      { operation: "test.action" },
-      (left: number, right: number) => Effect.succeed(left + right)
-    );
-
-    await expect(action(20, 22)).resolves.toBe(42);
-    expect(harness.actionInvocations).toBe(1);
-  });
-
   test("keeps every declaration method extractable", async () => {
-    const { page, route, action, task, run } = makeBoundary().boundary;
+    const { page, route, task, run } = makeBoundary().boundary;
     const Page = page({ operation: "test.page" }, () => Effect.succeed("page"));
     const GET = route(
       {
@@ -141,9 +120,6 @@ describe("NextEffect boundary declarations", () => {
         cancellation: "continue-after-disconnect",
       },
       () => Effect.succeed(new Response("route"))
-    );
-    const invoke = action({ operation: "test.action" }, () =>
-      Effect.succeed("action")
     );
     const invokeTask = task({ operation: "test.task" }, () =>
       Effect.succeed("task")
@@ -153,7 +129,6 @@ describe("NextEffect boundary declarations", () => {
     await expect(
       (await GET(new Request("https://example.test"))).text()
     ).resolves.toBe("route");
-    await expect(invoke()).resolves.toBe("action");
     await expect(invokeTask()).resolves.toBe("task");
     await expect(
       run({ operation: "test.run" }, Effect.succeed("run"))

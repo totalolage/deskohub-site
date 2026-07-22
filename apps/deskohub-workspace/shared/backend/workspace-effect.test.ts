@@ -219,27 +219,11 @@ describe("WorkspaceEffect", () => {
     await expect((await continued(request)).text()).resolves.toBe("continued");
   });
 
-  test("action reads headers and schedules one flush", async () => {
+  test("action starts the lifecycle only after validation", async () => {
     const harness = makeHarness();
     const action = harness.workspace.action(
-      { operation: "test.action" },
-      (value: number) => Effect.logInfo("action").pipe(Effect.as(value * 2))
-    );
-
-    await expect(action(21)).resolves.toBe(42);
-    expect(harness.actionHeaderReads).toBe(1);
-    expect(harness.scheduledFlushes).toBe(1);
-    expect(harness.logs[0]?.annotations).toMatchObject({
-      boundary: "action",
-      operation: "test.action",
-    });
-  });
-
-  test("safe action starts the lifecycle only after validation", async () => {
-    const harness = makeHarness();
-    const action = harness.workspace.safeAction(
       {
-        operation: "test.safe-action",
+        operation: "test.action",
         schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
       },
       ({ parsedInput }) =>
@@ -286,9 +270,6 @@ if (process.env.WORKSPACE_EFFECT_TYPECHECK === "1") {
 
   // @ts-expect-error Pages must recover their typed failure channel.
   workspace.page({ operation: "type.page" }, () => Effect.fail("failure"));
-
-  // @ts-expect-error Native actions must recover their typed failure channel.
-  workspace.action({ operation: "type.action" }, () => Effect.fail("failure"));
 
   // @ts-expect-error Routes with domain failures require total mapping.
   workspace.route(

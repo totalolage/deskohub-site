@@ -42,12 +42,6 @@ export interface NextEffectBoundaryRoutePolicy<
   ) => Effect.Effect<A, E, never>;
 }
 
-export interface NextEffectBoundaryActionPolicy {
-  readonly withInvocation: <A, E>(
-    effect: Effect.Effect<A, E, never>
-  ) => Effect.Effect<A, E, never>;
-}
-
 export interface NextEffectBoundaryOptions<
   RouteFailure,
   RouteErrorResponse extends Response,
@@ -57,7 +51,6 @@ export interface NextEffectBoundaryOptions<
     RouteFailure,
     RouteErrorResponse
   >;
-  readonly action: NextEffectBoundaryActionPolicy;
 }
 
 export interface NextEffectBoundary<
@@ -105,18 +98,6 @@ export interface NextEffectBoundary<
       options: NextEffectBoundaryRouteLayerOptions<R, LE, E, RouteFailure>,
       handler: (...args: Args) => Effect.Effect<A, E, R>
     ): (...args: Args) => Promise<A | RouteErrorResponse>;
-  };
-  readonly action: {
-    <Args extends readonly unknown[], A>(
-      options: EffectBoundaryOptions,
-      handler: (...args: Args) => Effect.Effect<A, never, never>
-    ): (...args: Args) => Promise<A>;
-    <Args extends readonly unknown[], A, R>(
-      options: EffectBoundaryOptions & {
-        readonly layer: Layer.Layer<R, never, never>;
-      },
-      handler: (...args: Args) => Effect.Effect<A, never, R>
-    ): (...args: Args) => Promise<A>;
   };
 }
 
@@ -235,39 +216,5 @@ export function makeNextEffectBoundary<
     };
   }
 
-  function action<Args extends readonly unknown[], A>(
-    declaration: EffectBoundaryOptions,
-    handler: (...args: Args) => Effect.Effect<A, never, never>
-  ): (...args: Args) => Promise<A>;
-  function action<Args extends readonly unknown[], A, R>(
-    declaration: EffectBoundaryOptions & {
-      readonly layer: Layer.Layer<R, never, never>;
-    },
-    handler: (...args: Args) => Effect.Effect<A, never, R>
-  ): (...args: Args) => Promise<A>;
-  function action<Args extends readonly unknown[], A, R>(
-    declaration: EffectBoundaryOptions & {
-      readonly layer?: Layer.Layer<R, never, never>;
-    },
-    handler: (...args: Args) => Effect.Effect<A, never, R>
-  ) {
-    return (...args: Args) =>
-      run(
-        options.action
-          .withInvocation(
-            provideBoundaryLayer(
-              Effect.suspend(() => handler(...args)),
-              declaration.layer
-            )
-          )
-          .pipe(
-            Effect.annotateLogs({
-              boundary: "action",
-              operation: declaration.operation,
-            })
-          )
-      );
-  }
-
-  return { page, route, action, ...host };
+  return { page, route, ...host };
 }

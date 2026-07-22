@@ -320,34 +320,18 @@ describe("NextEffect", () => {
     await expect(interrupted).rejects.toBeDefined();
   });
 
-  test("action is variadic, async, and suspends handler construction", async () => {
-    const next = NextEffect.make();
-    const action = next.action((left: number, right: number) =>
-      Effect.succeed(left + right)
-    );
-    const defect = new Error("handler construction failed");
-    const failingAction = next.action(() => {
-      throw defect;
-    });
-
-    await expect(action(20, 22)).resolves.toBe(42);
-    await expect(failingAction()).rejects.toBe(defect);
-  });
-
-  test("page, route, and action methods remain extractable", async () => {
-    const { action, page, route } = NextEffect.make({
+  test("page and route methods remain extractable", async () => {
+    const { page, route } = NextEffect.make({
       runExit: <A, E>(effect: Effect.Effect<A, E, never>) =>
         Effect.runPromiseExit(effect),
     });
     const Page = page(() => Effect.succeed("page"));
     const GET = route({}, () => Effect.succeed(new Response("route")));
-    const runAction = action(() => Effect.succeed("action"));
 
     await expect(Page({})).resolves.toBe("page");
     await expect(
       (await GET(new Request("https://deskohub.test/example"))).text()
     ).resolves.toBe("route");
-    await expect(runAction()).resolves.toBe("action");
   });
 
   test("rejects conflicting executor models in development", () => {
@@ -364,9 +348,6 @@ if (process.env.NEXT_EFFECT_ROUTE_TYPECHECK === "1") {
   const next = NextEffect.make();
 
   next.route((request: Request) => Effect.succeed(new Response(request.url)));
-  next.action((left: number, right: string) =>
-    Effect.succeed(`${left}:${right}`)
-  )(1, "two");
   next.route(
     (
       _request: Request,

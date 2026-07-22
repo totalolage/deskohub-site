@@ -22,12 +22,12 @@ import {
   WorkspaceRouteFailure,
 } from "./route-failure";
 
-type WorkspaceEffectSafeAction = EffectActionBoundary<
+type WorkspaceEffectAction = EffectActionBoundary<
   string,
   "flattened",
   unknown,
   { readonly locale: Locale }
->["safeAction"];
+>["action"];
 
 export interface WorkspaceEffectDependencies {
   readonly executor: EffectBoundaryExecutor;
@@ -40,7 +40,7 @@ export interface WorkspaceEffectFacade
     WorkspaceRouteFailure,
     WorkspaceRouteErrorResponse
   > {
-  readonly safeAction: WorkspaceEffectSafeAction;
+  readonly action: WorkspaceEffectAction;
 }
 
 export const makeWorkspaceEffect = (
@@ -59,19 +59,6 @@ export const makeWorkspaceEffect = (
         Effect.andThen(
           dependencies.scheduleTelemetryFlush(),
           withWorkspaceRequestContext(request.headers, effect)
-        ),
-    },
-    action: {
-      withInvocation: (effect) =>
-        Effect.andThen(
-          dependencies.scheduleTelemetryFlush(),
-          dependencies
-            .readActionHeaders()
-            .pipe(
-              Effect.flatMap((headers) =>
-                withWorkspaceRequestContext(headers, effect)
-              )
-            )
         ),
     },
   });
@@ -98,7 +85,7 @@ export const makeWorkspaceEffect = (
               )
             ),
             Effect.mapError(mapSafeActionFailure),
-            Effect.withSpan("safeAction", {
+            Effect.withSpan("action", {
               attributes: { "action.locale": args.ctx.locale },
             })
           );
@@ -121,7 +108,7 @@ export const makeWorkspaceEffect = (
     },
   });
 
-  return { ...next, safeAction: actions.safeAction };
+  return { ...next, action: actions.action };
 };
 
 const mapSafeActionFailure = (error: unknown) => {

@@ -197,7 +197,7 @@ describe("EffectAction", () => {
     expect(calls).toBe(1);
   });
 
-  test("rejects conflicting safe-action executor models in development", () => {
+  test("rejects conflicting action executor models in development", () => {
     expect(() =>
       EffectAction.fromClient(makeActionClient(), {
         run: (() => Promise.resolve(undefined)) as never,
@@ -206,7 +206,7 @@ describe("EffectAction", () => {
     ).toThrow("cannot combine runExit");
   });
 
-  test("declares safe actions with per-invocation Layers after validation", async () => {
+  test("declares actions with per-invocation Layers after validation", async () => {
     let preparations = 0;
     const boundary = EffectAction.makeBoundary(makeActionClient(), {
       runExit: (effect) => Effect.runPromiseExit(effect),
@@ -215,7 +215,7 @@ describe("EffectAction", () => {
           preparations += 1;
         }).pipe(Effect.andThen(effect)),
     });
-    const action = boundary.safeAction(
+    const action = boundary.action(
       {
         operation: "test.boundary-action",
         schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
@@ -234,7 +234,7 @@ describe("EffectAction", () => {
     expect(preparations).toBe(1);
   });
 
-  test("prepares safe actions after fallible Layer acquisition", async () => {
+  test("prepares actions after fallible Layer acquisition", async () => {
     let preparedFailure: unknown;
     const boundary = EffectAction.makeBoundary(makeActionClient(), {
       runExit: (effect) => Effect.runPromiseExit(effect),
@@ -244,7 +244,7 @@ describe("EffectAction", () => {
           return new Error("public setup");
         }),
     });
-    const action = boundary.safeAction(
+    const action = boundary.action(
       {
         operation: "test.boundary-layer-failure",
         schema: Schema.toStandardSchemaV1(Schema.String),

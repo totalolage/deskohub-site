@@ -102,7 +102,7 @@ export interface EffectActionBoundary<
   Ctx extends object,
   ThrowsValidationErrors extends boolean = false,
 > {
-  readonly safeAction: {
+  readonly action: {
     <S extends StandardSchemaV1, A, E>(
       options: EffectBoundaryOptions & { readonly schema: S },
       handler: (
@@ -428,7 +428,7 @@ function makeBoundary<
   Ctx,
   ThrowsValidationErrors
 > {
-  const safeAction = (<S extends StandardSchemaV1, A, E, R, LE>(
+  const action = (<S extends StandardSchemaV1, A, E, R, LE>(
     declaration: EffectBoundaryOptions & {
       readonly schema: S;
       readonly layer?: Layer.Layer<R, LE, never>;
@@ -448,7 +448,7 @@ function makeBoundary<
         .prepare({ operation: declaration.operation, args }, effect)
         .pipe(
           Effect.annotateLogs({
-            boundary: "safe-action",
+            boundary: "action",
             operation: declaration.operation,
           })
         );
@@ -461,9 +461,9 @@ function makeBoundary<
     Metadata,
     Ctx,
     ThrowsValidationErrors
-  >["safeAction"];
+  >["action"];
 
-  return { safeAction };
+  return { action };
 }
 
 function getExecuteOptions(

@@ -16,7 +16,6 @@ export type {
 export type { EffectRunExit } from "./internal/executor";
 export type {
   NextEffectBoundary,
-  NextEffectBoundaryActionPolicy,
   NextEffectBoundaryOptions,
   NextEffectBoundaryRoutePolicy,
   NextEffectRequestCancellation,
@@ -102,9 +101,6 @@ export interface NextEffectRuntime<R, ErrorResponse extends Response = never> {
       handler: (...args: Args) => Effect.Effect<A, E, R>
     ): (...args: Args) => Promise<A | ErrorResponse>;
   };
-  readonly action: <Args extends readonly unknown[], A, E>(
-    handler: (...args: Args) => Effect.Effect<A, E, R>
-  ) => (...args: Args) => Promise<A>;
 }
 
 function makeRuntime<R, ErrorResponse extends Response>(options: {
@@ -158,10 +154,6 @@ function makeRuntime<R, ErrorResponse extends Response>(options: {
     page: (component) => async (props) =>
       options.runEffect(Effect.suspend(() => component(props))),
     route,
-    action:
-      (handler) =>
-      async (...args) =>
-        options.runEffect(Effect.suspend(() => handler(...args))),
   };
 }
 
