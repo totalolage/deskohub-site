@@ -58,19 +58,20 @@ const loadCheckoutStatusAttempt = (
     );
   });
 
-const loadCheckoutStatusWithBriefRetry = (orderId: string) =>
-  Effect.gen(function* () {
-    const attempts = yield* Ref.make(0);
-    return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
-      Effect.repeat({
-        times: 3,
-        while: (attemptStatus) =>
-          !attemptStatus ||
-          attemptStatus.status === "created" ||
-          attemptStatus.status === "pending",
-      })
-    );
-  });
+const loadCheckoutStatusWithBriefRetry = Effect.fn(
+  "loadCheckoutStatusWithBriefRetry"
+)(function* (orderId: string) {
+  const attempts = yield* Ref.make(0);
+  return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
+    Effect.repeat({
+      times: 3,
+      while: (attemptStatus) =>
+        !attemptStatus ||
+        attemptStatus.status === "created" ||
+        attemptStatus.status === "pending",
+    })
+  );
+});
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
