@@ -1,6 +1,6 @@
 import { Effect } from "effect";
 import {
-  activateBrowserElement,
+  clickBrowserElement,
   openBrowserPage,
   switchToMainFrame,
   waitForBrowserReactHydration,
@@ -195,6 +195,6 @@ export const activateStatusReserveAgain = (run: Runner, session: string) => {
 
   return Effect.gen(function* () {
     yield* waitForBrowserReactHydration(run, session, selector, { timeoutMs });
-    yield* activateBrowserElement(run, session, selector, { timeoutMs });
+    yield* clickBrowserElement(run, session, selector, { timeoutMs });
   });
 };

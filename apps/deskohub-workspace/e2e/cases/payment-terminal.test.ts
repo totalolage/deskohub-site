@@ -14,8 +14,7 @@ test("restarts a reservation through a hydrated stable link selector", async () 
 
   expect(calls.map((args) => args.slice(2))).toEqual([
     ["wait", "--fn", expect.any(String)],
-    ["focus", 'a[href="/en-US/checkout/order"]'],
-    ["press", "Enter"],
+    ["click", 'a[href="/en-US/checkout/order"]'],
   ]);
   expect(calls.some((args) => args.includes("eval"))).toBe(false);
 });
