@@ -298,14 +298,10 @@ Only HMAC digests are stored in `workspace_reservations.checkout_session_key` an
 
 ```ts
 const checkoutSessionKey = hmac({
-  schema: "workspace-checkout-session-key",
-  schemaVersion: 1,
   checkoutSessionId,
 });
 
 const checkoutAttemptKey = hmac({
-  schema: "workspace-checkout-attempt-key",
-  schemaVersion: 1,
   checkoutSessionId,
   checkoutAttemptId,
   reservation: normalizedReservation,

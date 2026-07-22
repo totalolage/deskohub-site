@@ -53,8 +53,8 @@ describe("workspace checkout lifecycle no-PII persistence contract", () => {
       "features/checkout/backend/checkout/checkout-session-key.server.ts"
     );
 
-    expect(source).toContain('schema: "workspace-checkout-session-key"');
-    expect(source).toContain('schema: "workspace-checkout-attempt-key"');
+    expect(source).not.toContain("schema:");
+    expect(source).not.toContain("schemaVersion");
     expect(source).toContain("checkoutSessionId");
     expect(source).toContain("checkoutAttemptId");
     expect(source).toContain(".update(JSON.stringify(payload))");

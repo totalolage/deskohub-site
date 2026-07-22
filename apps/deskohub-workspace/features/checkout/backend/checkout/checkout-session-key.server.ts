@@ -11,8 +11,6 @@ const deriveCheckoutKey = (payload: object) =>
 
 export const deriveCheckoutSessionKey = (checkoutSessionId: string) =>
   deriveCheckoutKey({
-    schema: "workspace-checkout-session-key",
-    schemaVersion: 1,
     checkoutSessionId,
   });
 
@@ -22,8 +20,6 @@ export const deriveCheckoutAttemptKey = (input: {
   readonly reservation: NormalizedCoworkReservationOrder;
 }) =>
   deriveCheckoutKey({
-    schema: "workspace-checkout-attempt-key",
-    schemaVersion: 1,
     checkoutSessionId: input.checkoutSessionId,
     checkoutAttemptId: input.checkoutAttemptId,
     reservation: {
