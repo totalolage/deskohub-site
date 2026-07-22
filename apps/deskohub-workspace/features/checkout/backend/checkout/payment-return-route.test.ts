@@ -62,4 +62,10 @@ describe("checkout payment return route", () => {
       "/en-US/checkout/status/order-id?outcome=success"
     );
   });
+
+  test("does not hide refresh defects behind the fail-open redirect", async () => {
+    const defect = new Error("unexpected defect");
+
+    await expect(invoke(() => Effect.die(defect))).rejects.toBe(defect);
+  });
 });

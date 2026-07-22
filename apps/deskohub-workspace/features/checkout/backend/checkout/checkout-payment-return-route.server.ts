@@ -1,12 +1,10 @@
 import { Effect, Layer, Option, Schema } from "effect";
 import { NextResponse } from "next/server";
+import type { Locale } from "@/features/i18n";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
 import { WorkspaceRouteFailure } from "@/shared/backend/effect-boundary/route-failure";
 import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
-import {
-  getSearchParamsDecoder,
-  type SearchParamsRecord,
-} from "@/shared/utils";
+import { getSearchParamsDecoder } from "@/shared/utils";
 import { refreshCheckoutStatus } from "./checkout-status.server";
 import {
   type CheckoutStatusReturnOutcome,
@@ -29,7 +27,7 @@ const decodeCheckoutPaymentSearchParams = getSearchParamsDecoder(
 );
 
 const getCheckoutStatusRedirectPath = (input: {
-  readonly locale: string;
+  readonly locale: Locale;
   readonly orderId: string;
   readonly outcome: CheckoutStatusReturnOutcome;
 }) => {
@@ -43,9 +41,6 @@ const getCheckoutStatusRedirectPath = (input: {
   return `${url.pathname}${url.search}`;
 };
 
-const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
-  Object.fromEntries(url.searchParams);
-
 const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
   function* (
     request: Request,
@@ -58,17 +53,15 @@ const handleCheckoutPaymentReturn = Effect.fn("handleCheckoutPaymentReturn")(
     if (!routeParams) return new NextResponse(null, { status: 404 });
 
     const { locale, orderId } = routeParams;
-    const { outcome } = yield* Effect.sync(() =>
-      Option.getOrElse(
-        decodeCheckoutPaymentSearchParams(
-          getSearchParamsRecord(new URL(request.url))
-        ),
-        () => ({ outcome: "unknown" as const })
-      )
+    const { outcome } = Option.getOrElse(
+      decodeCheckoutPaymentSearchParams(
+        Object.fromEntries(new URL(request.url).searchParams)
+      ),
+      () => ({ outcome: "unknown" as const })
     );
 
     yield* refreshCheckoutStatus({ orderId, returnOutcome: outcome }).pipe(
-      Effect.catchCause((cause) =>
+      Effect.catch((cause) =>
         Effect.logError("Checkout payment return refresh failed", {
           orderId,
           outcome,
