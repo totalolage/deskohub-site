@@ -223,7 +223,7 @@ const submitReservationAndWaitForPayPage = ({
         }
 
         log(
-          "Checkout reservation preparation returned a transient error; retrying once with the same reservation intent"
+          "Checkout reservation preparation returned a transient error; retrying once with the same checkout attempt"
         );
         return yield* submitAttempt(attempt + 1);
       });

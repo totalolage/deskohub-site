@@ -16,7 +16,8 @@ const makeReservation = (
 ): WorkspaceReservation =>
   ({
     id: "order-id",
-    reservationIntentKey: "intent-key",
+    checkoutSessionKey: "session-key",
+    checkoutAttemptKey: "attempt-key",
     correlationId: "correlation-id",
     dotyposCustomerId: "customer-id",
     dotyposReservationId: "dotypos-reservation-id",

@@ -127,7 +127,7 @@ const buildPayStateToken = (input: {
   readonly orderId: string;
   readonly locale?: Locale;
   readonly quote?: WorkspaceCheckoutQuote;
-  readonly reservationIntentId?: string;
+  readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
 }) =>
@@ -138,7 +138,7 @@ const buildPayStateToken = (input: {
         reservation: reservationData,
         quote: input.quote ?? buildWorkspaceCheckoutQuote(reservationData),
         orderId: input.orderId,
-        reservationIntentId: input.reservationIntentId,
+        checkoutSessionId: input.checkoutSessionId ?? "checkout-session-id",
         submittedCode: input.submittedCode,
         changedKeys: input.changedKeys,
         ttlMilliseconds: 10 * 60 * 1000,
@@ -177,7 +177,8 @@ const makeReservation = (
   overrides: Record<string, unknown> = {}
 ) => ({
   id: orderId,
-  reservationIntentKey: "intent-key",
+  checkoutSessionKey: "session-key",
+  checkoutAttemptKey: "attempt-key",
   correlationId: "correlation-id",
   dotyposCustomerId: "stored-dotypos-customer-id",
   dotyposReservationId: "dotypos-reservation-id",
@@ -219,7 +220,7 @@ type CheckoutHarnessOptions = {
   readonly orderId: string;
   readonly locale?: Locale;
   readonly acceptedQuote?: WorkspaceCheckoutQuote;
-  readonly reservationIntentId?: string;
+  readonly checkoutSessionId?: string;
   readonly submittedCode?: CanonicalDiscountCode;
   readonly changedKeys?: CheckoutSummaryChangedKeys;
   readonly reservationOverrides?: Record<string, unknown>;
@@ -232,6 +233,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
   const locale = options.locale ?? "en-US";
   const { CheckoutService, CheckoutServiceLive } = await import(
     "./checkout.service"
+  );
+  const { PayableReservationService } = await import(
+    "./payable-reservation.service"
   );
   const { LegalEvidenceEventRepository } = await import(
     "../repositories/legal-evidence-event.repository"
@@ -294,15 +298,12 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
     Effect.succeed({ id: input.id } as never)
   );
   const markPaymentTerminal = mock(() => Effect.void);
+  const reservationRecord = makeReservation(options.orderId, {
+    locale,
+    ...options.reservationOverrides,
+  });
   const reservations = {
-    findById: mock(() =>
-      Effect.succeed(
-        makeReservation(options.orderId, {
-          locale,
-          ...options.reservationOverrides,
-        })
-      )
-    ),
+    findById: mock(() => Effect.succeed(reservationRecord)),
     updateReservationDetails,
     markPaymentTerminal,
   } as unknown as WorkspaceReservationRepositoryType;
@@ -343,7 +344,7 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
           orderId: options.orderId,
           locale,
           quote: options.acceptedQuote,
-          reservationIntentId: options.reservationIntentId,
+          checkoutSessionId: options.checkoutSessionId,
           submittedCode: options.submittedCode,
           changedKeys: options.changedKeys,
         }),
@@ -360,6 +361,9 @@ const createCheckoutHarness = async (options: CheckoutHarnessOptions) => {
             Layer.succeed(DotyposService, dotypos),
             Layer.succeed(NexiService, nexi),
             Layer.succeed(WorkspaceReservationRepository, reservations),
+            Layer.succeed(PayableReservationService, {
+              requireCurrent: mock(() => Effect.succeed(reservationRecord)),
+            }),
             Layer.succeed(PaymentAttemptRepository, paymentAttempts),
             Layer.succeed(PostHogEventService, {
               capture: mock(() => Effect.void),
@@ -540,7 +544,7 @@ describe("CheckoutService", () => {
     const acceptedToken = buildPayStateToken({
       orderId: "reservation-label-edited",
       quote: acceptedQuote,
-      reservationIntentId: "reservation-label-edited-intent-id",
+      checkoutSessionId: "reservation-label-edited-session-id",
     });
     const affirm = mock(() =>
       Effect.succeed({
@@ -553,7 +557,7 @@ describe("CheckoutService", () => {
     const harness = await createCheckoutHarness({
       orderId: "reservation-label-edited",
       acceptedQuote,
-      reservationIntentId: "reservation-label-edited-intent-id",
+      checkoutSessionId: "reservation-label-edited-session-id",
       affirm,
     });
 
@@ -579,8 +583,8 @@ describe("CheckoutService", () => {
     expect(freshState.quote.payment.discounts[0]?.discount.label).toBe(
       "Edited English summer label"
     );
-    expect(freshState.reservationIntentId).toBe(
-      "reservation-label-edited-intent-id"
+    expect(freshState.checkoutSessionId).toBe(
+      "reservation-label-edited-session-id"
     );
   });
 

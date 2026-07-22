@@ -618,6 +618,40 @@ describe("DotyposService customer lookup", () => {
 });
 
 describe("DotyposService reservations", () => {
+  test("reads only the reservation when checking its status", async () => {
+    const fetchMock = mockDotyposFetch((request) => {
+      const url = new URL(request.url);
+      if (url.pathname === "/signin/token") return tokenResponse();
+      if (
+        url.pathname === "/clouds/cloud-id/reservations/reservation-id" &&
+        request.method === "GET"
+      ) {
+        return Response.json(reservation({ status: "CANCELLED" }));
+      }
+      return new Response("Not found", { status: 404 });
+    });
+
+    const status = await runWithService(
+      Effect.gen(function* () {
+        const dotypos = yield* DotyposService;
+        return yield* dotypos.getReservationStatus(" reservation-id ");
+      }),
+      fetchMock
+    );
+
+    expect(status).toBe("CANCELLED");
+    expect(
+      fetchMock.mock.calls.filter((call) =>
+        getUrl(call as FetchCall).includes("/customers/")
+      )
+    ).toHaveLength(0);
+    expect(
+      fetchMock.mock.calls.filter((call) =>
+        getUrl(call as FetchCall).includes("/reservations/reservation-id")
+      )
+    ).toHaveLength(1);
+  });
+
   test("creates reservations with the generated array payload and retries empty responses", async () => {
     let reservationAttempts = 0;
     const fetchMock = mockDotyposFetch(async (request) => {

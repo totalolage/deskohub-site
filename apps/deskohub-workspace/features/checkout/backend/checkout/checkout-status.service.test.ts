@@ -15,7 +15,8 @@ const testInstant = (value = "2026-06-01T10:00:00Z") =>
 
 const makeReservation = (overrides: Record<string, unknown> = {}) => ({
   id: "reservation-provider-return",
-  reservationIntentKey: "intent-key",
+  checkoutSessionKey: "session-key",
+  checkoutAttemptKey: "attempt-key",
   correlationId: "correlation-id",
   dotyposCustomerId: "customer-id",
   dotyposReservationId: "dotypos-reservation-id",

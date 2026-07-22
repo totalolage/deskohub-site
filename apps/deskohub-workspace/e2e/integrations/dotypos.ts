@@ -85,6 +85,20 @@ export const cancelDotyposReservation = (
     )
   );
 
+export const readDotyposReservationStatus = (
+  config: DatasourceConfig,
+  dotyposReservationId: string
+) =>
+  Effect.gen(function* () {
+    const dotypos = yield* DotyposService;
+    return yield* dotypos.getReservationStatus(dotyposReservationId);
+  }).pipe(
+    Effect.provide(getDotyposLayer(config)),
+    Effect.mapError((cause) =>
+      toWorkspaceE2EError("read Dotypos reservation status", cause)
+    )
+  );
+
 const getDotyposLayer = (config: DatasourceConfig) =>
   DotyposService.Default.pipe(
     Layer.provide(

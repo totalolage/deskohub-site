@@ -161,6 +161,8 @@ const queryCheckoutRow = (
     "read checkout row",
     `select
       wr.id as reservation_id,
+      wr.checkout_session_key,
+      wr.checkout_attempt_key,
       wr.correlation_id,
       wr.dotypos_customer_id,
       wr.dotypos_reservation_id,
@@ -171,6 +173,7 @@ const queryCheckoutRow = (
       wr.reservation_details,
       wr.locale,
       wr.reservation_created_at,
+      wr.reservation_hold_expires_at,
       wr.reservation_confirmed_at,
       wr.reservation_cancelled_at,
       wr.reservation_hold_expired_at,

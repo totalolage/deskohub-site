@@ -13,7 +13,7 @@ const orderId = "019f7082-1bec-7ab4-8fcd-2f0fdfd9dd71";
 const checkoutUrl =
   "https://deskohub-workspace-a1b2c3d4e-deskohub-bar.vercel.app/en-US/checkout/order";
 
-test("retries a transient reservation preparation failure with the same intent", async () => {
+test("retries a transient reservation preparation failure with the same checkout attempt", async () => {
   let reservationSubmitAttempts = 0;
   let hostedPaymentStarted = false;
   const activatedRefs: string[] = [];

@@ -45,7 +45,7 @@ const getRenderedProps = async (
     fallback: fallback.props as { readonly showMonitorOption?: boolean },
     reservationForm: reservationForm.props as {
       readonly initialReservation?: unknown;
-      readonly reservationIntentId?: string;
+      readonly checkoutSessionId?: string;
     },
   };
 };
@@ -70,14 +70,14 @@ describe("CheckoutOrderPage", () => {
     const props = await getRenderedProps({
       initialReservation,
       locale: "en-US",
-      reservationIntentId: "reservation-intent-id",
+      checkoutSessionId: "checkout-session-id",
     });
 
     expect(props.fallback.showMonitorOption).toBe(true);
     expect(props.reservationForm).toEqual({
       initialReservation,
       locale: "en-US",
-      reservationIntentId: "reservation-intent-id",
+      checkoutSessionId: "checkout-session-id",
     });
   });
 });

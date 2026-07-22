@@ -5,4 +5,5 @@ export * from "./checkout-pricing.service";
 export * from "./checkout-status.service";
 export * from "./pay-state";
 export * from "./pay-state.server";
+export * from "./payable-reservation.service";
 export * from "./vercel-preview-protection-bypass";

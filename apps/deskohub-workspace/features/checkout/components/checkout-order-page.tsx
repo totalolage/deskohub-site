@@ -14,13 +14,13 @@ import { CheckoutFlowLayout } from "./checkout-flow-layout";
 type CheckoutOrderPageProps = {
   readonly initialReservation?: NormalizedCoworkReservationOrder;
   readonly locale: Locale;
-  readonly reservationIntentId?: string;
+  readonly checkoutSessionId?: string;
 };
 
 export function CheckoutOrderPage({
   initialReservation,
   locale,
-  reservationIntentId,
+  checkoutSessionId,
 }: CheckoutOrderPageProps) {
   const showMonitorOptionFallback = getCoworkTierRequiresMonitorOption(
     initialReservation?.entryTier ?? coworkReservationDefaultValues.entryTier
@@ -40,7 +40,7 @@ export function CheckoutOrderPage({
         <ReservationForm
           initialReservation={initialReservation}
           locale={locale}
-          reservationIntentId={reservationIntentId}
+          checkoutSessionId={checkoutSessionId}
         />
       </Suspense>
     </CheckoutFlowLayout>

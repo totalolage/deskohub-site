@@ -16,6 +16,7 @@ import type { DatasourceConfig, WorkspaceE2EConfig } from "../config";
 import type { WorkspaceE2EError } from "../errors";
 import { tryWorkspaceE2ESync } from "../errors";
 import { readCheckoutRow } from "../integrations/database";
+import { readDotyposReservationStatus } from "../integrations/dotypos";
 import type { Runner } from "../runtime";
 import { assert, log, parseUrl } from "../runtime";
 import { getWorkspaceE2ETimeoutMs } from "../timeouts";
@@ -26,7 +27,7 @@ import type {
   WorkspaceE2EStepRunner,
 } from "../types";
 
-export const assertReservationReuse = ({
+export const assertReservationReplacement = ({
   config,
   data,
   datasourceConfig,
@@ -34,7 +35,6 @@ export const assertReservationReuse = ({
   runStep,
   session,
   state,
-  unexpectedReservationState,
 }: {
   config: WorkspaceE2EConfig;
   data: CheckoutData;
@@ -43,7 +43,6 @@ export const assertReservationReuse = ({
   runStep: WorkspaceE2EStepRunner;
   session: string;
   state: CheckoutFlowState;
-  unexpectedReservationState: CheckoutFlowState;
 }): Effect.Effect<void, WorkspaceE2EError> =>
   Effect.gen(function* () {
     state.startedAt = new Date();
@@ -72,45 +71,86 @@ export const assertReservationReuse = ({
       timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
     });
     state.checkoutRow = firstRow;
+    const firstDotyposReservationId = yield* tryWorkspaceE2ESync(
+      "read initial Dotypos reservation id",
+      () => {
+        assert(firstRow.dotypos_reservation_id, "initial Dotypos id missing");
+        return firstRow.dotypos_reservation_id;
+      }
+    );
 
     yield* runStep({
       execute: returnToPrefilledReservation({ data, run, session }),
       id: "return-to-prefilled-reservation",
       timeoutMs: getWorkspaceE2ETimeoutMs("uiTransition"),
     });
-
     const secondOrderId = yield* runStep({
       execute: submitReservationForPayPage({
         onOrderId: (orderId) => {
-          if (orderId !== firstOrderId) {
-            unexpectedReservationState.orderId = orderId;
-          }
+          state.orderId = orderId;
         },
         run,
         session,
         submitReservationScript: submitCoworkReservationScript,
       }),
-      id: "resubmit-unchanged-reservation",
+      id: "resubmit-prefilled-reservation",
       timeoutMs: getWorkspaceE2ETimeoutMs("checkoutStart"),
     });
     const secondRow = yield* runStep({
       execute: readHeldReservation(datasourceConfig, secondOrderId),
-      id: "assert-reservation-hold-reused",
+      id: "read-replacement-reservation-hold",
       timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
     });
-    if (secondOrderId === firstOrderId) {
-      state.checkoutRow = secondRow;
-    } else {
-      unexpectedReservationState.checkoutRow = secondRow;
-    }
+    const secondDotyposReservationId = yield* tryWorkspaceE2ESync(
+      "read replacement Dotypos reservation id",
+      () => {
+        assert(
+          secondRow.dotypos_reservation_id,
+          "replacement Dotypos id missing"
+        );
+        return secondRow.dotypos_reservation_id;
+      }
+    );
+    state.orderId = secondOrderId;
+    state.checkoutRow = secondRow;
+    const cancelledFirstRow = yield* runStep({
+      execute: readCheckoutRow(datasourceConfig, firstOrderId).pipe(
+        Effect.flatMap((row) =>
+          tryWorkspaceE2ESync("assert superseded reservation row", () => {
+            assert(row, "superseded reservation row missing");
+            return row;
+          })
+        )
+      ),
+      id: "read-superseded-reservation",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+    });
+    const firstDotyposStatus = yield* runStep({
+      execute: readDotyposReservationStatus(
+        datasourceConfig,
+        firstDotyposReservationId
+      ),
+      id: "read-superseded-dotypos-status",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+    });
+    const secondDotyposStatus = yield* runStep({
+      execute: readDotyposReservationStatus(
+        datasourceConfig,
+        secondDotyposReservationId
+      ),
+      id: "read-replacement-dotypos-status",
+      timeoutMs: getWorkspaceE2ETimeoutMs("datasource"),
+    });
 
-    yield* assertSameReservation({
+    yield* assertReplacedReservation({
       firstOrderId,
-      firstRow,
+      firstRow: cancelledFirstRow,
+      firstDotyposStatus,
       secondOrderId,
       secondRow,
+      secondDotyposStatus,
     });
-    log(`Reservation reuse e2e passed for order ${firstOrderId}`);
+    log(`Reservation replacement e2e passed for order ${secondOrderId}`);
   });
 
 const returnToPrefilledReservation = ({
@@ -188,28 +228,60 @@ const readHeldReservation = (
     });
   });
 
-const assertSameReservation = ({
+const assertReplacedReservation = ({
   firstOrderId,
   firstRow,
+  firstDotyposStatus,
   secondOrderId,
   secondRow,
+  secondDotyposStatus,
 }: {
   firstOrderId: string;
   firstRow: CheckoutRow;
+  firstDotyposStatus: string;
   secondOrderId: string;
   secondRow: CheckoutRow;
+  secondDotyposStatus: string;
 }): Effect.Effect<void, WorkspaceE2EError> =>
-  tryWorkspaceE2ESync("assert reservation hold reused", () => {
+  tryWorkspaceE2ESync("assert reservation hold replaced", () => {
     assert(
-      secondOrderId === firstOrderId,
-      "unchanged reservation created a different workspace reservation"
+      secondOrderId !== firstOrderId,
+      "deliberate resubmission reused the previous workspace reservation"
     );
     assert(
-      secondRow.reservation_id === firstRow.reservation_id,
-      "unchanged reservation persisted a different reservation row"
+      secondRow.reservation_id !== firstRow.reservation_id,
+      "deliberate resubmission reused the previous reservation row"
     );
     assert(
-      secondRow.dotypos_reservation_id === firstRow.dotypos_reservation_id,
-      "unchanged reservation created a different Dotypos hold"
+      secondRow.dotypos_reservation_id !== firstRow.dotypos_reservation_id,
+      "deliberate resubmission reused the previous Dotypos hold"
+    );
+    assert(
+      secondRow.checkout_session_key === firstRow.checkout_session_key,
+      "replacement reservation did not remain in the checkout session"
+    );
+    assert(
+      secondRow.checkout_attempt_key !== firstRow.checkout_attempt_key,
+      "replacement reservation reused the previous checkout attempt"
+    );
+    assert(
+      firstRow.reservation_state === "cancelled",
+      "superseded local reservation was not cancelled"
+    );
+    assert(
+      firstRow.payment_state === "not_started",
+      "superseded reservation unexpectedly started payment"
+    );
+    assert(
+      firstRow.reservation_cancelled_at,
+      "superseded local reservation has no cancellation timestamp"
+    );
+    assert(
+      firstDotyposStatus === "CANCELLED",
+      "superseded Dotypos reservation was not cancelled"
+    );
+    assert(
+      secondDotyposStatus === "NEW",
+      "replacement Dotypos reservation is not pending"
     );
   });

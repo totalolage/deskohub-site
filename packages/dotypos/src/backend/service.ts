@@ -331,6 +331,29 @@ const makeDotyposService = Effect.gen(function* () {
       )
   );
 
+  const getReservationStatus = Effect.fn("getReservationStatus")(
+    function* (id: string) {
+      const reservationId = id.trim();
+      if (!reservationId) {
+        return yield* new ValidationError({
+          message: "Reservation ID is required",
+        });
+      }
+
+      const reservation = yield* runDotyposRequest(
+        client.getReservation(config.cloudId, reservationId, undefined),
+        "getReservation"
+      ).pipe(
+        Effect.retry(retryPolicy),
+        catchUnexpectedDotyposError("getReservation")
+      );
+
+      return reservation.status;
+    },
+    (effect, reservationId) =>
+      effect.pipe(Effect.annotateLogs({ reservationId }))
+  );
+
   const createReservation = Effect.fn("createReservation")(
     function* (input: CreateDotyposReservationInput) {
       yield* Effect.annotateLogsScoped({ input });
@@ -1052,6 +1075,7 @@ const makeDotyposService = Effect.gen(function* () {
     cancelReservation,
     confirmReservation,
     getReservation,
+    getReservationStatus,
     getCustomer,
     getCustomerDiscountGroup,
     getCustomerDiscount,

@@ -1,14 +1,21 @@
 import type { CheckoutData } from "./types";
 
-export const getAssertPrefilledReservationScript = (data: CheckoutData) => `
+export const getAssertPrefilledReservationScript = (data: CheckoutData) => {
+  if (data.expectedReservationDetails.kind !== "cowork") {
+    throw new Error("Reservation backfill assertions require cowork data");
+  }
+
+  const expectedReservation = data.expectedReservationDetails;
+
+  return `
 (() => {
   const expected = ${JSON.stringify({
-    coffee: data.expectedCoffee,
+    coffee: expectedReservation.coffee,
     date: data.date,
     email: data.email,
-    entryTier: data.expectedProductTier,
+    entryTier: expectedReservation.entryTier,
     message: data.message,
-    monitorOption: data.expectedMonitorOption,
+    monitorOption: expectedReservation.monitorOption ?? null,
     name: data.name,
     phone: data.phone,
   })};
@@ -53,6 +60,7 @@ export const getAssertPrefilledReservationScript = (data: CheckoutData) => `
   return true;
 })()
 `;
+};
 
 export const submitCoworkReservationScript = `
 (async () => {
