@@ -5,7 +5,10 @@ import {
   ReservationHoldCleanupService,
   ReservationHoldCleanupServiceLiveWithDependencies,
 } from "@/features/checkout/backend/holds";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import {
+  mapWorkspaceInternalRouteFailure,
+  WorkspaceEffect,
+} from "@/shared/backend/workspace-effect";
 
 const cronBatchLimit = 25;
 
@@ -31,14 +34,7 @@ const sweepExpiredReservationHolds = Effect.fn("sweepExpiredReservationHolds")(
 
     return NextResponse.json(result);
   },
-  (effect) =>
-    effect.pipe(
-      Effect.scoped,
-      Effect.annotateLogs({
-        method: "GET",
-        operation: "reservationHoldCleanupCron",
-      })
-    )
+  Effect.scoped
 );
 
 const handleReservationHoldCleanupCronError = Effect.fn(
@@ -54,32 +50,26 @@ const handleReservationHoldCleanupCronError = Effect.fn(
   );
 });
 
-export async function GET(request: Request): Promise<NextResponse> {
-  if (!isAuthorizedCronRequest(request)) {
-    await runWorkspaceRequestEffect(
-      request,
-      Effect.logWarning("Unauthorized reservation hold cleanup cron request", {
-        request: {
-          headers: Object.fromEntries(request.headers.entries()),
-          method: request.method,
-          url: request.url,
-        },
-      }).pipe(
-        Effect.annotateLogs({
-          method: "GET",
-          operation: "reservationHoldCleanupCron",
-        })
-      )
-    );
+export const GET = WorkspaceEffect.route(
+  {
+    operation: "reservation-hold.recovery-cron",
+    cancellation: "continue-after-disconnect",
+    layer: ReservationHoldCleanupServiceLiveWithDependencies,
+    mapFailure: mapWorkspaceInternalRouteFailure(
+      "Reservation hold cleanup failed"
+    ),
+  },
+  (request) => {
+    if (!isAuthorizedCronRequest(request)) {
+      return Effect.logWarning(
+        "Unauthorized reservation hold cleanup cron request"
+      ).pipe(
+        Effect.as(NextResponse.json({ error: "Unauthorized" }, { status: 401 }))
+      );
+    }
 
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  return runWorkspaceRequestEffect(
-    request,
-    sweepExpiredReservationHolds().pipe(
-      Effect.provide(ReservationHoldCleanupServiceLiveWithDependencies),
+    return sweepExpiredReservationHolds().pipe(
       Effect.catch(handleReservationHoldCleanupCronError)
-    )
-  );
-}
+    );
+  }
+);

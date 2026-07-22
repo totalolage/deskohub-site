@@ -5,7 +5,7 @@ import {
   ResendWebhookService,
   ResendWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/fulfillment";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import { WorkspaceEffect } from "@/shared/backend/workspace-effect";
 
 const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
   function* (request: Request) {
@@ -29,11 +29,7 @@ const processWebhookRequest = Effect.fn("processResendWebhookRequest")(
       },
     });
   },
-  (effect) =>
-    effect.pipe(
-      Effect.scoped,
-      Effect.annotateLogs({ method: "POST", operation: "resendWebhook" })
-    )
+  Effect.scoped
 );
 
 const handleResendWebhookProcessingError = Effect.fn(
@@ -75,11 +71,14 @@ const handleResendWebhookProcessingError = Effect.fn(
  *
  * Receives Resend delivery status for workspace customer fulfilment emails.
  */
-export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceRequestEffect(
-    request,
+export const POST = WorkspaceEffect.route(
+  {
+    operation: "fulfillment.resend-webhook",
+    cancellation: "continue-after-disconnect",
+    layer: ResendWebhookServiceLiveWithDependencies,
+  },
+  (request) =>
     processWebhookRequest(request).pipe(
-      Effect.provide(ResendWebhookServiceLiveWithDependencies),
       Effect.tap((result) =>
         Effect.logInfo("Resend webhook response ready", { result })
       ),
@@ -95,8 +94,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         handleResendWebhookProcessingError
       )
     )
-  );
-}
+);
 
 /**
  * GET /api/webhooks/resend

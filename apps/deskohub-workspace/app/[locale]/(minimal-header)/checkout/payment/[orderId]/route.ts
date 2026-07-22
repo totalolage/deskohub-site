@@ -3,10 +3,14 @@ import { NextResponse } from "next/server";
 import {
   appendVercelPreviewProtectionBypass,
   type CheckoutStatusReturnOutcome,
+  CheckoutStatusServiceLiveWithDependencies,
   refreshCheckoutStatus,
 } from "@/features/checkout/backend/checkout";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import {
+  mapWorkspaceInternalRouteFailure,
+  WorkspaceEffect,
+} from "@/shared/backend/workspace-effect";
 import {
   getSearchParamsDecoder,
   type SearchParamsRecord,
@@ -49,34 +53,46 @@ const getCheckoutStatusRedirectPath = (input: {
 const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
   Object.fromEntries(url.searchParams);
 
-export async function GET(
-  request: Request,
-  { params }: LocalizedCheckoutPaymentRouteContext
-): Promise<NextResponse> {
-  const decodedParams = decodeCheckoutPaymentParams(await params);
-  const routeParams = Option.getOrUndefined(decodedParams);
-  if (!routeParams) return new NextResponse(null, { status: 404 });
-
-  const { locale, orderId } = routeParams;
-  const { outcome } = Option.getOrElse(
-    decodeCheckoutPaymentSearchParams(
-      getSearchParamsRecord(new URL(request.url))
+export const GET = WorkspaceEffect.route(
+  {
+    operation: "checkout.payment-return",
+    cancellation: "continue-after-disconnect",
+    layer: CheckoutStatusServiceLiveWithDependencies,
+    mapFailure: mapWorkspaceInternalRouteFailure(
+      "Checkout status could not be refreshed"
     ),
-    () => ({ outcome: "unknown" as const })
-  );
+  },
+  (request, { params }: LocalizedCheckoutPaymentRouteContext) =>
+    Effect.gen(function* () {
+      const decodedParams = decodeCheckoutPaymentParams(
+        yield* Effect.promise(() => params)
+      );
+      const routeParams = Option.getOrUndefined(decodedParams);
+      if (!routeParams) return new NextResponse(null, { status: 404 });
 
-  await refreshStatus(orderId, outcome).catch(async (cause) => {
-    await Effect.logError("Checkout payment return refresh failed", {
-      orderId,
-      outcome,
-      cause,
-    }).pipe(runWorkspaceEffect);
-  });
+      const { locale, orderId } = routeParams;
+      const { outcome } = Option.getOrElse(
+        decodeCheckoutPaymentSearchParams(
+          getSearchParamsRecord(new URL(request.url))
+        ),
+        () => ({ outcome: "unknown" as const })
+      );
 
-  return NextResponse.redirect(
-    new URL(
-      getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
-      request.url
-    )
-  );
-}
+      yield* refreshStatus(orderId, outcome).pipe(
+        Effect.catchCause((cause) =>
+          Effect.logError("Checkout payment return refresh failed", {
+            orderId,
+            outcome,
+            cause,
+          })
+        )
+      );
+
+      return NextResponse.redirect(
+        new URL(
+          getCheckoutStatusRedirectPath({ locale, orderId, outcome }),
+          request.url
+        )
+      );
+    })
+);

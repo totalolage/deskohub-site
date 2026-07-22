@@ -6,7 +6,10 @@ import {
   NexiWebhookServiceLiveWithDependencies,
 } from "@/features/checkout/backend/payment";
 import { NexiServiceLive } from "@/shared/backend/config/nexi.config";
-import { runWorkspaceRequestEffect } from "@/shared/backend/logging/censorship";
+import {
+  mapWorkspaceInternalRouteFailure,
+  WorkspaceEffect,
+} from "@/shared/backend/workspace-effect";
 
 const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_parse_failed: 400,
@@ -19,58 +22,46 @@ const nexiWebhookProcessingErrorStatuses = {
   nexi_webhook_fulfillment_failed: 500,
 } satisfies Record<NexiWebhookProcessingError["errorCode"], 202 | 400 | 500>;
 
-const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(
-  function* (request: Request) {
-    const payload = yield* Effect.tryPromise({
-      try: () => request.json() as Promise<unknown>,
-      catch: (cause) =>
-        new NexiWebhookProcessingError({
-          errorCode: "nexi_webhook_parse_failed",
-          message: "Nexi webhook request body was not valid JSON.",
-          cause,
-        }),
-    });
-    yield* Effect.annotateLogsScoped({
-      payload,
-      request: {
-        headers: Object.fromEntries(request.headers.entries()),
-        method: request.method,
-        url: request.url,
-      },
-    });
-    yield* Effect.logInfo("Nexi webhook request body parsed");
+const processWebhookRequest = Effect.fn("processNexiWebhookRequest")(function* (
+  request: Request
+) {
+  const payload = yield* Effect.tryPromise({
+    try: () => request.json() as Promise<unknown>,
+    catch: (cause) =>
+      new NexiWebhookProcessingError({
+        errorCode: "nexi_webhook_parse_failed",
+        message: "Nexi webhook request body was not valid JSON.",
+        cause,
+      }),
+  });
+  yield* Effect.logInfo("Nexi webhook request body parsed");
 
-    const webhooks = yield* NexiWebhookService;
-    const result = yield* webhooks.processNotification(payload);
-    yield* Effect.annotateLogsScoped({ result });
-    yield* Effect.logInfo("Nexi webhook request processed");
+  const webhooks = yield* NexiWebhookService;
+  const result = yield* webhooks.processNotification(payload);
+  yield* Effect.annotateLogsScoped({ result });
+  yield* Effect.logInfo("Nexi webhook request processed");
 
-    return result;
-  },
-  (effect) =>
-    effect.pipe(
-      Effect.scoped,
-      Effect.annotateLogs({
-        method: "POST",
-        operation: "nexiWebhook",
-      })
-    )
-);
+  return result;
+}, Effect.scoped);
 
 /**
  * POST /api/webhooks/nexi
  *
  * Receives Nexi payment notifications and verifies payment state server-side.
  */
-export async function POST(request: Request): Promise<NextResponse> {
-  return runWorkspaceRequestEffect(
-    request,
+export const POST = WorkspaceEffect.route(
+  {
+    operation: "checkout.nexi-webhook",
+    cancellation: "continue-after-disconnect",
+    layer: NexiWebhookServiceLiveWithDependencies.pipe(
+      Layer.provide(NexiServiceLive)
+    ),
+    mapFailure: mapWorkspaceInternalRouteFailure(
+      "Nexi webhook processing failed"
+    ),
+  },
+  (request) =>
     processWebhookRequest(request).pipe(
-      Effect.provide(
-        NexiWebhookServiceLiveWithDependencies.pipe(
-          Layer.provide(NexiServiceLive)
-        )
-      ),
       Effect.catchTag(
         "NexiWebhookProcessingError",
         Effect.fn("logNexiWebhookProcessingError")(function* (error) {
@@ -148,8 +139,7 @@ export async function POST(request: Request): Promise<NextResponse> {
         )
       )
     )
-  );
-}
+);
 
 /**
  * GET /api/webhooks/nexi

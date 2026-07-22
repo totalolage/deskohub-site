@@ -8,7 +8,10 @@ import {
 } from "@/features/checkout/backend/checkout";
 import { appendExistingCheckoutReturnStateToken } from "@/features/checkout/schemas/checkout-return-state-token";
 import { getParamsDecoder } from "@/features/i18n/server/route-params";
-import { runWorkspaceEffect } from "@/shared/backend/logging/censorship";
+import {
+  mapWorkspaceInternalRouteFailure,
+  WorkspaceEffect,
+} from "@/shared/backend/workspace-effect";
 import type { SearchParamsRecord } from "@/shared/utils";
 
 export const maxDuration = 45;
@@ -55,8 +58,8 @@ const loadCheckoutStatusAttempt = (
     );
   });
 
-const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
-  const status = Effect.gen(function* () {
+const loadCheckoutStatusWithBriefRetry = (orderId: string) =>
+  Effect.gen(function* () {
     const attempts = yield* Ref.make(0);
     return yield* loadCheckoutStatusAttempt(orderId, attempts).pipe(
       Effect.repeat({
@@ -67,13 +70,7 @@ const loadCheckoutStatusWithBriefRetry = async (orderId: string) => {
           attemptStatus.status === "pending",
       })
     );
-  }).pipe(
-    Effect.provide(CheckoutStatusServiceLiveWithDependencies),
-    runWorkspaceEffect
-  );
-
-  return status;
-};
+  });
 
 const getRetryOutcome = (status: CheckoutStatusViewModel["status"]) => {
   if (status === "cancelled") return "cancelled";
@@ -114,34 +111,44 @@ const getCheckoutStatusRedirectPath = (input: {
 const getSearchParamsRecord = (url: URL): SearchParamsRecord =>
   Object.fromEntries(url.searchParams);
 
-export async function GET(
-  request: Request,
-  { params }: LocalizedCheckoutResultRouteContext
-): Promise<NextResponse> {
-  const decodedParams = decodeCheckoutResultParams(await params);
-  const routeParams = Option.getOrUndefined(decodedParams);
-  if (!routeParams) return new NextResponse(null, { status: 404 });
+export const GET = WorkspaceEffect.route(
+  {
+    operation: "checkout.result-return",
+    cancellation: "continue-after-disconnect",
+    layer: CheckoutStatusServiceLiveWithDependencies,
+    mapFailure: mapWorkspaceInternalRouteFailure(
+      "Checkout status could not be refreshed"
+    ),
+  },
+  (request, { params }: LocalizedCheckoutResultRouteContext) =>
+    Effect.gen(function* () {
+      const decodedParams = decodeCheckoutResultParams(
+        yield* Effect.promise(() => params)
+      );
+      const routeParams = Option.getOrUndefined(decodedParams);
+      if (!routeParams) return new NextResponse(null, { status: 404 });
 
-  const { locale, orderId } = routeParams;
-  const rawSearchParams = getSearchParamsRecord(new URL(request.url));
-  const status = await loadCheckoutStatusWithBriefRetry(orderId);
-  const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
+      const { locale, orderId } = routeParams;
+      const rawSearchParams = getSearchParamsRecord(new URL(request.url));
+      const status = yield* loadCheckoutStatusWithBriefRetry(orderId);
+      const retryOutcome = status ? getRetryOutcome(status.status) : undefined;
 
-  if (retryOutcome) {
-    return NextResponse.redirect(
-      new URL(
-        getCheckoutPaymentRetryRedirectPath({
-          locale,
-          orderId,
-          outcome: retryOutcome,
-          searchParams: rawSearchParams,
-        }),
-        request.url
-      )
-    );
-  }
+      if (retryOutcome) {
+        return NextResponse.redirect(
+          new URL(
+            getCheckoutPaymentRetryRedirectPath({
+              locale,
+              orderId,
+              outcome: retryOutcome,
+              searchParams: rawSearchParams,
+            }),
+            request.url
+          )
+        );
+      }
 
-  return NextResponse.redirect(
-    new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
-  );
-}
+      return NextResponse.redirect(
+        new URL(getCheckoutStatusRedirectPath({ locale, orderId }), request.url)
+      );
+    })
+);

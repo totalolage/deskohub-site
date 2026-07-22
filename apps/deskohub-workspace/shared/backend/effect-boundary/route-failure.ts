@@ -13,6 +13,15 @@ export type WorkspaceRouteErrorResponse = NextResponse<{
   readonly error: string;
 }>;
 
+export const mapWorkspaceInternalRouteFailure = (publicMessage: string) =>
+  function mapFailure(cause: unknown) {
+    return new WorkspaceRouteFailure({
+      statusCode: 500,
+      publicMessage,
+      cause,
+    });
+  };
+
 export const recoverWorkspaceRouteFailure = Effect.fn(
   "workspaceEffect.recoverRouteFailure"
 )(function* (failure: WorkspaceRouteFailure) {
