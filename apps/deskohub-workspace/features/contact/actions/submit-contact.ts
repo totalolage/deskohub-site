@@ -1,8 +1,7 @@
 "use server";
 
 import { StandaloneEmailServiceLayer } from "@deskohub/email/backend/standalone-email-service";
-import { Effect, Layer } from "effect";
-import { z } from "zod/v4";
+import { Effect, Layer, Schema, SchemaTransformation } from "effect";
 import {
   type ContactFormState,
   type ContactFormValues,
@@ -21,13 +20,36 @@ const getSubmittedString = (
   return typeof value === "string" ? value : "";
 };
 
-const contactFormDataSchema = z.instanceof(FormData).transform(
-  (formData): ContactFormValues => ({
-    name: getSubmittedString(formData, "name"),
-    email: getSubmittedString(formData, "email"),
-    phone: getSubmittedString(formData, "phone"),
-    message: getSubmittedString(formData, "message"),
-  })
+const contactFormValuesSchema = Schema.Struct({
+  name: Schema.String,
+  email: Schema.String,
+  phone: Schema.String,
+  message: Schema.String,
+});
+
+const contactFormDataSchema = Schema.FormData.pipe(
+  Schema.decodeTo(
+    contactFormValuesSchema,
+    SchemaTransformation.transform({
+      decode: (formData): ContactFormValues => ({
+        name: getSubmittedString(formData, "name"),
+        email: getSubmittedString(formData, "email"),
+        phone: getSubmittedString(formData, "phone"),
+        message: getSubmittedString(formData, "message"),
+      }),
+      encode: (values) => {
+        const formData = new FormData();
+        formData.set("name", values.name);
+        formData.set("email", values.email);
+        formData.set("phone", values.phone);
+        formData.set("message", values.message);
+        return formData;
+      },
+    })
+  )
+);
+const contactFormDataStandardSchema = Schema.toStandardSchemaV1(
+  contactFormDataSchema
 );
 
 const ContactActionLive = ContactServiceLive.pipe(
@@ -40,7 +62,7 @@ const ContactActionLive = ContactServiceLive.pipe(
 const submitContactAction = WorkspaceEffect.action(
   {
     operation: "contact.submit",
-    schema: contactFormDataSchema,
+    schema: contactFormDataStandardSchema,
     stateful: true,
     layer: ContactActionLive,
   },
