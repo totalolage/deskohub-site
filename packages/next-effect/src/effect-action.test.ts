@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { Context, Effect, Exit, Layer, Schema } from "effect";
 import { createMiddleware, createSafeActionClient } from "next-safe-action";
-import { useAction } from "next-safe-action/hooks";
+import { useAction, useStateAction } from "next-safe-action/hooks";
 import { EffectAction } from "./effect-action";
 
 class TestService extends Context.Service<
@@ -258,6 +258,39 @@ describe("EffectAction", () => {
     });
     expect(preparedFailure).toBe("setup");
   });
+
+  test("declares stateful form actions through the same boundary method", async () => {
+    let preparations = 0;
+    let previousResult: unknown;
+    const boundary = EffectAction.makeBoundary(makeActionClient(), {
+      runExit: (effect) => Effect.runPromiseExit(effect),
+      prepare: (_invocation, effect) =>
+        Effect.sync(() => {
+          preparations += 1;
+        }).pipe(Effect.andThen(effect)),
+    });
+    const action = boundary.action(
+      {
+        operation: "test.stateful-boundary-action",
+        schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
+        stateful: true,
+      },
+      ({ parsedInput }, { prevResult }) =>
+        Effect.sync(() => {
+          previousResult = prevResult;
+          return parsedInput * 2;
+        })
+    );
+
+    await expect(action({ data: 1 }, "invalid")).resolves.toMatchObject({
+      validationErrors: expect.any(Object),
+    });
+    expect(preparations).toBe(0);
+
+    await expect(action({ data: 1 }, "21")).resolves.toEqual({ data: 42 });
+    expect(preparations).toBe(1);
+    expect(previousResult).toEqual({ data: 1 });
+  });
 });
 
 if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
@@ -296,6 +329,27 @@ if (process.env.NEXT_EFFECT_ACTION_TYPECHECK === "1") {
 
   // @ts-expect-error useAction preserves the action input type.
   hook.execute(1);
+
+  const statefulAction = EffectAction.makeBoundary(makeActionClient(), {
+    runExit: (effect) => Effect.runPromiseExit(effect),
+    prepare: (_invocation, effect) => effect,
+  }).action(
+    {
+      operation: "test.stateful-action-types",
+      schema: Schema.toStandardSchemaV1(Schema.FiniteFromString),
+      stateful: true,
+    },
+    ({ parsedInput }) => Effect.succeed(parsedInput)
+  );
+
+  // biome-ignore lint/correctness/useHookAtTopLevel: Compile-time coverage intentionally exercises the hook API.
+  const statefulHook = useStateAction(statefulAction, {
+    initResult: { data: 0 },
+  });
+  statefulHook.formAction("1");
+
+  // @ts-expect-error useStateAction preserves the action input type.
+  statefulHook.formAction(1);
 
   void hook.executeAsync("1").then((result) => {
     if (result.data !== undefined) {
